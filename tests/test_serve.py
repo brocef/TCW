@@ -13,6 +13,9 @@ from tcw.serve import HOST, TcwServer
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, init
 
 
+from nodeconfig import declare_extends
+
+
 def node(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     root.mkdir()
@@ -113,8 +116,7 @@ def test_inherited_taxonomy_term_detail_is_200_not_500(tmp_path):
     (shared / "tcw-config.yaml").write_text(
         "id: repo\nconnected-projects:\n  parent:\n    consumer: ../consumer\n"
     )
-    (cons / "docs" / "taxonomy" / "config.yaml").write_text(
-        "extends:\n  - repo\n", encoding="utf-8")
+    declare_extends(cons, "taxonomy", "extends:\n  - repo\n")
 
     httpd = TcwServer((HOST, 0), cons)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)

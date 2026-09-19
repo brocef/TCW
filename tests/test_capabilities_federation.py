@@ -10,6 +10,9 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 
 
+from nodeconfig import declare_extends
+
+
 def repo(tmp_path: Path, name: str) -> Path:
     root = tmp_path / name
     (root / "docs" / "capabilities").mkdir(parents=True)
@@ -448,7 +451,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+    declare_extends(child, "capabilities", 
         "extends:\n  - base\n"
     )
     with pytest.raises(ValueError) as excinfo:
@@ -461,7 +464,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text("id: child\n")
-    (child / "docs" / "capabilities" / ".config.yaml").write_text(
+    declare_extends(child, "capabilities", 
         "extends:\n  - nowhere\n"
     )
     with pytest.raises(ValueError) as excinfo:
@@ -507,7 +510,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    declare_extends(child, "capabilities", "extends:\n  - base\n")
 
     caps = {c.qualified for c in store(child).list_all()}
     assert "base/auth/login" in caps
@@ -523,7 +526,7 @@ def test_a_sibling_with_no_component_names_the_project(tmp_path):
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
     assert "project 'base' has no capabilities component" in str(excinfo.value)
@@ -543,7 +546,7 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
     message = str(excinfo.value)
@@ -575,8 +578,9 @@ def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
             doc["connected-projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
         (d / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
         if i + 1 < depth:
-            tree = d / ("ledger" if i in moved else "docs/capabilities")
-            (tree / ".config.yaml").write_text(f"extends:\n  - n{i+1}\n")
+            # On the node, not the store dir: a moved node's `capabilities.path`
+            # is already in this section and must survive the merge.
+            declare_extends(d, "capabilities", f"extends:\n  - n{i+1}\n")
     return tmp_path / "n0"
 
 
@@ -603,7 +607,7 @@ def test_a_broken_sibling_reports_its_own_error(tmp_path):
     """Every ValueError used to be rewritten as "has no capabilities component",
     which sends the reader to create a store that already exists."""
     base, child = child_of(tmp_path, {})
-    (base / "docs" / "capabilities" / ".config.yaml").write_text(
+    declare_extends(base, "capabilities", 
         "extends:\n  nope: ../somewhere\n"          # the legacy map form
     )
     with pytest.raises(ValueError) as excinfo:
@@ -617,8 +621,8 @@ def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
     """A cycle is truncated by the store that closes it — the deepest one —
     so the store someone is checking never holds the record itself."""
     base, child = child_of(tmp_path, {})
-    (base / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - child\n")
-    (child / "docs" / "capabilities" / ".config.yaml").write_text("extends:\n  - base\n")
+    declare_extends(base, "capabilities", "extends:\n  - child\n")
+    declare_extends(child, "capabilities", "extends:\n  - base\n")
     problems = store(child).check()
     assert any("cycle in capability federation" in p for p in problems)
 
@@ -652,7 +656,7 @@ def _diamond(tmp_path, levels: int):
                  "connected-projects": {"parent": {"hub": "../hub"}}},
                 sort_keys=False))
             if level + 1 < levels:
-                (d / "docs" / "capabilities" / ".config.yaml").write_text(
+                declare_extends(d, "capabilities", 
                     f"extends:\n  - n{level+1}x0\n  - n{level+1}x1\n")
     return tmp_path / "n0x0"
 
@@ -689,3 +693,22 @@ def test_federation_stays_linear_in_chain_depth(tmp_path):
     started = time.monotonic()
     store(root).list_all()
     assert time.monotonic() - started < 5.0
+
+
+def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
+    """Spec criterion 2 — the capabilities half. `capabilities.extends` in
+    `tcw-config.yaml`, and no `.config.yaml` inside the store."""
+    base = repo(tmp_path, "base")
+    write_cap(base, "billing/refund", body="Refund a charge.")
+    child = repo(tmp_path, "child")
+    (base / "tcw-config.yaml").write_text(
+        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+    )
+    (child / "tcw-config.yaml").write_text(
+        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "capabilities:\n  extends:\n    - base\n"
+    )
+
+    assert not (child / "docs" / "capabilities" / ".config.yaml").exists()
+    listed = FsCapabilitiesStore.open(child).list_all()
+    assert {(cap.path, cap.origin) for cap in listed} == {("billing/refund", "base")}

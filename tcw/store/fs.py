@@ -1135,8 +1135,14 @@ _UniqueKeyLoader.add_constructor(
 #: contract by `tcw validate`. Named rather than inferred and kept in one place,
 #: because naming what TCW owns is narrower than exempting what it does not, and
 #: an attachment that happens to be called `state.yaml` is a case nobody has.
-#: Both spellings of a store config are here: taxonomy and work write
-#: `config.yaml`, capabilities writes `.config.yaml`.
+#:
+#: Neither spelling of the old per-store config is here any more. `extends`
+#: moved to `<component>.extends` in the node's `tcw-config.yaml`, so TCW writes
+#: no `config.yaml` or `.config.yaml` at all — and the work store never did,
+#: whatever this comment used to claim. A leftover copy is not a record of ours
+#: and is not held to the mapping contract; `tcw validate`'s YAML scan still
+#: reports it if it is unparseable, which is the right amount of attention to
+#: pay a file nothing reads.
 #:
 #: Three names are absent on purpose, and each is legitimately not a mapping or
 #: is never reached by that pass. `dod.yaml` is a top-level list. The node
@@ -1151,8 +1157,7 @@ _UniqueKeyLoader.add_constructor(
 #: which `write_sidecar` already enforces — so it is held to the contract like
 #: `state.yaml`.
 OWNED_YAML_NAMES = frozenset({
-    "state.yaml", "meta.yaml", "graveyard.yaml", "config.yaml", ".config.yaml",
-    "tracker.yaml",
+    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml",
 })
 
 
@@ -1232,18 +1237,34 @@ def slugify(name: str) -> str:
 _DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 
 
-def _extends_ids(config: dict, config_path: Path) -> list[str]:
+def _extends_ids(config: dict, label: str) -> list[str]:
+    """The declared `extends` list, or a `ValueError` naming what is wrong.
+
+    `label` is how a refusal addresses the declaration. It is the key path —
+    `<path>/tcw-config.yaml: taxonomy.extends` — not just the file, because one
+    node config can hold both `taxonomy.extends` and `capabilities.extends` and
+    naming only the file leaves the reader to guess which one is meant.
+
+    All four refusals carry it, including the project-id one: `validate_project_id`
+    raises a perfectly good message about the id and knows nothing about where
+    the id was read from, which sent people hunting for a key nothing named.
+    """
     value = config.get("extends") or []
     if isinstance(value, dict):
         raise ValueError(
-            f"{config_path}: legacy extends map is unsupported; replace it with "
+            f"{label}: legacy extends map is unsupported; replace it with "
             "a list of registered project IDs"
         )
     if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
-        raise ValueError(f"{config_path}: extends must be a list of project IDs")
-    ids = [validate_project_id(v) for v in value]
+        raise ValueError(f"{label}: extends must be a list of project IDs")
+    ids = []
+    for v in value:
+        try:
+            ids.append(validate_project_id(v))
+        except ValueError as error:
+            raise ValueError(f"{label}: {error}") from None
     if len(ids) != len(set(ids)):
-        raise ValueError(f"{config_path}: extends contains duplicate project IDs")
+        raise ValueError(f"{label}: extends contains duplicate project IDs")
     return ids
 
 
@@ -1304,7 +1325,7 @@ class _FederationCycles:
 
 
 def _extended_component_stores(
-    node_root: Path, config: dict, config_path: Path, component: str,
+    node_root: Path, config: dict, label: str, component: str,
     walk: "_FederationWalk | None" = None,
 ) -> "tuple[dict[str, object], list[str]]":
     """Each extended project's component store, by project id, and the ids whose
@@ -1324,13 +1345,15 @@ def _extended_component_stores(
     walk = (walk or _FederationWalk()).descend(node_root.resolve())
     stores: dict[str, object] = {}
     cyclic: list[str] = []
-    for project_id in _extends_ids(config, config_path):
+    for project_id in _extends_ids(config, label):
         project = registry.get(project_id)
         if project is None:
             note = unreachable_project_note(registry, project_id)
+            # `label` already ends in `<component>.extends`, so the word is not
+            # repeated here the way it was when this took a bare file path.
             raise ValueError(
-                f"{config_path}: extends {note}" if note else
-                f"{config_path}: extends project '{project_id}' is not reachable "
+                f"{label}: {note}" if note else
+                f"{label}: project '{project_id}' is not reachable "
                 "through connected-projects"
             )
         # Identity first: extending yourself is wrong whatever the store does,
@@ -1554,10 +1577,15 @@ class FsTreeStore:
     machine) stay in the subclasses (phase-4-shared-core: don't over-pull).
 
     Subclasses set `COMPONENT` (the `docs/<COMPONENT>/` dir) and optionally
-    `CONFIG_NAME` (a root config file to load into `self.config`).
+    `LEGACY_CONFIG_NAME` (the per-store config file this component used to
+    write, retained only so it stays out of the attachment surface).
     """
     COMPONENT: str
-    CONFIG_NAME: str | None = None
+    #: The filename this component once kept its own `extends` in, before it
+    #: moved to the node's `tcw-config.yaml`. Nothing reads or writes the file
+    #: any more; the name survives on the class for exactly one reason, in
+    #: `_node_reserved` — see the comment there.
+    LEGACY_CONFIG_NAME: str | None = None
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
                  store_git_root: Path | None = None):
@@ -1572,7 +1600,12 @@ class FsTreeStore:
         # in its own node, and are not for a configured or provisioned one.
         self.node_root = node_root or root.parent.parent
         self.store_git_root = store_git_root or git_root(root) or self.node_root
-        self.config = load_yaml(root / self.CONFIG_NAME) if self.CONFIG_NAME else {}
+        # This component's section of the *node's* config, not a file inside the
+        # store. Re-read here rather than threaded down from `resolve_store`,
+        # because `tcw/validate.py` builds a store by calling `_open_at`
+        # directly: a threaded section would arrive empty there and that store
+        # would silently resolve no inheritance at all.
+        self.config = self._component_config()
 
     @classmethod
     def open(cls, node_root: Path, _walk: "_FederationWalk | None" = None):
@@ -1732,6 +1765,46 @@ class FsTreeStore:
         section = self._config().get(self.COMPONENT)
         return section if isinstance(section, dict) else {}
 
+    def _persist_extends(self, extends: list[str]) -> None:
+        """Write this component's `extends` to the node config, and keep the
+        in-memory copy in step.
+
+        The in-memory update is why this is not just `_write_node_config`: a
+        second add/rm in the same process reads `self.config`, and term
+        *resolution* (`self.extends`) stays load-time only — reopen to use it.
+        An empty list removes the key rather than writing `extends: []`, which
+        is what the per-store file did.
+        """
+        if extends:
+            self.config["extends"] = extends
+        else:
+            self.config.pop("extends", None)
+        config = self._config()
+        section = config.get(self.COMPONENT)
+        if not isinstance(section, dict):
+            section = {}
+        if extends:
+            section["extends"] = extends
+        else:
+            section.pop("extends", None)
+        # A section that now holds nothing is dropped, so removing the last
+        # `extends` from a node that configured nothing else leaves the config
+        # as it was rather than growing an empty `taxonomy: {}`.
+        if section:
+            config[self.COMPONENT] = section
+        else:
+            config.pop(self.COMPONENT, None)
+        self._write_node_config(config)
+
+    def _extends_label(self) -> str:
+        """What a refusal about `extends` calls the thing it is refusing.
+
+        The key path, not just the file: one `tcw-config.yaml` can hold both
+        `taxonomy.extends` and `capabilities.extends`, and a message naming only
+        the file leaves the reader to guess which one is wrong.
+        """
+        return f"{self._config_path()}: {self.COMPONENT}.extends"
+
     def _write_node_config(self, config: dict) -> None:
         """Write the node sentinel and stage it in the **node's** repository.
 
@@ -1843,10 +1916,25 @@ class FsTreeStore:
                 for f in (d / "meta.yaml", d / "description.md")]
 
     def _node_reserved(self) -> set[str]:
-        """Filenames in a node folder that are not attachments."""
+        """Filenames in a node folder that are not attachments.
+
+        **Kept per-store after `extends` moved to the node config.** Each store
+        still reserves the file it used to write — taxonomy `config.yaml`,
+        capabilities `.config.yaml` — so a folder holding a leftover copy lists
+        the same attachments it listed before.
+
+        Only taxonomy can actually observe this: `_term` carries the list onto
+        `Term.attachments`, while `_capability` discards it and composes bodies
+        from `prependedDocs`/`appendedDocs` read by name out of `meta.yaml`. So
+        the capabilities half is inert, and is kept anyway — the two stores
+        reading alike costs one string and removes the question. See
+        `test_the_capabilities_store_has_no_attachment_surface_to_regress`,
+        which fails if `Capability` ever grows an attachments field and makes
+        this reasoning stale.
+        """
         names = {"meta.yaml", "description.md"}
-        if self.CONFIG_NAME:
-            names.add(self.CONFIG_NAME)
+        if self.LEGACY_CONFIG_NAME:
+            names.add(self.LEGACY_CONFIG_NAME)
         return names
 
     def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
@@ -1898,7 +1986,6 @@ class FsTreeStore:
 
 # ── FsTaxonomyStore ─────────────────────────────────────────────────────────
 
-_TAX_RESERVED = {"config.yaml", "meta.yaml", "description.md"}
 TAXONOMY_KINDS = {"Vocabulary", "Feature"}
 
 
@@ -1921,7 +2008,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     aliases (local-path repo roots) are realized as nested stores.
     """
     COMPONENT = "taxonomy"
-    CONFIG_NAME = "config.yaml"
+    LEGACY_CONFIG_NAME = "config.yaml"
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
@@ -1935,7 +2022,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # only case it could refuse is a self-extend the identity check there
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "taxonomy",
+            self.node_root, self.config, self._extends_label(), "taxonomy",
             walk=_walk,
         )
 
@@ -2136,7 +2223,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     def extends_add(self, project_id: str) -> None:
         self._require_repository()
         project_id = validate_project_id(project_id)
-        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise ValueError(f"extends project already exists: {project_id}")
         registry = FsProjectRegistry.open(self.node_root).require_valid()
@@ -2149,26 +2236,15 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
             raise ValueError(f"project '{project_id}' has no docs/taxonomy/")
         extends.append(project_id)
-        # Update in-memory config so a later add/rm in the same process sees this
-        # write; term *resolution* (self.extends) is load-time only — reopen to use.
-        self.config["extends"] = extends
-        cfg = self.root / "config.yaml"
-        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
-                                                 allow_unicode=True))])
+        self._persist_extends(extends)
 
     def extends_remove(self, project_id: str) -> None:
         self._require_repository()
-        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
             raise ValueError(f"no such extends project: {project_id}")
         extends.remove(project_id)
-        if extends:
-            self.config["extends"] = extends
-        else:
-            self.config.pop("extends", None)
-        cfg = self.root / "config.yaml"
-        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
-                                                 allow_unicode=True))])
+        self._persist_extends(extends)
 
     # -- validation --
 
@@ -2226,12 +2302,6 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def check(self, identifier: str | None = None) -> list[str]:
         problems: list[str] = []
-        cfg_path = self.root / "config.yaml"
-        try:
-            load_yaml(cfg_path, unique=True)
-        except yaml.YAMLError as e:
-            problems.append(f"config.yaml: {e}")
-
         top_level = {s.split("/")[0] for s in self._local_slugs()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in taxonomy federation")
@@ -2414,7 +2484,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     parents. Mirrors `FsTaxonomyStore` on the shared tree-store core.
     """
     COMPONENT = "capabilities"
-    CONFIG_NAME = ".config.yaml"
+    LEGACY_CONFIG_NAME = ".config.yaml"
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
@@ -2428,7 +2498,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # only case it could refuse is a self-extend the identity check there
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
-            self.node_root, self.config, self.root / self.CONFIG_NAME, "capabilities",
+            self.node_root, self.config, self._extends_label(), "capabilities",
             walk=_walk,
         )
 
@@ -2866,7 +2936,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     def extends_add(self, project_id: str) -> None:
         self._require_repository()
         project_id = validate_project_id(project_id)
-        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise ValueError(f"extends project already exists: {project_id}")
         registry = FsProjectRegistry.open(self.node_root).require_valid()
@@ -2879,24 +2949,15 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if not (Path(project.locator) / "docs" / "capabilities").is_dir():
             raise ValueError(f"project '{project_id}' has no docs/capabilities/")
         extends.append(project_id)
-        self.config["extends"] = extends
-        cfg = self.root / self.CONFIG_NAME
-        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
-                                                 allow_unicode=True))])
+        self._persist_extends(extends)
 
     def extends_remove(self, project_id: str) -> None:
         self._require_repository()
-        extends = _extends_ids(self.config, self.root / self.CONFIG_NAME)
+        extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
             raise ValueError(f"no such extends project: {project_id}")
         extends.remove(project_id)
-        if extends:
-            self.config["extends"] = extends
-        else:
-            self.config.pop("extends", None)
-        cfg = self.root / self.CONFIG_NAME
-        self._write_staged([(cfg, yaml.safe_dump(self.config, sort_keys=False,
-                                                 allow_unicode=True))])
+        self._persist_extends(extends)
 
     # -- validation --
 
@@ -2920,12 +2981,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # problem is.
         taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
         problems: list[str] = []
-        cfg_path = self.root / self.CONFIG_NAME
-        try:
-            load_yaml(cfg_path, unique=True)
-        except yaml.YAMLError as e:
-            problems.append(f"{self.CONFIG_NAME}: {e}")
-
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in capability federation")
@@ -3244,10 +3299,10 @@ def _is_store_layout(root: Path, component: str) -> bool:
 
     A **tree** store — taxonomy, capabilities — names nothing. `init` scaffolds
     it as a bare directory (see `init`'s plan loop, which gives work its status
-    leaves and the tree components only `[base]`), its `CONFIG_NAME` file is
-    optional and commonly absent, and the only file reliably left behind is a
-    `.gitkeep`, which is git's answer to empty directories and means nothing
-    here. So "the directory is there" is the strongest honest answer, and it is
+    leaves and the tree components only `[base]`), it holds no config file of its
+    own at all now that `extends` lives in the node's `tcw-config.yaml`, and the
+    only file reliably left behind is a `.gitkeep`, which is git's answer to
+    empty directories and means nothing here. So "the directory is there" is the strongest honest answer, and it is
     deliberately weaker than the work store's: a declared tree store that clones
     into an empty directory reads as usable, because an empty taxonomy is a real
     state and nothing distinguishes the two. What this still refuses — a

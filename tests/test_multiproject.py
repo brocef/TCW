@@ -8,6 +8,9 @@ from tcw.store.fs import (
 )
 
 
+from nodeconfig import declare_extends
+
+
 def _monorepo(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "t@t"], check=True)
@@ -28,7 +31,7 @@ def _monorepo(tmp_path: Path) -> Path:
 
 
 def _extend_b_onto_a(repo: Path) -> None:
-    (repo / "project-b" / "docs" / "taxonomy" / "config.yaml").write_text(
+    declare_extends(repo / "project-b", "taxonomy", 
         yaml.safe_dump({"extends": ["project-a"]}))
 
 

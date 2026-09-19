@@ -154,8 +154,8 @@ def _extends_add(args: argparse.Namespace) -> int:
     except ValueError as e:
         print(f"tcw taxonomy extends add: {e}", file=sys.stderr)
         return 1
-    print(f"Extends project '{args.project_id}' (docs/taxonomy/config.yaml). "
-          "Run `tcw taxonomy check`.")
+    print(f"Extends project '{args.project_id}' (taxonomy.extends in "
+          "tcw-config.yaml). Run `tcw taxonomy check`.")
     return 0
 
 

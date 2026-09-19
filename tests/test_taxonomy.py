@@ -7,6 +7,8 @@ import pytest
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
+from nodeconfig import declare_extends, set_component_key
+
 
 def node(tmp_path: Path, name: str) -> Path:
     """A repo root with docs/taxonomy/ (git-inited so add/rm can stage)."""
@@ -34,7 +36,10 @@ def write_term(root: Path, slug: str, name=None, relates_to=None, description=""
 
 
 def write_config(root: Path, text: str):
-    (root / "docs" / "taxonomy" / "config.yaml").write_text(text)
+    """Declare `extends` for this node. Takes the same `extends:`-rooted text
+    these fixtures always passed, now merged into `taxonomy.extends` in
+    `tcw-config.yaml` instead of written to a file inside the store."""
+    declare_extends(root, "taxonomy", text)
 
 
 def connect_sources(consumer: Path, *sources: Path) -> None:
@@ -284,6 +289,11 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
         "id: bravo\ntaxonomy:\n  path: ledger\nconnected-projects:\n"
         "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
     )
+    # This rewrite replaces the whole node config, and `extends` now lives in it
+    # rather than in a file inside the tree, so bravo's hop to charlie has to be
+    # re-declared. The `path: ledger` above is what the test is really about;
+    # losing the hop silently would make it assert a weaker thing.
+    write_config(b, "extends:\n  - charlie\n")
 
     st = FsTaxonomyStore.open(a)
     assert {(term.qualified, term.origin) for term in st.list_all()} == {
@@ -755,7 +765,10 @@ def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(consumer)
     assert main(["taxonomy", "extends", "add", "base"]) == 0
     capsys.readouterr()
-    assert (consumer / "docs/taxonomy/config.yaml").exists()
+    assert not (consumer / "docs/taxonomy/config.yaml").exists()
+    import yaml as _yaml
+    _cfg = _yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    assert _cfg["taxonomy"]["extends"] == ["base"]
     assert main(["taxonomy", "extends", "add", "base"]) == 1
     assert "already exists" in capsys.readouterr().err
     assert main(["taxonomy", "extends", "rm", "base"]) == 0
@@ -804,3 +817,190 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     assert {term.qualified for term in st.list_all()} == {"base/argument"}
     assert st.get("base/argument").name == "Argument"
     assert st.get("argument").origin == "base"
+
+
+# ── extends lives in the node config, not in the store ──────────────────────
+
+def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
+    """Spec criterion 1. The declaration is `taxonomy.extends` in
+    `tcw-config.yaml`; nothing is written inside the store at all."""
+    shared = node(tmp_path, "shared")
+    write_term(shared, "Argument", name="Argument")
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+    import yaml
+    cfg = cons / "tcw-config.yaml"
+    raw = yaml.safe_load(cfg.read_text())
+    raw["taxonomy"] = {"extends": ["shared"]}
+    cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+
+    assert not (cons / "docs" / "taxonomy" / "config.yaml").exists()
+    st = FsTaxonomyStore.open(cons)
+    assert {(term.qualified, term.origin) for term in st.list_all()} == {
+        ("shared/Argument", "shared")}
+
+
+def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path):
+    """`resolve_store` normalizes a present-but-not-a-mapping section to {};
+    reading `extends` in the constructor has to agree, or `taxonomy: docs/tax`
+    becomes an AttributeError on a path resolve_store answers calmly."""
+    root = node(tmp_path, "scalar")
+    (root / "tcw-config.yaml").write_text("id: scalar\ntaxonomy: docs/taxonomy\n")
+    write_term(root, "local", name="Local")
+    assert [t.slug for t in FsTaxonomyStore.open(root).list_all()] == ["local"]
+
+
+def test_extends_add_names_the_key_not_a_store_path(tmp_path, capsys):
+    """Spec criterion 8. The old line hard-coded `docs/taxonomy/config.yaml`,
+    which was already wrong whenever `taxonomy.path` pointed elsewhere — so the
+    absence of that string is asserted, not just the presence of the new one."""
+    from tcw.cli import main
+    shared = node(tmp_path, "shared")
+    write_term(shared, "Argument")
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+    (cons / "ledger").mkdir()
+    set_component_key(cons, "taxonomy", "path", "ledger")
+
+    cwd = os.getcwd()
+    os.chdir(cons)
+    try:
+        assert main(["taxonomy", "extends", "add", "shared"]) == 0
+    finally:
+        os.chdir(cwd)
+    out = capsys.readouterr().out
+    assert "taxonomy.extends" in out and "tcw-config.yaml" in out
+    assert "docs/taxonomy/config.yaml" not in out
+    assert "config.yaml" not in out.replace("tcw-config.yaml", "")
+
+
+@pytest.mark.parametrize("declared,expected", [
+    ("extends:\n  shared: ../shared\n", "legacy extends map is unsupported"),
+    ("extends: shared\n", "extends must be a list of project IDs"),
+    ("extends:\n  - Not An Id\n", "project id"),
+    ("extends:\n  - shared\n  - shared\n", "duplicate project IDs"),
+])
+def test_every_extends_refusal_names_the_key_path(tmp_path, declared, expected):
+    """Spec criterion 7 — all four refusal paths, including the project-id one,
+    which used to raise without naming where the id came from."""
+    shared = node(tmp_path, "shared")
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+    write_config(cons, declared)
+    with pytest.raises(ValueError) as excinfo:
+        FsTaxonomyStore.open(cons).list_all()
+    message = str(excinfo.value)
+    assert expected.lower() in message.lower()
+    assert "taxonomy.extends" in message
+    assert "tcw-config.yaml" in message
+
+
+def test_a_config_yaml_in_a_term_folder_is_still_not_an_attachment(tmp_path):
+    """Spec criterion 12, the taxonomy half. Nothing writes `config.yaml` any
+    more, but the taxonomy store still reserves the name, so a term folder's
+    attachment list does not change under anyone who has one."""
+    root = node(tmp_path, "repo")
+    write_term(root, "widget", name="Widget")
+    d = root / "docs" / "taxonomy" / "widget"
+    (d / "config.yaml").write_text("extends:\n  - ghost\n")
+    (d / "notes.md").write_text("a real attachment")
+
+    term = FsTaxonomyStore.open(root).get("widget")
+    assert term is not None
+    assert term.attachments == ["notes.md"]
+
+
+# ── inheritance belongs to the project, not to the store folder ─────────────
+
+def test_two_projects_sharing_one_tree_inherit_independently(tmp_path):
+    """Spec criterion 10 — Goal 2, stated as a check.
+
+    `extends` used to live in a file inside the tree, so a tree shared by two
+    projects forced both into the same ancestors. It is now a property of the
+    project: same folder, different inheritance.
+    """
+    left_src = node(tmp_path, "left-source")
+    write_term(left_src, "LeftTerm", name="Left Term")
+    right_src = node(tmp_path, "right-source")
+    write_term(right_src, "RightTerm", name="Right Term")
+
+    shared_tree = tmp_path / "shared-tree"
+    shared_tree.mkdir()
+
+    for name, source in (("left", left_src), ("right", right_src)):
+        n = node(tmp_path, name)
+        connect_sources(n, source)
+        set_component_key(n, "taxonomy", "path", str(shared_tree))
+        write_config(n, f"extends:\n  - {source.name}\n")
+
+    left_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "left").list_all()}
+    right_origins = {t.origin for t in FsTaxonomyStore.open(tmp_path / "right").list_all()}
+    assert left_origins == {"left-source"}
+    assert right_origins == {"right-source"}
+    assert not (shared_tree / "config.yaml").exists()
+
+
+def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
+    """A consequence of the move, pinned so it is a decision rather than a surprise.
+
+    When `extends` lived in the shared file it was *both* projects' declaration,
+    so `alpha` extending `bravo` made `bravo` extend itself and the whole read
+    failed on the self-extend guard. Separate declarations remove that
+    collision: the shared terms now resolve once locally and once under
+    `bravo/`. Each namespace is honest about where it came from, so this is
+    allowed — but it is new, and the migration guide says so.
+    """
+    shared_tree = tmp_path / "shared-tree"
+    shared_tree.mkdir()
+    (shared_tree / "common").mkdir()
+    (shared_tree / "common" / "meta.yaml").write_text("name: Common\n")
+    (shared_tree / "common" / "description.md").write_text("")
+
+    alpha = node(tmp_path, "alpha")
+    bravo = node(tmp_path, "bravo")
+    connect_sources(alpha, bravo)
+    for n in (alpha, bravo):
+        set_component_key(n, "taxonomy", "path", str(shared_tree))
+    write_config(alpha, "extends:\n  - bravo\n")
+
+    st = FsTaxonomyStore.open(alpha)
+    assert {(term.qualified, term.origin) for term in st.list_all()} == {
+        ("common", "local"),
+        ("bravo/common", "bravo"),
+    }
+
+
+def test_a_leftover_store_config_is_inert_and_left_alone(tmp_path):
+    """Spec criterion 6, the well-formed half.
+
+    An un-migrated project keeps its old file. Nothing reads it, so there is no
+    inheritance; nothing warns, by decision; and nothing deletes it, because TCW
+    does not remove a file it no longer reads.
+    """
+    shared = node(tmp_path, "shared")
+    write_term(shared, "Argument")
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+    stale = cons / "docs" / "taxonomy" / "config.yaml"
+    original = "extends:\n  - shared\n"
+    stale.write_text(original)
+
+    st = FsTaxonomyStore.open(cons)
+    assert st.list_all() == []
+    assert st.check() == []
+    assert stale.read_text() == original
+
+
+def test_a_malformed_leftover_store_config_is_still_reported(tmp_path):
+    """Spec criterion 6, the malformed half — and it is not an oversight.
+
+    `tcw validate`'s YAML pass walks every `*.yaml` under the store roots
+    regardless of whether TCW owns the name, so an unparseable file is still
+    named. A file nothing reads is no reason to stop saying it is corrupt.
+    """
+    from tcw.validate import validate
+    cons = node(tmp_path, "consumer")
+    (cons / "docs" / "taxonomy" / "config.yaml").write_text("extends: [unclosed\n")
+
+    problems = validate(cons)
+    assert any("config.yaml" in p for p in problems), problems

@@ -56,6 +56,9 @@ from tcw.work.recursion import delegate, escalate, reconcile
 # ────────────────────────────────────────────────────────────────────────
 
 
+from nodeconfig import declare_extends
+
+
 def _git_init(path: Path) -> None:
     subprocess.run(["git", "init", "-q", "--initial-branch=main", str(path)], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
@@ -124,9 +127,9 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
         }, sort_keys=False))
 
     # Both children extend the root via relative paths
-    (child_a / "docs" / "taxonomy" / "config.yaml").write_text(
+    declare_extends(child_a, "taxonomy", 
         yaml.safe_dump({"extends": ["root"]}))
-    (child_b / "docs" / "taxonomy" / "config.yaml").write_text(
+    declare_extends(child_b, "taxonomy", 
         yaml.safe_dump({"extends": ["root"]}))
 
     return root, child_a, child_b
@@ -171,9 +174,9 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
         }, sort_keys=False))
 
     # Both siblings extend parent using *absolute* paths
-    (left / "docs" / "taxonomy" / "config.yaml").write_text(
+    declare_extends(left, "taxonomy", 
         yaml.safe_dump({"extends": ["parent"]}))
-    (right / "docs" / "taxonomy" / "config.yaml").write_text(
+    declare_extends(right, "taxonomy", 
         yaml.safe_dump({"extends": ["parent"]}))
 
     return parent, left, right
