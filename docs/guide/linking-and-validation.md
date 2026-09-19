@@ -54,8 +54,8 @@ so docs that teach the scheme don't fail themselves.
 ### A record of the wrong shape
 
 A YAML file TCW writes as a record — `state.yaml`, `meta.yaml`,
-`graveyard.yaml`, and a store's `config.yaml` — has to be a mapping. One that is
-not is reported by name:
+`graveyard.yaml` and `tracker.yaml` — has to be a mapping. One that is not is
+reported by name:
 
 ```
 docs/work/backlog/2026-09-11-login-crash/state.yaml: expected a mapping, found list

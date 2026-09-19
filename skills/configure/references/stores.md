@@ -66,6 +66,26 @@ taxonomy:
 store fetched this way pushes each transition back to its repository; to keep
 transitions local, see `work.publish-transitions` in `work.md`.
 
+## The other per-component key: `extends`
+
+`taxonomy.extends` and `capabilities.extends` sit in the same sections as `path`
+and `repository`, and name the registered projects this one inherits from:
+
+```yaml
+taxonomy:
+    path: ../shared-docs/taxonomy # where the tree is
+    extends: # whose terms this project also resolves
+        - acme-shared
+```
+
+They are set with `tcw taxonomy extends add` and `tcw capabilities extends`, not
+by hand — those commands check the project id first. Declaring how to reach
+another project is a different thing again (`connected-projects`), and a
+connection alone never implies inheritance. See `projects.md` for both.
+
+Because `extends` belongs to the project rather than to the tree, two projects
+whose `path` points at the same folder may inherit differently.
+
 ## After changing a store's location
 
 1. Run `tcw validate`. It names a malformed `repository` block by its config
