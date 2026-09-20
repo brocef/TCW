@@ -108,6 +108,6 @@ inheritance.
 - Projects written for TCW 2.x kept these lists inside the store, in
   `docs/taxonomy/config.yaml` and `docs/capabilities/.config.yaml`. Those files
   are no longer read and nothing warns — see
-  [the 3.0.0 migration guide](../../../docs/migration-guide-2.X-to-3.0.0.md).
+  [the 2.5.0 migration guide](../../../docs/migration-guide-2.4.X-to-2.5.0.md).
 - Run `tcw taxonomy check` or `tcw capabilities check` afterwards; both report
   an inheritance cycle.

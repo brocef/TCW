@@ -323,7 +323,7 @@ returns only the new migration guide and the historical documents named above
 
 ### Task 11 — Migration guide, release notes, changelog
 
-**Files:** `docs/migration-guide-2.X-to-3.0.0.md` (new),
+**Files:** `docs/migration-guide-2.4.X-to-2.5.0.md` (new),
 `docs/release-notes/upcoming.md`, `docs/changelogs/upcoming.md`
 
 `docs/migration-guide-1.X-to-2.0.0.md` is the closest model: it opens by naming
@@ -345,8 +345,9 @@ the break and who is unaffected. The guide must state:
    namespaces where it previously errored, and inside a linked worktree
    `extends` can differ by branch when `<component>.path` escapes the worktree.
 
-Version `3.0.0`: current is `2.4.0` (`pyproject.toml`, `tcw/__init__.py`) and
-this removes a supported configuration location. Release notes get the
+Version `2.5.0`: current is `2.4.0` (`pyproject.toml`, `tcw/__init__.py`).
+Removing a supported configuration location would ordinarily argue for a major
+bump; Brian decided a minor one on 2026-09-19, having seen that reasoning. Release notes get the
 plain-language version; the changelog a `Removed`/`Changed` pair naming the keys.
 
 **Do not cut the version.** That is a human step.

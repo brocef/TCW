@@ -26,7 +26,7 @@ real. See "What the plan and spec got wrong", item 5.
 | 8 — attachment surface | `ba7ca070` | reshaped — item 2 below |
 | 9 — federation behaviour | `ba7ca070` | incl. the self-composing shared tree |
 | 10 — configuration, guide and skill docs | `ab3ebe52` | |
-| 11 — migration guide, release notes, changelog | `ab3ebe52` | `docs/migration-guide-2.X-to-3.0.0.md` |
+| 11 — migration guide, release notes, changelog | `ab3ebe52` | `docs/migration-guide-2.4.X-to-2.5.0.md` |
 | 12 — final gate | — | results above |
 | (unplanned) owned-YAML guard | `e7334cbd` | item 5 below |
 
@@ -119,6 +119,9 @@ not reachable`. Renamed and de-duplicated.
   third was about to become *factually false* — it listed a store's
   `config.yaml` among the records that must be a mapping, which is exactly what
   left `OWNED_YAML_NAMES`. Nothing would have caught that. Raised for `verify`.
-- No version was cut. `docs/{release-notes,changelogs}/upcoming.md` carry the
-  entries; the guide is named for 3.0.0 because this removes a supported
-  configuration location and the current version is 2.4.0.
+- **Version is 2.5.0, by Brian's decision on 2026-09-19.** Removing a supported
+  configuration location with no back-compat would ordinarily argue for a major
+  bump, and the first draft of this outcome said 3.0.0 for that reason; they chose
+  a minor bump having seen it. The guide is named to match.
+- A `work.documentation` entry for `docs/guide/<topic>.md` was added as part of
+  this item rather than deferred, closing the gap noted below.

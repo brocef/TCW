@@ -1,6 +1,6 @@
-# Migrating from 2.x to 3.0.0
+# Migrating from 2.4.x to 2.5.0
 
-Version 3.0.0 has **exactly one break**: a TCW project now keeps all of its
+Version 2.5.0 has **exactly one break**: a TCW project now keeps all of its
 configuration in `tcw-config.yaml`. The two config files that used to live
 *inside* a store are no longer read.
 

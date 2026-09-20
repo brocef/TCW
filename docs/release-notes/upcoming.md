@@ -19,7 +19,7 @@ only existed once you ran `tcw taxonomy extends add` or `tcw capabilities
 extends`, so most projects never had them.
 
 **If you have, please read
-[the migration guide](../migration-guide-2.X-to-3.0.0.md).** An old file is now
+[the migration guide](../migration-guide-2.4.X-to-2.5.0.md).** An old file is now
 ignored rather than reported, so a project that upgrades without moving the
 setting quietly stops inheriting — the sign is `tcw taxonomy list` showing only
 your own terms. Moving one line fixes it.

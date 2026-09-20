@@ -35,6 +35,15 @@ work:
       skills and CLI, the work lifecycle and Jira, the local web app, and contributor
       setup; plain, high-readability. Update when the public CLI surface or user-facing
       behavior changes.'
+  - path: docs/guide/<topic>.md
+    trigger: Guide-Topic-Change
+    description: The long-form user guides, one per topic - taxonomy and capabilities,
+      multi-repo, linking and validation, and the rest of docs/guide/. Update the
+      guide whose topic a change touches, in plain language. Fires on more than a
+      CLI surface change - it also covers where a setting is declared, what a command
+      writes to disk, and which files TCW treats as its own records, because a guide
+      that names a file or a key goes stale silently when that moves. docs/guide/jira.md
+      has its own entry and is covered by Tracker-Change instead.
   - path: docs/guide/jira.md
     trigger: Tracker-Change
     description: User-facing guide to the Jira integration; plain language. Update whenever
