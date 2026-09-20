@@ -48,7 +48,7 @@ vocabulary entry is expected, and writes nothing when it refuses; so register
 vocabulary before the features that name it. `tcw taxonomy check` validates the
 same refs across the whole tree.
 Taxonomies can **federate**: `tcw taxonomy extends add <project-id>` writes the
-registered source ID to the `extends` list in `config.yaml`. Each project ID is
+registered source ID to `taxonomy.extends` in `tcw-config.yaml`. Each project ID is
 its own namespace, including sources inherited transitively, and there is **no
 silent merge** — a local `permission` and an imported `acme/permission` stay
 distinct. Capabilities federate separately and additionally let a

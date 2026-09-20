@@ -302,7 +302,7 @@ A leftover file at a store root is otherwise inert: the store root is not a
 node, so nothing reads it, and a project that upgrades without acting simply has
 no inheritance.
 
-**Rule 6 — migration is a document.** A `docs/migration-guide-2.X-to-3.0.0.md`
+**Rule 6 — migration is a document.** A `docs/migration-guide-2.4.X-to-2.5.0.md`
 in the shape of the existing six, naming both old filenames, both new keys, the
 re-rendering consequence from Rule 1, and the shared-store consequence below.
 Plus the usual `upcoming.md` release note and changelog entries. No code path
@@ -417,17 +417,22 @@ harnesses read the same way.
 10. Two projects whose `taxonomy.path` points at the *same* folder, declaring
     different `taxonomy.extends`, each resolve their own ancestors.
 11. `grep -rn 'config\.yaml' tcw/ --include=*.py | grep -v 'tcw-config'` returns
-    **exactly two** lines: the `config.yaml` literal in `FsTaxonomyStore`'s
-    `_node_reserved` contribution and the `.config.yaml` literal in
-    `FsCapabilitiesStore`'s, plus whatever single comment line justifies them if
-    it names a filename. `_TAX_RESERVED` is gone. The count is stated so a new
-    stray reference cannot hide in a "nothing except" wording. **[corrected]**
+    **exactly two lines that are code**, and they are the two
+    `LEGACY_CONFIG_NAME` class attributes — `config.yaml` on `FsTaxonomyStore`,
+    `.config.yaml` on `FsCapabilitiesStore`. Every other line it returns is a
+    comment. No code path opens, writes, parses or tests for either filename.
+    `_TAX_RESERVED` is gone. **[corrected twice]** — the first draft said
+    "nothing except", which a stray reference could hide inside; the second said
+    "exactly two lines … plus whatever single comment line", which implementation
+    disproved (the reservation needs three comment lines to explain why it is
+    kept per-store). Counting comments was the mistake; the check is that the
+    only *code* is the two attributes.
 12. The attachment surface is unchanged **on both sides**: a `config.yaml`
     inside a *term* folder is still **not** among that term's attachments, and a
     `config.yaml` inside a *capability* folder still **is** among that
     capability's attachments. **[corrected]** — the first draft tested only the
     side that does not change.
-13. A migration guide exists at `docs/migration-guide-2.X-to-3.0.0.md`, covering
+13. A migration guide exists at `docs/migration-guide-2.4.X-to-2.5.0.md`, covering
     the old filenames, the new keys, that nothing warns, the file re-rendering,
     and both consequences under "Two consequences of per-project inheritance".
     `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md` both carry

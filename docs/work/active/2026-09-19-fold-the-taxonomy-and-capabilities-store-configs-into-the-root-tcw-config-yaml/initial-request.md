@@ -8,7 +8,7 @@ in the capabilities store. Brian sees no reason a TCW project needs more than
 one config, and asked that the two per-store files be migrated into
 `tcw-config.yaml`.
 
-In his words, on 2026-09-19:
+In their words, on 2026-09-19:
 
 > I want to migrate the `config.yaml` files in the taxonomy and capabilities
 > folders into the root `tcw-config.yaml`. I see no reason why we'd need more
@@ -16,7 +16,7 @@ In his words, on 2026-09-19:
 
 ## What the requester decided
 
-Two questions were put to him during this stage, because each changes what the
+Two questions were put to them during this stage, because each changes what the
 work is rather than how it is done.
 
 **Inheritance belongs to the project, not to the store.** A tree store may sit
@@ -29,14 +29,14 @@ That is the intended outcome, not a side effect to be worked around.
 
 **An existing per-store config may simply stop working.** Asked what should
 happen to a project that upgrades with `docs/taxonomy/config.yaml` or
-`docs/capabilities/.config.yaml` still on disk, he chose the plainest answer:
+`docs/capabilities/.config.yaml` still on disk, they chose the plainest answer:
 the old file is ignored, with no warning, no refusal and no automatic
 migration. Such a project loses its inherited terms until someone moves the key
 by hand.
 
-This was put to him twice. This repository has a standing rule that new TCW may
+This was put to them twice. This repository has a standing rule that new TCW may
 drop support for old TCW reading new data, but must still read old *files*; the
-choice contradicts it. He confirmed the choice and set the rule aside for this
+choice contradicts it. They confirmed the choice and set the rule aside for this
 item. Treat the override as settled and do not reopen it at `spec`.
 
 ## Out of scope
@@ -52,7 +52,7 @@ item. Treat the override as settled and do not reopen it at `spec`.
 
 - The requester was asked for reference material and said what is already in
   the repository is enough. The `## References` section below is therefore the
-  material found during intake rather than material he supplied.
+  material found during intake rather than material they supplied.
 - The request is small enough to be one item. The per-store configs hold
   exactly one key between them, and no other configuration lives in either
   file.

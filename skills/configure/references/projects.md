@@ -86,12 +86,28 @@ A project can explicitly inherit another registered project's capabilities with
 reachable in the registered graph, but a connection alone does not imply
 inheritance.
 
-- `extends` is a list of project ids, one list per component. The taxonomy's is
-  stored in the taxonomy store's `config.yaml` (by default
-  `docs/taxonomy/config.yaml`); the capabilities' in the capabilities store's
-  `.config.yaml` (by default `docs/capabilities/.config.yaml`). Neither lives in
-  `tcw-config.yaml`.
+- `extends` is a list of project ids, one list per component, and both live in
+  `tcw-config.yaml` beside that component's `path` and `repository`:
+
+  ```yaml
+  taxonomy:
+      extends:
+          - acme-shared
+  capabilities:
+      extends:
+          - acme-shared
+  ```
+
+- **Inheritance belongs to the project, not to the store.** Two projects whose
+  `taxonomy.path` points at the same folder can inherit differently, and a
+  shared folder imposes nothing on what reads it.
 - Change it only through the two commands above, which check the project id
-  before writing. Legacy alias or path maps in either file fail closed.
+  before writing. Legacy alias or path maps fail closed. Note that writing the
+  key re-renders `tcw-config.yaml`: keys, values and their order survive,
+  comments and custom formatting do not.
+- Projects written for TCW 2.x kept these lists inside the store, in
+  `docs/taxonomy/config.yaml` and `docs/capabilities/.config.yaml`. Those files
+  are no longer read and nothing warns — see
+  [the 2.5.0 migration guide](../../../docs/migration-guide-2.4.X-to-2.5.0.md).
 - Run `tcw taxonomy check` or `tcw capabilities check` afterwards; both report
   an inheritance cycle.

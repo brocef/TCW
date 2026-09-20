@@ -33,6 +33,9 @@ from tcw.validate import validate
 WHERE = "work.repository"
 
 
+from nodeconfig import declare_extends
+
+
 def _repo(path: Path) -> Path:
     """A git repository with an identity, so commits do not depend on the
     developer's global config."""
@@ -2027,7 +2030,7 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     # A store that is right here, and whose own config is wrong.
-    (node / "docs" / "capabilities" / ".config.yaml").write_text(
+    declare_extends(node, "capabilities",
         "extends:\n  nope: ../somewhere\n")               # the legacy map form
 
     with pytest.raises(ValueError) as excinfo:
@@ -2111,3 +2114,87 @@ def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
     monkeypatch.chdir(node)
     assert main(["provision"]) == 1
     assert "repository.url" in capsys.readouterr().err
+
+
+# ── `extends` is written to the node's config, in the node's repository ──────
+
+def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path, Path]:
+    """`(consumer, source)`, connected, with the consumer's tree wherever the
+    caller says. `taxonomy_path` has **no default**: where the tree lives is the
+    axis this pair exists to vary, and a default would decide it silently."""
+    source = _repo(tmp_path / "source")
+    (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
+    (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
+    (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
+    (source / "tcw-config.yaml").write_text(
+        "id: source\nconnected-projects:\n  parent:\n    consumer: ../consumer\n")
+
+    consumer = _repo(tmp_path / "consumer")
+    config = "id: consumer\nconnected-projects:\n  children:\n    source: ../source\n"
+    if taxonomy_path is not None:
+        config += f"taxonomy:\n  path: {taxonomy_path}\n"
+    (consumer / "tcw-config.yaml").write_text(config)
+    if taxonomy_path is None:
+        (consumer / "docs" / "taxonomy").mkdir(parents=True)
+    return consumer, source
+
+
+def _porcelain(repo_root: Path) -> str:
+    return subprocess.run(["git", "-C", str(repo_root), "status", "--porcelain"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
+    """Spec criterion 3. Other keys keep their parsed values — not their bytes:
+    the sentinel is re-rendered, as `tcw work tags add` has always re-rendered it."""
+    consumer, _ = _federation_pair(tmp_path, taxonomy_path=None)
+    _write_config(consumer, tags=["demo"])
+
+    FsTaxonomyStore.open(consumer).extends_add("source")
+
+    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    assert config["taxonomy"]["extends"] == ["source"]
+    assert config["id"] == "consumer"
+    assert config["work"]["tags"] == ["demo"]
+    assert config["connected-projects"] == {"children": {"source": "../source"}}
+    assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
+
+    FsTaxonomyStore.open(consumer).extends_remove("source")
+    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    # The whole section goes, not just the key: this node configured nothing
+    # else under `taxonomy`, so removing the last `extends` must leave the file
+    # as it was rather than growing an empty `taxonomy: {}`. Asserting only
+    # `"extends" not in ...` passes either way and pins nothing.
+    assert "taxonomy" not in config
+
+
+def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
+    """Spec criterion 4, and the reason it is a test of its own.
+
+    `tcw-config.yaml` belongs to the node; the tree can be in a different
+    repository, and `git add` refuses a path outside the repository it runs in.
+    Staging this against the store's repository is what made `tcw work tags add`
+    fail with *is outside repository at …*, so the whole verb was unusable in
+    the orchestrator layout. A single-repository fixture reproduces none of it.
+    """
+    store_repo = _repo(tmp_path / "store-repo")
+    (store_repo / "taxonomy").mkdir(parents=True)
+    consumer, _ = _federation_pair(tmp_path, taxonomy_path=str(store_repo / "taxonomy"))
+
+    assert fs.git_root(consumer) != fs.git_root(store_repo / "taxonomy")
+
+    FsTaxonomyStore.open(consumer).extends_add("source")
+
+    staged = subprocess.run(["git", "-C", str(consumer), "diff", "--cached", "--name-only"],
+                            capture_output=True, text=True, check=True).stdout.split()
+    assert "tcw-config.yaml" in staged
+    assert _porcelain(store_repo) == ""
+
+    # `taxonomy.path` shares the section `extends` is written into, and losing it
+    # would point the store back at a `docs/taxonomy` that is not there — the
+    # user's tree appears to vanish on an unrelated command. Spec criterion 3
+    # names this key, and the sibling-key half of that criterion is asserted in
+    # the test above, whose fixture deliberately has no `taxonomy.path` at all.
+    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
+    assert config["taxonomy"]["extends"] == ["source"]

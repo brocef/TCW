@@ -690,3 +690,42 @@ def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
     assert (root / "docs" / "capabilities" / ".gitkeep").is_file()
     assert main(["init", "capabilities"]) == 0
     assert comp_out == capsys.readouterr().out
+
+
+def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
+    """Why spec criterion 12 has only a taxonomy half.
+
+    `_node_reserved` names the files in a node folder that are not attachments,
+    and it is per-store — taxonomy reserves `config.yaml`, capabilities
+    `.config.yaml`. The obvious worry when `extends` left those files was that
+    changing the reservation would move the attachment surface underneath
+    someone. On the capabilities side it cannot: `_capability` throws the
+    attachment list away (`tcw/store/fs.py`, `meta, description, _attachments =
+    self._load_node(d)`) and `Capability` has no field to hold it. Composition
+    reads `prependedDocs`/`appendedDocs` **by name from meta**, never from the
+    filtered listing.
+
+    Pinned rather than argued, because "it cannot regress" is a claim about code
+    that could stop being true the moment `Capability` grows an attachments
+    field — at which point this test fails and someone re-reads the reasoning.
+    """
+    from dataclasses import fields as dataclass_fields
+    from tcw.store.base import Capability
+
+    assert "attachments" not in {f.name for f in dataclass_fields(Capability)}
+
+    root = node(tmp_path, "repo")
+    st = FsCapabilitiesStore.open(root)
+    st.add("billing/refund", "Refund")
+    d = root / "docs" / "capabilities" / "billing" / "refund"
+    (d / "config.yaml").write_text("not a store config; just a file\n")
+    (d / "extra.md").write_text("appended text")
+    yaml_path = d / "meta.yaml"
+    meta = yaml.safe_load(yaml_path.read_text())
+    meta["appendedDocs"] = ["extra.md"]
+    yaml_path.write_text(yaml.safe_dump(meta, sort_keys=False))
+
+    cap = FsCapabilitiesStore.open(root).get("billing/refund")
+    assert cap is not None
+    assert "appended text" in cap.body          # read by name, not by listing
+    assert "not a store config" not in cap.body  # the stray file is simply inert

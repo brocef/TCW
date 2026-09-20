@@ -169,10 +169,14 @@ root.
 Connections do not imply component inheritance. Each axis opts in explicitly:
 
 ```yaml
-# docs/taxonomy/config.yaml
-extends:
-    - orchestrator
+# tcw-config.yaml
+taxonomy:
+    extends:
+        - orchestrator
 ```
+
+The declaration is the project's, not the tree's, so two projects sharing one
+tree may inherit differently.
 
 The source project ID is also the inherited namespace. Inheritance is
 transitive: if one source extends another, both sources' terms are available

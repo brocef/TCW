@@ -87,8 +87,12 @@ def test_the_moved_rules_are_reachable():
 # ── this repository's own documentation entries ──────────────────────────────
 
 def test_this_repos_documentation_entries_parse():
-    """Acceptance criterion 11. The four entries that used to be a Markdown
-    bullet list in `AGENTS.md` are now configuration `tcw validate` checks."""
+    """Acceptance criterion 11. The entries that used to be a Markdown bullet
+    list in `AGENTS.md` are now configuration `tcw validate` checks.
+
+    Order matters here, not just membership: `docs/guide/jira.md` is listed
+    before the `docs/guide/<topic>.md` wildcard so the specific entry is the one
+    a reader matches first."""
     from tcw.store.base import parse_documentation_entries
     config = yaml.safe_load((REPO / "tcw-config.yaml").read_text(encoding="utf-8"))
     entries, problems = parse_documentation_entries(
@@ -97,14 +101,15 @@ def test_this_repos_documentation_entries_parse():
     assert [e.path for e in entries] == [
         "README.md",
         "docs/guide/jira.md",
+        "docs/guide/<topic>.md",
         "docs/release-notes/upcoming.md",
         "docs/changelogs/upcoming.md",
         "skills/<component>/SKILL.md",
         "skills/configure/references/<document>.md",
     ]
     assert {e.trigger for e in entries} == {
-        "Public-API", "Tracker-Change", "Any-Code-Change", "Skill-Driven-Component",
-        "Configuration-Key-Change"}
+        "Public-API", "Tracker-Change", "Guide-Topic-Change", "Any-Code-Change",
+        "Skill-Driven-Component", "Configuration-Key-Change"}
 
 
 def test_the_agent_guide_no_longer_carries_the_entry_list():
