@@ -831,5 +831,6 @@
   resolution: wontfix
   resolved: '2026-09-17'
 2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml:
+  location: 9121652d02106aee6efea1e65f48c4cfa0867e2a
   resolution: done
   resolved: '2026-09-20'
