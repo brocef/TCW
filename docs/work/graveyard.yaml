@@ -830,3 +830,6 @@
 2026-09-17-scratch-handoff-tolerance-probe:
   resolution: wontfix
   resolved: '2026-09-17'
+2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml:
+  resolution: done
+  resolved: '2026-09-20'
