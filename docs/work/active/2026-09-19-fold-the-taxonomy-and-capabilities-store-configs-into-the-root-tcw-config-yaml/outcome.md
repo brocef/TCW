@@ -6,14 +6,40 @@
 ## Test result
 
 ```
-3790 passed in 914.00s (0:15:14)
+3791 passed in 852.48s (0:14:12)
 ```
 
-`tcw validate` on this worktree exits 0. Both were run against the tree at
-`6e581267`, after every code change below.
+Run against `98461892`, which is the branch tip, with a clean working tree —
+checked by comparing the SHA captured before the run with `git rev-parse HEAD`
+after it. `tcw validate` on that tree exits 0.
 
-**One earlier full run was red** — `1 failed, 3789 passed` — and the failure was
-real. See "What the plan and spec got wrong", item 5.
+**Two earlier full runs were red, and one of those reds was reported as green.**
+The first (`1 failed, 3789 passed`) found the owned-YAML guard — item 5 below.
+The second was worse: this file claimed `3790 passed` against `6e581267` while
+the branch tip was `f26047eb`, two commits later, and that commit broke
+`tests/test_repo_lifecycle.py`. The adversarial review found it. The Notes
+section below had already warned that only a run started after the last source
+change is evidence; the warning was written and then not followed. Hence the
+SHA in this section now, rather than a bare number.
+
+## Review round
+
+- **Adversarial code reviewer** — one blocking finding (the red suite above),
+  two significant (both coverage holes under criteria this file had recorded as
+  met), five notes. All addressed in `98461892`.
+- **Codex** — first attempt produced **no answer** (usage limit, no `-o` file
+  written); re-run against `98461892` reported *"No actionable regressions were
+  identified"*, read-only, tests not executed. `sandbox: read-only` confirmed
+  from the session header, and HEAD plus `git status` were identical before and
+  after both runs.
+- **`bllm`** — unavailable: `bllm is temporarily disabled for maintenance`. The
+  reviewer spec permits skipping it in that state.
+
+The two coverage holes are worth naming, because both read as covered:
+`_persist_extends` could be rewritten to destroy `taxonomy.path` and **816 tests
+still passed**, and the emptied-section branch was asserted as
+`"extends" not in section`, which is true whether or not the section is dropped.
+Both now fail under the mutation that used to pass.
 
 ## What shipped
 
