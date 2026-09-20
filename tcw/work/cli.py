@@ -2431,7 +2431,92 @@ def _held_by_someone_else(item, me: str, command: str,
             f"`{take_over or f'tcw work start {item.slug} --take-over'}`.")
 
 
-def _tracker_link(args: argparse.Namespace) -> int:
+def _item_body(st, slug: str) -> str:
+    """The item's own words for the ticket: its request, or its intake when the
+    request stage has not run. Empty when neither exists, which `create` handles
+    rather than refusing — an item filed as a bare title is ordinary."""
+    for name in ("initial-request.md", "intake.md"):
+        try:
+            document = st.read_artifact(slug, name)
+        except Exception:
+            document = None
+        if document is not None and getattr(document, "content", "").strip():
+            return document.content
+    return ""
+
+
+def _tracker_create(args: argparse.Namespace) -> int:
+    """Make a ticket for an item that has none, then bind it through `link`."""
+    from tcw.tracker.create import create_and_place, unplaceable
+    from tcw.tracker.intake import BINDING_SIDECAR, Bound, Malformed, binding_of
+    from tcw.tracker.jira import TrackerError
+
+    client = _tracker_client("tracker create")
+    if client is None:
+        return 1
+    st = _store()
+    item = _item_or_reason(st, args.slug, "create")
+    if item is None:
+        return 1
+
+    # Idempotency before anything reaches the tracker: an item that already has a
+    # ticket must never be given a second one, and a duplicate in a shared tracker
+    # cannot be undone from here.
+    current, _revision = binding_of(st, args.slug)
+    if isinstance(current, Bound):
+        print(f"→ {args.slug} is already bound to {current.ticket_key} "
+              f"({current.ticket_url}). Nothing was created.", file=sys.stderr)
+        return 0
+    if isinstance(current, Malformed):
+        print(f"tcw work tracker create: {args.slug} has a {BINDING_SIDECAR} that "
+              f"cannot be read ({current.reason}).", file=sys.stderr)
+        return 1
+
+    refusal = unplaceable(client.config)
+    if refusal:
+        print(f"tcw work tracker create: {args.slug} was not given a ticket; "
+              f"{refusal}", file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        settings = client.config.create
+        issue_type = settings.type_for(is_epic=getattr(item, "type", "") == "epic",
+                                       tags=getattr(item, "tags", ()))
+        from tcw.tracker.create import placement_target
+        where = placement_target(client.config, item.status)
+        print(f"→ would create a {issue_type} in {settings.project} titled "
+              f"{item.title!r}, place it in {where!r}, and bind it to {args.slug}. "
+              f"Nothing was created.", file=sys.stderr)
+        return 0
+
+    try:
+        created = create_and_place(
+            client, client.config, slug=args.slug, title=item.title,
+            body=_item_body(st, args.slug),
+            is_epic=getattr(item, "type", "") == "epic",
+            tags=getattr(item, "tags", ()),
+        )
+    except TrackerError as error:
+        print(f"tcw work tracker create: {error}", file=sys.stderr)
+        return 1
+
+    print(f"→ created {created.key} in '{created.status}'.", file=sys.stderr)
+    # Bound through `link`, not beside it: one implementation of what a binding
+    # means. `--sync-status` because a ticket made for work already under way must
+    # be claimed and walked up to where the item is, which is `deliver`'s job.
+    return _tracker_link(argparse.Namespace(
+        slug=args.slug, ticket=created.key, part=args.part, sync_status=True),
+        verb="tracker create")
+
+
+def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> int:
+    """Bind an item to a ticket that exists, and optionally bring the ticket along.
+
+    `verb` names the caller in every message. `tcw work tracker create` makes a
+    ticket and then binds it *through here*, rather than repeating ninety lines
+    of binding rules, so "what a binding means" has one implementation and a
+    user who created a ticket is not told about a command they did not run.
+    """
     """Record that an existing item and a ticket are the same work.
 
     The binding sidecar is the whole effect. The ticket is read — which is what
@@ -2452,24 +2537,24 @@ def _tracker_link(args: argparse.Namespace) -> int:
                                     unlinked_history, validate_part)
     from tcw.tracker.jira import TrackerError
 
-    client = _tracker_client("tracker link")
+    client = _tracker_client(verb)
     if client is None:
         return 1
     try:
         part = validate_part(args.part)
     except ValueError as e:
-        print(f"tcw work tracker link: {e}", file=sys.stderr)
+        print(f"tcw work {verb}: {e}", file=sys.stderr)
         return 1
     st = _store()
     if _item_or_reason(st, args.slug, "link") is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
-        print(f"tcw work tracker link: {args.slug} has a {BINDING_SIDECAR} that cannot "
+        print(f"tcw work {verb}: {args.slug} has a {BINDING_SIDECAR} that cannot "
               f"be read ({current.reason}).", file=sys.stderr)
         return 1
     if isinstance(current, Bound):
-        print(f"tcw work tracker link: {args.slug} is already bound to "
+        print(f"tcw work {verb}: {args.slug} is already bound to "
               f"{current.ticket_key} (part {current.part}). Run `tcw work tracker "
               f"unlink {args.slug} --reason <text>` first.", file=sys.stderr)
         return 1
@@ -2481,11 +2566,11 @@ def _tracker_link(args: argparse.Namespace) -> int:
                               ticket_id=ticket.issue_id, part=part,
                               base_url=client.config.base_url)
         if holder is not None:
-            print(f"tcw work tracker link: {ticket.key} (part {part}) is already bound "
+            print(f"tcw work {verb}: {ticket.key} (part {part}) is already bound "
                   f"to {holder}.", file=sys.stderr)
             return 1
     except (TrackerError, BindingProblem, ValueError) as e:
-        print(f"tcw work tracker link: {e}", file=sys.stderr)
+        print(f"tcw work {verb}: {e}", file=sys.stderr)
         return 1
     # Work already under way has a ticket nothing has claimed and nothing has moved.
     # Changing the ticket is opt-in: by default the binding only notes that its status
@@ -2502,9 +2587,9 @@ def _tracker_link(args: argparse.Namespace) -> int:
     sync_status = under_way and args.sync_status
     if sync_status and (someone_else := _held_by_someone_else(
             item, _local_owner(st),
-            f"tcw work tracker link {args.slug} {args.ticket}"
+            f"tcw work {verb} {args.slug} {args.ticket}"
             + (f" --part {part}" if args.part else "") + " --sync-status")):
-        print(f"tcw work tracker link: {args.slug} was not linked: --sync-status acts as "
+        print(f"tcw work {verb}: {args.slug} was not linked: --sync-status acts as "
               f"you, and it was {someone_else}", file=sys.stderr)
         return 1
     target = (target_status(client.config.statuses, item.status, item.resolution)
@@ -2530,7 +2615,7 @@ def _tracker_link(args: argparse.Namespace) -> int:
     try:
         st.write_sidecar(args.slug, BINDING_SIDECAR, document, revision=revision or "")
     except _LOCAL_WRITE_ERRORS as e:
-        print(f"tcw work tracker link: the binding could not be written: {e}. "
+        print(f"tcw work {verb}: the binding could not be written: {e}. "
               f"Run this command again.", file=sys.stderr)
         return 1
     if not sync_status:
@@ -2554,14 +2639,14 @@ def _tracker_link(args: argparse.Namespace) -> int:
         outcome = deliver(st, args.slug, client, client.config, move=None,
                           previous_status=None)
     except _LOCAL_WRITE_ERRORS as e:
-        print(f"tcw work tracker link: {args.slug} is bound, but whether {ticket.key} "
+        print(f"tcw work {verb}: {args.slug} is bound, but whether {ticket.key} "
               f"was synced could not be recorded: {e}. Run `tcw work tracker sync "
               f"{args.slug}`.", file=sys.stderr)
         return 1
     if outcome.claimed:
         print(f"→ {outcome.claimed}", file=sys.stderr)
     if outcome.state in (PENDING, CONFLICTING):
-        print(f"tcw work tracker link: {args.slug} is bound; {ticket.key}'s status was "
+        print(f"tcw work {verb}: {args.slug} is bound; {ticket.key}'s status was "
               f"not synced ({outcome.state}): {_sentence(outcome.reason)} Run `tcw work "
               f"tracker sync {args.slug}` once that is resolved.", file=sys.stderr)
         return 1
@@ -3377,6 +3462,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                                      "default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
     ptri.set_defaults(func=_tracker_import)
+
+    ptrc = ptrs.add_parser(
+        "create", help="make a ticket for an existing item and bind it")
+    ptrc.add_argument("slug")
+    ptrc.add_argument("--part", default=None,
+                      help="bind as this part, for an item split across tickets")
+    ptrc.add_argument("--dry-run", action="store_true",
+                      help="report what would be created, and create nothing")
+    ptrc.set_defaults(func=_tracker_create)
 
     ptrl = ptrs.add_parser(
         "link", help="record that an existing item and a ticket are the same work",

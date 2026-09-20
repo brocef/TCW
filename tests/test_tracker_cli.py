@@ -466,3 +466,139 @@ def test_ticket_with_a_broken_tracker_names_the_problem_not_the_missing_query(
     code, _out, err = _run(["work", "inbox", "show", "--ticket", "EX-1"])
     assert code == 1 and "tcw validate" in err
     assert "--ticket needs" not in err
+
+
+# ── `tcw work tracker create` ───────────────────────────────────────────────
+
+CREATE_TRACKER = {
+    **TRACKER,
+    "statuses": {"backlog": "To Do", "active": "In Progress"},
+    "create": {"project": "PROBE", "issue-type": "Task",
+               "issue-types": {"epic": "Epic", "bug": "Bug"}},
+}
+
+# A just-created issue sits in the entry status, and the hop out of it is named
+# for the transition, not the destination — the shape the 2026-09-20 backfill met.
+CREATE_RESPONSES = {
+    "/transitions": (200, {}, json.dumps({"transitions": [
+        {"id": "11", "name": "Accept", "to": {"name": "To Do", "id": "2"}}]}).encode()),
+    "/issue/PROBE-1": (200, {}, json.dumps(
+        {"id": "10001", "key": "PROBE-1",
+         "fields": {"summary": "Thing", "status": {"name": "To Do"},
+                    "assignee": None, "description": None}}).encode()),
+    "/myself": (200, {}, json.dumps({"accountId": "a"}).encode()),
+}
+
+
+def _created_node(node, monkeypatch, tracker=CREATE_TRACKER, title="Thing"):
+    root, configure = node
+    configure(tracker)
+    code, _out, err = _run(["work", "new", title])
+    assert code == 0, err
+    from tcw.store.fs import FsWorkStore
+    items = FsWorkStore.open(root).query()
+    assert len(items) == 1, items
+    return root, items[0].slug
+
+
+def _create_responses(monkeypatch, **overrides):
+    mapping = {**CREATE_RESPONSES, **overrides}
+    posted: list[tuple] = []
+
+    def fake(self, method, path, body=None, *, timeout=None):
+        posted.append((method, path, body))
+        # The create POST goes to `/rest/api/3/issue`, which is a prefix of every
+        # other issue path, so it is matched on method and exact path rather than
+        # by substring — otherwise `/issue/PROBE-1` would answer it.
+        if method == "POST" and path.rstrip("/").endswith("/issue"):
+            created = mapping.get("__create__")
+            if isinstance(created, Exception):
+                raise created
+            return created or (200, {}, json.dumps(
+                {"id": "10001", "key": "PROBE-1"}).encode())
+        for fragment, response in mapping.items():
+            if fragment != "__create__" and fragment in path:
+                if isinstance(response, Exception):
+                    raise response
+                return response
+        return (200, {}, b"{}")
+    monkeypatch.setattr(jira.JiraClient, "_request", fake)
+    return posted
+
+
+def test_create_makes_a_ticket_places_it_and_binds_it(node, monkeypatch):
+    """Spec criterion 1, end to end through the CLI."""
+    root, slug = _created_node(node, monkeypatch)
+    posted = _create_responses(monkeypatch)
+
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 0, err
+    assert "created PROBE-1" in err
+    assert "To Do" in err
+
+    creates = [p for p in posted if p[0] == "POST" and p[1].endswith("/issue")]
+    assert len(creates) == 1, posted
+    assert creates[0][2]["fields"]["project"] == {"key": "PROBE"}
+    assert creates[0][2]["fields"]["issuetype"] == {"name": "Task"}
+    # It was moved out of the entry status, by destination not by name.
+    assert any(p[0] == "POST" and "/transitions" in p[1] for p in posted), posted
+
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import Bound, binding_of
+    bound, _ = binding_of(FsWorkStore.open(root), slug)
+    assert isinstance(bound, Bound) and bound.ticket_key == "PROBE-1"
+
+
+def test_create_refuses_before_creating_when_backlog_is_unmapped(node, monkeypatch):
+    """Spec criterion 3. The refusal must reach the tracker's create endpoint
+    never — a ticket made and then declined is the worst outcome available."""
+    tracker = {**CREATE_TRACKER, "statuses": {"active": "In Progress"}}
+    root, slug = _created_node(node, monkeypatch, tracker=tracker)
+    posted = _create_responses(monkeypatch)
+
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert "work.tracker.statuses.backlog" in err
+    assert [p for p in posted if p[0] == "POST"] == [], posted
+
+
+def test_create_is_idempotent(node, monkeypatch):
+    """Spec criterion 5: a second run creates nothing and exits zero."""
+    root, slug = _created_node(node, monkeypatch)
+    _create_responses(monkeypatch)
+    assert _run(["work", "tracker", "create", slug])[0] == 0
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 0, err
+    assert "already bound to PROBE-1" in err
+    assert [p for p in posted if p[0] == "POST"] == [], posted
+
+
+def test_dry_run_writes_nothing_anywhere(node, monkeypatch):
+    """Spec criterion 7 — asserted against the tracker as well as the tree."""
+    root, slug = _created_node(node, monkeypatch)
+    posted = _create_responses(monkeypatch)
+
+    code, _out, err = _run(["work", "tracker", "create", slug, "--dry-run"])
+    assert code == 0, err
+    assert "would create a Task in PROBE" in err
+    assert "'To Do'" in err
+    assert [p for p in posted if p[0] == "POST"] == [], posted
+
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import Bound, binding_of
+    bound, _ = binding_of(FsWorkStore.open(root), slug)
+    assert not isinstance(bound, Bound)
+
+
+def test_create_does_not_mention_a_command_nobody_ran(node, monkeypatch):
+    """`create` binds through `link`'s implementation, so every message must
+    still name the verb the user typed. Asserting the absence of the replaced
+    wording, because a message owned by another code path passes by accident."""
+    tracker = {**CREATE_TRACKER, "statuses": {"active": "In Progress"}}
+    root, slug = _created_node(node, monkeypatch, tracker=tracker)
+    _create_responses(monkeypatch)
+    _code, _out, err = _run(["work", "tracker", "create", slug])
+    assert "tracker create" in err
+    assert "tracker link" not in err
