@@ -237,6 +237,16 @@ def test_statuses_still_refuses_an_unknown_key(node):
 # ── `create`: how a ticket is made for an item ──────────────────────────────
 
 
+def test_create_requires_a_project_to_create_in(node):
+    """The rest of `work.tracker` locates tickets by *query* — `candidate-query`,
+    `inbox-query` — and a query needs no project of its own. Creating one does,
+    and nothing else in the block carries it, so the create block must."""
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "create": {"issue-type": "Task"}})
+    problems = [p for p in validate(root) if "tracker" in p]
+    assert any("work.tracker.create.project: required" in p for p in problems), problems
+
+
 def test_a_create_block_parses(node):
     root, set_tracker = node
     # `active` alongside `backlog` because mapping any status already requires it
@@ -245,6 +255,7 @@ def test_a_create_block_parses(node):
     set_tracker({**VALID_TRACKER,
                  "statuses": {"backlog": "To Do", "active": "In Progress"},
                  "create": {
+        "project": "EX",
         "issue-type": "Task",
         "issue-types": {"epic": "Epic", "bug": "Bug"},
         "components": ["Platform"],
@@ -260,17 +271,17 @@ def test_an_absent_create_block_is_not_a_problem(node):
 
 
 @pytest.mark.parametrize("block, key", [
-    ({"nonsense": "x"}, "work.tracker.create.nonsense"),
-    ({"issue-type": 7}, "work.tracker.create.issue-type"),
-    ({"issue-type": "  "}, "work.tracker.create.issue-type"),
-    ({"issue-type": "Task", "issue-types": {"nope": "X"}},
+    ({"project": "EX", "nonsense": "x"}, "work.tracker.create.nonsense"),
+    ({"project": "EX", **{"issue-type": 7}}, "work.tracker.create.issue-type"),
+    ({"project": "EX", **{"issue-type": "  "}}, "work.tracker.create.issue-type"),
+    ({"project": "EX", "issue-type": "Task", "issue-types": {"nope": "X"}},
      "work.tracker.create.issue-types.nope"),
-    ({"issue-type": "Task", "issue-types": {"bug": 3}},
+    ({"project": "EX", "issue-type": "Task", "issue-types": {"bug": 3}},
      "work.tracker.create.issue-types.bug"),
-    ({"issue-type": "Task", "issue-types": "Bug"}, "work.tracker.create.issue-types"),
-    ({"issue-type": "Task", "components": "Platform"}, "work.tracker.create.components"),
-    ({"issue-type": "Task", "components": [7]}, "work.tracker.create.components"),
-    ({"issue-type": "Task", "on-new": "yes"}, "work.tracker.create.on-new"),
+    ({"project": "EX", "issue-type": "Task", "issue-types": "Bug"}, "work.tracker.create.issue-types"),
+    ({"project": "EX", "issue-type": "Task", "components": "Platform"}, "work.tracker.create.components"),
+    ({"project": "EX", "issue-type": "Task", "components": [7]}, "work.tracker.create.components"),
+    ({"project": "EX", "issue-type": "Task", "on-new": "yes"}, "work.tracker.create.on-new"),
     ("Task", "work.tracker.create"),
 ], ids=["unknown-key", "non-string-type", "blank-type", "unknown-rule",
         "non-string-rule", "non-mapping-rules", "non-list-components",

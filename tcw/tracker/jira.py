@@ -255,6 +255,26 @@ class JiraClient:
         return out
 
 
+    def create_issue(self, *, project: str, summary: str, description: dict,
+                     issue_type: str, components: tuple = ()) -> dict:
+        """Create an issue and return `{"id", "key"}`.
+
+        The issue lands in whatever status the project's workflow starts in —
+        Jira decides, not the caller — which is why every caller must move it
+        afterwards. A project with a triage column starts issues *there*, and
+        that is the status `inbox-query` is most likely to select, so a created
+        ticket left alone comes back as inbound work.
+        """
+        fields: dict = {
+            "project": {"key": project},
+            "summary": summary,
+            "description": description,
+            "issuetype": {"name": issue_type},
+        }
+        if components:
+            fields["components"] = [{"name": name} for name in components]
+        return self._json("POST", "/rest/api/3/issue", {"fields": fields})
+
     def apply_transition(self, issue_id: str, transition_id: str) -> None:
         """Apply one transition. Success says only that Jira accepted the request.
 

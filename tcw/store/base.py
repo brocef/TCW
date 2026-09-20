@@ -1066,6 +1066,10 @@ class TrackerCreate:
     tracker's nonsense, so they are configured with those as documentation rather
     than written into the code as constants.
     """
+    #: The tracker project a ticket is created in. Required: the rest of
+    #: `work.tracker` locates tickets by query, and a query carries its own
+    #: project, so nothing else in the block knows where a *new* one belongs.
+    project: str = ""
     #: The type given to an item no rule matches. Required when the block is present.
     issue_type: str = ""
     #: Rule name -> issue type, overriding `issue_type`. See `TRACKER_ISSUE_TYPE_RULES`.
@@ -1155,8 +1159,8 @@ TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credential
                          "exclusive-claim-transition",
                           "transitions", "statuses", "strict", "timeout-seconds",
                           "comments", "link", "inbox-query", "create"})
-TRACKER_CREATE_KEYS = frozenset({"issue-type", "issue-types", "components",
-                                 "on-new"})
+TRACKER_CREATE_KEYS = frozenset({"project", "issue-type", "issue-types",
+                                 "components", "on-new"})
 # The item properties a project may type a ticket by. Deliberately short: each
 # is something TCW already knows about every item without asking the tracker.
 TRACKER_ISSUE_TYPE_RULES = ("epic", "bug")
@@ -1213,6 +1217,12 @@ def _parse_tracker_create(raw: Any, problems: list[str]) -> "TrackerCreate | Non
             return ""
         return value.strip()
 
+    project = ""
+    if "project" not in raw:
+        problems.append(f"{where}.project: required")
+    else:
+        project = non_empty_str(raw["project"], f"{where}.project")
+
     issue_type = ""
     if "issue-type" not in raw:
         problems.append(f"{where}.issue-type: required")
@@ -1252,7 +1262,8 @@ def _parse_tracker_create(raw: Any, problems: list[str]) -> "TrackerCreate | Non
                         f"got {type(on_new).__name__}")
         on_new = False
 
-    return TrackerCreate(issue_type=issue_type, issue_types=issue_types,
+    return TrackerCreate(project=project, issue_type=issue_type,
+                         issue_types=issue_types,
                          components=tuple(components), on_new=on_new)
 
 
