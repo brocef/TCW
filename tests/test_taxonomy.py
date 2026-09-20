@@ -1004,3 +1004,24 @@ def test_a_malformed_leftover_store_config_is_still_reported(tmp_path):
 
     problems = validate(cons)
     assert any("config.yaml" in p for p in problems), problems
+
+
+def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(tmp_path):
+    """Reading normalizes `taxonomy: docs/taxonomy` to "no configuration".
+    Writing must not quietly replace it: that is someone reaching for
+    `taxonomy: {path: docs/taxonomy}`, and overwriting it destroys what they
+    typed on an unrelated command."""
+    shared = node(tmp_path, "shared")
+    cons = node(tmp_path, "consumer")
+    connect_sources(cons, shared)
+    cfg = cons / "tcw-config.yaml"
+    import yaml as _yaml
+    raw = _yaml.safe_load(cfg.read_text())
+    raw["taxonomy"] = "docs/taxonomy"
+    original = _yaml.safe_dump(raw, sort_keys=False)
+    cfg.write_text(original)
+
+    with pytest.raises(ValueError) as excinfo:
+        FsTaxonomyStore.open(cons).extends_add("shared")
+    assert "taxonomy must be a mapping" in str(excinfo.value)
+    assert cfg.read_text() == original       # nothing written

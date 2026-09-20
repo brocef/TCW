@@ -443,15 +443,17 @@ def test_reviewed_via_alias_qualified_override_key(tmp_path):
 def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     """A node whose extended sibling is in a repository this checkout lacks.
 
-    Written straight to `.config.yaml` rather than through `extends_add`,
-    because that is how such a config arrives: authored on a machine that had
-    the sibling, then cloned somewhere that does not.
+    The declaration is written straight into the node config rather than
+    through `extends_add`, because that is how such a config arrives: authored
+    on a machine that had the sibling, then cloned somewhere that does not.
+    `extends_add` would refuse it here, which is the point — this exercises the
+    read path against a declaration no command on this machine could produce.
     """
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    declare_extends(child, "capabilities", 
+    declare_extends(child, "capabilities",
         "extends:\n  - base\n"
     )
     with pytest.raises(ValueError) as excinfo:
@@ -464,7 +466,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text("id: child\n")
-    declare_extends(child, "capabilities", 
+    declare_extends(child, "capabilities",
         "extends:\n  - nowhere\n"
     )
     with pytest.raises(ValueError) as excinfo:
@@ -607,7 +609,7 @@ def test_a_broken_sibling_reports_its_own_error(tmp_path):
     """Every ValueError used to be rewritten as "has no capabilities component",
     which sends the reader to create a store that already exists."""
     base, child = child_of(tmp_path, {})
-    declare_extends(base, "capabilities", 
+    declare_extends(base, "capabilities",
         "extends:\n  nope: ../somewhere\n"          # the legacy map form
     )
     with pytest.raises(ValueError) as excinfo:
@@ -656,7 +658,7 @@ def _diamond(tmp_path, levels: int):
                  "connected-projects": {"parent": {"hub": "../hub"}}},
                 sort_keys=False))
             if level + 1 < levels:
-                declare_extends(d, "capabilities", 
+                declare_extends(d, "capabilities",
                     f"extends:\n  - n{level+1}x0\n  - n{level+1}x1\n")
     return tmp_path / "n0x0"
 

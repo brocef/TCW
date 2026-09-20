@@ -2030,7 +2030,7 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     # A store that is right here, and whose own config is wrong.
-    declare_extends(node, "capabilities", 
+    declare_extends(node, "capabilities",
         "extends:\n  nope: ../somewhere\n")               # the legacy map form
 
     with pytest.raises(ValueError) as excinfo:
@@ -2161,7 +2161,11 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
 
     FsTaxonomyStore.open(consumer).extends_remove("source")
     config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
-    assert "extends" not in config.get("taxonomy", {})
+    # The whole section goes, not just the key: this node configured nothing
+    # else under `taxonomy`, so removing the last `extends` must leave the file
+    # as it was rather than growing an empty `taxonomy: {}`. Asserting only
+    # `"extends" not in ...` passes either way and pins nothing.
+    assert "taxonomy" not in config
 
 
 def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
@@ -2185,3 +2189,12 @@ def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
                             capture_output=True, text=True, check=True).stdout.split()
     assert "tcw-config.yaml" in staged
     assert _porcelain(store_repo) == ""
+
+    # `taxonomy.path` shares the section `extends` is written into, and losing it
+    # would point the store back at a `docs/taxonomy` that is not there — the
+    # user's tree appears to vanish on an unrelated command. Spec criterion 3
+    # names this key, and the sibling-key half of that criterion is asserted in
+    # the test above, whose fixture deliberately has no `taxonomy.path` at all.
+    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
+    assert config["taxonomy"]["extends"] == ["source"]

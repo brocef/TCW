@@ -1781,6 +1781,16 @@ class FsTreeStore:
             self.config.pop("extends", None)
         config = self._config()
         section = config.get(self.COMPONENT)
+        if section is not None and not isinstance(section, dict):
+            # Reading normalizes this to "no configuration" (`_component_config`,
+            # matching `resolve_store`), and writing could do the same — but
+            # reading discards nothing, while writing would replace whatever the
+            # user typed with a mapping of our own. `taxonomy: docs/taxonomy` is
+            # someone reaching for `taxonomy: {path: docs/taxonomy}`, and telling
+            # them so costs less than silently deleting it.
+            raise ValueError(
+                f"{self._config_path()}: {self.COMPONENT} must be a mapping, "
+                f"found {type(section).__name__}")
         if not isinstance(section, dict):
             section = {}
         if extends:

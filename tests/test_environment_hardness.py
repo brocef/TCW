@@ -127,9 +127,9 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
         }, sort_keys=False))
 
     # Both children extend the root via relative paths
-    declare_extends(child_a, "taxonomy", 
+    declare_extends(child_a, "taxonomy",
         yaml.safe_dump({"extends": ["root"]}))
-    declare_extends(child_b, "taxonomy", 
+    declare_extends(child_b, "taxonomy",
         yaml.safe_dump({"extends": ["root"]}))
 
     return root, child_a, child_b
@@ -174,9 +174,9 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
         }, sort_keys=False))
 
     # Both siblings extend parent using *absolute* paths
-    declare_extends(left, "taxonomy", 
+    declare_extends(left, "taxonomy",
         yaml.safe_dump({"extends": ["parent"]}))
-    declare_extends(right, "taxonomy", 
+    declare_extends(right, "taxonomy",
         yaml.safe_dump({"extends": ["parent"]}))
 
     return parent, left, right

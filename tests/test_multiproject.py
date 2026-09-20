@@ -31,7 +31,7 @@ def _monorepo(tmp_path: Path) -> Path:
 
 
 def _extend_b_onto_a(repo: Path) -> None:
-    declare_extends(repo / "project-b", "taxonomy", 
+    declare_extends(repo / "project-b", "taxonomy",
         yaml.safe_dump({"extends": ["project-a"]}))
 
 
