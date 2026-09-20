@@ -1,0 +1,10 @@
+schema: 1
+provider: jira-cloud
+project: tcw
+part: default
+ticket:
+  id: '10234'
+  key: TCW-15
+  url: https://proposit.atlassian.net/browse/TCW-15
+bound: '2026-09-20'
+unlinked: []
