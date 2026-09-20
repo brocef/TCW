@@ -58,7 +58,10 @@ def test_target_status_is_empty_for_an_unmapped_status():
 
 
 @pytest.mark.parametrize("statuses, key", [
-    ({"active": "In Progress", "backlog": "To Do"}, "work.tracker.statuses.backlog"),
+    # Was `backlog`, which is now a legal key: a created ticket has to be able to
+    # say where a not-yet-started item's ticket belongs. `archived` is not a local
+    # status at all, so it keeps this case testing what it was written to test.
+    ({"active": "In Progress", "archived": "Archived"}, "work.tracker.statuses.archived"),
     ({"active": 7}, "work.tracker.statuses.active"),
     ({"active": "  "}, "work.tracker.statuses.active"),
     ({"active": "In Progress", "discarded": {"done": "Done"}},

@@ -1092,6 +1092,14 @@ class TrackerConfig:
     move_transitions: dict = field(default_factory=dict)
     # Local status → the tracker status a bound ticket should be in. Only the keys
     # set; `discarded` is a status name or a mapping of discard resolutions to one.
+    #
+    # `backlog` is here for *creation*, not for sync. No lifecycle move lands in
+    # backlog — items leave it and never return — so `sync`'s ladder never targets
+    # it and `_RUNG_ORDER` (`tcw/tracker/sync.py`) has no rung for it. What the key
+    # answers is the question creation asks and nothing else could: where a ticket
+    # made for a not-yet-started item belongs. Without it the ticket stays in
+    # whatever status the tracker creates issues in, which for a Jira project with a
+    # triage column is the very status `inbox-query` selects.
     statuses: dict = field(default_factory=dict)
     # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
     strict: bool = False
@@ -1138,7 +1146,9 @@ TRACKER_RENAMED_KEYS = {
         "renamed to work.tracker.transitions.start, the transition the start move "
         "applies, alongside submit, rework, complete and discard",
 }
-TRACKER_STATUS_KEYS = ("active", "review", "completed", "discarded")
+# `backlog` first: it is where an item begins, and where creation puts its ticket.
+# The other four are the statuses a *bound* ticket is moved through afterwards.
+TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")
 
 TRACKER_DEFAULT_TIMEOUT = 15
 

@@ -24,9 +24,19 @@ loop at `tcw/store/base.py:1360-1363` then accepts it and still refuses anything
 else.
 
 State in the comment above `statuses` (`tcw/store/base.py:1093-1095`) that
-`backlog` is read by creation **and** by `sync`, so a project that sets it is
-asking for backlog tickets to be held there, not only started there. Absent —
-the default — nothing changes for anyone.
+`backlog` is read by **creation only**.
+
+**[corrected during implementation]** The plan first said "creation *and*
+`sync`". That is wrong: `_RUNG_ORDER` (`tcw/tracker/sync.py:87`) is
+`{"active": 0, "review": 1, "completed": 2, "discarded": 2}` with no `backlog`,
+and no lifecycle move lands in backlog — items leave it and never return — so
+`ladder_steps` is never asked for a backlog target and raises `KeyError` if it
+is. Confirmed by calling it directly. Adding the key therefore changes sync not
+at all, which makes this task smaller and safer than planned, not larger.
+
+One consequence of the real behaviour is worth naming: `lowest_rung` also walks
+`_RUNG_ORDER`, so a ticket someone moves *back* to the backlog status is not
+recognised as having moved. That is pre-existing and out of scope here.
 
 **Proves it:** a test that `{"statuses": {"backlog": "To Do"}}` parses with no
 problems, and that `{"statuses": {"nonsense": "X"}}` still yields

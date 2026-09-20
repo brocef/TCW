@@ -208,3 +208,27 @@ def test_an_exclusive_claim_transition_is_accepted_and_a_misspelling_is_not(node
     problems = validate(root)
     assert any("exclusive-claim-transtion" in p and "unknown key" in p
                for p in problems), problems
+
+
+# ── `statuses.backlog`: where a newly created ticket belongs ─────────────────
+
+
+def test_statuses_accepts_backlog(node):
+    """A ticket created for a not-yet-started item has to land somewhere, and
+    until now the configuration could not name it: `TRACKER_STATUS_KEYS` held
+    only the four statuses a *bound* ticket moves through, so the one status
+    almost every created ticket starts in was the one nobody could express.
+    The 2026-09-20 backfill hard-coded `To Do` for exactly this reason."""
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "statuses": {
+        "backlog": "To Do", "active": "In Progress"}})
+    assert [p for p in validate(root) if "tracker" in p] == []
+
+
+def test_statuses_still_refuses_an_unknown_key(node):
+    """Widening the set by one must not turn it into a free-for-all."""
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "statuses": {"nonsense": "X"}})
+    problems = [p for p in validate(root) if "tracker" in p]
+    assert any("statuses.nonsense: unknown key" in p for p in problems), problems
+    assert not any("statuses.backlog" in p for p in problems), problems
