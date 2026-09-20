@@ -1058,6 +1058,35 @@ class DocEntry:
 
 
 @dataclass(frozen=True)
+class TrackerCreate:
+    """How a ticket is made for a work item that has none.
+
+    Every field here is a *project's* answer, not TCW's. Issue type names are the
+    clearest case: `Epic`, `Bug` and `Task` are Jira's defaults and another
+    tracker's nonsense, so they are configured with those as documentation rather
+    than written into the code as constants.
+    """
+    #: The type given to an item no rule matches. Required when the block is present.
+    issue_type: str = ""
+    #: Rule name -> issue type, overriding `issue_type`. See `TRACKER_ISSUE_TYPE_RULES`.
+    issue_types: dict = field(default_factory=dict)
+    #: Fixed components every created ticket carries.
+    components: tuple = ()
+    #: Whether filing an item creates its ticket. Off unless a project asks.
+    on_new: bool = False
+
+    def type_for(self, *, is_epic: bool, tags) -> str:
+        """The issue type for an item. `epic` wins over `bug`: an epic tagged
+        `bug` is still a container, and typing it `Bug` would put its children
+        under a bug in the tracker's hierarchy."""
+        if is_epic and self.issue_types.get("epic"):
+            return self.issue_types["epic"]
+        if "bug" in set(tags or ()) and self.issue_types.get("bug"):
+            return self.issue_types["bug"]
+        return self.issue_type
+
+
+@dataclass(frozen=True)
 class TrackerConfig:
     """A project's external-tracker coordination settings, as it records them.
 
@@ -1111,6 +1140,9 @@ class TrackerConfig:
     # `candidate_query` reused: that one selects tickets ready to be taken, a
     # different set by construction. Empty means the inbox shows no tickets.
     inbox_query: str = ""
+    # How a ticket is made for an item that has none, and whether filing makes one.
+    # `None` when the project has not configured creation, which is the default.
+    create: "TrackerCreate | None" = None
 
 
 # The only `provider` value that parses. A literal in the abstract layer, which is
@@ -1122,7 +1154,12 @@ TRACKER_PROVIDERS = ("jira-cloud",)
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
                          "exclusive-claim-transition",
                           "transitions", "statuses", "strict", "timeout-seconds",
-                          "comments", "link", "inbox-query"})
+                          "comments", "link", "inbox-query", "create"})
+TRACKER_CREATE_KEYS = frozenset({"issue-type", "issue-types", "components",
+                                 "on-new"})
+# The item properties a project may type a ticket by. Deliberately short: each
+# is something TCW already knows about every item without asking the tracker.
+TRACKER_ISSUE_TYPE_RULES = ("epic", "bug")
 TRACKER_LINK_PLACEHOLDERS = frozenset({"project", "slug"})
 TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # Where a ticket goes for a move is a *status*, under `statuses`, because only a status
@@ -1151,6 +1188,72 @@ TRACKER_RENAMED_KEYS = {
 TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")
 
 TRACKER_DEFAULT_TIMEOUT = 15
+
+
+def _parse_tracker_create(raw: Any, problems: list[str]) -> "TrackerCreate | None":
+    """`work.tracker.create`, or `None` when absent. Appends its own problems.
+
+    Fails closed with the rest of the block: a half-read create block would put
+    fields nobody asked for onto a ticket in a shared tracker, where removing
+    them again is somebody's afternoon.
+    """
+    if raw is None:
+        return None
+    where = "work.tracker.create"
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
+        return None
+    for key in sorted(set(raw) - TRACKER_CREATE_KEYS, key=str):
+        problems.append(f"{where}.{key}: unknown key")
+
+    def non_empty_str(value: Any, path: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{path}: expected a non-empty string, "
+                            f"got {type(value).__name__}")
+            return ""
+        return value.strip()
+
+    issue_type = ""
+    if "issue-type" not in raw:
+        problems.append(f"{where}.issue-type: required")
+    else:
+        issue_type = non_empty_str(raw["issue-type"], f"{where}.issue-type")
+
+    issue_types: dict = {}
+    rules = raw.get("issue-types")
+    if rules is not None:
+        if not isinstance(rules, dict):
+            problems.append(f"{where}.issue-types: expected a mapping, "
+                            f"got {type(rules).__name__}")
+        else:
+            for rule in sorted(set(rules) - set(TRACKER_ISSUE_TYPE_RULES), key=str):
+                problems.append(f"{where}.issue-types.{rule}: unknown key")
+            for rule in TRACKER_ISSUE_TYPE_RULES:
+                if rule in rules:
+                    value = non_empty_str(rules[rule], f"{where}.issue-types.{rule}")
+                    if value:
+                        issue_types[rule] = value
+
+    components: list[str] = []
+    raw_components = raw.get("components")
+    if raw_components is not None:
+        if not isinstance(raw_components, list):
+            problems.append(f"{where}.components: expected a list, "
+                            f"got {type(raw_components).__name__}")
+        else:
+            for index, value in enumerate(raw_components):
+                name = non_empty_str(value, f"{where}.components[{index}]")
+                if name:
+                    components.append(name)
+
+    on_new = raw.get("on-new", False)
+    if not isinstance(on_new, bool):
+        problems.append(f"{where}.on-new: expected true or false, "
+                        f"got {type(on_new).__name__}")
+        on_new = False
+
+    return TrackerCreate(issue_type=issue_type, issue_types=issue_types,
+                         components=tuple(components), on_new=on_new)
 
 
 def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
@@ -1233,6 +1336,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value.strip()
 
     statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
+    create = _parse_tracker_create(raw.get("create"), problems)
     strict = raw.get("strict", False)
     if not isinstance(strict, bool):
         problems.append(f"work.tracker.strict: expected true or false, "
@@ -1307,6 +1411,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         comments=comments,
         link=link,
         inbox_query=inbox_query,
+        create=create,
     ), []
 
 

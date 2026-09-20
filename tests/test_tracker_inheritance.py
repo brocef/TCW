@@ -710,3 +710,54 @@ def test_a_connected_projects_block_with_mixed_key_types_does_not_raise(tmp_path
     assert store.tracker_config() is None
     assert store.tracker_problems()
     assert all(p.startswith("tcw-config.yaml: ") for p in store.tracker_problems())
+
+
+# ── `create` inherits like everything else in the block ─────────────────────
+
+
+def test_create_is_inherited_whole_from_a_parent(empty_cwd):
+    """A child that configures a tracker at all, but says nothing about
+    creation, uses its parent's answer. Asserted rather than assumed: the merge
+    is generic over nested mappings, and "it comes for free" is the claim that
+    is wrong most often."""
+    parent = {**COMPLETE, "create": {"issue-type": "Task",
+                                     "issue-types": {"epic": "Epic", "bug": "Bug"}}}
+    merged, record, whole = merge_tracker_blocks(
+        [("child", {"candidate-query": "project = KID"}), ("parent", parent)])
+    assert whole is None
+    config, problems = parse_tracker_config(merged)
+    assert problems == []
+    assert config.create.issue_type == "Task"
+    assert config.create.issue_types == {"epic": "Epic", "bug": "Bug"}
+    assert record[("create", "issue-type")] == "parent"
+
+
+def test_a_child_overrides_one_create_key_and_keeps_the_rest(empty_cwd):
+    """Key by key, like `statuses` — not whole-block replacement. A child that
+    only renames its bug type must not silently lose the parent's epic type,
+    which is what a wholesale override would do."""
+    parent = {**COMPLETE, "create": {"issue-type": "Task",
+                                     "issue-types": {"epic": "Epic", "bug": "Bug"},
+                                     "components": ["Platform"]}}
+    child = {"issue-types": {"bug": "Defect"}}
+    merged, record, _ = merge_tracker_blocks(
+        [("child", {"create": child}), ("parent", parent)])
+    config, problems = parse_tracker_config(merged)
+    assert problems == []
+    assert config.create.issue_types == {"epic": "Epic", "bug": "Defect"}
+    assert config.create.issue_type == "Task"
+    assert config.create.components == ("Platform",)
+    assert record[("create", "issue-types", "bug")] == "child"
+    assert record[("create", "issue-types", "epic")] == "parent"
+
+
+def test_on_new_is_off_unless_someone_sets_it(empty_cwd):
+    """The default that keeps this change invisible to everyone who did not ask
+    for it. A parent that configures creation does not thereby turn on filing-time
+    creation in a child."""
+    parent = {**COMPLETE, "create": {"issue-type": "Task"}}
+    merged, _, _ = merge_tracker_blocks(
+        [("child", {"candidate-query": "project = KID"}), ("parent", parent)])
+    config, problems = parse_tracker_config(merged)
+    assert problems == []
+    assert config.create.on_new is False
