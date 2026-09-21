@@ -50,3 +50,18 @@ else.
 
 - `docs/lifecycle/implementation.md` — describes the same "store path composed from
   the node root" mistake for the work store (GitHub issues #15 to #18).
+
+## Added 2026-09-21
+
+From the spec review of
+`2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers`
+(autonomous run, advisors Codex and Opus both concurring): **part 1 of this item,
+the gate ignoring a ledger set by `capabilities.path` or `capabilities.repository`,
+moves to that item.** It has to rewrite the same early return in
+`tcw/work/recursion.py` (`capability_gate`'s `<node root>/docs/capabilities` test)
+to find child ledgers, and doing it twice would conflict. That item's criteria
+cover both configured forms, crediting this item's regression idea.
+
+This item narrows to **part 2**: an unreadable `capabilities.yaml` (not valid UTF-8,
+a directory of that name, no read permission, deeply nested content) is reported on
+its own item instead of taking down `tcw work list`, and the `_json_safe` check.
