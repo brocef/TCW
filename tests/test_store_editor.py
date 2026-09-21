@@ -1418,14 +1418,35 @@ def test_update_work_reparent_preserves_body_edit(tmp_path):
 
 
 def test_update_work_denest(tmp_path):
-    """#2 — clearing the parent moves the item back to the top of its status."""
-    st = FsWorkStore.open(_work_node(tmp_path))
+    """#2 — clearing the parent removes the `parent:` field; the item stays in
+    its own status folder, because the relation never set its status."""
+    root = _work_node(tmp_path)
+    st = FsWorkStore.open(root)
     parent = st.create("Parent", created="2026-01-01")
     child = st.create("Child", created="2026-01-02", parent=parent.slug)
     assert st.get(child.slug).parent == parent.slug
     st.update_work(child.slug, parent="")
     assert st.get(child.slug).parent == ""
+    assert "parent" not in yaml.safe_load((st.path(child.slug) / "state.yaml").read_text())
+    assert st.path(child.slug) == root / "docs/work/backlog" / child.slug
     assert len([i for i in st.query() if i.slug == child.slug]) == 1
+
+
+def test_update_work_denest_moves_an_old_nested_child_to_the_top(tmp_path):
+    """A child made by an earlier version is nested in its parent's folder; clearing
+    its parent moves it to the top of its status folder, as it always did."""
+    root = _work_node(tmp_path)
+    st = FsWorkStore.open(root)
+    parent = st.create("Parent", created="2026-01-01")
+    nested = root / "docs/work/backlog" / parent.slug / "2026-01-02-old"
+    nested.mkdir()
+    (nested / "state.yaml").write_text(yaml.safe_dump(
+        {"slug": nested.name, "title": "old", "created": "2026-01-02", "resolution": None}))
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "old child"], check=True)
+    st.update_work(nested.name, parent="")
+    assert st.get(nested.name).parent == ""
+    assert st.path(nested.name) == root / "docs/work/backlog" / nested.name
 
 
 def test_update_work_reparent_rejects_self_and_descendant(tmp_path):

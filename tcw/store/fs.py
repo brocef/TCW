@@ -6532,12 +6532,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if (type or "") not in WORK_TYPES:
             raise ValueError(f"invalid type '{type}' (only 'epic' is supported)")
 
-        # Validate parent
-        parent_dir: Path | None = None
+        # Validate parent. The child records it as a field and lives in the
+        # ordinary `backlog/` folder, so its status is its own from the start.
         if parent:
-            parent_dir = self._find(parent)
-            if parent_dir is None:
-                raise ValueError(f"no such parent work item: {parent}")
+            self._require_live_parent(parent)
 
         # Resolve blockers
         blocked_by: list[dict] = []
@@ -6555,11 +6553,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             else date.today().isoformat()
         slug = self._unique_slug(created_date, title)
 
-        # Determine directory
-        if parent_dir:
-            d = parent_dir / slug
-        else:
-            d = self.root / "backlog" / slug
+        d = self.root / "backlog" / slug
 
         # Build state.yaml content
         state: dict = {
@@ -6580,6 +6574,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             state["blocked_by"] = blocked_by
         if initiative:
             state["initiative"] = initiative
+        if parent:
+            state["parent"] = parent
         if type:
             state["type"] = type
 
@@ -6672,25 +6668,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
             else:
                 raise ValueError("blockers must be a list or None")
 
-        # Handle parent change: validate the target here, but effect the folder
-        # move AFTER the state/body writes (below) so edits land in the current
-        # location and the re-parent stays a single git-atomic rename that also
-        # carries any nested children. Parent is derived from nesting, not stored.
+        # Handle parent change. The relation is the `parent:` field, so setting
+        # or clearing it is a field write and never changes status. The one move
+        # left is for a child made by an earlier version, nested in its parent's
+        # folder: it goes to the top of its own status folder, AFTER the
+        # state/body writes (below) so they land in the current location.
         move_to: Path | None = None
         if parent is not _UNSET:
             if parent is None or parent == "":
-                # Denest: move to top-level of the item's current status folder.
-                new_parent_dir = self.root / self._status_of(d) / slug
+                state.pop("parent", None)
             else:
-                pd = self._find(parent)
-                if pd is None:
-                    raise ValueError(f"no such parent work item: {parent}")
-                if pd.resolve() == d.resolve() or d.resolve() in pd.resolve().parents:
-                    raise ValueError(
-                        "cannot re-parent an item under itself or a descendant")
-                new_parent_dir = pd / slug
-            if new_parent_dir.resolve() != d.resolve():
-                move_to = new_parent_dir
+                self._require_live_parent(
+                    parent, moving=slug,
+                    open_item=self._status_of(d) not in RESOLVED_STATUSES)
+                state["parent"] = parent
+            if self._nesting_parent(d):
+                move_to = self.root / self._status_of(d) / slug
 
         # Apply field changes to state dict
         changed = False

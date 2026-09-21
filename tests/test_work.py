@@ -1529,18 +1529,20 @@ def test_cli_work_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
 
 
 # ── nested work items (parent/child) ─────────────────────────────────────────
+#
+# A new child records its parent in a `parent:` field and has its own status;
+# those behaviors are tested in `tests/test_child_status.py`. What stays here is
+# the layout earlier versions wrote — a child nested in its parent's folder —
+# which every newer version must still read.
 
-def test_create_child_nests_and_derives_parent(tmp_path):
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    p = st.create("Parent", created="2026-01-01")
-    c = st.create("Child", created="2026-01-02", parent=p.slug)
-    # folder nests inside the parent's folder
-    assert (root / "docs/work/backlog" / p.slug / c.slug / "state.yaml").is_file()
-    got = st.get(c.slug)
-    assert got.parent == p.slug
-    assert got.status == "backlog"                  # inherits parent's status folder
-    assert st.get(p.slug).parent == ""              # top-level
+def _nested_child(root: Path, status: str, parent: str, child: str) -> None:
+    """A child as earlier versions made it: nested, no `parent:` field."""
+    d = root / "docs" / "work" / status / parent / child
+    d.mkdir(parents=True)
+    (d / "state.yaml").write_text(yaml.safe_dump(
+        {"slug": child, "title": child, "created": "2026-01-02", "resolution": None}))
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "nested child"], check=True)
 
 
 def test_create_child_unknown_parent_errors(tmp_path):
@@ -1553,45 +1555,23 @@ def test_discovery_is_depth_agnostic(tmp_path):
     root = node(tmp_path)
     st = FsWorkStore.open(root)
     p = st.create("Parent", created="2026-01-01")
-    c = st.create("Child", created="2026-01-02", parent=p.slug)
-    assert st.path(c.slug) == root / "docs/work/backlog" / p.slug / c.slug
-    assert {i.slug for i in st.query()} == {p.slug, c.slug}      # query walks
-    assert {i.slug for i in st.query(status="backlog")} == {p.slug, c.slug}
+    _nested_child(root, "backlog", p.slug, "2026-01-02-child")
+    c = "2026-01-02-child"
+    assert st.path(c) == root / "docs/work/backlog" / p.slug / c
+    assert {i.slug for i in st.query()} == {p.slug, c}           # query walks
+    assert {i.slug for i in st.query(status="backlog")} == {p.slug, c}
+    made = st.create("Made now", created="2026-01-03", parent=p.slug)
+    assert st.path(made.slug) == root / "docs/work/backlog" / made.slug
 
 
-def test_parent_transition_carries_children(tmp_path):
+def test_drop_parent_removes_nested_children(tmp_path):
     root = node(tmp_path)
     st = FsWorkStore.open(root)
     p = st.create("Parent", created="2026-01-01")
-    c = st.create("Child", created="2026-01-02", parent=p.slug)
-    st.start(p.slug)                                # git mv of the parent folder
-    assert st.get(p.slug).status == "active"
-    child = st.get(c.slug)
-    assert child.status == "active"                 # rode along, still nested
-    assert child.parent == p.slug
-    assert (root / "docs/work/active" / p.slug / c.slug / "state.yaml").is_file()
-
-
-def test_child_transition_denests_to_top_level(tmp_path):
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    p = st.create("Parent", created="2026-01-01")
-    c = st.create("Child", created="2026-01-02", parent=p.slug)
-    st.start(c.slug)                                # child moves to a new status alone
-    child = st.get(c.slug)
-    assert child.status == "active"
-    assert child.parent == ""                       # de-nested (relation ends with nesting)
-    assert (root / "docs/work/active" / c.slug / "state.yaml").is_file()
-    assert st.get(p.slug).status == "backlog"       # parent unaffected
-
-
-def test_drop_parent_removes_children(tmp_path):
-    st = FsWorkStore.open(node(tmp_path))
-    p = st.create("Parent", created="2026-01-01")
-    c = st.create("Child", created="2026-01-02", parent=p.slug)
+    _nested_child(root, "backlog", p.slug, "2026-01-02-child")
     st.drop(p.slug)
     assert st.get(p.slug) is None
-    assert st.get(c.slug) is None                   # nested child went with it
+    assert st.get("2026-01-02-child") is None       # nested child went with it
 
 
 def test_cli_new_parent_and_list_nesting(tmp_path, monkeypatch, capsys):

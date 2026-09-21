@@ -291,3 +291,101 @@ def test_cli_complete_force_is_refused_and_names_the_child(tmp_path, monkeypatch
     assert code == 1
     assert "still open: c" in capsys.readouterr().err
     _assert_nothing_moved(root, "active/p")
+
+
+# ── Task 6: every new child starts in backlog and records its parent ─────────
+
+def _parent_in(st: FsWorkStore, status: str) -> str:
+    p = st.create("Parent", created="2026-01-01").slug
+    if status in ("active", "review"):
+        st.start(p, owner="x")
+    if status == "review":
+        st.submit(p)
+    assert st.get(p).status == status
+    return p
+
+
+@pytest.mark.parametrize("parent_status", ["backlog", "active", "review"])
+def test_a_new_child_starts_in_backlog_and_records_its_parent(tmp_path, parent_status):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = _parent_in(st, parent_status)
+    c = st.create("Child", created="2026-01-02", parent=p)
+    assert st.path(c.slug) == root / "docs/work/backlog" / c.slug
+    state = yaml.safe_load((st.path(c.slug) / "state.yaml").read_text())
+    assert state["parent"] == p
+    got = st.get(c.slug)
+    assert (got.status, got.parent) == ("backlog", p)
+
+
+@pytest.mark.parametrize("resolution", ["done", "wontfix"])
+def test_a_child_cannot_be_created_under_a_resolved_item(tmp_path, resolution):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = _parent_in(st, "active")
+    st.complete(p, resolution, [])
+    before = sorted((root / "docs/work/backlog").iterdir())
+    with pytest.raises(ValueError, match="resolved"):
+        st.create("Child", created="2026-01-02", parent=p)
+    assert sorted((root / "docs/work/backlog").iterdir()) == before
+
+
+def test_a_child_cannot_be_created_under_an_item_with_a_resolved_ancestor(tmp_path):
+    root = node(tmp_path)
+    _item(root, "discarded/g", resolution="wontfix")
+    _item(root, "active/p", parent="g")
+    _commit(root)
+    with pytest.raises(ValueError, match="its ancestor g is"):
+        FsWorkStore.open(root).create("Child", created="2026-01-02", parent="p")
+
+
+def test_a_child_keeps_its_parent_through_its_own_transitions(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    p = _parent_in(st, "active")
+    c = st.create("Child", created="2026-01-02", parent=p).slug
+    for move in (lambda: st.start(c, owner="x"), lambda: st.submit(c),
+                 lambda: st.rework(c), lambda: st.complete(c, "done", [])):
+        move()
+        assert st.get(c).parent == p
+    assert st.get(c).status == "completed"
+
+
+def test_starting_a_parent_leaves_its_child_in_backlog(tmp_path):
+    st = FsWorkStore.open(node(tmp_path))
+    p = st.create("Parent", created="2026-01-01").slug
+    c = st.create("Child", created="2026-01-02", parent=p).slug
+    st.start(p, owner="x")
+    assert (st.get(c).status, st.get(c).parent) == ("backlog", p)
+    st.start(c, owner="y")                       # and its own start still works
+    assert st.get(c).status == "active"
+
+
+def test_a_legacy_child_still_rides_its_parents_start(tmp_path):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.start("p", owner="x")
+    assert (st.get("c").status, st.get("c").parent) == ("active", "p")
+    assert (root / "docs/work/active/p/c/state.yaml").is_file()
+
+
+def test_stage_gates_for_planning_pass_for_a_child_of_an_active_parent(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    monkeypatch.chdir(root)
+    st = FsWorkStore.open(root)
+    p = _parent_in(st, "active")
+    assert main(["work", "new", "Child", "--parent", p]) == 0
+    c = capsys.readouterr().out.strip().splitlines()[-1].strip()
+    folder = st.path(c)
+    (folder / "intake.md").write_text("# Child\n\nraw\n")
+    assert main(["work", "stage", "gate", "request", c]) == 0
+    (folder / "initial-request.md").write_text("# Child\n\n## Request\n\ndo it\n")
+    assert main(["work", "stage", "gate", "spec", c]) == 0
+    (folder / "spec.md").write_text("# Spec\n")
+    assert main(["work", "stage", "gate", "plan", c]) == 0
+    assert "is not legal for an item in" not in capsys.readouterr().err
+

@@ -3031,7 +3031,10 @@ class WorkStore(ABC):
                priority: int | None = None, parent: str | None = None,
                intake: str = "") -> WorkItem:
         """Create an item. With `parent` (a slug), create it as a child of that
-        item — an abstract node relation; the adapter realizes the nesting.
+        item — an abstract node relation that never sets a status: a child starts
+        in `backlog` whatever its parent's status, and moves through the
+        lifecycle on its own. The parent must exist and must not be resolved,
+        nor have a resolved ancestor.
 
         `body` is the item's **request**; `intake` is the raw, unprocessed input
         it started from. They are separate arguments rather than one because an
@@ -3924,6 +3927,30 @@ class WorkStore(ABC):
                              f"parent: {', '.join(beneath)}. Drop, discard or "
                              f"re-parent them first.")
         self._delete(slug)
+
+    def _require_live_parent(self, parent: str, *, moving: str | None = None,
+                             open_item: bool = True) -> None:
+        """Refuse a `parent` an item may not be placed under.
+
+        It must exist. With `moving` (re-parenting that item), walking up from
+        `parent` must not reach `moving`, which would make a cycle. With
+        `open_item`, neither `parent` nor anything above it may be resolved: an
+        open item beneath a resolved one is exactly what `complete` refuses to
+        leave behind. A resolved item may be filed under a resolved parent."""
+        cursor = self.get(parent)
+        if cursor is None:
+            raise ValueError(f"no such parent work item: {parent}")
+        seen: set[str] = set()
+        while cursor is not None and cursor.slug not in seen:
+            if moving is not None and cursor.slug == moving:
+                raise ValueError("cannot re-parent an item under itself or a descendant")
+            if open_item and cursor.status in RESOLVED_STATUSES:
+                where = "" if cursor.slug == parent else f" (its ancestor {cursor.slug} is)"
+                raise ValueError(f"cannot place an open item under {parent}: it is "
+                                 f"resolved{where}. An open item may not sit beneath "
+                                 f"a completed or discarded one.")
+            seen.add(cursor.slug)
+            cursor = self.get(cursor.parent) if cursor.parent else None
 
     def require_nothing_open_beneath(self, slug: str, verb: str) -> None:
         """Refuse when any item beneath `slug` is still open. Shared by `complete`
