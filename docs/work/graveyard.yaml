@@ -834,6 +834,9 @@
   location: 9121652d02106aee6efea1e65f48c4cfa0867e2a
   resolution: done
   resolved: '2026-09-20'
+2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
+  resolution: done
+  resolved: '2026-09-21'
 2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers:
   location: 6939d75a76852a3283bcc04c4a0188478e7bc127
   resolution: done
