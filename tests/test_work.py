@@ -2054,6 +2054,21 @@ def test_drop_of_a_parent_with_only_resolved_children_advises_discarding_it(
     assert FsWorkStore.open(root).get(parent).status == "discarded"
 
 
+def test_drop_of_a_parent_with_open_and_resolved_children_advises_both_ways(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    parent = st.create("a parent", created="2026-01-01").slug
+    done = st.create("a finished child", created="2026-01-01", parent=parent).slug
+    st.create("an open child", created="2026-01-02", parent=parent)
+    st.complete(done, "wontfix", [])
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", parent]) == 1
+    err = capsys.readouterr().err
+    assert "Drop, discard or re-parent" in err and "discard it instead" not in err
+
+
 def test_discard_advice_for_a_parent_names_its_open_children(tmp_path, monkeypatch, capsys):
     """The advised discard is refused while a child is open, so say so."""
     from tcw.cli import main
