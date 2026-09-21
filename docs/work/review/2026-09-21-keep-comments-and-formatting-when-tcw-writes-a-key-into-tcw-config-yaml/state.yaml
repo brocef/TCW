@@ -7,7 +7,7 @@ tags:
 - cli
 - store
 - bug
-owner: brocef@users.noreply.github.com
-started: '2026-09-21T19:35:35.621682Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-21-keep-comments-and-formatting-when-tcw-writes-a-key-into-tcw-config-yaml
 branch: work/2026-09-21-keep-comments-and-formatting-when-tcw-writes-a-key-into-tcw-config-yaml
