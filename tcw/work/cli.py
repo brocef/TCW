@@ -36,7 +36,9 @@ from tcw.work.resolve import (
     ResolveError, bookend, load_builtins, resolve_artifact, resolve_procedure,
     resolve_prompts, select,
 )
-from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
+from tcw.work.recursion import (
+    capability_gate, child_path_owners, delegate, escalate, reconcile,
+)
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
@@ -3500,6 +3502,18 @@ def _branch_copy(st, bare: str, item):
     return None, item
 
 
+def _child_path_hint(st, item) -> str:
+    """A child-qualified capabilities.yaml path is reconciled in the child that
+    owns it, not where the item lives — see `route_capability_path`. Names
+    those children, and is empty when no declared path is child-qualified."""
+    owners = child_path_owners(st, item)
+    if not owners:
+        return ""
+    return (" For a path that starts with a child project's id, run it inside "
+            "that child's folder, with the path after the id: "
+            f"{', '.join(owners)}.")
+
+
 def _complete(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
@@ -3670,14 +3684,16 @@ def _complete(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             for p in problems:
                 print(f"  - {p}", file=sys.stderr)
-            print("Reconcile them (tcw capabilities set <path> --status <S>) "
-                  "or re-run with --force.", file=sys.stderr)
+            print("Reconcile them (tcw capabilities set <path> --status <S>)."
+                  f"{_child_path_hint(st, item)} Or re-run with --force.",
+                  file=sys.stderr)
             return 1
         for p in problems:
             print(f"warning: unreconciled capability: {p}", file=sys.stderr)
         if problems:
             print("Mark them Omitted (tcw capabilities set <path> --status Omitted) "
-                  "if they will never be built.", file=sys.stderr)
+                  f"if they will never be built.{_child_path_hint(st, item)}",
+                  file=sys.stderr)
     # Last thing before the store is touched. A `pre` hook may refuse the
     # completion, and a refusal has to mean the item is untouched — so the hook
     # runs before `complete()` is entered at all, not somewhere inside it.

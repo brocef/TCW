@@ -46,7 +46,11 @@ as "not registered" and add a second declaration.
     `tcw serve` aggregates descendants, so it cannot open an ancestor's item.
 
 3. **Each sub-project works its slice independently**, linking its own
-   capabilities. Product-layer wording is coordinated over the inbox channel
+   capabilities. An item that stays on a routing node with no capabilities
+   ledger — cross-package work on a repository root — declares the capabilities
+   it changes in each package's ledger with child-qualified paths
+   (`<child-id>/<path>`) in its `capabilities.yaml`; the `capabilities` skill
+   has the rules. Product-layer wording is coordinated over the inbox channel
    (`tcw work escalate "capability wording: …"`) — **non-blocking**; never wait
    on a reply (the `capabilities` skill).
 4. **A sub-project escalates up** when it needs the orchestrator:

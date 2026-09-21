@@ -1,0 +1,5 @@
+new:
+    - work/declare-capability-changes-in-a-child-nodes-ledger
+changed:
+    - work/complete-a-work-item
+    - skills/capabilities
