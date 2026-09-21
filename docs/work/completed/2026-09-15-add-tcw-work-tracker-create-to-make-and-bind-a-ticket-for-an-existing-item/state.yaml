@@ -1,7 +1,7 @@
 slug: 2026-09-15-add-tcw-work-tracker-create-to-make-and-bind-a-ticket-for-an-existing-item
 title: Add tcw work tracker create to make and bind a ticket for an existing item
 created: '2026-09-15'
-resolution: null
+resolution: done
 tags:
 - remote
 - work
@@ -10,5 +10,4 @@ priority: 45
 effort: high
 owner: brocef@users.noreply.github.com
 started: '2026-09-20T21:32:43.790093Z'
-worktree: .worktrees/2026-09-15-add-tcw-work-tracker-create-to-make-and-bind-a-ticket-for-an-existing-item
-branch: work/2026-09-15-add-tcw-work-tracker-create-to-make-and-bind-a-ticket-for-an-existing-item
+completed: '2026-09-21'

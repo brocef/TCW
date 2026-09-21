@@ -1,0 +1,9 @@
+slug: 2026-09-21-two-tracker-create-runs-at-once-can-make-two-tickets-for-one-item
+title: Two tracker create runs at once can make two tickets for one item
+phase: ""
+created: "2026-09-21"
+resolution: null
+priority: 50
+tags:
+    - work
+    - cli
