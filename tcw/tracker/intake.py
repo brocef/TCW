@@ -26,7 +26,7 @@ from dataclasses import dataclass
 import yaml
 
 from tcw.store.base import (RESOLVED_STATUSES, Bound, Malformed, Unbound,  # noqa: F401
-                            classify_binding, unreadable_binding)
+                            _binding_text, classify_binding, unreadable_binding)
 
 BINDING_SIDECAR = "tracker.yaml"
 DEFAULT_PART = "default"
@@ -187,7 +187,7 @@ def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
 
 
 _BINDING_KEYS = ("provider", "project", "part", "ticket", "bound", "sync", "comment",
-                 "status-synced", "catch-up")
+                 "status-synced", "catch-up", "created")
 
 
 def unlinked_history(content: str | None) -> list:
@@ -197,6 +197,43 @@ def unlinked_history(content: str | None) -> list:
     data = yaml.safe_load(content)
     history = data.get("unlinked") if isinstance(data, dict) else None
     return list(history) if isinstance(history, list) else []
+
+
+def created_record(content: str | None) -> dict | None:
+    """The `created` record an item's `tracker.yaml` carries, or `None`.
+
+    Written between "the tracker made a ticket" and "the binding was written",
+    which is the only window in `tcw work tracker create` that costs something
+    nothing here can undo — TCW never deletes a ticket. A run interrupted in that
+    window leaves this behind, and the next run binds the key it names instead of
+    creating a second ticket.
+
+    It deliberately carries no `ticket` key, so `classify_binding` still reads the
+    item as **unbound**: it is not a binding and must not be mistaken for one by
+    anything that counts bindings, least of all `find_binding`.
+    """
+    if content is None:
+        return None
+    try:
+        data = yaml.safe_load(content)
+    except Exception:       # the same breadth as `read_binding`, for the same reason
+        return None
+    if not isinstance(data, dict):
+        return None
+    record = data.get("created")
+    if not isinstance(record, dict):
+        return None
+    key, issue_id = _binding_text(record.get("key")), _binding_text(record.get("id"))
+    return {"key": key, "id": issue_id} if key and issue_id else None
+
+
+def with_created_record(content: str | None, record: dict | None) -> str:
+    """`content` with its `created` record set, or removed for `None`.
+
+    Unlike its siblings this accepts `None` content, because the record is written
+    by `create` onto an item that has no sidecar at all in the ordinary case.
+    """
+    return _with_key(content if content is not None else "{}\n", "created", record)
 
 
 def with_sync_record(content: str, record: dict | None) -> str:

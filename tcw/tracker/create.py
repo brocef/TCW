@@ -98,27 +98,46 @@ def unplaceable(config) -> str | None:
 
 def create_and_place(client, config, *, slug: str, title: str, body: str,
                      is_epic: bool, tags, item_url: str = "",
-                     on_created=None) -> Created:
+                     on_created=None, existing: dict | None = None) -> Created:
     """Create the ticket for one item and move it to the backlog status.
 
     `on_created` is called with the key the moment the tracker reports it, before
     anything else can fail. That is what lets an interrupted run resume by
     binding rather than by creating a second ticket: the key outlives the crash.
+    **It must persist the key before it returns** — a callback that only records
+    it in memory survives nothing, which is what the first draft did.
+
+    `existing` is what that callback wrote, on the next run. Given one, no ticket
+    is created: the run picks up the key it names and carries on from placement.
+    Placement is safe to repeat because `_place` reads the status first and does
+    nothing when the ticket is already where it belongs — so it does not matter
+    which side of the placement the previous run died on.
     """
     refusal = unplaceable(config)
     if refusal:
         raise TrackerError(refusal)
-    settings = config.create
-    issue = client.create_issue(
-        project=settings.project,
-        summary=title,
-        description=description_document(slug=slug, body=body, item_url=item_url),
-        issue_type=settings.type_for(is_epic=is_epic, tags=tags),
-        components=settings.components,
-    )
-    key, issue_id = str(issue.get("key", "")), str(issue.get("id", ""))
-    if on_created is not None:
-        on_created(key, issue_id)
+    if existing:
+        key, issue_id = existing["key"], existing["id"]
+    else:
+        settings = config.create
+        issue = client.create_issue(
+            project=settings.project,
+            summary=title,
+            description=description_document(slug=slug, body=body, item_url=item_url),
+            issue_type=settings.type_for(is_epic=is_epic, tags=tags),
+            components=settings.components,
+        )
+        key, issue_id = str(issue.get("key", "")), str(issue.get("id", ""))
+        if not key or not issue_id:
+            # Before `on_created`, so nothing records half a key. Everything after
+            # this point addresses the ticket by one or the other.
+            raise TrackerError(
+                f"the tracker accepted the new ticket for {slug} but reported "
+                f"{issue!r}, which names no key and id. It may exist; look for a "
+                f"ticket titled {title!r} in {config.create.project} before "
+                f"running this again.")
+        if on_created is not None:
+            on_created(key, issue_id)
 
     target = placement_target(config)
     status = _place(client, issue_id, key, target)

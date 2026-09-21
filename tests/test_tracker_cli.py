@@ -485,12 +485,24 @@ CREATE_RESPONSES = {
     # The status read `_place` does before and after its hop. "To Do" here means
     # the CLI fixture exercises the *already placed* shape; the transition path
     # is covered in `tests/test_tracker_create.py`, where the status can change.
+    "/myself": (200, {}, json.dumps({"accountId": "a"}).encode()),
+    # For a `PROBE-1` a test seeds itself rather than one the stub minted — the
+    # resumption record is written by hand, so no create call ever names it.
     "/issue/PROBE-1": (200, {}, json.dumps(
         {"id": "10001", "key": "PROBE-1",
          "fields": {"summary": "Thing", "status": {"name": "To Do"},
                     "assignee": None, "description": None}}).encode()),
-    "/myself": (200, {}, json.dumps({"accountId": "a"}).encode()),
 }
+
+
+def _issue_read(key: str) -> tuple:
+    """What a GET of one issue returns. Built per key rather than held as a single
+    literal, because `--all` creates several tickets in one run and a fixture that
+    answers every read with `PROBE-1` would hide a key mixed up between items."""
+    return (200, {}, json.dumps(
+        {"id": "1000" + key.rsplit("-", 1)[1], "key": key,
+         "fields": {"summary": "Thing", "status": {"name": "To Do"},
+                    "assignee": None, "description": None}}).encode())
 
 
 def _created_node(node, monkeypatch, *, status, tracker=CREATE_TRACKER, title="Thing"):
@@ -531,6 +543,7 @@ _ROUTE_TO = {
 def _create_responses(monkeypatch, **overrides):
     mapping = {**CREATE_RESPONSES, **overrides}
     posted: list[tuple] = []
+    minted: list[str] = []
 
     def fake(self, method, path, body=None, *, timeout=None):
         posted.append((method, path, body))
@@ -541,13 +554,22 @@ def _create_responses(monkeypatch, **overrides):
             created = mapping.get("__create__")
             if isinstance(created, Exception):
                 raise created
-            return created or (200, {}, json.dumps(
-                {"id": "10001", "key": "PROBE-1"}).encode())
+            if created:
+                return created
+            # Jira numbers each new issue, so the stub does too. Returning one
+            # fixed key would let a sweep bind two items to the same ticket and
+            # still look correct.
+            minted.append(f"PROBE-{len(minted) + 1}")
+            return (200, {}, json.dumps(
+                {"id": "1000" + str(len(minted)), "key": minted[-1]}).encode())
         for fragment, response in mapping.items():
             if fragment != "__create__" and fragment in path:
                 if isinstance(response, Exception):
                     raise response
                 return response
+        for key in minted:
+            if f"/issue/{key}" in path:
+                return _issue_read(key)
         return (200, {}, b"{}")
     monkeypatch.setattr(jira.JiraClient, "_request", fake)
     return posted
@@ -637,9 +659,17 @@ def test_create_does_not_mention_a_command_nobody_ran(node, monkeypatch):
 
     from tcw.store.fs import FsWorkStore
 
-    def refuse(self, *a, **kw):
-        raise OSError("disk is full")
-    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse)
+    real = FsWorkStore.write_sidecar
+
+    def refuse_the_binding(self, slug_, name, content, *a, **kw):
+        # Only the binding. The `created` record goes through the same method and
+        # is written first; failing that too would stop the run before it ever
+        # reached `_tracker_link`, which is the whole point of this test.
+        if "ticket:" in content:
+            raise OSError("disk is full")
+        return real(self, slug_, name, content, *a, **kw)
+
+    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse_the_binding)
 
     code, _out, err = _run(["work", "tracker", "create", slug])
     assert code == 1
@@ -678,3 +708,174 @@ def test_a_closed_item_is_refused_before_anything_reaches_the_tracker(
     assert f"{slug} is {status}" in err, err
     assert "noise" in err
     assert posted == [], f"the tracker was called anyway: {posted}"
+
+
+def _sidecar(root, slug: str) -> str:
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR
+    found = FsWorkStore.open(root).read_sidecar(slug, BINDING_SIDECAR)
+    return found.content if found else ""
+
+
+def test_the_created_key_is_on_disk_before_the_binding_is_attempted(node, monkeypatch):
+    """Spec criterion 6, first half. The window between "the ticket exists" and
+    "the binding is written" is the only place this command can cost something it
+    cannot undo, because TCW never deletes a ticket. So the key is written to disk
+    inside that window, not merely held in memory.
+
+    Asserted by failing the binding write and then reading the tree: the record
+    has to have survived the failure."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    _create_responses(monkeypatch)
+
+    from tcw.store.fs import FsWorkStore
+    real = FsWorkStore.write_sidecar
+
+    def refuse_the_binding(self, slug_, name, content, *a, **kw):
+        # The `created` record goes through the same method, so only the binding
+        # itself is failed — otherwise this would prove nothing about ordering.
+        if "ticket:" in content:
+            raise OSError("disk is full")
+        return real(self, slug_, name, content, *a, **kw)
+
+    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse_the_binding)
+    code, _out, _err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert "created:" in _sidecar(root, slug), _sidecar(root, slug)
+    from tcw.tracker.intake import created_record
+    assert created_record(_sidecar(root, slug)) == {"key": "PROBE-1", "id": "10001"}
+
+
+def test_an_interrupted_run_binds_the_recorded_key_instead_of_creating_another(
+        node, monkeypatch):
+    """Spec criterion 6. Starting from a recorded key with no binding, `create`
+    must reach a binding **without** asking the tracker for a second ticket."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
+    FsWorkStore.open(root).write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-1", "id": "10001"}), revision="")
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 0, err
+    assert "did not finish" in err, err
+    assert [p for p in posted if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")] == [], \
+        f"a second ticket was created: {posted}"
+
+    from tcw.tracker.intake import binding_of, created_record
+    bound, _rev = binding_of(FsWorkStore.open(root), slug)
+    assert getattr(bound, "ticket_key", "") == "PROBE-1", bound
+    # The record is spent once the binding exists, or the next run would think a
+    # bound item still owed a ticket.
+    assert created_record(_sidecar(root, slug)) is None, _sidecar(root, slug)
+
+
+def test_a_ticket_made_but_not_recorded_still_names_its_key(node, monkeypatch):
+    """The worst state this command can reach: the tracker made a ticket and the
+    record of it could not be written. The user cannot be left to find it by
+    hand, and the message must not be a traceback."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    _create_responses(monkeypatch)
+    from tcw.store.fs import FsWorkStore
+
+    def refuse(self, *a, **kw):
+        raise OSError("disk is full")
+
+    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert "PROBE-1 was created" in err, err
+    assert "tracker link" in err, err
+    assert "Traceback" not in err
+
+
+def _board(node, monkeypatch, titles_and_types):
+    """A node holding several items, so `--all` has something to sweep."""
+    root, configure = node
+    configure(CREATE_TRACKER)
+    from tcw.store.fs import FsWorkStore
+    for title, kind in titles_and_types:
+        argv = ["work", "new", title]
+        if kind == "epic":
+            argv.append("--epic")
+        code, _out, err = _run(argv)
+        assert code == 0, err
+    return root, {i.title: i.slug for i in FsWorkStore.open(root).query()}
+
+
+def test_all_sweeps_every_unbound_open_item_and_skips_bound_ones(node, monkeypatch):
+    """Spec criterion 8. The bound item must be passed over entirely: a sweep
+    that re-creates for an item that already has a ticket is how one mistake
+    becomes one mistake per item."""
+    root, slugs = _board(node, monkeypatch, [("Alpha", "task"), ("Beta", "task")])
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, binding_document
+    FsWorkStore.open(root).write_sidecar(
+        slugs["Alpha"], BINDING_SIDECAR,
+        binding_document(provider="jira-cloud", project="probe", part="default",
+                         ticket_id="9", ticket_key="PROBE-9",
+                         ticket_url="https://example.invalid/browse/PROBE-9",
+                         bound="2026-09-20", unlinked=[]), revision="")
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["summary"] == "Beta"
+    assert "Alpha" not in err, err
+
+
+def test_all_creates_for_epics_before_their_children(node, monkeypatch):
+    """A child's ticket may want to name its parent's, and a parent link cannot
+    point at a ticket that does not exist yet."""
+    root, _slugs = _board(node, monkeypatch,
+                          [("A child", "task"), ("An epic", "epic")])
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    summaries = [p[2]["fields"]["summary"] for p in posted
+                 if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert summaries == ["An epic", "A child"], summaries
+
+
+def test_all_and_a_slug_together_are_refused(node, monkeypatch):
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug, "--all"])
+    assert code == 1
+    assert "name one slug, or pass --all" in err
+    assert posted == []
+
+
+def test_all_refuses_part_rather_than_applying_one_name_to_every_item(
+        node, monkeypatch):
+    """`--part` says which share of *one* ticket an item is. Spread across a
+    sweep it would bind every item as the same part of a different ticket."""
+    root, _slugs = _board(node, monkeypatch, [("Alpha", "task")])
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all", "--part", "api"])
+    assert code == 1
+    assert "cannot be combined with --all" in err, err
+    assert posted == []
+
+
+def test_neither_a_slug_nor_all_is_refused(node, monkeypatch):
+    root, _slug = _created_node(node, monkeypatch, status="backlog")
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create"])
+    assert code == 1
+    assert "name an item, or pass --all" in err
+    assert posted == []
+
+
+def test_all_with_dry_run_creates_nothing_and_reports_each_item(node, monkeypatch):
+    root, _slugs = _board(node, monkeypatch, [("Alpha", "task"), ("Beta", "task")])
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all", "--dry-run"])
+    assert code == 0, err
+    assert posted == [], posted
+    assert "Alpha" in err and "Beta" in err, err

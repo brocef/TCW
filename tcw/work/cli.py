@@ -2449,31 +2449,100 @@ def _item_body(st, slug: str) -> str:
     return ""
 
 
+#: An item is worth a ticket while it is open. `completed` and `discarded` are a
+#: spec non-goal, and `_create_one` refuses them by name for a named slug — the
+#: sweep does not reach them at all.
+_CREATABLE_STATUSES = ("backlog", "active", "review")
+
+
 def _tracker_create(args: argparse.Namespace) -> int:
-    """Make a ticket for an item that has none, then bind it through `link`."""
-    from tcw.tracker.create import create_and_place, unplaceable
-    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
-                                    validate_part)
-    from tcw.tracker.jira import TrackerError
+    """Make a ticket for one item that has none, or for every open item without one."""
+    if args.all and args.slug:
+        print("tcw work tracker create: name one slug, or pass --all.",
+              file=sys.stderr)
+        return 1
+    if not args.all and not args.slug:
+        print("tcw work tracker create: name an item, or pass --all to sweep "
+              "every open item that has no ticket.", file=sys.stderr)
+        return 1
+    if args.all and args.part:
+        # `--part` says which piece of one ticket an item is, which is a statement
+        # about a particular item. Applying one part name across a sweep would
+        # bind every item as the same part of different tickets.
+        print("tcw work tracker create: --part names one item's share of a "
+              "ticket, so it cannot be combined with --all.", file=sys.stderr)
+        return 1
 
     client = _tracker_client("tracker create")
     if client is None:
         return 1
     st = _store()
-    item = _item_or_reason(st, args.slug, "create")
-    if item is None:
-        return 1
+    if not args.all:
+        if _item_or_reason(st, args.slug, "create") is None:
+            return 1
+        return _create_one(st, client, args.slug, args.part, args.dry_run)
+
+    code = 0
+    for slug in _sweep_order(st):
+        result = _create_one(st, client, slug, None, args.dry_run, sweep=True)
+        code = code or result
+    return code
+
+
+def _sweep_order(st) -> list:
+    """Every open item with no binding, epics first.
+
+    Epics lead because a child's ticket may want to point at its parent's, and a
+    parent link cannot name a ticket that does not exist yet. Within each group
+    the store's own order is kept, so a sweep reads in the same order as the board.
+    """
+    from tcw.tracker.intake import BINDING_SIDECAR
+
+    unbound = []
+    for item in st.query():
+        if item.status not in _CREATABLE_STATUSES:
+            continue
+        # `ever_bound` rather than `binding_of`: an item whose sidecar cannot be
+        # read must not be swept past silently, and `_create_one` is what says so.
+        try:
+            found = st.read_sidecar(item.slug, BINDING_SIDECAR)
+        except (OSError, UnicodeDecodeError):
+            unbound.append(item)
+            continue
+        if found is None or "ticket:" not in found.content:
+            unbound.append(item)
+    epic = [i for i in unbound if getattr(i, "type", "") == "epic"]
+    return [i.slug for i in epic] + [i.slug for i in unbound if i not in epic]
+
+
+def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
+                sweep: bool = False) -> int:
+    """One item, with the client and store already open.
+
+    Split out for `--all`, which must not rebuild the client per item: the
+    warnings `_tracker_client` prints would repeat once per item, and a sweep of
+    53 items would read the configuration 53 times.
+    """
+    from tcw.tracker.create import create_and_place, unplaceable
+    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
+                                    created_record, validate_part,
+                                    with_created_record)
+    from tcw.tracker.jira import TrackerError
+
+    item = st.get(slug)
 
     # Idempotency before anything reaches the tracker: an item that already has a
     # ticket must never be given a second one, and a duplicate in a shared tracker
     # cannot be undone from here.
-    current, _revision = binding_of(st, args.slug)
+    existing = st.read_sidecar(slug, BINDING_SIDECAR)
+    resume = created_record(existing.content if existing else None)
+    current, _revision = binding_of(st, slug)
     if isinstance(current, Bound):
-        print(f"→ {args.slug} is already bound to {current.ticket_key} "
+        print(f"→ {slug} is already bound to {current.ticket_key} "
               f"({current.ticket_url}). Nothing was created.", file=sys.stderr)
         return 0
     if isinstance(current, Malformed):
-        print(f"tcw work tracker create: {args.slug} has a {BINDING_SIDECAR} that "
+        print(f"tcw work tracker create: {slug} has a {BINDING_SIDECAR} that "
               f"cannot be read ({current.reason}).", file=sys.stderr)
         return 1
 
@@ -2484,16 +2553,16 @@ def _tracker_create(args: argparse.Namespace) -> int:
     # a failure anywhere along that walk leaves an open ticket for work that is
     # done. Closed items that want tickets are a backfill, which is `link`'s job.
     if item.status in ("completed", "discarded"):
-        print(f"tcw work tracker create: {args.slug} is {item.status}, and TCW "
+        print(f"tcw work tracker create: {slug} is {item.status}, and TCW "
               f"does not create tickets for closed work — a ticket made only to "
               f"be closed is noise. If a ticket for it already exists, bind it "
-              f"with `tcw work tracker link {args.slug} <ticket> --sync-status`.",
+              f"with `tcw work tracker link {slug} <ticket> --sync-status`.",
               file=sys.stderr)
         return 1
 
     refusal = unplaceable(client.config)
     if refusal:
-        print(f"tcw work tracker create: {args.slug} was not given a ticket; "
+        print(f"tcw work tracker create: {slug} was not given a ticket; "
               f"{refusal}", file=sys.stderr)
         return 1
 
@@ -2503,28 +2572,34 @@ def _tracker_create(args: argparse.Namespace) -> int:
     # leave a real ticket in a shared tracker bound to nothing, and TCW cannot
     # delete it. Found by Codex.
     try:
-        validate_part(args.part)
+        validate_part(part)
     except ValueError as e:
         print(f"tcw work tracker create: {e}", file=sys.stderr)
         return 1
-    if item.status != "backlog" and not st.pending_deletion(args.slug):
+    if item.status != "backlog" and not st.pending_deletion(slug):
         if someone_else := _held_by_someone_else(
                 item, _local_owner(st),
-                f"tcw work tracker create {args.slug}"
-                + (f" --part {args.part}" if args.part else "")):
-            print(f"tcw work tracker create: {args.slug} was not given a ticket: "
+                f"tcw work tracker create {slug}"
+                + (f" --part {part}" if part else "")):
+            if sweep:
+                # A sweep legitimately walks past other people's work, exactly as
+                # `tcw work tracker sync --all` does. Exiting non-zero here would
+                # make a successful sweep of a shared board look like a failure.
+                print(f"{slug}: skipped — held by {item.owner}")
+                return 0
+            print(f"tcw work tracker create: {slug} was not given a ticket: "
                   f"creating one claims it as you, and it was {someone_else}",
                   file=sys.stderr)
             return 1
 
-    if args.dry_run:
+    if dry_run:
         settings = client.config.create
         issue_type = settings.type_for(is_epic=getattr(item, "type", "") == "epic",
                                        tags=getattr(item, "tags", ()))
         from tcw.tracker.create import placement_target
         where = placement_target(client.config)
         print(f"→ would create a {issue_type} in {settings.project} titled "
-              f"{item.title!r}, place it in {where!r}, and bind it to {args.slug}.",
+              f"{item.title!r}, place it in {where!r}, and bind it to {slug}.",
               file=sys.stderr)
         if item.status != "backlog":
             # A real run passes --sync-status, so for work already under way it
@@ -2533,7 +2608,7 @@ def _tracker_create(args: argparse.Namespace) -> int:
             from tcw.store.base import target_status
             onward = target_status(client.config.statuses, item.status,
                                    item.resolution) or "wherever its status maps"
-            print(f"→ and because {args.slug} is {item.status}, would then claim "
+            print(f"→ and because {slug} is {item.status}, would then claim "
                   f"{settings.project}'s new ticket as you, assign it, and move it "
                   f"to {onward!r}.", file=sys.stderr)
         print("→ Nothing was created.", file=sys.stderr)
@@ -2545,20 +2620,51 @@ def _tracker_create(args: argparse.Namespace) -> int:
     # the create POST raises from inside `create_and_place`, and without this the
     # message would name neither the key nor the fact that a ticket now exists —
     # so the user re-runs and gets a *second* one.
-    made: dict = {}
+    made: dict = dict(resume) if resume else {}
+
+    def record(key: str, issue_id: str) -> None:
+        """Persist the key before anything else can fail.
+
+        This is the whole of the interrupted-run guarantee. Between the create
+        POST returning and the binding being written there is a real ticket in a
+        shared tracker that TCW cannot delete, so the key is put on disk in that
+        window — as a `created` record, which reads as *unbound* and so is
+        invisible to everything that counts bindings.
+
+        A write failure here is raised, not swallowed: carrying on would place
+        and bind a ticket whose key was never recorded, which is the state this
+        exists to prevent, and the binding write immediately after would fail
+        the same way anyway.
+        """
+        # In memory *first*, so that if the write below is what fails, the error
+        # message can still name the ticket that now exists. That is the worst
+        # state this command can reach — a real ticket, and no record of it — and
+        # the one where the user most needs the key.
+        made.update(key=key, id=issue_id)
+        content = st.read_sidecar(slug, BINDING_SIDECAR)
+        st.write_sidecar(
+            slug, BINDING_SIDECAR,
+            with_created_record(content.content if content else None,
+                                {"key": key, "id": issue_id}),
+            revision=content.revision if content else "")
+
+    if resume:
+        print(f"→ {resume['key']} was already created for {slug} by a run "
+              f"that did not finish; binding that rather than creating another.",
+              file=sys.stderr)
     try:
         created = create_and_place(
-            client, client.config, slug=args.slug, title=item.title,
-            body=_item_body(st, args.slug),
+            client, client.config, slug=slug, title=item.title,
+            body=_item_body(st, slug),
             is_epic=getattr(item, "type", "") == "epic",
             tags=getattr(item, "tags", ()),
-            on_created=lambda key, issue_id: made.update(key=key, id=issue_id),
+            on_created=record, existing=resume,
         )
-    except TrackerError as error:
+    except (TrackerError, *_LOCAL_WRITE_ERRORS) as error:
         if made.get("key"):
             print(f"tcw work tracker create: {error} {made['key']} was created and "
-                  f"is not bound to {args.slug}. Bind it with `tcw work tracker "
-                  f"link {args.slug} {made['key']} --sync-status` rather than "
+                  f"is not bound to {slug}. Bind it with `tcw work tracker "
+                  f"link {slug} {made['key']} --sync-status` rather than "
                   f"running create again, which would make a second ticket.",
                   file=sys.stderr)
         else:
@@ -2570,7 +2676,7 @@ def _tracker_create(args: argparse.Namespace) -> int:
     # means. `--sync-status` because a ticket made for work already under way must
     # be claimed and walked up to where the item is, which is `deliver`'s job.
     return _tracker_link(argparse.Namespace(
-        slug=args.slug, ticket=created.key, part=args.part, sync_status=True),
+        slug=slug, ticket=created.key, part=part, sync_status=True),
         verb="tracker create")
 
 
@@ -3565,9 +3671,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "If the ticket is made but the binding is not written, the error names\n"
                "the key. Bind it with `tcw work tracker link <slug> <key>\n"
                "--sync-status`; running create again would make a second ticket.\n\n"
+               "--all sweeps every open item here that has no ticket, epics\n"
+               "before the rest so a child's parent link can name a ticket that\n"
+               "exists. It skips items somebody else holds rather than failing,\n"
+               "and reports one line each. Pair it with --dry-run first: on a\n"
+               "board of any size this is the command that turns one mistake into\n"
+               "one mistake per item.\n\n"
                "  tcw work tracker create 2026-09-14-rename-the-widget\n"
-               "  tcw work tracker create 2026-09-14-rename-the-widget --dry-run\n")
-    ptrc.add_argument("slug", help=BARE_SLUG_HELP)
+               "  tcw work tracker create 2026-09-14-rename-the-widget --dry-run\n"
+               "  tcw work tracker create --all --dry-run\n")
+    ptrc.add_argument("slug", nargs="?", help=BARE_SLUG_HELP)
+    ptrc.add_argument("--all", action="store_true",
+                      help="every open item here that has no ticket, epics first")
     ptrc.add_argument("--part", default=None,
                       help="bind as this part, for an item split across tickets")
     ptrc.add_argument("--dry-run", action="store_true",
