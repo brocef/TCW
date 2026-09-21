@@ -451,3 +451,62 @@ def test_removing_a_local_capability_that_shadowed_an_inherited_one_passes(
     FsCapabilitiesStore.open(kid).remove("auth/login")
     assert FsCapabilitiesStore.open(kid).get("auth/login") is not None     # lib's
     _passed(root, slug, monkeypatch, capsys)
+
+
+# ── Task 6: two real repositories ───────────────────────────────────────────
+
+def test_a_child_in_its_own_repository_is_checked(tmp_path, monkeypatch, capsys):
+    """C1 and C3 with `kid` in a separate git repository."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default",
+                       kid_repo="separate")
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "new:\n- kid/auth/login\n- kid/auth/ghost\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: still Missing in project 'kid'",
+             "kid/auth/ghost: declared (new) but does not resolve in project 'kid'")
+    FsCapabilitiesStore.open(kid).set("auth/login", {"Status": "Supported"})
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def _declare_kid_ledger_repository(tmp_path: Path, kid: Path) -> tuple[Path, Path]:
+    """Declare `kid`'s ledger in another repository (`capabilities.repository`),
+    with nothing at the local path. Returns (remote, checkout)."""
+    from test_store_provisioning import _remote_with_tree
+    remote = _remote_with_tree(tmp_path, inner="trees/capabilities")
+    checkout = tmp_path / "kid-trees-checkout"
+    set_component_key(kid, "capabilities", "path", "../kid-trees/capabilities")
+    set_component_key(kid, "capabilities", "repository",
+                      {"url": str(remote), "path": "trees/capabilities",
+                       "checkout": str(checkout)})
+    return remote, checkout
+
+
+def test_a_childs_ledger_in_a_provisioned_repository_is_checked(
+        tmp_path, monkeypatch, capsys):
+    """C14, provisioned: C1 holds against the provisioned copy."""
+    from tcw.store.base import RepositoryDeclaration
+    from tcw.store.fs import FsStoreProvisioner
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger=None, kid_repo="separate")
+    remote, checkout = _declare_kid_ledger_repository(tmp_path, kid)
+    FsStoreProvisioner(kid, "capabilities", RepositoryDeclaration(
+        url=str(remote), path="trees/capabilities",
+        checkout=str(checkout))).ensure_available()
+    assert FsCapabilitiesStore.open(kid).root == (checkout / "trees" / "capabilities").resolve()
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: still Missing in project 'kid'")
+    FsCapabilitiesStore.open(kid).set("auth/login", {"Status": "Supported"})
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_a_childs_ledger_in_an_unprovisioned_repository_is_refused(
+        tmp_path, monkeypatch, capsys):
+    """C14, not provisioned: the store's own message, naming the remedy."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger=None, kid_repo="separate")
+    _declare_kid_ledger_repository(tmp_path, kid)
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: ", "capabilities store is declared", "tcw provision",
+             absent=["keeps no capabilities ledger"])
