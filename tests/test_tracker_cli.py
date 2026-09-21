@@ -866,12 +866,17 @@ def test_a_dry_run_reports_a_resumption_rather_than_a_creation(node, monkeypatch
     assert posted == [], posted
 
 
-def test_one_unreadable_sidecar_does_not_end_the_sweep(node, monkeypatch):
-    """`_sweep_order` keeps an item whose sidecar it cannot read, so that
-    `_create_one` refuses it by name instead of skipping it in silence. That
-    read then happened again outside any handler and ended the run — and an
-    unreadable epic sorts first, so one could stop a sweep before it reached a
-    single healthy item."""
+def test_a_sweep_that_could_bind_nothing_creates_nothing(node, monkeypatch):
+    """Binding proves a ticket is not already taken by scanning every item, so
+    one sidecar nobody can read refuses the bind for *every* item. Left to run,
+    the sweep would make a ticket per item and bind none of them — the "one
+    mistake per item" its own help warns about. Recoverable, since each key is
+    recorded, but a pile of unbound tickets made after the cause was knowable.
+
+    This began as a crash: `_create_one` re-read the sidecar outside any
+    handler, so an unreadable one ended the run. Guarding the read turned the
+    crash into the pile. Refusing up front is the answer to both.
+    """
     root, slugs = _board(node, monkeypatch,
                          [("Broken", "epic", "backlog"), ("Fine", "task", "backlog")])
     posted = _create_responses(monkeypatch)
@@ -886,44 +891,10 @@ def test_one_unreadable_sidecar_does_not_end_the_sweep(node, monkeypatch):
     monkeypatch.setattr(FsWorkStore, "read_sidecar", refuse_one)
     code, _out, err = _run(["work", "tracker", "create", "--all"])
     monkeypatch.undo()
-    assert code == 1                                   # Broken really did fail
-    assert "Traceback" not in err, err
-    assert "cannot be read" in err, err
-    creates = [p for p in posted
-               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
-    assert [c[2]["fields"]["summary"] for c in creates] == ["Fine"], creates
-
-    # What "reached" means here, stated rather than implied. Binding scans the
-    # whole board to prove the ticket is not already taken, and it cannot prove
-    # that while a sidecar is unreadable — the same refusal a malformed one has
-    # always produced. So Fine's ticket exists and is recorded, not bound, and
-    # `tracker create` binds it once the broken file is dealt with.
-    from tcw.tracker.intake import created_record
-    assert created_record(_sidecar(root, slugs["Fine"])) == {
-        "key": "PROBE-1", "id": "10001"}, _sidecar(root, slugs["Fine"])
-
-
-def test_a_sweep_stops_once_a_created_key_cannot_be_recorded(node, monkeypatch):
-    """A ticket made whose key cannot be written down is unfindable: no record
-    survives, so a re-run makes another. Carrying on would produce one of those
-    per remaining item, and a re-run once the disk is fixed would duplicate
-    every one. The tracker is fine; this machine is not, so the sweep stops."""
-    root, slugs = _board(node, monkeypatch,
-                         [("Alpha", "task", "backlog"), ("Beta", "task", "backlog"),
-                          ("Gamma", "task", "backlog")])
-    posted = _create_responses(monkeypatch)
-    from tcw.store.fs import FsWorkStore
-
-    def refuse(self, *a, **kw):
-        raise OSError("disk is full")
-
-    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse)
-    code, _out, err = _run(["work", "tracker", "create", "--all"])
     assert code == 1
-    creates = [p for p in posted
-               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
-    assert len(creates) == 1, f"the sweep kept creating tickets it could not record: {creates}"
-    assert "stopping the sweep" in err, err
+    assert "Traceback" not in err, err
+    assert slugs["Broken"] in err and "cannot be read" in err, err
+    assert posted == [], f"tickets were created for a sweep that could bind none: {posted}"
 
 
 def _board(node, monkeypatch, items, tracker=CREATE_TRACKER):

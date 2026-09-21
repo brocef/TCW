@@ -437,7 +437,15 @@ TCW never deletes a ticket and cannot take one back. `create` refuses when:
 the order you would work the board. It skips items other people hold rather than
 failing, and stops if a ticket is made whose key cannot be written down here —
 carrying on would leave one ticket per remaining item that nothing can find
-again. Run it with `--dry-run` first: on a board of any size this is the command
+again.
+
+It also refuses to start if **any** open item has a `tracker.yaml` that cannot
+be read. Binding checks whether a ticket is already taken by looking at every
+item, so one unreadable file means nothing can be bound — and a sweep would
+make a ticket per item and bind none of them. Repair or remove the file first;
+the message names it.
+
+Run it with `--dry-run` first: on a board of any size this is the command
 that turns one mistake into one mistake per item.
 
 **If a run is interrupted** between making the ticket and writing the binding,

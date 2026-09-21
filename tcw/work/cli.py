@@ -2576,6 +2576,7 @@ def _tracker_create(args: argparse.Namespace) -> int:
     client = _tracker_client("tracker create")
     if client is None:
         return 1
+    from tcw.tracker.intake import BINDING_SIDECAR
     st = _store()
     if not args.all:
         if _item_or_reason(st, args.slug, "create") is None:
@@ -2584,6 +2585,24 @@ def _tracker_create(args: argparse.Namespace) -> int:
         # `_CANNOT_RECORD` only tells the sweep to stop. One named item has
         # already been refused in words; its exit code is an ordinary 1.
         return 1 if result == _CANNOT_RECORD else result
+
+    # Binding proves a ticket is not already taken by scanning every item, so a
+    # single sidecar nobody can read refuses the bind for *every* item, not just
+    # its own. Left to run, the sweep would make one ticket per remaining item
+    # and bind none of them — the "one mistake per item" its own help warns
+    # about. Every key would be recorded and a later run would resume without
+    # duplicating, so this is recoverable rather than lost; it is still a pile
+    # of unbound tickets in a shared tracker, made after the cause was knowable.
+    # Refused here, before anything is created, like every other refusal.
+    if blocked := _unreadable_sidecars(st):
+        listed = ", ".join(blocked[:5]) + ("…" if len(blocked) > 5 else "")
+        print(f"tcw work tracker create: not sweeping. {listed} "
+              f"{'has' if len(blocked) == 1 else 'have'} a {BINDING_SIDECAR} "
+              f"that cannot be read, and binding checks every item, so nothing "
+              f"could be bound until that is repaired — a sweep now would make "
+              f"one ticket per item and bind none of them. Repair or remove "
+              f"the file, then run this again.", file=sys.stderr)
+        return 1
 
     code = 0
     for slug in _sweep_order(st):
@@ -2599,6 +2618,26 @@ def _tracker_create(args: argparse.Namespace) -> int:
             return 1
         code = code or result
     return code
+
+
+def _unreadable_sidecars(st) -> list:
+    """Open items whose `tracker.yaml` this process cannot read, in board order.
+
+    Separate from `_sweep_order`, which keeps such an item so `_create_one`
+    refuses it by name. This asks a different question: is the board in a state
+    where *binding* can work at all.
+    """
+    from tcw.tracker.intake import BINDING_SIDECAR
+
+    blocked = []
+    for item in st.query():
+        if item.status in RESOLVED_STATUSES:
+            continue
+        try:
+            st.read_sidecar(item.slug, BINDING_SIDECAR)
+        except (OSError, UnicodeDecodeError):
+            blocked.append(item.slug)
+    return blocked
 
 
 def _sweep_order(st) -> list:
@@ -3917,7 +3956,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "before the rest so the sweep reads in the order a person works\n"
                "the board. It skips items somebody else holds rather than\n"
                "failing, and reports one line each. It stops if a ticket is made\n"
-               "and its key cannot be written down here. Pair it with --dry-run\n"
+               "and its key cannot be written down here, and it refuses to start\n"
+               "at all if any item's tracker.yaml cannot be read: binding checks\n"
+               "every item, so nothing could be bound. Pair it with --dry-run\n"
                "first: on a board of any size this is the command that turns one\n"
                "mistake into one mistake per item.\n\n"
                "  tcw work tracker create 2026-09-14-rename-the-widget\n"
