@@ -174,3 +174,120 @@ def test_check_still_reports_a_legacy_child_whose_own_resolution_is_wrong(tmp_pa
     _legacy_child(root, "active", "p", "c", resolution="done")
     problems = FsWorkStore.open(root).check()
     assert "c: status 'active' carries a resolution 'done' (only a closed item has one)" in problems
+
+
+# ── Task 3: refusing to resolve or drop over open descendants ────────────────
+
+def _board_with_child(tmp_path, child_status: str, parent_status: str = "active"):
+    root = node(tmp_path)
+    _item(root, f"{parent_status}/p")
+    resolution = {"completed": "done", "discarded": "wontfix"}.get(child_status)
+    _item(root, f"{child_status}/c", parent="p", resolution=resolution)
+    _commit(root)
+    return root, FsWorkStore.open(root)
+
+
+def _assert_nothing_moved(root: Path, where: str) -> None:
+    assert (root / "docs" / "work" / where / "state.yaml").is_file()
+
+
+@pytest.mark.parametrize("child_status", ["backlog", "active", "review"])
+@pytest.mark.parametrize("resolution", ["done", "wontfix"])
+@pytest.mark.parametrize("force", [False, True])
+def test_complete_refuses_while_a_child_is_open(tmp_path, child_status, resolution, force):
+    root, st = _board_with_child(tmp_path, child_status)
+    with pytest.raises(ValueError, match=r"still open: c\b"):
+        st.complete("p", resolution, [], force=force)
+    _assert_nothing_moved(root, "active/p")
+
+
+def test_complete_succeeds_once_every_child_is_resolved(tmp_path):
+    root, st = _board_with_child(tmp_path, "completed")
+    assert st.complete("p", "done", []).status == "completed"
+
+
+def test_complete_refuses_over_an_open_grandchild(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p")
+    _item(root, "completed/c", parent="p", resolution="done")
+    _item(root, "active/g", parent="c")
+    _commit(root)
+    with pytest.raises(ValueError, match=r"still open: g\b"):
+        FsWorkStore.open(root).complete("p", "done", [])
+    _assert_nothing_moved(root, "active/p")
+
+
+def test_complete_refuses_over_an_open_field_child_of_a_legacy_child(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p")
+    _legacy_child(root, "active", "p", "legacy")
+    _item(root, "backlog/g", parent="legacy")
+    _commit(root)
+    with pytest.raises(ValueError, match=r"still open: g\b"):
+        FsWorkStore.open(root).complete("p", "done", [])
+    _assert_nothing_moved(root, "active/p")
+
+
+def test_completing_a_parent_carries_a_legacy_child(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p")
+    _legacy_child(root, "active", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.complete("p", "done", [])
+    assert st.get("c").status == "completed"
+
+
+@pytest.mark.parametrize("child_status", ["backlog", "completed"])
+def test_drop_refuses_while_any_child_names_the_parent(tmp_path, child_status):
+    root, st = _board_with_child(tmp_path, child_status, parent_status="backlog")
+    with pytest.raises(ValueError, match=r"name it as their parent: c\b"):
+        st.drop("p")
+    _assert_nothing_moved(root, "backlog/p")
+
+
+def test_drop_refuses_over_a_resolved_grandchild_beneath_a_legacy_child(tmp_path):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "legacy")
+    _item(root, "completed/g", parent="legacy", resolution="done")
+    _commit(root)
+    with pytest.raises(ValueError, match=r"name it as their parent: g\b"):
+        FsWorkStore.open(root).drop("p")
+
+
+def test_drop_still_removes_legacy_children_with_the_parent(tmp_path):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.drop("p")
+    assert st.get("c") is None
+
+
+def test_an_item_mid_claim_blocks_complete_and_drop(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p")
+    _item(root, "backlog/q")
+    _commit(root)
+    for parent in ("p", "q"):
+        claim = root / "docs/work/.claiming" / f"c-{parent}-{'b' * 32}"
+        claim.mkdir(parents=True)
+        (claim / "state.yaml").write_text(yaml.safe_dump(
+            {"slug": f"c-{parent}", "title": "c", "resolution": None, "parent": parent}))
+    st = FsWorkStore.open(root)
+    with pytest.raises(ValueError, match="still open: c-p"):
+        st.complete("p", "done", [])
+    with pytest.raises(ValueError, match="name it as their parent: c-q"):
+        st.drop("q")
+
+
+def test_cli_complete_force_is_refused_and_names_the_child(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root, _ = _board_with_child(tmp_path, "backlog")
+    monkeypatch.chdir(root)
+    code = main(["work", "complete", "p", "--resolution", "done", "--confirm", "--force"])
+    assert code == 1
+    assert "still open: c" in capsys.readouterr().err
+    _assert_nothing_moved(root, "active/p")

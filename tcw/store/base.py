@@ -3845,6 +3845,11 @@ class WorkStore(ABC):
         if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")
+        # Outside `if not force:` on purpose. `--force` overrides judgments about
+        # whether closing is *allowed*; this protects items that would otherwise
+        # sit open beneath a resolved one, where nothing lists them and a
+        # `work.retain: false` deletion of the parent could remove them.
+        self.require_nothing_open_beneath(slug, "complete")
         if not force:
             # The epic gate applies to *both* routes: an initiative child cannot
             # start until its epic is active, so closing an epic with open
@@ -3906,4 +3911,21 @@ class WorkStore(ABC):
         item = self._require(slug)
         if item.status != "backlog":
             raise IllegalTransition(f"cannot drop from {item.status} (only backlog)")
+        # Resolved children count too: a drop leaves no tombstone, so a child
+        # naming this item as its parent would name something that never existed.
+        beneath = [i.slug for i in self.independent_descendants(slug)]
+        if beneath:
+            raise ValueError(f"Cannot drop {slug}; these items name it as their "
+                             f"parent: {', '.join(beneath)}. Drop, discard or "
+                             f"re-parent them first.")
         self._delete(slug)
+
+    def require_nothing_open_beneath(self, slug: str, verb: str) -> None:
+        """Refuse when any item beneath `slug` is still open. Shared by `complete`
+        and by callers that must refuse before doing anything irreversible of
+        their own, such as merging a worktree branch."""
+        still_open = self.open_descendants(slug)
+        if still_open:
+            raise ValueError(f"Cannot {verb} {slug}; these items beneath it are "
+                             f"still open: {', '.join(still_open)}. Complete or "
+                             f"discard them first.")
