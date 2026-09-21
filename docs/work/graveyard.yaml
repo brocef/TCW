@@ -850,6 +850,9 @@
   location: 174dab8f70af7dc3a712d3a1fe5d7ec8b90e9534
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-make-drop-and-its-discard-advice-account-for-a-parent-s-children:
+  resolution: done
+  resolved: '2026-09-21'
 2026-09-21-point-a-refused-drop-of-an-active-or-in-review-item-to-the-discard-route:
   location: b354b99759a8ccfe1ba3de00e38b1ab2d6fe1239
   resolution: done
