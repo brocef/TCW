@@ -395,3 +395,48 @@ def test_declaring_a_child_does_not_silently_redirect_an_inherited_path(
     _give_ledger(kid, "default")
     _refused(root, slug, monkeypatch, capsys, "kid/x: ambiguous", "kid/x",
              absent=["in project 'kid'"])
+
+
+# ── Task 4: removed: stays local-only ───────────────────────────────────────
+
+def test_removing_a_capability_the_child_inherits_is_refused(tmp_path, monkeypatch, capsys):
+    """C8, child half: `rm` deletes only local capabilities, so a `removed:`
+    path naming one `kid` inherits can never be satisfied honestly."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    lib = _sibling(tmp_path, root, "lib")
+    _cap(lib, "auth/login", "Supported")
+    FsCapabilitiesStore.open(kid).extends_add("lib")
+    slug = _item(root, "removed:\n- kid/lib/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/lib/auth/login: `tcw capabilities rm` deletes only local capabilities; "
+             "project 'kid' cannot remove a capability it inherits from 'lib'")
+
+
+def test_removing_a_capability_the_node_inherits_is_refused(tmp_path, monkeypatch, capsys):
+    """C8, own-ledger half: the same defect in the gate before this change,
+    where the path passed because nothing local sat at that literal path."""
+    root = _work_node(_git(tmp_path / "root"), "root")
+    _give_ledger(root, "default")
+    lib = _sibling(tmp_path, root, "lib")
+    _cap(lib, "auth/login", "Supported")
+    FsCapabilitiesStore.open(root).extends_add("lib")
+    slug = _item(root, "removed:\n- lib/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "lib/auth/login: `tcw capabilities rm` deletes only local capabilities; "
+             "this node cannot remove a capability it inherits from 'lib'")
+
+
+def test_removing_a_local_capability_that_shadowed_an_inherited_one_passes(
+        tmp_path, monkeypatch, capsys):
+    """C7: after `rm`, the bare path falls through to `lib`'s capability,
+    which `rm` would refuse — so only a local hit counts."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    lib = _sibling(tmp_path, root, "lib")
+    _cap(lib, "auth/login", "Supported")
+    FsCapabilitiesStore.open(kid).extends_add("lib")
+    _cap(kid, "auth/login", "Supported")
+    slug = _item(root, "removed:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys, "still resolves in project 'kid'")
+    FsCapabilitiesStore.open(kid).remove("auth/login")
+    assert FsCapabilitiesStore.open(kid).get("auth/login") is not None     # lib's
+    _passed(root, slug, monkeypatch, capsys)

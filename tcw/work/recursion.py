@@ -105,8 +105,17 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
             # Local only: `rm` deletes only local capabilities, and once a local
             # one is gone its bare path may fall through to an inherited
             # capability at the same path, which `rm` refuses — a dead end if
-            # that counted.
-            if route.store.get_local(route.path) is not None:
+            # that counted. For the same reason a path qualified by a project
+            # the ledger extends can never be satisfied honestly: nothing local
+            # sits at that literal path, so it would pass without anything
+            # having been removed.
+            alias = route.path.partition("/")[0]
+            if alias in route.store.extends:
+                who = "this node" if route.owner is None else f"project '{route.owner}'"
+                problems.append(f"{path}: `tcw capabilities rm` deletes only local "
+                                f"capabilities; {who} cannot remove a capability "
+                                f"it inherits from '{alias}'")
+            elif route.store.get_local(route.path) is not None:
                 problems.append(f"{path}: declared (removed) but still resolves{where} "
                                 f"(delete it with `tcw capabilities rm`)")
             return
