@@ -60,7 +60,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 ## Read on demand
 
 - [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, command skills, the documentation gate (`tcw work docs`), publication on a provisioned store
-- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
+- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into child items
 - Turning an idea into a work item without duplicating tracked work → the `work-create` skill
 - [`tags.md`](references/tags.md) — the node's tag vocabulary · [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences · [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
 - **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources · [`search.md`](references/procedures/search.md): answering a described question about the board as a table

@@ -357,7 +357,9 @@ class TestLoneProject:
         child = st.create("Task", created="2026-01-02", parent=parent.slug)
         assert child.parent == parent.slug
         st.start(parent.slug)
-        assert st.get(child.slug).status == "active"
+        # A child has its own status: starting the parent leaves it in backlog.
+        assert st.get(child.slug).status == "backlog"
+        assert st.get(child.slug).parent == parent.slug
 
     def test_nodes_leaf(self, tmp_path):
         root = lone_project(tmp_path)

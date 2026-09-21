@@ -99,7 +99,20 @@ an inherited capability, one with capabilities nested under it (so
 another capability still points at through `Superseded by`, `Blocked by`, `Roles`
 or `When`. A work item that deletes a capability lists its path under `removed:`
 in its `capabilities.yaml`, and completing the item is refused while the path
-still resolves.
+still resolves. A `removed:` path naming a capability the ledger inherits is
+refused outright, since `rm` could never delete it.
+
+A work item on a node with no ledger of its own can declare changes in a child
+node's ledger by starting the path with the child's project id:
+
+```yaml
+new:
+    - proposit-shared/authoring/add-a-claim   # checked in proposit-shared's ledger
+```
+
+Completion checks the rest of the path in that child's ledger; run
+`tcw capabilities set authoring/add-a-claim --status Supported` inside the child
+to reconcile it. The full rules are in [Work](work.md), under `complete`.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
 validates the metadata vocabulary, resolves each `Subject:` pointer against the

@@ -48,7 +48,9 @@ removed:
     - billing/legacy-export # deleted with tcw capabilities rm
 ```
 
-(`added:` is read as `new:` for back-compat, but write `new:`.) The gate blocks `complete` if a `new:` path still reads `Missing`, a `new:` or `changed:` path doesn't resolve, or a `removed:` path still resolves. It cannot tell a deleted path from a mistyped one, which is why the path is copied from `list`.
+(`added:` is read as `new:` for back-compat, but write `new:`.) The gate blocks `complete` if a `new:` path still reads `Missing`, a `new:` or `changed:` path doesn't resolve, or a `removed:` path still resolves. It cannot tell a deleted path from a mistyped one, which is why the path is copied from `list`. A `removed:` path naming a capability the ledger inherits is refused: `rm` only deletes local ones.
+
+**Changes in a child node's ledger.** When the item's node keeps no ledger of its own (a repository root grouping packages, for example), start each path with the id of a child listed under the node's `connected-projects.children` — `proposit-shared/authoring/add-a-claim`. The gate checks the rest of the path in that child's ledger, read the way the child reads it, so it may name a capability the child inherits or overrides. Create and reconcile it by running `tcw capabilities add`/`set`/`rm` **inside the child's folder**, with the path after the id. On such a node a path with no child id is refused, since nothing can check it; so is a child not in this checkout, one with no ledger, or one whose ledger is not provisioned. On a node that does keep a ledger, a first segment naming a project it `extends` keeps its inherited meaning, and one that names both a child and a namespace the ledger already shows is refused as ambiguous.
 
 ## Contradiction-detection (at the moment of change)
 

@@ -2292,3 +2292,45 @@ def test_a_bound_backlog_items_ticket_is_never_moved(tmp_path, monkeypatch):
     assert fake.tickets[TICKET_ID].status == "In Progress", (
         "sync pulled a backlog item's ticket backwards")
     assert fake.applied == [], fake.applied
+
+
+# ── a bound child, and its parent moving ─────────────────────────────────────
+
+def test_a_bound_child_syncs_through_its_own_moves_and_its_parents(node, fake):
+    st = FsWorkStore.open(node)
+    parent = st.create("Parent").slug
+    child = st.create("Child", parent=parent).slug
+    code, _out, err = cli(node, "work", "tracker", "link", child, KEY)
+    assert code == 0, err
+    assert cli(node, "work", "start", child)[0] == 0
+    assert cli(node, "work", "submit", child)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert cli(node, "work", "start", parent, "--force")[0] == 0
+    code, out, err = cli(node, "work", "tracker", "sync", child)
+    assert code == 0, err
+    assert out.strip() == f"{child}: current"
+    got = FsWorkStore.open(node).get(child)
+    assert (got.status, got.parent) == ("review", parent)
+
+
+def test_a_bound_nested_child_is_found_after_its_parent_moves(node, fake):
+    st = FsWorkStore.open(node)
+    parent = st.create("Parent").slug
+    nested = st.path(parent) / "2026-01-02-old-child"
+    nested.mkdir()
+    (nested / "state.yaml").write_text(yaml.safe_dump(
+        {"slug": nested.name, "title": "old", "created": "2026-01-02", "resolution": None}))
+    subprocess.run(["git", "-C", str(node), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(node), "commit", "-qm", "old child"], check=True)
+    code, _out, err = cli(node, "work", "tracker", "link", nested.name, KEY)
+    assert code == 0, err
+    moved = cli(node, "work", "start", parent, "--force")
+    assert moved[0] == 0, moved
+    code, out, err = cli(node, "work", "tracker", "sync", nested.name)
+    # Found and judged: it rode its parent into active without a claim, so the
+    # tracker reports the unclaimed ticket — about this child, by name.
+    assert "no such work item" not in err
+    assert out.startswith(f"{nested.name}: conflicting"), (out, err)
+    got = FsWorkStore.open(node).get(nested.name)
+    assert (got.status, got.parent) == ("active", parent)
+    assert got.tracker is not None
