@@ -24,6 +24,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from contextlib import contextmanager, nullcontext, suppress
+from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
 from typing import NoReturn
@@ -4128,6 +4129,66 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return recorded.strip()
         return self._nesting_parent(d)
 
+    def _follows_parent_at(self, d: Path, state: dict | None = None) -> bool:
+        """Whether the item at `d` is a child made by an earlier version: nested
+        in another item's folder with no `parent:` field. Its status is its
+        top-level folder's, so it moves with its parent."""
+        if state is None:
+            state = self._safe_yaml(d / "state.yaml")
+        recorded = state.get("parent") if isinstance(state, dict) else None
+        if isinstance(recorded, str) and recorded.strip():
+            return False
+        return bool(self._nesting_parent(d))
+
+    def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
+        """Items on the board plus items mid-claim, each with whether it follows
+        its parent.
+
+        A claim moves the item's folder into `.claiming/` for a moment before it
+        lands in `active/`, and the board walk does not look there. Without these
+        a parent could be completed in that moment as if the child did not
+        exist."""
+        pairs = []
+        for d in self._item_dirs():
+            item = self._item_from_dir(d)
+            if item is not None:
+                pairs.append((item, self._follows_parent_at(d)))
+        return pairs + self._in_flight_items()
+
+    def _in_flight_items(self) -> list[tuple[WorkItem, bool]]:
+        """Every item inside `.claiming/`: each claimed folder and every item
+        nested inside it, reported as `active` because that is where a claim
+        lands. A claimed folder is named `<slug>-<32 hex>`; its real slug is used
+        wherever it appears, including as the parent of what is nested in it."""
+        pairs = []
+        for claim in sorted((self.root / ".claiming").glob("*-" + "[0-9a-f]" * 32)):
+            real = claim.name[:-33]
+            try:
+                states = sorted(claim.rglob("state.yaml"))
+            except FileNotFoundError:
+                continue                               # the claim landed meanwhile
+            for path in states:
+                d = path.parent
+                try:
+                    state = self._safe_yaml(path)
+                    item = self._read_item(d)
+                except FileNotFoundError:
+                    continue
+                recorded = state.get("parent")
+                if isinstance(recorded, str) and recorded.strip():
+                    parent, follows = recorded.strip(), False
+                elif d == claim:
+                    parent, follows = "", False
+                else:
+                    enclosing = d.parent
+                    while not (enclosing / "state.yaml").exists():
+                        enclosing = enclosing.parent
+                    parent = real if enclosing == claim else enclosing.name
+                    follows = True
+                pairs.append((replace(item, slug=real if d == claim else d.name,
+                                      status="active", parent=parent), follows))
+        return pairs
+
     def _nesting_parent(self, d: Path) -> str:
         """The nearest `state.yaml`-bearing ancestor's name; "" if the nearest
         ancestor is a status folder."""
@@ -5857,7 +5918,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             for tag in item.tags:
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
-            problems.extend(self._status_resolution_problems(item))
+            if not self._carried_by_its_parent(item):
+                problems.extend(self._status_resolution_problems(item))
             problems.extend(self._parent_problems(item))
             try:
                 stages = self._declared_plan_stages(item.slug)
@@ -5884,6 +5946,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError as exc:
                 problems.append(f"{item.slug}: {exc}")
         return problems
+
+    def _carried_by_its_parent(self, item) -> bool:
+        """A child made by an earlier version, resolved only because its parent
+        was: it sits in a resolved folder with no resolution of its own, and the
+        parent's resolution is the one that applies to it."""
+        if item.status not in RESOLVED_STATUSES or item.resolution:
+            return False
+        d = self._find(item.slug)
+        return d is not None and self._follows_parent_at(d)
 
     def _parent_problems(self, item) -> list[str]:
         """A `parent:` field must name something this store knows, and must not

@@ -3550,6 +3550,50 @@ class WorkStore(ABC):
         """
         return [i for i in self.query() if i.initiative == epic_slug]
 
+    def parent_children(self, slug: str) -> list[WorkItem]:
+        """Items whose `parent` is `slug` — the `parent` counterpart of
+        `initiative_children`, and local to this store as that relation is."""
+        return [i for i in self.query() if i.parent == slug]
+
+    def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
+        """Every item, paired with whether its status merely follows its parent.
+
+        An item that follows its parent moves with it by construction, so it is
+        never left behind when the parent resolves. No store holds such items
+        unless it has children from before a child had a status of its own; the
+        filesystem store does, and overrides this."""
+        return [(item, False) for item in self.query()]
+
+    def independent_descendants(self, slug: str) -> list[WorkItem]:
+        """Every item beneath `slug` — the whole subtree, not only direct
+        children — that has a status of its own, open or resolved.
+
+        The walk passes *through* an item that follows its parent, so such an
+        item cannot hide what is beneath it. One snapshot, and a visited set so a
+        hand-made cycle of `parent` fields cannot loop."""
+        by_parent: dict[str, list[tuple[WorkItem, bool]]] = {}
+        for item, follows in self._relation_snapshot():
+            by_parent.setdefault(item.parent, []).append((item, follows))
+        found: list[WorkItem] = []
+        seen, pending = {slug}, [slug]
+        while pending:
+            for item, follows in by_parent.get(pending.pop(), []):
+                if item.slug in seen:
+                    continue
+                seen.add(item.slug)
+                pending.append(item.slug)
+                if not follows:
+                    found.append(item)
+        return found
+
+    def open_descendants(self, slug: str) -> list[str]:
+        """Slugs of the independent descendants of `slug` that are still open.
+
+        What stops `slug` being completed or discarded: a resolved item must not
+        have anything open beneath it."""
+        return [i.slug for i in self.independent_descendants(slug)
+                if i.status not in RESOLVED_STATUSES]
+
     # -- concrete operations (shared semantics) --
 
     def _require(self, slug: str) -> WorkItem:
