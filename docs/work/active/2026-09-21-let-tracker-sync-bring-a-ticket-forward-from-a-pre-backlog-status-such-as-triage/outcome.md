@@ -132,3 +132,17 @@ gave **974 passed**.
   no agent in this run contacted a real Jira.
 - **No GitHub issue** is attached to this item. The version cut is batched across
   the five proposit-app items.
+
+## Autonomous decisions
+
+Run unattended on 2026-09-21. Codex (read-only) and an Opus subagent stood in for every human checkpoint.
+
+- **Spec: cover all five commands that claim, not just link and sync.** Codex: yes. Opus: yes. **Chose all five**, with carve-outs for `tracker claim`, `tracker create` and import's early stop for an already-bound ticket.
+- **Spec: land exactly on `statuses.backlog`.** Codex: yes. Opus: yes (landing elsewhere meets the never-pull-back guard, `sync.py:558-566`). **Chose exactly backlog.**
+- **Spec: the key name.** Codex: keep `pre-backlog`. Opus: keep. **Kept.**
+- **Spec: where the step lives.** Codex: a separate helper, called by `intake.claim` for now. Opus: inside `intake.claim`, as its own function. **Chose a separate helper called from `intake.claim`.** This item lands before C4 and is recorded as C4's blocker. C4's plan is amended (`27b1b559`, `eec12ab6`) so the step runs only on moves that take the ticket.
+- **Spec: moves that owe a claim reach `claim()`.** Found by Opus. **Chose to narrow Goal 4 to "no claim owed"** (Opus's option A), with tests.
+- **Verify.** The `tcw:verifier` found all 17 criteria met, plus one wording defect. The `adversarial-code-reviewer` found no wrong transition, and three false or contradictory messages plus two minor points. All were fixed in `c604e765`, each with a combined-text test and a mutation check.
+- **Row 0e (the tracker accepted the transition, but the ticket is still in Triage) is conflicting, not pending.** This was the implementer's call, and I **agreed**: a workflow rule that declines the transition silently would decline a retry too.
+- **Real-Jira check:** requested from the proposit-app session. It is waiting on the requester's approval there, because it creates a ticket in their real Jira project. **Unverified at acceptance.** The fake-Jira tests cover the same code paths.
+- **Review findings rejected:** none.
