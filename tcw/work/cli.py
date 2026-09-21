@@ -36,7 +36,9 @@ from tcw.work.resolve import (
     ResolveError, bookend, load_builtins, resolve_artifact, resolve_procedure,
     resolve_prompts, select,
 )
-from tcw.work.recursion import capability_gate, delegate, escalate, reconcile
+from tcw.work.recursion import (
+    capability_gate, child_path_owners, delegate, escalate, reconcile,
+)
 
 NAME = "work"
 SUBCOMMANDS = {"init", "inbox", "new", "list", "show", "path", "start", "submit",
@@ -404,7 +406,7 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         return None, False                # the store refuses it, and names why
     if not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
-    from tcw.tracker.intake import claim, read_ticket
+    from tcw.tracker.intake import claim, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
     from tcw.tracker.sync import binding_refusal, claim_refusal
     bound, refusal = binding_refusal(st, bare, config)
@@ -416,13 +418,21 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         outcome = claim(client, read_ticket(client, bound.ticket_id))
     except TrackerError as error:
         return _strict_says_no("start", f"{bare} was not started",
-                               f"The tracker could not answer ({error}), so {key} may "
+                               moved_out(key, getattr(error, "left_status", ""))
+                               + f"The tracker could not answer ({error}), so {key} may "
                                f"or may not have been claimed. Run it again once the "
                                f"tracker answers."), False
     if not outcome.claimed:
         detail = f" ({outcome.detail})" if outcome.detail else ""
+        # A strict start that stops here writes no sync record, so `sync` has nothing
+        # to resume: taking the ticket out of triage is finished by starting again.
+        again = (f" Run `tcw work start {bare}` again to finish the claim."
+                 if outcome.left_status or outcome.row in ("0f", "0-read") else "")
         return _strict_says_no("start", f"{bare} was not started",
-                               outcome.message + detail), False
+                               moved_out(key, outcome.left_status)
+                               + outcome.message + detail + again), False
+    if outcome.left_status:
+        print(f"→ {moved_out(key, outcome.left_status)}".rstrip(), file=sys.stderr)
     refusal = claim_refusal(client, config, bound.ticket_id, outcome)
     if refusal:
         return _strict_says_no("start", f"{bare} was not started", refusal), True
@@ -1225,6 +1235,11 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     before = st.get(bare)
     previous = before.status if before is not None else "backlog"
+    # Where the item is before it moves, for the `--worktree` commit below. A
+    # child made by an earlier version is nested in its parent's folder, so this
+    # is not always `backlog/<slug>`; recovering an interrupted claim finds no
+    # folder at all, and git says where it was.
+    source = st.path(bare) or st._tracked_source(bare)
     strict = (before is not None and before.type != "epic" and st.tracker_strict())
     if (before is not None and before.type == "epic" and args.worktree
             and st.tracker_strict()):
@@ -1284,7 +1299,9 @@ def _start(args: argparse.Namespace) -> int:
     # item's own status move on it, producing a worktree whose item is not in it.
     same_repo = st.store_git_root == node
     rel = st.root.relative_to(st.store_git_root)
-    store_paths = [str(rel / "backlog" / bare), str(rel / "active" / bare)]
+    vacated = (source.relative_to(st.store_git_root) if source is not None
+               else rel / "backlog" / bare)
+    store_paths = [str(vacated), str(rel / "active" / bare)]
     if same_repo and ignore_changed:      # one repository, one commit, as before
         store_paths.append(".gitignore")
         ignore_changed = False
@@ -2326,6 +2343,10 @@ def _print_ticket(client, ref: str, issue: dict, offered) -> None:
     print(f"workflow: {result.exclusivity}")
     if result.detail:
         print(f"note: {result.detail}")
+    from tcw.store.base import pre_backlog_entry
+    waiting, way_out = pre_backlog_entry(client.config.pre_backlog, status)
+    if waiting:
+        print(f"note: a claim first takes it out of '{waiting}' through '{way_out}'.")
 
 
 def _project_id(st) -> str:
@@ -2384,7 +2405,8 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     from datetime import date
 
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, claim,
-                                    find_binding, read_ticket, validate_part)
+                                    find_binding, moved_out, pre_backlog_hint,
+                                    read_ticket, validate_part)
     from tcw.tracker.jira import TrackerError
 
     client = _tracker_client(label)
@@ -2433,10 +2455,21 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         if ticket is None and not_found is not None and isinstance(e, TrackerError):
             _not_a_ticket(label, args.ticket, not_found, e)   # `inbox accept` of neither
         else:
-            print(f"tcw work {label}: {e}", file=sys.stderr)
+            # The claim may have raised after taking the ticket out of triage.
+            left = moved_out(ticket.key, getattr(e, "left_status", "")) if ticket else ""
+            print(f"tcw work {label}: {left}{e}", file=sys.stderr)
         return 1
+    if outcome.left_status:
+        # Said whatever follows: the ticket has left triage, so `inbox list` will no
+        # longer show it, and running this command again by key finishes the claim.
+        print(f"→ {moved_out(outcome.key, outcome.left_status)}".rstrip(),
+              file=sys.stderr)
     if not outcome.claimed:
         _print_refusal(label, outcome)
+        if outcome.row in ("0f", "0-read"):
+            # The pre-backlog step's messages leave recovery to the caller.
+            print(f"  Run `tcw work {label} {args.ticket}` again once the tracker "
+                  f"answers.", file=sys.stderr)
         return 1
     if client.config.strict:
         from tcw.tracker.sync import claim_refusal
@@ -2479,6 +2512,10 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
     if not outcome.transitioned:
         print(f"→ {outcome.message}", file=sys.stderr)
+    if outcome.row == "1e" and (hint := pre_backlog_hint(client.config, outcome.status,
+                                                         "")):
+        print(f"warning: {outcome.key} stays in '{outcome.status}'.{hint}",
+              file=sys.stderr)
     return 0
 
 
@@ -3500,6 +3537,18 @@ def _branch_copy(st, bare: str, item):
     return None, item
 
 
+def _child_path_hint(st, item) -> str:
+    """A child-qualified capabilities.yaml path is reconciled in the child that
+    owns it, not where the item lives — see `route_capability_path`. Names
+    those children, and is empty when no declared path is child-qualified."""
+    owners = child_path_owners(st, item)
+    if not owners:
+        return ""
+    return (" For a path that starts with a child project's id, run it inside "
+            "that child's folder, with the path after the id: "
+            f"{', '.join(owners)}.")
+
+
 def _complete(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
@@ -3639,6 +3688,24 @@ def _complete(args: argparse.Namespace) -> int:
     if shipping and (reason := _strict_refusal(st, bare, "complete",
                                               own=branch_store)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
+    # Also before the merge-back, for any resolution: the store refuses to close an
+    # item with anything open beneath it, and finding that out after the branch is
+    # merged would leave the merge behind a refusal. A child created in the
+    # worktree exists only on the branch until the merge, so the branch's copy is
+    # asked as well — but only about items the primary copy does not have. The
+    # branch's copy of every other item is frozen at `start --worktree`, so a child
+    # completed here since would still read open there. When the worktree cannot
+    # be read, only the primary copy is asked, and the store's own check after the
+    # merge is what catches a branch-only child.
+    still_open = st.open_descendants(bare)
+    if branch_store is not None:
+        still_open += [s for s in branch_store.open_descendants(bare)
+                       if st.get(s) is None and st.tombstone(s) is None]
+    if still_open:
+        print(f"tcw work complete: Cannot complete {bare}; these items beneath it "
+              f"are still open: {', '.join(still_open)}. Complete or discard them "
+              f"first.", file=sys.stderr)
+        return 1
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)
         if err:
@@ -3670,14 +3737,16 @@ def _complete(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             for p in problems:
                 print(f"  - {p}", file=sys.stderr)
-            print("Reconcile them (tcw capabilities set <path> --status <S>) "
-                  "or re-run with --force.", file=sys.stderr)
+            print("Reconcile them (tcw capabilities set <path> --status <S>)."
+                  f"{_child_path_hint(st, item)} Or re-run with --force.",
+                  file=sys.stderr)
             return 1
         for p in problems:
             print(f"warning: unreconciled capability: {p}", file=sys.stderr)
         if problems:
             print("Mark them Omitted (tcw capabilities set <path> --status Omitted) "
-                  "if they will never be built.", file=sys.stderr)
+                  f"if they will never be built.{_child_path_hint(st, item)}",
+                  file=sys.stderr)
     # Last thing before the store is touched. A `pre` hook may refuse the
     # completion, and a refusal has to mean the item is untouched — so the hook
     # runs before `complete()` is entered at all, not somewhere inside it.
@@ -3740,8 +3809,28 @@ def _drop(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
-    # `drop` is the only destructive verb with no record behind it — `complete`
-    # preserves the item, `discard` preserves the item. Gate it the way `complete`
+    # Before the `--confirm` gate, for the same reason the missing-item check is:
+    # advising `--confirm` on an item drop will refuse anyway sends the user to a
+    # second error. And name the route that works — `discard` is not a verb.
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work drop: {e}", file=sys.stderr)
+        return 1
+    if item is not None and item.status != "backlog":
+        if item.status in ("completed", "discarded"):
+            print(f"tcw work drop: {args.slug} is already resolved ({item.status}); "
+                  f"there is nothing to drop. If it is waiting to be removed after "
+                  f"a failed archive, `tcw work delete {args.slug}` finishes that.",
+                  file=sys.stderr)
+        else:
+            print(f"tcw work drop: {args.slug} is {item.status}, and drop only deletes "
+                  f"a backlog item. To discard it, keeping a record: `tcw work complete "
+                  f"{args.slug} --resolution wontfix --confirm` (or duplicate / "
+                  f"superseded).", file=sys.stderr)
+        return 1
+    # `drop` is the only destructive verb with no record behind it — completing
+    # and discarding (both `complete`) preserve the item. Gate it the way `complete`
     # gates a discard, and name what goes so the refusal is informative.
     if not args.confirm:
         loc = st.locate(bare)

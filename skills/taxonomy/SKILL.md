@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # The taxonomy process
 
@@ -84,7 +85,10 @@ viewers; it is not an editable taxonomy field.
 - **Keep descriptions short** — one or two sentences of what the noun means here.
 - **Run `tcw taxonomy check` after edits** — it validates inherited project IDs,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
-  reference (cycles, duplicate IDs, dangling/ambiguous refs).
+  reference (cycles, duplicate IDs, dangling/ambiguous refs). It also reports a
+  pre-2.5.0 `config.yaml` left at the taxonomy root, which is no longer read:
+  move any `extends` it lists into `taxonomy.extends` in `tcw-config.yaml`, then
+  delete the file.
 - **Cross-reference in prose with `tcw://` links** — a term description may link
   to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
   `<project-id>/`-prefixed namespace for inherited terms). `tcw validate` resolves

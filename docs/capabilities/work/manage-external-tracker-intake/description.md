@@ -9,6 +9,13 @@ to someone else, or already closed, is refused, and I am told who has it and whe
 it is. The item's intake holds the ticket's description with a link to the ticket,
 its request is still mine to write, and it has no owner until I start it.
 
+A ticket waiting in a status before the backlog, such as `Triage`, is claimable
+once I name that status and the transition out of it under
+`work.tracker.pre-backlog`: the import first takes it through that transition to
+`statuses.backlog`, and tells me so, even when the claim afterwards fails. Without
+the setting the refusal names it, and a Triage ticket already assigned to me is
+imported as before with a warning that it stays in Triage.
+
 `tcw work inbox accept <key>` is a second way into the same claim, not a second
 claim: where `work.tracker.inbox-query` is declared, it runs this import, with the
 same checks, binding and messages, for a ticket I am triaging from the inbox.

@@ -1,0 +1,8 @@
+slug: 2026-09-21-report-a-missing-taxonomy-path-as-a-validate-problem-instead-of-crashing-inside-the-capabilities-check
+title: Report a missing taxonomy path as a validate problem instead of crashing inside
+  the capabilities check
+created: '2026-09-21'
+resolution: null
+tags:
+- bug
+- store

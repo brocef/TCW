@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 Use the `work` skill. This skill covers the stage range **`inbox` →
 `request`**.
@@ -20,8 +21,9 @@ with `tcw work inbox accept <entry> --title "<clear title>"`.
 When the project declares `work.tracker.inbox-query`, `inbox list` has a second
 section, `tracker tickets:`. Work those too: read one with `tcw work inbox show
 <key>`, and accept it with `tcw work inbox accept <key>`, which **claims the ticket
-in the tracker** (assigns it to the user) — so confirm with the user before
-accepting a ticket. A raw entry named like a ticket key hides it; add `--ticket`.
+in the tracker** (assigns it to the user) — and, where `work.tracker.pre-backlog`
+names the ticket's status, first moves it out of triage to the backlog — so confirm
+with the user before accepting a ticket, saying which of those will happen. A raw entry named like a ticket key hides it; add `--ticket`.
 
 Accepting an entry writes it as the item's `intake.md`. Then invoke
 the `work-stage` skill with `request` and the new item's slug, and run the `request` stage over that intake to

@@ -33,7 +33,7 @@ from tcw.validate import validate
 WHERE = "work.repository"
 
 
-from nodeconfig import declare_extends
+from nodeconfig import declare_extends, set_component_key
 
 
 def _repo(path: Path) -> Path:
@@ -2198,3 +2198,44 @@ def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
     config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
     assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
     assert config["taxonomy"]["extends"] == ["source"]
+
+
+# ── a leftover pre-2.5.0 config file in a provisioned tree ───────────────────
+
+def test_a_leftover_in_a_provisioned_tree_is_reported_by_its_absolute_path(tmp_path):
+    """The tree lives in another repository's clone, outside the node, and
+    `validate` never runs its check (there is no `docs/taxonomy` here) — so the
+    leftover is named by its absolute path, and exactly once."""
+    remote = _remote_with_tree(tmp_path)
+    (remote / "trees/taxonomy/config.yaml").write_text("extends: []\n")
+    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "old config"], check=True)
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    declaration = RepositoryDeclaration(url=str(remote), path="trees/taxonomy")
+    set_component_key(code, "taxonomy", "repository",
+                      {"url": declaration.url, "path": declaration.path})
+    FsStoreProvisioner(code, "taxonomy", declaration).ensure_available()
+    leftover = str(fs.provisioned_store_root(code, declaration).resolve() / "config.yaml")
+
+    lines = [p for p in FsTaxonomyStore.open(code).check() if "no longer read" in p]
+    assert len(lines) == 1 and lines[0].startswith(f"{leftover}: "), lines
+    lines = [p for p in validate(code) if "no longer read" in p]
+    assert len(lines) == 1 and lines[0].startswith(f"taxonomy check: {leftover}: "), lines
+
+
+def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
+    """A taxonomy declared only through `taxonomy.repository`, not yet obtained
+    on this machine, and no `docs/taxonomy`. `validate` never selected such a
+    store for a check, so it used to say nothing; the work store has always
+    been reported in this state. Now the tree is too — once, naming the
+    command that fixes it."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    set_component_key(code, "taxonomy", "repository",
+                      {"url": "https://example.invalid/orchestrator.git",
+                       "path": "trees/taxonomy"})
+
+    problems = [p for p in validate(code) if p.startswith("taxonomy check: ")]
+    assert len(problems) == 1, problems
+    assert "tcw provision" in problems[0], problems

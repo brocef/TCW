@@ -24,6 +24,7 @@ import time
 import uuid
 from datetime import date, datetime, timezone
 from contextlib import contextmanager, nullcontext, suppress
+from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
 from typing import NoReturn
@@ -1166,9 +1167,10 @@ _UniqueKeyLoader.add_constructor(
 #: moved to `<component>.extends` in the node's `tcw-config.yaml`, so TCW writes
 #: no `config.yaml` or `.config.yaml` at all — and the work store never did,
 #: whatever this comment used to claim. A leftover copy is not a record of ours
-#: and is not held to the mapping contract; `tcw validate`'s YAML scan still
-#: reports it if it is unparseable, which is the right amount of attention to
-#: pay a file nothing reads.
+#: and is not held to the mapping contract. It is still reported: the component
+#: `check()` names any copy at a store root as no longer read
+#: (`FsTreeStore._legacy_config_problems`), and `tcw validate`'s YAML scan
+#: separately reports one that is unparseable.
 #:
 #: Three names are absent on purpose, and each is legitimately not a mapping or
 #: is never reached by that pass. `dod.yaml` is a top-level list. The node
@@ -1604,13 +1606,15 @@ class FsTreeStore:
 
     Subclasses set `COMPONENT` (the `docs/<COMPONENT>/` dir) and optionally
     `LEGACY_CONFIG_NAME` (the per-store config file this component used to
-    write, retained only so it stays out of the attachment surface).
+    write, retained so it stays out of the attachment surface and so `check`
+    can report a leftover copy).
     """
     COMPONENT: str
     #: The filename this component once kept its own `extends` in, before it
     #: moved to the node's `tcw-config.yaml`. Nothing reads or writes the file
-    #: any more; the name survives on the class for exactly one reason, in
-    #: `_node_reserved` — see the comment there.
+    #: any more. The name survives on the class for two reasons: `_node_reserved`
+    #: keeps it out of a folder's attachments (see the comment there), and
+    #: `_legacy_config_problems` reports a copy left at the store root.
     LEGACY_CONFIG_NAME: str | None = None
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
@@ -1972,6 +1976,32 @@ class FsTreeStore:
         if self.LEGACY_CONFIG_NAME:
             names.add(self.LEGACY_CONFIG_NAME)
         return names
+
+    def _legacy_config_problems(self) -> list[str]:
+        """The pre-2.5.0 config file at this store's root, reported, or `[]`.
+
+        An upgraded project that never moved its `extends` out of this file
+        silently lost every inherited entry, and nothing said why. So a copy at
+        the store root is a problem whatever it holds — even one that only
+        repeats `<component>.extends` misleads the next reader into thinking it
+        is read. Existence only: the file is never opened, so a corrupt copy
+        cannot make `check` raise, and it is never rewritten or deleted.
+
+        Only the root: a file of the same name inside a folder node is an
+        ordinary file of that node.
+        """
+        if not self.LEGACY_CONFIG_NAME:
+            return []
+        path = self.root / self.LEGACY_CONFIG_NAME
+        if not path.is_file():
+            return []
+        try:
+            shown = str(path.relative_to(self.node_root))
+        except ValueError:
+            shown = str(path)
+        return [f"{shown}: no longer read since TCW 2.5.0 — move any needed "
+                f"extends into {self._extends_label()}, then delete the file; "
+                f"if already migrated, just delete it"]
 
     def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
         """Read a folder node → (meta mapping, description text, attachment names).
@@ -2346,6 +2376,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level term"
                 )
+        if identifier is None:
+            # About the store, not any one term — left out of a scoped check,
+            # which is how `tcw serve` validates the object it just wrote.
+            problems += self._legacy_config_problems()
 
         if identifier is not None:
             selected = self.get(identifier)
@@ -3025,6 +3059,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level capability"
                 )
+        if identifier is None:
+            problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
 
         selected = self.get(identifier) if identifier is not None else None
         if identifier is not None and selected is None:
@@ -3127,7 +3163,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             alias, _, cid = target.partition("/")
             st = self.extends.get(alias)
             if st is None:
-                return f"overrides → unknown alias '{alias}'"
+                # On the store being checked, an alias missing here is always
+                # one `<component>.extends` does not declare: a declared alias
+                # that cannot be resolved fails the open, and a cycle's back
+                # edge is recorded on the deepest store, never this one.
+                return (f"overrides → unknown alias '{alias}' "
+                        f"(not declared in {self._extends_label()})")
             return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
         if self.get_by_id(target):
             return f"overrides → '{target}' targets a local capability (must be inherited)"
@@ -3797,8 +3838,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     Status is the top-level status folder an item lives under; a transition is a
     `git mv` of the item folder. The stable id is the slug; an item folder is any
-    dir holding a `state.yaml`, found at any nesting depth — a child item is a
-    folder nested inside its parent's (the node relation, derived from nesting).
+    dir holding a `state.yaml`, found at any nesting depth. A child item records
+    its parent in a `parent:` field and sits in the status folders like any other
+    item; children made by earlier versions are folders nested inside their
+    parent's, and for those the relation is derived from the nesting.
     """
     COMPONENT = "work"
 
@@ -3979,13 +4022,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # path searched and the path written. The suffix is one hyphen plus
             # `uuid4().hex`, 32 characters — see where the claim is created.
             claimed = interrupted[0].name[:-33]
+            # Where the claim came from, asked of git: the folder is gone, and a
+            # child made by an earlier version came from inside its parent's.
+            src = self._tracked_source(claimed) or self.root / "backlog" / claimed
             state_path = interrupted[0] / "state.yaml"
             state = load_yaml(state_path)
             state["owner"], state["started"] = owner, started
+            # A claim this version made already carries `parent:`; one an
+            # earlier version left behind does not, and the relation the nested
+            # source folder held would be lost on landing at the top level.
+            if not state.get("parent") and (tracked := self._tracked_parent(claimed)):
+                state["parent"] = tracked
             dump_yaml(state_path, state)
             dst = self.root / "active" / claimed
             os.replace(interrupted[0], dst)
-            src = self.root / "backlog" / claimed
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
                 self._commit_transition(claimed, src, dst, "active", None)
@@ -4069,6 +4119,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # out of `backlog` and nowhere else; anything else means we lost.
             if src is None or self._status_of(src) != "backlog":
                 raise FileNotFoundError(slug)
+            # A child made by an earlier version leaves its parent's folder with
+            # this claim. Written before the move, so an interrupted claim
+            # already carries it; the field names the folder it is still in, so
+            # a claim that stops here leaves nothing that contradicts it.
+            if self._follows_parent_at(src):
+                self._set_parent_in_place(src)
             os.replace(src, private)
         except FileNotFoundError:
             self._lost_the_claim(slug)                # always raises
@@ -4138,9 +4194,139 @@ class FsWorkStore(FsTreeStore, WorkStore):
         → `backlog`), so a nested child reports its top-level status folder."""
         return d.relative_to(self.root).parts[0]
 
-    def _parent_slug(self, d: Path) -> str:
-        """Parent = the nearest `state.yaml`-bearing ancestor's name; "" if the
-        nearest ancestor is a status folder (the relation derived from nesting)."""
+    def _parent_slug(self, d: Path, state: dict | None = None) -> str:
+        """Parent = the item's `parent:` field; failing that, the folder it is
+        nested in.
+
+        A child records its parent as a field and sits in the ordinary status
+        folders, so its status is its own. Children made by earlier versions
+        were nested inside their parent's folder with no field, and still read
+        through the nesting walk. `state` is the already-loaded `state.yaml`,
+        passed by callers that have it so the file is not read twice."""
+        if state is None:
+            state = self._safe_yaml(d / "state.yaml")
+        recorded = state.get("parent") if isinstance(state, dict) else None
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded.strip()
+        return self._nesting_parent(d)
+
+    def _follows_parent_at(self, d: Path, state: dict | None = None) -> bool:
+        """Whether the item at `d` is a child made by an earlier version: nested
+        in another item's folder with no `parent:` field. Its status is its
+        top-level folder's, so it moves with its parent."""
+        if state is None:
+            state = self._safe_yaml(d / "state.yaml")
+        recorded = state.get("parent") if isinstance(state, dict) else None
+        if isinstance(recorded, str) and recorded.strip():
+            return False
+        return bool(self._nesting_parent(d))
+
+    def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
+        """Items on the board plus items mid-claim, each with whether it follows
+        its parent.
+
+        A claim moves the item's folder into `.claiming/` for a moment before it
+        lands in `active/`, and the board walk does not look there. Without these
+        a parent could be completed in that moment as if the child did not
+        exist."""
+        pairs = []
+        for d in self._item_dirs():
+            item = self._item_from_dir(d)
+            if item is not None:
+                pairs.append((item, self._follows_parent_at(d)))
+        return pairs + self._in_flight_items()
+
+    def _in_flight_items(self) -> list[tuple[WorkItem, bool]]:
+        """Every item inside `.claiming/`: each claimed folder and every item
+        nested inside it, reported as `active` because that is where a claim
+        lands. A claimed folder is named `<slug>-<32 hex>`; its real slug is used
+        wherever it appears, including as the parent of what is nested in it."""
+        pairs = []
+        for claim in sorted((self.root / ".claiming").glob("*-" + "[0-9a-f]" * 32)):
+            real = claim.name[:-33]
+            try:
+                states = sorted(claim.rglob("state.yaml"))
+            except FileNotFoundError:
+                continue                               # the claim landed meanwhile
+            for path in states:
+                d = path.parent
+                try:
+                    state = self._safe_yaml(path)
+                    item = self._read_item(d)
+                except FileNotFoundError:
+                    continue
+                if not path.exists():
+                    continue                           # the claim landed mid-read
+                recorded = state.get("parent")
+                if isinstance(recorded, str) and recorded.strip():
+                    parent, follows = recorded.strip(), False
+                elif d == claim:
+                    # Left by an earlier version, which wrote no field: the
+                    # folder it came from, as git holds it, still says.
+                    parent, follows = self._tracked_parent(real), False
+                else:
+                    # Bounded at the claim folder: if the claim lands meanwhile,
+                    # nothing above it is ours to walk.
+                    enclosing = d.parent
+                    while enclosing != claim and not (enclosing / "state.yaml").exists():
+                        if claim not in enclosing.parents:
+                            break
+                        enclosing = enclosing.parent
+                    if enclosing != claim and not (enclosing / "state.yaml").exists():
+                        continue
+                    parent = real if enclosing == claim else enclosing.name
+                    follows = True
+                pairs.append((replace(item, slug=real if d == claim else d.name,
+                                      status="active", parent=parent), follows))
+        return pairs
+
+    def _set_parent_in_place(self, d: Path) -> None:
+        """Write the nesting-derived parent into `d`'s `state.yaml`."""
+        state = load_yaml(d / "state.yaml")
+        state["parent"] = self._nesting_parent(d)
+        dump_yaml(d / "state.yaml", state)
+
+    def _tracked_source(self, slug: str) -> Path | None:
+        """The folder git's index holds for `slug` under `backlog/`, or None.
+
+        For an item whose folder is gone from where it was — mid-claim in
+        `.claiming/` — so the vacated path can be staged as a deletion. A child
+        made by an earlier version was nested, so the path cannot be derived
+        from the slug. Two matches is two items with one name, which is refused
+        rather than guessed at."""
+        try:
+            rel = (self.root / "backlog").resolve().relative_to(self.store_git_root.resolve())
+        except ValueError:
+            return None
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "--", str(rel)],
+                      capture_output=True, text=True, check=False)
+        if listed.returncode != 0:
+            return None
+        hits = sorted({str(Path(line).parent) for line in listed.stdout.splitlines()
+                       if line.endswith(f"/{slug}/state.yaml")})
+        if len(hits) > 1:
+            raise ValueError(f"{slug} is tracked in more than one folder: "
+                             f"{', '.join(hits)}")
+        return self.store_git_root / hits[0] if hits else None
+
+    def _tracked_parent(self, slug: str) -> str:
+        """The item git's index holds `slug` nested inside, or "" when it is
+        tracked at the top of `backlog/` or not at all."""
+        try:
+            source = self._tracked_source(slug)
+        except ValueError:
+            return ""                     # two folders of one name: not ours to pick
+        if source is None:
+            return ""
+        try:
+            parts = source.resolve().relative_to((self.root / "backlog").resolve()).parts
+        except ValueError:
+            return ""
+        return parts[-2] if len(parts) > 1 else ""
+
+    def _nesting_parent(self, d: Path) -> str:
+        """The nearest `state.yaml`-bearing ancestor's name; "" if the nearest
+        ancestor is a status folder."""
         anc = d.parent
         while anc != self.root and self.root in anc.parents:
             if (anc / "state.yaml").exists():
@@ -4522,7 +4708,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             type=state.get("type", ""),
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
-            parent=self._parent_slug(d),
+            parent=self._parent_slug(d, state),
             owner=state.get("owner", ""),
             started=state.get("started", ""),
             tracker=tracker,
@@ -4710,8 +4896,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return (f"tcw work: delete {slug} (retained in {location[:12]})"
                 if location else f"tcw work: delete {slug} (no commit held it)")
 
-    def _graveyard_dirt_is_only(self, slug: str) -> bool:
-        """Whether the graveyard's uncommitted change touches only `slug`.
+    def _graveyard_dirt_is_only(self, slugs: set[str]) -> bool:
+        """Whether the graveyard's uncommitted change touches only `slugs` — one
+        item, or a removed item together with the children nested in it.
 
         Compared entry by entry against the committed file rather than by
         reading the diff, because the question is about records and not about
@@ -4738,10 +4925,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             key for key in set(committed) | set(current)
             if committed.get(key) != current.get(key)
         }
-        return changed <= {slug}
+        return changed <= slugs
 
     def _require_writable_graveyard(self, slug: str,
-                                    only_own_entry: bool = False) -> None:
+                                    only_own_entry: bool = False,
+                                    also: tuple[str, ...] = ()) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
 
@@ -4795,7 +4983,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
-            if only_own_entry and self._graveyard_dirt_is_only(slug):
+            if only_own_entry and self._graveyard_dirt_is_only({slug, *also}):
                 # This store's own unfinished write, and nothing else. The first
                 # attempt at a removal writes the tombstone and can then fail to
                 # commit it, so refusing here made that state unfinishable
@@ -4841,17 +5029,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         resolution to a single added block and makes a merge conflict between two
         concurrent resolutions a plain, settleable one.
         """
+        self._write_tombstones([(slug, resolution, resolved, location)])
+
+    def _write_tombstones(self, records: list[tuple[str, str, str, str]]) -> None:
+        """`_write_tombstone` for several `(slug, resolution, resolved, location)`
+        records in one read-modify-write, so a removed item and the children
+        nested in it are recorded together or not at all."""
         path = self._graveyard_path()
         doc: dict = {}
         if path.exists():
             loaded = load_yaml(path)
             if isinstance(loaded, dict):
                 doc = loaded
-        record = {"resolution": resolution or "",
-                  "resolved": resolved or date.today().isoformat()}
-        if location:
-            record["location"] = location
-        doc[slug] = record
+        for slug, resolution, resolved, location in records:
+            record = {"resolution": resolution or "",
+                      "resolved": resolved or date.today().isoformat()}
+            if location:
+                record["location"] = location
+            doc[slug] = record
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
 
@@ -5015,7 +5210,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return True
-        return False
+        return self._nested_tree_path(location, slug) is not None
+
+    def _nested_tree_path(self, rev: str, slug: str) -> Path | None:
+        """The store-repo-relative folder `rev` holds for `slug` *inside another
+        item's folder* under a resolved status, or None.
+
+        Children made by earlier versions were nested in their parent's folder
+        and leave the store with it, so `<status>/<slug>` is not where git has
+        them. Refuses to guess between two matches."""
+        hits: list[str] = []
+        for status in RESOLVED_STATUSES:
+            try:
+                rel = (self.root / status).resolve().relative_to(self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+                           "--name-only", rev, "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode != 0:
+                continue
+            hits += [str(Path(line).parent) for line in listed.stdout.splitlines()
+                     if line.endswith(f"/{slug}/state.yaml")
+                     and Path(line).parent.parent != Path(rel)]
+        return Path(hits[0]) if len(hits) == 1 else None
 
     def pending_deletion(self, slug: str) -> bool:
         """Whether `slug` is resolved, still present, and not to be retained.
@@ -5079,7 +5297,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return rel
-        return None
+        return None if status else self._nested_tree_path("HEAD", slug)
+
+    def _nested_in_commit(self, committed: Path) -> list[tuple[str, str]]:
+        """`(slug, resolution)` for every item HEAD holds nested inside the folder
+        at `committed` — children made by earlier versions, which a removal of
+        that folder takes with it. Read from git, not from disk, so a removal
+        rerun after the folder is already gone still finds them."""
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+                       "--name-only", "HEAD", "--", str(committed)],
+                      capture_output=True, text=True, check=False)
+        if listed.returncode != 0:
+            return []
+        found = []
+        for line in sorted(listed.stdout.splitlines()):
+            folder = Path(line).parent
+            if Path(line).name != "state.yaml" or folder == committed:
+                continue
+            shown = _git(["git", "-C", str(self.store_git_root), "show", f"HEAD:{line}"],
+                         capture_output=True, text=True, check=False)
+            try:
+                state = yaml.safe_load(shown.stdout) if shown.returncode == 0 else {}
+            except yaml.YAMLError:
+                state = {}
+            resolution = state.get("resolution") if isinstance(state, dict) else None
+            found.append((folder.name, resolution or ""))
+        return found
 
     def _require_retrievable(self, slug: str, folder: Path,
                              committed: Path | None) -> None:
@@ -5195,6 +5438,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             resuming = self.pending_removal(slug)
             status = status or (item.status if item is not None else "")
             committed = self._committed_item_path(slug, status)
+            nested = self._nested_in_commit(committed) if committed is not None else []
             folder = self._find(slug)
             if folder is not None and folder.exists():
                 self._require_retrievable(slug, folder, committed)
@@ -5211,7 +5455,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # `pending_removal` is also true on a *first* attempt whose `pre`
             # binding relocated the item, where the graveyard is clean and any
             # dirt found is somebody else's.
-            self._require_writable_graveyard(slug, only_own_entry=resuming)
+            self._require_writable_graveyard(slug, only_own_entry=resuming,
+                                             also=tuple(s for s, _ in nested))
             if folder is not None and folder.exists():
                 shutil.rmtree(folder)
             existing = self.tombstone(slug)
@@ -5224,12 +5469,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # source: `WorkItem` carries no resolved timestamp, and
             # `_write_tombstone`'s default is the honest "known resolved by
             # today" the backfill command already uses.
-            self._write_tombstone(
-                slug,
-                (existing.resolution if existing else "")
-                or (item.resolution if item is not None else "") or "",
-                existing.resolved if existing else "",
-                location=location)
+            resolution = ((existing.resolution if existing else "")
+                          or (item.resolution if item is not None else "") or "")
+            records = [(slug, resolution, existing.resolved if existing else "", location)]
+            # Children nested in the folder went with it. Each keeps its own
+            # resolution if it had one; otherwise it followed its parent's.
+            for child, own in nested:
+                known = self.tombstone(child)
+                records.append((child,
+                                (known.resolution if known else "") or own or resolution,
+                                known.resolved if known else "", location))
+            self._write_tombstones(records)
             if self.auto_commit_transitions():
                 paths = [self._graveyard_path()]
                 if committed is not None:
@@ -5876,7 +6126,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
             for tag in item.tags:
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
-            problems.extend(self._status_resolution_problems(item))
+            if not self._carried_by_its_parent(item):
+                problems.extend(self._status_resolution_problems(item))
+            problems.extend(self._parent_problems(item))
             try:
                 stages = self._declared_plan_stages(item.slug)
                 if stages:
@@ -5901,6 +6153,55 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 problems.append(f"{item.slug}: plan stage '{stage.id}' requires non-empty '{heading}' section")
             except ValueError as exc:
                 problems.append(f"{item.slug}: {exc}")
+        return problems
+
+    def _carried_by_its_parent(self, item) -> bool:
+        """A child made by an earlier version, resolved only because its parent
+        was: it sits in a resolved folder with no resolution of its own, and the
+        parent's resolution is the one that applies to it."""
+        if item.status not in RESOLVED_STATUSES or item.resolution:
+            return False
+        d = self._find(item.slug)
+        return d is not None and self._follows_parent_at(d)
+
+    def _parent_problems(self, item) -> list[str]:
+        """A `parent:` field must name something this store knows, and must not
+        contradict the folder a nested item sits in.
+
+        A tombstone counts: a resolved parent may have been deleted under
+        `work.retain: false`, and its children still name it."""
+        d = self._find(item.slug)
+        if d is None:
+            return []
+        recorded = self._safe_yaml(d / "state.yaml").get("parent")
+        if not isinstance(recorded, str) or not recorded.strip():
+            return []
+        recorded = recorded.strip()
+        problems = []
+        try:
+            known = self.get(recorded) is not None or self.tombstone(recorded) is not None
+        except MultipleMatch:
+            known = True
+        if not known:
+            problems.append(f"{item.slug}: parent '{recorded}' names no work item "
+                            f"or tombstone in this store")
+        chain, cursor = [item.slug], recorded
+        while cursor and cursor not in chain:
+            chain.append(cursor)
+            try:
+                above = self.get(cursor)
+            except MultipleMatch:
+                above = None
+            cursor = above.parent if above is not None else ""
+        if cursor == item.slug:
+            # Nothing in a loop can ever be completed — each holds the next open —
+            # and the board has no root to print any of them under.
+            problems.append(f"{item.slug}: its parent chain loops back to it "
+                            f"({' → '.join(chain + [item.slug])})")
+        enclosing = self._nesting_parent(d)
+        if enclosing and enclosing != recorded:
+            problems.append(f"{item.slug}: parent field '{recorded}' disagrees with "
+                            f"the folder it sits in ('{enclosing}')")
         return problems
 
     @staticmethod
@@ -6258,6 +6559,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # rather than special-casing whichever status was added last.
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
+        # A child made by an earlier version is leaving its parent's folder, so
+        # the relation the folder held is written down in the same move.
+        if self._follows_parent_at(src):
+            fields = {**(fields or {}), "parent": self._nesting_parent(src)}
         self._mv(src, dst)
         if fields:
             # After the move, before the commit. After, because the move is where
@@ -6452,12 +6757,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if (type or "") not in WORK_TYPES:
             raise ValueError(f"invalid type '{type}' (only 'epic' is supported)")
 
-        # Validate parent
-        parent_dir: Path | None = None
+        # Validate parent. The child records it as a field and lives in the
+        # ordinary `backlog/` folder, so its status is its own from the start.
         if parent:
-            parent_dir = self._find(parent)
-            if parent_dir is None:
-                raise ValueError(f"no such parent work item: {parent}")
+            self._require_live_parent(parent)
 
         # Resolve blockers
         blocked_by: list[dict] = []
@@ -6475,11 +6778,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             else date.today().isoformat()
         slug = self._unique_slug(created_date, title)
 
-        # Determine directory
-        if parent_dir:
-            d = parent_dir / slug
-        else:
-            d = self.root / "backlog" / slug
+        d = self.root / "backlog" / slug
 
         # Build state.yaml content
         state: dict = {
@@ -6500,6 +6799,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             state["blocked_by"] = blocked_by
         if initiative:
             state["initiative"] = initiative
+        if parent:
+            state["parent"] = parent
         if type:
             state["type"] = type
 
@@ -6592,25 +6893,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
             else:
                 raise ValueError("blockers must be a list or None")
 
-        # Handle parent change: validate the target here, but effect the folder
-        # move AFTER the state/body writes (below) so edits land in the current
-        # location and the re-parent stays a single git-atomic rename that also
-        # carries any nested children. Parent is derived from nesting, not stored.
+        # Handle parent change. The relation is the `parent:` field, so setting
+        # or clearing it is a field write and never changes status. The one move
+        # left is for a child made by an earlier version, nested in its parent's
+        # folder: it goes to the top of its own status folder, AFTER the
+        # state/body writes (below) so they land in the current location.
         move_to: Path | None = None
         if parent is not _UNSET:
             if parent is None or parent == "":
-                # Denest: move to top-level of the item's current status folder.
-                new_parent_dir = self.root / self._status_of(d) / slug
+                state.pop("parent", None)
             else:
-                pd = self._find(parent)
-                if pd is None:
-                    raise ValueError(f"no such parent work item: {parent}")
-                if pd.resolve() == d.resolve() or d.resolve() in pd.resolve().parents:
-                    raise ValueError(
-                        "cannot re-parent an item under itself or a descendant")
-                new_parent_dir = pd / slug
-            if new_parent_dir.resolve() != d.resolve():
-                move_to = new_parent_dir
+                self._require_live_parent(
+                    parent, moving=slug,
+                    open_item=self._status_of(d) not in RESOLVED_STATUSES)
+                state["parent"] = parent
+            if self._nesting_parent(d):
+                move_to = self.root / self._status_of(d) / slug
 
         # Apply field changes to state dict
         changed = False

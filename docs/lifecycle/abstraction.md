@@ -25,5 +25,5 @@ Express behavior in the abstract vocabulary — **item · status · transition �
     - Reconstructing current state from git history — _state is the status; git is archive._
     - Globbing a store folder as an open namespace — _bound it: body + named fields + named attachments._
     - Hard-coded paths in references — _use stable IDs / paths-within-the-store; resolve through the store._
-    - Parent/child as literal directory ancestry outside the node-resolution layer — _express the relation abstractly; the FS adapter derives it from nesting._
+    - Parent/child as literal directory ancestry outside the node-resolution layer — _express the relation abstractly; the FS adapter records it as a `parent:` field, and derives it from nesting only for children made before it did._
     - Worktrees and `rg`/`find` queries — _filesystem-adapter local details, not store-interface operations._

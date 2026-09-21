@@ -4,7 +4,8 @@ query that selects the tickets I could pick up, the names of the environment
 variables holding my credentials, and the name of the transition that claims a
 ticket — and optionally a second query, `inbox-query`, that selects the tickets still
 waiting to be triaged, which `tcw work inbox list` reports beside the raw intake
-(`work/manage-the-work-inbox`) — and then read those tickets from the terminal without changing anything
+(`work/manage-the-work-inbox`), and `pre-backlog`, the statuses tickets wait in
+before the backlog with the transition out of each — and then read those tickets from the terminal without changing anything
 in Jira. Settings a node leaves out can come from its parent nodes
 (`work/inherit-tracker-settings-from-parent-nodes`).
 
@@ -15,6 +16,9 @@ answers two separate questions about it:
 - **claimable** — does this ticket, right now, offer the claim transition?
 - **exclusive** — would the workflow refuse a second person claiming the same
   ticket?
+
+For a ticket in a status named under `pre-backlog`, it also notes that a claim
+first takes it out through the named transition.
 
 The second answer is honest about what one ticket can show. A ticket already in
 the status the claim leads to reveals a workflow that lets a second claimant in

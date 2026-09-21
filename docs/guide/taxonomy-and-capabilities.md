@@ -56,7 +56,9 @@ its own namespace, including sources inherited transitively, and there is **no
 silent merge** — a local `permission` and an imported `acme/permission` stay
 distinct. Capabilities federate separately and additionally let a
 consumer **override** an inherited entry per-project (see `tcw capabilities`
-above).
+above). Before 2.5.0 this list lived in a file inside the tree
+(`docs/taxonomy/config.yaml`, `docs/capabilities/.config.yaml`); that file is no
+longer read, and `check` reports one left behind until it is deleted.
 
 ## Bootstrapping a taxonomy or a capabilities ledger
 
@@ -100,7 +102,20 @@ an inherited capability, one with capabilities nested under it (so
 another capability still points at through `Superseded by`, `Blocked by`, `Roles`
 or `When`. A work item that deletes a capability lists its path under `removed:`
 in its `capabilities.yaml`, and completing the item is refused while the path
-still resolves.
+still resolves. A `removed:` path naming a capability the ledger inherits is
+refused outright, since `rm` could never delete it.
+
+A work item on a node with no ledger of its own can declare changes in a child
+node's ledger by starting the path with the child's project id:
+
+```yaml
+new:
+    - proposit-shared/authoring/add-a-claim   # checked in proposit-shared's ledger
+```
+
+Completion checks the rest of the path in that child's ledger; run
+`tcw capabilities set authoring/add-a-claim --status Supported` inside the child
+to reconcile it. The full rules are in [Work](work.md), under `complete`.
 
 Status is one of `Supported · Partial · Missing · Blocked · Omitted`. `check`
 validates the metadata vocabulary, resolves each `Subject:` pointer against the

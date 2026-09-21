@@ -834,3 +834,27 @@
   location: 9121652d02106aee6efea1e65f48c4cfa0867e2a
   resolution: done
   resolved: '2026-09-20'
+2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
+  location: fd372a04d9ddeb3d63937cc2a3c9847fa1027401
+  resolution: done
+  resolved: '2026-09-21'
+2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers:
+  location: 6939d75a76852a3283bcc04c4a0188478e7bc127
+  resolution: done
+  resolved: '2026-09-21'
+2026-09-21-let-tracker-sync-bring-a-ticket-forward-from-a-pre-backlog-status-such-as-triage:
+  location: 174dab8f70af7dc3a712d3a1fe5d7ec8b90e9534
+  resolution: done
+  resolved: '2026-09-21'
+2026-09-21-point-a-refused-drop-of-an-active-or-in-review-item-to-the-discard-route:
+  location: b354b99759a8ccfe1ba3de00e38b1ab2d6fe1239
+  resolution: done
+  resolved: '2026-09-21'
+2026-09-21-report-a-leftover-pre-2-5-0-store-config-file-instead-of-silently-dropping-its-extends:
+  location: 49ceb80a89f2162d2ad695a4dc16d617660df163
+  resolution: done
+  resolved: '2026-09-21'
+2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli:
+  location: 5487f3656ed7105963c7708366c3e39237bcf9c7
+  resolution: done
+  resolved: '2026-09-21'

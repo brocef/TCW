@@ -30,8 +30,8 @@ work:
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
 `jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.start`, and optional `statuses`, `strict`,
-`comments`, `link`, `inbox-query`, `exclusive-claim-transition` and
+`credentials.token-env`, `transitions.start`, and optional `statuses`, `pre-backlog`,
+`strict`, `comments`, `link`, `inbox-query`, `exclusive-claim-transition` and
 `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
 parent's. Unknown keys are reported rather than
@@ -146,6 +146,28 @@ without it.** Jira decides which status a new issue starts in, and in a project
 with a triage column that is usually the status `inbox-query` selects — so a
 ticket left there comes back as new inbound work. A project that already sets
 `statuses` has to add `backlog` before its first `tracker create`.
+
+**`pre-backlog` maps each tracker status a ticket waits in before the backlog to
+the transition name that takes it to the configured backlog** (tracker status →
+transition name to `statuses.backlog`). Set it when tickets arrive in a triage
+column the start transition is not offered from:
+
+```yaml
+        statuses:
+            backlog: To Do          # required when pre-backlog is set
+            active: In Progress
+        pre-backlog:
+            Triage: Accept
+```
+
+Anything that claims a ticket — `tracker import`, `inbox accept`, `start`,
+`link --sync-status`, `sync` — then applies `Accept` first. `tcw validate` reports
+a non-mapping, a blank status or transition, the same status listed twice
+(compared ignoring case and spacing), a status that is also mapped under
+`statuses`, and `pre-backlog` without `statuses.backlog`. It merges from ancestors
+key by key, like `statuses`. Without it, TCW never takes a ticket out of triage, and
+the refusal names the key. User-facing detail: `docs/guide/jira.md`, "Tickets
+waiting in triage".
 
 `strict: true` makes a claimed ticket required for local work (what it refuses is in
 `commands.md`, "Strict mode"). It must be a boolean, and it needs `statuses.active`,
