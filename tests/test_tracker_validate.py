@@ -313,16 +313,19 @@ STRICT_STATUSES = {"backlog": "To Do", "active": "In Progress", "completed": "Do
                    "discarded": "Won't Do"}
 
 
-def test_strict_and_on_new_together_are_a_configuration_error(node):
-    """Spec criterion 14. Strict mode refuses `tcw work new` outright, so an item
-    is never filed for creation-on-filing to make a ticket for: a project setting
-    both would believe creation was on and see it never happen."""
+def test_strict_and_on_new_together_are_a_legitimate_configuration(node):
+    """They were briefly rejected as contradictory, on the grounds that strict
+    mode refuses `tcw work new` so nothing is ever filed for creation to act on.
+    That is not what the code does: `_new` refuses under strict mode only
+    `and not args.epic`, and creation-on-filing covers epics deliberately. So
+    "tasks come from tickets, epics filed here get theirs made" is a project
+    somebody can mean — and rejecting it disabled the whole tracker block, taking
+    `import`, `link`, `sync` and `claim` down with it, since `tracker_config`
+    fails closed on any problem."""
     root, set_tracker = node
     set_tracker({**VALID_TRACKER, "strict": True, "statuses": STRICT_STATUSES,
                  "create": {"project": "EX", "issue-type": "Task", "on-new": True}})
-    problems = [p for p in validate(root) if "tracker" in p]
-    assert any("work.tracker.create.on-new" in p and "work.tracker.strict" in p
-               for p in problems), problems
+    assert [p for p in validate(root) if "tracker" in p] == []
 
 
 def test_strict_alone_validates(node):

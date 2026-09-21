@@ -1409,16 +1409,6 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         problems.append(f"work.tracker.strict: expected true or false, "
                         f"got {type(strict).__name__}")
         strict = False
-    if strict and create is not None and create.on_new:
-        # They are opposite answers to the same question. Strict mode says every
-        # item must come *from* a ticket and refuses `tcw work new`; creation on
-        # filing says filing an item makes the ticket. With both set the second
-        # can never run, because the first refuses before it — so a project would
-        # believe creation was on and see it never happen.
-        problems.append(
-            "work.tracker.create.on-new: cannot be true while work.tracker.strict "
-            "is true. Strict mode refuses `tcw work new`, so no item is ever filed "
-            "for creation-on-filing to make a ticket for. Use one or the other.")
     if strict:
         # Strict mode gates completing and discarding against these, so a missing
         # one would be a gate that can never pass or never check.

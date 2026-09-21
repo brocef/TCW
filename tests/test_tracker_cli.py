@@ -1192,6 +1192,33 @@ def test_one_owed_item_does_not_break_lifecycle_moves_on_every_other_item(
     assert any("/issue/10001" in str(p[1]) for p in posted), posted
 
 
+def test_under_strict_mode_a_filed_epic_still_gets_its_ticket(node, monkeypatch):
+    """Strict mode and creation-on-filing are not contradictory, which is why
+    validation no longer rejects the pair. Strict refuses `tcw work new` only
+    for non-epics, so "tasks come from tickets, epics filed here get theirs
+    made" is a coherent project — and this is the half that would silently stop
+    working if anyone reinstated the rule."""
+    _root, configure = node
+    configure({**ON_NEW_TRACKER, "strict": True,
+               "statuses": {"backlog": "To Do", "active": "In Progress",
+                            "completed": "Done", "discarded": "Won't Do"}})
+    posted = _create_responses(monkeypatch)
+
+    code, _out, err = _run(["work", "new", "A task"])
+    assert code == 1, err                        # still refused
+    assert "tcw work tracker import" in err, err
+
+    code, out, err = _run(["work", "new", "An epic", "--epic"])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["issuetype"]["name"] == "Epic", creates
+    from tcw.store.fs import FsWorkStore
+    item = FsWorkStore.open(_root).get(out.strip().splitlines()[0])
+    assert item.tracker["ticket"]["key"] == "PROBE-1", item.tracker
+
+
 def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
     """Spec criterion 15 — the absence of a change. Every other criterion here is
     about a new path, so nothing else would notice if this one broke."""
