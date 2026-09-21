@@ -56,8 +56,8 @@ from tcw.store.base import (RESOLVED_STATUSES, bound_value, target_status,
                             transition_name)
 from tcw.tracker.claim import _normalize
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, ClaimOutcome, binding_of, claim,
-                                read_ticket, same_site, with_status_synced,
-                                with_sync_record)
+                                moved_out, pre_backlog_hint, read_ticket, same_site,
+                                with_status_synced, with_sync_record)
 from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerRateLimited,
                               TrackerUnavailable)
 
@@ -602,7 +602,11 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             try:
                 outcome = claim(client, ticket)
             except TrackerError as error:
-                return finish(classify_error(error), str(error))
+                # A claim that raised after taking the ticket out of triage has still
+                # moved it, and the user is told so.
+                left = getattr(error, "left_status", "")
+                return finish(classify_error(error),
+                              moved_out(bound.ticket_key, left) + str(error))
             if not outcome.claimed:
                 # Worth retrying: the claim's own read-back or send was uncertain, or
                 # the pre-backlog step's was (`leave_pre_backlog`).
@@ -616,7 +620,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 where = ("" if ticket.assignee_id not in ("", None, ticket.me_id) else
                          f" Take it with `tcw work tracker claim {slug}`, then run "
                          f"`tcw work tracker sync {slug}`.")
-                return finish(state, outcome.message + detail + where)
+                return finish(state, moved_out(outcome.key, outcome.left_status)
+                              + outcome.message + detail + where)
             if config.strict:
                 # Under strict mode a claim the workflow cannot make exclusive
                 # authorizes nothing, so it stays owed and nothing moves.
@@ -624,7 +629,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 if refusal:
                     return finish(CONFLICTING, refusal)
             owed = False
-            claimed_message = outcome.message
+            claimed_message = moved_out(outcome.key, outcome.left_status) + outcome.message
             active = target_status(config.statuses, "active", None)
             if active and _normalize(outcome.status) != _normalize(active):
                 # A claim that landed somewhere else has not put the ticket on the
@@ -632,9 +637,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 # item's own move — naming the wrong `transitions` key in any refusal —
                 # and could come to rest somewhere no later run can reason about.
                 onward = "." if starting else ", so it was not brought forward from there."
+                # Named only when the ticket was already there: a claim transition
+                # that itself led somewhere unmapped is not fixed by `pre-backlog`.
+                hint = ("" if outcome.transitioned or outcome.left_status else
+                        pre_backlog_hint(config, outcome.status, ""))
                 return finish(CONFLICTING, (
                     f"claimed {bound.ticket_key}, but it is in '{outcome.status}', not "
-                    f"'{active}'{onward}"))
+                    f"'{active}'{onward}{hint}"))
             if starting:
                 return finish(CURRENT)
             expected = (active,) if active else ()

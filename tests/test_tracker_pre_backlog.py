@@ -292,3 +292,226 @@ def test_row_1f_names_pre_backlog_only_for_an_unmapped_status(fake):
     outcome = _claim(pre_backlog={})
     assert outcome.row == "1f"
     assert "pre-backlog" not in outcome.message
+
+
+# ── Task 3: through `deliver` — link, sync, start, and the moves that owe a claim ──
+
+from test_tracker_sync import (KEY, STATUSES, TICKET_ID, binding_text,  # noqa: E402
+                               cli, ladder_node, record, sync_link, transitions_fail,
+                               under_way, with_record)
+from tcw.store.fs import FsWorkStore  # noqa: E402
+
+WITH_BACKLOG = {**STATUSES, "backlog": "To Do"}
+MOVED = "moved out of 'Triage'"
+HINT = "work.tracker.pre-backlog"
+
+
+def set_pre_backlog(root, value) -> None:
+    """Map `statuses.backlog` and set (or, with `None`, remove) `pre-backlog`."""
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    tracker = config["work"]["tracker"]
+    tracker["statuses"] = dict(WITH_BACKLOG)
+    tracker.pop("pre-backlog", None)
+    if value is not None:
+        tracker["pre-backlog"] = value
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "pre-backlog"],
+                   check=True)
+
+
+def triage_node(tmp_path, monkeypatch, *, assignee, pre_backlog, workflow=TRIAGE,
+                status="Triage"):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(workflow), status=status,
+                              assignee=assignee)
+    set_pre_backlog(root, pre_backlog)
+    return root, fake_
+
+
+def set_binding_key(root, slug, key, value) -> None:
+    st = FsWorkStore.open(root)
+    content = yaml.safe_load(binding_text(root, slug))
+    content[key] = value
+    (st.path(slug) / "tracker.yaml").write_text(yaml.safe_dump(content, sort_keys=False),
+                                                encoding="utf-8")
+
+
+def plain_link(root, slug, *extra):
+    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY, *extra)
+    assert code == 0, err
+
+
+@pytest.mark.parametrize("assignee", [None, A], ids=["unassigned", "already-yours"])
+def test_link_sync_status_accepts_then_claims(tmp_path, monkeypatch, assignee):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=assignee,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    code, _out, err = sync_link(root, slug)
+    assert code == 0, err
+    ticket = fake_.tickets[TICKET_ID]
+    assert (ticket.status, ticket.assignee) == ("In Progress", A)
+    assert fake_.applied == ACCEPT_THEN_START
+    assert MOVED in err
+    assert "not brought forward" not in err
+
+
+def test_sync_finishes_an_owed_catch_up_from_triage(tmp_path, monkeypatch):
+    """A catch-up whose first attempt never got `Accept` through is finished by
+    `sync`, walking on up a workflow with no shortcut."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"},
+                              workflow={**STRICT_LADDER, "Triage": TRIAGE["Triage"]})
+    slug = under_way(root, "review")
+    restore = transitions_fail(fake_, 1)
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert record(root, slug)["state"] == "pending"
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+    restore()
+    code, _out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, err
+    assert fake_.applied == ["11", "21", "41"]
+    assert fake_.tickets[TICKET_ID].status == "In Review"
+
+
+def test_start_accepts_then_claims(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
+    assert fake_.applied == ACCEPT_THEN_START
+    assert MOVED in err
+
+
+def test_a_claim_refused_after_the_step_is_resumed_by_sync(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    to_do = fake_.workflow["To Do"]
+    fake_.workflow["To Do"] = []                  # the start transition, refused once
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert fake_.tickets[TICKET_ID].status == "To Do"
+    assert MOVED in err
+    assert record(root, slug)["state"] == "conflicting"
+    fake_.workflow["To Do"] = to_do
+    code, _out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, err
+    assert fake_.applied == ACCEPT_THEN_START           # no second Accept
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_a_step_that_may_not_have_applied_is_recorded_pending(tmp_path, monkeypatch):
+    from tcw.tracker.jira import TrackerUnavailable
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    post_fails(fake_, 1, TrackerUnavailable("could not be reached (fake)"))
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert record(root, slug)["state"] == "pending"
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+
+
+def test_a_claim_raising_after_the_step_still_reports_the_move(tmp_path, monkeypatch):
+    from tcw.tracker.jira import TrackerRateLimited
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    post_fails(fake_, 2, TrackerRateLimited("slow down (fake)"))
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert fake_.tickets[TICKET_ID].status == "To Do"
+    assert MOVED in err
+
+
+@pytest.mark.parametrize("move", ["submit", "rework", "complete"])
+@pytest.mark.parametrize("recorded", [False, True], ids=["no-record", "record-for-submit"])
+def test_moves_with_no_claim_owed_never_accept(tmp_path, monkeypatch, move, recorded):
+    """A ticket TCW already holds, found back in Triage, is drift: only a claim
+    takes a ticket out of triage."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A,
+                              pre_backlog={"Triage": "Accept"},
+                              status="In Progress" if move == "submit" else "In Review")
+    slug = under_way(root, "active" if move == "submit" else "review")
+    plain_link(root, slug)
+    if recorded:
+        with_record(root, slug, {"state": "pending", "move": "submit",
+                                 "since": "In Progress", "reason": "x",
+                                 "at": "2026-09-21T00:00:00Z"})
+    fake_.tickets[TICKET_ID].status = "Triage"
+    argv = {"submit": ("submit",), "rework": ("rework",),
+            "complete": ("complete", "--resolution", "done", "--confirm", "--force")}
+    cli(root, "work", *argv[move][:1], slug, *argv[move][1:])
+    assert "11" not in fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+
+
+@pytest.mark.parametrize("owed", ["catch-up", "start-record"])
+def test_a_submit_that_owes_the_claim_accepts_then_claims(tmp_path, monkeypatch, owed):
+    """A claim still owed is the same debt `sync` settles, so the move that pays it
+    takes the ticket out of triage first."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    plain_link(root, slug)
+    if owed == "catch-up":
+        set_binding_key(root, slug, "catch-up", True)
+    else:
+        with_record(root, slug, {"state": "pending", "move": "start", "since": "",
+                                 "reason": "x", "at": "2026-09-21T00:00:00Z"})
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 0, err
+    assert fake_.applied[:2] == ACCEPT_THEN_START
+    assert fake_.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_discard_never_accepts(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Never started").slug
+    plain_link(root, slug)
+    cli(root, "work", "complete", slug, "--resolution", "wontfix", "--confirm", "--force")
+    assert "11" not in fake_.applied
+
+
+def test_a_part_bound_report_only_sync_sends_nothing(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    plain_link(root, slug, "--part", "api")
+    set_binding_key(root, slug, "catch-up", True)
+    cli(root, "work", "tracker", "sync", slug)
+    assert fake_.applied == []
+
+
+def test_without_the_setting_the_reporters_case_names_it(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A, pre_backlog=None)
+    slug = under_way(root)
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert fake_.applied == []
+    assert "not brought forward from there" in err
+    assert HINT in err and HINT in record(root, slug)["reason"]
+
+
+def test_a_claim_landing_off_the_ladder_does_not_name_pre_backlog(tmp_path, monkeypatch):
+    """The claim transition itself led to an unmapped status; naming `pre-backlog`
+    there would be wrong advice."""
+    workflow = {"To Do": [("21", "Start Progress", "Triage")],
+                "Triage": [("22", "Begin", "In Progress")],
+                "In Progress": [("31", "Finish", "Done")], "Done": []}
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None, pre_backlog=None,
+                              workflow=workflow, status="To Do")
+    slug = under_way(root)
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    assert fake_.applied == ["21"]
+    assert "not brought forward from there" in err
+    assert "pre-backlog" not in err
