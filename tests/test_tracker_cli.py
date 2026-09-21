@@ -482,6 +482,9 @@ CREATE_TRACKER = {
 CREATE_RESPONSES = {
     "/transitions": (200, {}, json.dumps({"transitions": [
         {"id": "11", "name": "Accept", "to": {"name": "To Do", "id": "2"}}]}).encode()),
+    # The status read `_place` does before and after its hop. "To Do" here means
+    # the CLI fixture exercises the *already placed* shape; the transition path
+    # is covered in `tests/test_tracker_create.py`, where the status can change.
     "/issue/PROBE-1": (200, {}, json.dumps(
         {"id": "10001", "key": "PROBE-1",
          "fields": {"summary": "Thing", "status": {"name": "To Do"},
@@ -540,8 +543,9 @@ def test_create_makes_a_ticket_places_it_and_binds_it(node, monkeypatch):
     assert len(creates) == 1, posted
     assert creates[0][2]["fields"]["project"] == {"key": "PROBE"}
     assert creates[0][2]["fields"]["issuetype"] == {"name": "Task"}
-    # It was moved out of the entry status, by destination not by name.
-    assert any(p[0] == "POST" and "/transitions" in p[1] for p in posted), posted
+    # The status is read back rather than assumed: Jira accepting a transition is
+    # not the transition applying, and this fixture's project needs no hop at all.
+    assert any(p[0] == "GET" and "/issue/PROBE-1" in p[1] for p in posted), posted
 
     from tcw.store.fs import FsWorkStore
     from tcw.tracker.intake import Bound, binding_of
@@ -602,3 +606,16 @@ def test_create_does_not_mention_a_command_nobody_ran(node, monkeypatch):
     _code, _out, err = _run(["work", "tracker", "create", slug])
     assert "tracker create" in err
     assert "tracker link" not in err
+
+
+def test_an_invalid_part_is_refused_before_any_ticket_exists(node, monkeypatch):
+    """`link` can check `--part` after reading its ticket, because that ticket
+    already existed. `create` cannot: the same order would leave a real ticket in
+    a shared tracker bound to nothing, and TCW has no way to delete it."""
+    root, slug = _created_node(node, monkeypatch)
+    posted = _create_responses(monkeypatch)
+
+    code, _out, err = _run(["work", "tracker", "create", slug, "--part", "Not A Part"])
+    assert code == 1
+    assert [p for p in posted if p[0] == "POST"] == [], posted
+    assert "tracker create" in err

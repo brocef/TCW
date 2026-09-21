@@ -21,11 +21,17 @@ from tcw.tracker.jira import TrackerError, Transition
 class StubClient:
     """Records every call, so a test can assert what did *not* reach the tracker."""
 
-    def __init__(self, transitions=None, created_key="EX-7"):
+    def __init__(self, transitions=None, created_key="EX-7",
+                 entry_status="Triage", after_status=None):
         self.calls: list[tuple] = []
         self._transitions = transitions if transitions is not None else [
             Transition(id="11", name="Accept", to_status="To Do", to_status_id="2")]
         self._created_key = created_key
+        # Where the workflow puts a new issue. **No default that hides a branch**:
+        # this project has a triage column, but most do not, and a fixture fixed at
+        # "Triage" is how the already-placed case went unnoticed.
+        self._status = entry_status
+        self._after = after_status
 
     def create_issue(self, **kwargs):
         self.calls.append(("create", kwargs))
@@ -37,6 +43,18 @@ class StubClient:
 
     def apply_transition(self, issue_id, transition_id):
         self.calls.append(("apply_transition", issue_id, transition_id))
+        # Jira accepting the request is not the transition completing; `_after`
+        # is how a test says "accepted, but it did not land".
+        if self._after is None:
+            for t in self._transitions:
+                if t.id == transition_id:
+                    self._status = t.to_status
+        else:
+            self._status = self._after
+
+    def issue(self, key):
+        self.calls.append(("issue", key))
+        return {"id": "10001", "key": key, "fields": {"status": {"name": self._status}}}
 
     def created(self) -> list:
         return [c for c in self.calls if c[0] == "create"]
@@ -181,3 +199,34 @@ def test_placement_is_always_the_backlog_status():
     ticket in progress that nobody holds; the delivery path claims it."""
     assert placement_target(config(statuses={"backlog": "To Do",
                                              "active": "In Progress"}), "active") == "To Do"
+
+
+# ── the workflow that needs no hop, and the hop that does not land ──────────
+
+
+def test_a_workflow_that_starts_issues_in_the_target_needs_no_transition():
+    """Most Jira projects have no triage column: a new issue is created straight
+    into the backlog status. Jira offers no self-transition, so requiring one
+    refused *after* creating the ticket and left it unbound — a real ticket in a
+    shared tracker belonging to nothing. Found by Codex; the fixtures here only
+    ever used this repository's own triage-column shape."""
+    client = StubClient(entry_status="To Do", transitions=[
+        Transition(id="21", name="Start", to_status="In Progress", to_status_id="3")])
+    created = create_and_place(client, config(), slug="s", title="T", body="b",
+                               is_epic=False, tags=[])
+    assert created.status == "To Do"
+    assert not [c for c in client.calls if c[0] == "apply_transition"], client.calls
+
+
+def test_a_transition_jira_accepts_but_does_not_apply_is_caught():
+    """`apply_transition`'s own docstring: "Success says only that Jira accepted
+    the request." A validator can decline silently, and believing the ticket
+    moved is the whole hazard — it would sit in the entry status, which is what
+    inbox-query selects, while TCW recorded it as placed."""
+    client = StubClient(entry_status="Triage", after_status="Triage")
+    with pytest.raises(TrackerError) as error:
+        create_and_place(client, config(), slug="s", title="T", body="b",
+                         is_epic=False, tags=[])
+    message = str(error.value)
+    assert "did not reach" in message or "is in 'Triage'" in message
+    assert "EX-7" in message

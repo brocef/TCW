@@ -121,23 +121,54 @@ def create_and_place(client, config, *, slug: str, title: str, body: str,
                    url=f"{config.base_url.rstrip('/')}/browse/{key}")
 
 
-def _place(client, issue_id: str, key: str, target: str) -> str:
-    """Move a just-created ticket to `target`, in one hop.
+def _current_status(client, key: str) -> str:
+    """The issue's status right now, read back from the tracker."""
+    fields = (client.issue(key) or {}).get("fields") or {}
+    return str((fields.get("status") or {}).get("name", ""))
 
-    One hop, not a walk. A freshly created issue sits in its workflow's entry
-    status, and a workflow that cannot reach its own backlog column from there
-    in a single step is one TCW should not be guessing its way through — so an
-    unreachable target is reported with what *was* offered, rather than
-    half-walked. The 2026-09-20 backfill needed exactly one hop, `Accept`, whose
-    name is not the target's name, which is why this matches on destination.
+
+def _place(client, issue_id: str, key: str, target: str) -> str:
+    """Move a just-created ticket to `target`, and confirm it arrived.
+
+    Three things this has to get right, each learned the hard way.
+
+    **It may already be there.** A Jira project with no triage column creates
+    issues straight into its backlog status, and Jira offers no self-transition,
+    so demanding one refused *after* the ticket existed and left it bound to
+    nothing. Most projects are that shape; the one this was written against is
+    not, which is why the case was missed until Codex named it.
+
+    **One hop, not a walk.** A workflow that cannot reach its own backlog column
+    from its entry status in a single step is one TCW should not be guessing its
+    way through, so an unreachable target is reported with what *was* offered.
+    The hop is matched on destination, never on name: the real transition was
+    `Accept → To Do`, and matching on name would never have fired.
+
+    **Accepted is not applied.** `apply_transition` says only that Jira accepted
+    the request — a validator can decline it silently. Believing an unmoved
+    ticket is placed is the entire hazard this module exists for: it would sit
+    in the entry status, which is what `inbox-query` selects, while TCW recorded
+    it as filed. So the status is read back.
     """
+    status = _current_status(client, key)
+    if _normalize(status) == _normalize(target):
+        return status
+
     offered = client.transitions(key)
     for transition in offered:
         if _normalize(transition.to_status) == _normalize(target):
             client.apply_transition(issue_id, transition.id)
-            return transition.to_status
+            landed = _current_status(client, key)
+            if _normalize(landed) != _normalize(target):
+                raise TrackerError(
+                    f"{key} was created but did not reach '{target}': it is in "
+                    f"'{landed}'. The transition was accepted and did not apply, "
+                    f"so the ticket is in the tracker and is not bound to any "
+                    f"item; move it by hand.")
+            return landed
     names = ", ".join(f"{t.name} → {t.to_status}" for t in offered) or "none"
     raise TrackerError(
-        f"{key} was created but could not be moved to '{target}': the transitions "
-        f"offered are {names}. It is in the tracker and is not bound to any item; "
-        f"move it by hand, or correct work.tracker.statuses.backlog.")
+        f"{key} was created in '{status}' but could not be moved to '{target}': "
+        f"the transitions offered are {names}. It is in the tracker and is not "
+        f"bound to any item; move it by hand, or correct "
+        f"work.tracker.statuses.backlog.")

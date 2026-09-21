@@ -2448,7 +2448,8 @@ def _item_body(st, slug: str) -> str:
 def _tracker_create(args: argparse.Namespace) -> int:
     """Make a ticket for an item that has none, then bind it through `link`."""
     from tcw.tracker.create import create_and_place, unplaceable
-    from tcw.tracker.intake import BINDING_SIDECAR, Bound, Malformed, binding_of
+    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
+                                    validate_part)
     from tcw.tracker.jira import TrackerError
 
     client = _tracker_client("tracker create")
@@ -2477,6 +2478,26 @@ def _tracker_create(args: argparse.Namespace) -> int:
         print(f"tcw work tracker create: {args.slug} was not given a ticket; "
               f"{refusal}", file=sys.stderr)
         return 1
+
+    # Everything `_tracker_link` can refuse locally is refused *here*, before a
+    # ticket exists. `link` checks these after reading its ticket, which is free
+    # for a ticket somebody else already made; for `create` the same order would
+    # leave a real ticket in a shared tracker bound to nothing, and TCW cannot
+    # delete it. Found by Codex.
+    try:
+        validate_part(args.part)
+    except ValueError as e:
+        print(f"tcw work tracker create: {e}", file=sys.stderr)
+        return 1
+    if item.status != "backlog" and not st.pending_deletion(args.slug):
+        if someone_else := _held_by_someone_else(
+                item, _local_owner(st),
+                f"tcw work tracker create {args.slug}"
+                + (f" --part {args.part}" if args.part else "")):
+            print(f"tcw work tracker create: {args.slug} was not given a ticket: "
+                  f"creating one claims it as you, and it was {someone_else}",
+                  file=sys.stderr)
+            return 1
 
     if args.dry_run:
         settings = client.config.create
