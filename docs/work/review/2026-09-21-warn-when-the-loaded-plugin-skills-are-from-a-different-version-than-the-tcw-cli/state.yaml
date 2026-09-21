@@ -7,7 +7,7 @@ priority: 50
 tags:
 - skills
 - cli
-owner: brocef@users.noreply.github.com
-started: '2026-09-21T19:18:48.897088Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli
 branch: work/2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli
