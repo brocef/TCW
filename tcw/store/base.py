@@ -3689,6 +3689,11 @@ class WorkStore(ABC):
         completable (nothing resolved)."""
         if not self.epic_children_all_resolved(item):
             return False
+        # `complete` refuses while anything beneath the epic by `parent` is open,
+        # so calling it ready then would promise a close that cannot happen —
+        # and `reconcile --complete-when-ready` would fail acting on the promise.
+        if self.open_descendants(item.slug):
+            return False
         if self.incomplete_graph_note():
             return False        # not "no", but "not knowable from this checkout"
         return True
