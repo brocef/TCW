@@ -53,7 +53,9 @@ its own namespace, including sources inherited transitively, and there is **no
 silent merge** — a local `permission` and an imported `acme/permission` stay
 distinct. Capabilities federate separately and additionally let a
 consumer **override** an inherited entry per-project (see `tcw capabilities`
-above).
+above). Before 2.5.0 this list lived in a file inside the tree
+(`docs/taxonomy/config.yaml`, `docs/capabilities/.config.yaml`); that file is no
+longer read, and `check` reports one left behind until it is deleted.
 
 ## Bootstrapping a taxonomy or a capabilities ledger
 
