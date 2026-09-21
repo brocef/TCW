@@ -212,6 +212,70 @@ class TestCreateWork:
         detail = _get_json(base, f"/api/work/{slug}")
         assert detail["item"]["slug"] == slug
 
+    def test_create_records_the_owed_ticket_when_filing_is_meant_to_make_one(
+            self, bare):
+        """`work.tracker.create.on-new` says filing an item makes its ticket.
+
+        The web app runs no tracker code, so it cannot make it — but it must
+        leave the debt behind. Without this, an item filed here in a project
+        that expects a ticket is indistinguishable from one filed in a project
+        that does not, which is the quiet accumulation the owed record exists to
+        prevent.
+        """
+        import yaml
+
+        root, base = bare
+        (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+            "id": "probe",
+            "work": {"tracker": {
+                "provider": "jira-cloud",
+                "base-url": "https://example.invalid",
+                "candidate-query": "assignee = currentUser()",
+                "credentials": {"email-env": "TCW_PROBE_EMAIL",
+                                "token-env": "TCW_PROBE_TOKEN"},
+                "transitions": {"start": "Start Progress"},
+                "statuses": {"backlog": "To Do", "active": "In Progress"},
+                "create": {"project": "PROBE", "issue-type": "Task",
+                           "on-new": True},
+            }},
+        }, sort_keys=False), encoding="utf-8")
+
+        status, body = _req(base, "POST", "/api/work", {"title": "Filed on the web"})
+        assert status == HTTPStatus.CREATED
+        slug = body["item"]["slug"]
+
+        owed = FsWorkStore.open(root).get(slug).tracker
+        assert owed is not None, "the item carries no tracker state at all"
+        assert "owed" in owed, owed
+        assert "tcw work tracker create" in owed["owed"]["reason"], owed
+        # Unbound, not bound: an owed record is a debt, never a binding.
+        assert "ticket" not in owed, owed
+
+    def test_create_without_on_new_leaves_no_tracker_state(self, bare):
+        """The other half: a project with a create block but no `on-new` must
+        get nothing, or every web-filed item would carry a debt nobody asked
+        for."""
+        import yaml
+
+        root, base = bare
+        (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+            "id": "probe",
+            "work": {"tracker": {
+                "provider": "jira-cloud",
+                "base-url": "https://example.invalid",
+                "candidate-query": "assignee = currentUser()",
+                "credentials": {"email-env": "TCW_PROBE_EMAIL",
+                                "token-env": "TCW_PROBE_TOKEN"},
+                "transitions": {"start": "Start Progress"},
+                "statuses": {"backlog": "To Do", "active": "In Progress"},
+                "create": {"project": "PROBE", "issue-type": "Task"},
+            }},
+        }, sort_keys=False), encoding="utf-8")
+
+        status, body = _req(base, "POST", "/api/work", {"title": "Filed quietly"})
+        assert status == HTTPStatus.CREATED
+        assert FsWorkStore.open(root).get(body["item"]["slug"]).tracker is None
+
     def test_create_with_fields(self, seeded):
         root, base, slug = seeded
         status, body = _req(base, "POST", "/api/work", {

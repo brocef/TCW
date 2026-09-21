@@ -239,6 +239,33 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     return None
 
 
+def _owe_ticket_if_configured(work, slug: str) -> None:
+    """Record that a web-filed item is owed a ticket, when the project wants one.
+
+    `work.tracker.create.on-new` says filing an item makes its ticket. The web
+    app deliberately runs no tracker code — no credentials, no network, no page
+    render waiting on Jira — so it cannot make it. What it can do is leave the
+    debt where the board and `tcw work tracker create --all` will find it, which
+    is what the owed record is for.
+
+    Nothing here may fail the creation that just succeeded. The item exists and
+    the response is about to be sent; an item the user never sees because
+    recording a note failed is worse than a note that is missing.
+    """
+    from contextlib import suppress
+    from datetime import date
+
+    from tcw.tracker.intake import record_owed
+
+    config = work.tracker_config()
+    if config is None or config.create is None or not config.create.on_new:
+        return
+    with suppress(Exception):                # see the docstring
+        record_owed(work, slug, since=date.today().isoformat(),
+                    reason="filed in the web app, which does not reach the "
+                           "tracker; `tcw work tracker create` makes it")
+
+
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
     """Map store-level exceptions to HTTP status codes and JSON error bodies.
 
@@ -867,6 +894,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     type=type_val if type_val else "",
                     tags=tags,
                 )
+                _owe_ticket_if_configured(work, detail.item.slug)
                 response = {
                     "item": _item_payload(work, detail.item.slug, detail.item),
                     "coreRevision": detail.core_revision,

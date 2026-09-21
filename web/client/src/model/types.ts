@@ -14,7 +14,12 @@ export type JsonRecord = Record<string, unknown>
 
 /**
  * An item's tracker binding, as `tcw work show --json` carries it: what the
- * binding file records, never what the tracker says now. `null` when unbound.
+ * binding file records, never what the tracker says now. `null` when unbound
+ * and nothing is owed.
+ *
+ * Four shapes, and only the first has a `ticket`. Narrow on the presence of
+ * `ticket` rather than on the absence of the others: a reader that excluded the
+ * shapes it knew about was what crashed the whole page when `owed` was added.
  */
 export type TTrackerBinding =
     | {
@@ -47,6 +52,8 @@ export type TTrackerBinding =
               | { problem: string }
       }
     | { problem: string }
+    /** A ticket that filing was to create and could not. Not a binding. */
+    | { owed: { since: string; reason: string } }
 
 export interface WorkItem extends JsonRecord {
     slug: string

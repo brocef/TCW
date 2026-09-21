@@ -460,14 +460,9 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
 
 def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
     """Note that this item was meant to get a ticket and did not."""
-    from tcw.tracker.intake import BINDING_SIDECAR, with_owed_record
+    from tcw.tracker.intake import record_owed
     try:
-        found = st.read_sidecar(slug, BINDING_SIDECAR)
-        st.write_sidecar(
-            slug, BINDING_SIDECAR,
-            with_owed_record(found.content if found else None,
-                             {"since": since, "reason": reason}),
-            revision=found.revision if found else "")
+        record_owed(st, slug, reason=reason, since=since)
     except _LOCAL_WRITE_ERRORS as error:
         # Even this is not allowed to fail the filing. Say it plainly instead:
         # without the record the board will not show the ticket as owed, so the

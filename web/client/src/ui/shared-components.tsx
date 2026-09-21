@@ -193,15 +193,18 @@ export function Field({ name, value }: { name: string; value: unknown }) {
 }
 /** The item's ticket: a link when the binding records a URL, plain text when not. */
 export function TrackerField({ binding }: { binding: TTrackerBinding }) {
+    // Narrowed on the presence of `ticket`, not on the absence of the shapes
+    // this knew about when it was written. `WorkItem.tracker` gained a fourth
+    // shape, `owed`, and the old `"problem" in binding ? … : …` sent it down
+    // the bound branch, where `binding.ticket.url` threw — and with no error
+    // boundary in this app, that blanked the whole page rather than one field.
     return (
         <Card className="field" size="1">
             <Text as="div" color="gray" size="1">
                 Ticket
             </Text>
             <Text as="div" size="2">
-                {"problem" in binding ? (
-                    `tracker.yaml cannot be read: ${binding.problem}`
-                ) : (
+                {"ticket" in binding ? (
                     <>
                         {binding.ticket.url ? (
                             <a
@@ -220,6 +223,10 @@ export function TrackerField({ binding }: { binding: TTrackerBinding }) {
                                 ? ` · sync record cannot be read: ${binding.sync.problem}`
                                 : ` · ${binding.sync.state}: ${binding.sync.reason}`)}
                     </>
+                ) : "owed" in binding ? (
+                    `none yet — one was to be created on filing and was not (${binding.owed.reason}), owed since ${binding.owed.since}`
+                ) : (
+                    `tracker.yaml cannot be read: ${binding.problem}`
                 )}
             </Text>
         </Card>

@@ -236,6 +236,41 @@ def with_created_record(content: str | None, record: dict | None) -> str:
     return _with_key(content if content is not None else "{}\n", "created", record)
 
 
+#: The longest an owed reason may be. The reason is usually a tracker's own
+#: error text — `_for_status` carries up to 500 characters of raw response body
+#: — and it is written into `tracker.yaml`, which is committed, and read back
+#: into the middle of a sentence by `tcw work show`. One line, bounded.
+OWED_REASON_LIMIT = 200
+
+
+def owed_reason(reason: str) -> str:
+    """`reason` as one bounded line, safe to commit and to read in a sentence."""
+    folded = " ".join(str(reason).split())
+    if len(folded) <= OWED_REASON_LIMIT:
+        return folded
+    return folded[:OWED_REASON_LIMIT - 1].rstrip() + "…"
+
+
+def record_owed(store, slug: str, *, reason: str, since: str) -> None:
+    """Note on `slug` that a ticket was to be created on filing and was not.
+
+    Shared by the CLI and the web app. The web app runs no tracker code by
+    design, so it cannot attempt creation — but it can record the debt, and must:
+    an item filed there in a project with creation-on-filing enabled would
+    otherwise look exactly like one filed in a project that never turned it on,
+    which is the quiet accumulation `Unbound.owed` exists to prevent.
+
+    Raises what the store raises. Both callers decide for themselves what a
+    failure to record means, because neither may fail the filing over it.
+    """
+    found = store.read_sidecar(slug, BINDING_SIDECAR)
+    store.write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_owed_record(found.content if found else None,
+                         {"since": since, "reason": owed_reason(reason)}),
+        revision=found.revision if found else "")
+
+
 def with_owed_record(content: str | None, record: dict | None) -> str:
     """`content` with its `owed` record set, or removed for `None`.
 

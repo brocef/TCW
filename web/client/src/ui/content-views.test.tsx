@@ -217,6 +217,28 @@ test("a ticket the tracker has not caught up with says so", () => {
     ).toBeVisible()
 })
 
+test("an item that owes a ticket says so instead of crashing the page", () => {
+    // The fourth shape `WorkItem.tracker` can take. It is truthy and has no
+    // `problem`, so a reader that narrowed by excluding the shapes it knew
+    // reached `binding.ticket.url` and threw — and with no error boundary in
+    // this app, that took the whole page, not just this field.
+    render(
+        workDetail({
+            owed: {
+                since: "2026-09-20",
+                reason: "the tracker could not be reached",
+            },
+        })
+    )
+
+    expect(
+        screen.getByText(/owed since 2026-09-20/)
+    ).toBeVisible()
+    expect(
+        screen.getByText(/the tracker could not be reached/)
+    ).toBeVisible()
+})
+
 test("an unreadable binding shows why, and an unbound item shows no ticket", () => {
     const { unmount } = render(
         workDetail({ problem: "missing or empty: ticket.key" })
