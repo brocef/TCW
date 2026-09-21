@@ -154,3 +154,16 @@ after them.
   being edited was respected: the only `tcw` commands run from the worktree after
   editing began were `tcw capabilities set`, `check` and `validate`, not lifecycle
   transitions; the lead runs those.
+
+## Autonomous decisions
+
+Run unattended on 2026-09-21. Codex (read-only) and an Opus subagent stood in for every human checkpoint.
+
+- **Spec: an unqualified path on a node with no ledger.** Codex: refuse. Opus: refuse. **Chose refuse** (fail closed; `--force` gets past; a discard only warns). A declared change that nothing checks is the gap this item closes.
+- **Spec: take over part 1 of `2026-09-15-make-the-capability-gate-honor-a-configured-ledger`.** Codex: take it over. Opus: take it over, and narrow that item at once. **Chose take it over**, and narrowed that item the same day (`0fbac2ab`): both rewrite the same early return in `recursion.py`.
+- **Spec: a first segment that is both a declared child and a project the node extends.** Codex: the parent's inherited view wins. Opus: state that rule 1 wins, and test it. **Chose rule 1 wins, with a test**, so existing sidecars keep their meaning.
+- **Spec: what counts as ambiguous.** Both: judge it over the resolved (inherited) view, not the local folders alone. **Adopted.**
+- **Plan: its open points** (one problem line per path; keep `route_capability_path` public; possible interaction with the legacy-config item). Decided without consulting, from the specs. The legacy item reports from `check()`, never from `open()`, so the two cannot interact.
+- **Verify.** The `adversarial-code-reviewer` gave DONE, with one confirmed defect: a malformed `meta.yaml` raised `yaml.YAMLError` and blocked a discard. Fixed, along with the hint scope and two release-note omissions. The `tcw:verifier` found 20 of 21 criteria met; the remedy wording (C1) and a test docstring (C12) were fixed. Hands-on check in a scratch repository with a root work board and a child ledger: a Missing child capability was refused and named the child; an unqualified path was refused and named the child to qualify it with; completion passed after the flip; `wontfix` only warned.
+- **Review findings rejected:** none. Not done: the per-child-id caching of `list_all` (the reviewer's note says current ledger sizes are fine).
+- **Follow-ups not filed** (already tracked or out of scope by the spec): `tcw capabilities show` and `set` accepting child-qualified paths; grandchildren through a routing node (#30); the early sidecar check (#27), which should call `route_capability_path`.
