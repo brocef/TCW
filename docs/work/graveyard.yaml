@@ -846,3 +846,6 @@
   location: 174dab8f70af7dc3a712d3a1fe5d7ec8b90e9534
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-report-a-leftover-pre-2-5-0-store-config-file-instead-of-silently-dropping-its-extends:
+  resolution: done
+  resolved: '2026-09-21'

@@ -2,7 +2,7 @@ slug: 2026-09-21-report-a-leftover-pre-2-5-0-store-config-file-instead-of-silent
 title: Report a leftover pre-2.5.0 store config file instead of silently dropping
   its extends
 created: '2026-09-21'
-resolution: null
+resolution: done
 priority: 50
 tags:
 - capabilities
