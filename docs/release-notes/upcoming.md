@@ -34,5 +34,12 @@ The completion check also finds a ledger that has been moved with
   honestly be satisfied.
 - A path whose first part is both a child project's id and a namespace your own
   ledger already shows. It is refused as ambiguous rather than guessed at.
+- Any path checked against a ledger kept somewhere other than
+  `docs/capabilities` — moved with `capabilities.path`, or in another repository
+  through `capabilities.repository`. Those ledgers used to be skipped entirely, so
+  a capability still `Missing` there went through.
+- Every declared path, on a project whose own ledger is declared but has not been
+  fetched to this machine. Run `tcw provision` to fetch it, or complete with
+  `--force`.
 
 Discarding an item is never blocked by any of these; they print as warnings.
