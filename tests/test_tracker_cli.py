@@ -1646,3 +1646,9 @@ def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
     assert code == 1
     assert "tcw work tracker import" in err, err
     assert posted == [], posted
+    # Criterion 15 asks for this as "the absence of any new wording". Asserting
+    # only that the old message survives would stay green if this item had also
+    # started saying something of its own on the refusal path.
+    for added in ("owed", "no ticket was created", "made, not bound",
+                  "tracker create"):
+        assert added not in err, (added, err)

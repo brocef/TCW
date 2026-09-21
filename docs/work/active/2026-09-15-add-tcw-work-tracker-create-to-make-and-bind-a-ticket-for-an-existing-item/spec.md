@@ -288,7 +288,11 @@ hook or injected context. The skills that mention the tracker (`work`,
     ticket, and the ticket obeys criteria 2 and 3.
 11. With it on and the tracker unreachable, `tcw work new` still creates the
     item, exits zero, says the ticket is owed, and records it. A later
-    `tcw work tracker sync` creates and binds the ticket.
+    `tcw work tracker create` creates and binds the ticket.
+    (**Corrected in review** — it originally named `tcw work tracker sync`,
+    the same mistake as Rule 6 and caught later, because correcting the rule
+    did not correct the criterion that repeated it. `sync` is about a binding;
+    an item owing a ticket has none.)
 12. With it on, `tcw work inbox accept` of a raw entry creates a bound item;
     accepting a ticket key still goes through `import` and is unchanged.
 13. With it on, `tcw work new --epic` creates a bound ticket, unlike strict
