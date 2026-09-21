@@ -636,3 +636,14 @@ def test_taking_over_an_old_claim_writes_the_parent(tmp_path):
     got = FsWorkStore.open(root).start("c", owner="y", take_over=True)
     assert (got.status, got.parent) == ("active", "q")
     assert _state(root / "docs/work/active/c")["parent"] == "q"
+
+
+def test_check_reports_a_parent_cycle(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/a", parent="b")
+    _item(root, "active/b", parent="a")
+    _item(root, "active/fine", parent="a")
+    problems = FsWorkStore.open(root).check()
+    assert "a: its parent chain loops back to it (a → b → a)" in problems
+    assert "b: its parent chain loops back to it (b → a → b)" in problems
+    assert not [p for p in problems if p.startswith("fine:")]

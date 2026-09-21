@@ -6110,6 +6110,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not known:
             problems.append(f"{item.slug}: parent '{recorded}' names no work item "
                             f"or tombstone in this store")
+        chain, cursor = [item.slug], recorded
+        while cursor and cursor not in chain:
+            chain.append(cursor)
+            try:
+                above = self.get(cursor)
+            except MultipleMatch:
+                above = None
+            cursor = above.parent if above is not None else ""
+        if cursor == item.slug:
+            # Nothing in a loop can ever be completed — each holds the next open —
+            # and the board has no root to print any of them under.
+            problems.append(f"{item.slug}: its parent chain loops back to it "
+                            f"({' → '.join(chain + [item.slug])})")
         enclosing = self._nesting_parent(d)
         if enclosing and enclosing != recorded:
             problems.append(f"{item.slug}: parent field '{recorded}' disagrees with "
