@@ -2438,7 +2438,11 @@ def _item_body(st, slug: str) -> str:
     for name in ("initial-request.md", "intake.md"):
         try:
             document = st.read_artifact(slug, name)
-        except Exception:
+        except _LOCAL_WRITE_ERRORS:
+            # A missing artifact is `None`, not an error, so what reaches here is
+            # a store that cannot be read. Narrow on purpose: swallowing every
+            # exception would put "No request or intake was written for this
+            # item." on a ticket whose item is simply unreadable.
             document = None
         if document is not None and getattr(document, "content", "").strip():
             return document.content
@@ -2473,6 +2477,20 @@ def _tracker_create(args: argparse.Namespace) -> int:
               f"cannot be read ({current.reason}).", file=sys.stderr)
         return 1
 
+    # A spec non-goal, made unreachable rather than left to the user's judgement:
+    # "a ticket created only to be closed is noise". Placement makes this concrete
+    # — every created ticket lands in the *backlog* status, so a ticket made for
+    # finished work would have to be walked forward and resolved immediately, and
+    # a failure anywhere along that walk leaves an open ticket for work that is
+    # done. Closed items that want tickets are a backfill, which is `link`'s job.
+    if item.status in ("completed", "discarded"):
+        print(f"tcw work tracker create: {args.slug} is {item.status}, and TCW "
+              f"does not create tickets for closed work — a ticket made only to "
+              f"be closed is noise. If a ticket for it already exists, bind it "
+              f"with `tcw work tracker link {args.slug} <ticket> --sync-status`.",
+              file=sys.stderr)
+        return 1
+
     refusal = unplaceable(client.config)
     if refusal:
         print(f"tcw work tracker create: {args.slug} was not given a ticket; "
@@ -2504,21 +2522,47 @@ def _tracker_create(args: argparse.Namespace) -> int:
         issue_type = settings.type_for(is_epic=getattr(item, "type", "") == "epic",
                                        tags=getattr(item, "tags", ()))
         from tcw.tracker.create import placement_target
-        where = placement_target(client.config, item.status)
+        where = placement_target(client.config)
         print(f"→ would create a {issue_type} in {settings.project} titled "
-              f"{item.title!r}, place it in {where!r}, and bind it to {args.slug}. "
-              f"Nothing was created.", file=sys.stderr)
+              f"{item.title!r}, place it in {where!r}, and bind it to {args.slug}.",
+              file=sys.stderr)
+        if item.status != "backlog":
+            # A real run passes --sync-status, so for work already under way it
+            # also claims the ticket as you, assigns it, and walks it up. Someone
+            # checking before touching a shared tracker has to be told that.
+            from tcw.store.base import target_status
+            onward = target_status(client.config.statuses, item.status,
+                                   item.resolution) or "wherever its status maps"
+            print(f"→ and because {args.slug} is {item.status}, would then claim "
+                  f"{settings.project}'s new ticket as you, assign it, and move it "
+                  f"to {onward!r}.", file=sys.stderr)
+        print("→ Nothing was created.", file=sys.stderr)
         return 0
 
+    # The key is stashed the moment the tracker reports it, because the window
+    # between "issue exists" and "binding written" is the one place this command
+    # can cost something it cannot undo. A dropped connection or a 429 right after
+    # the create POST raises from inside `create_and_place`, and without this the
+    # message would name neither the key nor the fact that a ticket now exists —
+    # so the user re-runs and gets a *second* one.
+    made: dict = {}
     try:
         created = create_and_place(
             client, client.config, slug=args.slug, title=item.title,
             body=_item_body(st, args.slug),
             is_epic=getattr(item, "type", "") == "epic",
             tags=getattr(item, "tags", ()),
+            on_created=lambda key, issue_id: made.update(key=key, id=issue_id),
         )
     except TrackerError as error:
-        print(f"tcw work tracker create: {error}", file=sys.stderr)
+        if made.get("key"):
+            print(f"tcw work tracker create: {error} {made['key']} was created and "
+                  f"is not bound to {args.slug}. Bind it with `tcw work tracker "
+                  f"link {args.slug} {made['key']} --sync-status` rather than "
+                  f"running create again, which would make a second ticket.",
+                  file=sys.stderr)
+        else:
+            print(f"tcw work tracker create: {error}", file=sys.stderr)
         return 1
 
     print(f"→ created {created.key} in '{created.status}'.", file=sys.stderr)
@@ -2531,14 +2575,12 @@ def _tracker_create(args: argparse.Namespace) -> int:
 
 
 def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> int:
-    """Bind an item to a ticket that exists, and optionally bring the ticket along.
+    """Record that an existing item and a ticket are the same work.
 
     `verb` names the caller in every message. `tcw work tracker create` makes a
     ticket and then binds it *through here*, rather than repeating ninety lines
     of binding rules, so "what a binding means" has one implementation and a
     user who created a ticket is not told about a command they did not run.
-    """
-    """Record that an existing item and a ticket are the same work.
 
     The binding sidecar is the whole effect. The ticket is read — which is what
     proves the key exists and yields the canonical key, id and URL the binding
@@ -2567,7 +2609,7 @@ def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> in
         print(f"tcw work {verb}: {e}", file=sys.stderr)
         return 1
     st = _store()
-    if _item_or_reason(st, args.slug, "link") is None:
+    if _item_or_reason(st, args.slug, verb.split()[-1]) is None:
         return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
@@ -2639,10 +2681,17 @@ def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> in
         print(f"tcw work {verb}: the binding could not be written: {e}. "
               f"Run this command again.", file=sys.stderr)
         return 1
+    made_here = verb.endswith("create")
     if not sync_status:
-        print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}). The ticket is "
-              f"unchanged in the tracker.", file=sys.stderr)
-        if args.sync_status:
+        # "unchanged in the tracker" is true for `link`, whose ticket somebody else
+        # made, and false for `create`, which made it seconds ago and may have
+        # transitioned it. And `--sync-status` is a flag a `create` user never
+        # typed — it is hard-coded in the synthesized call — so reporting that it
+        # "did nothing" names a command they did not run.
+        tail = "" if made_here else " The ticket is unchanged in the tracker."
+        print(f"→ bound {args.slug} to {ticket.key} ({ticket.url}).{tail}",
+              file=sys.stderr)
+        if args.sync_status and not made_here:
             why = ("is still in the backlog, so there is nothing to catch up yet"
                    if item is not None and item.status == "backlog" else
                    "is being removed, so nothing can be recorded for it")
@@ -3485,7 +3534,39 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     ptri.set_defaults(func=_tracker_import)
 
     ptrc = ptrs.add_parser(
-        "create", help="make a ticket for an existing item and bind it")
+        "create", help="make a ticket for an existing item and bind it",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Make a ticket for a work item that has none, and bind the two.\n\n"
+                    "This is the one tracker command that *adds* something to a shared\n"
+                    "tracker, and nothing here can take it back — TCW never deletes a\n"
+                    "ticket. So everything that can be refused is refused before the\n"
+                    "ticket exists, and an item that is already bound is reported rather\n"
+                    "than given a second one.\n\n"
+                    "The ticket's summary is the item's title and its description is the\n"
+                    "item's request, under a line naming the slug. Its type comes from\n"
+                    "work.tracker.create.issue-type, overridden for an epic or a bug by\n"
+                    "work.tracker.create.issue-types.",
+        epilog="Where it lands: the status mapped as work.tracker.statuses.backlog,\n"
+               "whatever the item's own status is. Jira decides which status a new\n"
+               "issue starts in, and in a project with a triage column that is the\n"
+               "status work.tracker.inbox-query selects — so a ticket left there\n"
+               "would come back through `tcw work inbox` as new inbound work and\n"
+               "produce a second item for the one that made it. Without\n"
+               "statuses.backlog configured, this command refuses and creates\n"
+               "nothing.\n\n"
+               "For an item already past backlog it then claims the new ticket as\n"
+               "you, assigns it, and moves it on to where the item is.\n\n"
+               "Refuses when: no tracker is configured; work.tracker.create has no\n"
+               "project; statuses.backlog is unset; --part is invalid; the slug is\n"
+               "not an item here; the item is completed or discarded (a ticket made\n"
+               "only to be closed is noise — use `tracker link` if one exists); the\n"
+               "item is already bound; its tracker.yaml cannot be read; or the item\n"
+               "is under way and somebody else holds it.\n\n"
+               "If the ticket is made but the binding is not written, the error names\n"
+               "the key. Bind it with `tcw work tracker link <slug> <key>\n"
+               "--sync-status`; running create again would make a second ticket.\n\n"
+               "  tcw work tracker create 2026-09-14-rename-the-widget\n"
+               "  tcw work tracker create 2026-09-14-rename-the-widget --dry-run\n")
     ptrc.add_argument("slug", help=BARE_SLUG_HELP)
     ptrc.add_argument("--part", default=None,
                       help="bind as this part, for an item split across tickets")
@@ -3533,7 +3614,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                            "(forward only)")
     ptrl.set_defaults(func=_tracker_link)
 
-    ptrc = ptrs.add_parser(
+    ptrcl = ptrs.add_parser(
         "claim", help="say that an item, and the ticket it is bound to, are yours",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Take ownership of a work item, and of its ticket where it has one.\n\n"
@@ -3558,10 +3639,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "  tcw work tracker claim 2026-09-14-rename-the-widget\n"
                "  tcw work tracker claim 2026-09-14-rename-the-widget --take-over\n",
     )
-    ptrc.add_argument("slug", help=BARE_SLUG_HELP)
-    ptrc.add_argument("--take-over", action="store_true",
+    ptrcl.add_argument("slug", help=BARE_SLUG_HELP)
+    ptrcl.add_argument("--take-over", action="store_true",
                       help="claim it even though somebody else holds it")
-    ptrc.set_defaults(func=_tracker_claim)
+    ptrcl.set_defaults(func=_tracker_claim)
 
     ptrr = ptrs.add_parser(
         "release", help="let go of an item and the ticket it is bound to",

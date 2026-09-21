@@ -33,11 +33,15 @@ from tcw.tracker.sync import _normalize
 
 @dataclass(frozen=True)
 class Created:
-    """A ticket that now exists, and where it ended up."""
+    """A ticket that now exists, and where it ended up.
+
+    No `url`: the caller binds through `_tracker_link`, which re-reads the ticket
+    and uses the URL the tracker itself reports. A second, locally composed one
+    would be a second thing that can be wrong.
+    """
     issue_id: str
     key: str
     status: str
-    url: str
 
 
 def description_document(*, slug: str, body: str, item_url: str = "") -> dict:
@@ -62,10 +66,11 @@ def description_document(*, slug: str, body: str, item_url: str = "") -> dict:
     return {"type": "doc", "version": 1, "content": blocks}
 
 
-def placement_target(config, status: str) -> str:
+def placement_target(config) -> str:
     """Where a created ticket belongs, or `""` when the project has not said.
 
-    Always the **backlog** status, whatever the item's own status is. A ticket
+    Always the **backlog** status, and it takes no item status *because* there is
+    nothing to vary: a created ticket starts at the bottom whatever the item is. A ticket
     for work already under way still starts at the bottom and is walked up by
     the delivery path, because that path is what claims and assigns it; jumping
     straight to `In Progress` would leave a ticket in progress that nobody holds.
@@ -83,7 +88,7 @@ def unplaceable(config) -> str | None:
     if config.create is None:
         return ("work.tracker.create is not configured, so there is nothing to say "
                 "what a ticket should look like.")
-    if not placement_target(config, "backlog"):
+    if not placement_target(config):
         return ("work.tracker.statuses.backlog is not set, so there is nowhere to put "
                 "a created ticket. Without it the ticket stays in whatever status the "
                 "tracker starts issues in, which is usually the one inbox-query "
@@ -115,10 +120,9 @@ def create_and_place(client, config, *, slug: str, title: str, body: str,
     if on_created is not None:
         on_created(key, issue_id)
 
-    target = placement_target(config, "backlog")
+    target = placement_target(config)
     status = _place(client, issue_id, key, target)
-    return Created(issue_id=issue_id, key=key, status=status,
-                   url=f"{config.base_url.rstrip('/')}/browse/{key}")
+    return Created(issue_id=issue_id, key=key, status=status)
 
 
 def _current_status(client, key: str) -> str:
@@ -155,17 +159,27 @@ def _place(client, issue_id: str, key: str, target: str) -> str:
         return status
 
     offered = client.transitions(key)
-    for transition in offered:
-        if _normalize(transition.to_status) == _normalize(target):
-            client.apply_transition(issue_id, transition.id)
-            landed = _current_status(client, key)
-            if _normalize(landed) != _normalize(target):
-                raise TrackerError(
-                    f"{key} was created but did not reach '{target}': it is in "
-                    f"'{landed}'. The transition was accepted and did not apply, "
-                    f"so the ticket is in the tracker and is not bound to any "
-                    f"item; move it by hand.")
-            return landed
+    leads = [t for t in offered if _normalize(t.to_status) == _normalize(target)]
+    if len(leads) > 1:
+        # The same refusal `assess_move` makes, for the same reason: a second
+        # route into one status is a different workflow path with different
+        # post-functions, and TCW will not guess which. Dropping this guard here
+        # would have reversed that policy for created tickets only.
+        ids = ", ".join(sorted(t.id for t in leads))
+        raise TrackerError(
+            f"{key} offers more than one transition to '{target}' (ids {ids}); "
+            f"TCW will not guess which. The ticket is in the tracker and is not "
+            f"bound to any item; move it by hand.")
+    if leads:
+        client.apply_transition(issue_id, leads[0].id)
+        landed = _current_status(client, key)
+        if _normalize(landed) != _normalize(target):
+            raise TrackerError(
+                f"{key} was created but did not reach '{target}': it is in "
+                f"'{landed}'. The transition was accepted and did not apply, so "
+                f"the ticket is in the tracker and is not bound to any item; "
+                f"move it by hand.")
+        return landed
     names = ", ".join(f"{t.name} → {t.to_status}" for t in offered) or "none"
     raise TrackerError(
         f"{key} was created in '{status}' but could not be moved to '{target}': "

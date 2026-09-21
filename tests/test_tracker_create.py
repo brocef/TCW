@@ -196,9 +196,10 @@ def test_the_created_key_is_reported_before_the_move():
 
 def test_placement_is_always_the_backlog_status():
     """Even for work under way. Jumping straight to In Progress would leave a
-    ticket in progress that nobody holds; the delivery path claims it."""
+    ticket in progress that nobody holds; the delivery path claims it. It takes
+    no item status, because there is nothing to vary."""
     assert placement_target(config(statuses={"backlog": "To Do",
-                                             "active": "In Progress"}), "active") == "To Do"
+                                             "active": "In Progress"})) == "To Do"
 
 
 # ── the workflow that needs no hop, and the hop that does not land ──────────
@@ -230,3 +231,20 @@ def test_a_transition_jira_accepts_but_does_not_apply_is_caught():
     message = str(error.value)
     assert "did not reach" in message or "is in 'Triage'" in message
     assert "EX-7" in message
+
+
+def test_two_transitions_to_the_target_are_refused_rather_than_guessed():
+    """`assess_move` refuses this for a bound ticket — a second route into one
+    status is a different workflow path with different post-functions, and "TCW
+    will not guess which". Creation dropped that guard and picked whichever Jira
+    listed first, silently reversing the policy for created tickets only."""
+    client = StubClient(entry_status="Triage", transitions=[
+        Transition(id="11", name="Accept", to_status="To Do", to_status_id="2"),
+        Transition(id="12", name="Triage Done", to_status="To Do", to_status_id="2")])
+    with pytest.raises(TrackerError) as error:
+        create_and_place(client, config(), slug="s", title="T", body="b",
+                         is_epic=False, tags=[])
+    message = str(error.value)
+    assert "more than one transition" in message
+    assert "11, 12" in message
+    assert not [c for c in client.calls if c[0] == "apply_transition"], client.calls

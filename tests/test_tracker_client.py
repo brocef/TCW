@@ -264,7 +264,13 @@ OPERATIONS = [
     ("description", ("10052",)),
     ("add_comment", ("10052", {"type": "doc", "version": 1, "content": []})),
     ("recent_comments", ("10052",)),
+    ("create_issue", ()),
 ]
+
+#: Operations taking keyword-only arguments. `create_issue` does, because a
+#: positional call would let a summary and a description swap places silently.
+KWARGS = {"create_issue": dict(project="X", summary="s", description={},
+                               issue_type="Task")}
 
 
 def test_every_operation_is_accounted_for_here():
@@ -280,7 +286,7 @@ def test_every_operation_passes_an_explicit_timeout(monkeypatch, name, args):
     rec = Recorder()
     client = jira.JiraClient(CONFIG)
     monkeypatch.setattr(client, "_request", rec)
-    getattr(client, name)(*args)
+    getattr(client, name)(*args, **KWARGS.get(name, {}))
     assert rec.last["timeout"] == CONFIG.timeout_seconds, (
         f"{name} did not pass a timeout; urlopen would block forever")
 

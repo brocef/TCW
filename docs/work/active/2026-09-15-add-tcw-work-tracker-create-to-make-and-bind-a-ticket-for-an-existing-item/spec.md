@@ -137,10 +137,15 @@ project's issue types are its own.
 `statuses` gains `backlog` as a legal key (`TRACKER_STATUS_KEYS`), so a project
 can say where a not-yet-started item's ticket belongs.
 
-After creating, the operation moves the ticket to the status mapped for the
-item's status, walking the workflow's transitions as `sync` already does rather
-than assuming one hop — the backfill needed `Accept` to reach `To Do`, which is
-not the target's name.
+After creating, the operation moves the ticket to the status mapped for
+`backlog`, applying the transition the workflow offers **to that destination** —
+the backfill needed `Accept` to reach `To Do`, and the transition's name is not
+the target's name. **Corrected during implementation:** an earlier draft of this
+paragraph said the operation "walks the workflow's transitions", which reads as
+a multi-hop search. Neither this nor `sync` does that. Both take a single hop
+chosen by where it lands (`assess_move`, `tcw/tracker/sync.py:205`), treat a
+ticket already in the target as nothing to do, and refuse rather than guess when
+the workflow offers more than one way in.
 
 **If no status is mapped for the item's status, creation refuses and creates
 nothing.** This is the rule that makes hazard 1 unreachable rather than merely
@@ -217,8 +222,9 @@ already implied.
 
 **Rule 3's status mapping is the one thing that could have gone wrong.** Naming
 a *transition* would have been provider-specific and unreachable for a tracker
-without workflows. It names a **status**, and walks whatever route the provider
-offers to reach it — the same rule `sync` already follows, for the same reason.
+without workflows. It names a **status**, and lets the provider say which of the
+routes it offers lands there — the same rule `sync` already follows, for the
+same reason.
 
 **Harness compatibility.** Every mechanism here is in the `tcw` CLI, which
 behaves identically under Claude and Codex. Nothing is carried by a skill, a
@@ -233,9 +239,14 @@ hook or injected context. The skills that mention the tracker (`work`,
 2. The created ticket is **not** in any status `work.tracker.inbox-query`
    selects. Checked by running the configured inbox query after creation and
    asserting the new key is absent from its results.
-3. With no `statuses` entry for the item's status, `tcw work tracker create`
-   exits non-zero, names `work.tracker.statuses.<status>`, creates no ticket,
-   and writes no binding. Verified by querying the tracker for issues created
+3. With no `statuses.backlog` entry, `tcw work tracker create` exits non-zero,
+   names `work.tracker.statuses.backlog`, creates no ticket, and writes no
+   binding. **Corrected during implementation:** this said
+   `work.tracker.statuses.<status>`, which implied the refusal depends on the
+   item's own status. It does not. A created ticket is always placed at the
+   backlog status whatever the item's status is (Rule 3 below says so), so the
+   only entry creation can be missing is `backlog`, and that is the only key the
+   refusal can name. Verified by querying the tracker for issues created
    during the run: there are none.
 4. `statuses.backlog` is accepted by `tcw validate` where it is refused today
    (`tcw/store/base.py:1360-1361`), and an unknown key is still refused.

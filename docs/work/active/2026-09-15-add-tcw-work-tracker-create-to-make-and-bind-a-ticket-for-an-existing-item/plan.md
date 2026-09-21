@@ -93,10 +93,20 @@ item: builds the ticket content (summary from title, description from
 for the item's status, and writes the binding.
 
 It reuses `tcw/tracker/intake.py`'s `binding_document` and `find_binding` rather
-than writing a second binding format, and the status walk reuses whatever `sync`
-already uses to reach a status — **not** a single hard-coded transition. The
+than writing a second binding format, and the placement follows the same rule
+`sync` does — pick the transition by **where it lands**, never by its name. The
 2026-09-20 backfill needed `Accept` to reach `To Do`, and the transition's name
 is not the target's name.
+
+**Corrected during implementation:** this task said "the status walk reuses
+whatever `sync` already uses", which suggested calling `assess_move` or
+searching for a multi-hop route. `_place` does neither. `assess_move` is built
+for a *bound* ticket and asks questions that are meaningless a second after
+creation — is it assigned to you, is it in one of the statuses the lifecycle
+move expects — so `_place` is its own function that keeps only the part that
+applies: read the current status, do nothing if it already matches, otherwise
+apply the one offered transition whose destination is the target, refusing when
+there are none or more than one.
 
 `tcw/tracker/jira.py` gains issue creation and transition-listing if it does not
 already expose them.
@@ -129,7 +139,8 @@ task 3. Flags: `--type`, `--parent`, `--dry-run`.
 
 **Proves it:** `tcw work tracker create <slug>` binds the item and
 `tcw work list` shows `ticket: <key>` (spec criterion 1); the refusal in
-criterion 3 exits non-zero and names `work.tracker.statuses.<status>`.
+criterion 3 exits non-zero and names `work.tracker.statuses.backlog` (see that
+criterion for why it is always `backlog`).
 
 ### Task 5 — Re-running creates one ticket
 

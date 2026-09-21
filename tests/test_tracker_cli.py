@@ -493,15 +493,39 @@ CREATE_RESPONSES = {
 }
 
 
-def _created_node(node, monkeypatch, tracker=CREATE_TRACKER, title="Thing"):
+def _created_node(node, monkeypatch, *, status, tracker=CREATE_TRACKER, title="Thing"):
+    """A node holding one item, in `status`.
+
+    `status` has **no default** on purpose. `create` branches on it in three
+    places — the closed-item refusal, the holder check, and whether the follow-on
+    `link` has anything to deliver — and a fixture's default is always whichever
+    value makes setup easiest, which here would be `backlog`, the one value that
+    takes none of those branches (`docs/lifecycle/implementation.md`).
+    """
     root, configure = node
     configure(tracker)
     code, _out, err = _run(["work", "new", title])
     assert code == 0, err
     from tcw.store.fs import FsWorkStore
-    items = FsWorkStore.open(root).query()
+    st = FsWorkStore.open(root)
+    items = st.query()
     assert len(items) == 1, items
-    return root, items[0].slug
+    slug = items[0].slug
+    for hop in _ROUTE_TO[status]:
+        st.transition(slug, hop)
+    assert FsWorkStore.open(root)._require(slug).status == status
+    return root, slug
+
+
+#: How to walk a freshly filed item to each status, since `transition` only
+#: accepts legal hops.
+_ROUTE_TO = {
+    "backlog": (),
+    "active": ("active",),
+    "review": ("active", "review"),
+    "completed": ("active", "review", "completed"),
+    "discarded": ("discarded",),
+}
 
 
 def _create_responses(monkeypatch, **overrides):
@@ -531,7 +555,7 @@ def _create_responses(monkeypatch, **overrides):
 
 def test_create_makes_a_ticket_places_it_and_binds_it(node, monkeypatch):
     """Spec criterion 1, end to end through the CLI."""
-    root, slug = _created_node(node, monkeypatch)
+    root, slug = _created_node(node, monkeypatch, status="backlog")
     posted = _create_responses(monkeypatch)
 
     code, _out, err = _run(["work", "tracker", "create", slug])
@@ -557,7 +581,7 @@ def test_create_refuses_before_creating_when_backlog_is_unmapped(node, monkeypat
     """Spec criterion 3. The refusal must reach the tracker's create endpoint
     never — a ticket made and then declined is the worst outcome available."""
     tracker = {**CREATE_TRACKER, "statuses": {"active": "In Progress"}}
-    root, slug = _created_node(node, monkeypatch, tracker=tracker)
+    root, slug = _created_node(node, monkeypatch, status="backlog", tracker=tracker)
     posted = _create_responses(monkeypatch)
 
     code, _out, err = _run(["work", "tracker", "create", slug])
@@ -568,7 +592,7 @@ def test_create_refuses_before_creating_when_backlog_is_unmapped(node, monkeypat
 
 def test_create_is_idempotent(node, monkeypatch):
     """Spec criterion 5: a second run creates nothing and exits zero."""
-    root, slug = _created_node(node, monkeypatch)
+    root, slug = _created_node(node, monkeypatch, status="backlog")
     _create_responses(monkeypatch)
     assert _run(["work", "tracker", "create", slug])[0] == 0
 
@@ -581,7 +605,7 @@ def test_create_is_idempotent(node, monkeypatch):
 
 def test_dry_run_writes_nothing_anywhere(node, monkeypatch):
     """Spec criterion 7 — asserted against the tracker as well as the tree."""
-    root, slug = _created_node(node, monkeypatch)
+    root, slug = _created_node(node, monkeypatch, status="backlog")
     posted = _create_responses(monkeypatch)
 
     code, _out, err = _run(["work", "tracker", "create", slug, "--dry-run"])
@@ -598,24 +622,59 @@ def test_dry_run_writes_nothing_anywhere(node, monkeypatch):
 
 def test_create_does_not_mention_a_command_nobody_ran(node, monkeypatch):
     """`create` binds through `link`'s implementation, so every message must
-    still name the verb the user typed. Asserting the absence of the replaced
-    wording, because a message owned by another code path passes by accident."""
-    tracker = {**CREATE_TRACKER, "statuses": {"active": "In Progress"}}
-    root, slug = _created_node(node, monkeypatch, tracker=tracker)
-    _create_responses(monkeypatch)
-    _code, _out, err = _run(["work", "tracker", "create", slug])
-    assert "tracker create" in err
+    still name the verb the user typed.
+
+    **This test used to pass without running the refactored code.** It
+    configured no `statuses.backlog`, so the command returned at
+    `_tracker_create`'s own `unplaceable` refusal — a message with the verb
+    hard-coded — and both assertions held with the whole `verb` parameter
+    reverted. Found by an adversarial review. It now fails the binding *inside*
+    `_tracker_link`, which is the only way to reach one of the ten rewritten
+    message sites.
+    """
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    posted = _create_responses(monkeypatch)
+
+    from tcw.store.fs import FsWorkStore
+
+    def refuse(self, *a, **kw):
+        raise OSError("disk is full")
+    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse)
+
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    # The message `_tracker_link` owns, reached only after the ticket was made.
+    assert "the binding could not be written" in err, err
+    assert "tcw work tracker create:" in err
     assert "tracker link" not in err
+    assert [p for p in posted if p[0] == "POST"], "the ticket should have been made"
 
 
 def test_an_invalid_part_is_refused_before_any_ticket_exists(node, monkeypatch):
     """`link` can check `--part` after reading its ticket, because that ticket
     already existed. `create` cannot: the same order would leave a real ticket in
     a shared tracker bound to nothing, and TCW has no way to delete it."""
-    root, slug = _created_node(node, monkeypatch)
+    root, slug = _created_node(node, monkeypatch, status="backlog")
     posted = _create_responses(monkeypatch)
 
     code, _out, err = _run(["work", "tracker", "create", slug, "--part", "Not A Part"])
     assert code == 1
     assert [p for p in posted if p[0] == "POST"] == [], posted
     assert "tracker create" in err
+
+
+@pytest.mark.parametrize("status", ["completed", "discarded"])
+def test_a_closed_item_is_refused_before_anything_reaches_the_tracker(
+        node, monkeypatch, status):
+    """A spec non-goal: "a ticket created only to be closed is noise". Placement
+    is what makes it concrete — every created ticket lands in the *backlog*
+    status, so a ticket for finished work would be created open and then have to
+    be walked forward and resolved, and a failure part-way leaves an open ticket
+    for work that is done."""
+    root, slug = _created_node(node, monkeypatch, status=status)
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert f"{slug} is {status}" in err, err
+    assert "noise" in err
+    assert posted == [], f"the tracker was called anyway: {posted}"

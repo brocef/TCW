@@ -1194,6 +1194,9 @@ TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")
 TRACKER_DEFAULT_TIMEOUT = 15
 
 
+_ABSENT_CREATE = object()
+
+
 def _parse_tracker_create(raw: Any, problems: list[str]) -> "TrackerCreate | None":
     """`work.tracker.create`, or `None` when absent. Appends its own problems.
 
@@ -1201,9 +1204,16 @@ def _parse_tracker_create(raw: Any, problems: list[str]) -> "TrackerCreate | Non
     fields nobody asked for onto a ticket in a shared tracker, where removing
     them again is somebody's afternoon.
     """
-    if raw is None:
+    if raw is _ABSENT_CREATE:
         return None
     where = "work.tracker.create"
+    if raw is None:
+        # `create:` with nothing under it. Reported rather than read as absence:
+        # the key is there because somebody meant to configure creation, and
+        # silence would leave them with a `tcw validate` that says nothing and a
+        # `create` that refuses for a reason naming a key they thought they set.
+        problems.append(f"{where}: expected a mapping, got nothing")
+        return None
     if not isinstance(raw, dict):
         problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
         return None
@@ -1347,7 +1357,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value.strip()
 
     statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
-    create = _parse_tracker_create(raw.get("create"), problems)
+    create = _parse_tracker_create(raw.get("create", _ABSENT_CREATE), problems)
     strict = raw.get("strict", False)
     if not isinstance(strict, bool):
         problems.append(f"work.tracker.strict: expected true or false, "

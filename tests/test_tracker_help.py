@@ -17,8 +17,8 @@ import pytest
 
 from tcw.cli import build_parser
 
-TRACKER_COMMANDS = ("list", "show", "import", "claim", "release", "link",
-                    "unlink", "sync")
+TRACKER_COMMANDS = ("list", "show", "import", "create", "claim", "release",
+                    "link", "unlink", "sync")
 
 
 def _tracker_group() -> argparse._SubParsersAction:

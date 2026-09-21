@@ -270,6 +270,17 @@ def test_an_absent_create_block_is_not_a_problem(node):
     assert [p for p in validate(root) if "tracker" in p] == []
 
 
+def test_an_empty_create_block_is_named_rather_than_read_as_absence(node):
+    """`create:` with nothing under it parses as null, which is indistinguishable
+    from the key being missing unless the parser is told the difference. Reported,
+    because the key is only there because somebody meant to configure creation."""
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "create": None})
+    problems = [p for p in validate(root) if "tracker" in p]
+    assert any("work.tracker.create: expected a mapping, got nothing" in p
+               for p in problems), problems
+
+
 @pytest.mark.parametrize("block, key", [
     ({"project": "EX", "nonsense": "x"}, "work.tracker.create.nonsense"),
     ({"project": "EX", **{"issue-type": 7}}, "work.tracker.create.issue-type"),
