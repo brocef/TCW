@@ -6,22 +6,30 @@ prints: this project's text if it configured one, TCW's own otherwise. The rules
 on this page hold whatever it prints. If the command fails, say so rather than
 working from memory.
 
-What nesting a child with `--parent` does:
+What creating a child with `--parent` does:
 
-- The child's folder is created **inside** the parent's folder; `tcw work list`
-  shows children indented under their parent.
-- A child inherits the parent's status by living inside it. `tcw work start`/
-  `complete` on the **parent** carries its children along; transitioning a
-  **child** on its own promotes it to a top-level item (it de-nests).
+- The child records its parent (a `parent:` field in its `state.yaml`) and has a
+  status of its own. It starts in `backlog` whatever the parent's status, so its
+  `request`, `spec` and `plan` stages are available even under an active parent.
+- Starting or completing the parent does not move the child, and the child keeps
+  its parent through every one of its own transitions. `tcw work list` shows it
+  indented under the parent.
+- `tcw work complete` refuses to close the parent — even with `--force` — while
+  anything beneath it is open, naming each open item; `tcw work drop` refuses
+  while any child names it. A child cannot be created under a completed or
+  discarded item.
+- Children made before TCW gave children their own status sit inside the
+  parent's folder and still move with it. Leave them be; one that is moved on its
+  own is given its own status from then on.
 
-**Which path?** Choose by scheduling behavior:
+**Which path?** `--parent` and `--initiative` both group items; they differ in
+reach and in what they enforce:
 
-- Pieces worked together and transitioned as a unit → `--parent` children (this
-  doc). This relation is local because its filesystem adapter realizes nesting,
-  but locality alone is not a reason to choose it.
-- Epic tasks worked independently over time → `--initiative`, even when every
-  task is in the same repo. `reconcile` follows these initiative children; see
-  [`epic-deltas.md`](../epic-deltas.md).
-- Independently scheduled tasks in multiple sub-project repos → the same
-  `--initiative` relation plus `delegate`/`reconcile`; see
-  [`cross-node-deltas.md`](../cross-node-deltas.md).
+- `--parent` → a child in the **same** work store, under any item. No epic is
+  needed and nothing gates the child's `start`; the relation's rule is that the
+  parent cannot close over an open child.
+- `--initiative` → a slice pointing at a `type: epic` item, which may live in
+  **another** node. A slice cannot start until its epic is active, and
+  `reconcile` rolls the slices up into the epic; see
+  [`epic-deltas.md`](../epic-deltas.md). Across sub-project repositories, add
+  `delegate`; see [`cross-node-deltas.md`](../cross-node-deltas.md).

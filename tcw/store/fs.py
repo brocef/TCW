@@ -3772,8 +3772,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     Status is the top-level status folder an item lives under; a transition is a
     `git mv` of the item folder. The stable id is the slug; an item folder is any
-    dir holding a `state.yaml`, found at any nesting depth — a child item is a
-    folder nested inside its parent's (the node relation, derived from nesting).
+    dir holding a `state.yaml`, found at any nesting depth. A child item records
+    its parent in a `parent:` field and sits in the status folders like any other
+    item; children made by earlier versions are folders nested inside their
+    parent's, and for those the relation is derived from the nesting.
     """
     COMPONENT = "work"
 

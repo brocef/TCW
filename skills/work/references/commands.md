@@ -21,7 +21,7 @@
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
 | retitle an item          | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
 | tags                     | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` — every tag value may be `a,b,c`                                                                    |
-| nest a coupled piece     | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
+| add a child item         | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
 | add an epic task         | `tcw work new "<task>" --initiative <epic-slug>`                                                                                                |
 | make an item an epic     | `tcw work edit <slug> --type epic` · `--type ""` makes it plain again, refused while any item names it as its initiative or the project graph is partial, and under strict tracker mode |
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |

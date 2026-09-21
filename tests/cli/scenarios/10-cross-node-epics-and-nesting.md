@@ -15,10 +15,10 @@ Work that spans more than one item or more than one repository.
 
 | # | Assertion |
 | - | --------- |
-| 1 | `tcw work new "Child" --parent $EPIC` nests the child under the parent; `tcw work path` for the child resolves inside the parent's folder. |
-| 2 | `tcw work list` renders the nesting, and each child's `tcw work path` resolves beneath the parent's folder. **Human `tcw work show` does not enumerate children** — do not assert that it does. |
+| 1 | `tcw work new "Child" --parent $EPIC` creates the child in `backlog` with `parent: $EPIC` in its `state.yaml`; `tcw work path` for the child resolves to `docs/work/backlog/<child>`, not inside the parent's folder. |
+| 2 | `tcw work list` renders the child indented under its parent, and `tcw work show <child>` prints `parent: $EPIC`. **Human `tcw work show` does not enumerate a parent's children** — do not assert that it does. |
 | 3 | `--epic` marks `type: epic`, visible in `show --json`. |
-| 4 | **The gate is on `--initiative` children, not `--parent` children** — measured, and the distinction is deliberate. An epic with an open child created via `--initiative $EPIC` is refused, naming the open child; once that child is resolved it completes. An epic whose only open child was created with `--parent $EPIC` **completes anyway, exit 0**. Assert both halves: they look identical from the outside and mean different things. |
+| 4 | **Both kinds of child hold the epic open, by different rules.** An epic with an open child created via `--initiative $EPIC` is refused, naming the open child — and `--force` overrides that one. An epic whose only open child was created with `--parent $EPIC` is also refused, naming the child, and **`--force` does not override it** (the message says "still open"). Once each child is resolved the epic completes. Assert both halves, including the `--force` difference. |
 | 5 | `--initiative <epic-slug>` stamps the back-pointer, and it round-trips through `show --json`. |
 | 6 | **Two nodes on disk**, parent and child, wired by writing reciprocal `connected-projects` blocks (see the note below — there is no registration CLI). `tcw work nodes` in the parent lists the child, and in the child lists the parent. |
 | 7 | `tcw work delegate <child-id> "Please do X"` writes a request into the **child node's** inbox, not the parent's. Asserted by reading the child's `tcw work inbox list`. |
