@@ -28,3 +28,16 @@ cause, so it describes the cause rather than only the effect.
 
 - Asked for reference material, deadlines and exclusions on 2026-09-21: none
   beyond the reporter's account in `intake.md` and the related items it names.
+
+## Added 2026-09-21
+
+From the proposit-app session, after it migrated: once `extends` moved into
+`tcw-config.yaml` in three nodes and the five leftover files were deleted, both
+forms of `overrides` resolve. That is the bare id (`overrides: cap-3c5947`, 85 on the
+server) and the project-qualified form (`overrides: proposit-shared/cap-3c5947`, 71 on
+mobile). `check` went from 148 / 128 / 3 problems to "capabilities OK" and
+"taxonomy OK" in all three nodes. So every problem was the silent loss of inherited
+entries: most appeared as `unknown alias`, and some as `Feature → dangling ref` and
+`Subject → dangling ref` against inherited taxonomy that had also vanished. The
+leftover report this item adds should therefore also help readers of those two
+dangling-ref messages. No separate item is needed.
