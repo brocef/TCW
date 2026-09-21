@@ -5827,6 +5827,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(f"{self._config_path()}: work.tags must be a list, "
                              f"found {type(current).__name__}")
         result = sorted(tags)
+        if current is not None and set(current) == set(tags):
+            # Adding a tag already registered, or removing one that is not,
+            # changes nothing — and must not refuse on a hand-ordered list that
+            # holds comments, which re-sorting it would have to delete.
+            return result
         self._write_node_config([config_edit.SetList("work", "tags", tuple(result))])
         return result
 

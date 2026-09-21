@@ -280,6 +280,7 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
     err = capsys.readouterr().err
     assert code != 0
     assert config(root) == before
+    assert git(root, "status", "--porcelain").stdout == ""
     assert "work must be a mapping" in err and "tcw-config.yaml" in err
 
 
@@ -308,9 +309,11 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     before = b"# no id yet\nwork: {tags: [a]}\n"      # braces: `path` cannot be added
     (root / "tcw-config.yaml").write_bytes(before)
     commit_all(root)
+    status = git(root, "status", "--porcelain").stdout
     target = root / "planning" / "work"
     code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path", str(target))
     err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
+    assert git(root, "status", "--porcelain").stdout == status   # .gitignore too
     assert "work.path" in err
     assert (root / "docs" / "work" / "inbox").is_dir()
     assert not (root / "planning").exists()
@@ -355,9 +358,27 @@ def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsy
     root = repository(tmp_path / "node")
     before = b"id: node\nwork: docs/work\n"
     (root / "tcw-config.yaml").write_bytes(before)
+    commit_all(root)
     code = run(root, monkeypatch, "init", "work", "--work-path", str(root / "w"))
     err = capsys.readouterr().err
     assert code != 0
     assert config(root) == before
+    assert git(root, "status", "--porcelain").stdout == ""
     assert "work must be a mapping" in err and "tcw-config.yaml" in err
     assert not (root / "w").exists()
+
+
+@pytest.mark.parametrize("argv", [("add", "gamma"), ("rm", "missing")])
+def test_a_tags_change_that_changes_nothing_is_not_refused(tmp_path, monkeypatch, argv):
+    before = b"id: node\nwork:\n  tags:\n  - gamma  # hand-ordered\n  - alpha\n"
+    root = work_node(tmp_path, before)
+    assert run(root, monkeypatch, "work", "tags", *argv) == 0
+    assert config(root) == before
+    assert git(root, "status", "--porcelain").stdout == ""
+
+
+@pytest.mark.parametrize("text", [b"---\n", b"~\n", b"# placeholder\n---\n"])
+def test_write_sentinel_on_a_null_document(tmp_path, text):
+    (tmp_path / "tcw-config.yaml").write_bytes(text)
+    assert write_sentinel(tmp_path, "proj") is True
+    assert yaml.safe_load(config(tmp_path)) == {"id": "proj"}
