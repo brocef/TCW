@@ -15,8 +15,9 @@ tcw work new "<sub-item title>" --parent <parent-slug>
 - Each child gets its own `initial-request.md`/`spec.md`/`plan.md` as it's
   planned, and is started, submitted and completed on its own. The parent stays a
   thin umbrella.
-- The parent cannot be completed, discarded or dropped while any child beneath
-  it is still open, so finish or discard the children first.
+- The parent cannot be completed or discarded while any child beneath it is
+  still open, so finish or discard the children first. It cannot be dropped
+  while any child names it at all, even a finished one.
 
 Reach for this **before** an item grows unwieldy. A parent with three focused
 children beats one item whose `plan.md` has fifteen tasks.

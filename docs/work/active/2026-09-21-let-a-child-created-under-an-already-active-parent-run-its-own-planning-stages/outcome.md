@@ -153,3 +153,16 @@ After the fixes, run with no git identity:
 `tests/test_child_status.py`, `test_worktree_completion.py`, `test_work.py`,
 `test_store_editor.py`, `test_external_work_store.py`, `test_retention.py` and
 `test_epic_completable.py` gave **550 passed in 149.08s**.
+
+## Autonomous decisions
+
+Taken in an autonomous run; each consulted Codex (read-only) and an Opus subagent.
+
+- **Layout.** The spec proposed status folders nested inside the parent. Codex: top-level status folders plus a pointer to the parent, because it changes the fewest paths. Opus: the same, as a `parent:` field like `initiative:`, noting that the claim, transition, tombstone and worktree paths then need no change. Chose top-level folders and a `parent:` field; children made by earlier versions, nested inside the parent, keep following it.
+- **Does `complete --force` bypass the open-children refusal?** Codex: no. Opus: no. Chose no.
+- **Do children under a backlog parent get their own status?** Codex: yes. Opus: yes. Chose yes.
+- **Is a child's `start` gated on the parent being active?** Codex: no. Opus: no. Chose no gate.
+- **Plan review.** Codex and Opus both said to proceed with changes: task 6 breaks more tests (move the `update_work` changes into it), write `parent:` before the claim rename, take the source path from `git ls-files`, write the tombstones from `git ls-tree` in one write, make drop refuse over any independent descendant, and check the branch copy before merging. All adopted.
+- **Code review** (adversarial-code-reviewer): NOT DONE, with one blocking finding and four smaller ones. All were fixed (see "Verify fixes"), and the re-review returned DONE. None were rejected.
+- **Verify** (tcw:verifier): 21 of 22 criteria met. Criterion 10 is met at the store level only, because `tcw work start --take-over` cannot yet recover an interrupted claim from the CLI. That limitation predates this item and is tracked by `2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app`. Accepted on that basis. Its one wording finding (decompose.md said drop is refused only over an open child) is fixed at verify.
+- **Hands-on QA** by the coordinating session: a child was born in backlog and its spec gate passed; completing the parent was refused, even with `--force`, while the child was open; a legacy nested child read fine and kept its parent on its own move; the web API's `/api/work` carries the `parent` field.
