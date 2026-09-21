@@ -1,0 +1,11 @@
+slug: 2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting
+title: Make tcw validate check taxonomy and capabilities stores moved by their path
+  setting
+created: '2026-09-21'
+resolution: null
+priority: 30
+tags:
+- cli
+- capabilities
+- taxonomy
+- bug
