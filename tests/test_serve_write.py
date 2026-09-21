@@ -244,8 +244,20 @@ class TestCreateWork:
         assert status == HTTPStatus.CREATED
         slug = body["item"]["slug"]
 
+        # The response itself, not just a later read: it was built from a
+        # snapshot taken before the owed record was written, so it said
+        # `tracker: null` for an item that had just been given one, and carried
+        # a `tracker.yaml` revision already stale — which the next sidecar write
+        # from the page would have been rejected on.
+        assert body["item"]["tracker"] == {
+            "owed": {"since": body["item"]["tracker"]["owed"]["since"],
+                     "reason": body["item"]["tracker"]["owed"]["reason"]}
+        }, body["item"]["tracker"]
+        assert "tracker.yaml" in body["sidecarRevisions"], body["sidecarRevisions"]
+
         owed = FsWorkStore.open(root).get(slug).tracker
         assert owed is not None, "the item carries no tracker state at all"
+        assert body["sidecarRevisions"]["tracker.yaml"], body["sidecarRevisions"]
         assert "owed" in owed, owed
         assert "tcw work tracker create" in owed["owed"]["reason"], owed
         # Unbound, not bound: an owed record is a debt, never a binding.

@@ -499,9 +499,15 @@ def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
         # Even this is not allowed to fail the filing. Say it plainly instead:
         # without the record the board will not show the ticket as owed, so the
         # user is the only one who will remember.
-        print(f"tcw work {verb}: {slug} has no ticket ({reason}), and that could "
-              f"not be recorded either ({error}). Run `tcw work tracker create "
-              f"{slug}` when the tracker is reachable.", file=sys.stderr)
+        # Deliberately does not name `tracker create`. This is reached with the
+        # tracker's answer already in `reason`, which may be that a ticket was
+        # made and could not be written down — and telling somebody to run
+        # `create` after repairing the disk would then make a second one.
+        print(f"tcw work {verb}: {slug} has no ticket recorded ({reason}), and "
+              f"that could not be recorded either ({error}). Read the message "
+              f"above before running `tcw work tracker create {slug}`: if it "
+              f"names a ticket, that ticket exists and wants "
+              f"`tcw work tracker link` instead.", file=sys.stderr)
         return
     print(f"→ no ticket was created for {slug}: {reason}. It is recorded as owed; "
           f"`tcw work tracker create {slug}` makes it.", file=sys.stderr)
@@ -2678,9 +2684,18 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     # Idempotency before anything reaches the tracker: an item that already has a
     # ticket must never be given a second one, and a duplicate in a shared tracker
     # cannot be undone from here.
-    existing = st.read_sidecar(slug, BINDING_SIDECAR)
-    resume = created_record(existing.content if existing else None)
-    current, _revision = binding_of(st, slug)
+    # A sidecar this process cannot read is one item's problem, not the run's.
+    # `_sweep_order` deliberately keeps such an item so that it is refused by
+    # name rather than skipped in silence — and then this read, outside any
+    # handler, ended the whole sweep on it. An unreadable epic sorts first, so
+    # one could stop a sweep before it reached anything.
+    try:
+        existing = st.read_sidecar(slug, BINDING_SIDECAR)
+        resume = created_record(existing.content if existing else None)
+        current, _revision = binding_of(st, slug)
+    except (OSError, UnicodeDecodeError) as error:
+        return refuse(f"{slug} has a {BINDING_SIDECAR} that cannot be read "
+                      f"({error}).")
     if isinstance(current, Bound):
         print(f"→ {slug} is already bound to {current.ticket_key} "
               f"({current.ticket_url}). Nothing was created.", file=sys.stderr)
@@ -2769,7 +2784,11 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     # the create POST raises from inside `create_and_place`, and without this the
     # message would name neither the key nor the fact that a ticket now exists —
     # so the user re-runs and gets a *second* one.
-    made: dict = dict(resume) if resume else {}
+    # `recorded` says the key survives a crash from here. On a resumption it
+    # already does — that record is where `resume` came from — and without
+    # saying so, a tracker failure during placement was reported as this machine
+    # failing to write the key down, and stopped a sweep for a healthy disk.
+    made: dict = {**resume, "recorded": True} if resume else {}
 
     def record(key: str, issue_id: str) -> None:
         """Persist the key before anything else can fail.
@@ -3203,11 +3222,19 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
         # `create` failed every time against a ticket that had been deleted or
         # moved, `link` failed too, and `unlink` refused because the item was
         # not bound, leaving hand-editing `tracker.yaml` as the only way out.
+        # `revision` from the read that classified it, not a second read: a
+        # second read would take whatever arrived in between — a `created`
+        # record from a concurrent run naming a ticket that now exists — and
+        # delete it while reporting on the state this run first saw.
         held = st.read_sidecar(args.slug, BINDING_SIDECAR)
+        if held is None:                    # removed between the two reads
+            print(f"tcw work tracker unlink: {args.slug} has no "
+                  f"{BINDING_SIDECAR} to clear.", file=sys.stderr)
+            return 1
         try:
             st.write_sidecar(args.slug, BINDING_SIDECAR,
                              without_pending_records(held.content),
-                             revision=held.revision)
+                             revision=revision)
         except _LOCAL_WRITE_ERRORS as e:
             print(f"tcw work tracker unlink: {e}", file=sys.stderr)
             return 1
@@ -3263,14 +3290,19 @@ def _tracker_sync(args: argparse.Namespace) -> int:
             # not settle it — `tracker create` does. Saying only "not bound to a
             # ticket" was a dead end for the user most likely to be standing
             # here: somebody whose filing could not reach the tracker.
+            # `created` first, the same precedence `binding_value` uses: a
+            # sidecar can hold both — filing records a debt, a later run makes
+            # the ticket and fails to place it — and a ticket that exists
+            # outranks the note saying one was wanted. Checking `owed` first
+            # told the user to make a ticket that was already made.
             extra = ""
-            if getattr(binding, "owed", None):
-                extra = (f" It is owed one; `tcw work tracker create "
-                         f"{args.slug}` makes it.")
-            elif getattr(binding, "created", None):
+            if getattr(binding, "created", None):
                 extra = (f" {binding.created['key']} was created for it and "
                          f"never bound; `tcw work tracker create {args.slug}` "
                          f"binds it.")
+            elif getattr(binding, "owed", None):
+                extra = (f" It is owed one; `tcw work tracker create "
+                         f"{args.slug}` makes it.")
             print(f"tcw work tracker sync: {args.slug} is not bound to a "
                   f"ticket.{extra}", file=sys.stderr)
             return 1

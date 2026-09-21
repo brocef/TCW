@@ -239,8 +239,10 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     return None
 
 
-def _owe_ticket_if_configured(work, slug: str) -> None:
+def _owe_ticket_if_configured(work, slug: str) -> bool:
     """Record that a web-filed item is owed a ticket, when the project wants one.
+
+    Returns whether anything was written, so the caller knows to re-read.
 
     `work.tracker.create.on-new` says filing an item makes its ticket. The web
     app deliberately runs no tracker code — no credentials, no network, no page
@@ -259,11 +261,13 @@ def _owe_ticket_if_configured(work, slug: str) -> None:
 
     config = work.tracker_config()
     if config is None or config.create is None or not config.create.on_new:
-        return
+        return False
     with suppress(Exception):                # see the docstring
         record_owed(work, slug, since=date.today().isoformat(),
                     reason="filed in the web app, which does not reach the "
                            "tracker; `tcw work tracker create` makes it")
+        return True
+    return False
 
 
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
@@ -894,7 +898,13 @@ class TcwHandler(BaseHTTPRequestHandler):
                     type=type_val if type_val else "",
                     tags=tags,
                 )
-                _owe_ticket_if_configured(work, detail.item.slug)
+                if _owe_ticket_if_configured(work, detail.item.slug):
+                    # Re-read: `detail` predates the owed record, so the
+                    # response would say `tracker: null` for an item that just
+                    # got one, and carry a `tracker.yaml` revision already
+                    # stale — which the next sidecar write from the page would
+                    # be rejected on.
+                    detail = work.get_detail(detail.item.slug) or detail
                 response = {
                     "item": _item_payload(work, detail.item.slug, detail.item),
                     "coreRevision": detail.core_revision,

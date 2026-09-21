@@ -239,6 +239,15 @@ test("an item that owes a ticket says so instead of crashing the page", () => {
     ).toBeVisible()
 })
 
+test("an item whose ticket was made but never bound says which ticket", () => {
+    // The fifth shape, added after `owed` and therefore the one most likely to
+    // have been missed by a reader.
+    render(workDetail({ created: { key: "EX-604", id: "604" } }))
+
+    expect(screen.getByText(/EX-604/)).toBeVisible()
+    expect(screen.getByText(/binding did not follow/)).toBeVisible()
+})
+
 test("an unreadable binding shows why, and an unbound item shows no ticket", () => {
     const { unmount } = render(
         workDetail({ problem: "missing or empty: ticket.key" })

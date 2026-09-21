@@ -155,7 +155,19 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
     for item in store.query():
         if item.status in RESOLVED_STATUSES:
             continue
-        binding, _revision = binding_of(store, item.slug)
+        try:
+            binding, _revision = binding_of(store, item.slug)
+        except (OSError, UnicodeDecodeError) as error:
+            # Same answer as `Malformed`, and for the same reason: this scan
+            # cannot say whether the ticket is taken, so it must refuse rather
+            # than guess. Raised as a `BindingProblem` because every caller
+            # already reports one in words; letting the read error through gave
+            # a traceback, and gave it while binding some *other* item, since
+            # this scan visits the whole board.
+            raise BindingProblem(
+                f"{item.slug} has a {BINDING_SIDECAR} that cannot be read "
+                f"({error}), so it cannot be told whether this ticket is "
+                f"already bound. Repair or remove that file first.") from error
         if isinstance(binding, Malformed):
             raise BindingProblem(
                 f"{item.slug} has a {BINDING_SIDECAR} that cannot be read "

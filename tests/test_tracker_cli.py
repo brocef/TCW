@@ -845,6 +845,43 @@ def test_a_dry_run_reports_a_resumption_rather_than_a_creation(node, monkeypatch
     assert posted == [], posted
 
 
+def test_one_unreadable_sidecar_does_not_end_the_sweep(node, monkeypatch):
+    """`_sweep_order` keeps an item whose sidecar it cannot read, so that
+    `_create_one` refuses it by name instead of skipping it in silence. That
+    read then happened again outside any handler and ended the run — and an
+    unreadable epic sorts first, so one could stop a sweep before it reached a
+    single healthy item."""
+    root, slugs = _board(node, monkeypatch,
+                         [("Broken", "epic", "backlog"), ("Fine", "task", "backlog")])
+    posted = _create_responses(monkeypatch)
+    from tcw.store.fs import FsWorkStore
+    real = FsWorkStore.read_sidecar
+
+    def refuse_one(self, slug_, name):
+        if slug_ == slugs["Broken"]:
+            raise OSError("input/output error")
+        return real(self, slug_, name)
+
+    monkeypatch.setattr(FsWorkStore, "read_sidecar", refuse_one)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    monkeypatch.undo()
+    assert code == 1                                   # Broken really did fail
+    assert "Traceback" not in err, err
+    assert "cannot be read" in err, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert [c[2]["fields"]["summary"] for c in creates] == ["Fine"], creates
+
+    # What "reached" means here, stated rather than implied. Binding scans the
+    # whole board to prove the ticket is not already taken, and it cannot prove
+    # that while a sidecar is unreadable — the same refusal a malformed one has
+    # always produced. So Fine's ticket exists and is recorded, not bound, and
+    # `tracker create` binds it once the broken file is dealt with.
+    from tcw.tracker.intake import created_record
+    assert created_record(_sidecar(root, slugs["Fine"])) == {
+        "key": "PROBE-1", "id": "10001"}, _sidecar(root, slugs["Fine"])
+
+
 def test_a_sweep_stops_once_a_created_key_cannot_be_recorded(node, monkeypatch):
     """A ticket made whose key cannot be written down is unfindable: no record
     survives, so a re-run makes another. Carrying on would produce one of those
@@ -1393,6 +1430,129 @@ def test_under_strict_mode_a_filed_epic_still_gets_its_ticket(node, monkeypatch)
     assert item.tracker["ticket"]["key"] == "PROBE-1", item.tracker
 
 
+#: A workflow that creates issues in a column with no way out of it, so
+#: placement fails *after* the ticket exists.
+STUCK_WORKFLOW = {
+    "/transitions": (200, {}, json.dumps({"transitions": []}).encode()),
+    "/issue/PROBE-1": (200, {}, json.dumps(
+        {"id": "10001", "key": "PROBE-1",
+         "fields": {"summary": "Thing", "status": {"name": "Triage"},
+                    "assignee": None, "description": None}}).encode()),
+}
+
+
+def test_sync_names_the_created_ticket_when_the_item_also_owes_one(
+        node, monkeypatch):
+    """A sidecar can hold both: filing records a debt, a later run makes the
+    ticket and fails to place it, and `with_created_record` leaves the debt
+    alone. `binding_value` prefers `created`; `sync` checked `owed` first and so
+    told the user to make a ticket that had already been made."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import (BINDING_SIDECAR, with_created_record,
+                                    with_owed_record)
+    both = with_created_record(
+        with_owed_record(None, {"since": "2026-09-20", "reason": "network down"}),
+        {"key": "PROBE-1", "id": "10001"})
+    FsWorkStore.open(root).write_sidecar(slug, BINDING_SIDECAR, both, revision="")
+
+    _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "sync", slug])
+    assert code == 1
+    assert "PROBE-1 was created" in err, err
+    # The wording this replaces: it used to call an existing ticket owed.
+    assert "It is owed one" not in err, err
+
+
+def test_a_resumed_run_failing_at_the_tracker_does_not_blame_the_disk(
+        node, monkeypatch):
+    """`made` starts from the resumption record, which is already on disk, so a
+    tracker failure during placement must not be reported as this machine being
+    unable to write the key down — nor stop a sweep, which is what that report
+    triggers. The key was recorded; the tracker is what failed."""
+    root, slugs = _board(node, monkeypatch,
+                         [("Alpha", "task", "backlog"), ("Beta", "task", "backlog")])
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
+    FsWorkStore.open(root).write_sidecar(
+        slugs["Alpha"], BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-1", "id": "10001"}), revision="")
+
+    posted = _create_responses(monkeypatch, **STUCK_WORKFLOW)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 1                                  # Alpha genuinely failed
+    assert "could not be recorded" not in err, err
+    assert "stopping the sweep" not in err, err
+    # And Beta was still reached: one create POST, for the item that needed one.
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["summary"] == "Beta", creates
+
+
+def test_unlink_refuses_when_the_sidecar_changed_under_it(node, monkeypatch):
+    """`unlink` reports on the state it classified, so it must write with that
+    read's revision. Using a second read's would let it delete a `created`
+    record a concurrent run had just written — a real ticket losing the only
+    note of its existence — while reporting that nothing was created."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import (BINDING_SIDECAR, with_created_record,
+                                    with_owed_record)
+    store = FsWorkStore.open(root)
+    store.write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_owed_record(None, {"since": "2026-09-20", "reason": "network down"}),
+        revision="")
+
+    real = FsWorkStore.read_sidecar
+    seen: list[int] = []
+
+    def racing_read(self, slug_, name):
+        found = real(self, slug_, name)
+        seen.append(1)
+        if len(seen) == 1:          # after unlink classifies, before it writes
+            real_write = FsWorkStore.write_sidecar
+            real_write(self, slug_, name,
+                       with_created_record(found.content,
+                                           {"key": "PROBE-9", "id": "9"}),
+                       revision=found.revision)
+        return found
+
+    monkeypatch.setattr(FsWorkStore, "read_sidecar", racing_read)
+    code, _out, err = _run(["work", "tracker", "unlink", slug,
+                            "--reason", "no longer wanted"])
+    monkeypatch.undo()
+    assert code == 1, err
+    # The concurrent run's record survived rather than being deleted silently.
+    from tcw.tracker.intake import created_record
+    assert created_record(_sidecar(root, slug)) == {"key": "PROBE-9", "id": "9"}, \
+        _sidecar(root, slug)
+
+
+def test_an_unlinked_item_is_still_remembered_as_having_been_bound(
+        node, monkeypatch):
+    """The other side of the same question. `ever_bound` must keep saying yes
+    for an item whose binding was removed — that history is exactly what strict
+    mode's drop gate refuses to destroy — while saying no for one that only
+    carries a pending record."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, binding_document, ever_bound
+    store = FsWorkStore.open(root)
+    store.write_sidecar(
+        slug, BINDING_SIDECAR,
+        binding_document(provider="jira-cloud", project="probe", part="default",
+                         ticket_id="9", ticket_key="PROBE-9",
+                         ticket_url="https://example.invalid/browse/PROBE-9",
+                         bound="2026-09-20", unlinked=[]), revision="")
+    _create_responses(monkeypatch)
+    assert _run(["work", "tracker", "unlink", slug,
+                 "--reason", "bound to the wrong ticket"])[0] == 0
+
+    assert ever_bound(FsWorkStore.open(root), slug) is True
+
+
 def test_unlink_clears_a_stale_created_record(node, monkeypatch):
     """A `created` record naming a ticket that is gone — deleted, or moved out of
     reach — used to wedge the item for good: `create` failed against it every
@@ -1415,8 +1575,9 @@ def test_unlink_clears_a_stale_created_record(node, monkeypatch):
     assert created_record(_sidecar(root, slug)) is None, _sidecar(root, slug)
 
 
-def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
-        node, monkeypatch):
+@pytest.mark.parametrize("record", ["created", "owed"])
+def test_a_pending_record_alone_was_never_a_binding_and_does_not_block_drop(
+        node, monkeypatch, record):
     """`ever_bound` answered "does a sidecar file exist", and a `created` or
     `owed` record is a sidecar with no binding in it and none in its history. So
     strict mode refused to drop an item with "It is, or was, bound to a ticket,
@@ -1429,10 +1590,16 @@ def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
     slug = out.strip().splitlines()[0]
 
     from tcw.store.fs import FsWorkStore
-    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
-    FsWorkStore.open(root).write_sidecar(
-        slug, BINDING_SIDECAR,
-        with_created_record(None, {"key": "PROBE-9", "id": "9"}), revision="")
+    from tcw.tracker.intake import (BINDING_SIDECAR, with_created_record,
+                                    with_owed_record)
+    # Both records, because they are different keys read by different code. The
+    # first version of this test was named for `owed` and seeded `created`.
+    document = (with_created_record(None, {"key": "PROBE-9", "id": "9"})
+                if record == "created"
+                else with_owed_record(None, {"since": "2026-09-20",
+                                             "reason": "the network is down"}))
+    FsWorkStore.open(root).write_sidecar(slug, BINDING_SIDECAR, document,
+                                         revision="")
 
     configure({**CREATE_TRACKER, "strict": True,
                "statuses": {"backlog": "To Do", "active": "In Progress",
