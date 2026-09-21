@@ -3795,7 +3795,9 @@ def _drop(args: argparse.Namespace) -> int:
     if item is not None and item.status != "backlog":
         if item.status in ("completed", "discarded"):
             print(f"tcw work drop: {args.slug} is already resolved ({item.status}); "
-                  f"there is nothing to drop.", file=sys.stderr)
+                  f"there is nothing to drop. If it is waiting to be removed after "
+                  f"a failed archive, `tcw work delete {args.slug}` finishes that.",
+                  file=sys.stderr)
         else:
             print(f"tcw work drop: {args.slug} is {item.status}, and drop only deletes "
                   f"a backlog item. To discard it, keeping a record: `tcw work complete "

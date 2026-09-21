@@ -45,3 +45,4 @@ and a second `drop --confirm` said it was already resolved.
   legacy nested child that reads `active` from its parent's folder. After the
   children-status item, new children have their own folder, so only boards made
   before v2.5.1 can have one.
+- Verify (tcw:verifier): all six criteria met; accept. Its one finding is folded in: on a node that deletes resolved items, a failed archive can leave a resolved item waiting to be removed, so the "already resolved" message now also names `tcw work delete <slug>`, which finishes that removal. The test asserts it.

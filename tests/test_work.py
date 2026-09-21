@@ -2037,6 +2037,7 @@ def test_drop_of_a_resolved_item_says_so(tmp_path, monkeypatch, capsys, resoluti
     assert main(["work", "drop", slug, "--confirm"]) == 1
     err = capsys.readouterr().err
     assert "already resolved" in err and "tcw work complete" not in err
+    assert f"tcw work delete {slug}" in err
 
 
 def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
