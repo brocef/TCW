@@ -24,6 +24,23 @@ ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
 ROLLUP_SIDECAR = "rollup.md"
 
 
+def _open_ledger(node_root: Path) -> "tuple[FsCapabilitiesStore | None, str | None]":
+    """This node's capabilities ledger: `(store, None)`, `(None, None)` when the
+    node keeps none, or `(None, reason)` when it cannot be opened.
+
+    Asked of the resolved store, the way `find_node` asks it, never of a literal
+    `docs/capabilities` folder: a ledger moved by `capabilities.path` or kept in
+    another repository by `capabilities.repository` is still a ledger. Every
+    failure the store or the project registry reports while opening is a
+    `ValueError` (`StoreNotProvisioned` and the rest), and becomes a reason
+    rather than an exception, so a discard is never stopped by it."""
+    try:
+        store = FsCapabilitiesStore.open(node_root)
+    except ValueError as e:
+        return None, str(e)
+    return (store, None) if store.root.is_dir() else (None, None)
+
+
 def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
     """Check that `item`'s declared capability deltas were reconciled.
 
@@ -31,20 +48,28 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
     reading Missing, or any declared path that doesn't resolve, is a problem; a
     `changed:` capability only fails if it no longer resolves. A `removed:`
     capability is the reverse: it fails while a local capability still resolves
-    at that path. A work-only node
-    (no capabilities tree) passes silently. Lives here (not in the abstract
-    `WorkStore`) because it reaches into `FsCapabilitiesStore`; shared by the CLI
-    `complete` path and `reconcile --complete-when-ready` so both enforce it."""
-    caps_root = st.node_root / "docs" / "capabilities"
-    if not caps_root.is_dir():
-        return []
+    at that path.
+
+    The sidecar is read first, so an item that declares nothing passes without
+    any store being opened — a node with a broken capabilities declaration is
+    not refused for an item that never mentions a capability. Once something is
+    declared, a ledger that cannot be opened refuses every declared path with
+    the store's own reason, as a problem line rather than an exception. Lives
+    here (not in the abstract `WorkStore`) because it reaches into
+    `FsCapabilitiesStore`; shared by the CLI `complete` path and
+    `reconcile --complete-when-ready` so both enforce it."""
     try:
         deltas = declared_capabilities(item.capabilities)
     except SidecarError as e:
         return [f"capabilities.yaml is unreadable: {e}"]
-    if not any(deltas.values()):
+    declared = [p for kind in ("new", "changed", "removed") for p in deltas[kind]]
+    if not declared:
         return []
-    caps = FsCapabilitiesStore.open(st.node_root)
+    caps, reason = _open_ledger(st.node_root)
+    if reason is not None:
+        return [f"{path}: {reason}" for path in declared]
+    if caps is None:
+        return []
 
     def resolve(path: str):
         try:
