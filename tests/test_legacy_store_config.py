@@ -15,6 +15,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tcw.validate import ValidationTarget, validate
 
 from nodeconfig import declare_extends, set_component_key
 from test_validate import connect, node
@@ -60,12 +61,17 @@ def _leftover_lines(problems: list[str]) -> list[str]:
     return [p for p in problems if MARK in p]
 
 
-def _assert_one_leftover(problems: list[str], component: str, shown: str) -> str:
-    """Exactly one leftover line, naming the file, the key and the whole fix."""
-    lines = _leftover_lines(problems)
+def _assert_one_leftover(problems: list[str], component: str, shown: str,
+                         prefix: str = "") -> str:
+    """Exactly one leftover line, naming the file, the key and the whole fix.
+
+    `prefix` is what `tcw validate` puts in front of a component's problems
+    (`taxonomy check: `, and `[<project>] ` when it recurses).
+    """
+    lines = [p for p in _leftover_lines(problems) if f"{component}.extends" in p]
     assert len(lines) == 1, problems
     line = lines[0]
-    assert line.startswith(f"{shown}: "), line
+    assert line.startswith(f"{prefix}{shown}: "), line
     assert f"{component}.extends" in line and "tcw-config.yaml" in line, line
     assert "then delete the file" in line, line
     assert "if already migrated, just delete it" in line, line
@@ -196,3 +202,145 @@ def test_a_node_reached_through_a_symlink_still_gets_a_relative_path(tmp_path):
 
     _assert_one_leftover(FsTaxonomyStore.open(link / "consumer").check(), "taxonomy",
                          "docs/taxonomy/config.yaml")
+
+
+# ── `tcw validate` reports each leftover once per store ──────────────────────
+
+def _check_prefix(component: str) -> str:
+    return f"{component} check: "
+
+
+def test_validate_reports_both_leftovers_once_each(tmp_path):
+    consumer = _federated(tmp_path)
+    for component, name in LEFTOVER.items():
+        (consumer / "docs" / component / name).write_text("extends: [shared]\n")
+
+    problems = validate(consumer)
+
+    assert len(_leftover_lines(problems)) == 2, problems
+    for component, name in LEFTOVER.items():
+        _assert_one_leftover(problems, component, f"docs/{component}/{name}",
+                             _check_prefix(component))
+
+
+@pytest.mark.parametrize("keep_default_dir", [False, True])
+def test_validate_reports_a_moved_stores_leftover_once(tmp_path, keep_default_dir):
+    """Without `docs/taxonomy`, `validate` never runs the taxonomy check, so the
+    leftover has to be reported directly. With an empty `docs/taxonomy` left
+    behind, the check does run — on the moved store — and the direct report
+    must then stay out of the way."""
+    consumer = _federated(tmp_path)
+    shutil.move(str(consumer / "docs" / "taxonomy"), str(consumer / "tax"))
+    if keep_default_dir:
+        (consumer / "docs" / "taxonomy").mkdir()
+    set_component_key(consumer, "taxonomy", "path", "tax")
+    (consumer / "tax" / "config.yaml").write_text("extends: [shared]\n")
+
+    _assert_one_leftover(validate(consumer), "taxonomy", "tax/config.yaml",
+                         _check_prefix("taxonomy"))
+
+
+def test_validate_reports_a_leftover_outside_the_node_once(tmp_path):
+    consumer = _federated(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    shutil.move(str(consumer / "docs" / "capabilities"), str(elsewhere))
+    set_component_key(consumer, "capabilities", "path", str(elsewhere))
+    (elsewhere / ".config.yaml").write_text("extends: [shared]\n")
+
+    _assert_one_leftover(validate(consumer), "capabilities",
+                         str((elsewhere / ".config.yaml").resolve()),
+                         _check_prefix("capabilities"))
+
+
+def test_an_unparseable_leftover_gets_both_its_parse_error_and_the_report(tmp_path):
+    consumer = _federated(tmp_path)
+    (consumer / "docs" / "taxonomy" / "config.yaml").write_text("extends: [unclosed\n")
+
+    problems = validate(consumer)
+
+    assert "(component checks skipped: YAML problem above)" in problems, problems
+    assert [p for p in problems if p.startswith("docs/taxonomy/config.yaml: ")
+            and MARK not in p], problems
+    _assert_one_leftover(problems, "taxonomy", "docs/taxonomy/config.yaml",
+                         _check_prefix("taxonomy"))
+
+
+def test_a_yaml_error_elsewhere_does_not_hide_the_leftover(tmp_path):
+    consumer = _federated(tmp_path)
+    (consumer / "docs" / "taxonomy" / "Local" / "meta.yaml").write_text("name: [unclosed\n")
+    (consumer / "docs" / "capabilities" / ".config.yaml").write_text("extends: [shared]\n")
+
+    problems = validate(consumer)
+
+    assert "(component checks skipped: YAML problem above)" in problems, problems
+    _assert_one_leftover(problems, "capabilities", "docs/capabilities/.config.yaml",
+                         _check_prefix("capabilities"))
+
+
+def test_validate_names_the_descendant_that_holds_the_leftover(
+        tmp_path, monkeypatch, capsys):
+    consumer = _federated(tmp_path)
+    shared = tmp_path / "shared"
+    (shared / "docs" / "taxonomy" / "config.yaml").write_text("extends: []\n")
+
+    monkeypatch.chdir(consumer)
+    assert main(["validate"]) == 1
+    _assert_one_leftover(capsys.readouterr().err.splitlines(), "taxonomy",
+                         "docs/taxonomy/config.yaml",
+                         f"[shared] {_check_prefix('taxonomy')}")
+
+
+def test_a_moved_store_that_cannot_open_is_reported_once_instead(
+        tmp_path, monkeypatch, capsys):
+    """Opening resolves federation first, so a bad `extends` stops the store
+    before any leftover could be looked for. `validate` did not run this
+    store's check (no `docs/taxonomy`), so the open failure is its to report —
+    once — and the leftover waits until that is fixed."""
+    consumer = _federated(tmp_path)
+    shutil.move(str(consumer / "docs" / "taxonomy"), str(consumer / "tax"))
+    set_component_key(consumer, "taxonomy", "path", "tax")
+    declare_extends(consumer, "taxonomy", "extends: [ghost]\n")
+    (consumer / "tax" / "config.yaml").write_text("extends: [shared]\n")
+
+    problems = validate(consumer)
+    failures = [p for p in problems if p.startswith(_check_prefix("taxonomy"))]
+    assert len(failures) == 1, problems
+    assert "ghost" in failures[0] and "taxonomy.extends" in failures[0], failures
+    assert _leftover_lines(problems) == [], problems
+
+    # The check command refuses too, and says nothing about the leftover. What
+    # it does say is not this item's: `find_node` turns any open failure other
+    # than a provisioning one into "no tcw taxonomy node here", a separate
+    # defect recorded in this item's outcome.
+    monkeypatch.chdir(consumer)
+    assert main(["taxonomy", "check"]) == 1
+    assert MARK not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("component,ident", [
+    ("taxonomy", "Local"), ("capabilities", "local/thing")])
+def test_validating_one_object_leaves_the_leftover_out(tmp_path, component, ident):
+    """Both leftovers, so neither the target's own component nor the other one
+    can slip in through `validate`'s direct report."""
+    consumer = _federated(tmp_path)
+    for other, name in LEFTOVER.items():
+        (consumer / "docs" / other / name).write_text("extends: [shared]\n")
+
+    assert _leftover_lines(validate(
+        consumer, target=ValidationTarget(component, ident))) == []
+
+
+def test_no_command_touches_the_leftover(tmp_path, monkeypatch, capsys):
+    consumer = _federated(tmp_path)
+    before = {}
+    for component, name in LEFTOVER.items():
+        path = consumer / "docs" / component / name
+        path.write_bytes(b"# kept by hand\nextends:\n  - shared\n")
+        before[path] = path.read_bytes()
+
+    monkeypatch.chdir(consumer)
+    for argv in (["taxonomy", "check"], ["capabilities", "check"], ["validate"]):
+        assert main(argv) == 1
+    capsys.readouterr()
+
+    assert {path: path.read_bytes() for path in before} == before

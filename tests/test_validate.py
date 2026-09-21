@@ -586,10 +586,11 @@ def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):
         # The two per-store configs `extends` used to live in. Nothing writes
         # either one now that it is `<component>.extends` in the node config;
         # the literals survive only as `LEGACY_CONFIG_NAME`, which keeps each
-        # store's former filename out of its own attachment listing. A leftover
-        # copy on disk is not a record of ours, so it is not held to the mapping
-        # contract — `tcw validate`'s YAML scan still reports one that will not
-        # parse, independently of this set.
+        # store's former filename out of its own attachment listing and names
+        # the file the component check reports when a copy is left at a store
+        # root. A leftover copy is not a record of ours, so it is not held to
+        # the mapping contract — `tcw validate`'s YAML scan still reports one
+        # that will not parse, independently of this set.
         "config.yaml",
         ".config.yaml",
     }, written
