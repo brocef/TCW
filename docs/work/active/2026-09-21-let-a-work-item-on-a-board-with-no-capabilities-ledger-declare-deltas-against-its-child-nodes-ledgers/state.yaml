@@ -9,3 +9,5 @@ tags:
 - work
 owner: brian.cefali@gmail.com
 started: '2026-09-21T19:18:09.672360Z'
+worktree: .worktrees/2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers
+branch: work/2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers
