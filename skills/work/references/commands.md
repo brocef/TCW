@@ -94,7 +94,9 @@ tracker is configured — see "Lifecycle synchronization".
 **`tcw work new` and `inbox accept` gain a network dependency only under
 `work.tracker.create.on-new`**, and even then they never fail because of it: the
 item is filed and the ticket is recorded as *owed*, shown on the board, and made
-later by `tracker create`. Nothing else here gains one.
+later by `tracker create` — not by `tracker sync`, which settles the other kind
+of debt. Filing on the web board always records the ticket as owed, because the
+web app does not talk to the tracker. Nothing else here gains a dependency.
 
 | Goal | Command |
 | ---- | ------- |

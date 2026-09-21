@@ -433,21 +433,43 @@ TCW never deletes a ticket and cannot take one back. `create` refuses when:
 - the item is under way and somebody else holds it;
 - `--part` is not a valid part name.
 
-`--all` sweeps every open item with no ticket, epics first so a child's parent
-link can name a ticket that exists. It skips items other people hold rather than
-failing. Run it with `--dry-run` first: on a board of any size this is the
-command that turns one mistake into one mistake per item.
+`--all` sweeps every open item with no ticket, epics first so the sweep reads in
+the order you would work the board. It skips items other people hold rather than
+failing, and stops if a ticket is made whose key cannot be written down here —
+carrying on would leave one ticket per remaining item that nothing can find
+again. Run it with `--dry-run` first: on a board of any size this is the command
+that turns one mistake into one mistake per item.
 
 **If a run is interrupted** between making the ticket and writing the binding,
 the key is already on disk. Running `create` again binds that key instead of
-making a second ticket, and says so. You do not have to clean up by hand.
+making a second ticket, and says so. You do not have to clean up by hand. The
+board shows the item meanwhile:
+
+```
+2026-09-14-rename-the-widget | backlog | ... | ticket: ENG-604 made, not bound
+```
+
+If that ticket is gone — deleted, or moved somewhere this project cannot reach —
+`tcw work tracker unlink <slug> --reason "<why>"` forgets the recorded key so
+`create` can start again. It changes nothing in the tracker; close the old ticket
+there yourself if it is not wanted.
+
+If `work.tracker.link` is set, the created ticket's description ends with a link
+back to the item.
 
 ### Making the ticket when the item is filed
 
 Set `create.on-new: true` and `tcw work new`, and `tcw work inbox accept` of a
 raw entry, make the ticket as part of filing. (Accepting a *ticket* from the
 inbox is `tracker import`, which binds the ticket you already have.) Epics are
-included: an epic with no ticket breaks its children's parent links.
+included, although strict mode exempts them: strict cannot demand a claimed
+ticket for a container nobody works directly, while creation has no such
+difficulty, and an epic on the board with no ticket is a hole in the tracker's
+picture of the work. Strict mode and `create.on-new` can therefore both be set
+— tasks come from tickets, epics filed here get theirs made.
+
+TCW does not set a parent or epic link in the tracker. A created ticket is a
+ticket; the hierarchy stays in TCW.
 
 **Filing never fails because the tracker is unreachable.** The item is written
 first, so a failure afterwards would leave you with an item you did not know you
@@ -468,10 +490,19 @@ The debt shows on the board so it cannot be forgotten, and
 `tcw work tracker create`, with or without `--all`, settles it. An owed ticket is
 **not** a binding: the item has no ticket, it is expecting one.
 
-`on-new` and `strict` cannot both be on. They are opposite answers to the same
-question — strict mode refuses `tcw work new` outright, so no item would ever be
-filed for creation-on-filing to make a ticket for. `tcw validate` reports the
-combination and names both keys.
+`tcw work tracker sync` does **not** settle an owed ticket. Its job is the other
+kind of unfinished business: an item that already has a ticket whose status
+change never reached the tracker. Asked about an item that is owed one, it says
+so and names `tracker create`.
+
+**Filing on the web board records the debt but never makes the ticket.** The web
+app does not talk to the tracker at all — no credentials, and no page waiting on
+Jira — so an item filed there in a project with `create.on-new` comes out owed,
+every time. `tcw work tracker create --all` settles those along with the rest.
+
+If creation succeeds and the binding does not, the ticket is **not** recorded as
+owed — it exists. The item reads `<KEY> made, not bound` instead, and
+`tracker create` binds it.
 
 ## Linking and unlinking
 
@@ -805,10 +836,11 @@ Also under strict mode:
 - **A tracker block with problems does not turn strict mode off.** Those commands
   refuse until it is fixed; run `tcw validate`.
 - **There is no way past a refusal.** `--force` and `--take-over` do not bypass it.
-- **`create.on-new` cannot be on as well.** Strict mode refuses `tcw work new`,
-  so an item is never filed for creation-on-filing to act on. `tcw validate`
-  reports the pair. `tcw work tracker create` itself still works under strict
-  mode, for an item that reached your board some other way.
+- **`create.on-new` may be on as well, and it applies to epics.** Strict mode
+  refuses `tcw work new` for everything except an epic, and creation-on-filing
+  covers epics, so the pair means "tasks come from tickets, epics filed here get
+  theirs made". `tcw work tracker create` itself works under strict mode too,
+  for an item that reached your board some other way.
 - **Never refused:** `tcw work edit`, writing lifecycle documents, and
   `tracker link` / `unlink`. The one exception is `tcw work edit --type`: an epic
   is not gated by a ticket, so changing an item's type is refused. Create an epic

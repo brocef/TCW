@@ -155,10 +155,10 @@ the missing key. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
 
-**`strict: true` and `create.on-new: true` together are a problem `tcw validate`
-reports, naming both keys.** Strict mode refuses `tcw work new`, so no item is
-ever filed for creation-on-filing to make a ticket for; a project setting both
-would believe creation was on and see it never happen. Use one or the other.
+**`strict: true` and `create.on-new: true` may both be set.** Strict mode refuses
+`tcw work new` for everything except an epic, and creation-on-filing covers
+epics, so the pair means "tasks come from tickets, epics filed here get theirs
+made". Nothing else is filed, so nothing else gets a ticket this way.
 
 ```yaml
         strict: true

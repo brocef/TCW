@@ -563,7 +563,6 @@ e-mail address or token themselves.
 **Example 1: taking a ticket from import to completion.**
 
 ```sh
-tcw work tracker create <slug>         # TCW: binds the new ticket.             Jira: creates it, in statuses.backlog
 tcw work tracker list                  # TCW: lists tickets the query selects.   Jira: unchanged
 tcw work tracker import ENG-482         # TCW: creates a backlog item.            Jira: ENG-482 → In Progress, assigned to you
 #   …the request, spec and plan stages run as usual…
@@ -580,6 +579,21 @@ tcw work new "Speed up the checkout page"  # TCW: creates a backlog item.       
 tcw work tracker link <slug> ENG-517       # TCW: records the link.               Jira: unchanged; the ticket keeps its assignee
 tcw work start <slug>                      # TCW: backlog → active.               Jira: if unassigned or yours, ENG-517 → In Progress, assigned to you
 ```
+
+**Example 2a: making a ticket for an item that has none.**
+
+```sh
+tcw work new "Speed up the checkout page"  # TCW: creates a backlog item.         Jira: unchanged
+tcw work tracker create <slug> --dry-run   # TCW: says what it would do.          Jira: unchanged
+tcw work tracker create <slug>             # TCW: binds the new ticket.           Jira: creates it, then moves it to statuses.backlog
+tcw work tracker create --all              # TCW: the same for every open item.   Jira: one new ticket per item without one
+```
+
+The move out of whatever status Jira starts issues in is part of creating the
+ticket, not a courtesy: in a project with a triage column, that starting status
+is usually the one `inbox-query` selects, so a ticket left there would come back
+through `tcw work inbox` as new inbound work. Run `--all` with `--dry-run`
+first — nothing here can delete a ticket.
 
 **Example 3: taking a ticket without starting it, and handing it back.**
 

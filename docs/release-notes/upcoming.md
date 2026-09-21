@@ -58,7 +58,18 @@ A few other things worth knowing:
   closed is noise; bind an existing one with `tcw work tracker link`.
 - If a run is interrupted after the ticket is made but before it is bound, the
   key is on disk. Running the command again binds that key rather than making
-  another ticket.
-- `strict: true` and `create.on-new: true` cannot both be set — strict mode
-  refuses `tcw work new`, so nothing would ever be filed for creation-on-filing
-  to act on. `tcw validate` reports the pair.
+  another ticket, and the board shows the item as `<KEY> made, not bound` in the
+  meantime. If that ticket is gone, `tcw work tracker unlink <slug> --reason
+  "<why>"` forgets the key so you can start again; it changes nothing in Jira.
+- `tcw work tracker sync` does not settle an owed ticket. It retries status
+  changes for items that already have one. Ask it about an item that is owed a
+  ticket and it tells you to run `tcw work tracker create`.
+- Filing an item **on the web board** records the ticket as owed rather than
+  making it. The web app does not talk to Jira at all, so `tcw work tracker
+  create --all` is what settles those.
+- `strict: true` and `create.on-new: true` can both be set. Strict mode refuses
+  `tcw work new` for everything except an epic, and creation-on-filing covers
+  epics — so the pair means "tasks come from tickets, epics filed here get
+  theirs made".
+- TCW does not set a parent or epic link in Jira. A created ticket is a ticket;
+  the hierarchy stays in TCW.
