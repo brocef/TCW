@@ -510,3 +510,57 @@ def test_a_childs_ledger_in_an_unprovisioned_repository_is_refused(
     _refused(root, slug, monkeypatch, capsys,
              "kid/auth/login: ", "capabilities store is declared", "tcw provision",
              absent=["keeps no capabilities ledger"])
+
+
+# ── Task 7: worktree merge-back and reconcile --complete-when-ready ─────────
+
+def test_a_child_flip_made_on_the_work_branch_counts_after_merge_back(
+        tmp_path, monkeypatch, capsys):
+    """C2: `kid` lives in root's repository, so a status flip made in the
+    worktree's copy of `kid` reaches the primary tree only at merge-back. The
+    gate runs after it, so it passes. (`test_complete_gate_reads_after_worktree_mergeback`
+    covers the node's own ledger only.)"""
+    from tcw.cli import main
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    slug = FsWorkStore.open(root).create("Task", created="2026-01-01").slug
+    (FsWorkStore.open(root).path(slug) / "capabilities.yaml").write_text(
+        "new:\n- kid/auth/login\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "seed"], check=True)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--worktree"]) == 0
+
+    # Flip on the worktree branch only, and commit there.
+    meta = root / ".worktrees" / slug / "packages" / "kid" / "docs" / "capabilities" \
+        / "auth" / "login" / "meta.yaml"
+    data = yaml.safe_load(meta.read_text())
+    data["Status"] = "Supported"
+    meta.write_text(yaml.safe_dump(data, sort_keys=False))
+    subprocess.run(["git", "-C", str(meta.parent), "commit", "-q", "-am", "flip on branch"],
+                   check=True)
+    assert FsCapabilitiesStore.open(kid).get("auth/login").status == "Missing"
+
+    _passed(root, slug, monkeypatch, capsys)
+    assert FsCapabilitiesStore.open(kid).get("auth/login").status == "Supported"
+
+
+def test_reconcile_complete_when_ready_checks_child_paths(tmp_path):
+    """C19: the same gate guards `reconcile --complete-when-ready`."""
+    import pytest
+    from tcw.work.recursion import reconcile
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    st = FsWorkStore.open(root)
+    epic = st.create("Epic", created="2026-01-01").slug
+    st.set_field(epic, "type", "epic")
+    done = st.create("done", created="2026-01-01").slug
+    st.set_field(done, "initiative", epic)
+    st.start(done, force=True)                 # bypass "epic must be active" gate
+    st.complete(done, "done", [])
+    (FsWorkStore.open(root).path(epic) / "capabilities.yaml").write_text(
+        "new:\n- kid/auth/login\n")
+    with pytest.raises(ValueError) as e:
+        reconcile(root, epic, complete_when_ready=True)
+    assert "kid/auth/login: still Missing in project 'kid'" in str(e.value)
+    assert FsWorkStore.open(root).get(epic).status == "backlog"
