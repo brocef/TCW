@@ -3639,6 +3639,19 @@ def _complete(args: argparse.Namespace) -> int:
     if shipping and (reason := _strict_refusal(st, bare, "complete",
                                               own=branch_store)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
+    # Also before the merge-back, for any resolution: the store refuses to close an
+    # item with anything open beneath it, and finding that out after the branch is
+    # merged would leave the merge behind a refusal. A child created in the
+    # worktree exists only on the branch until the merge, so the branch's copy is
+    # asked as well. When the worktree cannot be read, only the primary copy is,
+    # and the store's own check after the merge is what catches a branch-only one.
+    try:
+        st.require_nothing_open_beneath(bare, "complete")
+        if branch_store is not None:
+            branch_store.require_nothing_open_beneath(bare, "complete")
+    except ValueError as e:
+        print(f"tcw work complete: {e}", file=sys.stderr)
+        return 1
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)
         if err:

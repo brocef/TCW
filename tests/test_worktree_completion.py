@@ -404,3 +404,46 @@ def test_a_discard_is_not_guarded(tmp_path, monkeypatch, capsys):
     assert code == 0, err
     assert FsWorkStore.open(root).get(slug).status == "discarded"
     assert _git(root, "merge-base", "--is-ancestor", tip, "HEAD").returncode != 0
+
+
+# ── an open child beneath the item refuses before the merge ──────────────────
+
+def _field_child(node: Path, parent: str) -> None:
+    """An open child that records `parent` in its `state.yaml`."""
+    d = node / "docs" / "work" / "backlog" / "2026-01-01-child"
+    d.mkdir(parents=True)
+    (d / "state.yaml").write_text(yaml.safe_dump(
+        {"slug": d.name, "title": "child", "created": "2026-01-01",
+         "resolution": None, "parent": parent}, sort_keys=False))
+
+
+def test_an_open_child_refuses_before_the_merge(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys, "Parent")
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    tip = branch_commit(wt)
+    _field_child(root, slug)
+    commit_all(root, "child in the primary checkout")
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1 and "still open: 2026-01-01-child" in err
+    refused_before_merge(root, wt, slug, tip)
+
+
+def test_an_open_child_only_on_the_branch_refuses_before_the_merge(
+        tmp_path, monkeypatch, capsys):
+    """Created in the worktree, so the primary checkout's store cannot see it
+    until the merge — the check has to read the branch's copy."""
+    root = repo(tmp_path)
+    slug = new_item(root, monkeypatch, capsys, "Parent")
+    wt = start_worktree(root, slug, monkeypatch, capsys)
+    _field_child(wt, slug)
+    commit_all(_top(wt), "child on the branch")
+    tip = head(_top(wt))
+    assert FsWorkStore.open(root).get("2026-01-01-child") is None
+
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                             "--resolution", "done", "--confirm")
+    assert code == 1 and "still open: 2026-01-01-child" in err
+    refused_before_merge(root, wt, slug, tip)
