@@ -197,6 +197,14 @@ def test_invalid_connected_projects_is_not_read_when_nothing_is_declared(tmp_pat
     assert problems and all("nonreciprocal connection" in p for p in problems), problems
 
 
+# The remedy lines `complete` prints after the problems (Task 5). The old ones
+# are asserted absent, so a test cannot pass on the text being replaced.
+_CHILD_REMEDY = ("For a path that starts with a child project's id, run it inside "
+                 "that child's folder, with the path after the id.")
+_OLD_REMEDY = "--status <S>) or re-run with --force."
+_OLD_DISCARD_HINT = "if they will never be built.\n"      # the line used to end there
+
+
 # ── Task 2: child-qualified paths ───────────────────────────────────────────
 
 def _sibling(tmp_path: Path, root: Path, name: str) -> Path:
@@ -216,7 +224,8 @@ def test_a_child_qualified_new_path_is_checked_in_the_childs_ledger(
     slug = _item(root, "new:\n- kid/auth/login\n")
     _refused(root, slug, monkeypatch, capsys,
              "kid/auth/login: still Missing in project 'kid'",
-             absent=["keeps no capabilities ledger"])
+             _CHILD_REMEDY,
+             absent=["keeps no capabilities ledger", _OLD_REMEDY])
     FsCapabilitiesStore.open(kid).set("auth/login", {"Status": "Supported"})
     _passed(root, slug, monkeypatch, capsys)
 
@@ -361,6 +370,8 @@ def test_a_discard_only_warns_about_child_paths(tmp_path, monkeypatch, capsys):
     err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
     assert "warning: unreconciled capability: kid/auth/login: still Missing" in err
     assert "warning: unreconciled capability: auth/login: this node ('root')" in err
+    assert _CHILD_REMEDY in err                                        # Task 5
+    assert _OLD_DISCARD_HINT not in err
 
 
 # ── Task 3: a child id that is also a namespace the parent already shows ────
