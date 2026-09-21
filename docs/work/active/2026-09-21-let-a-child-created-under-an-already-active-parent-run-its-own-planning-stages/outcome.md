@@ -11,7 +11,7 @@ implementation began. The work was done in
 | Task | Commit | What it did |
 | ---- | ------ | ----------- |
 | 1 | `469a9a16` | The parent is read from a `parent:` field first, and from folder nesting only when the field is absent. `tcw validate` reports a `parent:` that names no item or tombstone, and one that disagrees with the folder a nested item sits in. |
-| 2 | `48bc00fc` | Added `WorkStore.parent_children`, `independent_descendants` and `open_descendants`. They walk the whole subtree, pass through old nested children without letting them hide what is beneath them, and cannot loop on a cycle. The filesystem store also counts items mid-claim in `.claiming/`, including anything nested inside a claimed folder. `validate` no longer reports an old nested child carried to completion as having no resolution. |
+| 2 | `48bc00fc` | Added `WorkStore.independent_descendants` and `open_descendants` (a `parent_children` added here was removed at verify as unused). They walk the whole subtree, pass through old nested children without letting them hide what is beneath them, and cannot loop on a cycle. The filesystem store also counts items mid-claim in `.claiming/`, including anything nested inside a claimed folder. `validate` no longer reports an old nested child carried to completion as having no resolution. |
 | 3 | `0a4a271f` | `complete` refuses while anything beneath the item is open. This applies to both resolutions, and `--force` does not bypass it. `drop` refuses while any item names this one as its parent, open or resolved. |
 | 4 | `94a42e37` | `epic_completable` is false while anything beneath the epic is open, so "ready to close" and `reconcile --complete-when-ready` agree with `complete`. |
 | 5 | `4af10135` | `tcw work complete` runs the check before merging a worktree branch. It checks both the primary checkout's copy of the store and the branch's copy. |
@@ -108,10 +108,14 @@ rewritten in Task 11 and does not contradict any other record in the ledger.
 
 ## Limits and notes
 
-- **The pre-merge check reads the branch's copy only when it can.** If
-  `_branch_copy` cannot read the worktree, only the primary copy is checked. A
-  child that exists only on that branch is then caught by the store's own check
-  after the merge, not before it.
+- **The pre-merge check reads the branch's copy only when it can, and only for
+  children the primary copy lacks.** If `_branch_copy` cannot read the worktree,
+  only the primary copy is checked, and a child that exists only on that branch
+  is caught by the store's own check after the merge. The branch copy is frozen
+  at `start --worktree`, so for a child both copies have, the primary copy is
+  trusted. The consequence: a child completed *on the branch only* still reads
+  open in the primary copy, and the parent is refused until the child's
+  completion reaches the primary checkout.
 - **An old nested child whose claim loses a race is left with a `parent:`
   field.** The field names the folder it is still in, so `validate` is quiet.
   From then on it counts as having its own status, so it holds its parent open
@@ -131,3 +135,21 @@ rewritten in Task 11 and does not contradict any other record in the ledger.
 
 `GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null pytest -q -p no:cacheprovider`
 from the worktree, at `7d3202f8`: **3963 passed in 817.12s (0:13:37)**, exit 0.
+
+## Verify fixes
+
+The code review returned NOT DONE with one blocking finding and four smaller
+ones. Each was fixed in its own `tcw work(verify):` commit, with a test that
+was watched fail and a mutation check:
+
+| Commit | Finding and fix |
+| ------ | --------------- |
+| `5d6572e7` | **Blocking.** The pre-merge check asked the branch's copy of the store, which is frozen at `start --worktree`. A child completed in the primary checkout since then still read open there, and completing the parent was refused. The branch copy is now asked only about children the primary copy does not have. Test: the reviewer's exact sequence (`test_a_child_completed_in_the_primary_checkout_does_not_refuse`). |
+| `b0f710f5` | **The `.claiming/` scan could hang.** If a claim landed mid-scan, the walk up from a nested item climbed past the claim folder to the filesystem root and never stopped. It now stops at the claim folder and skips an entry that vanished. Test adapted from the reviewer's reproduction; with the old walk it times out. In the same commit: a claim left by 2.5.0 has no `parent:` field, so the scan and `--take-over` now take its parent from where git's index still holds it, and take-over writes the field. This was practical, so no limit is recorded for it. |
+| `7ff0fabc` | **Parent cycles.** `tcw validate` did not report a loop of `parent:` fields; it now names each item in the loop and the chain. |
+| `ee2ebe5e` | **Unused code.** Removed `WorkStore.parent_children`, which nothing called. The changelog records the verify fixes. |
+
+After the fixes, run with no git identity:
+`tests/test_child_status.py`, `test_worktree_completion.py`, `test_work.py`,
+`test_store_editor.py`, `test_external_work_store.py`, `test_retention.py` and
+`test_epic_completable.py` gave **550 passed in 149.08s**.
