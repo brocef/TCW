@@ -19,6 +19,13 @@ All three apply to each of the three components. A store that cannot be opened
 is reported as one problem beside the others rather than ending the run, so one
 unprovisioned tree does not hide the rest of a node's faults.
 
+A taxonomy or capabilities file left over from before 2.5.0 (`config.yaml` or
+`.config.yaml` at the root of the tree), which is no longer read, is reported
+once for each tree that has one — including a tree kept outside
+`docs/<component>` or in another repository, and a run whose component checks
+were skipped because of a YAML problem. A tree declared in another repository
+but not yet provisioned is reported too, as the work store already was.
+
 **Two faults are counted as two.** A node whose `<component>.path` names a
 directory holding no store, and which also declares a home repository it has
 not obtained, has two problems, and I am told both — the path is reported on its
