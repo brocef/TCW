@@ -1788,3 +1788,15 @@ class TestChildParent:
                             {"fields": {"parent": item}})
         assert status == HTTPStatus.UNPROCESSABLE_ENTITY
         assert "itself or a descendant" in body["error"]
+
+    def test_complete_is_refused_over_an_open_child(self, bare):
+        root, base = bare
+        work = FsWorkStore.open(root)
+        parent = work.create("Parent", created="2026-01-01").slug
+        work.start(parent, owner="x")
+        child = work.create("Child", created="2026-01-02", parent=parent).slug
+        status, body = _req(base, "POST", f"/api/work/{parent}/actions/complete", {
+            "resolution": "done", "dod_ack": [], "force": True})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert child in body["error"]
+        assert FsWorkStore.open(root).get(parent).status == "active"
