@@ -222,6 +222,181 @@ def test_successful_install_writes_the_sentinel_then_goes_quiet(tmp_path):
     assert len(log.read_text().splitlines()) == 1, "the second run must take the silent path"
 
 
+# --- the version check -------------------------------------------------------
+#
+# The bootstrap runs `scripts/check_versions.sh` on every exit once it knows the
+# plugin root, so a CLI that differs from the plugin is reported whichever
+# install branch was taken. The fixture tests above keep passing untouched
+# because a `_clone` root holds no copy of the check script.
+
+WARNING = "tcw: the `tcw` CLI on your PATH is"
+
+
+def _plugin(tmp_path: Path, version: str, with_marker: bool) -> Path:
+    """A plugin root carrying the manifest and the real check script.
+
+    `with_marker` is explicit because the bootstrap branches on it:
+    `tcw/__init__.py` is the install logic's marker, and a plugin split from the
+    Python source will not have one.
+    """
+    root = tmp_path / "plugin"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "check_versions.sh", root / "scripts")
+    (root / ".claude-plugin").mkdir()
+    (root / ".claude-plugin" / "plugin.json").write_text(
+        f'{{\n    "name": "tcw",\n    "version": "{version}"\n}}\n')
+    if with_marker:
+        (root / "tcw").mkdir()
+        (root / "tcw" / "__init__.py").write_text(f'__version__ = "{version}"\n')
+    return root
+
+
+def _owned_tcw(bindir: Path, version: str, editable: bool) -> None:
+    """A `tcw` whose shebang names a Python-looking interpreter.
+
+    The stand-in interpreter answers the bootstrap's editable probe (run as
+    `<interpreter> -`). `tcw --version` is answered twice over because the two
+    platforms run it differently: Linux hands the stub to the stand-in
+    interpreter, while macOS refuses an interpreter that is itself a script and
+    falls back to running the stub's own body with `sh`.
+    """
+    owner = _stub(bindir, "python3.11",
+                  f'if [ "$1" = - ]; then exit {0 if editable else 1}; fi\n'
+                  f'echo "tcw {version}"\n')
+    _stub(bindir, "tcw", f'echo "tcw {version}"\n', shebang=f"#!{owner}")
+
+
+def _assert_warning(r, cli: str, skills: str) -> None:
+    assert r.returncode == 0, r
+    assert r.stderr == "", r.stderr
+    warnings = [line for line in r.stdout.splitlines() if line.startswith(WARNING)]
+    assert len(warnings) == 1, r.stdout
+    assert f"{WARNING} {cli}," in warnings[0] and f"are from {skills}." in warnings[0], r.stdout
+
+
+def test_manifest_only_root_still_warns(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=False)
+    bindir = tmp_path / "bin"
+    _stub(bindir, "tcw", 'echo "tcw 2.5.0"\n')
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log)
+
+    r = _run(root, tmp_path / "installed-version", bindir)
+
+    _assert_warning(r, "2.5.0", "2.4.0")
+    assert not log.exists()
+
+
+@pytest.mark.parametrize("cli, warns", [("2.5.0", True), ("2.4.0", False)])
+def test_steady_state_checks_the_versions(tmp_path, cli, warns):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    shutil.copy(root / "tcw" / "__init__.py", sentinel)
+    bindir = tmp_path / "bin"
+    _stub(bindir, "tcw", f'echo "tcw {cli}"\n')
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log)
+
+    r = _run(root, sentinel, bindir)
+
+    if warns:
+        _assert_warning(r, cli, "2.4.0")
+    else:
+        assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+    assert not log.exists()
+
+
+def test_unidentifiable_tcw_warns_and_is_left_alone(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    _stub(bindir, "tcw", 'echo "tcw 2.5.0"\n', shebang="#!/usr/bin/env bash")
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log)
+
+    r = _run(root, sentinel, bindir)
+
+    _assert_warning(r, "2.5.0", "2.4.0")
+    assert not log.exists()
+    assert not sentinel.exists()
+
+
+def test_editable_checkout_warns_and_is_left_alone(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    _owned_tcw(bindir, "2.5.0", editable=True)
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log)
+
+    r = _run(root, sentinel, bindir)
+
+    _assert_warning(r, "2.5.0", "2.4.0")
+    assert not log.exists(), "an editable install must never be force-installed over"
+    assert not sentinel.exists()
+
+
+def test_missing_pipx_warns_and_leaves_the_sentinel(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    sentinel.write_text('__version__ = "0.0.1"\n')
+    bindir = tmp_path / "bin"
+    _owned_tcw(bindir, "2.5.0", editable=False)  # replaceable, but no pipx to do it
+
+    r = _run(root, sentinel, bindir)
+
+    _assert_warning(r, "2.5.0", "2.4.0")
+    assert sentinel.read_text() == '__version__ = "0.0.1"\n'
+
+
+def test_successful_install_is_compared_after_the_install(tmp_path):
+    """The CLI before the install is 2.5.0 and after it 2.4.0. Silence proves
+    the comparison saw the installed one."""
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    bindir = tmp_path / "bin"
+    _owned_tcw(bindir, "2.5.0", editable=False)
+    log = tmp_path / "pipx.log"
+    _stub(bindir, "pipx",
+          f'printf "%s\\n" "$*" >> {log}\n'
+          f'printf \'#!/bin/sh\\necho "tcw 2.4.0"\\n\' > {bindir / "tcw"}\n'
+          f'chmod 755 {bindir / "tcw"}\n')
+
+    r = _run(root, sentinel, bindir)
+
+    assert (r.returncode, r.stdout, r.stderr) == (0, "", "")
+    assert log.read_text().strip() == "install --force tcw-cli"
+    assert sentinel.read_bytes() == (root / "tcw" / "__init__.py").read_bytes()
+
+
+def test_failed_install_prints_both_lines(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    sentinel = tmp_path / "installed-version"
+    sentinel.write_text('__version__ = "0.0.1"\n')
+    bindir = tmp_path / "bin"
+    _owned_tcw(bindir, "2.5.0", editable=False)
+    log = tmp_path / "pipx.log"
+    _recording_pipx(bindir, log, rc=1)
+
+    r = _run(root, sentinel, bindir)
+
+    _assert_warning(r, "2.5.0", "2.4.0")
+    lines = r.stdout.splitlines()
+    assert "pipx install tcw-cli" in lines[0] and lines[1].startswith(WARNING), r.stdout
+    assert sentinel.read_text() == '__version__ = "0.0.1"\n'
+
+
+def test_check_runs_without_the_executable_bit(tmp_path):
+    root = _plugin(tmp_path, "2.4.0", with_marker=True)
+    (root / "scripts" / "check_versions.sh").chmod(0o644)
+    sentinel = tmp_path / "installed-version"
+    shutil.copy(root / "tcw" / "__init__.py", sentinel)
+    bindir = tmp_path / "bin"
+    _stub(bindir, "tcw", 'echo "tcw 2.5.0"\n')
+
+    _assert_warning(_run(root, sentinel, bindir), "2.5.0", "2.4.0")
+
+
 # --- the probe itself --------------------------------------------------------
 #
 # The fixture tests above stub the owning interpreter with `exit 0` / `exit 1`,
@@ -378,6 +553,9 @@ def test_real_editable_checkout_is_left_alone(tmp_path):
     )
 
     assert r.returncode == 0
-    assert r.stdout == ""
+    # A maintainer's editable CLI can legitimately differ from this checkout's
+    # manifest, so the version warning is allowed; any other output is not.
+    lines = r.stdout.splitlines()
+    assert not lines or lines[0].startswith(WARNING), r.stdout
     assert not log.exists(), "the hook force-installed over the maintainer's dev checkout"
     assert not sentinel.exists()
