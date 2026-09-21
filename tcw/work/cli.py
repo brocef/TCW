@@ -3804,8 +3804,8 @@ def _drop(args: argparse.Namespace) -> int:
                   f"{args.slug} --resolution wontfix --confirm` (or duplicate / "
                   f"superseded).", file=sys.stderr)
         return 1
-    # `drop` is the only destructive verb with no record behind it — `complete`
-    # preserves the item, `discard` preserves the item. Gate it the way `complete`
+    # `drop` is the only destructive verb with no record behind it — completing
+    # and discarding (both `complete`) preserve the item. Gate it the way `complete`
     # gates a discard, and name what goes so the refusal is informative.
     if not args.confirm:
         loc = st.locate(bare)
