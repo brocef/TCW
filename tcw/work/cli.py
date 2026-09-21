@@ -2524,7 +2524,6 @@ def _item_body(st, slug: str) -> str:
 #: An item is worth a ticket while it is open. `completed` and `discarded` are a
 #: spec non-goal, and `_create_one` refuses them by name for a named slug — the
 #: sweep does not reach them at all.
-_CREATABLE_STATUSES = ("backlog", "active", "review")
 
 
 def _tracker_create(args: argparse.Namespace) -> int:
@@ -2564,24 +2563,36 @@ def _tracker_create(args: argparse.Namespace) -> int:
 def _sweep_order(st) -> list:
     """Every open item with no binding, epics first.
 
-    Epics lead because a child's ticket may want to point at its parent's, and a
-    parent link cannot name a ticket that does not exist yet. Within each group
-    the store's own order is kept, so a sweep reads in the same order as the board.
+    Epics lead so that a sweep reads in the order a person would work the board,
+    parents before their children. Within each group the store's own order is
+    kept. (This is presentation only: TCW sets no parent or epic link in the
+    tracker, and `create_issue` takes no parent.)
+
+    "Has no binding" is `classify_binding`'s answer, not a search for `ticket:`
+    in the file. The substring was wrong twice over. An item unlinked with
+    `tcw work tracker unlink` keeps its former binding under `unlinked:`, which
+    contains a nested `ticket:` — so the sweep silently walked past exactly the
+    items somebody had unlinked in order to re-create. And it is a test of one
+    store's YAML spelling rather than of the binding's meaning, which fails the
+    abstraction litmus test: a store serialising the sidecar as JSON answers it
+    wrongly for *every* bound item, and the sweep would then duplicate a ticket
+    for the whole board.
+
+    `Malformed` lands in the list on purpose, as an unreadable sidecar does:
+    `_create_one` refuses it by name, which is louder than being skipped.
     """
-    from tcw.tracker.intake import BINDING_SIDECAR
+    from tcw.tracker.intake import Bound, binding_of
 
     unbound = []
     for item in st.query():
-        if item.status not in _CREATABLE_STATUSES:
+        if item.status in RESOLVED_STATUSES:
             continue
-        # `ever_bound` rather than `binding_of`: an item whose sidecar cannot be
-        # read must not be swept past silently, and `_create_one` is what says so.
         try:
-            found = st.read_sidecar(item.slug, BINDING_SIDECAR)
+            binding, _revision = binding_of(st, item.slug)
         except (OSError, UnicodeDecodeError):
             unbound.append(item)
             continue
-        if found is None or "ticket:" not in found.content:
+        if not isinstance(binding, Bound):
             unbound.append(item)
     epic = [i for i in unbound if getattr(i, "type", "") == "epic"]
     return [i.slug for i in epic] + [i.slug for i in unbound if i not in epic]

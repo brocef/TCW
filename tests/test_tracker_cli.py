@@ -791,25 +791,42 @@ def test_a_ticket_made_but_not_recorded_still_names_its_key(node, monkeypatch):
     assert "Traceback" not in err
 
 
-def _board(node, monkeypatch, titles_and_types):
-    """A node holding several items, so `--all` has something to sweep."""
+def _board(node, monkeypatch, items, tracker=CREATE_TRACKER):
+    """A node holding several items, so `--all` has something to sweep.
+
+    Each entry is `(title, kind, status)`, and **`status` carries no default**,
+    for the reason `_created_node` gives: `_sweep_order` branches on it, and an
+    all-`backlog` board is the one shape that takes none of those branches. The
+    first version of this helper filed every item with `tcw work new` and took
+    no status at all — with the result that the status filter, the unbound
+    filter and the held-by-someone-else skip could each be deleted outright with
+    every test in this file still passing.
+    """
     root, configure = node
-    configure(CREATE_TRACKER)
+    configure(tracker)
     from tcw.store.fs import FsWorkStore
-    for title, kind in titles_and_types:
+    st = FsWorkStore.open(root)
+    slugs = {}
+    for title, kind, status in items:
         argv = ["work", "new", title]
         if kind == "epic":
             argv.append("--epic")
-        code, _out, err = _run(argv)
+        code, out, err = _run(argv)
         assert code == 0, err
-    return root, {i.title: i.slug for i in FsWorkStore.open(root).query()}
+        slug = out.strip().splitlines()[0]
+        for hop in _ROUTE_TO[status]:
+            st.transition(slug, hop)
+        assert FsWorkStore.open(root)._require(slug).status == status
+        slugs[title] = slug
+    return root, slugs
 
 
 def test_all_sweeps_every_unbound_open_item_and_skips_bound_ones(node, monkeypatch):
     """Spec criterion 8. The bound item must be passed over entirely: a sweep
     that re-creates for an item that already has a ticket is how one mistake
     becomes one mistake per item."""
-    root, slugs = _board(node, monkeypatch, [("Alpha", "task"), ("Beta", "task")])
+    root, slugs = _board(node, monkeypatch,
+                          [("Alpha", "task", "backlog"), ("Beta", "task", "backlog")])
     from tcw.store.fs import FsWorkStore
     from tcw.tracker.intake import BINDING_SIDECAR, binding_document
     FsWorkStore.open(root).write_sidecar(
@@ -826,14 +843,86 @@ def test_all_sweeps_every_unbound_open_item_and_skips_bound_ones(node, monkeypat
                if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
     assert len(creates) == 1, creates
     assert creates[0][2]["fields"]["summary"] == "Beta"
-    assert "Alpha" not in err, err
+    # The slug, not the title: every message this command prints names the slug,
+    # so `"Alpha" not in err` could never have failed, and the whole unbound
+    # filter could be deleted with this test still green.
+    assert slugs["Alpha"] not in err, err
+
+
+def test_all_sweeps_an_item_whose_binding_was_unlinked(node, monkeypatch):
+    """`unlink` leaves the former binding under `unlinked:`, and that history
+    still contains the text `ticket:`. The sweep decided "already bound" with a
+    substring search over the raw sidecar, so the one item a user most likely
+    unlinked *in order to* re-create was the one it silently walked past."""
+    root, slugs = _board(node, monkeypatch, [("Alpha", "task", "backlog")])
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, binding_document
+    FsWorkStore.open(root).write_sidecar(
+        slugs["Alpha"], BINDING_SIDECAR,
+        binding_document(provider="jira-cloud", project="probe", part="default",
+                         ticket_id="9", ticket_key="PROBE-9",
+                         ticket_url="https://example.invalid/browse/PROBE-9",
+                         bound="2026-09-20", unlinked=[]), revision="")
+    _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "unlink", slugs["Alpha"],
+                            "--reason", "bound to the wrong ticket"])
+    assert code == 0, err
+    sidecar = FsWorkStore.open(root).read_sidecar(slugs["Alpha"], BINDING_SIDECAR)
+    assert "ticket:" in sidecar.content, sidecar.content   # the history remains
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["summary"] == "Alpha"
+
+
+def test_all_passes_over_closed_items(node, monkeypatch):
+    """A ticket made only to be closed is noise — the spec's non-goal. Enforced
+    for one named item already; this is the sweep, where nobody typed the slug."""
+    root, slugs = _board(node, monkeypatch,
+                         [("Done", "task", "completed"),
+                          ("Dropped", "task", "discarded"),
+                          ("Open", "task", "backlog")])
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    summaries = [p[2]["fields"]["summary"] for p in posted
+                 if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert summaries == ["Open"], summaries
+
+
+def test_all_skips_an_item_someone_else_holds_without_failing_the_sweep(
+        node, monkeypatch):
+    """A sweep walks past other people's work, as `tracker sync --all` does.
+    Creating a ticket claims the item, so doing it for an item somebody else
+    holds would take their work; exiting non-zero would make a sweep of a shared
+    board look like a failure."""
+    root, slugs = _board(node, monkeypatch,
+                         [("Theirs", "task", "backlog"), ("Mine", "task", "backlog")])
+    _create_responses(monkeypatch)
+    monkeypatch.setenv("TCW_WORK_OWNER", "someone.else@example.test")
+    code, _out, err = _run(["work", "start", slugs["Theirs"]])
+    assert code == 0, err
+    monkeypatch.setenv("TCW_WORK_OWNER", "me@example.test")
+
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    summaries = [p[2]["fields"]["summary"] for p in posted
+                 if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert summaries == ["Mine"], summaries
+    assert "someone.else@example.test" in out + err, (out, err)
 
 
 def test_all_creates_for_epics_before_their_children(node, monkeypatch):
     """A child's ticket may want to name its parent's, and a parent link cannot
     point at a ticket that does not exist yet."""
     root, _slugs = _board(node, monkeypatch,
-                          [("A child", "task"), ("An epic", "epic")])
+                          [("A child", "task", "backlog"),
+                           ("An epic", "epic", "backlog")])
     posted = _create_responses(monkeypatch)
     code, _out, err = _run(["work", "tracker", "create", "--all"])
     assert code == 0, err
@@ -855,7 +944,7 @@ def test_all_refuses_part_rather_than_applying_one_name_to_every_item(
         node, monkeypatch):
     """`--part` says which share of *one* ticket an item is. Spread across a
     sweep it would bind every item as the same part of a different ticket."""
-    root, _slugs = _board(node, monkeypatch, [("Alpha", "task")])
+    root, _slugs = _board(node, monkeypatch, [("Alpha", "task", "backlog")])
     posted = _create_responses(monkeypatch)
     code, _out, err = _run(["work", "tracker", "create", "--all", "--part", "api"])
     assert code == 1
@@ -873,7 +962,8 @@ def test_neither_a_slug_nor_all_is_refused(node, monkeypatch):
 
 
 def test_all_with_dry_run_creates_nothing_and_reports_each_item(node, monkeypatch):
-    root, _slugs = _board(node, monkeypatch, [("Alpha", "task"), ("Beta", "task")])
+    root, _slugs = _board(node, monkeypatch,
+                          [("Alpha", "task", "backlog"), ("Beta", "task", "backlog")])
     posted = _create_responses(monkeypatch)
     code, _out, err = _run(["work", "tracker", "create", "--all", "--dry-run"])
     assert code == 0, err
