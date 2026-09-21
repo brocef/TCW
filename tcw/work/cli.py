@@ -3650,14 +3650,19 @@ def _complete(args: argparse.Namespace) -> int:
     # item with anything open beneath it, and finding that out after the branch is
     # merged would leave the merge behind a refusal. A child created in the
     # worktree exists only on the branch until the merge, so the branch's copy is
-    # asked as well. When the worktree cannot be read, only the primary copy is,
-    # and the store's own check after the merge is what catches a branch-only one.
-    try:
-        st.require_nothing_open_beneath(bare, "complete")
-        if branch_store is not None:
-            branch_store.require_nothing_open_beneath(bare, "complete")
-    except ValueError as e:
-        print(f"tcw work complete: {e}", file=sys.stderr)
+    # asked as well — but only about items the primary copy does not have. The
+    # branch's copy of every other item is frozen at `start --worktree`, so a child
+    # completed here since would still read open there. When the worktree cannot
+    # be read, only the primary copy is asked, and the store's own check after the
+    # merge is what catches a branch-only child.
+    still_open = st.open_descendants(bare)
+    if branch_store is not None:
+        still_open += [s for s in branch_store.open_descendants(bare)
+                       if st.get(s) is None and st.tombstone(s) is None]
+    if still_open:
+        print(f"tcw work complete: Cannot complete {bare}; these items beneath it "
+              f"are still open: {', '.join(still_open)}. Complete or discard them "
+              f"first.", file=sys.stderr)
         return 1
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)

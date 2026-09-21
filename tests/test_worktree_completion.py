@@ -447,3 +447,26 @@ def test_an_open_child_only_on_the_branch_refuses_before_the_merge(
                              "--resolution", "done", "--confirm")
     assert code == 1 and "still open: 2026-01-01-child" in err
     refused_before_merge(root, wt, slug, tip)
+
+
+def test_a_child_completed_in_the_primary_checkout_does_not_refuse(
+        tmp_path, monkeypatch, capsys):
+    """The branch's copy of the store is frozen at `start --worktree`, so a child
+    that existed then still reads open there after it was completed in the
+    primary checkout. For an item in both copies the primary copy is the truth."""
+    from tcw.cli import main
+    root = repo(tmp_path)
+    parent = new_item(root, monkeypatch, capsys, "Parent")
+    monkeypatch.chdir(root)
+    assert main(["work", "new", "Child", "--parent", parent]) == 0
+    child = capsys.readouterr().out.strip().splitlines()[-1].strip()
+    commit_all(root, "child")
+    wt = start_worktree(root, parent, monkeypatch, capsys)
+    branch_commit(wt)
+    assert run_in(root, monkeypatch, capsys, "work", "start", child, "--owner", "t@t")[0] == 0
+    assert run_in(root, monkeypatch, capsys, "work", "complete", child,
+                  "--resolution", "done", "--confirm")[0] == 0
+    code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", parent,
+                             "--resolution", "done", "--confirm")
+    assert "still open" not in err
+    assert code == 0, err
