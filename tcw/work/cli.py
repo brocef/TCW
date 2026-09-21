@@ -2744,7 +2744,10 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
                                        tags=getattr(item, "tags", ()))
         from tcw.tracker.create import placement_target
         where = placement_target(client.config)
-        print(f"→ would create a {issue_type} in {settings.project} titled "
+        # "an Epic", not "a Epic": the issue type is whatever the project called
+        # it, so the article has to follow the word rather than be written in.
+        article = "an" if issue_type[:1].upper() in "AEIOU" else "a"
+        print(f"→ would create {article} {issue_type} in {settings.project} titled "
               f"{item.title!r}, place it in {where!r}, and bind it to {slug}.",
               file=sys.stderr)
         if item.status != "backlog":

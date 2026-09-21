@@ -1069,6 +1069,17 @@ def test_all_with_dry_run_creates_nothing_and_reports_each_item(node, monkeypatc
     assert "Alpha" in err and "Beta" in err, err
 
 
+def test_the_dry_run_uses_the_article_the_issue_type_asks_for(node, monkeypatch):
+    """The issue type is whatever the project called it, so "a" cannot be
+    written into the sentence — an Epic-typed item read "would create a Epic"."""
+    root, _slugs = _board(node, monkeypatch, [("An epic", "epic", "backlog")])
+    _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all", "--dry-run"])
+    assert code == 0, err
+    assert "would create an Epic" in err, err
+    assert "would create a Epic" not in err, err
+
+
 # ── Landing B: filing an item makes its ticket ───────────────────────────────
 
 
