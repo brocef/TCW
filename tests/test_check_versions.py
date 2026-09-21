@@ -182,11 +182,10 @@ def test_root_is_found_from_the_script_location(tmp_path):
 def test_an_explicit_root_wins(tmp_path):
     """The bootstrap passes the plugin root it was given; that one is read."""
     plugin = _plugin(tmp_path / "plugin", "2.4.0")
-    other = tmp_path / "other root"
-    (other / ".claude-plugin").mkdir(parents=True)
-    (other / ".claude-plugin" / "plugin.json").write_text('{"version": "2.5.0"}\n')
+    other = _plugin(tmp_path / "other root", "2.5.0")
     _prints(tmp_path / "bin", "2.5.0")
     _assert_silent(_run(plugin, tmp_path / "bin", str(other)))
+    _assert_warns(_run(plugin, tmp_path / "bin"), "2.5.0", "2.4.0", "newer")
 
 
 def test_the_real_manifests_parse(tmp_path):
@@ -207,3 +206,33 @@ def test_script_uses_no_forbidden_tools():
     code = "\n".join(line.split("#", 1)[0] for line in SCRIPT.read_text().splitlines())
     for tool in (r"\bpython3?\b", r"\bjq\b", r"\btimeout\b"):
         assert not re.search(tool, code), f"check_versions.sh calls {tool}"
+
+
+# --- the instruction every skill carries -------------------------------------
+#
+# Under Claude the SessionStart hook runs the check. Codex may not run the hook,
+# so each skill asks the agent to. Any one skill may be the only tcw skill a
+# session loads, so every one carries the line. This proves the words are there,
+# not that an agent acts on them; that was checked by hand at verify.
+
+VERSION_CHECK_LINE = (
+    "**Version check.** Under Claude Code, skip this: the session-start hook "
+    "already ran it. Under any other harness, once per session before your first "
+    "`tcw` command, run `bash \"<plugin>/scripts/check_versions.sh\"`, where "
+    "`<plugin>` is two folders above the folder holding this `SKILL.md`, and pass "
+    "on anything it prints to the user.")
+
+SKILL_FILES = sorted((REPO / "skills").glob("*/SKILL.md"))
+
+
+def test_every_shipped_skill_is_covered():
+    """A new skill is caught here rather than silently joining the list below."""
+    assert len(SKILL_FILES) == 17, [p.parent.name for p in SKILL_FILES]
+
+
+@pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_every_skill_starts_with_the_version_check(skill):
+    lines = skill.read_text(encoding="utf-8").splitlines()
+    first_body_line = lines[lines.index("---", 1) + 1]
+    assert first_body_line == VERSION_CHECK_LINE, (
+        f"{skill.parent.name}/SKILL.md does not open with the version-check line")
