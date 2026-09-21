@@ -9,9 +9,11 @@
 # arguments exist so the setup skill can run this under Codex, where
 # neither variable is set — nothing here may depend on them.
 #
-# Every path exits 0, and only a failed install prints. It prints to stdout
-# because SessionStart adds stdout to the agent's context, while an exit-2
-# stderr becomes a transcript notice the agent never sees.
+# Every path exits 0. Two things print: a failed install, in one line, and
+# scripts/check_versions.sh's warning when the CLI on PATH and this plugin come
+# from different releases. Both go to stdout because SessionStart adds stdout to
+# the agent's context, while an exit-2 stderr becomes a transcript notice the
+# agent never sees.
 set -u
 
 root="${1:-${CLAUDE_PLUGIN_ROOT:-}}"
@@ -69,14 +71,25 @@ PY
 
 # 1. No plugin root: nothing tells us which plugin version we would be
 #    installing for, so there is nothing to reconcile.
-[ -n "$root" ] && [ -f "$root/tcw/__init__.py" ] || exit 0
+[ -n "$root" ] || exit 0
+
+# From here on every exit, after any install attempt, runs the version check,
+# so a CLI that differs from the plugin is reported whichever branch was taken.
+# `bash` is named so a lost executable bit cannot silently switch it off. It
+# comes before the marker test below because a plugin split from the Python
+# source has no tcw/__init__.py and still needs the check.
+trap 'if [ -f "$root/scripts/check_versions.sh" ]; then bash "$root/scripts/check_versions.sh" "$root" 2>/dev/null; fi' EXIT
+
+[ -f "$root/tcw/__init__.py" ] || exit 0
 
 # 2. Steady state: the plugin has not changed since we last installed, and `tcw`
 #    is on PATH. The sentinel is a trigger token for a plugin-version change and
 #    nothing more — it is *not* evidence about which `tcw-cli` PyPI resolved to,
 #    which floats. `pipx upgrade tcw-cli` is how a user moves ahead of this.
-#    Cheapest check first, so the every-session cost is one `cmp` and one
-#    `command -v` — no interpreter starts, and no network.
+#    Cheapest check first: the install decision costs one `cmp` and one
+#    `command -v`, with no network. The version check on exit (above) still
+#    starts one interpreter every session, for `tcw --version`, capped at about
+#    3 seconds.
 if [ -n "$sentinel" ] && [ -f "$sentinel" ] &&
     cmp -s "$sentinel" "$root/tcw/__init__.py" &&
     command -v tcw >/dev/null 2>&1; then

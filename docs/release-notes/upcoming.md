@@ -68,6 +68,67 @@ a ticket out of triage can be a deliberate team decision, so TCW leaves it alone
 the refusal tells you which setting would change that. Reported from real use in
 the proposit-app project.
 
+## Child items have their own status
+
+- **A child item can now be planned on its own, even after its parent has been
+  started.** `tcw work new "<title>" --parent <item>` always creates the child
+  in backlog, so its request, spec and plan stages work. Before, a child created
+  under an item that was already underway started out as underway too, and
+  those stages refused it.
+- **A child keeps its parent.** Starting, submitting or completing a child no
+  longer detaches it from its parent, and starting the parent no longer drags
+  its children along.
+- **A parent cannot be closed while a child is still open.** `tcw work complete`
+  refuses, even with `--force`, and names the open children. It checks before
+  merging a worktree branch, so a refusal changes nothing. Dropping an item that
+  has children is refused too, and you cannot add a child to a finished item.
+- **Existing children keep working as before.** Children made by earlier
+  versions live inside their parent's folder and still move with it. If one is
+  moved on its own it keeps its parent and has its own status from then on.
+- `tcw validate` now reports a child whose parent does not exist.
+
+### An old inheritance file is now pointed out
+
+Before 2.5.0, a project that inherited another project's taxonomy or
+capabilities listed it in a file inside the tree:
+`docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` (or the same
+file wherever you keep that tree). 2.5.0 stopped reading those files, and a
+project that did not move the list lost every inherited entry without a word.
+
+Now `tcw taxonomy check`, `tcw capabilities check` and `tcw validate` report
+such a file, and tell you what to do: copy any `extends` you still need into
+`tcw-config.yaml` (under `taxonomy:` or `capabilities:`), then delete the file.
+If you already copied it, just delete the file.
+
+**This can make a previously passing project fail.** A file you migrated but
+kept now fails `check` and `validate` until it is deleted — and so it can stop
+`tcw work complete` in any project that runs `tcw validate` before completing.
+TCW never edits or deletes the file for you.
+
+Two smaller changes come with it:
+
+- `tcw validate` now looks at a taxonomy or capabilities tree it used to skip —
+  one kept outside `docs/` — and reports it if the tree cannot be opened. That
+  covers three situations: the tree is kept in another repository and has not
+  been downloaded to this machine yet (it tells you to run `tcw provision`, as
+  it already did for the work board); `taxonomy.path` or `capabilities.path`
+  points at a folder that is not there, such as a sibling checkout a CI or
+  cloud copy does not have; and the project inherits from a project this
+  checkout cannot reach. In a project that runs `tcw validate` before
+  completing work, any of these can stop `tcw work complete` until it is
+  fixed.
+- When a capability overrides one from a project you do not inherit from, the
+  "unknown alias" problem now says the project is missing from
+  `capabilities.extends` in `tcw-config.yaml`.
+
+### Also in this release
+
+- **Your agent now tells you when the `tcw` command and the plugin's skills
+  come from different releases.** It names both versions and how to bring
+  them into line — updating the plugin, or upgrading the `tcw` command — with
+  the exact commands to run. It is only a warning and never stops your work. Claude shows it when
+  a session starts; in Codex, the skills ask the agent to run the check.
+
 ## A refused `tcw work drop` now tells you how to discard
 
 `tcw work drop` only deletes items still in the backlog. For an item you have

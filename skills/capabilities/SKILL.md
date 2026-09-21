@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # The capabilities process
 
@@ -54,7 +55,7 @@ removed:
 
 ## Contradiction-detection (at the moment of change)
 
-Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <id>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw capabilities check` (non-zero ⇒ structural problems to fix first). Whether two capabilities _semantically_ contradict is judgment — surface candidates to the human; never silently overwrite.
+Before recording or altering a capability, check it against the standing ledger: `tcw capabilities search <term>` / `tcw capabilities show <id>` for an existing capability the change would contradict (a new capability that conflicts with a `Supported` one; a status that disagrees with reality). Run `tcw capabilities check` (non-zero ⇒ structural problems to fix first). Two of its problems point at inheritance: a pre-2.5.0 `.config.yaml` at the ledger root is no longer read (move any `extends` it lists into `capabilities.extends` in `tcw-config.yaml`, then delete it), and an override whose project is "not declared in capabilities.extends" means that project is missing from that key. Whether two capabilities _semantically_ contradict is judgment — surface candidates to the human; never silently overwrite.
 
 When a capability describes behavior around a registered taxonomy feature, set
 `Feature=<feature-ref>` in addition to any useful `Subject=<taxonomy-ref>`.

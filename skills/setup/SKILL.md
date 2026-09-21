@@ -9,6 +9,7 @@ compatibility: Requires Python 3.11+ and network access to PyPI on first install
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Setting up TCW
 

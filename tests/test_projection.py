@@ -180,3 +180,21 @@ def test_a_hostile_capabilities_blob_still_emits_valid_json():
     jsonschema.validate(doc, WORK_ITEM_SCHEMA)
     # allow_nan=False and no default=: the document is JSON-native already.
     json.dumps(doc, allow_nan=False)
+
+
+def test_a_child_projects_its_own_status_and_its_parent(tmp_path):
+    import subprocess
+    from tcw.store.fs import FsWorkStore, init
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    init(["work"], root, "repo")
+    st = FsWorkStore.open(root)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+    parent = st.create("Parent", created="2026-01-01").slug
+    st.start(parent, owner="x")
+    child = st.create("Child", created="2026-01-02", parent=parent).slug
+    projected = work_item_json(st.get(child), [])
+    assert projected["status"] == "backlog"
+    assert projected["parent"] == parent

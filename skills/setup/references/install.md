@@ -38,7 +38,10 @@ If it does not:
    call that must not happen silently at session start.
 3. **Behind the latest release?** `pipx upgrade tcw-cli`. Report it, don't treat
    it as breakage: the installed CLI floats, and it is not required to equal the
-   plugin's version.
+   plugin's version. When the two differ, the plugin's version check
+   (`scripts/check_versions.sh`, run at session start under Claude and asked for
+   by every skill elsewhere) prints both versions and the command that lines
+   them up; follow that.
 
 **Check who owns a `tcw` that is already on PATH before replacing it.** Read its
 shebang for the interpreter that owns the install — never the `python3` on PATH,

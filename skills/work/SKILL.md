@@ -8,6 +8,7 @@ metadata:
 license: Apache-2.0
 dynamic_skill: false # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Driving `tcw work`
 
@@ -60,7 +61,7 @@ no `initial-request.md` → `request` · no `spec.md` → `spec` · no `plan.md`
 ## Read on demand
 
 - [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, command skills, the documentation gate (`tcw work docs`), publication on a provisioned store
-- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into nested pieces
+- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into child items
 - Turning an idea into a work item without duplicating tracked work → the `work-create` skill
 - [`tags.md`](references/tags.md) — the node's tag vocabulary · [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences · [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
 - **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources · [`search.md`](references/procedures/search.md): answering a described question about the board as a table

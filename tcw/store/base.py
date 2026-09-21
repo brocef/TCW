@@ -3114,7 +3114,10 @@ class WorkStore(ABC):
                priority: int | None = None, parent: str | None = None,
                intake: str = "") -> WorkItem:
         """Create an item. With `parent` (a slug), create it as a child of that
-        item — an abstract node relation; the adapter realizes the nesting.
+        item — an abstract node relation that never sets a status: a child starts
+        in `backlog` whatever its parent's status, and moves through the
+        lifecycle on its own. The parent must exist and must not be resolved,
+        nor have a resolved ancestor.
 
         `body` is the item's **request**; `intake` is the raw, unprocessed input
         it started from. They are separate arguments rather than one because an
@@ -3633,6 +3636,45 @@ class WorkStore(ABC):
         """
         return [i for i in self.query() if i.initiative == epic_slug]
 
+    def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
+        """Every item, paired with whether its status merely follows its parent.
+
+        An item that follows its parent moves with it by construction, so it is
+        never left behind when the parent resolves. No store holds such items
+        unless it has children from before a child had a status of its own; the
+        filesystem store does, and overrides this."""
+        return [(item, False) for item in self.query()]
+
+    def independent_descendants(self, slug: str) -> list[WorkItem]:
+        """Every item beneath `slug` — the whole subtree, not only direct
+        children — that has a status of its own, open or resolved.
+
+        The walk passes *through* an item that follows its parent, so such an
+        item cannot hide what is beneath it. One snapshot, and a visited set so a
+        hand-made cycle of `parent` fields cannot loop."""
+        by_parent: dict[str, list[tuple[WorkItem, bool]]] = {}
+        for item, follows in self._relation_snapshot():
+            by_parent.setdefault(item.parent, []).append((item, follows))
+        found: list[WorkItem] = []
+        seen, pending = {slug}, [slug]
+        while pending:
+            for item, follows in by_parent.get(pending.pop(), []):
+                if item.slug in seen:
+                    continue
+                seen.add(item.slug)
+                pending.append(item.slug)
+                if not follows:
+                    found.append(item)
+        return found
+
+    def open_descendants(self, slug: str) -> list[str]:
+        """Slugs of the independent descendants of `slug` that are still open.
+
+        What stops `slug` being completed or discarded: a resolved item must not
+        have anything open beneath it."""
+        return [i.slug for i in self.independent_descendants(slug)
+                if i.status not in RESOLVED_STATUSES]
+
     # -- concrete operations (shared semantics) --
 
     def _require(self, slug: str) -> WorkItem:
@@ -3727,6 +3769,11 @@ class WorkStore(ABC):
         `complete` gate share one source of truth. An empty epic is not
         completable (nothing resolved)."""
         if not self.epic_children_all_resolved(item):
+            return False
+        # `complete` refuses while anything beneath the epic by `parent` is open,
+        # so calling it ready then would promise a close that cannot happen —
+        # and `reconcile --complete-when-ready` would fail acting on the promise.
+        if self.open_descendants(item.slug):
             return False
         if self.incomplete_graph_note():
             return False        # not "no", but "not knowable from this checkout"
@@ -3884,6 +3931,11 @@ class WorkStore(ABC):
         if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")
+        # Outside `if not force:` on purpose. `--force` overrides judgments about
+        # whether closing is *allowed*; this protects items that would otherwise
+        # sit open beneath a resolved one, where nothing lists them and a
+        # `work.retain: false` deletion of the parent could remove them.
+        self.require_nothing_open_beneath(slug, "complete")
         if not force:
             # The epic gate applies to *both* routes: an initiative child cannot
             # start until its epic is active, so closing an epic with open
@@ -3945,4 +3997,45 @@ class WorkStore(ABC):
         item = self._require(slug)
         if item.status != "backlog":
             raise IllegalTransition(f"cannot drop from {item.status} (only backlog)")
+        # Resolved children count too: a drop leaves no tombstone, so a child
+        # naming this item as its parent would name something that never existed.
+        beneath = [i.slug for i in self.independent_descendants(slug)]
+        if beneath:
+            raise ValueError(f"Cannot drop {slug}; these items name it as their "
+                             f"parent: {', '.join(beneath)}. Drop, discard or "
+                             f"re-parent them first.")
         self._delete(slug)
+
+    def _require_live_parent(self, parent: str, *, moving: str | None = None,
+                             open_item: bool = True) -> None:
+        """Refuse a `parent` an item may not be placed under.
+
+        It must exist. With `moving` (re-parenting that item), walking up from
+        `parent` must not reach `moving`, which would make a cycle. With
+        `open_item`, neither `parent` nor anything above it may be resolved: an
+        open item beneath a resolved one is exactly what `complete` refuses to
+        leave behind. A resolved item may be filed under a resolved parent."""
+        cursor = self.get(parent)
+        if cursor is None:
+            raise ValueError(f"no such parent work item: {parent}")
+        seen: set[str] = set()
+        while cursor is not None and cursor.slug not in seen:
+            if moving is not None and cursor.slug == moving:
+                raise ValueError("cannot re-parent an item under itself or a descendant")
+            if open_item and cursor.status in RESOLVED_STATUSES:
+                where = "" if cursor.slug == parent else f" (its ancestor {cursor.slug} is)"
+                raise ValueError(f"cannot place an open item under {parent}: it is "
+                                 f"resolved{where}. An open item may not sit beneath "
+                                 f"a completed or discarded one.")
+            seen.add(cursor.slug)
+            cursor = self.get(cursor.parent) if cursor.parent else None
+
+    def require_nothing_open_beneath(self, slug: str, verb: str) -> None:
+        """Refuse when any item beneath `slug` is still open. Shared by `complete`
+        and by callers that must refuse before doing anything irreversible of
+        their own, such as merging a worktree branch."""
+        still_open = self.open_descendants(slug)
+        if still_open:
+            raise ValueError(f"Cannot {verb} {slug}; these items beneath it are "
+                             f"still open: {', '.join(still_open)}. Complete or "
+                             f"discard them first.")

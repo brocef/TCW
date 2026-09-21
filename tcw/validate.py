@@ -1,6 +1,6 @@
 """`tcw validate [path]` — one aggregate soundness pass over a TCW node.
 
-Three passes over the scan roots (the whole node's `docs/{taxonomy,capabilities,
+Passes over the scan roots (the whole node's `docs/{taxonomy,capabilities,
 work}` trees, or a single `[path]`):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
@@ -11,6 +11,8 @@ work}` trees, or a single `[path]`):
       (code spans stripped first, so examples that teach the scheme don't fail).
   (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a syntax
       error or a record of the wrong shape (they re-load the file and raise).
+  (d) a leftover pre-2.5.0 store config file, reported directly for any tree
+      store (c) did not check — or, if that store will not open, why not.
 """
 
 from __future__ import annotations
@@ -319,16 +321,36 @@ def validate(node_root: Path, path: Path | None = None, *,
                     problems.append(f"{_rel(f, node_root)}: tcw:// {uri} → {r.reason}")
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
+    checked: set[str] = set()
     if yaml_syntax_error:
         problems.append("(component checks skipped: YAML problem above)")
     else:
         components = [target.axis] if target is not None else _components_to_check(node_root, path)
         for comp in components:
+            checked.add(comp)
             # Before the component's own check, so a node reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
             configured = _configured_path_problem(node_root, comp)
             if configured is not None:
                 problems.append(f"{comp} path: {configured}")
             problems += _run_check(node_root, comp, target.ref if target else None)
+
+    # (d) a leftover pre-2.5.0 store config, for each tree store whose check()
+    # did not run above. Temporary: it exists only because `validate` does not
+    # follow a store moved out of `docs/<component>` and skips every component
+    # check after a YAML problem. Once `validate` covers relocated stores, delete
+    # this block and `checked`, and leave the leftover to `check()` alone.
+    if path is None and target is None:
+        for comp in ("taxonomy", "capabilities"):
+            if comp in checked:
+                continue
+            try:
+                store = STORE_CLASSES[comp].open(node_root)
+            except ValueError as e:
+                # Nothing else reports it: the component and configured-path
+                # checks both sit in the block this store was left out of.
+                problems.append(f"{comp} check: {e}")
+                continue
+            problems += [f"{comp} check: {p}" for p in store._legacy_config_problems()]
 
     return problems
