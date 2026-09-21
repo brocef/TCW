@@ -255,3 +255,24 @@ than being worked around; the spec says so too.
 found a guard being changed without its other callers traced. Those five
 characterisation tests are the cheapest available defence against the same
 mistake landing in code.
+
+## Added 2026-09-21 — the pre-backlog step must survive Tasks 4 and 8
+
+`2026-09-21-let-tracker-sync-bring-a-ticket-forward-from-a-pre-backlog-status-such-as-triage`
+lands before this item and is recorded as a blocker. It adds `work.tracker.pre-backlog`
+and a separate status-movement function that moves a ticket out of a configured
+pre-backlog status (for example `Triage` via `Accept`) onto `statuses.backlog`.
+For now `intake.claim` calls it. Read that item's `spec.md` before revising this plan.
+
+- **Task 4.** When `deliver` stops calling `intake.claim` and `_strict_claim` is
+  deleted (so strict `start` goes through `deliver`), `deliver` must call the
+  pre-backlog step itself, **before `assess_move` and independently of `owed`**.
+  Under this item's new ownership test, the reporter's already-assigned Triage ticket
+  is not owed, yet still needs moving. `tcw work tracker import` keeps its
+  `intake.claim` call and so keeps the step. The hint sentence naming
+  `work.tracker.pre-backlog` must survive the deletion of the refusal it currently
+  lives in, and so must the "moved out of Triage" message (the new `ClaimOutcome`
+  field).
+- **Task 8.** Retiring `--sync-status` moves that item's regression tests for its
+  `link --sync-status` criteria onto the replacement link → claim → sync flow. They
+  are not dropped.
