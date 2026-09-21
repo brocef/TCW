@@ -425,7 +425,7 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         # A strict start that stops here writes no sync record, so `sync` has nothing
         # to resume: taking the ticket out of triage is finished by starting again.
         again = (f" Run `tcw work start {bare}` again to finish the claim."
-                 if outcome.left_status else "")
+                 if outcome.left_status or outcome.row in ("0f", "0-read") else "")
         return _strict_says_no("start", f"{bare} was not started",
                                moved_out(key, outcome.left_status)
                                + outcome.message + detail + again), False
@@ -2457,6 +2457,10 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
               file=sys.stderr)
     if not outcome.claimed:
         _print_refusal(label, outcome)
+        if outcome.row in ("0f", "0-read"):
+            # The pre-backlog step's messages leave recovery to the caller.
+            print(f"  Run `tcw work {label} {args.ticket}` again once the tracker "
+                  f"answers.", file=sys.stderr)
         return 1
     if client.config.strict:
         from tcw.tracker.sync import claim_refusal

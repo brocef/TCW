@@ -260,11 +260,11 @@ def test_a_refused_accept_is_conflicting(fake):
     assert (outcome.row, outcome.claimed, outcome.left_status) == ("0d", False, "")
 
 
-def test_a_failed_read_back_after_accept_is_pending_and_says_it_was_sent(fake):
+def test_a_failed_read_back_after_accept_is_pending_and_says_it_applied(fake):
     fake.fail("GET", REREAD, jira.TrackerUnavailable("could not be reached (fake)"))
     outcome = _claim()
     assert (outcome.row, outcome.claimed, outcome.left_status) == ("0-read", False, "Triage")
-    assert "'Accept' was sent" in outcome.message
+    assert "'Accept' applied, but" in outcome.message
     assert fake.applied == ["11"]
 
 
@@ -660,3 +660,110 @@ def test_show_notes_the_step(tmp_path, monkeypatch):
     code, out, err = cli(root, "work", "tracker", "show", KEY)
     assert code == 0, err
     assert "note: a claim first takes it out of 'Triage' through 'Accept'." in out
+
+
+# ── verify: what `tcw work start` prints, read whole ─────────────────────────
+
+def started_from_triage(tmp_path, monkeypatch):
+    """A backlog item bound to an unassigned Triage ticket, ready for `start`."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    fake_.account("b@example.test", B, "Bob")
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    return root, fake_, slug
+
+
+def around_first_post(fake_, *, answer_it=True, then=None):
+    """Wrap the first transition POST: answer it or not (a request that never got a
+    reply), then run `then` — something another person or a workflow rule did."""
+    answer, posts = fake_.answer, []
+
+    def wrapped(client, method, path, body):
+        if method == "POST" and path.endswith("/transitions"):
+            posts.append(path)
+            if len(posts) == 1:
+                result = answer(client, method, path, body) if answer_it else (204, {}, b"")
+                if then is not None:
+                    then()
+                return result
+        return answer(client, method, path, body)
+
+    fake_.answer = wrapped
+
+
+def fail_reads_after_first_post(fake_, error):
+    answer, posted = fake_.answer, []
+
+    def wrapped(client, method, path, body):
+        if method == "POST" and path.endswith("/transitions"):
+            posted.append(path)
+        elif method == "GET" and posted and "/transitions" not in path \
+                and "/myself" not in path:
+            raise error
+        return answer(client, method, path, body)
+
+    fake_.answer = wrapped
+
+
+def test_a_ticket_taken_between_the_hops_is_not_advised_to_be_claimed(tmp_path,
+                                                                     monkeypatch):
+    root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
+    around_first_post(fake_, then=lambda: setattr(fake_.tickets[TICKET_ID], "assignee", B))
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert f"{KEY} was moved out of 'Triage'." in err
+    assert "assigned to Bob" in err
+    assert "tcw work tracker claim" not in err
+
+
+def test_an_accept_landing_elsewhere_does_not_claim_it_reached_the_backlog(tmp_path,
+                                                                         monkeypatch):
+    root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
+    around_first_post(fake_, then=lambda: setattr(fake_.tickets[TICKET_ID], "status",
+                                                  "In Review"))
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert f"{KEY} was moved out of 'Triage'." in err
+    assert "it is in 'In Review'" in err
+    assert "to the backlog status first" not in err
+    assert "tcw work tracker claim" not in err
+
+
+def test_an_unanswered_accept_that_cannot_be_read_back_is_not_called_a_move(tmp_path,
+                                                                          monkeypatch):
+    from tcw.tracker.jira import TrackerUnavailable
+    root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
+    post_fails(fake_, 1, TrackerUnavailable("no answer (fake)"))
+    fail_reads_after_first_post(fake_, TrackerUnavailable("no answer (fake)"))
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert "'Accept' was sent; whether it applied is unknown" in err
+    assert "moved out of" not in err
+    assert "tcw work tracker claim" not in err
+    assert f"Run `tcw work tracker sync {slug}`" in err
+    assert record(root, slug)["state"] == "pending"
+
+
+def test_an_uncertain_accept_points_at_sync_not_at_rerunning_start(tmp_path, monkeypatch):
+    from tcw.tracker.jira import TrackerUnavailable
+    root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
+    post_fails(fake_, 1, TrackerUnavailable("no answer (fake)"))
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert f"Run `tcw work tracker sync {slug}`" in err
+    assert "Running this command again" not in err
+    assert "tcw work tracker claim" not in err
+    assert record(root, slug)["state"] == "pending"
+
+
+def test_an_accept_the_tracker_took_but_did_not_apply_says_so(tmp_path, monkeypatch):
+    root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
+    around_first_post(fake_, answer_it=False)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert "the tracker accepted 'Accept', but" in err
+    assert "is still in 'Triage'" in err
+    assert "could not tell whether" not in err
+    assert "tcw work tracker claim" not in err
+    assert record(root, slug)["state"] == "conflicting"

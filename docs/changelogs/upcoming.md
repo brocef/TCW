@@ -30,7 +30,15 @@ carrying everything listed under `v2.5.0`.
   sending unless the transition is offered once and leads to `statuses.backlog`;
   re-reads the ticket and hands the claim that fresh read. New claim rows `0a`
   (refused before sending), `0b` (landed elsewhere), `0d` (the tracker refused it),
-  `0f` (uncertain, not arrived) and `0-read` (sent, not read back).
+  `0e` (accepted but not moved), `0f` (uncertain, not arrived) and `0-read` (sent,
+  not read back; counted as moved only when the tracker said it applied). The
+  step's messages carry no recovery step: `deliver`'s caller names `sync`, strict
+  `start` says to start again, and `import` says to run itself again.
+- `deliver` gives no "take it with `tcw work tracker claim`" advice after rows
+  `1b`/`3b` or any step row (`_NO_CLAIM_ADVICE`), since the snapshot it used to
+  decide that can be stale after the step.
+- `store.base.mapped_statuses`, shared by the `pre-backlog` parser,
+  `intake._mapped_anywhere` and `sync.lowest_rung`.
 - `ClaimOutcome.left_status`, and the same attribute on a `TrackerError` raised
   after the step, so every caller reports that the ticket left triage;
   `intake.moved_out` words it.

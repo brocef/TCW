@@ -352,7 +352,7 @@ owes the ticket a claim. TCW checks that `Accept` is offered exactly once and
 leads to `statuses.backlog` **before** sending it — a transition cannot be taken
 back — then reads the ticket again and claims it from there, so it notices if
 somebody took or closed the ticket in between. Every command that does this says
-so: `SYNC-1 was moved out of 'Triage' to the backlog status first.`
+so: `SYNC-1 was moved out of 'Triage'.`
 
 Nothing else takes a ticket out of triage. A move whose claim was already made, a
 discard, `tracker claim`, and `tracker create` never do, and a ticket assigned to

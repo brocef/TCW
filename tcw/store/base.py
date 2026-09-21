@@ -1616,6 +1616,18 @@ def _same_status(name: str) -> str:
     return " ".join(name.split()).casefold()
 
 
+def mapped_statuses(statuses: dict, *locals: str) -> list[str]:
+    """Every tracker status named under `work.tracker.statuses` — for the local
+    statuses given, or all of them — with a per-resolution `discarded` mapping
+    flattened to its names."""
+    names = []
+    for local in (locals or tuple(statuses)):
+        value = statuses.get(local, "")
+        names.extend(name for name in (value.values() if isinstance(value, dict)
+                                       else (value,)) if name)
+    return names
+
+
 def _parse_tracker_pre_backlog(raw: Any, statuses: dict, problems: list[str]) -> dict:
     """`work.tracker.pre-backlog`, appending a problem per defect. Absent is `{}`.
 
@@ -1630,11 +1642,7 @@ def _parse_tracker_pre_backlog(raw: Any, statuses: dict, problems: list[str]) ->
     if not isinstance(raw, dict):
         problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
         return {}
-    mapped = {}
-    for value in statuses.values():
-        for name in (value.values() if isinstance(value, dict) else (value,)):
-            if name:
-                mapped[_same_status(name)] = name
+    mapped = {_same_status(name): name for name in mapped_statuses(statuses)}
     out: dict = {}
     seen: dict[str, str] = {}
     for key in raw:

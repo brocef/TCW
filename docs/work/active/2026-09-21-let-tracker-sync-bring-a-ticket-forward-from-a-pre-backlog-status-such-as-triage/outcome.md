@@ -16,7 +16,7 @@ against `tests/tracker_fake.py`.
 | 5 | `877fa255` | `capabilities.yaml` and the three capability descriptions. `tcw capabilities check` → `capabilities OK`. |
 | 6 | `d434cd9a` | Documentation: `docs/guide/jira.md` ("Tickets waiting in triage", key table, example), `docs/guide/work.md`, `skills/configure/references/tracker.md`, `skills/work/references/commands.md`, `skills/commands-process-inbox/SKILL.md`, `README.md`, both `upcoming.md` files. `skills/work/SKILL.md` was re-read: it names no tracker claim behaviour, so it is unchanged. `tcw validate` → `validate OK`. |
 
-All new tests are in `tests/test_tracker_pre_backlog.py`: 43 test functions, 61 cases once parametrized.
+All new tests are in `tests/test_tracker_pre_backlog.py`: 43 test functions and 61 cases at implement; 48 and 66 after verify.
 
 ## Test result
 
@@ -94,6 +94,36 @@ turn them red except breaking that promise.
    paragraph about v2.5.0. This item's section is appended below it, so that
    sentence is now untrue. It is left for the team lead to reword when merging the
    five proposit-app items, all of which append to this file.
+
+## Folded in at verify
+
+Review and verification found no wrong transitions, and all 17 criteria met. They
+did find six defects in what the commands *print*. Each fix has a test that reads
+the whole stderr of `tcw work start` against the fake Jira, and each was
+mutation-checked.
+
+| Finding | Fix | Test | Mutation that turned it red |
+| --- | --- | --- | --- |
+| After the step, another account takes the ticket and the claim refuses at row `1b`, yet `deliver` still advised "take it with `tcw work tracker claim`". That was decided from the snapshot taken before the step | `deliver` gives that advice after no row in `_NO_CLAIM_ADVICE` (`1b`, `3b`, and every step row) | `test_a_ticket_taken_between_the_hops_is_not_advised_to_be_claimed` | remove the row check: 5 tests red on `"tcw work tracker claim" not in err` |
+| Row `0b` contradicted itself: "moved … to the backlog status first", then "it is in 'In Review'" | `moved_out` now says only "moved out of 'X'." | `test_an_accept_landing_elsewhere_does_not_claim_it_reached_the_backlog` | restore the old wording |
+| Row `0-read` counted an unanswered POST as a move | `left_status` is set only when the tracker said the transition applied. Otherwise the message is "'Accept' was sent; whether it applied is unknown" | `test_an_unanswered_accept_that_cannot_be_read_back_is_not_called_a_move` | set `left_status` for the unanswered case |
+| After `start`, the step's rows ended "running this command again…", which conflicts with `deliver`'s caller naming `sync` | The step's messages carry no recovery step. `deliver`'s caller names `tcw work tracker sync`; strict `start` says to start again for `0f`/`0-read`; `import` says to run itself again | `test_an_uncertain_accept_points_at_sync_not_at_rerunning_start` | put the old sentence back |
+| Three copies of "flatten the `statuses` mapping" | `store.base.mapped_statuses`, used by the parser, `intake._mapped_anywhere` and `sync.lowest_rung` | existing tests (behaviour unchanged) | not applicable: this is a refactor |
+| `Accept` reported success, but the read-back showed Triage, and the message said "could not tell whether it applied" | New row `0e`, "the tracker accepted 'Accept', but … is still in 'Triage'", recorded **conflicting**. It is not pending, because a workflow rule that silently declines the transition would decline a retry too | `test_an_accept_the_tracker_took_but_did_not_apply_says_so` | route the case back to `0f` |
+
+One existing unit test changed with the third fix:
+`test_a_failed_read_back_after_accept_is_pending_and_says_it_was_sent` is now
+`…_says_it_applied`, because in that case the tracker did say it applied. The Jira
+guide's example sentence and the changelog were updated to match.
+
+**Judgment call to confirm.** The `0e` classification as *conflicting* is this
+session's decision. The review asked only for a wording fix. If a retry is wanted
+instead, `0e` belongs in `deliver`'s pending rows.
+
+After these fixes, run with no git identity:
+`tests/test_tracker_pre_backlog.py tests/test_tracker_sync.py tests/test_tracker_cli.py`
+gave **289 passed**, and every `tests/test_tracker_*.py` plus `tests/test_validate*.py`
+gave **974 passed**.
 
 ## Deferred
 

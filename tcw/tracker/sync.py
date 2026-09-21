@@ -52,8 +52,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from tcw.store.base import (RESOLVED_STATUSES, bound_value, target_status,
-                            transition_name)
+from tcw.store.base import (RESOLVED_STATUSES, bound_value, mapped_statuses,
+                            target_status, transition_name)
 from tcw.tracker.claim import _normalize
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, ClaimOutcome, binding_of, claim,
                                 moved_out, pre_backlog_hint, read_ticket, same_site,
@@ -87,6 +87,8 @@ _MOVED_FROM = {"start": ("active",), "submit": ("active",), "rework": ("review",
 # a completion share the top rung: both are where a ticket stops.
 _RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
 REASON_LIMIT = 300
+# Claim refusals after which "take it with `tcw work tracker claim`" is wrong advice.
+_NO_CLAIM_ADVICE = frozenset({"1b", "3b", "0a", "0b", "0d", "0e", "0f", "0-read"})
 
 
 def ladder_steps(statuses: dict, local_target: str,
@@ -127,12 +129,9 @@ def lowest_rung(statuses: dict, status: str) -> int | None:
 
     The lowest, because a status two local statuses share is only certainly as high as
     the lower of them."""
-    rungs = []
-    for local, index in _RUNG_ORDER.items():
-        value = statuses.get(local, "")
-        for mapped in (value.values() if isinstance(value, dict) else (value,)):
-            if mapped and _normalize(mapped) == _normalize(status):
-                rungs.append(index)
+    rungs = [index for local, index in _RUNG_ORDER.items()
+             if any(_normalize(mapped) == _normalize(status)
+                    for mapped in mapped_statuses(statuses, local))]
     return min(rungs, default=None)
 
 
@@ -617,7 +616,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 # then: telling somebody to claim a ticket another account holds would
                 # send them to a refusal naming that account, which this message
                 # already does.
-                where = ("" if ticket.assignee_id not in ("", None, ticket.me_id) else
+                #
+                # Not after rows that name another holder from the claim's own fresh
+                # read (1b, 3b) — somebody may have taken the ticket after `ticket`
+                # was read — nor after the pre-backlog step's rows, which `tracker
+                # claim` cannot help: it assigns and moves nothing.
+                where = ("" if ticket.assignee_id not in ("", None, ticket.me_id)
+                         or outcome.row in _NO_CLAIM_ADVICE else
                          f" Take it with `tcw work tracker claim {slug}`, then run "
                          f"`tcw work tracker sync {slug}`.")
                 return finish(state, moved_out(outcome.key, outcome.left_status)

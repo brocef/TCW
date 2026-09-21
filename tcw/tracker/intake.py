@@ -481,16 +481,14 @@ def moved_out(key: str, left_status: str) -> str:
     or `""` when it did not. Written once so the three callers cannot drift."""
     if not left_status:
         return ""
-    return f"{key} was moved out of '{left_status}' to the backlog status first. "
+    return f"{key} was moved out of '{left_status}'. "
 
 
 def _mapped_anywhere(statuses: dict, status: str) -> bool:
+    from tcw.store.base import mapped_statuses
     from tcw.tracker.claim import _normalize
-    for value in statuses.values():
-        for name in (value.values() if isinstance(value, dict) else (value,)):
-            if name and _normalize(name) == _normalize(status):
-                return True
-    return False
+    return any(_normalize(name) == _normalize(status)
+               for name in mapped_statuses(statuses))
 
 
 def pre_backlog_hint(config, status: str, category: str) -> str:
@@ -526,9 +524,10 @@ def leave_pre_backlog(client, ticket: TicketRead
     somebody may have taken or closed the ticket in between.
 
     Rows, in the claim's own table style: `0a` refused before sending, `0b` landed
-    somewhere else, `0d` the tracker refused the transition, `0f` could not tell
-    whether it applied and it did not arrive, `0-read` sent but not read back. `0f`
-    and `0-read` are worth retrying; the others need somebody to act.
+    somewhere else, `0d` the tracker refused the transition, `0e` the tracker
+    accepted it but the ticket did not move, `0f` could not tell whether it applied
+    and it did not arrive, `0-read` sent but not read back. `0f` and `0-read` are
+    worth retrying; the others need somebody to act.
     """
     from tcw.store.base import pre_backlog_entry, target_status
     from tcw.tracker.claim import _normalize
@@ -575,23 +574,32 @@ def leave_pre_backlog(client, ticket: TicketRead
         raise
     except TrackerError as error:
         result, detail = "unknown", str(error)
+    # The messages below give no recovery step: that depends on the command, and
+    # each caller adds its own (`sync`, `start` again, or the same import).
     try:
         fresh = read_ticket(client, ticket.issue_id)
     except TrackerError as error:
-        sent = status if result != "refused" else ""
-        return refused("0-read", f"'{name}' was sent to take {key} out of "
-                                 f"'{ticket.status}', but it could not be read back, "
-                                 f"so where it is now is unknown. Running this command "
-                                 f"again will find out.", sent, str(error))
+        # Moved only if the tracker said the transition applied; an unanswered
+        # request is reported as exactly that.
+        if result == "applied":
+            return refused("0-read", f"'{name}' applied, but {key} could not be read "
+                                     f"back, so where it is now is unknown.", status,
+                           str(error))
+        return refused("0-read", f"'{name}' was sent; whether it applied is unknown, "
+                                 f"and {key} could not be read back.", detail=str(error))
     if _normalize(fresh.status) == _normalize(backlog):
         return fresh, None, status
     if _normalize(fresh.status) == _normalize(ticket.status):
         if result == "refused":
             return refused("0d", f"the tracker refused '{name}', so {key} is still in "
                                  f"'{ticket.status}'.", detail=detail)
+        if result == "applied":
+            # A workflow rule can decline a transition without an error, so an
+            # accepted request is not a move. Trying again would meet the same rule.
+            return refused("0e", f"the tracker accepted '{name}', but {key} is still "
+                                 f"in '{ticket.status}'.", detail=detail)
         return refused("0f", f"could not tell whether '{name}' applied, and {key} is "
-                             f"still in '{ticket.status}'. Running this command again "
-                             f"will try once more.", detail=detail)
+                             f"still in '{ticket.status}'.", detail=detail)
     return refused("0b", f"{key} did not reach '{backlog}' through '{name}': it is in "
                          f"'{fresh.status}'.", status, detail)
 
