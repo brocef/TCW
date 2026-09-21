@@ -67,3 +67,12 @@ claiming it, and tells you it did. Nothing happens without the setting: acceptin
 a ticket out of triage can be a deliberate team decision, so TCW leaves it alone and
 the refusal tells you which setting would change that. Reported from real use in
 the proposit-app project.
+
+## A refused `tcw work drop` now tells you how to discard
+
+`tcw work drop` only deletes items still in the backlog. For an item you have
+started, or sent to review, it used to refuse without saying what to do instead.
+Now it names the command that works:
+`tcw work complete <slug> --resolution wontfix --confirm`, which discards the item,
+keeps a record of it, and updates a linked ticket. Reported from real use in the
+proposit-app project.

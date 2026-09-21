@@ -37,7 +37,7 @@ It is where a stage's instructions come from, composed with this project's own.
 | `verify`     | `refined-outcome.md` **or** `rework.md` |
 | `postmortem` | `post-mortem.md`                        |
 
-`start` · `submit` · `rework` · `complete` · `discard` → [`transitions.md`](references/transitions.md)
+`start` · `submit` · `rework` · `complete` · `discard` (`complete --resolution wontfix|duplicate|superseded`) → [`transitions.md`](references/transitions.md)
 
 ## Finding your place
 

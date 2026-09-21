@@ -1986,6 +1986,55 @@ def test_drop_of_a_missing_item_does_not_advise_confirm(tmp_path, monkeypatch, c
     assert "--confirm" not in err
 
 
+def _drop_refused_toward_discard(root, slug, capsys, *args):
+    from tcw.cli import main
+    assert main(["work", "drop", slug, *args]) == 1
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert "--confirm`" in out.err                            # only inside the command
+    assert "Re-run with --confirm" not in out.err
+    assert f"tcw work complete {slug} --resolution wontfix --confirm" in out.err
+
+
+def test_drop_of_an_active_item_points_to_discard(tmp_path, monkeypatch, capsys):
+    """`discard` is not a verb, so a refused drop must name the one that works —
+    and before the `--confirm` gate, whose advice would only lead to a second
+    refusal."""
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create("a feature", created="2026-01-01").slug
+    st.start(slug, force=True)
+    monkeypatch.chdir(root)
+    _drop_refused_toward_discard(root, slug, capsys)
+    _drop_refused_toward_discard(root, slug, capsys, "--confirm")
+    assert FsWorkStore.open(root).get(slug).status == "active"
+
+
+def test_drop_of_an_item_in_review_points_to_discard(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create("a feature", created="2026-01-01").slug
+    st.start(slug, force=True)
+    st.transition(slug, "review")
+    monkeypatch.chdir(root)
+    _drop_refused_toward_discard(root, slug, capsys, "--confirm")
+    assert FsWorkStore.open(root).get(slug).status == "review"
+
+
+def test_drop_of_a_resolved_item_says_so(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create("a feature", created="2026-01-01").slug
+    st.complete(slug, "wontfix", [])
+    if st.get(slug) is None:
+        pytest.skip("this node deletes resolved items at once")
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", slug, "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "already resolved" in err and "tcw work complete" not in err
+
+
 def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
     """--blocks on a qualified slug must persist a BARE ref into the other item's
     node-local blocked_by (never the qualified form)."""

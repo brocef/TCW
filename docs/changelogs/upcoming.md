@@ -51,6 +51,13 @@ carrying everything listed under `v2.5.0`.
   `tcw work start`, which needs a claimant and otherwise falls back to the git
   identity. The CI runner has none, so both failed there and passed locally.
 - `docs/release-notes/v2.5.0.md` linked #43 under the wrong repository.
+- `tcw work drop` on an item that is not in backlog now refuses before the
+  `--confirm` gate and names the discard command
+  (`tcw work complete <slug> --resolution wontfix --confirm`); a resolved item
+  is reported as already resolved. Before, it advised `--confirm` and then
+  refused with "cannot drop from active (only backlog)", naming no alternative.
+  `skills/work/SKILL.md` spells out that `discard` is reached through
+  `complete --resolution`.
 
 ### Added
 

@@ -3784,6 +3784,20 @@ def _drop(args: argparse.Namespace) -> int:
     if resolved is None:
         return 1
     st, bare = resolved
+    # Before the `--confirm` gate, for the same reason the missing-item check is:
+    # advising `--confirm` on an item drop will refuse anyway sends the user to a
+    # second error. And name the route that works — `discard` is not a verb.
+    item = st.get(bare)
+    if item is not None and item.status != "backlog":
+        if item.status in ("completed", "discarded"):
+            print(f"tcw work drop: {args.slug} is already resolved ({item.status}); "
+                  f"there is nothing to drop.", file=sys.stderr)
+        else:
+            print(f"tcw work drop: {args.slug} is {item.status}, and drop only deletes "
+                  f"a backlog item. To discard it, keeping a record: `tcw work complete "
+                  f"{args.slug} --resolution wontfix --confirm` (or duplicate / "
+                  f"superseded).", file=sys.stderr)
+        return 1
     # `drop` is the only destructive verb with no record behind it — `complete`
     # preserves the item, `discard` preserves the item. Gate it the way `complete`
     # gates a discard, and name what goes so the refusal is informative.
