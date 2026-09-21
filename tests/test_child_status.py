@@ -495,3 +495,81 @@ def test_a_legacy_claim_that_loses_the_race_stays_put_and_reads_clean(tmp_path, 
     assert st.path("c") == root / "docs/work/backlog/p/c"
     assert (st.get("c").status, st.get("c").parent) == ("backlog", "p")
     assert not [p for p in st.check() if p.startswith("c:")]
+
+
+# ── Task 8: re-parenting ─────────────────────────────────────────────────────
+
+def _reparent_board(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p", owner="x")
+    _item(root, "backlog/item")
+    _item(root, "active/child", parent="p", owner="x")
+    _item(root, "backlog/grandchild", parent="child")
+    _item(root, "completed/done-parent", resolution="done")
+    _item(root, "active/under-discarded", parent="gone", owner="x")
+    _item(root, "discarded/gone", resolution="wontfix")
+    _item(root, "completed/finished", resolution="done")
+    _commit(root)
+    return root, FsWorkStore.open(root)
+
+
+def test_giving_a_backlog_item_an_active_parent_keeps_its_status(tmp_path):
+    root, st = _reparent_board(tmp_path)
+    st.update_work("item", parent="p")
+    assert st.path("item") == root / "docs/work/backlog/item"
+    assert (st.get("item").status, st.get("item").parent) == ("backlog", "p")
+
+
+def test_clearing_a_parent_keeps_the_status(tmp_path):
+    root, st = _reparent_board(tmp_path)
+    st.update_work("child", parent="")
+    assert st.path("child") == root / "docs/work/active/child"
+    assert "parent" not in _state(st.path("child"))
+
+
+@pytest.mark.parametrize("slug", ["child", "finished"])
+def test_a_cycle_is_refused_for_open_and_resolved_items(tmp_path, slug):
+    root, st = _reparent_board(tmp_path)
+    if slug == "finished":
+        st.update_work("finished", parent="done-parent")    # allowed: see below
+        _item(root, "completed/under-finished", parent="finished", resolution="done")
+        target = "under-finished"
+    else:
+        target = "grandchild"
+    with pytest.raises(ValueError, match="itself or a descendant"):
+        st.update_work(slug, parent=slug)
+    with pytest.raises(ValueError, match="itself or a descendant"):
+        st.update_work(slug, parent=target)
+
+
+def test_a_missing_parent_is_refused_for_a_resolved_item_too(tmp_path):
+    _root, st = _reparent_board(tmp_path)
+    with pytest.raises(ValueError, match="no such parent"):
+        st.update_work("finished", parent="nobody")
+
+
+def test_an_open_item_cannot_go_under_a_resolved_item_or_ancestor(tmp_path):
+    _root, st = _reparent_board(tmp_path)
+    with pytest.raises(ValueError, match="resolved"):
+        st.update_work("item", parent="done-parent")
+    with pytest.raises(ValueError, match="its ancestor gone is"):
+        st.update_work("item", parent="under-discarded")
+    assert st.get("item").parent == ""
+
+
+def test_a_resolved_item_may_go_under_a_resolved_parent(tmp_path):
+    _root, st = _reparent_board(tmp_path)
+    st.update_work("finished", parent="done-parent")
+    assert st.get("finished").parent == "done-parent"
+
+
+def test_reparenting_a_legacy_child_moves_it_up_and_records_the_field(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p", owner="x")
+    _item(root, "active/q", owner="x")
+    _legacy_child(root, "active", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.update_work("c", parent="q")
+    assert st.path("c") == root / "docs/work/active/c"
+    assert (st.get("c").status, st.get("c").parent) == ("active", "q")
