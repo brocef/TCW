@@ -26,7 +26,7 @@ from tcw.store.base import classify_binding
 from tcw.store.fs import FsWorkStore, init
 from tcw.tracker.intake import binding_document, unlink_document, with_sync_record
 from tcw.work.projection import WORK_ITEM_SCHEMA
-from tracker_fake import BASE_URL, SYNC, FakeJira, install_sites
+from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira, install_sites
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"
@@ -2255,3 +2255,40 @@ def test_the_link_that_asks_for_a_catch_up_writes_no_claim(node, fake):
     assert seen["catch-up"] is True
     assert set(seen["sync"]) == RECORD_FIELDS, seen["sync"]
     assert seen["sync"]["move"] == "start" and seen["sync"]["state"] == "pending"
+
+
+# ── `statuses.backlog` must not arm sync against backlog items ──────────────
+
+BACKLOG_STATUSES = {"backlog": "To Do", **STATUSES}
+
+
+def test_a_bound_backlog_items_ticket_is_never_moved(tmp_path, monkeypatch):
+    """`statuses.backlog` exists so `tcw work tracker create` knows where to put
+    a new ticket. It must not give `sync` a target for backlog items.
+
+    Before this guard it did, and the result was a **silent backward move**:
+    `deliver` reads `target_status(config.statuses, item.status, ...)` directly,
+    so a mapped `backlog` made the target `To Do` for an unstarted item, and the
+    backwards protection could not fire because `_RUNG_ORDER.get("backlog",
+    ticket_rung) > ticket_rung` is never true. A ticket you were working in Jira,
+    bound to an item still in the backlog — which is exactly what
+    `tcw work tracker import` of an in-progress ticket produces — was pulled
+    back to `To Do` with nothing printed.
+    """
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake = FakeJira(workflow=GLOBAL)
+    fake.account("a@example.test", A, "Alice")
+    fake.ticket(id=TICKET_ID, key=KEY, summary="Mine, in progress",
+                status="In Progress", assignee=A)
+    fake.install(monkeypatch)
+
+    root = make_node(tmp_path, statuses=BACKLOG_STATUSES)
+    slug = bound_item(root)
+    assert status(root, slug) == "backlog"
+
+    code, _out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status == "In Progress", (
+        "sync pulled a backlog item's ticket backwards")
+    assert fake.applied == [], fake.applied

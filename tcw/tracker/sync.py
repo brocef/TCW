@@ -313,7 +313,19 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         return Outcome(NONE)
     record = bound.sync if bound.sync and "problem" not in bound.sync else None
     local = item.status
-    target = target_status(config.statuses, local, item.resolution)
+    # **Never a target for a backlog item**, whatever `statuses` says.
+    #
+    # `statuses.backlog` exists so `tcw work tracker create` knows where to put a
+    # ticket it is making. Delivery is a different question: an item in the
+    # backlog has not moved anywhere, so there is nothing for its ticket to
+    # follow. Letting the mapping through here made `sync` pull a ticket
+    # *backwards* — `tcw work tracker import` of a ticket you are already working
+    # binds an `In Progress` ticket to a backlog item, and the next sync sent it
+    # to `To Do` with nothing printed. The backwards guard below could not catch
+    # it either: `_RUNG_ORDER` has no backlog rung, so its fallback compares
+    # `ticket_rung > ticket_rung`, which is never true.
+    target = ("" if local == "backlog"
+              else target_status(config.statuses, local, item.resolution))
     syncing = move is None                   # `sync`, not a lifecycle move
     starting = move == "start"
     # A ticket TCW has never held, and so still owes a claim. Two facts already on the

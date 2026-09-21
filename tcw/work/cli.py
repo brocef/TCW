@@ -3486,7 +3486,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     ptrc = ptrs.add_parser(
         "create", help="make a ticket for an existing item and bind it")
-    ptrc.add_argument("slug")
+    ptrc.add_argument("slug", help=BARE_SLUG_HELP)
     ptrc.add_argument("--part", default=None,
                       help="bind as this part, for an item split across tickets")
     ptrc.add_argument("--dry-run", action="store_true",

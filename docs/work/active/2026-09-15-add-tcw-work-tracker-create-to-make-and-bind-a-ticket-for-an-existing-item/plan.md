@@ -26,17 +26,32 @@ else.
 State in the comment above `statuses` (`tcw/store/base.py:1093-1095`) that
 `backlog` is read by **creation only**.
 
-**[corrected during implementation]** The plan first said "creation *and*
-`sync`". That is wrong: `_RUNG_ORDER` (`tcw/tracker/sync.py:87`) is
-`{"active": 0, "review": 1, "completed": 2, "discarded": 2}` with no `backlog`,
-and no lifecycle move lands in backlog — items leave it and never return — so
-`ladder_steps` is never asked for a backlog target and raises `KeyError` if it
-is. Confirmed by calling it directly. Adding the key therefore changes sync not
-at all, which makes this task smaller and safer than planned, not larger.
+**[corrected twice — read this before touching `statuses`]** The plan first
+said "creation *and* `sync`". I then "corrected" it to "creation only", on the
+grounds that `_RUNG_ORDER` (`tcw/tracker/sync.py:87`) has no `backlog` rung and
+`ladder_steps` raises `KeyError` if asked for one. Both of those facts are true
+and the conclusion drawn from them was **wrong**, and an adversarial review
+caught it only after the regression had shipped on the branch.
 
-One consequence of the real behaviour is worth naming: `lowest_rung` also walks
-`_RUNG_ORDER`, so a ticket someone moves *back* to the backlog status is not
-recognised as having moved. That is pre-existing and out of scope here.
+`deliver` does not reach its target through the ladder at all. It calls
+`target_status(config.statuses, item.status, ...)` directly
+(`tcw/tracker/sync.py:316`), and `item.status` is `backlog` for every unstarted
+item. So mapping `statuses.backlog` — which this feature *requires* every
+adopter to do — gave `sync` a target for backlog items and it began pulling
+tickets **backwards**, silently: `tcw work tracker import` of a ticket you are
+already working binds an `In Progress` ticket to a backlog item, and the next
+`sync` sent it to `To Do`. The backwards guard below could not fire, because
+`_RUNG_ORDER.get("backlog", ticket_rung) > ticket_rung` is never true.
+
+The fix is at `tcw/tracker/sync.py:316`: delivery is blind to `backlog`
+whatever `statuses` says, pinned by
+`test_a_bound_backlog_items_ticket_is_never_moved`. The original plan text was
+closer to the truth than my correction; the lesson is that "which functions read
+this dict" is not answered by reading the functions that *look* like they would.
+
+One genuine consequence remains: `lowest_rung` walks `_RUNG_ORDER`, so a ticket
+someone moves *back* to the backlog status is not recognised as having moved.
+Pre-existing, and out of scope here.
 
 **Proves it:** a test that `{"statuses": {"backlog": "To Do"}}` parses with no
 problems, and that `{"statuses": {"nonsense": "X"}}` still yields
