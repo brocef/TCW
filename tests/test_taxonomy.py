@@ -970,12 +970,14 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     }
 
 
-def test_a_leftover_store_config_is_inert_and_left_alone(tmp_path):
-    """Spec criterion 6, the well-formed half.
+def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
+    """The well-formed half.
 
     An un-migrated project keeps its old file. Nothing reads it, so there is no
-    inheritance; nothing warns, by decision; and nothing deletes it, because TCW
-    does not remove a file it no longer reads.
+    inheritance; `check` names it and the fix, because a project that lost its
+    inherited entries this way used to get no hint of why; and nothing deletes
+    it, because TCW does not remove a file it no longer reads. The full set of
+    cases is in `tests/test_legacy_store_config.py`.
     """
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument")
@@ -987,23 +989,36 @@ def test_a_leftover_store_config_is_inert_and_left_alone(tmp_path):
 
     st = FsTaxonomyStore.open(cons)
     assert st.list_all() == []
-    assert st.check() == []
+    problems = st.check()
+    assert len(problems) == 1, problems
+    for part in ("docs/taxonomy/config.yaml: ", "no longer read", "taxonomy.extends",
+                 "tcw-config.yaml", "then delete the file",
+                 "if already migrated, just delete it"):
+        assert part in problems[0], problems
     assert stale.read_text() == original
 
 
 def test_a_malformed_leftover_store_config_is_still_reported(tmp_path):
-    """Spec criterion 6, the malformed half — and it is not an oversight.
+    """The malformed half — and it is not an oversight.
 
     `tcw validate`'s YAML pass walks every `*.yaml` under the store roots
     regardless of whether TCW owns the name, so an unparseable file is still
     named. A file nothing reads is no reason to stop saying it is corrupt.
+
+    Asserts the parser's own line, not merely a line naming the file: the
+    "no longer read" report names the same file, and would satisfy a looser
+    check on its own.
     """
     from tcw.validate import validate
     cons = node(tmp_path, "consumer")
     (cons / "docs" / "taxonomy" / "config.yaml").write_text("extends: [unclosed\n")
 
     problems = validate(cons)
-    assert any("config.yaml" in p for p in problems), problems
+    parse_errors = [p for p in problems
+                    if p.startswith("docs/taxonomy/config.yaml: ")
+                    and "no longer read" not in p]
+    assert len(parse_errors) == 1, problems
+    assert "(component checks skipped: YAML problem above)" in problems, problems
 
 
 def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(tmp_path):
