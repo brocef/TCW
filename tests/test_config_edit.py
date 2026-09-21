@@ -427,3 +427,40 @@ def test_the_result_means_what_the_whole_file_writer_produced(text, change):
 def test_a_backfilled_id_means_what_the_whole_file_writer_produced(text):
     mapping = yaml.safe_load(text) or {}
     assert yaml.safe_load(edit(text, SetId("p"))) == old_writer(mapping, SetId("p"))
+
+
+# ── fixes from review and verification ───────────────────────────────────────
+
+@pytest.mark.parametrize("text", ["---\n", "~\n", "# note\n---\n", "--- ~\n"])
+def test_a_document_that_is_only_null_is_edited_not_refused(text):
+    after = edit(text, SetId("p"), SetScalar("work", "path", "w"))
+    assert yaml.safe_load(after) == {"id": "p", "work": {"path": "w"}}
+    if "#" in text:
+        assert after.startswith("# note\n")
+
+
+def test_removing_the_only_key_of_the_only_section_leaves_an_empty_file():
+    assert edit("taxonomy:\n  extends: [a]\n", Remove("taxonomy", "extends")) == ""
+
+
+def test_removing_an_aliased_anchor_says_to_deal_with_the_alias_first():
+    text = "taxonomy:\n  extends: &ids [a, b]\ncapabilities:\n  extends: *ids\n"
+    message = refused(text, SetList("taxonomy", "extends", ("b",)))
+    assert "alias" in message.split("formatting", 1)[1]
+    assert "set `extends:" not in message
+
+
+def test_an_empty_brace_section_takes_a_new_key():
+    assert edit("work: {}  # nothing yet\n", SetList("work", "tags", ("a",))) \
+        == "work:  # nothing yet\n  tags:\n    - a\n"
+
+
+def test_a_document_end_marker_followed_by_a_comment_still_takes_a_section():
+    text = "id: a\n...\n# trailing note\n\n"
+    assert edit(text, SetScalar("work", "path", "w")) \
+        == "id: a\nwork:\n  path: w\n...\n# trailing note\n\n"
+
+
+def test_two_appends_to_a_file_without_a_final_break_leave_no_blank_line():
+    after = edit("id: a", SetScalar("work", "path", "w"), SetScalar("taxonomy", "path", "t"))
+    assert after == "id: a\nwork:\n  path: w\ntaxonomy:\n  path: t\n"

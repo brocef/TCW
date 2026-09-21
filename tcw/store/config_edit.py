@@ -140,6 +140,10 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
     doc = _Document(text)
     replacements: list[_Replacement] = []
     allowed: set[int] = set()
+    root = doc.root
+    if root is not None and doc.is_null(root) and root.start_mark.index != root.end_mark.index:
+        # A document that is only `~` or `null`: that token goes, the keys follow.
+        replacements.append(_Replacement(root.start_mark.index, root.end_mark.index, ""))
     for edit in edits:
         if intended(mapping, [edit]) == mapping:
             continue                       # this one changes nothing
@@ -185,6 +189,7 @@ class _Document:
         first_break = text.find("\n")
         self.nl = "\r\n" if first_break > 0 and text[first_break - 1] == "\r" else "\n"
         self.bom = 1 if text.startswith("\ufeff") else 0
+        self.appended = False
         tokens = list(yaml.scan(text))
         self.anchors = [t.start_mark.index for t in tokens
                         if isinstance(t, yaml.AnchorToken)]
@@ -235,18 +240,29 @@ class _Document:
         return max([node.start_mark.index] + [self.end_of(c, seen) for c in children])
 
     def document_end(self) -> tuple[int, str]:
-        """Where to append, and the line break to put in front of the new lines."""
+        """Where to append, and the line break to put in front of the new lines.
+
+        Before a closing `...`, which may itself be followed by blank or comment
+        lines. The line break is owed once: a second append to the same place
+        follows the first one's own final break.
+        """
         lines = self.text.splitlines(keepends=True)
-        if lines and lines[-1].strip() == "...":
-            return len(self.text) - len(lines[-1]), ""
-        if self.text.endswith("\n"):
+        at = len(self.text)
+        for line in reversed(lines):
+            at -= len(line)
+            if line.strip() == "...":
+                return at, ""
+            if line.strip() and not line.lstrip().startswith("#"):
+                break
+        if self.text.endswith("\n") or self.appended:
             return len(self.text), ""
+        self.appended = True
         return len(self.text), self.nl
 
     # -- finding --
 
     def pairs(self):
-        if self.root is None:
+        if self.root is None or self.is_null(self.root):     # `---`, `~`: no keys
             return []
         if not isinstance(self.root, yaml.MappingNode) or self.root.flow_style:
             raise _Refuse("the file is not a block mapping")
@@ -314,7 +330,8 @@ class _Document:
             lines = [f"{edit.section}:"] + self.block_value(edit, unit, unit)
             return [_Replacement(at, at, lead + self.nl.join(lines) + self.nl)], set()
         sk, sv = found
-        if self.is_null(sv):
+        empty_braces = isinstance(sv, yaml.MappingNode) and sv.flow_style and not sv.value
+        if self.is_null(sv) or empty_braces:          # `work:`, `work: ~`, `work: {}`
             if isinstance(edit, Remove):
                 raise _Refuse(f"`{edit.section}.{edit.key}` is not written in the file")
             unit = self.unit()
@@ -387,6 +404,8 @@ class _Document:
         at = self.line_end(start)
         if start == end:
             return [_Replacement(at, at, text)]
+        while self.text[start - 1] in " \t":      # `key: ~` → `key:`, not `key: `
+            start -= 1
         return [_Replacement(start, end, ""), _Replacement(at, at, text)]
 
     def plan_id(self, edit: SetId, pairs) -> list[_Replacement]:
@@ -514,13 +533,19 @@ class _Document:
 def _verify(path: Path, original: str, new: str, replacements: list[_Replacement],
             allowed: set[int], target: dict, *, instruction: str,
             headline: str = "cannot change it") -> None:
-    """Refuse unless `new` means `target` and differs from `original` only
-    inside `replacements`, whose spans hold no anchor and no comment outside
-    `allowed`. Checked against `new` itself, not against how it was built."""
-    def refuse(why: str):
+    """Refuse unless `new` means `target`, and `replacements` touch no anchor
+    and no comment outside `allowed`.
+
+    The first step walks `new` against `original`, checking that every stretch
+    between replacements is carried over unchanged. It uses the replacements'
+    own lengths to find those stretches, so it catches a slip in `_assemble`,
+    not a replacement whose text is wrong; the meaning check and the anchor
+    and comment checks are what catch that.
+    """
+    def refuse(why: str, advice: str = instruction):
         raise ConfigEditRefused(
             f"{path}: {headline} without rewriting the file, which would "
-            f"lose its comments and formatting ({why}); {instruction}")
+            f"lose its comments and formatting ({why}); {advice}")
 
     cursor_old = cursor_new = 0
     for r in sorted(replacements, key=lambda r: (r.start, r.end)):
@@ -534,11 +559,15 @@ def _verify(path: Path, original: str, new: str, replacements: list[_Replacement
     doc = _Document(original)
     for r in replacements:
         if any(r.start <= a < r.end for a in doc.anchors):
-            refuse("the change would edit an anchor that other keys may refer to")
+            # Setting the value by hand would break the aliases the same way.
+            refuse("the change would edit an anchor that other keys may refer to",
+                   "first change the aliases (`*name`) that refer to it into plain "
+                   "values, or move the anchor (`&name`) onto one of them, then run "
+                   "the command again")
         if [c for c in doc.comments_in(r.start, r.end) if c not in allowed]:
             refuse("the change would delete a comment")
     try:
-        result = _load(new)
+        result = _load(new) or {}          # nothing left at all reads as `{}`
     except yaml.YAMLError:
         refuse("the result would not parse")
     if result != target:
