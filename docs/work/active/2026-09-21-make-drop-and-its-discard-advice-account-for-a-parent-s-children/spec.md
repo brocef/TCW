@@ -30,11 +30,12 @@ child nested under this item's slug".
 
 1. A backlog item with independent descendants is refused before the `--confirm`
    gate, naming them. No "Would delete" line.
-2. The refusal advises dropping or discarding the children only if some are open.
-   When all are resolved, it advises discarding the parent instead
-   (`tcw work complete <slug> --resolution wontfix --confirm`). Resolved items can
-   be neither dropped nor discarded, the CLI has no re-parent verb, and a discard
-   keeps the record the children's `parent:` names.
+2. The refusal gives only advice the CLI can carry out. It has no re-parent verb,
+   and a resolved child can be neither dropped nor discarded, so the way out is to
+   discard the parent (`tcw work complete <slug> --resolution wontfix --confirm`),
+   which keeps the record the children's `parent:` names. With some children open:
+   finish or discard those first, then discard the parent. With all of them open:
+   dropping or discarding them first also works.
 3. An active or review item with open descendants gets the discard advice plus
    the open children's names, which must be finished or discarded first.
 4. `--parent` help describes a child as an item recording its parent.

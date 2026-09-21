@@ -207,9 +207,10 @@ carrying everything listed under `v2.5.0`.
   `complete --resolution`.
   A backlog item that items name as their parent is refused before the gate too,
   through the new `store.base.drop_refused_over_children`, which `WorkStore.drop`
-  shares. When all those items are resolved it advises discarding the parent
-  (dropping would erase the record their `parent:` names) instead of "Drop,
-  discard or re-parent them". An active or review item's discard advice also
+  shares. Its advice no longer offers re-parenting (the CLI has no verb for it)
+  or dropping resolved children (impossible): it advises discarding the parent,
+  which keeps the record their `parent:` names, after closing any still open.
+  An active or review item's discard advice also
   names any open descendants, which `complete` would refuse over. `tcw work new
   --parent`'s help no longer says the child is nested.
 - `write_sentinel` read `id: null` as "no id", then wrote it back unchanged

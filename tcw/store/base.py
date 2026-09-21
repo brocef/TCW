@@ -2864,15 +2864,23 @@ TAXONOMY_EDITABLE_FIELDS = frozenset({"name", "description", "kind", "relates_to
 
 def drop_refused_over_children(slug: str, beneath: list) -> str:
     """Why `slug` cannot be dropped while items name it as their parent, and the
-    way out. A resolved item can be neither dropped nor discarded, so when every
-    one is resolved the way out is to discard `slug` instead: that keeps the
-    record their `parent` field names, which a drop would erase."""
+    way out that works from the CLI, which has no re-parent verb.
+
+    Items naming `slug` stay in the way however they end: a resolved one can be
+    neither dropped nor discarded. So the way out is to discard `slug` instead,
+    which keeps the record their `parent` field names — after any still open are
+    finished or discarded, since a discard refuses over them. When every one is
+    open, dropping them all is a way out too."""
     names = ", ".join(i.slug for i in beneath)
-    if any(i.status not in RESOLVED_STATUSES for i in beneath):
-        advice = "Drop, discard or re-parent them first."
+    discard = f"`tcw work complete {slug} --resolution wontfix --confirm`"
+    still_open = [i.slug for i in beneath if i.status not in RESOLVED_STATUSES]
+    if len(still_open) == len(beneath):
+        advice = f"Drop or discard them first, or discard it instead once they are closed: {discard}."
+    elif still_open:
+        advice = (f"Finish or discard the open ones ({', '.join(still_open)}), then "
+                  f"discard it, which keeps the record they name: {discard}.")
     else:
-        advice = (f"They are resolved, so discard it instead, which keeps the record "
-                  f"they name: `tcw work complete {slug} --resolution wontfix --confirm`.")
+        advice = f"They are resolved, so discard it instead, which keeps the record they name: {discard}."
     return f"Cannot drop {slug}; these items name it as their parent: {names}. {advice}"
 
 

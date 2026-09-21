@@ -2032,7 +2032,7 @@ def test_drop_of_a_parent_is_refused_before_the_confirm_gate(tmp_path, monkeypat
     assert main(["work", "drop", parent]) == 1
     err = capsys.readouterr().err
     assert kid in err and "Would delete" not in err
-    assert "Drop, discard or re-parent" in err
+    assert "Drop or discard them first" in err and "re-parent" not in err
     assert FsWorkStore.open(root).get(parent) is not None
 
 
@@ -2054,7 +2054,7 @@ def test_drop_of_a_parent_with_only_resolved_children_advises_discarding_it(
     assert FsWorkStore.open(root).get(parent).status == "discarded"
 
 
-def test_drop_of_a_parent_with_open_and_resolved_children_advises_both_ways(
+def test_drop_of_a_parent_with_open_and_resolved_children_advises_closing_then_discarding(
         tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
@@ -2066,7 +2066,9 @@ def test_drop_of_a_parent_with_open_and_resolved_children_advises_both_ways(
     monkeypatch.chdir(root)
     assert main(["work", "drop", parent]) == 1
     err = capsys.readouterr().err
-    assert "Drop, discard or re-parent" in err and "discard it instead" not in err
+    assert "re-parent" not in err                       # the CLI has no verb for it
+    assert "Finish or discard the open ones" in err
+    assert f"tcw work complete {parent} --resolution wontfix --confirm" in err
 
 
 def test_discard_advice_for_a_parent_names_its_open_children(tmp_path, monkeypatch, capsys):
