@@ -304,3 +304,37 @@ def test_a_bad_create_block_fails_closed_naming_the_key(node, block, key):
     set_tracker({**VALID_TRACKER, "create": block})
     problems = [p for p in validate(root) if "tracker" in p]
     assert any(key in p for p in problems), problems
+
+
+# ── `strict` and creation-on-filing are opposite answers ─────────────────────
+
+
+STRICT_STATUSES = {"backlog": "To Do", "active": "In Progress", "completed": "Done",
+                   "discarded": "Won't Do"}
+
+
+def test_strict_and_on_new_together_are_a_configuration_error(node):
+    """Spec criterion 14. Strict mode refuses `tcw work new` outright, so an item
+    is never filed for creation-on-filing to make a ticket for: a project setting
+    both would believe creation was on and see it never happen."""
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "strict": True, "statuses": STRICT_STATUSES,
+                 "create": {"project": "EX", "issue-type": "Task", "on-new": True}})
+    problems = [p for p in validate(root) if "tracker" in p]
+    assert any("work.tracker.create.on-new" in p and "work.tracker.strict" in p
+               for p in problems), problems
+
+
+def test_strict_alone_validates(node):
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER, "strict": True, "statuses": STRICT_STATUSES,
+                 "create": {"project": "EX", "issue-type": "Task"}})
+    assert [p for p in validate(root) if "tracker" in p] == []
+
+
+def test_on_new_alone_validates(node):
+    root, set_tracker = node
+    set_tracker({**VALID_TRACKER,
+                 "statuses": {"backlog": "To Do", "active": "In Progress"},
+                 "create": {"project": "EX", "issue-type": "Task", "on-new": True}})
+    assert [p for p in validate(root) if "tracker" in p] == []

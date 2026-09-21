@@ -338,7 +338,15 @@ def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
 
 @dataclass(frozen=True)
 class Unbound:
-    """No `tracker.yaml`, or one whose binding was removed by `unlink`."""
+    """No `tracker.yaml`, or one whose binding was removed by `unlink`.
+
+    `owed` is set when filing was configured to make a ticket and could not reach
+    the tracker. The item exists and has no ticket *yet*, which is a different
+    thing from having none — and it has to be visible, or a project that turns on
+    creation-at-filing quietly accumulates items nobody knows are missing from
+    the tracker. It is still `Unbound`: nothing may treat it as a binding.
+    """
+    owed: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -389,7 +397,7 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
     if not isinstance(data, dict):
         return Malformed("not a YAML mapping")
     if "ticket" not in data:
-        return Unbound()
+        return Unbound(owed=_owed_record(data.get("owed")))
     ticket = data["ticket"]
     if not isinstance(ticket, dict):
         return Malformed("'ticket' is not a mapping")
@@ -417,6 +425,24 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
                  comment=_comment_record(data.get("comment")),
                  status_synced=data.get("status-synced") is not False,
                  catch_up=data.get("catch-up") is True)
+
+
+OWED_FIELDS = ("since", "reason")
+
+
+def _owed_record(raw) -> dict | None:
+    """An `owed` record, or `None` when there is none or it cannot be read.
+
+    Unreadable is read as absent, unlike `sync`, and the difference is deliberate:
+    an unreadable `sync` record means a *change to a real ticket* may be
+    outstanding, which must not be lost. Here the worst case is that a ticket is
+    created that was already owed — and the item has no binding either way, so
+    `tcw work tracker create` would pick it up regardless.
+    """
+    if not isinstance(raw, dict):
+        return None
+    record = {name: _binding_text(raw.get(name)) for name in OWED_FIELDS}
+    return record if record["since"] else None
 
 
 SYNC_STATES = ("pending", "conflicting")
@@ -473,9 +499,12 @@ def unreadable_binding(error: Exception) -> Malformed:
 
 def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
     """The JSON-native `WorkItem.tracker` for a classified binding: `None` when
-    unbound, `{"problem": reason}` when malformed, otherwise the binding's facts."""
+    unbound and nothing is owed, `{"owed": ...}` when a ticket was not created,
+    `{"problem": reason}` when malformed, otherwise the binding's facts."""
     if isinstance(binding, Malformed):
         return {"problem": binding.reason}
+    if isinstance(binding, Unbound):
+        return {"owed": binding.owed} if binding.owed else None
     if isinstance(binding, Bound):
         return {"provider": binding.provider, "project": binding.project,
                 "part": binding.part,
@@ -1363,6 +1392,16 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         problems.append(f"work.tracker.strict: expected true or false, "
                         f"got {type(strict).__name__}")
         strict = False
+    if strict and create is not None and create.on_new:
+        # They are opposite answers to the same question. Strict mode says every
+        # item must come *from* a ticket and refuses `tcw work new`; creation on
+        # filing says filing an item makes the ticket. With both set the second
+        # can never run, because the first refuses before it — so a project would
+        # believe creation was on and see it never happen.
+        problems.append(
+            "work.tracker.create.on-new: cannot be true while work.tracker.strict "
+            "is true. Strict mode refuses `tcw work new`, so no item is ever filed "
+            "for creation-on-filing to make a ticket for. Use one or the other.")
     if strict:
         # Strict mode gates completing and discarding against these, so a missing
         # one would be a gate that can never pass or never check.

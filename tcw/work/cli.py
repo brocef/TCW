@@ -160,6 +160,13 @@ def _tracker_text(value: dict, *, row: bool) -> str:
     """
     if "problem" in value:
         return "unreadable" if row else f"tracker.yaml cannot be read ({value['problem']})"
+    if "owed" in value:
+        owed = value["owed"]
+        if row:
+            return f"owed since {owed['since']}"
+        return (f"none yet — one was to be created on filing and was not "
+                f"({owed['reason']}), owed since {owed['since']}. "
+                f"`tcw work tracker create` makes it.")
     key, part = value["ticket"]["key"], value["part"]
     if row:
         sync = value.get("sync")
@@ -415,6 +422,64 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     return None, True
 
 
+def _ticket_on_filing(st, slug: str, verb: str) -> None:
+    """Make and bind a ticket for a just-filed item, when the project asked for it.
+
+    **Filing never fails because of this.** The item is already written; refusing
+    now would leave the user with an item they did not know they had and a
+    non-zero exit saying nothing was created. So every failure becomes an *owed*
+    ticket: recorded on the item, shown on the board, and made by
+    `tcw work tracker create` later. An unreachable tracker is the expected case
+    — this runs on every `tcw work new` in a project that enables it, including
+    on a train.
+
+    It is the same operation `tcw work tracker create` runs, not a second one, so
+    the automatic path cannot do anything the explicit command cannot.
+    """
+    from datetime import date
+
+    config = st.tracker_config()
+    if config is None or config.create is None or not config.create.on_new:
+        return
+    from tcw.tracker.jira import JiraClient
+    try:
+        # The client is built here rather than through `_tracker_client`, which
+        # prints its own refusals for a missing or broken block. Both are already
+        # ruled out above, and anything left — absent credentials, for one — is an
+        # owed ticket rather than a message about configuration.
+        refusals: list[str] = []
+        if _create_one(st, JiraClient(config), slug, None, False,
+                       reasons=refusals) == 0:
+            return
+        reason = refusals[-1] if refusals else "creating it did not succeed"
+    except Exception as error:          # noqa: BLE001 — see the docstring: filing
+        # has already happened, and no failure of this may undo it or hide it.
+        reason = str(error) or error.__class__.__name__
+    _record_owed(st, slug, reason, verb, str(date.today()))
+
+
+def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
+    """Note that this item was meant to get a ticket and did not."""
+    from tcw.tracker.intake import BINDING_SIDECAR, with_owed_record
+    try:
+        found = st.read_sidecar(slug, BINDING_SIDECAR)
+        st.write_sidecar(
+            slug, BINDING_SIDECAR,
+            with_owed_record(found.content if found else None,
+                             {"since": since, "reason": reason}),
+            revision=found.revision if found else "")
+    except _LOCAL_WRITE_ERRORS as error:
+        # Even this is not allowed to fail the filing. Say it plainly instead:
+        # without the record the board will not show the ticket as owed, so the
+        # user is the only one who will remember.
+        print(f"tcw work {verb}: {slug} has no ticket ({reason}), and that could "
+              f"not be recorded either ({error}). Run `tcw work tracker create "
+              f"{slug}` when the tracker is reachable.", file=sys.stderr)
+        return
+    print(f"→ no ticket was created for {slug}: {reason}. It is recorded as owed; "
+          f"`tcw work tracker create {slug}` makes it.", file=sys.stderr)
+
+
 def _new(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
@@ -447,6 +512,10 @@ def _new(args: argparse.Namespace) -> int:
     body = st.body_path(item.slug)
     if body is not None:
         print(f"→ edit: {body}", file=sys.stderr)
+    # Epics included, unlike strict mode's `and not args.epic` above: an epic with
+    # no ticket breaks its children's parent links, which is the opposite of what
+    # exempting it would be for.
+    _ticket_on_filing(st, item.slug, "new")
     if not args.epic:                         # epic's next step is delegate, not start
         print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
               file=sys.stderr)
@@ -622,6 +691,9 @@ def _inbox_accept(args: argparse.Namespace) -> int:
             print(item.slug)
             if loc := st.locate(item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
+            # A *raw* entry only. Accepting a ticket is `tracker import`, which
+            # binds the ticket that already exists and must not make a second.
+            _ticket_on_filing(st, item.slug, "inbox accept")
             return 0
     if not _inbox_can_try_ticket(st, "inbox accept", not_found):
         return 1
@@ -2516,13 +2588,24 @@ def _sweep_order(st) -> list:
 
 
 def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
-                sweep: bool = False) -> int:
+                sweep: bool = False, reasons: list | None = None) -> int:
     """One item, with the client and store already open.
 
     Split out for `--all`, which must not rebuild the client per item: the
     warnings `_tracker_client` prints would repeat once per item, and a sweep of
     53 items would read the configuration 53 times.
+
+    `reasons` collects each refusal's own words for a caller that has to record
+    them rather than print them — the filing path writes the reason a ticket is
+    owed onto the item, and "it did not work, see above" is no use on a board
+    read weeks later.
     """
+    def refuse(message: str) -> int:
+        print(f"tcw work tracker create: {message}", file=sys.stderr)
+        if reasons is not None:
+            reasons.append(message)
+        return 1
+
     from tcw.tracker.create import create_and_place, unplaceable
     from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
                                     created_record, validate_part,
@@ -2542,9 +2625,8 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
               f"({current.ticket_url}). Nothing was created.", file=sys.stderr)
         return 0
     if isinstance(current, Malformed):
-        print(f"tcw work tracker create: {slug} has a {BINDING_SIDECAR} that "
-              f"cannot be read ({current.reason}).", file=sys.stderr)
-        return 1
+        return refuse(f"{slug} has a {BINDING_SIDECAR} that cannot be read "
+                      f"({current.reason}).")
 
     # A spec non-goal, made unreachable rather than left to the user's judgement:
     # "a ticket created only to be closed is noise". Placement makes this concrete
@@ -2553,18 +2635,14 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     # a failure anywhere along that walk leaves an open ticket for work that is
     # done. Closed items that want tickets are a backfill, which is `link`'s job.
     if item.status in ("completed", "discarded"):
-        print(f"tcw work tracker create: {slug} is {item.status}, and TCW "
-              f"does not create tickets for closed work — a ticket made only to "
-              f"be closed is noise. If a ticket for it already exists, bind it "
-              f"with `tcw work tracker link {slug} <ticket> --sync-status`.",
-              file=sys.stderr)
-        return 1
+        return refuse(f"{slug} is {item.status}, and TCW does not create tickets "
+                      f"for closed work — a ticket made only to be closed is "
+                      f"noise. If a ticket for it already exists, bind it with "
+                      f"`tcw work tracker link {slug} <ticket> --sync-status`.")
 
     refusal = unplaceable(client.config)
     if refusal:
-        print(f"tcw work tracker create: {slug} was not given a ticket; "
-              f"{refusal}", file=sys.stderr)
-        return 1
+        return refuse(f"{slug} was not given a ticket; {refusal}")
 
     # Everything `_tracker_link` can refuse locally is refused *here*, before a
     # ticket exists. `link` checks these after reading its ticket, which is free
@@ -2574,8 +2652,7 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     try:
         validate_part(part)
     except ValueError as e:
-        print(f"tcw work tracker create: {e}", file=sys.stderr)
-        return 1
+        return refuse(str(e))
     if item.status != "backlog" and not st.pending_deletion(slug):
         if someone_else := _held_by_someone_else(
                 item, _local_owner(st),
@@ -2587,10 +2664,8 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
                 # make a successful sweep of a shared board look like a failure.
                 print(f"{slug}: skipped — held by {item.owner}")
                 return 0
-            print(f"tcw work tracker create: {slug} was not given a ticket: "
-                  f"creating one claims it as you, and it was {someone_else}",
-                  file=sys.stderr)
-            return 1
+            return refuse(f"{slug} was not given a ticket: creating one claims "
+                          f"it as you, and it was {someone_else}")
 
     if dry_run:
         settings = client.config.create
@@ -2662,14 +2737,12 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
         )
     except (TrackerError, *_LOCAL_WRITE_ERRORS) as error:
         if made.get("key"):
-            print(f"tcw work tracker create: {error} {made['key']} was created and "
-                  f"is not bound to {slug}. Bind it with `tcw work tracker "
-                  f"link {slug} {made['key']} --sync-status` rather than "
-                  f"running create again, which would make a second ticket.",
-                  file=sys.stderr)
-        else:
-            print(f"tcw work tracker create: {error}", file=sys.stderr)
-        return 1
+            return refuse(f"{error} {made['key']} was created and is not bound "
+                          f"to {slug}. Bind it with `tcw work tracker link "
+                          f"{slug} {made['key']} --sync-status` rather than "
+                          f"running create again, which would make a second "
+                          f"ticket.")
+        return refuse(str(error))
 
     print(f"→ created {created.key} in '{created.status}'.", file=sys.stderr)
     # Bound through `link`, not beside it: one implementation of what a binding

@@ -187,7 +187,7 @@ def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
 
 
 _BINDING_KEYS = ("provider", "project", "part", "ticket", "bound", "sync", "comment",
-                 "status-synced", "catch-up", "created")
+                 "status-synced", "catch-up", "created", "owed")
 
 
 def unlinked_history(content: str | None) -> list:
@@ -234,6 +234,16 @@ def with_created_record(content: str | None, record: dict | None) -> str:
     by `create` onto an item that has no sidecar at all in the ordinary case.
     """
     return _with_key(content if content is not None else "{}\n", "created", record)
+
+
+def with_owed_record(content: str | None, record: dict | None) -> str:
+    """`content` with its `owed` record set, or removed for `None`.
+
+    Written when filing was configured to make a ticket and could not reach the
+    tracker. Like `created`, it carries no `ticket` key, so the item stays
+    **unbound** — it owes a ticket, it does not have one.
+    """
+    return _with_key(content if content is not None else "{}\n", "owed", record)
 
 
 def with_sync_record(content: str, record: dict | None) -> str:

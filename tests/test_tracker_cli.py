@@ -879,3 +879,176 @@ def test_all_with_dry_run_creates_nothing_and_reports_each_item(node, monkeypatc
     assert code == 0, err
     assert posted == [], posted
     assert "Alpha" in err and "Beta" in err, err
+
+
+# ── Landing B: filing an item makes its ticket ───────────────────────────────
+
+
+ON_NEW_TRACKER = {**CREATE_TRACKER,
+                  "create": {**CREATE_TRACKER["create"], "on-new": True}}
+
+
+def test_without_on_new_filing_makes_no_tracker_call_at_all(node, monkeypatch):
+    """Spec criterion 9, the default. Asserted with the credential variables
+    removed as well as with a stub, so a call would fail loudly rather than
+    quietly succeed against the fixture."""
+    root, configure = node
+    configure(CREATE_TRACKER)               # a create block, but on-new not set
+    monkeypatch.delenv("TCW_JIRA_EMAIL", raising=False)
+    monkeypatch.delenv("TCW_JIRA_API_TOKEN", raising=False)
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Filed quietly"])
+    assert code == 0, err
+    assert posted == [], posted
+    assert "ticket" not in err.lower(), err
+    assert out.strip(), "the item is still filed"
+
+
+def test_on_new_makes_and_binds_a_ticket_when_filing(node, monkeypatch):
+    """Spec criterion 10."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Filed with a ticket"])
+    assert code == 0, err
+    slug = out.strip().splitlines()[0]
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["summary"] == "Filed with a ticket"
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import binding_of
+    bound, _rev = binding_of(FsWorkStore.open(root), slug)
+    assert getattr(bound, "ticket_key", "") == "PROBE-1", bound
+
+
+def test_on_new_covers_an_epic_too(node, monkeypatch):
+    """Spec Rule 5, and a deliberate departure from strict mode's `and not
+    args.epic`: an epic with no ticket breaks its children's parent links, which
+    is the opposite of what exempting it would be for."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "new", "An epic", "--epic"])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    assert creates[0][2]["fields"]["issuetype"] == {"name": "Epic"}
+
+
+def test_inbox_accept_of_a_raw_entry_makes_a_ticket(node, monkeypatch):
+    """Spec criterion 12. A raw entry only — accepting a *ticket* is
+    `tracker import`, which binds the ticket that already exists."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    from tcw.store.fs import FsWorkStore
+    inbox = FsWorkStore.open(root).root / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    (inbox / "an-idea.md").write_text("# An idea\n\nDo the thing.\n",
+                                      encoding="utf-8")
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "inbox", "accept", "an-idea"])
+    assert code == 0, err
+    slug = out.strip().splitlines()[0]
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+    from tcw.tracker.intake import binding_of
+    assert getattr(binding_of(FsWorkStore.open(root), slug)[0], "ticket_key", "") \
+        == "PROBE-1"
+
+
+def test_an_unreachable_tracker_still_files_the_item_and_records_the_debt(
+        node, monkeypatch):
+    """Spec criterion 11. Filing must not fail because a tracker is unreachable —
+    this runs on every `tcw work new` in a project that enables it, including on
+    a train. The debt is recorded instead."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    from tcw.tracker.jira import TrackerError
+    _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
+
+    code, out, err = _run(["work", "new", "Filed on a train"])
+    assert code == 0, err
+    slug = out.strip().splitlines()[0]
+    assert "owed" in err, err
+
+    from tcw.store.fs import FsWorkStore
+    item = FsWorkStore.open(root).get(slug)
+    assert item is not None, "the item was filed"
+    assert item.tracker and "owed" in item.tracker, item.tracker
+    assert "the network is down" in item.tracker["owed"]["reason"]
+    # It owes a ticket; it does not have one. Nothing may read this as a binding.
+    from tcw.tracker.intake import Bound, binding_of
+    assert not isinstance(binding_of(FsWorkStore.open(root), slug)[0], Bound)
+
+
+def test_an_owed_ticket_is_visible_on_the_board(node, monkeypatch):
+    """Spec Risks: the debt has to be visible, or a project that turns creation on
+    quietly accumulates items nobody knows are missing from the tracker."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    from tcw.tracker.jira import TrackerError
+    _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
+    code, _out, err = _run(["work", "new", "Filed on a train"])
+    assert code == 0, err
+    code, out, _err = _run(["work", "list"])
+    assert code == 0
+    assert "owed since" in out, out
+
+
+def test_creating_the_owed_ticket_later_binds_it_and_clears_the_debt(
+        node, monkeypatch):
+    """Spec criterion 11's second half, and the interaction with task 6: a
+    retried filing must not double-create."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    from tcw.tracker.jira import TrackerError
+    _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
+    code, out, err = _run(["work", "new", "Filed on a train"])
+    assert code == 0, err
+    slug = out.strip().splitlines()[0]
+
+    posted = _create_responses(monkeypatch)         # the network is back
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, creates
+
+    from tcw.store.fs import FsWorkStore
+    item = FsWorkStore.open(root).get(slug)
+    assert item.tracker["ticket"]["key"] == "PROBE-1", item.tracker
+    assert "owed" not in item.tracker, item.tracker
+
+
+def test_all_sweeps_up_owed_tickets(node, monkeypatch):
+    """The recovery path for a whole board's worth of debt."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    from tcw.tracker.jira import TrackerError
+    _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
+    for title in ("Alpha", "Beta"):
+        assert _run(["work", "new", title])[0] == 0
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 0, err
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 2, creates
+
+
+def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
+    """Spec criterion 15 — the absence of a change. Every other criterion here is
+    about a new path, so nothing else would notice if this one broke."""
+    root, configure = node
+    configure({**CREATE_TRACKER, "strict": True,
+               "statuses": {"backlog": "To Do", "active": "In Progress",
+                            "completed": "Done", "discarded": "Won't Do"}})
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "new", "Refused"])
+    assert code == 1
+    assert "tcw work tracker import" in err, err
+    assert posted == [], posted

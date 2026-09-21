@@ -97,10 +97,20 @@ _BLOCKER = {
 
 _STR = {"type": "string"}
 
-# `WorkItem.tracker`: exactly the three shapes `binding_value` produces, each
+# `WorkItem.tracker`: exactly the four shapes `binding_value` produces, each
 # closed, so a script can rely on `.tracker.ticket.key` meaning what it says.
 _TRACKER = {"oneOf": [
     {"type": "null"},
+    # A ticket that filing was configured to create and could not. There is no
+    # binding here and no `ticket` key to read — the item is unbound, and this
+    # says only that somebody expected it not to be.
+    {"type": "object",
+     "additionalProperties": False,
+     "properties": {"owed": {"type": "object",
+                             "additionalProperties": False,
+                             "properties": {"since": _STR, "reason": _STR},
+                             "required": ["since", "reason"]}},
+     "required": ["owed"]},
     {"type": "object",
      "additionalProperties": False,
      "properties": {
