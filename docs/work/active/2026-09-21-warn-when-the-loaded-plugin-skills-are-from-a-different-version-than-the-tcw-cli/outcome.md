@@ -146,3 +146,12 @@ path with matching versions on this machine, median 0.12 seconds in total,
 - During implementation `pkill -f "pytest -q -p no:cacheprovider"` was run to
   stop this item's own stale suite run. That pattern would also have matched a
   suite another agent was running with the same flags at that moment.
+- **Folded in at verify (review findings).** The deadline was not a real
+  ceiling: after TERM the command substitution kept waiting on the output pipe,
+  so a `tcw` that ignores TERM held up session start for as long as it ran
+  (reproduced at 8.5 seconds). The check now sends KILL to the same process
+  group 0.2 seconds after TERM. The hanging test is parametrized with a stub
+  that ignores TERM, and both cases now track the stub's own PIDs rather than
+  matching process names; removing the KILL line makes the TERM case wait the
+  stub's full 37 seconds. The bootstrap's steady-state comment no longer says no
+  interpreter starts, and the release note no longer says "the one command".

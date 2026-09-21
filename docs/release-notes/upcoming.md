@@ -14,7 +14,7 @@ needs a migration step.
 ### Also in this release
 
 - **Your agent now tells you when the `tcw` command and the plugin's skills
-  come from different releases.** It names both versions and the one command
-  that brings them into line — updating the plugin, or upgrading the `tcw`
-  command. It is only a warning and never stops your work. Claude shows it when
+  come from different releases.** It names both versions and how to bring
+  them into line — updating the plugin, or upgrading the `tcw` command — with
+  the exact commands to run. It is only a warning and never stops your work. Claude shows it when
   a session starts; in Codex, the skills ask the agent to run the check.

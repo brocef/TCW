@@ -10,8 +10,10 @@ and a manifest.
 Every run goes through `/bin/bash` explicitly: on macOS that is bash 3.2, the
 oldest shell the script has to work under.
 """
+import os
 import re
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -144,24 +146,41 @@ def test_cannot_tell_means_silent(tmp_path, case):
     _assert_silent(_run(plugin, bindir))
 
 
-def test_a_hanging_cli_is_abandoned_silently(tmp_path):
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+@pytest.mark.parametrize("ignores_term", [False, True], ids=["hangs", "hangs and ignores TERM"])
+def test_a_hanging_cli_is_abandoned_silently(tmp_path, ignores_term):
     """Session start must not wait on a `tcw` that never answers, and the
     abandoned command must not outlive the check — a wrapper's child included,
-    which is why the stub's `sleep` is a separate process from the stub."""
+    which is why the stub's `sleep` is a separate process from the stub. A
+    `tcw` that ignores TERM must not stretch the deadline either: the output
+    pipe stays open, and so the check waits, for as long as it runs.
+
+    The stub records its own PID and its child's, so the test checks and
+    cleans up exactly those processes and nothing else."""
     plugin = _plugin(tmp_path / "plugin", "2.4.0")
-    _tcw(tmp_path / "bin", "sleep 37.4\n")
+    pids = tmp_path / "pids"
+    _tcw(tmp_path / "bin",
+         ('trap "" TERM\n' if ignores_term else "")
+         + f"echo $$ > {pids}\nsleep 37 &\necho $! >> {pids}\nwait\n")
 
     started = time.monotonic()
     r = _run(plugin, tmp_path / "bin")
     elapsed = time.monotonic() - started
 
+    time.sleep(0.5)
+    left = [pid for pid in map(int, pids.read_text().split()) if _alive(pid)]
+    for pid in left:
+        os.kill(pid, signal.SIGKILL)
     _assert_silent(r)
     assert elapsed < 4, f"the check waited {elapsed:.1f}s on a hanging tcw"
-    time.sleep(0.5)
-    left = subprocess.run(["pgrep", "-f", "sleep 37.4"], capture_output=True, text=True)
-    if left.stdout.strip():
-        subprocess.run(["pkill", "-f", "sleep 37.4"])
-    assert left.stdout.strip() == "", "the abandoned tcw is still running"
+    assert not left, f"the abandoned tcw is still running: {left}"
 
 
 # Denies every file write except to /dev/null, like Codex's read-only sandbox.

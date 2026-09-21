@@ -86,8 +86,10 @@ trap 'if [ -f "$root/scripts/check_versions.sh" ]; then bash "$root/scripts/chec
 #    is on PATH. The sentinel is a trigger token for a plugin-version change and
 #    nothing more — it is *not* evidence about which `tcw-cli` PyPI resolved to,
 #    which floats. `pipx upgrade tcw-cli` is how a user moves ahead of this.
-#    Cheapest check first, so the every-session cost is one `cmp` and one
-#    `command -v` — no interpreter starts, and no network.
+#    Cheapest check first: the install decision costs one `cmp` and one
+#    `command -v`, with no network. The version check on exit (above) still
+#    starts one interpreter every session, for `tcw --version`, capped at about
+#    3 seconds.
 if [ -n "$sentinel" ] && [ -f "$sentinel" ] &&
     cmp -s "$sentinel" "$root/tcw/__init__.py" &&
     command -v tcw >/dev/null 2>&1; then

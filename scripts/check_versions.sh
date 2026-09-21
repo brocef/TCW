@@ -48,7 +48,11 @@ output="$(
     rounds=0
     while kill -0 "$pid" 2>/dev/null; do
         if [ "$rounds" -ge 30 ]; then
+            # TERM first, then KILL: a `tcw` that ignores TERM would keep the
+            # output pipe open, and the substitution waits for as long as it runs.
             kill -TERM -- "-$pid"
+            sleep 0.2
+            kill -KILL -- "-$pid"
             exit 1
         fi
         sleep 0.1
