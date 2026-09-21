@@ -21,7 +21,7 @@ are re-exported here; `read_binding` adds only the parsing.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import yaml
 
@@ -441,6 +441,10 @@ class ClaimOutcome:
     account_id: str = ""
     account_name: str = ""
     transitioned: bool = False
+    # The `pre-backlog` status the ticket was taken out of before the claim, or ""
+    # when no such step ran. Set on success and on a refusal alike: either way the
+    # ticket has left triage, and the caller has to say so (`moved_out`).
+    left_status: str = ""
 
 
 def _fields(issue: dict) -> tuple[str, str, str, str]:
@@ -472,7 +476,151 @@ def read_ticket(client, key: str) -> TicketRead:
         me_id=str(me.get("accountId", "")), me_name=str(me.get("displayName", "")))
 
 
+def moved_out(key: str, left_status: str) -> str:
+    """The sentence every caller prints once a claim took a ticket out of triage,
+    or `""` when it did not. Written once so the three callers cannot drift."""
+    if not left_status:
+        return ""
+    return f"{key} was moved out of '{left_status}' to the backlog status first. "
+
+
+def _mapped_anywhere(statuses: dict, status: str) -> bool:
+    from tcw.tracker.claim import _normalize
+    for value in statuses.values():
+        for name in (value.values() if isinstance(value, dict) else (value,)):
+            if name and _normalize(name) == _normalize(status):
+                return True
+    return False
+
+
+def pre_backlog_hint(config, status: str, category: str) -> str:
+    """The sentence naming `work.tracker.pre-backlog`, for a refusal on a ticket
+    whose status nothing in the configuration accounts for — or `""`.
+
+    Worded as a condition, because TCW cannot tell a status tickets wait in before
+    the backlog from one the project simply forgot to map. Not said for a resolved
+    ticket, a status already named under `pre-backlog`, or a mapped status."""
+    from tcw.store.base import pre_backlog_entry
+    if (category == "done" or pre_backlog_entry(config.pre_backlog, status)[0]
+            or _mapped_anywhere(config.statuses, status)):
+        return ""
+    return (f" If '{status}' is where tickets wait before your backlog, name it and "
+            f"the transition out of it under work.tracker.pre-backlog.")
+
+
+def leave_pre_backlog(client, ticket: TicketRead
+                      ) -> tuple[TicketRead, "ClaimOutcome | None", str]:
+    """Take `ticket` out of a status named under `work.tracker.pre-backlog`, before
+    it is claimed. Returns `(ticket to claim, refusal or None, status left)`.
+
+    **Decided by the ticket's status alone**, never by whether a transition of the
+    configured name happens to be offered. A resolved ticket, or one another
+    account holds, is left for the claim's own rows 1a and 1b to refuse, so nothing
+    is sent for either.
+
+    The named transition must be offered exactly once and lead to
+    `statuses.backlog`; anything else is refused before sending, because a
+    transition cannot be taken back and a ticket landing elsewhere is somewhere no
+    later run can reason about. After sending, the ticket is read again, and the
+    claim works from that read — never from the one taken before the step, since
+    somebody may have taken or closed the ticket in between.
+
+    Rows, in the claim's own table style: `0a` refused before sending, `0b` landed
+    somewhere else, `0d` the tracker refused the transition, `0f` could not tell
+    whether it applied and it did not arrive, `0-read` sent but not read back. `0f`
+    and `0-read` are worth retrying; the others need somebody to act.
+    """
+    from tcw.store.base import pre_backlog_entry, target_status
+    from tcw.tracker.claim import _normalize
+    from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerNotFound,
+                                  TrackerPermissionError, TrackerRateLimited,
+                                  TrackerRequestInvalid)
+
+    status, name = pre_backlog_entry(client.config.pre_backlog, ticket.status)
+    if (not status or ticket.category == "done"
+            or ticket.assignee_id not in ("", None, ticket.me_id)):
+        return ticket, None, ""
+    key, where = ticket.key, f"work.tracker.pre-backlog.{status}"
+    backlog = target_status(client.config.statuses, "backlog", None)
+
+    def refused(row: str, message: str, left: str = "", detail: str = ""):
+        return ticket, ClaimOutcome(row=row, claimed=False, message=message,
+                                    detail=detail, issue_id=ticket.issue_id, key=key,
+                                    url=ticket.url, summary=ticket.summary,
+                                    status=ticket.status), left
+
+    offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
+    matches = [t for t in ticket.offered if _normalize(t.name) == _normalize(name)]
+    if not matches:
+        return refused("0a", f"{key} in '{ticket.status}' offers no transition named "
+                             f"'{name}'. It offers: {offers or 'nothing'}. Fix {where}.")
+    if len(matches) > 1:
+        ids = ", ".join(sorted(t.id for t in matches))
+        return refused("0a", f"'{name}' matches more than one transition offered by "
+                             f"{key} (ids {ids}); TCW will not guess which. Fix {where}.")
+    if _normalize(matches[0].to_status) != _normalize(backlog):
+        return refused("0a", f"{key}'s transition '{name}' leads to "
+                             f"'{matches[0].to_status}', not '{backlog}', so nothing was "
+                             f"sent. It offers: {offers}. Check {where} against "
+                             f"work.tracker.statuses.backlog.")
+
+    detail = ""
+    try:
+        client.apply_transition(ticket.issue_id, matches[0].id)
+        result = "applied"
+    except TrackerRequestInvalid as error:
+        result, detail = "refused", str(error)
+    except (TrackerAuthError, TrackerPermissionError, TrackerRateLimited,
+            TrackerNotFound):
+        raise
+    except TrackerError as error:
+        result, detail = "unknown", str(error)
+    try:
+        fresh = read_ticket(client, ticket.issue_id)
+    except TrackerError as error:
+        sent = status if result != "refused" else ""
+        return refused("0-read", f"'{name}' was sent to take {key} out of "
+                                 f"'{ticket.status}', but it could not be read back, "
+                                 f"so where it is now is unknown. Running this command "
+                                 f"again will find out.", sent, str(error))
+    if _normalize(fresh.status) == _normalize(backlog):
+        return fresh, None, status
+    if _normalize(fresh.status) == _normalize(ticket.status):
+        if result == "refused":
+            return refused("0d", f"the tracker refused '{name}', so {key} is still in "
+                                 f"'{ticket.status}'.", detail=detail)
+        return refused("0f", f"could not tell whether '{name}' applied, and {key} is "
+                             f"still in '{ticket.status}'. Running this command again "
+                             f"will try once more.", detail=detail)
+    return refused("0b", f"{key} did not reach '{backlog}' through '{name}': it is in "
+                         f"'{fresh.status}'.", status, detail)
+
+
 def claim(client, ticket: TicketRead) -> ClaimOutcome:
+    """Claim `ticket` for the signed-in account, first taking it out of a
+    `work.tracker.pre-backlog` status when it is in one (`leave_pre_backlog`).
+
+    Every outcome says, in `left_status`, whether the ticket left triage. So does a
+    tracker error raised after the step, as an attribute of the same name: the
+    ticket has moved even though the claim did not finish, and the caller has to
+    say so. A bare `raise` keeps the error's type, so it is still sorted into
+    pending or conflicting correctly.
+    """
+    from tcw.tracker.jira import TrackerError
+
+    ticket, refusal, left = leave_pre_backlog(client, ticket)
+    if refusal is not None:
+        return replace(refusal, left_status=left)
+    try:
+        outcome = _claim_from(client, ticket)
+    except TrackerError as error:
+        if left:
+            error.left_status = left
+        raise
+    return replace(outcome, left_status=left)
+
+
+def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
     """Claim `ticket` for the signed-in account, deciding only from what the tracker
     says afterwards.
 
@@ -522,7 +670,8 @@ def claim(client, ticket: TicketRead) -> ClaimOutcome:
                                  f"'{status}' and assigned to you.", status, False)
         offers = ", ".join(repr(t.name) for t in ticket.offered) or "nothing"
         return refused("1f", f"{key} is in '{status}', unassigned, and does not "
-                             f"offer {name!r}. It offers: {offers}.")
+                             f"offer {name!r}. It offers: {offers}."
+                             + pre_backlog_hint(client.config, status, ticket.category))
     transition = matches[0]
     landing = transition.to_status
 

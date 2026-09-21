@@ -604,7 +604,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             except TrackerError as error:
                 return finish(classify_error(error), str(error))
             if not outcome.claimed:
-                state = PENDING if outcome.row in ("3-read", "3f") else CONFLICTING
+                # Worth retrying: the claim's own read-back or send was uncertain, or
+                # the pre-backlog step's was (`leave_pre_backlog`).
+                state = (PENDING if outcome.row in ("0-read", "0f", "3-read", "3f")
+                         else CONFLICTING)
                 detail = f" ({outcome.detail})" if outcome.detail else ""
                 # Where the claim lives now, for a ticket nobody else holds. Said only
                 # then: telling somebody to claim a ticket another account holds would
