@@ -263,10 +263,14 @@ def _owe_ticket_if_configured(work, slug: str) -> bool:
 
     from tcw.tracker.intake import record_owed
 
-    config = work.tracker_config()
-    if config is None or config.create is None or not config.create.on_new:
-        return False
+    # Reading the configuration is inside the guard too. It fails closed today,
+    # returning None rather than raising, but the promise above is "nothing here
+    # may fail the creation that just succeeded" — and a promise that holds only
+    # because of what another function happens to do is not the promise.
     with suppress(Exception):                # see the docstring
+        config = work.tracker_config()
+        if config is None or config.create is None or not config.create.on_new:
+            return False
         record_owed(work, slug, since=date.today().isoformat(),
                     reason="filed in the web app, which does not reach the "
                            "tracker; `tcw work tracker create` makes it")

@@ -717,6 +717,27 @@ def _sidecar(root, slug: str) -> str:
     return found.content if found else ""
 
 
+def test_a_closed_item_holding_a_created_key_is_told_which_ticket_to_bind(
+        node, monkeypatch):
+    """The closed-item refusal points at `tracker link <slug> <ticket>`. It is
+    reachable while holding a `created` record — the bind failed, then the item
+    was completed — and printing the placeholder while knowing the key is a
+    message that declines to help."""
+    root, slug = _created_node(node, monkeypatch, status="completed")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
+    FsWorkStore.open(root).write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-9", "id": "9"}), revision="")
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert f"tracker link {slug} PROBE-9 --sync-status" in err, err
+    assert "<ticket>" not in err, err          # the placeholder it replaces
+    assert posted == [], posted                # still refused before the tracker
+
+
 def test_the_created_key_is_on_disk_before_the_binding_is_attempted(node, monkeypatch):
     """Spec criterion 6, first half. The window between "the ticket exists" and
     "the binding is written" is the only place this command can cost something it
