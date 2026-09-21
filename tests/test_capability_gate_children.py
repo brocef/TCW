@@ -199,10 +199,13 @@ def test_invalid_connected_projects_is_not_read_when_nothing_is_declared(tmp_pat
 
 # The remedy lines `complete` prints after the problems (Task 5). The old ones
 # are asserted absent, so a test cannot pass on the text being replaced.
-_CHILD_REMEDY = ("For a path that starts with a child project's id, run it inside "
-                 "that child's folder, with the path after the id.")
+_CHILD_HINT = "For a path that starts with a child project's id, run it inside"
+_CHILD_REMEDY = (_CHILD_HINT + " that child's folder, with the path after the id: "
+                 "kid (packages/kid).")
 _OLD_REMEDY = "--status <S>) or re-run with --force."
-_OLD_DISCARD_HINT = "if they will never be built.\n"      # the line used to end there
+# Before this change the discard hint always ended here; with a child-qualified
+# path declared it now goes on to name the child.
+_OLD_DISCARD_HINT = "if they will never be built.\n"
 
 
 # ── Task 2: child-qualified paths ───────────────────────────────────────────
@@ -362,8 +365,9 @@ def test_an_unprovisioned_own_ledger_refuses_even_child_paths(tmp_path, monkeypa
 
 
 def test_a_discard_only_warns_about_child_paths(tmp_path, monkeypatch, capsys):
-    """C12, child half: C1's unreconciled state, C9's absent child and C10's
-    unqualified path each warn on a discard instead of refusing it."""
+    """C12, child half: C1's unreconciled state and C10's unqualified paths
+    (`auth/login`, and `ghost/...`, whose prefix names no child) each warn on a
+    discard instead of refusing it. C9's cases are the next test."""
     root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
     _cap(kid, "auth/login", "Missing")
     slug = _item(root, "new:\n- kid/auth/login\n- auth/login\n- ghost/auth/login\n")
@@ -585,3 +589,35 @@ def test_a_malformed_meta_yaml_is_a_problem_line_not_a_crash(tmp_path, monkeypat
     _refused(root, slug, monkeypatch, capsys, "  - kid/auth/login: ", absent=["Traceback"])
     err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
     assert "warning: unreconciled capability: kid/auth/login: " in err
+
+
+def test_a_discard_only_warns_about_a_child_that_cannot_be_checked(
+        tmp_path, monkeypatch, capsys):
+    """C12 for C9's cases: a declared child not in this checkout, and one that
+    keeps no ledger, warn on a discard instead of refusing it."""
+    import shutil
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger=None, kid_repo="separate")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
+    assert "warning: unreconciled capability: kid/auth/login: project 'kid' keeps no " \
+        "capabilities ledger" in err
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    shutil.rmtree(kid)
+    err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
+    assert "warning: unreconciled capability: kid/auth/login: project 'kid' is declared" in err
+    assert "kid (not in this checkout)" in err
+
+
+def test_the_child_hint_is_printed_only_for_child_qualified_paths(
+        tmp_path, monkeypatch, capsys):
+    """The remedy names the owning child, and only when a declared path is
+    child-qualified; a refusal about local paths says nothing about children."""
+    root = _work_node(_git(tmp_path / "solo"), "solo")
+    _give_ledger(root, "default")
+    _cap(root, "auth/login", "Missing")
+    slug = _item(root, "new:\n- auth/login\n")
+    err = _refused(root, slug, monkeypatch, capsys, "auth/login: still Missing",
+                   "Reconcile them (tcw capabilities set <path> --status <S>). "
+                   "Or re-run with --force.", absent=[_CHILD_HINT])
+    err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
+    assert _CHILD_HINT not in err

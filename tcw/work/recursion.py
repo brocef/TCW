@@ -5,6 +5,7 @@ store; node discovery + body/inbox writes are FS-flavored (spec §2). Ships the
 FS realization only — a remote recursion layer would be additive.
 """
 
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -146,6 +147,33 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
         for path in deltas[kind]:
             check(kind, path)
     return problems
+
+
+def child_path_owners(st: FsWorkStore, item: WorkItem) -> list[str]:
+    """The children `item`'s declared paths are qualified by, each as
+    "<id> (<where>)", for telling the user where to reconcile them. Empty when
+    no path is child-qualified, or when anything needed to tell cannot be read
+    — the gate has already reported that; this only words a hint."""
+    try:
+        deltas = declared_capabilities(item.capabilities)
+        registry = FsProjectRegistry.open(st.node_root).require_valid()
+    except (ValueError, yaml.YAMLError):
+        return []
+    own, _ = _open_ledger(st.node_root)
+    extends = own.extends if own is not None else {}
+    child_ids = registry.declared_child_ids()
+    owners: list[str] = []
+    for kind in ("new", "changed", "removed"):
+        for path in deltas[kind]:
+            head = path.partition("/")[0]
+            if head not in child_ids or head in extends:
+                continue
+            project = registry.get(head)
+            where = ("not in this checkout" if project is None
+                     else os.path.relpath(Path(project.locator), st.node_root))
+            if (label := f"{head} ({where})") not in owners:
+                owners.append(label)
+    return owners
 
 
 class Route(NamedTuple):
