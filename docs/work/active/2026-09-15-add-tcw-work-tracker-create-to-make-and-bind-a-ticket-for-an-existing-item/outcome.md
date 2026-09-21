@@ -100,16 +100,29 @@ measuring stopped being any commit; it was killed rather than reported. Landing 
 is still independently shippable — the commits are ordered so it can be — but the
 evidence for it is the final gate below, not a separate one.
 
-The final gate (task 15) ran against the tree at **`40f11d28`**, after the last
-commit, with the commit read before and after the run:
+Task 15's gate ran against **`40f11d28`** and reported `3859 passed`,
+`pytest_exit=0`, `tcw validate` OK. That record stood while eleven further
+commits landed, which a reviewer caught: a gate record naming a tree nobody has
+is worse than none. The gate that describes what is here ran against
+**`f8eefa2a`**, on a clean tree, with the commit read before and after:
 
 ```
-3859 passed in 893.51s (0:14:53)
+3888 passed in 886.43s (0:14:46)
 pytest_exit=0
-tcw validate: OK
+validate OK
 validate_exit=0
-40f11d288d09f499e755277b091567a486da5b09
+f8eefa2ab32011f965a0cf238c17a0408135fd15
 ```
+
+`pnpm check:build` also exits 0, which is what says the committed web bundle
+matches its source. Nothing runs that check automatically — not the test
+workflow, which installs no Node, and no test — and a stale bundle is how a
+fixed page kept crashing for four commits. Wiring it up is a separate change.
+
+Four earlier runs were started and killed rather than reported, each because a
+review finding arrived and the tree was about to change underneath it. A gate
+that measures a tree nobody will ship is not evidence, and this item had already
+produced one of those.
 
 The exit code is captured on its own line rather than taken from a pipeline.
 Earlier in this item a commit went through on a red suite because the run was
@@ -185,6 +198,61 @@ Three claims in the spec were wrong and had been repeated into shipped text:
 
 Every fix carries a test that was watched to fail first, or a mutation that was
 run to prove the test guards what it claims.
+
+## Three more rounds, and what they cost
+
+The review of 2026-09-21 did not end with one round of fixes. Reviewing those
+fixes found holes in them, and reviewing *those* found one more. The pattern the
+project's review rules predict — later rounds finding defects in earlier rounds'
+corrections rather than in the original work — is exactly what happened, and it
+is worth recording that it was not wasted: every round found something real.
+
+**Round two** (a review of the ten fix commits) found seven, the worst of which
+was not in the fixes at all. `tcw serve` serves the committed bundle under
+`tcw/serve/dist`, not the TypeScript source, so teaching `TrackerField` the new
+shapes fixed everything except the thing that ships. The page still went blank.
+Also: `_tracker_sync` checked `owed` before `created`, the opposite of
+`binding_value`, when a sidecar can hold both; the resumption path carried no
+`recorded` flag, so a tracker failure was reported as a disk failure and stopped
+a sweep; `unlink` wrote with a second read's revision; `POST /api/work` answered
+from a snapshot older than its own write; and `find_binding` let a read error
+escape as a traceback while binding an *unrelated* item.
+
+**Round three** found a regression introduced by round two. `ever_bound` had been
+changed to classify rather than test for a file, and that lumped `created` in
+with `owed`. They are not the same: `owed` means no ticket exists, `created`
+names one that does, and the sidecar is the only place its key is written down.
+`tcw work drop` therefore deleted the item and left an open ticket in a shared
+tracker with nothing naming it. The test written for that fix asserted the
+behaviour as correct and would have held the hole open.
+
+**Round four** found that the round-three gate was on the wrong condition —
+both drop gates sit inside a strict-mode check, and `create.on-new` does not
+require strict mode, so the fix closed the rare case and left the common one
+open — and that `created_but_unbound` had been written line-for-line over an
+existing `_created_on`.
+
+## Two decisions recorded rather than assumed
+
+**The drop refusal is not gated on strict mode.** `ever_bound`'s refusal always
+was, and the obvious move was to put the new one beside it. That was wrong:
+strict mode answers "may work proceed without a ticket", while this answers "is
+a real ticket about to lose the only thing that names it". A project does not
+have to be strict to reach that state — `create.on-new` does not require strict,
+and under strict almost nothing reaches `tcw work new` except an epic — so
+gating it on strict would have protected the case where it almost never happens.
+Both gates ask it before either consults strict, from one shared function, and
+the test carries `strict` as an explicit axis with no default.
+
+**A sweep that could bind nothing now creates nothing.** Guarding
+`_create_one`'s sidecar read stopped a crash and produced something quieter that
+was not much better: binding scans every item, so one unreadable sidecar refuses
+the bind for all of them, and the sweep went on making a ticket per item and
+binding none. A reviewer classified the question as a separate change. It was
+kept here instead, on the grounds that it is the unfinished half of a fix made
+in this item — the crash was converted into a different failure and left there —
+and because the outcome it prevents is the one the command's own help calls
+turning one mistake into one mistake per item.
 
 ## Notes
 
