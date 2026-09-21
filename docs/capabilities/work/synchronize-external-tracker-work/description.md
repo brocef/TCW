@@ -30,6 +30,16 @@ step it cannot make, leaving the ticket where it reached for `sync` to carry on 
 A ticket TCW did claim and someone then moved backwards stays drift, and is not
 walked forward again.
 
+A ticket waiting in a status before the backlog — Jira's `Triage` is the usual
+one — is left there unless I name that status, and the transition out of it, under
+`work.tracker.pre-backlog` (for example `Triage: Accept`). With it named, whatever
+claims the ticket — `start`, `link --sync-status`, `sync`, or a move that still owes
+a claim — first takes it through that transition to `statuses.backlog`, reads it
+back, and claims it from there; I am told the ticket left triage even when the
+claim afterwards fails. Nothing else takes a ticket out of triage: not a move with
+no claim owed, not a discard, and not `tcw work tracker claim`. Without the setting
+the refusal names it.
+
 A hand move that takes the ticket part of the way TCW was trying to take it is
 accepted rather than reported as drift: anywhere on the path between where the ticket
 was left and where the move was going counts as in step.
