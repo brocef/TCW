@@ -926,6 +926,26 @@ def test_all_sweeps_every_unbound_open_item_and_skips_bound_ones(node, monkeypat
     assert slugs["Alpha"] not in err, err
 
 
+def test_the_created_ticket_links_back_to_the_item(node, monkeypatch):
+    """`work.tracker.link` says where a project's items can be read, and progress
+    comments have carried it since they existed. `item_url` was threaded through
+    `create_and_place` to `description_document` with no caller passing it, so
+    the created ticket — the first place anyone looks — was the one thing that
+    never linked back."""
+    root, slug = _created_node(
+        node, monkeypatch, status="backlog",
+        tracker={**CREATE_TRACKER,
+                 "link": "https://example.invalid/{project}/work/{slug}"})
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 0, err
+
+    create = next(p for p in posted
+                  if p[0] == "POST" and p[1].rstrip("/").endswith("/issue"))
+    text = json.dumps(create[2]["fields"]["description"])
+    assert f"https://example.invalid/probe/work/{slug}" in text, text
+
+
 def test_all_sweeps_an_item_whose_binding_was_unlinked(node, monkeypatch):
     """`unlink` leaves the former binding under `unlinked:`, and that history
     still contains the text `ticket:`. The sweep decided "already bound" with a
@@ -1242,6 +1262,17 @@ def test_all_sweeps_up_owed_tickets(node, monkeypatch):
                if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
     assert len(creates) == 2, creates
 
+    # Creating the tickets is half of it. This asserted only the POSTs and the
+    # exit code, so replacing the binding call with `return 0` left it green
+    # with neither item bound and neither debt cleared.
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import Bound, binding_of
+    store = FsWorkStore.open(root)
+    for item in store.query():
+        binding, _revision = binding_of(store, item.slug)
+        assert isinstance(binding, Bound), (item.slug, binding)
+        assert "owed" not in _sidecar(root, item.slug), _sidecar(root, item.slug)
+
 
 def _owed_item(monkeypatch, title="Filed on a train"):
     """File one item while the tracker is unreachable, and return its slug.
@@ -1330,6 +1361,56 @@ def test_under_strict_mode_a_filed_epic_still_gets_its_ticket(node, monkeypatch)
     from tcw.store.fs import FsWorkStore
     item = FsWorkStore.open(_root).get(out.strip().splitlines()[0])
     assert item.tracker["ticket"]["key"] == "PROBE-1", item.tracker
+
+
+def test_unlink_clears_a_stale_created_record(node, monkeypatch):
+    """A `created` record naming a ticket that is gone — deleted, or moved out of
+    reach — used to wedge the item for good: `create` failed against it every
+    time, `link` failed too, and `unlink` refused because the item was not bound,
+    so hand-editing `tracker.yaml` was the only way out."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import (BINDING_SIDECAR, created_record,
+                                    with_created_record)
+    FsWorkStore.open(root).write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-9", "id": "9"}), revision="")
+
+    code, _out, err = _run(["work", "tracker", "unlink", slug,
+                            "--reason", "PROBE-9 was deleted in Jira"])
+    assert code == 0, err
+    assert "PROBE-9" in err, err
+    # The wording this replaces: it used to refuse outright.
+    assert "is not bound to a ticket" not in err, err
+    assert created_record(_sidecar(root, slug)) is None, _sidecar(root, slug)
+
+
+def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
+        node, monkeypatch):
+    """`ever_bound` answered "does a sidecar file exist", and a `created` or
+    `owed` record is a sidecar with no binding in it and none in its history. So
+    strict mode refused to drop an item with "It is, or was, bound to a ticket,
+    and dropping would erase that record" when there was no such record."""
+    root, configure = node
+    configure(CREATE_TRACKER)
+    _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Never bound to anything"])
+    assert code == 0, err
+    slug = out.strip().splitlines()[0]
+
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
+    FsWorkStore.open(root).write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-9", "id": "9"}), revision="")
+
+    configure({**CREATE_TRACKER, "strict": True,
+               "statuses": {"backlog": "To Do", "active": "In Progress",
+                            "completed": "Done", "discarded": "Won't Do"}})
+    code, _out, err = _run(["work", "drop", slug, "--confirm"])
+    assert code == 0, err
+    assert "was, bound to a ticket" not in err, err
+    assert FsWorkStore.open(root).query() == [], "the item is still there"
 
 
 def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):

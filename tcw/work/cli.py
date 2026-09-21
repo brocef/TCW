@@ -2801,11 +2801,19 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
               f"that did not finish; binding that rather than creating another.",
               file=sys.stderr)
     try:
+        # `work.tracker.link` is how a project says where its items can be read.
+        # Progress comments have carried it since they existed; the ticket this
+        # command creates is the one place somebody looks first, and the
+        # parameter was threaded all the way to `description_document` with no
+        # caller ever passing it, so the link block was never emitted.
+        from tcw.store.base import link_for
         created = create_and_place(
             client, client.config, slug=slug, title=item.title,
             body=_item_body(st, slug),
             is_epic=getattr(item, "type", "") == "epic",
             tags=getattr(item, "tags", ()),
+            item_url=(link_for(client.config.link, _project_id(st), slug)
+                      if client.config.link else ""),
             on_created=record, existing=resume,
         )
     except (TrackerError, *_LOCAL_WRITE_ERRORS) as error:
@@ -3168,8 +3176,9 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
     """
     from datetime import date
 
-    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
-                                    unlink_document)
+    from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, Unbound,
+                                    binding_of, unlink_document,
+                                    without_pending_records)
 
     if not args.reason.strip():
         print("tcw work tracker unlink: --reason is empty; say why the binding is "
@@ -3183,6 +3192,30 @@ def _tracker_unlink(args: argparse.Namespace) -> int:
         print(f"tcw work tracker unlink: {args.slug} has a {BINDING_SIDECAR} that "
               f"cannot be read ({current.reason}).", file=sys.stderr)
         return 1
+    if isinstance(current, Unbound) and (current.created or current.owed):
+        # Nothing was ever bound, so there is no binding to move into the
+        # history — but there is a record to clear, and no other verb clears it.
+        # Without this a stale `created` record wedged the item permanently:
+        # `create` failed every time against a ticket that had been deleted or
+        # moved, `link` failed too, and `unlink` refused because the item was
+        # not bound, leaving hand-editing `tracker.yaml` as the only way out.
+        held = st.read_sidecar(args.slug, BINDING_SIDECAR)
+        try:
+            st.write_sidecar(args.slug, BINDING_SIDECAR,
+                             without_pending_records(held.content),
+                             revision=held.revision)
+        except _LOCAL_WRITE_ERRORS as e:
+            print(f"tcw work tracker unlink: {e}", file=sys.stderr)
+            return 1
+        if current.created:
+            print(f"→ cleared the record of {current.created['key']}, which was "
+                  f"created for {args.slug} and never bound. The ticket is "
+                  f"unchanged in the tracker — close it there if it is not "
+                  f"wanted.", file=sys.stderr)
+        else:
+            print(f"→ cleared the note that {args.slug} was owed a ticket. "
+                  f"Nothing was created for it.", file=sys.stderr)
+        return 0
     if not isinstance(current, Bound):
         print(f"tcw work tracker unlink: {args.slug} is not bound to a ticket.",
               file=sys.stderr)

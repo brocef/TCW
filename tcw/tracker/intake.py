@@ -73,10 +73,33 @@ def validate_part(value: str | None) -> str:
 
 
 def ever_bound(store, slug: str) -> bool:
-    """Whether `slug` holds a binding sidecar at all — bound, unlinked, or unreadable."""
+    """Whether `slug` holds a binding, or holds the record of one it used to.
+
+    Not "whether a sidecar file exists". A `created` or `owed` record is a
+    sidecar with no binding in it and none in its history: the item has never
+    been bound to anything. Reading that as "was bound" made `tcw work drop`
+    refuse an item with "It is, or was, bound to a ticket, and dropping would
+    erase that record" when there was no such record — and the web app's drop
+    gate said the same, with `unlink` refusing the item too, so hand-editing
+    `tracker.yaml` was the only way out.
+
+    Unreadable counts as bound. When the file cannot be read, the safe answer is
+    the one that refuses to destroy it.
+    """
     try:
-        return store.read_sidecar(slug, BINDING_SIDECAR) is not None
+        found = store.read_sidecar(slug, BINDING_SIDECAR)
     except (OSError, UnicodeDecodeError):
+        return True
+    if found is None:
+        return False
+    try:
+        data = yaml.safe_load(found.content)
+        # Any `unlinked` content at all, not just the list `unlink` writes: a
+        # hand-written one in another shape still says a binding was removed.
+        if isinstance(data, dict) and data.get("unlinked"):
+            return True
+        return not isinstance(classify_binding(data), Unbound)
+    except Exception:                   # noqa: BLE001 — see the docstring
         return True
 
 
@@ -304,6 +327,16 @@ def _with_key(content: str, key: str, record: dict | None) -> str:
     if record is not None:
         data[key] = dict(record)
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+
+
+def without_pending_records(content: str) -> str:
+    """`content` with any `created` and `owed` records removed.
+
+    Both describe a ticket that is *not yet* bound, so both are spent the moment
+    a binding is written — and both need clearing by hand when the ticket they
+    name turns out to be gone. `unlink` is what clears them.
+    """
+    return _with_key(_with_key(content, "created", None), "owed", None)
 
 
 def unlink_document(content: str, *, reason: str, today: str) -> str:
