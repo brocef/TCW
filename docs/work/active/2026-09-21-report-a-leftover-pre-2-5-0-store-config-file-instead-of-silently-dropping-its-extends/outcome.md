@@ -50,8 +50,10 @@ hand.
    provisioning one into "no node here". That misdirection predates this item
    and affects every taxonomy and capabilities command with a bad `extends`, not
    just `check`. The test asserts exit 1 and no leftover line, and says why.
-   **Follow-up to file:** make `find_node` let a federation `ValueError` through,
-   as it already does for `StoreNotProvisioned` and `StoreDeclarationError`.
+   **Follow-up filed** as backlog item
+   `2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here`:
+   make `find_node` let a federation `ValueError` through, as it already does
+   for `StoreNotProvisioned` and `StoreDeclarationError`.
 2. **Plan Task 1 asked to resolve `node_root` before comparing paths**, because
    `self.root` is resolved and `node_root` "is kept as handed over". Not so on any
    path that reaches `check()`: `resolve_store` resolves `node_root` before
@@ -78,3 +80,14 @@ hand.
   Verification 5).
 - The `validate` direct report (block `(d)`) is to be removed when the separate
   "validate ignores relocated stores" item lands; the code comment says so.
+- **Folded in at verify:** a review finding that the `validate` direct report
+  opens every tree store it did not check, so *any* open failure of a tree
+  with no `docs/<component>` is now a `validate` problem — not only an
+  unprovisioned `<component>.repository`, but also a `<component>.path` that is
+  missing on this machine and an `extends` naming an unreachable project. The
+  changelog, release notes and `cli/validate-a-node` now say so, and that each
+  can refuse `tcw work complete` where `tcw validate` is a `pre` check. A
+  separate crash the reviewer found in `validate` is being filed by the team
+  lead as its own item.
+- The release notes' opening "Nothing else changed" sentence, which Task 5 had
+  reworded, was restored at verify on request; it is reconciled at merge.

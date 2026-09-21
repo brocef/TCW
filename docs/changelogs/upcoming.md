@@ -23,11 +23,18 @@ carrying everything listed under `v2.5.0`.
   `check()` it did not run — a store outside `docs/<component>`, or any run
   whose component checks were skipped after a YAML problem — and, when such a
   store will not open, the open failure once in `_run_check`'s
-  `<component> check: <error>` shape. Consequence: a taxonomy or capabilities
-  store declared in `<component>.repository` and not yet provisioned, on a node
-  with no `docs/<component>`, is now a `validate` problem naming
-  `tcw provision`, as the work store already was. The block is marked
-  temporary, to be removed once `validate` covers relocated stores generally.
+  `<component> check: <error>` shape. Consequence: a tree store `validate` did
+  not check before is now opened on every whole-node run, and any failure to
+  open it is reported. On a node with no `docs/<component>` that includes a
+  store declared in `<component>.repository` and not yet provisioned (naming
+  `tcw provision`, as the work store already did), a `<component>.path` that
+  does not exist — for example `../missing-tax` in a CI or cloud clone without
+  the sibling checkout (`taxonomy.path is not a directory`) — and an
+  inherit-only node whose `<component>.extends` names a project that is not
+  reachable (`project 'ghost' is not reachable through connected-projects`).
+  Any of these can refuse `tcw work complete` in a project whose `pre` hook
+  runs `tcw validate`. The block is marked temporary, to be removed once
+  `validate` covers relocated stores generally.
 - `FsCapabilitiesStore._override_problem`: `overrides → unknown alias '<alias>'`
   gains `(not declared in <path>/tcw-config.yaml: capabilities.extends)`.
 

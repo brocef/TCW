@@ -23,8 +23,13 @@ A taxonomy or capabilities file left over from before 2.5.0 (`config.yaml` or
 `.config.yaml` at the root of the tree), which is no longer read, is reported
 once for each tree that has one — including a tree kept outside
 `docs/<component>` or in another repository, and a run whose component checks
-were skipped because of a YAML problem. A tree declared in another repository
-but not yet provisioned is reported too, as the work store already was.
+were skipped because of a YAML problem. To find it, validation now opens a
+tree it did not check before, and any failure to open that tree is reported:
+a tree declared in another repository but not yet provisioned (as the work
+store already was), a `<component>.path` that does not exist on this machine,
+and an `extends` naming a project this checkout cannot reach. In a project
+whose completion runs `tcw validate` first, any of these can refuse
+`tcw work complete`.
 
 **Two faults are counted as two.** A node whose `<component>.path` names a
 directory holding no store, and which also declares a home repository it has
