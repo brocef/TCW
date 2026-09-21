@@ -104,15 +104,23 @@ Task 15's gate ran against **`40f11d28`** and reported `3859 passed`,
 `pytest_exit=0`, `tcw validate` OK. That record stood while eleven further
 commits landed, which a reviewer caught: a gate record naming a tree nobody has
 is worse than none. The gate that describes what is here ran against
-**`f8eefa2a`**, on a clean tree, with the commit read before and after:
+**`bb5b08dc`**, the last code-bearing commit, on a clean tree, with the commit
+read before and after:
 
 ```
-3888 passed in 886.43s (0:14:46)
+3888 passed in 868.02s (0:14:28)
 pytest_exit=0
 validate OK
 validate_exit=0
-f8eefa2ab32011f965a0cf238c17a0408135fd15
+bb5b08dcd4ee8ca5ce371181b9fd0251bdfad9ce
 ```
+
+An earlier run of this gate, at `f8eefa2a`, was equally green and was replaced
+rather than kept: reading the acceptance criteria at `verify` turned up a test
+that did not assert what criterion 15 asks for, and changing it put the tree
+ahead of the record — the same staleness this paragraph was written to correct,
+committed by the person correcting it. The rule that survives is that a gate
+record names a tree somebody can check out.
 
 `pnpm check:build` also exits 0, which is what says the committed web bundle
 matches its source. Nothing runs that check automatically — not the test
