@@ -834,3 +834,6 @@
   location: 9121652d02106aee6efea1e65f48c4cfa0867e2a
   resolution: done
   resolved: '2026-09-20'
+2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers:
+  resolution: done
+  resolved: '2026-09-21'
