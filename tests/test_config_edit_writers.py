@@ -281,3 +281,83 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
     assert code != 0
     assert config(root) == before
     assert "work must be a mapping" in err and "tcw-config.yaml" in err
+
+
+# ── init and write_sentinel ──────────────────────────────────────────────────
+
+def test_init_writes_only_the_id_and_path_lines(tmp_path):
+    root = repository(tmp_path / "node")
+    before = b"# my node\nwork:\n    tags: [a]  # registered by hand\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    target = root / "planning" / "work"
+    init(["work"], root, "node", work_path=target)
+    assert_only_added(before, config(root), b"id: node\n", f"    path: {target}\n".encode())
+
+
+def test_init_replacing_a_path_keeps_the_comment_after_it(tmp_path):
+    root = repository(tmp_path / "node")
+    before = b"id: node\ntaxonomy:\n    path: docs/old   # moved in 2.3\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
+    assert config(root) == b"id: node\ntaxonomy:\n    path: docs/new   # moved in 2.3\n"
+
+
+def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypatch, capsys):
+    root = repository(tmp_path / "node")
+    init(["work"], root, "node")                      # a pristine default store
+    before = b"# no id yet\nwork: {tags: [a]}\n"      # braces: `path` cannot be added
+    (root / "tcw-config.yaml").write_bytes(before)
+    commit_all(root)
+    target = root / "planning" / "work"
+    code = run(root, monkeypatch, "init", "work", "--id", "node", "--work-path", str(target))
+    err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
+    assert "work.path" in err
+    assert (root / "docs" / "work" / "inbox").is_dir()
+    assert not (root / "planning").exists()
+    assert b"id:" not in config(root)
+
+
+@pytest.mark.parametrize("existing", [None, b"", b"\n  \n"])
+def test_a_fresh_init_writes_the_whole_file(tmp_path, monkeypatch, existing):
+    root = repository(tmp_path / "node")
+    if existing is not None:
+        (root / "tcw-config.yaml").write_bytes(existing)
+    assert run(root, monkeypatch, "init", "work", "--id", "fresh") == 0
+    assert yaml.safe_load(config(root))["id"] == "fresh"
+
+
+def test_write_sentinel_adds_id_below_the_leading_comments(tmp_path):
+    before = b"# header\n# more\nwork:\n  tags: [a]  # keep\n"
+    (tmp_path / "tcw-config.yaml").write_bytes(before)
+    assert write_sentinel(tmp_path, "proj") is True
+    assert config(tmp_path) == b"# header\n# more\nid: proj\nwork:\n  tags: [a]  # keep\n"
+    assert write_sentinel(tmp_path, "proj") is False
+
+
+def test_write_sentinel_fills_a_null_id(tmp_path):
+    (tmp_path / "tcw-config.yaml").write_bytes(b"id: null\n# keep me\nwork: {}\n")
+    assert write_sentinel(tmp_path, "proj") is True
+    assert config(tmp_path) == b"id: proj\n# keep me\nwork: {}\n"
+    assert yaml.safe_load(config(tmp_path))["id"] == "proj"
+
+
+def test_init_over_a_block_scalar_path_is_refused(tmp_path):
+    root = repository(tmp_path / "node")
+    before = b"id: node\ntaxonomy:\n  path: |\n    docs/old\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    with pytest.raises(ValueError, match="spans more than one line"):
+        init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
+    assert config(root) == before
+    assert not (root / "docs" / "new").exists()
+
+
+def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsys):
+    root = repository(tmp_path / "node")
+    before = b"id: node\nwork: docs/work\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    code = run(root, monkeypatch, "init", "work", "--work-path", str(root / "w"))
+    err = capsys.readouterr().err
+    assert code != 0
+    assert config(root) == before
+    assert "work must be a mapping" in err and "tcw-config.yaml" in err
+    assert not (root / "w").exists()
