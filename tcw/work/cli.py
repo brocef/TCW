@@ -404,7 +404,7 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         return None, False                # the store refuses it, and names why
     if not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
-    from tcw.tracker.intake import claim, read_ticket
+    from tcw.tracker.intake import claim, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
     from tcw.tracker.sync import binding_refusal, claim_refusal
     bound, refusal = binding_refusal(st, bare, config)
@@ -416,13 +416,21 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         outcome = claim(client, read_ticket(client, bound.ticket_id))
     except TrackerError as error:
         return _strict_says_no("start", f"{bare} was not started",
-                               f"The tracker could not answer ({error}), so {key} may "
+                               moved_out(key, getattr(error, "left_status", ""))
+                               + f"The tracker could not answer ({error}), so {key} may "
                                f"or may not have been claimed. Run it again once the "
                                f"tracker answers."), False
     if not outcome.claimed:
         detail = f" ({outcome.detail})" if outcome.detail else ""
+        # A strict start that stops here writes no sync record, so `sync` has nothing
+        # to resume: taking the ticket out of triage is finished by starting again.
+        again = (f" Run `tcw work start {bare}` again to finish the claim."
+                 if outcome.left_status else "")
         return _strict_says_no("start", f"{bare} was not started",
-                               outcome.message + detail), False
+                               moved_out(key, outcome.left_status)
+                               + outcome.message + detail + again), False
+    if outcome.left_status:
+        print(f"→ {moved_out(key, outcome.left_status)}".rstrip(), file=sys.stderr)
     refusal = claim_refusal(client, config, bound.ticket_id, outcome)
     if refusal:
         return _strict_says_no("start", f"{bare} was not started", refusal), True
@@ -2326,6 +2334,10 @@ def _print_ticket(client, ref: str, issue: dict, offered) -> None:
     print(f"workflow: {result.exclusivity}")
     if result.detail:
         print(f"note: {result.detail}")
+    from tcw.store.base import pre_backlog_entry
+    waiting, way_out = pre_backlog_entry(client.config.pre_backlog, status)
+    if waiting:
+        print(f"note: a claim first takes it out of '{waiting}' through '{way_out}'.")
 
 
 def _project_id(st) -> str:
@@ -2384,7 +2396,8 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     from datetime import date
 
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, claim,
-                                    find_binding, read_ticket, validate_part)
+                                    find_binding, moved_out, pre_backlog_hint,
+                                    read_ticket, validate_part)
     from tcw.tracker.jira import TrackerError
 
     client = _tracker_client(label)
@@ -2433,8 +2446,15 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         if ticket is None and not_found is not None and isinstance(e, TrackerError):
             _not_a_ticket(label, args.ticket, not_found, e)   # `inbox accept` of neither
         else:
-            print(f"tcw work {label}: {e}", file=sys.stderr)
+            # The claim may have raised after taking the ticket out of triage.
+            left = moved_out(ticket.key, getattr(e, "left_status", "")) if ticket else ""
+            print(f"tcw work {label}: {left}{e}", file=sys.stderr)
         return 1
+    if outcome.left_status:
+        # Said whatever follows: the ticket has left triage, so `inbox list` will no
+        # longer show it, and running this command again by key finishes the claim.
+        print(f"→ {moved_out(outcome.key, outcome.left_status)}".rstrip(),
+              file=sys.stderr)
     if not outcome.claimed:
         _print_refusal(label, outcome)
         return 1
@@ -2479,6 +2499,10 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
     if not outcome.transitioned:
         print(f"→ {outcome.message}", file=sys.stderr)
+    if outcome.row == "1e" and (hint := pre_backlog_hint(client.config, outcome.status,
+                                                         "")):
+        print(f"warning: {outcome.key} stays in '{outcome.status}'.{hint}",
+              file=sys.stderr)
     return 0
 
 

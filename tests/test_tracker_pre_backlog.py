@@ -515,3 +515,148 @@ def test_a_claim_landing_off_the_ladder_does_not_name_pre_backlog(tmp_path, monk
     assert fake_.applied == ["21"]
     assert "not brought forward from there" in err
     assert "pre-backlog" not in err
+
+
+# ── Task 4: strict start, import, inbox accept, `tracker claim`, `show` ────────
+
+from test_tracker_strict import set_tracker_key  # noqa: E402
+
+
+def items(root):
+    return FsWorkStore.open(root).board()
+
+
+def test_strict_start_accepts_then_claims(tmp_path, monkeypatch):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(TRIAGE), status="Triage")
+    set_tracker_key(root, "strict", True)
+    set_pre_backlog(root, {"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
+    assert fake_.applied == ACCEPT_THEN_START
+    assert MOVED in err
+
+
+def test_strict_start_refused_after_the_step_is_retried_by_start(tmp_path, monkeypatch):
+    """A strict refusal happens before the item moves and writes no sync record, so
+    `sync` has nothing to resume: the refusal says to start again, and that works."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(TRIAGE), status="Triage")
+    set_tracker_key(root, "strict", True)
+    set_pre_backlog(root, {"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    to_do = fake_.workflow["To Do"]
+    fake_.workflow["To Do"] = []
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert FsWorkStore.open(root).get(slug).status == "backlog"
+    assert record(root, slug) is None
+    assert MOVED in err and f"tcw work start {slug}` again" in err
+    fake_.workflow["To Do"] = to_do
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert fake_.applied == ACCEPT_THEN_START
+
+
+@pytest.mark.parametrize("verb", [("tracker", "import"), ("inbox", "accept")])
+def test_import_and_inbox_accept_accept_then_claim(tmp_path, monkeypatch, verb):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(TRIAGE), status="Triage")
+    set_tracker_key(root, "inbox-query", "project = SYNC AND status = Triage")
+    set_pre_backlog(root, {"Triage": "Accept"})
+    code, _out, err = cli(root, "work", *verb, KEY)
+    assert code == 0, err
+    assert len(items(root)) == 1 and items(root)[0].tracker is not None
+    assert fake_.applied == ACCEPT_THEN_START
+    assert MOVED in err
+
+
+def test_import_of_a_triage_ticket_already_yours(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A,
+                              pre_backlog={"Triage": "Accept"})
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    assert fake_.applied == ACCEPT_THEN_START
+    assert "warning:" not in err
+
+
+def test_without_the_setting_import_of_a_triage_ticket_already_yours_warns(tmp_path,
+                                                                          monkeypatch):
+    """Today's behaviour is kept — the item is made and the ticket stays in Triage —
+    and it now says why, and what would change it."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A, pre_backlog=None)
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    assert len(items(root)) == 1
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+    assert fake_.applied == []
+    assert f"warning: {KEY} stays in 'Triage'." in err and HINT in err
+
+
+def test_import_refused_after_the_step_is_retried_by_import(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    to_do = fake_.workflow["To Do"]
+    fake_.workflow["To Do"] = []
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 1, err
+    assert items(root) == []
+    assert MOVED in err
+    assert fake_.tickets[TICKET_ID].status == "To Do"
+    fake_.workflow["To Do"] = to_do
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    assert fake_.applied == ACCEPT_THEN_START
+    assert len(items(root)) == 1
+
+
+def test_import_that_raises_after_the_step_reports_the_move(tmp_path, monkeypatch):
+    from tcw.tracker.jira import TrackerRateLimited
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    post_fails(fake_, 2, TrackerRateLimited("slow down (fake)"))
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 1, err
+    assert MOVED in err and "slow down" in err
+    assert items(root) == []
+
+
+def test_without_the_setting_import_names_it(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None, pre_backlog=None)
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 1, err
+    assert fake_.applied == []
+    assert "does not offer 'Start Progress'" in err and HINT in err
+
+
+def test_tracker_claim_moves_nothing(tmp_path, monkeypatch):
+    """`tracker claim` asserts ownership and never moves a status, triage or not."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    code, _out, err = cli(root, "work", "tracker", "claim", slug)
+    assert code == 0, err
+    ticket = fake_.tickets[TICKET_ID]
+    assert (ticket.status, ticket.assignee) == ("Triage", A)
+    assert fake_.applied == []
+
+
+def test_import_of_an_already_bound_ticket_moves_nothing(tmp_path, monkeypatch):
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 1, err
+    assert "already linked" in err
+    assert fake_.applied == []
+
+
+def test_show_notes_the_step(tmp_path, monkeypatch):
+    root, _fake = triage_node(tmp_path, monkeypatch, assignee=None,
+                              pre_backlog={"Triage": "Accept"})
+    code, out, err = cli(root, "work", "tracker", "show", KEY)
+    assert code == 0, err
+    assert "note: a claim first takes it out of 'Triage' through 'Accept'." in out
