@@ -564,3 +564,24 @@ def test_reconcile_complete_when_ready_checks_child_paths(tmp_path):
         reconcile(root, epic, complete_when_ready=True)
     assert "kid/auth/login: still Missing in project 'kid'" in str(e.value)
     assert FsWorkStore.open(root).get(epic).status == "backlog"
+
+
+# ── Folded in at verify ─────────────────────────────────────────────────────
+
+def _corrupt_meta(node: Path) -> None:
+    """An unrelated capability whose meta.yaml is a YAML list, not a mapping."""
+    d = node / "docs" / "capabilities" / "other" / "broken"
+    d.mkdir(parents=True)
+    (d / "meta.yaml").write_text("- not\n- a mapping\n")
+
+
+def test_a_malformed_meta_yaml_is_a_problem_line_not_a_crash(tmp_path, monkeypatch, capsys):
+    """Reading the parent's ledger (the ambiguity check lists it) raised
+    yaml.YAMLError out of the gate, which stopped even a discard."""
+    root, kid = _graph(tmp_path, parent_ledger=True, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Supported")
+    _corrupt_meta(root)
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys, "  - kid/auth/login: ", absent=["Traceback"])
+    err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
+    assert "warning: unreconciled capability: kid/auth/login: " in err

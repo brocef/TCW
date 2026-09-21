@@ -10,6 +10,8 @@ from datetime import date
 from pathlib import Path
 from typing import NamedTuple
 
+import yaml
+
 from tcw.store.base import (
     RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
     topo_order,
@@ -37,7 +39,7 @@ def _open_ledger(node_root: Path) -> "tuple[FsCapabilitiesStore | None, str | No
     rather than an exception, so a discard is never stopped by it."""
     try:
         store = FsCapabilitiesStore.open(node_root)
-    except ValueError as e:
+    except (ValueError, yaml.YAMLError) as e:
         return None, str(e)
     return (store, None) if store.root.is_dir() else (None, None)
 
@@ -94,6 +96,16 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
     problems: list[str] = []
 
     def check(kind: str, path: str) -> None:
+        # A malformed meta.yaml anywhere in a ledger this path reads — including
+        # one the ambiguity check lists — raises `yaml.YAMLError`. It is this
+        # path's problem, not an exception out of the gate: a discard must still
+        # go through.
+        try:
+            check_one(kind, path)
+        except (ValueError, yaml.YAMLError) as e:
+            problems.append(f"{path}: {e}")
+
+    def check_one(kind: str, path: str) -> None:
         route = route_capability_path(path, own=own, registry=registry,
                                       node_id=registry.current.id,
                                       open_child=open_child)
