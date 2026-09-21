@@ -361,3 +361,37 @@ def test_a_discard_only_warns_about_child_paths(tmp_path, monkeypatch, capsys):
     err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
     assert "warning: unreconciled capability: kid/auth/login: still Missing" in err
     assert "warning: unreconciled capability: auth/login: this node ('root')" in err
+
+
+# ── Task 3: a child id that is also a namespace the parent already shows ────
+
+def test_a_child_id_that_is_a_local_namespace_is_ambiguous(tmp_path, monkeypatch, capsys):
+    """C17 (a): root has its own `kid/x`."""
+    root, kid = _graph(tmp_path, parent_ledger=True, kid_ledger="default", kid_repo="same")
+    _cap(root, "kid/x", "Supported")
+    _cap(kid, "auth/login", "Supported")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: ambiguous", "kid/x",
+             absent=["in project 'kid'"])
+
+
+def test_declaring_a_child_does_not_silently_redirect_an_inherited_path(
+        tmp_path, monkeypatch, capsys):
+    """C17 (b), the redirection case: `kid/x` reaches root through inheritance
+    from `lib` (bare fall-through), and passes. Declaring a child `kid` must
+    refuse it as ambiguous, not quietly send it to the child's ledger."""
+    root = _work_node(_git(tmp_path / "root"), "root")
+    _give_ledger(root, "default")
+    lib = _sibling(tmp_path, root, "lib")
+    FsCapabilitiesStore.open(root).extends_add("lib")
+    _cap(lib, "kid/x", "Supported")
+    slug = _item(root, "new:\n- kid/x\n")
+    assert capability_gate(FsWorkStore.open(root), FsWorkStore.open(root).get(slug)) == []
+    kid = root / "packages" / "kid"
+    kid.mkdir(parents=True)
+    _work_node(kid, "kid")
+    _register(root, kid)
+    _give_ledger(kid, "default")
+    _refused(root, slug, monkeypatch, capsys, "kid/x: ambiguous", "kid/x",
+             absent=["in project 'kid'"])

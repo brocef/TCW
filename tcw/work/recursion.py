@@ -151,7 +151,8 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
        existing sidecar keeps its meaning.
     2. A first segment naming a declared child (reachable here or not) routes
        the rest of the path to that child's own ledger, read the way the child
-       reads it.
+       reads it — unless `own` already shows capabilities under that same
+       namespace, which is refused as ambiguous rather than guessed at.
     3. Anything else is the node's own path; with no ledger of its own, nothing
        can check it.
 
@@ -164,6 +165,18 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
     if head in child_ids:
         if not rest:
             return f"{path}: names project '{head}' but no capability"
+        if own is not None:
+            # Judged over the node's resolved view — its own capabilities and
+            # the inherited ones `get` falls through to — so a `kid/...` path
+            # that resolved through inheritance before `kid` was declared a
+            # child is refused, not quietly sent to the child's ledger.
+            clash = [c.path for c in own.list_all(namespace=head)]
+            if clash:
+                more = ", …" if len(clash) > 1 else ""
+                return (f"{path}: ambiguous — '{head}' is both a child project of "
+                        f"this node and a namespace in this node's capabilities "
+                        f"ledger ({clash[0]}{more}); rename one of them, or "
+                        f"complete with --force")
         store = open_child(head)
         if isinstance(store, str):
             return f"{path}: {store}"
