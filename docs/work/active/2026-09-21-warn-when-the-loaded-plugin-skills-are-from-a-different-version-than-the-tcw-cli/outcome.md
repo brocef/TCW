@@ -155,3 +155,12 @@ path with matching versions on this machine, median 0.12 seconds in total,
   matching process names; removing the KILL line makes the TERM case wait the
   stub's full 37 seconds. The bootstrap's steady-state comment no longer says no
   interpreter starts, and the release note no longer says "the one command".
+- **Second deadline gap, also folded in at verify.** A `tcw` that prints its
+  version and exits while a background child keeps the output pipe open made
+  the check wait for that child (20 seconds in the verifier's reproduction).
+  After the polling loop the check now always sends KILL to the process group,
+  ignoring the error when the group is already empty.
+  `test_a_child_left_holding_the_output_does_not_delay_the_warning` failed
+  before the fix (waited 37.2 seconds) and passes after it. The verifier's
+  stand-ins now take 3.6 seconds (ignores TERM; silent) and 0.2 seconds (child
+  left behind; warns).

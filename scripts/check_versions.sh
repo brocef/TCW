@@ -58,6 +58,10 @@ output="$(
         sleep 0.1
         rounds=$((rounds + 1))
     done
+    # `tcw` has finished, but a background child it left behind could still
+    # hold the output pipe open. Stop whatever remains of its group; an empty
+    # group is the usual case, and the error from killing it is ignored.
+    kill -KILL -- "-$pid" 2>/dev/null
     wait "$pid"
 )" || exit 0
 

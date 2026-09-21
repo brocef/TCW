@@ -183,6 +183,28 @@ def test_a_hanging_cli_is_abandoned_silently(tmp_path, ignores_term):
     assert not left, f"the abandoned tcw is still running: {left}"
 
 
+def test_a_child_left_holding_the_output_does_not_delay_the_warning(tmp_path):
+    """`tcw` answers and exits, but a background child it started still holds
+    the output pipe open. The substitution would wait for that child, so the
+    check stops the whole process group once `tcw` itself has finished."""
+    plugin = _plugin(tmp_path / "plugin", "2.4.0")
+    pids = tmp_path / "pids"
+    _tcw(tmp_path / "bin",
+         f'echo "tcw 2.5.0"\nsleep 37 &\necho $! > {pids}\n')
+
+    started = time.monotonic()
+    r = _run(plugin, tmp_path / "bin")
+    elapsed = time.monotonic() - started
+
+    time.sleep(0.5)
+    left = [pid for pid in map(int, pids.read_text().split()) if _alive(pid)]
+    for pid in left:
+        os.kill(pid, signal.SIGKILL)
+    _assert_warns(r, "2.5.0", "2.4.0", "newer")
+    assert elapsed < 4, f"the check waited {elapsed:.1f}s on tcw's leftover child"
+    assert not left, f"tcw's leftover child is still running: {left}"
+
+
 # Denies every file write except to /dev/null, like Codex's read-only sandbox.
 READ_ONLY_PROFILE = '(version 1)(allow default)(deny file-write*)(allow file-write* (literal "/dev/null"))'
 
