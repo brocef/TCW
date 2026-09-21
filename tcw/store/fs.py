@@ -3959,8 +3959,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             state["owner"], state["started"] = owner, started
             dump_yaml(state_path, state)
             dst = self.root / "active" / claimed
+            # Where the claim came from, asked of git: the folder is gone, and a
+            # child made by an earlier version came from inside its parent's.
+            src = self._tracked_source(claimed) or self.root / "backlog" / claimed
             os.replace(interrupted[0], dst)
-            src = self.root / "backlog" / claimed
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
                 self._commit_transition(claimed, src, dst, "active", None)
@@ -4044,6 +4046,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # out of `backlog` and nowhere else; anything else means we lost.
             if src is None or self._status_of(src) != "backlog":
                 raise FileNotFoundError(slug)
+            # A child made by an earlier version leaves its parent's folder with
+            # this claim. Written before the move, so an interrupted claim
+            # already carries it; the field names the folder it is still in, so
+            # a claim that stops here leaves nothing that contradicts it.
+            if self._follows_parent_at(src):
+                self._set_parent_in_place(src)
             os.replace(src, private)
         except FileNotFoundError:
             self._lost_the_claim(slug)                # always raises
@@ -4188,6 +4196,35 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 pairs.append((replace(item, slug=real if d == claim else d.name,
                                       status="active", parent=parent), follows))
         return pairs
+
+    def _set_parent_in_place(self, d: Path) -> None:
+        """Write the nesting-derived parent into `d`'s `state.yaml`."""
+        state = load_yaml(d / "state.yaml")
+        state["parent"] = self._nesting_parent(d)
+        dump_yaml(d / "state.yaml", state)
+
+    def _tracked_source(self, slug: str) -> Path | None:
+        """The folder git's index holds for `slug` under `backlog/`, or None.
+
+        For an item whose folder is gone from where it was — mid-claim in
+        `.claiming/` — so the vacated path can be staged as a deletion. A child
+        made by an earlier version was nested, so the path cannot be derived
+        from the slug. Two matches is two items with one name, which is refused
+        rather than guessed at."""
+        try:
+            rel = (self.root / "backlog").resolve().relative_to(self.store_git_root.resolve())
+        except ValueError:
+            return None
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "--", str(rel)],
+                      capture_output=True, text=True, check=False)
+        if listed.returncode != 0:
+            return None
+        hits = sorted({str(Path(line).parent) for line in listed.stdout.splitlines()
+                       if line.endswith(f"/{slug}/state.yaml")})
+        if len(hits) > 1:
+            raise ValueError(f"{slug} is tracked in more than one folder: "
+                             f"{', '.join(hits)}")
+        return self.store_git_root / hits[0] if hits else None
 
     def _nesting_parent(self, d: Path) -> str:
         """The nearest `state.yaml`-bearing ancestor's name; "" if the nearest
@@ -6338,6 +6375,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # rather than special-casing whichever status was added last.
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
+        # A child made by an earlier version is leaving its parent's folder, so
+        # the relation the folder held is written down in the same move.
+        if self._follows_parent_at(src):
+            fields = {**(fields or {}), "parent": self._nesting_parent(src)}
         self._mv(src, dst)
         if fields:
             # After the move, before the commit. After, because the move is where

@@ -389,3 +389,109 @@ def test_stage_gates_for_planning_pass_for_a_child_of_an_active_parent(
     assert main(["work", "stage", "gate", "plan", c]) == 0
     assert "is not legal for an item in" not in capsys.readouterr().err
 
+# ── Task 7: a legacy child's own moves keep its parent ───────────────────────
+
+def _state(path: Path) -> dict:
+    return yaml.safe_load((path / "state.yaml").read_text())
+
+
+def _tracked(root: Path, rel: str) -> bool:
+    return bool(_git(root, "ls-files", "--", f"docs/work/{rel}").strip())
+
+
+def test_a_legacy_childs_own_submit_keeps_its_parent(tmp_path):
+    root = node(tmp_path)
+    _item(root, "active/p", owner="x")
+    _legacy_child(root, "active", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.submit("c")
+    assert st.path("c") == root / "docs/work/review/c"
+    assert _state(st.path("c"))["parent"] == "p"
+    assert st.get("c").parent == "p"
+    assert not _tracked(root, "active/p/c")
+
+
+def test_a_legacy_childs_own_start_keeps_its_parent(tmp_path):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    st.start("c", owner="x")
+    assert st.path("c") == root / "docs/work/active/c"
+    assert (st.get("c").status, st.get("c").parent) == ("active", "p")
+    assert not _tracked(root, "backlog/p/c")
+    assert not _git(root, "status", "--porcelain", "--", "docs/work").strip()
+
+
+def _interrupt_claims(monkeypatch):
+    """Make a claim die right after its folder reached `.claiming/`."""
+    import tcw.store.fs as fs
+    real = fs.load_yaml
+
+    def dying(path, *a, **k):
+        if ".claiming" in Path(path).parts:
+            raise RuntimeError("claim interrupted")
+        return real(path, *a, **k)
+    monkeypatch.setattr(fs, "load_yaml", dying)
+
+
+def test_an_interrupted_legacy_claim_already_carries_its_parent(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    _commit(root)
+    st = FsWorkStore.open(root)
+    with monkeypatch.context() as m:
+        _interrupt_claims(m)
+        with pytest.raises(RuntimeError, match="claim interrupted"):
+            st.start("c", owner="x")
+    [claim] = (root / "docs/work/.claiming").iterdir()
+    assert _state(claim)["parent"] == "p"
+    recovered = FsWorkStore.open(root).start("c", owner="y", take_over=True)
+    assert (recovered.status, recovered.parent) == ("active", "p")
+    assert not _tracked(root, "backlog/p/c")
+    assert not _git(root, "status", "--porcelain", "--", "docs/work").strip()
+
+
+def test_an_interrupted_field_child_claim_recovers_with_its_parent(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01").slug
+    c = st.create("Child", created="2026-01-02", parent=p).slug
+    _commit(root)
+    with monkeypatch.context() as m:
+        _interrupt_claims(m)
+        with pytest.raises(RuntimeError):
+            st.start(c, owner="x")
+    recovered = FsWorkStore.open(root).start(c, owner="y", take_over=True)
+    assert (recovered.status, recovered.parent) == ("active", p)
+
+
+def test_tracked_source_refuses_two_folders_of_one_name(tmp_path):
+    root = node(tmp_path)
+    _item(root, "backlog/a/x")
+    _item(root, "backlog/b/x")
+    _commit(root)
+    with pytest.raises(ValueError, match="backlog/a/x.*backlog/b/x"):
+        FsWorkStore.open(root)._tracked_source("x")
+
+
+def test_a_legacy_claim_that_loses_the_race_stays_put_and_reads_clean(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    _commit(root)
+    import tcw.store.fs as fs
+
+    def lost(src, dst):
+        raise FileNotFoundError(src)
+    monkeypatch.setattr(fs.os, "replace", lost)
+    with pytest.raises(ValueError, match="interrupted claim"):
+        FsWorkStore.open(root).start("c", owner="x")
+    monkeypatch.undo()
+    st = FsWorkStore.open(root)
+    assert st.path("c") == root / "docs/work/backlog/p/c"
+    assert (st.get("c").status, st.get("c").parent) == ("backlog", "p")
+    assert not [p for p in st.check() if p.startswith("c:")]

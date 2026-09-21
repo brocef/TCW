@@ -1225,6 +1225,11 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     before = st.get(bare)
     previous = before.status if before is not None else "backlog"
+    # Where the item is before it moves, for the `--worktree` commit below. A
+    # child made by an earlier version is nested in its parent's folder, so this
+    # is not always `backlog/<slug>`; recovering an interrupted claim finds no
+    # folder at all, and git says where it was.
+    source = st.path(bare) or st._tracked_source(bare)
     strict = (before is not None and before.type != "epic" and st.tracker_strict())
     if (before is not None and before.type == "epic" and args.worktree
             and st.tracker_strict()):
@@ -1284,7 +1289,9 @@ def _start(args: argparse.Namespace) -> int:
     # item's own status move on it, producing a worktree whose item is not in it.
     same_repo = st.store_git_root == node
     rel = st.root.relative_to(st.store_git_root)
-    store_paths = [str(rel / "backlog" / bare), str(rel / "active" / bare)]
+    vacated = (source.relative_to(st.store_git_root) if source is not None
+               else rel / "backlog" / bare)
+    store_paths = [str(vacated), str(rel / "active" / bare)]
     if same_repo and ignore_changed:      # one repository, one commit, as before
         store_paths.append(".gitignore")
         ignore_changed = False
