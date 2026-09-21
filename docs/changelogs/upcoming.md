@@ -19,7 +19,9 @@ carrying everything listed under `v2.5.0`.
   (refused as ambiguous when the node's resolved view, inherited entries
   included, lists anything under that namespace); then the node's own ledger.
 - `tcw work complete`'s remedy line and discard hint say to reconcile a
-  child-qualified path inside the child.
+  child-qualified path inside the child, naming each owning child and its
+  location (`child_path_owners` in `tcw/work/recursion.py`); they say nothing
+  about children when no declared path is child-qualified.
 
 ### Changed
 
@@ -33,7 +35,9 @@ carrying everything listed under `v2.5.0`.
 - The gate reads `capabilities.yaml` before opening the registry or any store,
   and turns every `ValueError` from `FsCapabilitiesStore.open` or
   `FsProjectRegistry.require_valid` into one problem line per declared path, so a
-  discard is never aborted by a store failure.
+  discard is never aborted by a store failure. A `yaml.YAMLError` raised while
+  checking one path (a malformed `meta.yaml` in a ledger it reads) becomes that
+  path's problem line for the same reason.
 
 ### Fixed
 

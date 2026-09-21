@@ -2,7 +2,7 @@
 
 Implemented on branch `work/<slug>` in the item's worktree, following `plan.md`
 task by task. Criterion numbers ("C1"…"C21") are the spec's acceptance criteria.
-New tests are in `tests/test_capability_gate_children.py` (29 tests).
+New tests are in `tests/test_capability_gate_children.py` (32 tests after the verify fold-ins).
 
 ## What shipped, task by task
 
@@ -84,6 +84,29 @@ from the worktree, through the private venv), at commit `6ab2b1d0`:
 ```
 3918 passed in 1196.78s (0:19:56)
 ```
+
+## Folded in at verify
+
+Findings from the verifier and the adversarial review, each fixed in the
+worktree as a `tcw work(verify):` commit:
+
+| Commit | Finding | Fix | Proof |
+|---|---|---|---|
+| `c59bdbac` | A malformed `meta.yaml` anywhere in a ledger a path reads (for example one the ambiguity check lists) raised `yaml.YAMLError` out of the gate, blocking even a discard. | Each path's check catches `ValueError` and `yaml.YAMLError` as that path's problem; `_open_ledger` treats `yaml.YAMLError` as an opening failure. | `test_a_malformed_meta_yaml_is_a_problem_line_not_a_crash`: done refuses with a problem line, wontfix warns and discards. Mutation: catching only `ValueError` turns it red. |
+| `fc1cfb5f` | The remedy line did not name the owning child (C1), and the child sentence printed even when no path was child-qualified. | New `child_path_owners` names each child a declared path is qualified by, with where it is (`kid (packages/kid)`, or `not in this checkout`); the CLI's hint is empty when there are none. | C1's test asserts the named hint; `test_the_child_hint_is_printed_only_for_child_qualified_paths`. Mutations: hint always printed, owners not named, unreachable label changed — each red. |
+| `fc1cfb5f` | The discard test's docstring called its `ghost/` path a C9 case; it is a C10 (unqualified) case. | Docstring corrected, and a real C9 discard test added (a child with no ledger, then one not in the checkout: both warn only). | `test_a_discard_only_warns_about_a_child_that_cannot_be_checked`. |
+| `15f5d8a1` | Release notes missed two completions that may now be refused. | Added: a ledger at `capabilities.path` / `capabilities.repository` is now checked; a node whose own ledger is declared but not provisioned refuses every declared path. | Read in `docs/release-notes/upcoming.md`. |
+
+After the fold-ins, the gate tests plus `tests/test_work.py` (with
+`test_capabilities_rm.py`, `test_capabilities_sidecar.py`,
+`test_epic_completable.py` and `test_recursion.py`), run with no git identity:
+
+```
+369 passed in 124.60s (0:02:04)
+```
+
+The full-suite result above predates the fold-ins; the full suite was not rerun
+after them.
 
 ## What the plan or spec got wrong
 
