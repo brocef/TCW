@@ -1,0 +1,5 @@
+new:
+    - plugin/warn-when-skills-and-cli-versions-differ
+changed:
+    - plugin/bootstrap-the-cli
+    - skills/extras-report
