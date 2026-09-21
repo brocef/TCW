@@ -3956,14 +3956,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # path searched and the path written. The suffix is one hyphen plus
             # `uuid4().hex`, 32 characters — see where the claim is created.
             claimed = interrupted[0].name[:-33]
-            state_path = interrupted[0] / "state.yaml"
-            state = load_yaml(state_path)
-            state["owner"], state["started"] = owner, started
-            dump_yaml(state_path, state)
-            dst = self.root / "active" / claimed
             # Where the claim came from, asked of git: the folder is gone, and a
             # child made by an earlier version came from inside its parent's.
             src = self._tracked_source(claimed) or self.root / "backlog" / claimed
+            state_path = interrupted[0] / "state.yaml"
+            state = load_yaml(state_path)
+            state["owner"], state["started"] = owner, started
+            # A claim this version made already carries `parent:`; one an
+            # earlier version left behind does not, and the relation the nested
+            # source folder held would be lost on landing at the top level.
+            if not state.get("parent") and (tracked := self._tracked_parent(claimed)):
+                state["parent"] = tracked
+            dump_yaml(state_path, state)
+            dst = self.root / "active" / claimed
             os.replace(interrupted[0], dst)
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
@@ -4184,15 +4189,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     item = self._read_item(d)
                 except FileNotFoundError:
                     continue
+                if not path.exists():
+                    continue                           # the claim landed mid-read
                 recorded = state.get("parent")
                 if isinstance(recorded, str) and recorded.strip():
                     parent, follows = recorded.strip(), False
                 elif d == claim:
-                    parent, follows = "", False
+                    # Left by an earlier version, which wrote no field: the
+                    # folder it came from, as git holds it, still says.
+                    parent, follows = self._tracked_parent(real), False
                 else:
+                    # Bounded at the claim folder: if the claim lands meanwhile,
+                    # nothing above it is ours to walk.
                     enclosing = d.parent
-                    while not (enclosing / "state.yaml").exists():
+                    while enclosing != claim and not (enclosing / "state.yaml").exists():
+                        if claim not in enclosing.parents:
+                            break
                         enclosing = enclosing.parent
+                    if enclosing != claim and not (enclosing / "state.yaml").exists():
+                        continue
                     parent = real if enclosing == claim else enclosing.name
                     follows = True
                 pairs.append((replace(item, slug=real if d == claim else d.name,
@@ -4227,6 +4242,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(f"{slug} is tracked in more than one folder: "
                              f"{', '.join(hits)}")
         return self.store_git_root / hits[0] if hits else None
+
+    def _tracked_parent(self, slug: str) -> str:
+        """The item git's index holds `slug` nested inside, or "" when it is
+        tracked at the top of `backlog/` or not at all."""
+        try:
+            source = self._tracked_source(slug)
+        except ValueError:
+            return ""                     # two folders of one name: not ours to pick
+        if source is None:
+            return ""
+        try:
+            parts = source.resolve().relative_to((self.root / "backlog").resolve()).parts
+        except ValueError:
+            return ""
+        return parts[-2] if len(parts) > 1 else ""
 
     def _nesting_parent(self, d: Path) -> str:
         """The nearest `state.yaml`-bearing ancestor's name; "" if the nearest

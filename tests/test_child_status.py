@@ -573,3 +573,66 @@ def test_reparenting_a_legacy_child_moves_it_up_and_records_the_field(tmp_path):
     st.update_work("c", parent="q")
     assert st.path("c") == root / "docs/work/active/c"
     assert (st.get("c").status, st.get("c").parent) == ("active", "q")
+
+
+# ── verify: claims that land mid-read, and claims an earlier version left ────
+
+def test_a_claim_landing_mid_read_does_not_hang_the_scan(tmp_path):
+    """The claim folder is renamed into `active/` between listing its nested
+    items and walking up from one of them; the walk must stop at the claim."""
+    import os
+    import signal
+    import uuid
+    root = node(tmp_path)
+    _item(root, "backlog/p")
+    _legacy_child(root, "backlog", "p", "c")
+    st = FsWorkStore.open(root)
+    claiming = root / "docs/work/.claiming"
+    claiming.mkdir()
+    private = claiming / f"p-{uuid.uuid4().hex}"
+    os.replace(root / "docs/work/backlog/p", private)
+    real = st._read_item
+
+    def read_then_land(d):
+        item = real(d)
+        if private.exists():
+            (root / "docs/work/active").mkdir(exist_ok=True)
+            os.replace(private, root / "docs/work/active/p")
+        return item
+    st._read_item = read_then_land
+
+    def hung(*_):
+        raise TimeoutError("the scan did not stop")
+    previous = signal.signal(signal.SIGALRM, hung)
+    signal.alarm(5)
+    try:
+        st._in_flight_items()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def _old_claim_of_a_nested_child(root: Path) -> Path:
+    """What 2.5.0 left when a claim of a nested child died: the folder in
+    `.claiming/`, no `parent:` field, and git still tracking it nested."""
+    _item(root, "backlog/q")
+    _legacy_child(root, "backlog", "q", "c")
+    _commit(root)
+    private = root / "docs/work/.claiming" / f"c-{'c' * 32}"
+    private.parent.mkdir()
+    (root / "docs/work/backlog/q/c").replace(private)
+    return private
+
+
+def test_an_old_claim_is_counted_under_the_parent_git_remembers(tmp_path):
+    root = node(tmp_path)
+    _old_claim_of_a_nested_child(root)
+    assert FsWorkStore.open(root).open_descendants("q") == ["c"]
+
+
+def test_taking_over_an_old_claim_writes_the_parent(tmp_path):
+    root = node(tmp_path)
+    _old_claim_of_a_nested_child(root)
+    got = FsWorkStore.open(root).start("c", owner="y", take_over=True)
+    assert (got.status, got.parent) == ("active", "q")
+    assert _state(root / "docs/work/active/c")["parent"] == "q"
