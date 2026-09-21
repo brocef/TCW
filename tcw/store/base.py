@@ -3553,11 +3553,6 @@ class WorkStore(ABC):
         """
         return [i for i in self.query() if i.initiative == epic_slug]
 
-    def parent_children(self, slug: str) -> list[WorkItem]:
-        """Items whose `parent` is `slug` — the `parent` counterpart of
-        `initiative_children`, and local to this store as that relation is."""
-        return [i for i in self.query() if i.parent == slug]
-
     def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
         """Every item, paired with whether its status merely follows its parent.
 

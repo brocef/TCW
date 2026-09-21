@@ -36,11 +36,12 @@ carrying everything listed under `v2.5.0`.
   before the folder enters `.claiming/`, and take-over stages the vacated path
   found from the git index (`_tracked_source`). `start --worktree` commits the
   real source path.
-- `WorkStore` gains `parent_children`, `independent_descendants` and
-  `open_descendants` (whole subtree, walking through children that follow their
+- `WorkStore` gains `independent_descendants` and `open_descendants` (whole subtree, walking through children that follow their
   parent, cycle-safe; the filesystem store also counts items mid-claim, including
   anything nested in a claimed folder), `require_nothing_open_beneath` and
-  `_require_live_parent`.
+  `_require_live_parent`. The pre-merge check in `tcw work complete` asks the
+  branch copy only about children the primary copy does not have, since the
+  branch copy is frozen at `start --worktree`.
 - `complete` refuses while `open_descendants` is non-empty, for either
   resolution, outside the `--force` block. `drop` refuses while any independent
   descendant exists, open or resolved. `epic_completable` is false while any
@@ -55,5 +56,10 @@ carrying everything listed under `v2.5.0`.
   `_require_writable_graveyard(also=...)` tolerates their uncommitted entries on
   a resumed removal. `_committed_item_path` and `_commit_holds` find a nested
   item in a past commit.
-- `tcw validate` reports a `parent:` naming no item or tombstone, and one that
-  disagrees with the folder a nested item sits in.
+- `tcw validate` reports a `parent:` naming no item or tombstone, one that
+  disagrees with the folder a nested item sits in, and a loop of `parent:`
+  fields.
+- The `.claiming/` scan stops walking at the claim folder, so a claim that
+  lands mid-scan cannot send it climbing to the filesystem root. A claim an
+  earlier version left (no `parent:` field) takes its parent from where git's
+  index holds it, and `--take-over` writes it.
