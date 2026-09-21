@@ -128,3 +128,12 @@ Two smaller changes come with it:
   them into line — updating the plugin, or upgrading the `tcw` command — with
   the exact commands to run. It is only a warning and never stops your work. Claude shows it when
   a session starts; in Codex, the skills ask the agent to run the check.
+
+## A refused `tcw work drop` now tells you how to discard
+
+`tcw work drop` only deletes items still in the backlog. For an item you have
+started, or sent to review, it used to refuse without saying what to do instead.
+Now it names the command that works:
+`tcw work complete <slug> --resolution wontfix --confirm`, which discards the item,
+keeps a record of it, and updates a linked ticket. Reported from real use in the
+proposit-app project.
