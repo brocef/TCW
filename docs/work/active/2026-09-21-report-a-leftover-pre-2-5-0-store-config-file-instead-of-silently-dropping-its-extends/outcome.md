@@ -91,3 +91,15 @@ hand.
   lead as its own item.
 - The release notes' opening "Nothing else changed" sentence, which Task 5 had
   reworded, was restored at verify on request; it is reconciled at merge.
+
+## Autonomous decisions
+
+Taken in an autonomous run; each consulted Codex (read-only) and an Opus subagent.
+
+- **Report the file whenever it exists, even when its extends is already migrated?** Codex: always a problem, and the message covers "already migrated → just delete it". Opus: always a problem, noting stores that live in another repository. Chose always a problem.
+- **`tcw validate` ignores stores relocated by `<component>.path` in general.** Codex: a separate item. Opus: a separate item. Chose a separate item, filed as `2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting`.
+- **Must the alias hint cover a cycle?** Codex: require the cycle hint. Opus: that branch can't be reached on the top store. Split. Reading tcw/store/fs.py (the docstring at ~1304-1306) settled it: cycles are recorded on the deepest store, never on the top one that `check()` runs on. Took Opus's answer and dropped the branch.
+- **(Plan) A store declared only by `<component>.repository` and not provisioned: fail validate?** Codex: yes (option a). Opus: yes (option a). Chose yes, consistent with the work store; the message names `tcw provision`.
+- **Code review** (adversarial-code-reviewer): DONE on the condition that the documents also name the other open failures validate now reports (a missing `<component>.path`, an unreachable `extends`). Fixed in adef4912. Its pre-existing crash finding (a missing `taxonomy.path` inside the capabilities check) was filed as `2026-09-21-report-a-missing-taxonomy-path-as-a-validate-problem-instead-of-crashing-inside-the-capabilities-check`. Nothing rejected.
+- **Verify** (tcw:verifier): accept. Criteria 1–9 and 11–14 are met. Criterion 10 is met for `validate`, and for the check commands only as far as "exit 1, no leftover line". Accepted with that gap, because the cause is `find_node`, which predates this item and is filed as `2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here`.
+- **Hands-on QA** by the coordinating session: in a scratch node with both leftover files, each check command printed its one line and exited 1, and `validate --no-recurse` printed both and exited 1. After the files were deleted, `validate` was OK.
