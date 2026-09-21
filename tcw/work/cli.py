@@ -470,24 +470,13 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
     # most misleading of the two ways, because `_tracker_link` never appends to
     # `reasons`, so the recorded reason was the placeholder "creating it did not
     # succeed" for a ticket that had been created perfectly well.
-    if made := _created_on(st, slug):
+    from tcw.tracker.intake import created_but_unbound
+    if made := created_but_unbound(st, slug):
         print(f"→ {made['key']} was created for {slug} and the binding did not "
               f"follow ({reason}). `tcw work tracker create {slug}` binds it; "
               f"it will not make a second.", file=sys.stderr)
         return
     _record_owed(st, slug, reason, verb, str(date.today()))
-
-
-def _created_on(st, slug: str):
-    """The `created` record on `slug`, or `None`. Never raises: every caller is
-    on a path where filing has already succeeded and must not be undone."""
-    from tcw.store.base import Unbound
-    from tcw.tracker.intake import binding_of
-    try:
-        binding, _revision = binding_of(st, slug)
-    except Exception:                   # noqa: BLE001 — see the docstring
-        return None
-    return binding.created if isinstance(binding, Unbound) else None
 
 
 def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
@@ -504,10 +493,11 @@ def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
         # made and could not be written down — and telling somebody to run
         # `create` after repairing the disk would then make a second one.
         print(f"tcw work {verb}: {slug} has no ticket recorded ({reason}), and "
-              f"that could not be recorded either ({error}). Read the message "
-              f"above before running `tcw work tracker create {slug}`: if it "
-              f"names a ticket, that ticket exists and wants "
-              f"`tcw work tracker link` instead.", file=sys.stderr)
+              f"that could not be recorded either ({error}). If that reason "
+              f"names a ticket, the ticket exists and wants "
+              f"`tcw work tracker link {slug} <that key> --sync-status`; "
+              f"`tcw work tracker create {slug}` would make a second one.",
+              file=sys.stderr)
         return
     print(f"→ no ticket was created for {slug}: {reason}. It is recorded as owed; "
           f"`tcw work tracker create {slug}` makes it.", file=sys.stderr)
@@ -3727,24 +3717,16 @@ def _drop(args: argparse.Namespace) -> int:
               f"record. Re-run with --confirm.", file=sys.stderr)
         print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
+    from tcw.tracker.intake import created_but_unbound_refusal, ever_bound
+    if refusal := created_but_unbound_refusal(st, bare):
+        print(f"tcw work drop: {bare} was not dropped. {refusal}", file=sys.stderr)
+        return 1
     if st.tracker_strict():
-        from tcw.tracker.intake import created_but_unbound, ever_bound
         if ever_bound(st, bare):
             return _strict_says_no("drop", f"{bare} was not dropped",
                                    f"It is, or was, bound to a ticket, and dropping would "
                                    f"erase that record. Discard it instead: `tcw work "
                                    f"complete {bare} --resolution wontfix --confirm`.")
-        if made := created_but_unbound(st, bare):
-            # Never bound, so `ever_bound` says no — but the record names a
-            # ticket that exists, and dropping the item takes the sidecar with
-            # it. The ticket would be left open with nothing naming it.
-            return _strict_says_no(
-                "drop", f"{bare} was not dropped",
-                f"{made['key']} was created for it and never bound, and dropping "
-                f"would erase the only record of that ticket. Bind it with "
-                f"`tcw work tracker create {bare}`, or forget the key with "
-                f"`tcw work tracker unlink {bare} --reason \"<why>\"` and close "
-                f"{made['key']} yourself, then drop.")
     try:
         st.drop(bare)
     except _ERRORS as e:

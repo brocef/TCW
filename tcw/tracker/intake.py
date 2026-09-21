@@ -359,6 +359,26 @@ def created_but_unbound(store, slug: str) -> dict | None:
     return binding.created if isinstance(binding, Unbound) else None
 
 
+def created_but_unbound_refusal(store, slug: str) -> str | None:
+    """Why `slug` must not be destroyed, or `None`.
+
+    Deliberately **not** gated on strict mode, unlike `ever_bound`'s refusal.
+    Strict mode answers "may work proceed without a ticket"; this answers "is a
+    real ticket about to lose the only thing that names it", and a project does
+    not have to be strict to get into that state — `create.on-new` does not
+    require strict, and under strict almost nothing reaches `tcw work new`
+    anyway. Gating it on strict closed the rare case and left the common one.
+    """
+    made = created_but_unbound(store, slug)
+    if made is None:
+        return None
+    return (f"{made['key']} was created for {slug} and never bound, and "
+            f"destroying it would erase the only record of that ticket. Bind it "
+            f"with `tcw work tracker create {slug}`, or forget the key with "
+            f"`tcw work tracker unlink {slug} --reason \"<why>\"` and close "
+            f"{made['key']} yourself.")
+
+
 def without_pending_records(content: str) -> str:
     """`content` with any `created` and `owed` records removed.
 

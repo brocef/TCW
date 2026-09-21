@@ -1596,8 +1596,12 @@ def test_unlink_clears_a_stale_created_record(node, monkeypatch):
     assert created_record(_sidecar(root, slug)) is None, _sidecar(root, slug)
 
 
-def _pending_node(node, monkeypatch, document):
-    """A strict-mode node holding one item whose sidecar carries only `document`."""
+def _pending_node(node, monkeypatch, document, *, strict):
+    """A node holding one item whose sidecar carries only `document`.
+
+    `strict` has no default: whether the drop gates are behind strict mode is
+    exactly the axis these tests vary, and it was the wrong answer once already.
+    """
     root, configure = node
     configure(CREATE_TRACKER)
     _create_responses(monkeypatch)
@@ -1608,7 +1612,7 @@ def _pending_node(node, monkeypatch, document):
     from tcw.tracker.intake import BINDING_SIDECAR
     FsWorkStore.open(root).write_sidecar(slug, BINDING_SIDECAR, document,
                                          revision="")
-    configure({**CREATE_TRACKER, "strict": True,
+    configure({**CREATE_TRACKER, **({"strict": True} if strict else {}),
                "statuses": {"backlog": "To Do", "active": "In Progress",
                             "completed": "Done", "discarded": "Won't Do"}})
     return root, slug
@@ -1621,7 +1625,8 @@ def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
     erase that record" when there was no such record and no ticket."""
     from tcw.tracker.intake import with_owed_record
     root, slug = _pending_node(node, monkeypatch, with_owed_record(
-        None, {"since": "2026-09-20", "reason": "the network is down"}))
+        None, {"since": "2026-09-20", "reason": "the network is down"}),
+        strict=True)
 
     code, _out, err = _run(["work", "drop", slug, "--confirm"])
     assert code == 0, err
@@ -1630,18 +1635,25 @@ def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
     assert FsWorkStore.open(root).query() == [], "the item is still there"
 
 
+@pytest.mark.parametrize("strict", [True, False], ids=["strict", "not-strict"])
 def test_an_item_holding_a_created_key_is_not_dropped_out_from_under_it(
-        node, monkeypatch):
+        node, monkeypatch, strict):
     """The other half, and the one that does **not** follow from `owed`.
 
     `created` names a ticket that exists. Dropping the item deletes its sidecar,
     which is the only place that key is written down — so the ticket would be
     left open in a shared tracker with nothing anywhere naming it. `ever_bound`
     is still correctly False here: it was never *bound*. The gate asks a second
-    question."""
+    question.
+
+    **Both modes**, because this is not a strict-mode rule. Strict answers "may
+    work proceed without a ticket"; this answers "is a real ticket about to lose
+    the only thing naming it", and `create.on-new` does not require strict — so
+    the first version of the gate closed the rare case and left the common one
+    wide open."""
     from tcw.tracker.intake import with_created_record
     root, slug = _pending_node(node, monkeypatch, with_created_record(
-        None, {"key": "PROBE-9", "id": "9"}))
+        None, {"key": "PROBE-9", "id": "9"}), strict=strict)
 
     code, _out, err = _run(["work", "drop", slug, "--confirm"])
     assert code == 1, err

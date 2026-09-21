@@ -249,10 +249,13 @@ class TestCreateWork:
         # `tracker: null` for an item that had just been given one, and carried
         # a `tracker.yaml` revision already stale — which the next sidecar write
         # from the page would have been rejected on.
-        assert body["item"]["tracker"] == {
-            "owed": {"since": body["item"]["tracker"]["owed"]["since"],
-                     "reason": body["item"]["tracker"]["owed"]["reason"]}
-        }, body["item"]["tracker"]
+        # Not built out of the actual value: an expected value that indexes the
+        # actual one raises inside its own expression on a regression instead of
+        # failing the assertion, and checks nothing.
+        tracker = body["item"]["tracker"]
+        assert set(tracker) == {"owed"}, tracker
+        assert set(tracker["owed"]) == {"since", "reason"}, tracker
+        assert "tcw work tracker create" in tracker["owed"]["reason"], tracker
         assert "tracker.yaml" in body["sidecarRevisions"], body["sidecarRevisions"]
 
         owed = FsWorkStore.open(root).get(slug).tracker

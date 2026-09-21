@@ -219,13 +219,21 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     strict mode each change that needs one is sent to the `tcw work` command that
     does. Epics and discards are not gated, as on the command line.
     """
+    # Asked first, and not a strict-mode rule: see `created_but_unbound_refusal`.
+    # The CLI offers two ways out of this and the web app used to offer one — the
+    # one that makes the item permanently undroppable — so both now say the same
+    # words, from the same place.
+    from tcw.tracker.intake import created_but_unbound_refusal
+    if action == "drop" and slug:
+        if refusal := created_but_unbound_refusal(work, slug):
+            return refusal
     if not work.tracker_strict():
         return None
     body = body or {}
     item = work.get(slug) if slug else None
     epic = (body.get("type") == "epic") if action == "create" else (
         item is not None and item.type == "epic")
-    from tcw.tracker.intake import created_but_unbound, ever_bound
+    from tcw.tracker.intake import ever_bound
     lead = "refused under strict tracker mode, which the web app cannot check; "
     if action == "create" and not epic:
         return lead + "create work from a ticket with `tcw work tracker import <ticket>`."
@@ -236,10 +244,6 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     if action == "drop" and ever_bound(work, slug):
         return lead + (f"{slug} is, or was, bound to a ticket. Discard it instead: "
                        f"`tcw work complete {slug} --resolution wontfix --confirm`.")
-    if action == "drop" and (made := created_but_unbound(work, slug)):
-        return lead + (f"{made['key']} was created for {slug} and never bound; "
-                       f"dropping would erase the only record of that ticket. "
-                       f"Use `tcw work tracker create {slug}` to bind it.")
     return None
 
 
