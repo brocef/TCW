@@ -3787,7 +3787,11 @@ def _drop(args: argparse.Namespace) -> int:
     # Before the `--confirm` gate, for the same reason the missing-item check is:
     # advising `--confirm` on an item drop will refuse anyway sends the user to a
     # second error. And name the route that works — `discard` is not a verb.
-    item = st.get(bare)
+    try:
+        item = st.get(bare)
+    except MultipleMatch as e:
+        print(f"tcw work drop: {e}", file=sys.stderr)
+        return 1
     if item is not None and item.status != "backlog":
         if item.status in ("completed", "discarded"):
             print(f"tcw work drop: {args.slug} is already resolved ({item.status}); "

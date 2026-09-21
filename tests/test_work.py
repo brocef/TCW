@@ -2000,6 +2000,7 @@ def test_drop_of_an_active_item_points_to_discard(tmp_path, monkeypatch, capsys)
     """`discard` is not a verb, so a refused drop must name the one that works —
     and before the `--confirm` gate, whose advice would only lead to a second
     refusal."""
+    from tcw.cli import main
     root = node(tmp_path)
     st = FsWorkStore.open(root)
     slug = st.create("a feature", created="2026-01-01").slug
@@ -2008,6 +2009,9 @@ def test_drop_of_an_active_item_points_to_discard(tmp_path, monkeypatch, capsys)
     _drop_refused_toward_discard(root, slug, capsys)
     _drop_refused_toward_discard(root, slug, capsys, "--confirm")
     assert FsWorkStore.open(root).get(slug).status == "active"
+    # and the command it names does what it says
+    assert main(["work", "complete", slug, "--resolution", "wontfix", "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(slug).status == "discarded"
 
 
 def test_drop_of_an_item_in_review_points_to_discard(tmp_path, monkeypatch, capsys):
@@ -2021,14 +2025,14 @@ def test_drop_of_an_item_in_review_points_to_discard(tmp_path, monkeypatch, caps
     assert FsWorkStore.open(root).get(slug).status == "review"
 
 
-def test_drop_of_a_resolved_item_says_so(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("resolution", ["done", "wontfix"])
+def test_drop_of_a_resolved_item_says_so(tmp_path, monkeypatch, capsys, resolution):
     from tcw.cli import main
     root = node(tmp_path)
     st = FsWorkStore.open(root)
     slug = st.create("a feature", created="2026-01-01").slug
-    st.complete(slug, "wontfix", [])
-    if st.get(slug) is None:
-        pytest.skip("this node deletes resolved items at once")
+    st.start(slug, force=True)
+    st.complete(slug, resolution, [], force=True)
     monkeypatch.chdir(root)
     assert main(["work", "drop", slug, "--confirm"]) == 1
     err = capsys.readouterr().err
