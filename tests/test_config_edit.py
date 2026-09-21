@@ -224,7 +224,8 @@ def test_an_alias_target_is_refused():
 
 def test_removing_a_value_that_carries_an_aliased_anchor_is_refused():
     text = "taxonomy:\n  extends: &ids [a]\ncapabilities:\n  extends: *ids\n"
-    refused(text, Remove("taxonomy", "extends"))
+    message = refused(text, Remove("taxonomy", "extends"))
+    assert message.startswith(f"{PATH}: cannot remove taxonomy.extends ")
 
 
 def test_a_block_scalar_target_is_refused():
@@ -232,7 +233,9 @@ def test_a_block_scalar_target_is_refused():
 
 
 def test_a_flow_top_level_is_refused():
-    refused("{id: a, work: {path: w}}\n", SetScalar("taxonomy", "path", "t"))
+    message = refused("{id: a, work: {path: w}}\n", SetScalar("taxonomy", "path", "t"))
+    assert "one `{…}` mapping" in message
+    assert "existing `taxonomy` section" not in message     # there is none
 
 
 def test_a_non_mapping_section_is_refused():

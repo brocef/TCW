@@ -157,8 +157,7 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
     new = _assemble(text, replacements)
     _verify(path, text, new, replacements, allowed, target,
             instruction="; and ".join(_instruction(e, doc, mapping) for e in edits),
-            what=", ".join("id" if isinstance(e, SetId) else f"{e.section}.{e.key}"
-                           for e in edits))
+            headline="cannot " + ", ".join(_what(e, mapping) for e in edits))
     return new
 
 
@@ -514,13 +513,13 @@ class _Document:
 
 def _verify(path: Path, original: str, new: str, replacements: list[_Replacement],
             allowed: set[int], target: dict, *, instruction: str,
-            what: str = "the file") -> None:
+            headline: str = "cannot change it") -> None:
     """Refuse unless `new` means `target` and differs from `original` only
     inside `replacements`, whose spans hold no anchor and no comment outside
     `allowed`. Checked against `new` itself, not against how it was built."""
     def refuse(why: str):
         raise ConfigEditRefused(
-            f"{path}: cannot change {what} without rewriting the file, which would "
+            f"{path}: {headline} without rewriting the file, which would "
             f"lose its comments and formatting ({why}); {instruction}")
 
     cursor_old = cursor_new = 0
@@ -573,6 +572,10 @@ def _instruction(edit: Edit, doc: _Document, mapping: dict) -> str:
         return f"edit it by hand so it has the top-level key `id: {_Document.scalar(edit.value)}`"
     shape = _section_shape(doc, edit.section)
     section = mapping.get(edit.section)
+    if shape == "other" and doc.root is not None and doc.root.flow_style:
+        value = "(delete it)" if isinstance(edit, Remove) else f"`{_flow(edit)}`"
+        return (f"edit it by hand: the file is one `{{…}}` mapping, so change "
+                f"`{edit.section}.{edit.key}` inside it to {value}")
     if isinstance(edit, Remove):
         others = isinstance(section, dict) and len(section) > 1
         text = (f"edit it by hand: delete the `{edit.key}` key and its value from the "
@@ -593,14 +596,17 @@ def _instruction(edit: Edit, doc: _Document, mapping: dict) -> str:
             f"(do not add a second one), set `{line}`")
 
 
-def _message(path: Path, edit: Edit, doc: _Document, mapping: dict, why: str) -> str:
+def _what(edit: Edit, mapping: dict) -> str:
+    """'add taxonomy.extends', 'remove work.tags', 'set id' — for a headline."""
     if isinstance(edit, SetId):
-        what, verb = "id", "set"
-    else:
-        what = f"{edit.section}.{edit.key}"
-        section = mapping.get(edit.section)
-        present = isinstance(section, dict) and edit.key in section
-        verb = "remove" if isinstance(edit, Remove) else ("change" if present else "add")
-    return (f"{path}: cannot {verb} {what} without rewriting the file, which would "
+        return "set id"
+    section = mapping.get(edit.section)
+    present = isinstance(section, dict) and edit.key in section
+    verb = "remove" if isinstance(edit, Remove) else ("change" if present else "add")
+    return f"{verb} {edit.section}.{edit.key}"
+
+
+def _message(path: Path, edit: Edit, doc: _Document, mapping: dict, why: str) -> str:
+    return (f"{path}: cannot {_what(edit, mapping)} without rewriting the file, which would "
             f"lose its comments and formatting ({why}); "
             f"{_instruction(edit, doc, mapping)}")
