@@ -112,6 +112,30 @@ confirming it went red, and why:
 10. `_UniqueKeyLoader` stayed in `fs.py`, imported lazily by `config_edit.py`
     (the plan left this open).
 
+## Fixes folded in after review and verification
+
+| Commit | What |
+| --- | --- |
+| `fa593c2a` tcw work(verify): edit null-only and emptied configs instead of refusing them | A config that is only `---`, `~` or comments before `---` (read as `{}`) was refused by `tcw init --id` and `write_sentinel`, against Goal 5; removing the only key of the only section was refused because the empty result parsed as `None`; an empty `work: {}` was refused for adds; a `...` followed by blank or comment lines blocked an append; two appends to a file without a final line break left a blank line; the anchor refusal told the user to set the value by hand, which would break the aliases too. `_verify`'s docstring now says what its text step proves. |
+| `8fa4beff` tcw work(verify): let a tags change that changes nothing succeed without writing | `tags add` of a registered tag or `tags rm` of an unregistered one on a hand-ordered commented list was refused; now a no-op. Refused-init test compares `git status --porcelain`; scalar-`work` refusal tests check the tree and index. |
+
+Each new test was watched failing for the named defect before its fix; the
+strengthened refusal tests were mutation-checked (writing `.gitignore`, or any
+file, before the refusal turns them red — the first `.gitignore` mutation
+stayed green only because it appended a line the fixture's first `init` had
+already added, so it was rerun with a unique line).
+
+**`work: {}` is handled, not documented as refused.** The review asked for the
+changelog to list it among the refusals; an empty brace mapping has nothing to
+lose, so it is now opened into a block (`work:` plus the new key), the same way
+`work: ~` is, and the changelog says so instead.
+
+**Spec wording correction, AC 3.** AC 3 reads as if removing any id from a block
+`extends` list always succeeds. When a full comment line sits between the last
+two items, removing the last one would delete that comment, and the spec's own
+verification rule refuses it. The refusal is correct; AC 3 should say "unless
+removing the item would delete a full comment line".
+
 ## Notes
 
 - Documentation Sync: changelog, release notes, `docs/guide/taxonomy-and-capabilities.md`,

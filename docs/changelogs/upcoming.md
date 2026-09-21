@@ -39,7 +39,8 @@ carrying everything listed under `v2.5.0`.
 - A `tcw-config.yaml` these commands cannot edit in place is refused with a
   `ValueError` naming the key and the hand edit to make, never rewritten: a
   section written in braces (`taxonomy: {path: x}`) that needs a key added or
-  removed, a file that is one brace mapping, an alias or anchored value in the
+  removed (an empty `work: {}` is not refused: it is opened into a block and
+  takes the key), a file that is one brace mapping, an alias or anchored value in the
   way, a multi-line scalar as the target, and a hand-ordered `tags` list holding
   comments that `tags add|rm` would have to re-sort.
 - Three shapes that were silently replaced are now refused: a `work` section
