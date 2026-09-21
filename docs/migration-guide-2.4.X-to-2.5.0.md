@@ -116,10 +116,11 @@ different inheritance. This only differs from 2.x when `taxonomy.path` or
 `capabilities.path` is a relative path pointing *outside* the worktree; a tree
 that stays inside it already belonged to the branch.
 
-## One more thing: writing the key re-renders the file
+## One more thing: writing the key keeps the rest of the file
 
 `tcw taxonomy extends add` and `tcw capabilities extends` now write
-`tcw-config.yaml`, which means they rewrite it whole: keys, values and their
-order survive, but comments and custom formatting do not. `tcw work tags add`
-has always behaved this way; two more commands now do. If you keep comments in
-that file, edit the key by hand instead.
+`tcw-config.yaml`. They change only the `extends` lines and leave every comment
+and all formatting elsewhere in the file as it was. If the file is laid out in a
+way they cannot edit safely — a section written in braces on one line, such as
+`taxonomy: {path: docs/taxonomy}`, is the common case — they change nothing and
+print the exact edit to make by hand.

@@ -58,6 +58,7 @@ from tcw.store.base import (
     TaxonomyStore, Term, TermDetail, Tombstone,
     WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
 )
+from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
@@ -156,9 +157,28 @@ def git_root(start: Path | None = None) -> Path | None:
 
 SENTINEL = "tcw-config.yaml"
 def write_sentinel(root: Path, project_id: str | None = None) -> bool:
-    """Create or backfill the node sentinel without discarding configuration."""
+    """Create or backfill the node sentinel without discarding configuration.
+
+    Backfilling adds one `id:` line and touches nothing else in the file. `True`
+    only when it wrote.
+    """
     p = root / SENTINEL
     existing = load_config(p) if p.exists() else {}
+    text = config_edit.edit_text(p, config_edit.read_text(p),
+                                 _sentinel_edits(p, existing, project_id))
+    if text is None:
+        return False
+    _atomic_write_all([(p, text)])
+    return True
+
+
+def _sentinel_edits(p: Path, existing: dict, project_id: str | None) -> list:
+    """The edit that gives the sentinel its `id`, or none when it has one.
+
+    `id: null` counts as none. It used to be read that way and then written
+    back unchanged — `{"id": new, **existing}` let the old `None` win — while
+    reporting a successful backfill.
+    """
     configured = existing.get("id")
     if configured is not None:
         if not isinstance(configured, str):
@@ -168,13 +188,10 @@ def write_sentinel(root: Path, project_id: str | None = None) -> bool:
             raise ValueError(
                 f"project already has id '{configured}'; refusing conflicting id '{project_id}'"
             )
-        return False
+        return []
     # Direct adapter callers (principally isolated store tests) receive a stable
     # fixture identity. The public CLI enforces explicit --id before calling us.
-    project_id = project_id or "test-project"
-    existing = {"id": validate_project_id(project_id), **existing}
-    dump_yaml(p, existing)
-    return True
+    return [config_edit.SetId(validate_project_id(project_id or "test-project"))]
 
 
 def find_node_root(start: Path | None = None) -> Path | None:
@@ -1071,18 +1088,27 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                         f"items written in {leaf} would be gitignored, so work "
                         f"filed there would not be tracked"
                     )
-    write_sentinel(root, project_id)
+    # The config's whole change — `id` and every `<component>.path` — decided
+    # and verified as one edit before anything is written. It used to be two
+    # writes with the default store's deletion between them, so a refusal at
+    # the second would have left `id` written and the store already gone.
+    config_path = root / SENTINEL
     configured = {c: p for c, p in paths.items() if c in components}
-    if configured:
-        if work_path is not None and "work" in components and replacing_default_store:
-            shutil.rmtree(default_root)
-        config_path = root / SENTINEL
-        config = load_config(config_path)
-        for component, location in configured.items():
-            section = (config.get(component)
-                       if isinstance(config.get(component), dict) else {})
-            config[component] = {**section, "path": str(location)}
-        dump_yaml(config_path, config)
+    for component in configured:
+        section = existing_config.get(component)
+        if section is not None and not isinstance(section, dict):
+            # Used to be replaced by `{path: …}`, discarding what was typed.
+            raise ValueError(f"{config_path}: {component} must be a mapping, "
+                             f"found {type(section).__name__}")
+    config_text = config_edit.edit_text(
+        config_path, config_edit.read_text(config_path),
+        _sentinel_edits(config_path, existing_config, project_id)
+        + [config_edit.SetScalar(c, "path", str(location))
+           for c, location in configured.items()])
+    if config_text is not None:
+        _atomic_write_all([(config_path, config_text)])
+    if replacing_default_store:
+        shutil.rmtree(default_root)
     created: list[Path] = []
     for c, base, leaves in plan:
         for leaf in leaves:
@@ -1499,7 +1525,7 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
             os.close(fd)                     # mkstemp is for the *name*
             tmp = Path(tmp_name)
             staged.append((tmp, path, content))
-            tmp.write_text(content, encoding="utf-8")
+            tmp.write_text(content, encoding="utf-8", newline="")
             # `mkstemp` is 0600 by design. Carry the target's mode when it has
             # one, so promoting does not silently re-permission a file someone
             # chmod'ed; otherwise fall back to what an ordinary write would give.
@@ -1778,11 +1804,10 @@ class FsTreeStore:
         *resolution* (`self.extends`) stays load-time only — reopen to use it.
         An empty list removes the key rather than writing `extends: []`, which
         is what the per-store file did.
+
+        The in-memory copy changes only once the write has succeeded, so a
+        refused write leaves this store agreeing with the file.
         """
-        if extends:
-            self.config["extends"] = extends
-        else:
-            self.config.pop("extends", None)
         config = self._config()
         section = config.get(self.COMPONENT)
         if section is not None and not isinstance(section, dict):
@@ -1795,20 +1820,16 @@ class FsTreeStore:
             raise ValueError(
                 f"{self._config_path()}: {self.COMPONENT} must be a mapping, "
                 f"found {type(section).__name__}")
-        if not isinstance(section, dict):
-            section = {}
+        # `Remove` drops a section that is left holding nothing, so removing the
+        # last `extends` from a node that configured nothing else leaves the
+        # config as it was rather than growing an empty `taxonomy: {}`.
+        self._write_node_config([
+            config_edit.SetList(self.COMPONENT, "extends", tuple(extends)) if extends
+            else config_edit.Remove(self.COMPONENT, "extends")])
         if extends:
-            section["extends"] = extends
+            self.config["extends"] = extends
         else:
-            section.pop("extends", None)
-        # A section that now holds nothing is dropped, so removing the last
-        # `extends` from a node that configured nothing else leaves the config
-        # as it was rather than growing an empty `taxonomy: {}`.
-        if section:
-            config[self.COMPONENT] = section
-        else:
-            config.pop(self.COMPONENT, None)
-        self._write_node_config(config)
+            self.config.pop("extends", None)
 
     def _extends_label(self) -> str:
         """What a refusal about `extends` calls the thing it is refusing.
@@ -1819,8 +1840,9 @@ class FsTreeStore:
         """
         return f"{self._config_path()}: {self.COMPONENT}.extends"
 
-    def _write_node_config(self, config: dict) -> None:
-        """Write the node sentinel and stage it in the **node's** repository.
+    def _write_node_config(self, edits: list) -> None:
+        """Apply `edits` to the node sentinel and stage it in the **node's**
+        repository.
 
         The store root and the node root are different repositories in the
         orchestrator layout, and `git add` refuses a path outside the repository
@@ -1835,14 +1857,18 @@ class FsTreeStore:
         pointing into one — where writing the file is the whole of what can be
         done.
 
-        `yaml.safe_dump` re-renders the file: keys, values and their order
-        survive, comments and formatting do not. Accepted, and true of
-        `tcw work tags add` before this.
+        Only the lines of the keys being changed are touched — comments and
+        formatting everywhere else survive — and a file that cannot be edited
+        that way is refused, not rewritten (`config_edit`). Edits that change
+        nothing write and stage nothing.
         """
         config_path = self._config_path()
+        self._config()                           # a malformed file refuses as before
+        text = config_edit.edit_text(config_path, config_edit.read_text(config_path), edits)
+        if text is None:
+            return
         node_repository = git_root(config_path.parent)
-        payload = [(config_path, yaml.safe_dump(config, sort_keys=False,
-                                                allow_unicode=True))]
+        payload = [(config_path, text)]
         if node_repository is None:
             _atomic_write_all(payload)
         else:
@@ -6020,9 +6046,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return value.strip() or None if isinstance(value, str) else None
 
     def _write_tags(self, tags: set[str]) -> list[str]:
-        """Read-modify-write `work.tags` (preserving other config keys), stage
-        the file. `dump_yaml` rewrites the sentinel wholesale, dropping its stub
-        comments — accepted per plan.
+        """Write `work.tags` into the node config, changing only its lines, and
+        stage the file. A `work` section or `tags` key that is not what this
+        writes into is refused rather than replaced, since replacing it would
+        discard what the user typed.
 
         **Staged in the node's repository, not the store's.** This is the only
         write here that touches a file outside the store, and with an external
@@ -6042,12 +6069,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._require_repository()
         config = self._config()
         work = config.get("work")
-        if not isinstance(work, dict):
-            work = {}
+        if work is not None and not isinstance(work, dict):
+            raise ValueError(f"{self._config_path()}: work must be a mapping, "
+                             f"found {type(work).__name__}")
+        current = (work or {}).get("tags")
+        if current is not None and not isinstance(current, list):
+            raise ValueError(f"{self._config_path()}: work.tags must be a list, "
+                             f"found {type(current).__name__}")
         result = sorted(tags)
-        work["tags"] = result
-        config["work"] = work
-        self._write_node_config(config)
+        if current is not None and set(current) == set(tags):
+            # Adding a tag already registered, or removing one that is not,
+            # changes nothing — and must not refuse on a hand-ordered list that
+            # holds comments, which re-sorting it would have to delete.
+            return result
+        self._write_node_config([config_edit.SetList("work", "tags", tuple(result))])
         return result
 
     def register_tags(self, tags: list[str]) -> list[str]:
