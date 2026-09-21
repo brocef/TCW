@@ -157,3 +157,6 @@ Now it names the command that works:
 `tcw work complete <slug> --resolution wontfix --confirm`, which discards the item,
 keeps a record of it, and updates a linked ticket. Reported from real use in the
 proposit-app project.
+
+If the item has child items, it says so straight away instead of after you add
+`--confirm`, and names any children you must finish or discard first.
