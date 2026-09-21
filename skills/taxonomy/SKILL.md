@@ -85,7 +85,10 @@ viewers; it is not an editable taxonomy field.
 - **Keep descriptions short** — one or two sentences of what the noun means here.
 - **Run `tcw taxonomy check` after edits** — it validates inherited project IDs,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
-  reference (cycles, duplicate IDs, dangling/ambiguous refs).
+  reference (cycles, duplicate IDs, dangling/ambiguous refs). It also reports a
+  pre-2.5.0 `config.yaml` left at the taxonomy root, which is no longer read:
+  move any `extends` it lists into `taxonomy.extends` in `tcw-config.yaml`, then
+  delete the file.
 - **Cross-reference in prose with `tcw://` links** — a term description may link
   to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
   `<project-id>/`-prefixed namespace for inherited terms). `tcw validate` resolves

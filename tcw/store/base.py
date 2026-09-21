@@ -1214,6 +1214,13 @@ class TrackerConfig:
     # whatever status the tracker creates issues in, which for a Jira project with a
     # triage column is the very status `inbox-query` selects.
     statuses: dict = field(default_factory=dict)
+    # Tracker status → the transition that takes a ticket from it to
+    # `statuses.backlog`, for statuses a workflow puts *before* its backlog — Jira's
+    # `Triage` is the usual one. No local status maps to these, so they are not in
+    # `statuses`. A claim that finds its ticket in one applies the named transition
+    # first (`leave_pre_backlog` in `tcw/tracker/intake.py`); with none named, TCW
+    # never takes a ticket out of triage on its own.
+    pre_backlog: dict = field(default_factory=dict)
     # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
     strict: bool = False
     # Post a short comment on the ticket for each lifecycle move, with `link` — a URL
@@ -1238,7 +1245,8 @@ TRACKER_PROVIDERS = ("jira-cloud",)
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
                          "exclusive-claim-transition",
                           "transitions", "statuses", "strict", "timeout-seconds",
-                          "comments", "link", "inbox-query", "create"})
+                          "comments", "link", "inbox-query", "create",
+                          "pre-backlog"})
 TRACKER_CREATE_KEYS = frozenset({"project", "issue-type", "issue-types",
                                  "components", "on-new"})
 # The item properties a project may type a ticket by. Deliberately short: each
@@ -1437,6 +1445,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value.strip()
 
     statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
+    pre_backlog = _parse_tracker_pre_backlog(raw.get("pre-backlog"), statuses, problems)
     create = _parse_tracker_create(raw.get("create", _ABSENT_CREATE), problems)
     strict = raw.get("strict", False)
     if not isinstance(strict, bool):
@@ -1508,6 +1517,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         timeout_seconds=int(timeout),
         move_transitions=move_transitions,
         statuses=statuses,
+        pre_backlog=pre_backlog,
         strict=strict,
         comments=comments,
         link=link,
@@ -1599,6 +1609,68 @@ def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
     return out
 
 
+def _same_status(name: str) -> str:
+    """A status name as TCW compares statuses: trimmed, inner space collapsed,
+    case-folded. Must match `_normalize` in `tcw/tracker/claim.py`; it is written out
+    here rather than imported because parsing configuration loads no tracker code."""
+    return " ".join(name.split()).casefold()
+
+
+def mapped_statuses(statuses: dict, *locals: str) -> list[str]:
+    """Every tracker status named under `work.tracker.statuses` — for the local
+    statuses given, or all of them — with a per-resolution `discarded` mapping
+    flattened to its names."""
+    names = []
+    for local in (locals or tuple(statuses)):
+        value = statuses.get(local, "")
+        names.extend(name for name in (value.values() if isinstance(value, dict)
+                                       else (value,)) if name)
+    return names
+
+
+def _parse_tracker_pre_backlog(raw: Any, statuses: dict, problems: list[str]) -> dict:
+    """`work.tracker.pre-backlog`, appending a problem per defect. Absent is `{}`.
+
+    Each key is a status a ticket waits in before the backlog; each value the
+    transition out of it. The transition must lead to `statuses.backlog`, so that is
+    required, and a status mapped under `statuses` cannot also be one of these: it
+    would be both before the backlog and on it.
+    """
+    if raw is None:
+        return {}
+    where = "work.tracker.pre-backlog"
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
+        return {}
+    mapped = {_same_status(name): name for name in mapped_statuses(statuses)}
+    out: dict = {}
+    seen: dict[str, str] = {}
+    for key in raw:
+        if not isinstance(key, str) or not key.strip():
+            problems.append(f"{where}: a status name must be a non-empty string, "
+                            f"got {key!r}")
+            continue
+        status, value = key.strip(), raw[key]
+        path = f"{where}.{status}"
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{path}: expected a non-empty tracker transition name, "
+                            f"got {type(value).__name__}")
+            continue
+        same = _same_status(status)
+        if same in seen:
+            problems.append(f"{path}: the same status as '{seen[same]}'")
+            continue
+        if same in mapped:
+            problems.append(f"{path}: also mapped under work.tracker.statuses; a status "
+                            f"cannot come both before the backlog and on it")
+            continue
+        seen[same] = status
+        out[status] = value.strip()
+    if raw and not statuses.get("backlog"):
+        problems.append("work.tracker.statuses.backlog: required when pre-backlog is set")
+    return out
+
+
 def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
     """The per-move keys of `work.tracker.transitions`, appending a problem per defect.
 
@@ -1637,6 +1709,17 @@ def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
         else:
             out[key] = name(value, f"{where}.{key}")
     return out
+
+
+def pre_backlog_entry(pre_backlog: dict, status: str) -> tuple[str, str]:
+    """The configured `(status, transition)` under `pre-backlog` that `status` is,
+    or `("", "")`. The one place that decides whether a ticket is waiting before
+    the backlog: by its status alone, never by what transitions it offers."""
+    same = _same_status(status)
+    for key, transition in pre_backlog.items():
+        if _same_status(key) == same:
+            return key, transition
+    return "", ""
 
 
 def transition_name(transitions: dict, move: str, resolution: str | None) -> str:
@@ -3031,7 +3114,10 @@ class WorkStore(ABC):
                priority: int | None = None, parent: str | None = None,
                intake: str = "") -> WorkItem:
         """Create an item. With `parent` (a slug), create it as a child of that
-        item — an abstract node relation; the adapter realizes the nesting.
+        item — an abstract node relation that never sets a status: a child starts
+        in `backlog` whatever its parent's status, and moves through the
+        lifecycle on its own. The parent must exist and must not be resolved,
+        nor have a resolved ancestor.
 
         `body` is the item's **request**; `intake` is the raw, unprocessed input
         it started from. They are separate arguments rather than one because an
@@ -3550,6 +3636,45 @@ class WorkStore(ABC):
         """
         return [i for i in self.query() if i.initiative == epic_slug]
 
+    def _relation_snapshot(self) -> list[tuple[WorkItem, bool]]:
+        """Every item, paired with whether its status merely follows its parent.
+
+        An item that follows its parent moves with it by construction, so it is
+        never left behind when the parent resolves. No store holds such items
+        unless it has children from before a child had a status of its own; the
+        filesystem store does, and overrides this."""
+        return [(item, False) for item in self.query()]
+
+    def independent_descendants(self, slug: str) -> list[WorkItem]:
+        """Every item beneath `slug` — the whole subtree, not only direct
+        children — that has a status of its own, open or resolved.
+
+        The walk passes *through* an item that follows its parent, so such an
+        item cannot hide what is beneath it. One snapshot, and a visited set so a
+        hand-made cycle of `parent` fields cannot loop."""
+        by_parent: dict[str, list[tuple[WorkItem, bool]]] = {}
+        for item, follows in self._relation_snapshot():
+            by_parent.setdefault(item.parent, []).append((item, follows))
+        found: list[WorkItem] = []
+        seen, pending = {slug}, [slug]
+        while pending:
+            for item, follows in by_parent.get(pending.pop(), []):
+                if item.slug in seen:
+                    continue
+                seen.add(item.slug)
+                pending.append(item.slug)
+                if not follows:
+                    found.append(item)
+        return found
+
+    def open_descendants(self, slug: str) -> list[str]:
+        """Slugs of the independent descendants of `slug` that are still open.
+
+        What stops `slug` being completed or discarded: a resolved item must not
+        have anything open beneath it."""
+        return [i.slug for i in self.independent_descendants(slug)
+                if i.status not in RESOLVED_STATUSES]
+
     # -- concrete operations (shared semantics) --
 
     def _require(self, slug: str) -> WorkItem:
@@ -3644,6 +3769,11 @@ class WorkStore(ABC):
         `complete` gate share one source of truth. An empty epic is not
         completable (nothing resolved)."""
         if not self.epic_children_all_resolved(item):
+            return False
+        # `complete` refuses while anything beneath the epic by `parent` is open,
+        # so calling it ready then would promise a close that cannot happen —
+        # and `reconcile --complete-when-ready` would fail acting on the promise.
+        if self.open_descendants(item.slug):
             return False
         if self.incomplete_graph_note():
             return False        # not "no", but "not knowable from this checkout"
@@ -3801,6 +3931,11 @@ class WorkStore(ABC):
         if (item.status, dest) not in self.LEGAL_TRANSITIONS and not from_backlog_epic:
             raise IllegalTransition(f"cannot complete from {item.status} "
                                     f"as '{resolution}' (→ {dest})")
+        # Outside `if not force:` on purpose. `--force` overrides judgments about
+        # whether closing is *allowed*; this protects items that would otherwise
+        # sit open beneath a resolved one, where nothing lists them and a
+        # `work.retain: false` deletion of the parent could remove them.
+        self.require_nothing_open_beneath(slug, "complete")
         if not force:
             # The epic gate applies to *both* routes: an initiative child cannot
             # start until its epic is active, so closing an epic with open
@@ -3862,4 +3997,45 @@ class WorkStore(ABC):
         item = self._require(slug)
         if item.status != "backlog":
             raise IllegalTransition(f"cannot drop from {item.status} (only backlog)")
+        # Resolved children count too: a drop leaves no tombstone, so a child
+        # naming this item as its parent would name something that never existed.
+        beneath = [i.slug for i in self.independent_descendants(slug)]
+        if beneath:
+            raise ValueError(f"Cannot drop {slug}; these items name it as their "
+                             f"parent: {', '.join(beneath)}. Drop, discard or "
+                             f"re-parent them first.")
         self._delete(slug)
+
+    def _require_live_parent(self, parent: str, *, moving: str | None = None,
+                             open_item: bool = True) -> None:
+        """Refuse a `parent` an item may not be placed under.
+
+        It must exist. With `moving` (re-parenting that item), walking up from
+        `parent` must not reach `moving`, which would make a cycle. With
+        `open_item`, neither `parent` nor anything above it may be resolved: an
+        open item beneath a resolved one is exactly what `complete` refuses to
+        leave behind. A resolved item may be filed under a resolved parent."""
+        cursor = self.get(parent)
+        if cursor is None:
+            raise ValueError(f"no such parent work item: {parent}")
+        seen: set[str] = set()
+        while cursor is not None and cursor.slug not in seen:
+            if moving is not None and cursor.slug == moving:
+                raise ValueError("cannot re-parent an item under itself or a descendant")
+            if open_item and cursor.status in RESOLVED_STATUSES:
+                where = "" if cursor.slug == parent else f" (its ancestor {cursor.slug} is)"
+                raise ValueError(f"cannot place an open item under {parent}: it is "
+                                 f"resolved{where}. An open item may not sit beneath "
+                                 f"a completed or discarded one.")
+            seen.add(cursor.slug)
+            cursor = self.get(cursor.parent) if cursor.parent else None
+
+    def require_nothing_open_beneath(self, slug: str, verb: str) -> None:
+        """Refuse when any item beneath `slug` is still open. Shared by `complete`
+        and by callers that must refuse before doing anything irreversible of
+        their own, such as merging a worktree branch."""
+        still_open = self.open_descendants(slug)
+        if still_open:
+            raise ValueError(f"Cannot {verb} {slug}; these items beneath it are "
+                             f"still open: {', '.join(still_open)}. Complete or "
+                             f"discard them first.")

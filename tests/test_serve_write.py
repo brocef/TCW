@@ -1757,3 +1757,46 @@ def test_every_write_route_refuses_outside_a_repository(tmp_path):
         httpd.shutdown()
         httpd.server_close()
     assert _manifest(root) == before
+
+
+# ── A child's parent and status through the web app ──────────────────────────
+
+class TestChildParent:
+    """Re-parenting is a field write; closing refuses over an open child."""
+
+    def _parent_and_item(self, root: Path) -> tuple[str, str]:
+        work = FsWorkStore.open(root)
+        parent = work.create("Parent", created="2026-01-01").slug
+        work.start(parent, owner="x")
+        item = work.create("Loose", created="2026-01-02").slug
+        return parent, item
+
+    def test_patch_parent_keeps_the_items_status(self, bare):
+        root, base = bare
+        parent, item = self._parent_and_item(root)
+        status, body = _req(base, "PATCH", f"/api/work/{item}",
+                            {"fields": {"parent": parent}})
+        assert status == HTTPStatus.OK, body
+        assert body["item"]["parent"] == parent
+        assert body["item"]["status"] == "backlog"
+
+    def test_patch_parent_refuses_a_cycle(self, bare):
+        root, base = bare
+        parent, item = self._parent_and_item(root)
+        FsWorkStore.open(root).update_work(item, parent=parent)
+        status, body = _req(base, "PATCH", f"/api/work/{parent}",
+                            {"fields": {"parent": item}})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert "itself or a descendant" in body["error"]
+
+    def test_complete_is_refused_over_an_open_child(self, bare):
+        root, base = bare
+        work = FsWorkStore.open(root)
+        parent = work.create("Parent", created="2026-01-01").slug
+        work.start(parent, owner="x")
+        child = work.create("Child", created="2026-01-02", parent=parent).slug
+        status, body = _req(base, "POST", f"/api/work/{parent}/actions/complete", {
+            "resolution": "done", "dod_ack": [], "force": True})
+        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert child in body["error"]
+        assert FsWorkStore.open(root).get(parent).status == "active"

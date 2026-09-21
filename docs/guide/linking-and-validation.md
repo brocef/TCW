@@ -70,3 +70,19 @@ Any *other* YAML under the scanned trees may be any shape at all. `dod.yaml` is
 a top-level list on purpose, a work item's `capabilities.yaml` is a mapping or a
 list depending on which form wrote it, and an attachment parked beside an item is
 whatever its author wanted. None of them is held to the mapping rule.
+
+### A leftover inheritance file from before 2.5.0
+
+Before 2.5.0 a project listed the projects it inherits from in a file inside
+the tree: `config.yaml` at the root of the taxonomy, `.config.yaml` at the root
+of the capabilities ledger. Since 2.5.0 that list lives in `tcw-config.yaml`,
+and the old file is not read. `tcw validate` — like `tcw taxonomy check` and
+`tcw capabilities check` — reports one wherever the tree lives, once per tree:
+
+```
+taxonomy check: docs/taxonomy/config.yaml: no longer read since TCW 2.5.0 — move any needed extends into /path/to/project/tcw-config.yaml: taxonomy.extends, then delete the file; if already migrated, just delete it
+```
+
+The fix is to copy any `extends` you still need into `tcw-config.yaml` and
+delete the file. The report stays until the file is gone, even if you already
+copied the list, so a kept file fails validation. TCW never edits or deletes it.

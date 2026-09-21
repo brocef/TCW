@@ -266,7 +266,7 @@ For now `intake.claim` calls it. Read that item's `spec.md` before revising this
 
 - **Task 4.** When `deliver` stops calling `intake.claim` and `_strict_claim` is
   deleted (so strict `start` goes through `deliver`), `deliver` must call the
-  pre-backlog step itself, **before `assess_move` and independently of `owed`**.
+  pre-backlog step itself, **on the moves that take the ticket (a start, or a pending catch-up), before `assess_move`, whether or not `owed`**. It must not run on `submit`, `rework` or `complete`, which also reach `assess_move`: the Triage item's criterion 15(a) tests catch that.
   Under this item's new ownership test, the reporter's already-assigned Triage ticket
   is not owed, yet still needs moving. `tcw work tracker import` keeps its
   `intake.claim` call and so keeps the step. The hint sentence naming

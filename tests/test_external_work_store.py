@@ -1324,3 +1324,59 @@ def test_claiming_dirs_answers_empty_without_a_claiming_directory(tmp_path):
     st = FsWorkStore.open(code)
     assert not (st.root / ".claiming").exists()
     assert st._claiming_dirs("anything") == []
+
+# ── a child made by an earlier version, started with --worktree ──────────────
+
+def _split_repo_legacy_child(tmp_path: Path, *, auto_commit: bool) -> tuple[Path, Path, str]:
+    """`_split_repo_item`, plus a child nested in the item's folder the way
+    earlier versions made children (no `parent:` field). Returns the child."""
+    code, store_repo, parent = _split_repo_item(tmp_path, auto_commit=auto_commit)
+    child = store_repo / "work" / "backlog" / parent / "2026-01-02-old-child"
+    child.mkdir()
+    (child / "state.yaml").write_text(yaml.safe_dump(
+        {"slug": child.name, "title": "old", "created": "2026-01-02", "resolution": None}))
+    subprocess.run(["git", "-C", str(store_repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(store_repo), "commit", "-qm", "old child"], check=True)
+    return code, store_repo, child.name
+
+
+def _nested_source_is_gone(store_repo: Path, parent_rel: str) -> None:
+    listed = subprocess.run(["git", "-C", str(store_repo), "ls-tree", "-r", "--name-only",
+                             "HEAD", "--", parent_rel], capture_output=True, text=True,
+                            check=True).stdout
+    assert listed.strip() == f"{parent_rel}/state.yaml"
+    assert "work/backlog" not in _porcelain(store_repo)
+
+
+@pytest.mark.parametrize("auto_commit", [True, False])
+def test_worktree_start_of_a_legacy_child_commits_its_nested_source(
+        tmp_path, monkeypatch, capsys, auto_commit):
+    code, store_repo, child = _split_repo_legacy_child(tmp_path, auto_commit=auto_commit)
+    parent = FsWorkStore.open(code).get(child).parent
+    monkeypatch.chdir(code)
+    assert main(["work", "start", child, "--worktree", "--owner", "t@t"]) == 0
+    got = FsWorkStore.open(code).get(child)
+    assert (got.status, got.parent) == ("active", parent)
+    assert f"work/active/{child}/state.yaml" in _last_commit_files(store_repo)
+    _nested_source_is_gone(store_repo, f"work/backlog/{parent}")
+
+
+def test_take_over_of_a_legacy_child_stages_its_nested_source(tmp_path):
+    """Recovering an interrupted claim: the item is in `.claiming/`, so its
+    original folder has to come from git rather than from the store. (Through
+    the CLI, `tcw work start --take-over` cannot reach an interrupted claim at
+    all yet; that is the backlog item about recovering one from the CLI.)"""
+    code, store_repo, child = _split_repo_legacy_child(tmp_path, auto_commit=False)
+    store = FsWorkStore.open(code)
+    parent = store.get(child).parent
+    source = store.path(child)
+    private = store.root / ".claiming" / f"{child}-{'2b' * 16}"
+    private.parent.mkdir(exist_ok=True)
+    state = yaml.safe_load((source / "state.yaml").read_text())
+    state["parent"] = parent                  # what the claim writes before moving
+    (source / "state.yaml").write_text(yaml.safe_dump(state))
+    source.replace(private)
+    got = FsWorkStore.open(code).start(child, take_over=True, owner="t@t")
+    assert (got.status, got.parent) == ("active", parent)
+    subprocess.run(["git", "-C", str(store_repo), "commit", "-qm", "claim"], check=True)
+    _nested_source_is_gone(store_repo, f"work/backlog/{parent}")

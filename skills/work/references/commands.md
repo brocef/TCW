@@ -21,7 +21,7 @@
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
 | retitle an item          | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
 | tags                     | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` — every tag value may be `a,b,c`                                                                    |
-| nest a coupled piece     | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
+| add a child item         | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
 | add an epic task         | `tcw work new "<task>" --initiative <epic-slug>`                                                                                                |
 | make an item an epic     | `tcw work edit <slug> --type epic` · `--type ""` makes it plain again, refused while any item names it as its initiative or the project graph is partial, and under strict tracker mode |
 | epic rollup              | `tcw work reconcile <epic-slug> [--complete-when-ready]`                                                                                        |
@@ -152,7 +152,8 @@ claims a linked ticket; `import` on one refuses, saying it is linked but not cla
 
 For a **bound** item in a node with a tracker configured, a lifecycle command sends
 its move to the ticket **after** the local move, its commit and `post` hooks:
-`start` claims (same rules as `import`); `submit`, `rework`, `complete` and a
+`start` claims (same rules as `import`, including taking a ticket out of a
+`work.tracker.pre-backlog` status such as `Triage` first); `submit`, `rework`, `complete` and a
 discard move the ticket to `work.tracker.statuses` for the item's new status
 (nothing when unmapped). No tracker configured, or an unbound item: nothing, and no
 tracker code is imported.
@@ -194,7 +195,11 @@ tracker code is imported.
   one mapped status at a time. Never backwards, never on a resolved ticket, never for
   an item somebody else started; what does not arrive is left for `tracker sync`.
   Only a `catch-up` binding is walked through several statuses; a plain `sync` makes
-  one move. To repair an older stuck binding: `unlink`, then `link --sync-status`.
+  one move. A claim — from `start`, `link --sync-status`, `sync`, `import`, `inbox
+  accept`, or a move that still owes one — first applies the transition
+  `work.tracker.pre-backlog` names when the ticket is in one of its statuses, and
+  says the ticket was moved out; nothing else leaves triage, and without the key the
+  refusal names it. To repair an older stuck binding: `unlink`, then `link --sync-status`.
 - **Parts:** a status move is held while another open item here shares the ticket.
 - **Another site:** a binding whose `ticket.url` is not on `base-url` is never
   written through; `import`/`link` refuse it naming the item.
@@ -241,7 +246,7 @@ that got as far as claiming leaves the ticket claimed.
 | `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused. `complete` checks before the worktree merge |
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
-| `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
+| `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
 | `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item | 409, naming the `tcw work` command (PUT `tracker.yaml` is refused in every mode, below) |
 
 - **Tracker unreachable, or an undelivered `sync` record:** refused. Run

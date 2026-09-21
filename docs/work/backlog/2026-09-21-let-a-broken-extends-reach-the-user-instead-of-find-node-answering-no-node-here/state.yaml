@@ -1,0 +1,9 @@
+slug: 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here
+title: Let a broken extends reach the user instead of find_node answering no node
+  here
+created: '2026-09-21'
+resolution: null
+tags:
+- bug
+- store
+- cli

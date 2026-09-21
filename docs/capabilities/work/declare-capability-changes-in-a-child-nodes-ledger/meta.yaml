@@ -1,0 +1,9 @@
+id: cap-6173d6
+name: Declare capability changes in a child node's ledger
+Status: Supported
+Planning doc: 2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers
+Subject:
+- work-item
+- node
+- capability
+Feature: connected-project-registry
