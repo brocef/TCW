@@ -102,9 +102,10 @@ inheritance.
   `taxonomy.path` points at the same folder can inherit differently, and a
   shared folder imposes nothing on what reads it.
 - Change it only through the two commands above, which check the project id
-  before writing. Legacy alias or path maps fail closed. Note that writing the
-  key re-renders `tcw-config.yaml`: keys, values and their order survive,
-  comments and custom formatting do not.
+  before writing. Legacy alias or path maps fail closed. Writing the key changes
+  only its own lines of `tcw-config.yaml`; a file the command cannot edit in
+  place (a section in braces, for instance) is refused with the hand edit to
+  make, never rewritten.
 - Projects written for TCW 2.x kept these lists inside the store, in
   `docs/taxonomy/config.yaml` and `docs/capabilities/.config.yaml`. Those files
   are no longer read and nothing warns — see

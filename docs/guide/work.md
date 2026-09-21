@@ -320,7 +320,9 @@ the epic would strand them.
 ## Tags
 
 **Tags** classify items for filtering. Each project registers its valid tag set
-centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`); an item then carries
+centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`, which change only
+the `work.tags` lines and keep your comments; a hand-ordered list with comments
+in it is refused rather than re-sorted); an item then carries
 zero or more of those tags via `--tag` on `new`/`edit` (and `--untag` to remove).
 Every place a tag is named accepts a comma-separated list, and `--tags` / `--untags`
 are accepted wherever the singular spellings are — `tcw work tags add cli,docs`
