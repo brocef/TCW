@@ -156,7 +156,9 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
                                              "two changes overlap"))
     new = _assemble(text, replacements)
     _verify(path, text, new, replacements, allowed, target,
-            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits))
+            instruction="; and ".join(_instruction(e, doc, mapping) for e in edits),
+            what=", ".join("id" if isinstance(e, SetId) else f"{e.section}.{e.key}"
+                           for e in edits))
     return new
 
 
@@ -511,13 +513,14 @@ class _Document:
 # ── verification ────────────────────────────────────────────────────────────
 
 def _verify(path: Path, original: str, new: str, replacements: list[_Replacement],
-            allowed: set[int], target: dict, *, instruction: str) -> None:
+            allowed: set[int], target: dict, *, instruction: str,
+            what: str = "the file") -> None:
     """Refuse unless `new` means `target` and differs from `original` only
     inside `replacements`, whose spans hold no anchor and no comment outside
     `allowed`. Checked against `new` itself, not against how it was built."""
     def refuse(why: str):
         raise ConfigEditRefused(
-            f"{path}: cannot make this change without rewriting the file, which would "
+            f"{path}: cannot change {what} without rewriting the file, which would "
             f"lose its comments and formatting ({why}); {instruction}")
 
     cursor_old = cursor_new = 0
