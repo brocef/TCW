@@ -5,11 +5,65 @@ internal module names.
 
 **This is the release v2.5.0 was meant to be.** v2.5.0 was tagged but never
 reached PyPI, because a test that only failed on the build server stopped the
-upload. Everything described in the
-[v2.5.0 notes](v2.5.0.md) (making Jira tickets with `tcw work tracker create`,
-and moving `extends` into `tcw-config.yaml`) arrives with this version, together with the changes below.
+upload. Everything described in the [v2.5.0 notes](v2.5.0.md) (making Jira
+tickets with `tcw work tracker create`, and moving `extends` into
+`tcw-config.yaml`) arrives with this version, together with the changes below.
 **Read those notes before upgrading if you use inheritance**, because that part
-needs a migration step.
+needs a migration step. The first two sections below follow on from it.
+
+## An old inheritance file is now pointed out
+
+Before 2.5.0, a project that inherited another project's taxonomy or
+capabilities listed it in a file inside the tree:
+`docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` (or the same
+file wherever you keep that tree). 2.5.0 stopped reading those files, and a
+project that did not move the list lost every inherited entry without a word.
+
+Now `tcw taxonomy check`, `tcw capabilities check` and `tcw validate` report
+such a file, and tell you what to do: copy any `extends` you still need into
+`tcw-config.yaml` (under `taxonomy:` or `capabilities:`), then delete the file.
+If you already copied it, just delete the file.
+
+**This can make a previously passing project fail.** A file you migrated but
+kept now fails `check` and `validate` until it is deleted — and so it can stop
+`tcw work complete` in any project that runs `tcw validate` before completing.
+TCW never edits or deletes the file for you.
+
+Two smaller changes come with it:
+
+- `tcw validate` now looks at a taxonomy or capabilities tree it used to skip —
+  one kept outside `docs/` — and reports it if the tree cannot be opened. That
+  covers three situations: the tree is kept in another repository and has not
+  been downloaded to this machine yet (it tells you to run `tcw provision`, as
+  it already did for the work board); `taxonomy.path` or `capabilities.path`
+  points at a folder that is not there, such as a sibling checkout a CI or
+  cloud copy does not have; and the project inherits from a project this
+  checkout cannot reach. In a project that runs `tcw validate` before
+  completing work, any of these can stop `tcw work complete` until it is
+  fixed.
+- When a capability overrides one from a project you do not inherit from, the
+  "unknown alias" problem now says the project is missing from
+  `capabilities.extends` in `tcw-config.yaml`.
+
+## Your comments in `tcw-config.yaml` are kept
+
+The commands that add a setting to `tcw-config.yaml` used to rewrite the whole
+file, which deleted every comment, re-wrapped long lines and changed the
+indentation. That hit `tcw taxonomy extends add`, `tcw capabilities extends`
+(the easy route in the v2.5.0 migration guide) and `tcw work tags add`. Now they
+change only the lines of the setting they write — and so do their removal
+counterparts and `tcw init` — and leave the rest of the file exactly as you
+wrote it, down to the line endings.
+
+If a file is laid out in a way the command cannot edit safely — for example a
+section written on one line in braces, like `taxonomy: {path: docs/taxonomy}` —
+it stops without changing anything and tells you the exact edit to make by hand.
+
+Three hand-written shapes that used to be quietly overwritten now get that
+message instead: a `work:` line holding a single value rather than settings
+beneath it (when registering tags or running `tcw init --work-path`), a `tags:`
+that is not a list, and the same single-value shape for `taxonomy:` or
+`capabilities:` when `tcw init` sets its location.
 
 ## Declaring capability changes in a child project's ledger
 
@@ -87,47 +141,13 @@ the proposit-app project.
   moved on its own it keeps its parent and has its own status from then on.
 - `tcw validate` now reports a child whose parent does not exist.
 
-### An old inheritance file is now pointed out
+## A warning when the `tcw` command and the plugin's skills differ
 
-Before 2.5.0, a project that inherited another project's taxonomy or
-capabilities listed it in a file inside the tree:
-`docs/taxonomy/config.yaml` or `docs/capabilities/.config.yaml` (or the same
-file wherever you keep that tree). 2.5.0 stopped reading those files, and a
-project that did not move the list lost every inherited entry without a word.
-
-Now `tcw taxonomy check`, `tcw capabilities check` and `tcw validate` report
-such a file, and tell you what to do: copy any `extends` you still need into
-`tcw-config.yaml` (under `taxonomy:` or `capabilities:`), then delete the file.
-If you already copied it, just delete the file.
-
-**This can make a previously passing project fail.** A file you migrated but
-kept now fails `check` and `validate` until it is deleted — and so it can stop
-`tcw work complete` in any project that runs `tcw validate` before completing.
-TCW never edits or deletes the file for you.
-
-Two smaller changes come with it:
-
-- `tcw validate` now looks at a taxonomy or capabilities tree it used to skip —
-  one kept outside `docs/` — and reports it if the tree cannot be opened. That
-  covers three situations: the tree is kept in another repository and has not
-  been downloaded to this machine yet (it tells you to run `tcw provision`, as
-  it already did for the work board); `taxonomy.path` or `capabilities.path`
-  points at a folder that is not there, such as a sibling checkout a CI or
-  cloud copy does not have; and the project inherits from a project this
-  checkout cannot reach. In a project that runs `tcw validate` before
-  completing work, any of these can stop `tcw work complete` until it is
-  fixed.
-- When a capability overrides one from a project you do not inherit from, the
-  "unknown alias" problem now says the project is missing from
-  `capabilities.extends` in `tcw-config.yaml`.
-
-### Also in this release
-
-- **Your agent now tells you when the `tcw` command and the plugin's skills
-  come from different releases.** It names both versions and how to bring
-  them into line — updating the plugin, or upgrading the `tcw` command — with
-  the exact commands to run. It is only a warning and never stops your work. Claude shows it when
-  a session starts; in Codex, the skills ask the agent to run the check.
+Your agent now tells you when the `tcw` command and the plugin's skills come
+from different releases. It names both versions and how to bring them into
+line — updating the plugin, or upgrading the `tcw` command — with the exact
+commands to run. It is only a warning and never stops your work. Claude shows it
+when a session starts; in Codex, the skills ask the agent to run the check.
 
 ## A refused `tcw work drop` now tells you how to discard
 
@@ -137,23 +157,3 @@ Now it names the command that works:
 `tcw work complete <slug> --resolution wontfix --confirm`, which discards the item,
 keeps a record of it, and updates a linked ticket. Reported from real use in the
 proposit-app project.
-
-## Your comments in `tcw-config.yaml` are kept
-
-The commands that add a setting to `tcw-config.yaml` used to rewrite the whole
-file, which deleted every comment, re-wrapped long lines and changed the
-indentation. That hit `tcw taxonomy extends add`, `tcw capabilities extends`
-(the easy route in the v2.5.0 migration guide) and `tcw work tags add`. Now they
-change only the lines of the setting they write — and so do their removal
-counterparts and `tcw init` — and leave the rest of the file exactly as you
-wrote it, down to the line endings.
-
-If a file is laid out in a way the command cannot edit safely — for example a
-section written on one line in braces, like `taxonomy: {path: docs/taxonomy}` —
-it stops without changing anything and tells you the exact edit to make by hand.
-
-Three hand-written shapes that used to be quietly overwritten now get that
-message instead: a `work:` line holding a single value rather than settings
-beneath it (when registering tags or running `tcw init --work-path`), a `tags:`
-that is not a list, and the same single-value shape for `taxonomy:` or
-`capabilities:` when `tcw init` sets its location.
