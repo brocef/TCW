@@ -8,3 +8,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-21T19:21:28.883261Z'
+worktree: .worktrees/2026-09-21-let-tracker-sync-bring-a-ticket-forward-from-a-pre-backlog-status-such-as-triage
+branch: work/2026-09-21-let-tracker-sync-bring-a-ticket-forward-from-a-pre-backlog-status-such-as-triage
