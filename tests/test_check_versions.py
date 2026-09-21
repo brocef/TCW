@@ -164,6 +164,35 @@ def test_a_hanging_cli_is_abandoned_silently(tmp_path):
     assert left.stdout.strip() == "", "the abandoned tcw is still running"
 
 
+# Denies every file write except to /dev/null, like Codex's read-only sandbox.
+READ_ONLY_PROFILE = '(version 1)(allow default)(deny file-write*)(allow file-write* (literal "/dev/null"))'
+
+
+@pytest.mark.parametrize("how", ["mktemp fails", "writes denied"])
+def test_works_where_no_file_can_be_written(tmp_path, how):
+    """Codex's read-only sandbox refuses every file write, temporary files
+    included; a check that needed one fell silent there (found at verify).
+
+    The first case is portable: a `mktemp` that fails, as it does in that
+    sandbox. The second runs the check under macOS's own sandbox with writes
+    denied, which also catches any other write.
+    """
+    plugin = _plugin(tmp_path / "plugin", "2.4.0")
+    bindir = tmp_path / "bin"
+    _prints(bindir, "2.5.0")
+    command = ["/bin/bash", str(plugin / "scripts" / "check_versions.sh")]
+    if how == "mktemp fails":
+        (bindir / "mktemp").write_text("#!/bin/sh\nexit 1\n")
+        (bindir / "mktemp").chmod(0o755)
+    else:
+        if shutil.which("sandbox-exec") is None:
+            pytest.skip("macOS sandbox-exec is not available here")
+        command = ["sandbox-exec", "-p", READ_ONLY_PROFILE, *command]
+    r = subprocess.run(command, capture_output=True, text=True, cwd=str(plugin),
+                       env={"PATH": f"{bindir}:{SYSTEM_PATH}"})
+    _assert_warns(r, "2.5.0", "2.4.0", "newer")
+
+
 def test_codex_manifest_alone_is_enough(tmp_path):
     plugin = _plugin(tmp_path / "plugin", "2.4.0", manifest=".codex-plugin")
     _prints(tmp_path / "bin", "2.5.0")

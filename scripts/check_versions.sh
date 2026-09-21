@@ -35,36 +35,40 @@ done
 
 command -v tcw >/dev/null || exit 0
 
-# 2. The CLI's version, with a 3-second deadline. `set -m` puts the background
-#    command in a process group of its own, so stopping the group also stops
-#    anything it started (a version manager's shim runs the real `tcw` as a
-#    child).
-out="$(mktemp)" || exit 0
-trap 'rm -f "$out"' EXIT
-set -m
-tcw --version </dev/null >"$out" &
-pid=$!
-rounds=0
-while kill -0 "$pid" 2>/dev/null; do
-    if [ "$rounds" -ge 30 ]; then
-        kill -TERM -- "-$pid"
-        exit 0
-    fi
-    sleep 0.1
-    rounds=$((rounds + 1))
-done
-wait "$pid" || exit 0
+# 2. The CLI's version, with a 3-second deadline. The output is captured with
+#    command substitution rather than a temporary file, because Codex's
+#    read-only sandbox refuses every file write. Inside it, `set -m` puts the
+#    background command in a process group of its own, so stopping the group
+#    also stops anything it started (a version manager's shim runs the real
+#    `tcw` as a child) and closes the output pipe the substitution waits on.
+output="$(
+    set -m
+    tcw --version </dev/null &
+    pid=$!
+    rounds=0
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$rounds" -ge 30 ]; then
+            kill -TERM -- "-$pid"
+            exit 1
+        fi
+        sleep 0.1
+        rounds=$((rounds + 1))
+    done
+    wait "$pid"
+)" || exit 0
 
 pattern='^tcw ([0-9]+)\.([0-9]+)\.([0-9]+)$'
-IFS= read -r line <"$out"
+line="${output%%$'\n'*}"
 [[ $line =~ $pattern ]] || exit 0
-cli="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
+a1="${BASH_REMATCH[1]}" a2="${BASH_REMATCH[2]}" a3="${BASH_REMATCH[3]}"
+cli="$a1.$a2.$a3"
 [ "$cli" = "$skills" ] && exit 0
 
 # 3. Which side is behind decides the advice. Compared part by part as
 #    numbers, so 2.10.0 is newer than 2.9.0.
-IFS=. read -r a1 a2 a3 <<<"$cli"
-IFS=. read -r b1 b2 b3 <<<"$skills"
+#    No here-strings: bash 3.2 backs them with a temporary file.
+[[ "tcw $skills" =~ $pattern ]] || exit 0
+b1="${BASH_REMATCH[1]}" b2="${BASH_REMATCH[2]}" b3="${BASH_REMATCH[3]}"
 newer=0
 if [ "$a1" -ne "$b1" ]; then
     [ "$a1" -gt "$b1" ] && newer=1
