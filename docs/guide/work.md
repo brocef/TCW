@@ -225,6 +225,7 @@ tcw work inbox accept request.md --title "Clear title"
 # with work.tracker.inbox-query set, list also shows Jira tickets awaiting triage,
 # and show/accept take a ticket key (an entry of the same name wins; --ticket forces it)
 tcw work inbox accept EX-482 --part api  # claims the ticket, as `tracker import` does
+                                       # (with work.tracker.pre-backlog, first out of Triage)
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by other-slug --blocked-by "external: JIRA-123"
@@ -302,6 +303,25 @@ that no longer resolves, or a `removed:` path where a local capability still exi
 the completion is refused (flip it with `tcw capabilities set`,
 mark it `Omitted`, delete it with `tcw capabilities rm`, or `--force` past). For a `--worktree` item the check runs after
 the branch merges back, so a status flip made on the work branch counts.
+
+An item on a board whose node keeps **no capabilities ledger of its own** — a
+repository root that groups packages, say — declares the capabilities it changes
+in a child's ledger by starting each path with the child's project id, for
+example `proposit-shared/authoring/add-a-claim`. The child must be listed under the
+node's `connected-projects.children`. `complete` checks the rest of the path
+against that child's own ledger, read the way the child reads it (so it can name a
+capability the child inherits or overrides), and you reconcile it by running
+`tcw capabilities set` or `rm` inside the child's folder, with the path after the
+id. The ledger is read as it is on disk in this checkout, so a change made in a
+child that lives in another repository counts before it is committed there.
+
+A declared path the check cannot reach is refused, not passed: a child that is
+declared but not in this checkout, one that keeps no ledger, one whose ledger is
+declared but not provisioned (`tcw provision` fetches it), and a path with no
+child id on a node that keeps no ledger. On a node that does keep one, a first
+segment naming a project the ledger `extends` keeps its inherited meaning; one
+naming both a child and a namespace the ledger already shows is refused as
+ambiguous. An item that declares nothing passes whatever state the ledgers are in.
 
 A **discard is not a shipment**, so none of the shipping gates apply to one: no
 Definition-of-Done checklist, no capability enforcement (just a warning naming

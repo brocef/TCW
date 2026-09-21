@@ -136,6 +136,14 @@ rather than calling this node the root, and `(work store not provisioned here)`
 for one whose declared board this machine has not obtained — the same two markers
 it puts on the children lines.
 
+Such a root is also where cross-package work usually lives, and it often keeps no
+capabilities ledger either. An item there declares the capabilities it changes in
+each package's ledger by starting the path in its `capabilities.yaml` with that
+child's project id (`proposit-shared/authoring/add-a-claim`), and `tcw work
+complete` checks it in the child's own ledger — see [Work](work.md), under
+`complete`. A child that is declared but not in this checkout, or whose ledger has
+not been provisioned, refuses the completion until it is present.
+
 ## What still fails closed when a project is absent
 
 Configuration that is genuinely wrong still fails closed, unchanged: an invalid

@@ -1,9 +1,0 @@
-slug: 2026-09-21-keep-comments-and-formatting-when-tcw-writes-a-key-into-tcw-config-yaml
-title: Keep comments and formatting when tcw writes a key into tcw-config.yaml
-created: '2026-09-21'
-resolution: null
-priority: 50
-tags:
-- cli
-- store
-- bug
