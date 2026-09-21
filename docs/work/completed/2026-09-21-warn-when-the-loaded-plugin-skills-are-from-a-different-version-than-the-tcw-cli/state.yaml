@@ -2,7 +2,7 @@ slug: 2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version
 title: Warn when the loaded plugin skills are from a different version than the tcw
   CLI
 created: '2026-09-21'
-resolution: null
+resolution: done
 priority: 50
 tags:
 - skills

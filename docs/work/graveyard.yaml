@@ -850,3 +850,6 @@
   location: 49ceb80a89f2162d2ad695a4dc16d617660df163
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli:
+  resolution: done
+  resolved: '2026-09-21'
