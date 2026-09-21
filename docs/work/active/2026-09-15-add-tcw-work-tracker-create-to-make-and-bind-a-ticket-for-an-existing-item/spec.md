@@ -171,22 +171,44 @@ are the ones that bring an item into being:
 **Epics are included, and that is a deliberate departure.** Strict mode exempts
 them (`tcw/work/cli.py:422`, `and not args.epic`) because it cannot demand a
 claimed ticket for a container nobody works directly. Creation has no such
-problem, and an epic with no ticket is exactly what breaks parent links for its
-children. The spec states this rather than inheriting the exemption by accident.
+problem, and an epic on the board with no ticket is a hole in the tracker's
+picture of the work. The spec states this rather than inheriting the exemption
+by accident.
+
+**Corrected in review:** this originally said an epic with no ticket "breaks
+parent links for its children". It does not, because there are no parent links
+to break — TCW sets no parent or epic link in the tracker and `create_issue`
+takes no parent. The conclusion stands; the reason given for it did not, and it
+had been repeated into the command's help text and the user guide.
 
 **Rule 6 — a tracker that does not answer costs nothing.** `tcw work new` works
 today with no network and no credentials, and keeps doing so. When creation is
 enabled and the tracker cannot be reached, **the item is still created**, the
-ticket is recorded as owed, and the command says so. `tcw work tracker sync`,
-whose stated job is to "retry what a lifecycle command could not send to the
-tracker", settles it later. The owed-ticket record reuses the existing sync
-record rather than inventing a second pending-work mechanism.
+ticket is recorded as owed, and the command says so.
+
+**Corrected during implementation:** this rule said `tcw work tracker sync`
+would settle it later, and it does not. `sync` retries a status change for an
+item that *already has* a ticket, and its whole implementation is about a
+binding; an item owing a ticket has none. `tcw work tracker create`, with or
+without `--all`, is what settles the debt. `sync` asked about such an item now
+says so and names that command. Correspondingly, the owed record is a sibling
+key in the same sidecar read by the same code path rather than a reuse of the
+sync record, which only exists for a bound item.
 
 The alternative — refusing to file — is rejected: it converts a tracker outage
 into lost thinking, and the inbox exists precisely so an idea can be captured
 before anything else is possible.
 
-**Rule 7 — strict mode wins, and both together is a configuration error.**
+**Rule 7 — strict mode wins, and both together is allowed.**
+
+**Corrected after implementation, in review:** the rest of this rule was wrong,
+and the code it cites disproves it. `_new` refuses under strict mode only
+`and not args.epic`, and creation-on-filing covers epics deliberately, so a
+project can mean "tasks come from tickets, epics filed here get theirs made".
+Rejecting the pair also made `tracker_config` fail closed on the whole block,
+disabling `import`, `link`, `sync` and `claim`. The validation error is gone and
+criterion 14 is inverted. The original text follows, for the record.
+
 `strict` answers "may work proceed without a claimed ticket". The new setting
 answers "does filing produce a ticket". They are different questions, so
 `strict` keeps its current meaning and refusal path unchanged.
@@ -202,7 +224,7 @@ remain expressible and each is honest:
 | off | off | files, no ticket — today's default, how this backlog drifted |
 | off | **on** | files, and the ticket follows |
 | on | off | refuses; ticket first, via `import` |
-| on | on | **refused by `tcw validate`** |
+| on | on | epics file and get a ticket; everything else is refused |
 
 ## Abstraction litmus test
 
@@ -271,8 +293,10 @@ hook or injected context. The skills that mention the tracker (`work`,
     accepting a ticket key still goes through `import` and is unchanged.
 13. With it on, `tcw work new --epic` creates a bound ticket, unlike strict
     mode's exemption.
-14. `strict: true` together with creation-on-filing is reported by
-    `tcw validate` as a problem naming both keys; either alone validates.
+14. `strict: true` together with creation-on-filing validates, and a filed epic
+    still gets its Epic-typed ticket while a filed task is still refused.
+    (**Corrected in review** — it originally required `tcw validate` to report
+    the pair as a problem. See Rule 7.)
 15. `strict: true` alone still refuses `tcw work new` with today's message
     pointing at `tcw work tracker import` — asserted by the absence of any new
     wording, so this item cannot quietly change that path.

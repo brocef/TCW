@@ -115,12 +115,91 @@ The exit code is captured on its own line rather than taken from a pipeline.
 Earlier in this item a commit went through on a red suite because the run was
 piped into `tail`, whose exit code is the one the shell reports.
 
+## The review round of 2026-09-21, and what it found
+
+The multi review at `17517fc8` covered about half of what shipped. Everything
+from task 6 onward — `--all`, the resumption record, and the whole of Landing B
+— went through a second round on 2026-09-21: two adversarial reviewers and
+Codex, on `17517fc8..2fb6908a`. The local model (`bllm`) has been disabled for
+maintenance for seven days and gave no answer; that is recorded in the `llama`
+repository's work inbox.
+
+Eighteen findings were verified against the tree. Five were serious enough to
+stop a merge, and two of those were crashes reproduced end to end through the
+real CLI against a real node:
+
+- `_deliver_after` raised `KeyError: 'ticket'` on an item carrying an owed
+  record — on `start`, `submit`, `rework` and `complete`, *after* the status
+  move had been committed. This is the flagship path: file on a train, then
+  start the work.
+- `_siblings` raised `KeyError: 'project'`, and it scans every item in the
+  store, so one owed item anywhere took tracker delivery down for every other
+  properly bound item on the node.
+
+Both had one cause. `binding_value` gained a fourth shape and has three readers;
+each spelled its guard as "not a `problem`" rather than "has a `ticket`", and
+only one of the three was updated. `outcome.md` already confessed to exactly
+this failure for `statuses.backlog` — "a correction made from reading one
+function and not its callers" — and it was repeated inside the same item. The
+fix is one predicate, `bound_value`, that every reader asks.
+
+The other three that blocked:
+
+- `_sweep_order` decided "already bound" with `"ticket:" not in found.content`.
+  An unlinked item keeps its former binding under `unlinked:`, which contains a
+  nested `ticket:`, so `--all` silently walked past exactly the items somebody
+  had unlinked in order to re-create — confirmed live. It also failed the
+  abstraction litmus test outright: a store serialising the sidecar as JSON
+  would read *every* bound item as unbound and duplicate a ticket for the whole
+  board.
+- The web client's `TrackerField` threw on the owed shape, and that app has no
+  error boundary, so the page rendered blank rather than losing one field.
+- `POST /api/work` ignored `create.on-new` entirely, so an item filed on the web
+  board was indistinguishable from one filed in a project that never turned the
+  setting on — the accumulation the owed record exists to prevent.
+
+**The tests could not have caught the sweep defect.** `_board` took no status
+and filed everything with `tcw work new`, so every item was `backlog`. The
+status filter, the unbound filter and the held-by-someone-else skip could each
+be deleted with all 58 tests in the file still green — proved by deleting them.
+That is the shape `docs/lifecycle/implementation.md` forbids, and
+`_created_node`, fifteen lines above it in the same file, carries a docstring
+explicitly refusing to default `status` for that reason. Two other assertions
+guarded nothing: `test_all_sweeps_up_owed_tickets` passed with the binding call
+replaced by `return 0`, and `"owed" not in item.tracker` is true for every bound
+item whatever is on disk, because `binding_value`'s `Bound` branch never emits
+it.
+
+Three claims in the spec were wrong and had been repeated into shipped text:
+
+- Rule 6 promised `tcw work tracker sync` would settle an owed ticket. It never
+  could: `sync` is about a binding, and an item owing a ticket has none.
+- Rule 7 rejected `strict` with `create.on-new` as contradictory. `_new` exempts
+  epics from strict mode's refusal and creation-on-filing covers them, so the
+  pair is coherent — and rejecting it made `tracker_config` fail closed, taking
+  `import`, `link`, `sync` and `claim` down with it.
+- The reason given for including epics — that an epic with no ticket "breaks its
+  children's parent links" — describes a capability TCW does not have. It sets
+  no parent link and `create_issue` takes no parent. The conclusion survives;
+  the reason had reached the command's help text and the user guide.
+
+Every fix carries a test that was watched to fail first, or a mutation that was
+run to prove the test guards what it claims.
+
 ## Notes
 
-- Live verification against real Jira is `verify`'s job and has not been done.
-  The four checks are listed in the plan, and the first of them — that a created
-  ticket lands in `To Do` and not `Triage`, confirmed by running `inbox-query`
-  afterwards — is the hazard the whole spec is built around and no stub can prove
-  it.
+- **The four live Jira checks were run on 2026-09-20**, against
+  `proposit.atlassian.net`, from a throwaway node, using throwaway items the
+  user approved. All four passed, and the first of them proved the hazard is
+  real rather than theoretical: Jira created TCW-55 in **Triage** — the exact
+  status `inbox-query` selects — and creation moved it to `To Do`. The issue's
+  own changelog records the hop, and `tcw work inbox list` afterwards returned
+  none of the eight tickets made. The refusals fired before anything reached
+  the tracker (a Jira search for the refused summary returned zero issues); the
+  sweep made four tickets with distinct keys, epic first and Epic-typed; and the
+  owed path ran end to end, recording the debt with a bad token and clearing it
+  with a good one. The eight tickets were moved to `Won't Do` afterwards.
+- The live node also reproduced both crashes found in review, and both were
+  re-run against the fix.
 - GitHub #43 is answered and closed after publication, not at completion, per
   this project's sequencing rule.
