@@ -851,5 +851,6 @@
   resolution: done
   resolved: '2026-09-21'
 2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli:
+  location: 5487f3656ed7105963c7708366c3e39237bcf9c7
   resolution: done
   resolved: '2026-09-21'
