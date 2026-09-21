@@ -1018,13 +1018,19 @@ def test_complete_gate_no_sidecar_unaffected(tmp_path, monkeypatch, capsys):
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
 
 
-def test_complete_gate_work_only_node_unaffected(tmp_path, monkeypatch, capsys):
-    """A node with no capabilities tree has nothing to reconcile."""
+def test_complete_gate_work_only_node_refuses_an_unqualified_path(tmp_path, monkeypatch, capsys):
+    """A node with no capabilities tree cannot check a declared path, so it is
+    refused rather than passed (it used to pass silently)."""
     from tcw.cli import main
     root = node(tmp_path)                      # work only, no capabilities
     monkeypatch.chdir(root)
     slug = _item_with_delta(root, "new:\n- auth/login\n")
-    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
+    capsys.readouterr()
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert "keeps no capabilities ledger" in err
+    assert "it declares no child projects" in err
+    assert FsWorkStore.open(root).get(slug).status == "active"
 
 
 def test_complete_gate_reads_after_worktree_mergeback(tmp_path, monkeypatch, capsys):

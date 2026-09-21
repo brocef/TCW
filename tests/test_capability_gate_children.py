@@ -195,3 +195,169 @@ def test_invalid_connected_projects_is_not_read_when_nothing_is_declared(tmp_pat
     (ws.path(slug) / "capabilities.yaml").write_text("new:\n- auth/login\n")
     problems = capability_gate(ws, ws.get(slug))
     assert problems and all("nonreciprocal connection" in p for p in problems), problems
+
+
+# ── Task 2: child-qualified paths ───────────────────────────────────────────
+
+def _sibling(tmp_path: Path, root: Path, name: str) -> Path:
+    """A second child of `root`, in its own repository, with a ledger — the
+    project `kid` (or `root`) extends in the inheritance cases."""
+    lib = _work_node(_git(tmp_path / name), name)
+    _register(root, lib)
+    _give_ledger(lib, "default")
+    return lib
+
+
+def test_a_child_qualified_new_path_is_checked_in_the_childs_ledger(
+        tmp_path, monkeypatch, capsys):
+    """C1 (the remedy line is Task 5's)."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: still Missing in project 'kid'",
+             absent=["keeps no capabilities ledger"])
+    FsCapabilitiesStore.open(kid).set("auth/login", {"Status": "Supported"})
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_a_child_qualified_new_path_that_does_not_exist_is_refused(
+        tmp_path, monkeypatch, capsys):
+    """C3."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    slug = _item(root, "new:\n- kid/auth/ghost\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/ghost: declared (new) but does not resolve in project 'kid'")
+
+
+def test_a_child_qualified_changed_path_only_has_to_resolve(tmp_path, monkeypatch, capsys):
+    """C4."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "changed:\n- kid/auth/login\n")
+    _passed(root, slug, monkeypatch, capsys)
+    slug = _item(root, "changed:\n- kid/auth/ghost\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/ghost: declared (changed) but does not resolve in project 'kid'")
+
+
+def test_a_child_qualified_removed_path_must_be_gone(tmp_path, monkeypatch, capsys):
+    """C5."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Supported")
+    slug = _item(root, "removed:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: declared (removed) but still resolves in project 'kid'")
+    FsCapabilitiesStore.open(kid).remove("auth/login")
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_the_rest_of_the_path_is_read_the_way_the_child_reads_it(
+        tmp_path, monkeypatch, capsys):
+    """C6: `kid` inherits `auth/login` from a sibling; its own override is
+    what decides the status."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    lib = _sibling(tmp_path, root, "lib")
+    _cap(lib, "auth/login", "Missing")
+    FsCapabilitiesStore.open(kid).extends_add("lib")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys, "kid/auth/login: still Missing in project 'kid'")
+    FsCapabilitiesStore.open(kid).set("auth/login", {"Status": "Supported"})
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_a_child_that_is_not_here_is_refused(tmp_path, monkeypatch, capsys):
+    """C9, first half."""
+    import shutil
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default",
+                       kid_repo="separate")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    shutil.rmtree(kid)
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: project 'kid' is declared in",
+             "not reachable in this checkout")
+
+
+def test_a_child_with_no_ledger_is_refused(tmp_path, monkeypatch, capsys):
+    """C9, second half."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger=None, kid_repo="same")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: project 'kid' keeps no capabilities ledger")
+
+
+def test_an_unqualified_path_on_a_node_with_no_ledger_is_refused(
+        tmp_path, monkeypatch, capsys):
+    """C10: nothing can check it, so it is refused, naming the qualifiers."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Supported")
+    slug = _item(root, "new:\n- auth/login\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "auth/login: this node ('root') keeps no capabilities ledger; "
+             "qualify the path with a child project id (kid)")
+
+
+def test_a_childs_ledger_at_a_configured_path_is_found(tmp_path, monkeypatch, capsys):
+    """C13, first half: C1 and C3 with the child's ledger at capabilities.path."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="path", kid_repo="same")
+    assert not (kid / "docs" / "capabilities").exists()
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "new:\n- kid/auth/login\n- kid/auth/ghost\n")
+    _refused(root, slug, monkeypatch, capsys,
+             "kid/auth/login: still Missing in project 'kid'",
+             "kid/auth/ghost: declared (new) but does not resolve in project 'kid'",
+             absent=["keeps no capabilities ledger"])
+
+
+def test_local_inherited_and_child_paths_mix_on_a_node_with_a_ledger(
+        tmp_path, monkeypatch, capsys):
+    """C15."""
+    root, kid = _graph(tmp_path, parent_ledger=True, kid_ledger="default", kid_repo="same")
+    lib = _sibling(tmp_path, root, "lib")
+    FsCapabilitiesStore.open(root).extends_add("lib")
+    _cap(root, "auth/local", "Missing")
+    _cap(kid, "auth/login", "Supported")
+    _cap(lib, "auth/x", "Missing")
+    slug = _item(root, "new:\n- auth/local\n- kid/auth/login\n- lib/auth/x\n")
+    err = _refused(root, slug, monkeypatch, capsys,
+                   "auth/local: still Missing (declared new",
+                   "lib/auth/x: still Missing (declared new")
+    assert "kid/auth/login" not in err
+    FsCapabilitiesStore.open(root).set("auth/local", {"Status": "Supported"})
+    FsCapabilitiesStore.open(root).set("lib/auth/x", {"Status": "Supported"})
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_an_extended_project_wins_over_a_child_of_the_same_id(tmp_path, monkeypatch, capsys):
+    """C16: `kid` is both a child and a project root's ledger extends; the
+    inheritance reading — root's own override — decides."""
+    root, kid = _graph(tmp_path, parent_ledger=True, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    FsCapabilitiesStore.open(root).extends_add("kid")
+    FsCapabilitiesStore.open(root).set("kid/auth/login", {"Status": "Supported"})
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _passed(root, slug, monkeypatch, capsys)
+
+
+def test_an_unprovisioned_own_ledger_refuses_even_child_paths(tmp_path, monkeypatch, capsys):
+    """C18: without root's own ledger the gate cannot tell which reading a
+    path has."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    set_component_key(root, "capabilities", "path", "../nowhere/capabilities")
+    set_component_key(root, "capabilities", "repository",
+                      {"url": "https://example.invalid/orchestrator.git",
+                       "path": "trees/capabilities"})
+    _cap(kid, "auth/login", "Supported")
+    slug = _item(root, "new:\n- kid/auth/login\n")
+    _refused(root, slug, monkeypatch, capsys, "kid/auth/login: ", "tcw provision")
+
+
+def test_a_discard_only_warns_about_child_paths(tmp_path, monkeypatch, capsys):
+    """C12, child half: C1's unreconciled state, C9's absent child and C10's
+    unqualified path each warn on a discard instead of refusing it."""
+    root, kid = _graph(tmp_path, parent_ledger=False, kid_ledger="default", kid_repo="same")
+    _cap(kid, "auth/login", "Missing")
+    slug = _item(root, "new:\n- kid/auth/login\n- auth/login\n- ghost/auth/login\n")
+    err = _passed(root, slug, monkeypatch, capsys, resolution="wontfix")
+    assert "warning: unreconciled capability: kid/auth/login: still Missing" in err
+    assert "warning: unreconciled capability: auth/login: this node ('root')" in err

@@ -8,6 +8,7 @@ FS realization only — a remote recursion layer would be additive.
 import re
 from datetime import date
 from pathlib import Path
+from typing import NamedTuple
 
 from tcw.store.base import (
     RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
@@ -65,41 +66,113 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
     declared = [p for kind in ("new", "changed", "removed") for p in deltas[kind]]
     if not declared:
         return []
-    caps, reason = _open_ledger(st.node_root)
+    own, reason = _open_ledger(st.node_root)
+    if reason is None:
+        try:
+            registry = FsProjectRegistry.open(st.node_root).require_valid()
+        except ValueError as e:
+            reason = str(e)
     if reason is not None:
         return [f"{path}: {reason}" for path in declared]
-    if caps is None:
-        return []
 
-    def resolve(path: str):
-        try:
-            return caps.get(path)
-        except RefError as e:                              # ambiguous bare ref, etc.
-            return f"!{e}"
+    children: dict[str, "tuple[FsCapabilitiesStore | None, str | None]"] = {}
+
+    def open_child(project_id: str) -> "FsCapabilitiesStore | str":
+        if project_id not in children:
+            project = registry.get(project_id)
+            children[project_id] = (
+                _open_ledger(Path(project.locator)) if project is not None
+                else (None, unreachable_project_note(registry, project_id)
+                      or f"project '{project_id}' is declared but not "
+                         f"reachable in this checkout"))
+        store, why = children[project_id]
+        if why is not None:
+            return why
+        return store if store is not None else \
+            f"project '{project_id}' keeps no capabilities ledger"
 
     problems: list[str] = []
-    for path in deltas["new"]:
-        cap = resolve(path)
-        if isinstance(cap, str):
-            problems.append(f"{path}: {cap[1:]}")
-        elif cap is None:
-            problems.append(f"{path}: declared (new) but does not resolve")
-        elif cap.status == "Missing":
-            problems.append(f"{path}: still Missing (declared new; flip it or mark Omitted)")
-    for path in deltas["changed"]:
-        cap = resolve(path)
-        if isinstance(cap, str):
-            problems.append(f"{path}: {cap[1:]}")
-        elif cap is None:
-            problems.append(f"{path}: declared (changed) but does not resolve")
-    for path in deltas["removed"]:
-        # Local only: `rm` deletes only local capabilities, and once a local one
-        # is gone its bare path may fall through to an inherited capability at
-        # the same path, which `rm` refuses — a dead end if that counted.
-        if caps.get_local(path) is not None:
-            problems.append(f"{path}: declared (removed) but still resolves "
-                            f"(delete it with `tcw capabilities rm`)")
+
+    def check(kind: str, path: str) -> None:
+        route = route_capability_path(path, own=own, registry=registry,
+                                      node_id=registry.current.id,
+                                      open_child=open_child)
+        if isinstance(route, str):
+            problems.append(route)
+            return
+        where = "" if route.owner is None else f" in project '{route.owner}'"
+        if kind == "removed":
+            # Local only: `rm` deletes only local capabilities, and once a local
+            # one is gone its bare path may fall through to an inherited
+            # capability at the same path, which `rm` refuses — a dead end if
+            # that counted.
+            if route.store.get_local(route.path) is not None:
+                problems.append(f"{path}: declared (removed) but still resolves{where} "
+                                f"(delete it with `tcw capabilities rm`)")
+            return
+        try:
+            cap = route.store.get(route.path)
+        except RefError as e:                              # ambiguous bare ref, etc.
+            problems.append(f"{path}: {e}")
+            return
+        if cap is None:
+            problems.append(f"{path}: declared ({kind}) but does not resolve{where}")
+        elif kind == "new" and cap.status == "Missing":
+            problems.append(f"{path}: still Missing{where} "
+                            f"(declared new; flip it or mark Omitted)")
+
+    for kind in ("new", "changed", "removed"):
+        for path in deltas[kind]:
+            check(kind, path)
     return problems
+
+
+class Route(NamedTuple):
+    """Which ledger answers for a declared capability path, and the path
+    within it. `owner` is the child project's id, or None for the item's own
+    node."""
+    owner: str | None
+    store: FsCapabilitiesStore
+    path: str
+
+
+def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
+                          registry, node_id: str,
+                          open_child) -> "Route | str":
+    """Route one declared `capabilities.yaml` path to the ledger that answers
+    for it, or return a problem line.
+
+    The one place this rule lives. `own` is the item's node's ledger (None when
+    the node keeps none); `open_child(project_id)` returns a child's ledger or
+    the reason it has none. In order:
+
+    1. A first segment naming a project `own` extends is today's inheritance
+       reading, even when that project is also a declared child — every
+       existing sidecar keeps its meaning.
+    2. A first segment naming a declared child (reachable here or not) routes
+       the rest of the path to that child's own ledger, read the way the child
+       reads it.
+    3. Anything else is the node's own path; with no ledger of its own, nothing
+       can check it.
+
+    Uses only the registry's declared children and the stores it is handed, so
+    a non-filesystem store could answer every question it asks."""
+    head, _, rest = path.partition("/")
+    if own is not None and head in own.extends:
+        return Route(None, own, path)
+    child_ids = registry.declared_child_ids()
+    if head in child_ids:
+        if not rest:
+            return f"{path}: names project '{head}' but no capability"
+        store = open_child(head)
+        if isinstance(store, str):
+            return f"{path}: {store}"
+        return Route(head, store, rest)
+    if own is not None:
+        return Route(None, own, path)
+    qualifiers = ", ".join(child_ids) or "it declares no child projects"
+    return (f"{path}: this node ('{node_id}') keeps no capabilities ledger; "
+            f"qualify the path with a child project id ({qualifiers})")
 
 
 # ── reconcile ────────────────────────────────────────────────────────────────
