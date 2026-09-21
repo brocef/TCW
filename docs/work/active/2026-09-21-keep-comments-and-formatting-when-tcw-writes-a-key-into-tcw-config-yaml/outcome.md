@@ -145,3 +145,15 @@ removing the item would delete a full comment line".
   change. `docs/guide/jira.md` does not fire.
 - The leftover-config item edits other parts of the migration guide; this branch
   touched only the "One more thing" section at its end.
+
+## Autonomous decisions
+
+Taken in an autonomous run; each consulted Codex (read-only) and an Opus subagent.
+
+- **Request stage** was written without the user, with its assumptions marked: the scope is every writer of `tcw-config.yaml`, and no new runtime dependency is added (pyproject's stated policy).
+- **Refuse, or fall back to a full rewrite, when an in-place edit isn't safe?** Codex: refuse for existing files. Opus: refuse, and `init` must never half-finish. Chose refuse. A missing or empty file is written in full, and `init` builds all its edits into one checked text before touching any folder.
+- **Comments inside an edited list.** Codex: keep the surviving items' comments. Opus: edit single items when the order is kept, otherwise replace. Chose single-item edits, refusing when a re-sort would drop comments.
+- **Code review** (adversarial-code-reviewer): DONE, with non-blocking findings. Null-only files were refused; a no-op tag change could be refused; a trailing `...` blocked appends; and there were test gaps. All were fixed in fa593c2a and 8fa4beff. Its pre-existing finding, that re-running `tcw work init` rewrites `work.path`, was filed as `2026-09-21-keep-work-path-as-written-when-tcw-work-init-is-re-run-without-path`.
+- **Verify** (tcw:verifier): accept, with 22 of 23 criteria met by its own evidence and the full suite taken from the implementer's run. Its findings were fixed: emptying a file refused; the alias advice broke the alias; a stray blank line. AC 3's literal wording conflicts with the spec's own rule; the coordinating session chose the refusal and recorded it as a spec wording correction.
+- **`work: {}`**: the coordinating session asked for it to be listed as a new refusal. The implementer instead made it take the key, as `work: ~` does, because an empty mapping has nothing to lose. Accepted as the better behavior.
+- **Hands-on QA** by the coordinating session: on a hand-commented config, `tcw work tags add perf` changed only the tags line (`[bug, docs]` → `[bug, docs, perf]`) and kept every comment. Adding an already-registered tag changed nothing.
