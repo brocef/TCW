@@ -4798,8 +4798,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return (f"tcw work: delete {slug} (retained in {location[:12]})"
                 if location else f"tcw work: delete {slug} (no commit held it)")
 
-    def _graveyard_dirt_is_only(self, slug: str) -> bool:
-        """Whether the graveyard's uncommitted change touches only `slug`.
+    def _graveyard_dirt_is_only(self, slugs: set[str]) -> bool:
+        """Whether the graveyard's uncommitted change touches only `slugs` — one
+        item, or a removed item together with the children nested in it.
 
         Compared entry by entry against the committed file rather than by
         reading the diff, because the question is about records and not about
@@ -4826,10 +4827,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             key for key in set(committed) | set(current)
             if committed.get(key) != current.get(key)
         }
-        return changed <= {slug}
+        return changed <= slugs
 
     def _require_writable_graveyard(self, slug: str,
-                                    only_own_entry: bool = False) -> None:
+                                    only_own_entry: bool = False,
+                                    also: tuple[str, ...] = ()) -> None:
         """Refuse a resolving transition when the graveyard cannot be safely
         rewritten. Called *before* the move, so a refusal moves nothing.
 
@@ -4883,7 +4885,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
-            if only_own_entry and self._graveyard_dirt_is_only(slug):
+            if only_own_entry and self._graveyard_dirt_is_only({slug, *also}):
                 # This store's own unfinished write, and nothing else. The first
                 # attempt at a removal writes the tombstone and can then fail to
                 # commit it, so refusing here made that state unfinishable
@@ -4929,17 +4931,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         resolution to a single added block and makes a merge conflict between two
         concurrent resolutions a plain, settleable one.
         """
+        self._write_tombstones([(slug, resolution, resolved, location)])
+
+    def _write_tombstones(self, records: list[tuple[str, str, str, str]]) -> None:
+        """`_write_tombstone` for several `(slug, resolution, resolved, location)`
+        records in one read-modify-write, so a removed item and the children
+        nested in it are recorded together or not at all."""
         path = self._graveyard_path()
         doc: dict = {}
         if path.exists():
             loaded = load_yaml(path)
             if isinstance(loaded, dict):
                 doc = loaded
-        record = {"resolution": resolution or "",
-                  "resolved": resolved or date.today().isoformat()}
-        if location:
-            record["location"] = location
-        doc[slug] = record
+        for slug, resolution, resolved, location in records:
+            record = {"resolution": resolution or "",
+                      "resolved": resolved or date.today().isoformat()}
+            if location:
+                record["location"] = location
+            doc[slug] = record
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
 
@@ -5103,7 +5112,30 @@ class FsWorkStore(FsTreeStore, WorkStore):
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return True
-        return False
+        return self._nested_tree_path(location, slug) is not None
+
+    def _nested_tree_path(self, rev: str, slug: str) -> Path | None:
+        """The store-repo-relative folder `rev` holds for `slug` *inside another
+        item's folder* under a resolved status, or None.
+
+        Children made by earlier versions were nested in their parent's folder
+        and leave the store with it, so `<status>/<slug>` is not where git has
+        them. Refuses to guess between two matches."""
+        hits: list[str] = []
+        for status in RESOLVED_STATUSES:
+            try:
+                rel = (self.root / status).resolve().relative_to(self.store_git_root.resolve())
+            except ValueError:
+                continue
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+                           "--name-only", rev, "--", str(rel)],
+                          capture_output=True, text=True, check=False)
+            if listed.returncode != 0:
+                continue
+            hits += [str(Path(line).parent) for line in listed.stdout.splitlines()
+                     if line.endswith(f"/{slug}/state.yaml")
+                     and Path(line).parent.parent != Path(rel)]
+        return Path(hits[0]) if len(hits) == 1 else None
 
     def pending_deletion(self, slug: str) -> bool:
         """Whether `slug` is resolved, still present, and not to be retained.
@@ -5167,7 +5199,32 @@ class FsWorkStore(FsTreeStore, WorkStore):
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return rel
-        return None
+        return None if status else self._nested_tree_path("HEAD", slug)
+
+    def _nested_in_commit(self, committed: Path) -> list[tuple[str, str]]:
+        """`(slug, resolution)` for every item HEAD holds nested inside the folder
+        at `committed` — children made by earlier versions, which a removal of
+        that folder takes with it. Read from git, not from disk, so a removal
+        rerun after the folder is already gone still finds them."""
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+                       "--name-only", "HEAD", "--", str(committed)],
+                      capture_output=True, text=True, check=False)
+        if listed.returncode != 0:
+            return []
+        found = []
+        for line in sorted(listed.stdout.splitlines()):
+            folder = Path(line).parent
+            if Path(line).name != "state.yaml" or folder == committed:
+                continue
+            shown = _git(["git", "-C", str(self.store_git_root), "show", f"HEAD:{line}"],
+                         capture_output=True, text=True, check=False)
+            try:
+                state = yaml.safe_load(shown.stdout) if shown.returncode == 0 else {}
+            except yaml.YAMLError:
+                state = {}
+            resolution = state.get("resolution") if isinstance(state, dict) else None
+            found.append((folder.name, resolution or ""))
+        return found
 
     def _require_retrievable(self, slug: str, folder: Path,
                              committed: Path | None) -> None:
@@ -5283,6 +5340,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             resuming = self.pending_removal(slug)
             status = status or (item.status if item is not None else "")
             committed = self._committed_item_path(slug, status)
+            nested = self._nested_in_commit(committed) if committed is not None else []
             folder = self._find(slug)
             if folder is not None and folder.exists():
                 self._require_retrievable(slug, folder, committed)
@@ -5299,7 +5357,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # `pending_removal` is also true on a *first* attempt whose `pre`
             # binding relocated the item, where the graveyard is clean and any
             # dirt found is somebody else's.
-            self._require_writable_graveyard(slug, only_own_entry=resuming)
+            self._require_writable_graveyard(slug, only_own_entry=resuming,
+                                             also=tuple(s for s, _ in nested))
             if folder is not None and folder.exists():
                 shutil.rmtree(folder)
             existing = self.tombstone(slug)
@@ -5312,12 +5371,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # source: `WorkItem` carries no resolved timestamp, and
             # `_write_tombstone`'s default is the honest "known resolved by
             # today" the backfill command already uses.
-            self._write_tombstone(
-                slug,
-                (existing.resolution if existing else "")
-                or (item.resolution if item is not None else "") or "",
-                existing.resolved if existing else "",
-                location=location)
+            resolution = ((existing.resolution if existing else "")
+                          or (item.resolution if item is not None else "") or "")
+            records = [(slug, resolution, existing.resolved if existing else "", location)]
+            # Children nested in the folder went with it. Each keeps its own
+            # resolution if it had one; otherwise it followed its parent's.
+            for child, own in nested:
+                known = self.tombstone(child)
+                records.append((child,
+                                (known.resolution if known else "") or own or resolution,
+                                known.resolved if known else "", location))
+            self._write_tombstones(records)
             if self.auto_commit_transitions():
                 paths = [self._graveyard_path()]
                 if committed is not None:
