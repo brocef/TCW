@@ -52,7 +52,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from tcw.store.base import RESOLVED_STATUSES, target_status, transition_name
+from tcw.store.base import (RESOLVED_STATUSES, bound_value, target_status,
+                            transition_name)
 from tcw.tracker.claim import _normalize
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, ClaimOutcome, binding_of, claim,
                                 read_ticket, same_site, with_status_synced,
@@ -289,8 +290,8 @@ def _siblings(store, slug: str, bound: Bound) -> tuple[list[str], bool]:
     re-take of the ticket, not a part that held it."""
     held, shared = [], False
     for item in store.query():
-        value = item.tracker
-        if item.slug == slug or not isinstance(value, dict) or "problem" in value:
+        value = bound_value(item.tracker)
+        if item.slug == slug or value is None:
             continue
         if ((value["project"], value["provider"], value["ticket"]["id"])
                 != (bound.project, bound.provider, bound.ticket_id)):

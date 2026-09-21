@@ -1040,6 +1040,68 @@ def test_all_sweeps_up_owed_tickets(node, monkeypatch):
     assert len(creates) == 2, creates
 
 
+def _owed_item(monkeypatch, title="Filed on a train"):
+    """File one item while the tracker is unreachable, and return its slug.
+
+    The item ends up carrying an `owed` record and no binding, which is the state
+    `binding_value` reports as `{"owed": ...}` — the fourth shape, and the one no
+    test moved through a lifecycle before these two.
+    """
+    from tcw.tracker.jira import TrackerError
+    _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
+    code, out, err = _run(["work", "new", title])
+    assert code == 0, err
+    return out.strip().splitlines()[0]
+
+
+def test_an_owed_item_can_still_be_started(node, monkeypatch):
+    """An item that owes a ticket must move through its lifecycle like any other.
+
+    `_deliver_after` guarded on the absence of `problem` rather than the presence
+    of `ticket`, so the owed shape reached `value["ticket"]["key"]` and the
+    command died *after* the status move had already been committed.
+    """
+    _root, configure = node
+    configure(ON_NEW_TRACKER)
+    slug = _owed_item(monkeypatch)
+
+    _create_responses(monkeypatch)                  # the network is back
+    code, _out, err = _run(["work", "start", slug])
+    assert code == 0, err
+    assert "Traceback" not in err, err
+    assert "KeyError" not in err, err
+
+
+def test_one_owed_item_does_not_break_lifecycle_moves_on_every_other_item(
+        node, monkeypatch):
+    """`_siblings` scans the whole board, so an owed item anywhere reached its
+    `value["project"]` and took tracker delivery down for items that were
+    properly bound and had nothing to do with it."""
+    _root, configure = node
+    configure(ON_NEW_TRACKER)
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Properly bound"])
+    assert code == 0, err
+    bound_slug = out.strip().splitlines()[0]
+    assert any(p[0] == "POST" and p[1].rstrip("/").endswith("/issue")
+               for p in posted), posted
+
+    _owed_item(monkeypatch, "Filed while the network was down")
+
+    # What `start` then makes of the ticket is not this test's subject — the
+    # stub offers no `Start Progress`, so delivery reports a conflict and exits
+    # non-zero either way. The subject is that `_siblings` walked past the owed
+    # item and let delivery reach the tracker at all, which the requests prove
+    # and a `KeyError` would have prevented.
+    posted = _create_responses(monkeypatch)
+    _code, _out, err = _run(["work", "start", bound_slug])
+    assert "Traceback" not in err, err
+    assert "KeyError" not in err, err
+    # Addressed by issue id, not key: PROBE-1 is the stub's first minted issue,
+    # so its id is 10001.
+    assert any("/issue/10001" in str(p[1]) for p in posted), posted
+
+
 def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
     """Spec criterion 15 — the absence of a change. Every other criterion here is
     about a new path, so nothing else would notice if this one broke."""

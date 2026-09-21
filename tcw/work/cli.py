@@ -14,7 +14,7 @@ from tcw.store.base import (
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
-    normalize_tag, AlreadyClaimed,
+    bound_value, normalize_tag, AlreadyClaimed,
     normalize_work_level, resolution_status, StaleRevision,
 )
 from tcw.store.fs import (
@@ -1110,8 +1110,8 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
         item = st.get(bare)
     except MultipleMatch:
         return 0
-    value = item.tracker if item is not None else None
-    if not isinstance(value, dict) or "problem" in value:
+    value = bound_value(item.tracker if item is not None else None)
+    if value is None:
         return 0
     config = st.tracker_config()
     problems = [] if config is not None else st.tracker_problems()
