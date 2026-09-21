@@ -362,3 +362,65 @@ def test_a_comment_line_straight_after_the_list_survives_add_and_remove():
 def test_a_multi_line_flow_list_with_a_comment_is_refused():
     text = "work:\n  tags: [a,  # first\n    b]\n"
     refused(text, SetList("work", "tags", ("a", "b", "c")))
+
+
+# ── equivalence with the whole-file writer this replaced ─────────────────────
+
+def old_writer(mapping: dict, edit) -> dict:
+    """What each writer's own dict logic produced before, round-tripped through
+    `yaml.safe_dump` as it used to be — a copy of that logic, kept here as the
+    reference rather than imported, because the code it copies is gone."""
+    config = dict(mapping)
+    if isinstance(edit, SetId):
+        return yaml.safe_load(yaml.safe_dump({"id": edit.value, **config}))
+    section = config.get(edit.section)
+    section = dict(section) if isinstance(section, dict) else {}
+    if isinstance(edit, Remove):                           # _persist_extends([])
+        section.pop(edit.key, None)
+    elif isinstance(edit, SetList):                        # extends / tags
+        section[edit.key] = list(edit.values)
+    else:                                                  # init's path
+        section = {**section, edit.key: edit.value}
+    if section:
+        config[edit.section] = section
+    else:
+        config.pop(edit.section, None)
+    return yaml.safe_load(yaml.safe_dump(config, sort_keys=False))
+
+
+SHAPES = [
+    "id: n\n",
+    "# only a comment\n",
+    "id: n\ntaxonomy:\n  extends:\n  - a\n  - b\nwork:\n  tags: [a, c]\n",
+    "id: n\ntaxonomy:\n    path: t  # c\n    extends: [a, b]\nwork:\n    tags:\n        - a\n        - c\n",
+    "id: n\r\ntaxonomy:\r\n  extends:\r\n  - a\r\n  - b\r\nwork:\r\n  path: w\r\n",
+    "id: n\ntaxonomy:\n  # stub\nwork:\ncapabilities: ~\n",
+    "id: n\ntaxonomy:\n  extends: # later\n  path: t\nwork:\n  tags: []\n",
+]
+
+EDITS = [
+    SetList("taxonomy", "extends", ("a", "b", "c")),
+    SetList("taxonomy", "extends", ("b",)),
+    Remove("taxonomy", "extends"),
+    SetList("work", "tags", ("a", "b", "c")),
+    SetList("work", "tags", ()),
+    SetScalar("work", "path", "planning/work"),
+    SetScalar("capabilities", "path", "docs/caps"),
+]
+
+
+@pytest.mark.parametrize("text", SHAPES)
+@pytest.mark.parametrize("change", EDITS, ids=repr)
+def test_the_result_means_what_the_whole_file_writer_produced(text, change):
+    mapping = yaml.safe_load(text) or {}
+    if isinstance(change, Remove) and change.key not in (mapping.get(change.section) or {}):
+        pytest.skip("extends rm refuses an id that is not there before writing")
+    after = edit(text, change)
+    assert (yaml.safe_load(after if after is not None else text) or {}) == old_writer(mapping, change)
+
+
+@pytest.mark.parametrize("text", ["# only a comment\n", "work:\n  tags: [a]  # c\n",
+                                  "\ufeff# header\nwork: {}\n"])
+def test_a_backfilled_id_means_what_the_whole_file_writer_produced(text):
+    mapping = yaml.safe_load(text) or {}
+    assert yaml.safe_load(edit(text, SetId("p"))) == old_writer(mapping, SetId("p"))
