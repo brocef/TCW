@@ -847,6 +847,7 @@
   resolution: done
   resolved: '2026-09-21'
 2026-09-21-point-a-refused-drop-of-an-active-or-in-review-item-to-the-discard-route:
+  location: b354b99759a8ccfe1ba3de00e38b1ab2d6fe1239
   resolution: done
   resolved: '2026-09-21'
 2026-09-21-report-a-leftover-pre-2-5-0-store-config-file-instead-of-silently-dropping-its-extends:
