@@ -2862,6 +2862,20 @@ WORK_SIDECARS: dict[str, dict[str, str]] = {
 TAXONOMY_EDITABLE_FIELDS = frozenset({"name", "description", "kind", "relates_to", "vocabulary"})
 
 
+def drop_refused_over_children(slug: str, beneath: list) -> str:
+    """Why `slug` cannot be dropped while items name it as their parent, and the
+    way out. A resolved item can be neither dropped nor discarded, so when every
+    one is resolved the way out is to discard `slug` instead: that keeps the
+    record their `parent` field names, which a drop would erase."""
+    names = ", ".join(i.slug for i in beneath)
+    if any(i.status not in RESOLVED_STATUSES for i in beneath):
+        advice = "Drop, discard or re-parent them first."
+    else:
+        advice = (f"They are resolved, so discard it instead, which keeps the record "
+                  f"they name: `tcw work complete {slug} --resolution wontfix --confirm`.")
+    return f"Cannot drop {slug}; these items name it as their parent: {names}. {advice}"
+
+
 class IllegalTransition(Exception):
     """A status transition not in the legal graph (the enforcement — B.3)."""
 
@@ -3999,11 +4013,9 @@ class WorkStore(ABC):
             raise IllegalTransition(f"cannot drop from {item.status} (only backlog)")
         # Resolved children count too: a drop leaves no tombstone, so a child
         # naming this item as its parent would name something that never existed.
-        beneath = [i.slug for i in self.independent_descendants(slug)]
+        beneath = self.independent_descendants(slug)
         if beneath:
-            raise ValueError(f"Cannot drop {slug}; these items name it as their "
-                             f"parent: {', '.join(beneath)}. Drop, discard or "
-                             f"re-parent them first.")
+            raise ValueError(drop_refused_over_children(slug, beneath))
         self._delete(slug)
 
     def _require_live_parent(self, parent: str, *, moving: str | None = None,

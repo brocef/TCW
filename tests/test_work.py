@@ -2020,6 +2020,62 @@ def test_drop_of_a_resolved_item_says_so(tmp_path, monkeypatch, capsys, resoluti
     assert f"tcw work delete {slug}" in err
 
 
+def test_drop_of_a_parent_is_refused_before_the_confirm_gate(tmp_path, monkeypatch, capsys):
+    """A child naming the parent refuses the drop in the store; saying so only
+    after `--confirm` is the two-step refusal the gate exists to avoid."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    parent = st.create("a parent", created="2026-01-01").slug
+    kid = st.create("a child", created="2026-01-01", parent=parent).slug
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", parent]) == 1
+    err = capsys.readouterr().err
+    assert kid in err and "Would delete" not in err
+    assert "Drop, discard or re-parent" in err
+    assert FsWorkStore.open(root).get(parent) is not None
+
+
+def test_drop_of_a_parent_with_only_resolved_children_advises_discarding_it(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    parent = st.create("a parent", created="2026-01-01").slug
+    kid = st.create("a child", created="2026-01-01", parent=parent).slug
+    st.complete(kid, "wontfix", [])
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", parent, "--confirm"]) == 1
+    err = capsys.readouterr().err
+    assert kid in err and "Drop, discard" not in err
+    assert f"tcw work complete {parent} --resolution wontfix --confirm" in err
+    # and that advice works
+    assert main(["work", "complete", parent, "--resolution", "wontfix", "--confirm"]) == 0
+    assert FsWorkStore.open(root).get(parent).status == "discarded"
+
+
+def test_discard_advice_for_a_parent_names_its_open_children(tmp_path, monkeypatch, capsys):
+    """The advised discard is refused while a child is open, so say so."""
+    from tcw.cli import main
+    root = node(tmp_path)
+    st = FsWorkStore.open(root)
+    parent = st.create("a parent", created="2026-01-01").slug
+    kid = st.create("a child", created="2026-01-01", parent=parent).slug
+    st.start(parent, force=True)
+    monkeypatch.chdir(root)
+    assert main(["work", "drop", parent]) == 1
+    err = capsys.readouterr().err
+    assert f"tcw work complete {parent} --resolution wontfix --confirm" in err
+    assert kid in err
+
+
+def test_new_parent_help_does_not_describe_nesting(capsys):
+    from tcw.cli import main
+    with pytest.raises(SystemExit):
+        main(["work", "new", "--help"])
+    assert "nested under" not in capsys.readouterr().out
+
+
 def test_edit_blocks_reverse_stores_bare_ref(tmp_path, monkeypatch, capsys):
     """--blocks on a qualified slug must persist a BARE ref into the other item's
     node-local blocked_by (never the qualified form)."""

@@ -15,7 +15,7 @@ from tcw.store.base import (
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TransitionCommitError, WorkItem,
     bound_value, normalize_tag, AlreadyClaimed,
-    normalize_work_level, resolution_status, StaleRevision,
+    normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
@@ -3818,7 +3818,7 @@ def _drop(args: argparse.Namespace) -> int:
         print(f"tcw work drop: {e}", file=sys.stderr)
         return 1
     if item is not None and item.status != "backlog":
-        if item.status in ("completed", "discarded"):
+        if item.status in RESOLVED_STATUSES:
             print(f"tcw work drop: {args.slug} is already resolved ({item.status}); "
                   f"there is nothing to drop. If it is waiting to be removed after "
                   f"a failed archive, `tcw work delete {args.slug}` finishes that.",
@@ -3828,6 +3828,16 @@ def _drop(args: argparse.Namespace) -> int:
                   f"a backlog item. To discard it, keeping a record: `tcw work complete "
                   f"{args.slug} --resolution wontfix --confirm` (or duplicate / "
                   f"superseded).", file=sys.stderr)
+            # That discard is refused while anything beneath is open; say so now.
+            if still_open := st.open_descendants(bare):
+                print(f"First complete or discard the items still open beneath it: "
+                      f"{', '.join(still_open)}.", file=sys.stderr)
+        return 1
+    # A child naming the item refuses the drop in the store too; say it before the
+    # `--confirm` gate for the same reason as the status check above.
+    if item is not None and (beneath := st.independent_descendants(bare)):
+        print(f"tcw work drop: {drop_refused_over_children(args.slug, beneath)}",
+              file=sys.stderr)
         return 1
     # `drop` is the only destructive verb with no record behind it — completing
     # and discarding (both `complete`) preserve the item. Gate it the way `complete`
@@ -4232,7 +4242,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pn.add_argument("--tag", "--tags", action="extend", type=_tags,
                     help="apply a registered tag (repeatable; a value may be a,b,c)")
     pn.add_argument("--epic", action="store_true", help="mark as an epic (type: epic)")
-    pn.add_argument("--parent", help="create as a child nested under this item's slug")
+    pn.add_argument("--parent", help="create as a child of this item: it records the "
+                    "parent and has its own status")
     pn.add_argument("--initiative", help="back-pointer slug to an owning epic")
     pn.set_defaults(func=_new)
 

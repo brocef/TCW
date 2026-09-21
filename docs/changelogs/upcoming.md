@@ -205,6 +205,13 @@ carrying everything listed under `v2.5.0`.
   refused with "cannot drop from active (only backlog)", naming no alternative.
   `skills/work/SKILL.md` spells out that `discard` is reached through
   `complete --resolution`.
+  A backlog item that items name as their parent is refused before the gate too,
+  through the new `store.base.drop_refused_over_children`, which `WorkStore.drop`
+  shares. When all those items are resolved it advises discarding the parent
+  (dropping would erase the record their `parent:` names) instead of "Drop,
+  discard or re-parent them". An active or review item's discard advice also
+  names any open descendants, which `complete` would refuse over. `tcw work new
+  --parent`'s help no longer says the child is nested.
 - `write_sentinel` read `id: null` as "no id", then wrote it back unchanged
   (`{"id": new, **existing}` let the old `None` win) while returning `True`. It
   now sets the id.
