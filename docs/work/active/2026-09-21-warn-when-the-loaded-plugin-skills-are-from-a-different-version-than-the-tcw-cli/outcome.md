@@ -164,3 +164,15 @@ path with matching versions on this machine, median 0.12 seconds in total,
   before the fix (waited 37.2 seconds) and passes after it. The verifier's
   stand-ins now take 3.6 seconds (ignores TERM; silent) and 0.2 seconds (child
   left behind; warns).
+
+## Autonomous decisions
+
+Taken in an autonomous run; each consulted Codex (read-only) and an Opus subagent.
+
+- **Put the check outside the CLI, as a plugin script?** Codex: sound, because an older CLI rejects new arguments. Opus: sound, because argparse's exit 2 would turn a warning into a block, and an environment variable misses the older-CLI case. Chose a plugin-side script.
+- **Warn on a patch-only difference?** Codex: yes. Opus: yes. Chose yes.
+- **Add the instruction to all 17 skills?** Codex: all. Opus: all. Chose all.
+- **(Plan) An opt-in check at verify that `codex plugin marketplace upgrade tcw` alone updates an installed plugin.** No advisor. Skipped by the coordinating session, because it changes the user's own Codex install without their consent. Recorded as unverified.
+- **Code review** (adversarial-code-reviewer): NOT DONE on one finding. The 3-second limit was not a real ceiling for a `tcw` that ignores TERM. It also flagged a stale bootstrap comment and a release-note wording error. All three were fixed in 10ac237f. The verifier found a second gap, a child left holding the output, fixed in 34aba83b. Nothing rejected.
+- **Verify** (tcw:verifier): accept. Criteria 1–14 and 16 are met. Criterion 15, the capability status Missing → Supported, is set at verify in the same commit as this section, as the ledgerless item did.
+- **Hands-on QA** by the coordinating session: with a stand-in `tcw` printing 2.4.0 the script warned with the upgrade advice. With 2.5.0 it was silent. With a stand-in that ignores TERM and sleeps 8 seconds it gave up silently at 3.5 seconds and left no process behind. Exit 0 in every case.

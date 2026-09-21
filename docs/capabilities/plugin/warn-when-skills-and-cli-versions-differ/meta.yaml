@@ -1,6 +1,6 @@
 id: cap-76bee2
 name: Warn when skills and CLI versions differ
-Status: Missing
+Status: Supported
 Subject:
 - cli
 - skill
