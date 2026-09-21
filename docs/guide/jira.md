@@ -50,10 +50,19 @@ work:
             complete: Finish # optional: only where the status cannot say
             discard: Abandon # optional: may also be one name per resolution
         statuses: # optional: where a linked ticket goes as its item moves
+            backlog: To Do # where a *created* ticket lands
             active: In Progress
             review: In Review
             completed: Done
             discarded: Won't Do
+        create: # optional: how to make a ticket for an item
+            project: EX
+            issue-type: Task
+            issue-types: # optional: by what the item is
+                epic: Epic
+                bug: Bug
+            components: [Platform] # optional
+            on-new: false # optional, default false
         exclusive-claim-transition: Start Progress # optional; see below
         comments: false # optional, default false
         link: https://tcw.example.com/work/{slug} # optional
@@ -67,6 +76,7 @@ work:
 | `base-url`              | yes      | Your Jira Cloud site.                                                                                                                                  |
 | `candidate-query`       | yes      | The Jira Query Language (JQL) search that `tracker list` runs.                                                                                         |
 | `inbox-query`           | no       | The JQL search for tickets waiting to be triaged, which `tcw work inbox list` shows. See [Tickets in the inbox](#tickets-in-the-inbox).                 |
+| `create`                | no       | How to make a ticket for an item that has none. Required before `tcw work tracker create` will run. See [Making a ticket for an item](#making-a-ticket-for-an-item).                                                |
 | `credentials.email-env` | yes      | The **name** of the environment variable holding your Jira account's e-mail address.                                                                   |
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.start`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it. Called `transitions.claim` in version 2.3.0 and earlier; see [Renaming the start transition](#renaming-the-start-transition).       |
@@ -372,6 +382,96 @@ It is a different setting from `transitions.start`, which is the transition a
 `release --force` releases one. Both exist for the same situation — recovering
 work from somebody who has gone away — and both refuse without the flag, naming
 whoever holds it.
+
+## Making a ticket for an item
+
+`tracker import` builds an item from a ticket and `tracker link` binds two things
+that both already exist. **`tcw work tracker create` goes the other way: it makes
+a ticket for an item that has none, and binds it.**
+
+```sh
+tcw work tracker create 2026-09-14-rename-the-widget
+tcw work tracker create --all --dry-run   # what a sweep would make
+tcw work tracker create --all             # every open item with no ticket
+```
+
+The ticket's summary is the item's title, and its description is the item's own
+request — `initial-request.md`, or `intake.md` when the request has not been
+written yet — followed by a line naming the slug. The item stays the source of
+truth and the ticket points back at it, so the description is plain paragraphs
+rather than a faithful rendering of the Markdown.
+
+Its type comes from `create.issue-type`, and `create.issue-types` overrides that
+for an item that is an epic or carries the `bug` tag. An epic wins over a bug.
+
+### Where a created ticket lands, and why `statuses.backlog` is required
+
+Jira, not TCW, decides which status a brand-new issue starts in. In a project
+with a triage column that is **Triage** — which is very often exactly what
+`inbox-query` selects. A ticket left where Jira put it would come back through
+`tcw work inbox` as new inbound work, offering to create a second item for the
+one that just created it.
+
+So moving it out is part of creating it. `create` puts every new ticket in
+`statuses.backlog`, and **refuses to create anything at all when that is unset.**
+It picks the transition by where it lands, never by its name: in this project the
+hop from `Triage` to `To Do` is called `Accept`.
+
+**If you already set `statuses`, your first `tracker create` will be refused**
+until you add `backlog` to it. That is deliberate. The alternative is a ticket
+sitting in your triage column that TCW believes it filed.
+
+Everything that can be refused is refused *before* the ticket exists, because
+TCW never deletes a ticket and cannot take one back. `create` refuses when:
+
+- no tracker is configured, or `create` has no `project`;
+- `statuses.backlog` is unset;
+- the item is already bound to a ticket — it reports the binding and exits 0,
+  rather than making a second one;
+- the item is `completed` or `discarded`. A ticket created only to be closed is
+  noise; use `tracker link` if one already exists;
+- the item is under way and somebody else holds it;
+- `--part` is not a valid part name.
+
+`--all` sweeps every open item with no ticket, epics first so a child's parent
+link can name a ticket that exists. It skips items other people hold rather than
+failing. Run it with `--dry-run` first: on a board of any size this is the
+command that turns one mistake into one mistake per item.
+
+**If a run is interrupted** between making the ticket and writing the binding,
+the key is already on disk. Running `create` again binds that key instead of
+making a second ticket, and says so. You do not have to clean up by hand.
+
+### Making the ticket when the item is filed
+
+Set `create.on-new: true` and `tcw work new`, and `tcw work inbox accept` of a
+raw entry, make the ticket as part of filing. (Accepting a *ticket* from the
+inbox is `tracker import`, which binds the ticket you already have.) Epics are
+included: an epic with no ticket breaks its children's parent links.
+
+**Filing never fails because the tracker is unreachable.** The item is written
+first, so a failure afterwards would leave you with an item you did not know you
+had. Instead the ticket is recorded as *owed*:
+
+```
+$ tcw work new "Rename the widget"
+2026-09-14-rename-the-widget
+→ no ticket was created for 2026-09-14-rename-the-widget: the network is
+  unreachable. It is recorded as owed; `tcw work tracker create
+  2026-09-14-rename-the-widget` makes it.
+
+$ tcw work list
+2026-09-14-rename-the-widget | backlog | ... | ticket: owed since 2026-09-14
+```
+
+The debt shows on the board so it cannot be forgotten, and
+`tcw work tracker create`, with or without `--all`, settles it. An owed ticket is
+**not** a binding: the item has no ticket, it is expecting one.
+
+`on-new` and `strict` cannot both be on. They are opposite answers to the same
+question — strict mode refuses `tcw work new` outright, so no item would ever be
+filed for creation-on-filing to make a ticket for. `tcw validate` reports the
+combination and names both keys.
 
 ## Linking and unlinking
 
@@ -705,6 +805,10 @@ Also under strict mode:
 - **A tracker block with problems does not turn strict mode off.** Those commands
   refuse until it is fixed; run `tcw validate`.
 - **There is no way past a refusal.** `--force` and `--take-over` do not bypass it.
+- **`create.on-new` cannot be on as well.** Strict mode refuses `tcw work new`,
+  so an item is never filed for creation-on-filing to act on. `tcw validate`
+  reports the pair. `tcw work tracker create` itself still works under strict
+  mode, for an item that reached your board some other way.
 - **Never refused:** `tcw work edit`, writing lifecycle documents, and
   `tracker link` / `unlink`. The one exception is `tcw work edit --type`: an epic
   is not gated by a ticket, so changing an item's type is refused. Create an epic

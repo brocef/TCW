@@ -86,10 +86,15 @@ named artifact — raw input that quietly changes is not raw input.
 ## Working from an external tracker
 
 `list`, `show` and `link` only read the ticket; `import` claims it and then writes
-the store; `unlink` touches the store alone and needs no tracker configured. `sync`
-and the lifecycle commands `start`, `submit`, `rework` and `complete` write to a
-**bound** item's ticket when a tracker is configured — see "Lifecycle
-synchronization". No other command gains a network dependency.
+the store; `create` makes a ticket that did not exist; `unlink` touches the store
+alone and needs no tracker configured. `sync` and the lifecycle commands `start`,
+`submit`, `rework` and `complete` write to a **bound** item's ticket when a
+tracker is configured — see "Lifecycle synchronization".
+
+**`tcw work new` and `inbox accept` gain a network dependency only under
+`work.tracker.create.on-new`**, and even then they never fail because of it: the
+item is filed and the ticket is recorded as *owed*, shown on the board, and made
+later by `tracker create`. Nothing else here gains one.
 
 | Goal | Command |
 | ---- | ------- |
@@ -98,6 +103,7 @@ synchronization". No other command gains a network dependency.
 | claim a ticket and create a bound backlog item | `tcw work tracker import <ticket> [--part <id>] [--title <title>]` |
 | say an item and its ticket are yours | `tcw work tracker claim <slug> [--take-over]` — sets the item's owner and assigns the ticket; applies no transition and moves neither status |
 | let go of an item and its ticket | `tcw work tracker release <slug> [--force]` — clears the owner and unassigns the ticket; status and binding untouched |
+| make a ticket for an item that has none, and bind it | `tcw work tracker create <slug> [--part <id>] [--dry-run]` · `tcw work tracker create --all` — needs `work.tracker.create` and `statuses.backlog`; refuses a closed item, and reports rather than duplicates one already bound |
 | record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 | retry tickets that did not follow their items | `tcw work tracker sync <slug>` · `tcw work tracker sync --all` |

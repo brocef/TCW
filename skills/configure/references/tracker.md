@@ -117,6 +117,36 @@ An unknown key, a blank or non-text name, a resolution other than `wontfix`,
 reports, and the whole tracker block then reads as not configured. Like
 `credentials` and `transitions`, `statuses` merges from ancestors key by key.
 
+`create` says how to make a ticket for an item that has none, which is what
+`tcw work tracker create` needs before it will run. `project` is required — every
+other setting here finds tickets by *query*, and a query carries no project of
+its own. `issue-type` names the type to make, `issue-types` overrides it for an
+`epic` or a `bug` (epic wins), `components` is a list of component names, and
+`on-new: true` makes filing an item create its ticket. An unknown key, a blank or
+non-text name, a rule other than `epic` or `bug`, or a `create:` with nothing
+under it is a problem `tcw validate` reports, and the whole tracker block then
+reads as not configured.
+
+```yaml
+        statuses:
+            backlog: To Do          # required before `create` will run
+            active: In Progress
+        create:
+            project: EX
+            issue-type: Task
+            issue-types:
+                epic: Epic
+                bug: Bug
+            components: [Platform]
+            on-new: false
+```
+
+**`statuses.backlog` is where a created ticket is put, and `create` refuses
+without it.** Jira decides which status a new issue starts in, and in a project
+with a triage column that is usually the status `inbox-query` selects — so a
+ticket left there comes back as new inbound work. A project that already sets
+`statuses` has to add `backlog` before its first `tracker create`.
+
 `strict: true` makes a claimed ticket required for local work (what it refuses is in
 `commands.md`, "Strict mode"). It must be a boolean, and it needs `statuses.active`,
 `statuses.completed`, and `statuses.discarded` as one status name or a mapping of all
@@ -124,6 +154,11 @@ three of `wontfix`, `duplicate` and `superseded` — otherwise `tcw validate` re
 the missing key. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
+
+**`strict: true` and `create.on-new: true` together are a problem `tcw validate`
+reports, naming both keys.** Strict mode refuses `tcw work new`, so no item is
+ever filed for creation-on-filing to make a ticket for; a project setting both
+would believe creation was on and see it never happen. Use one or the other.
 
 ```yaml
         strict: true

@@ -612,7 +612,8 @@ either place.
 ## Working from an external tracker
 
 A project can name the Jira Cloud site its team works from, take tickets as work
-items with `tcw work tracker import`, and keep a bound ticket's status in step as
-its item moves. The commands are `tcw work tracker list`, `show`, `import`,
+items with `tcw work tracker import`, make tickets for items that have none with
+`tcw work tracker create`, and keep a bound ticket's status in step as its item
+moves. The commands are `tcw work tracker list`, `show`, `import`, `create`,
 `link`, `unlink` and `sync`. How to configure it, what each command does to the
 ticket, and strict mode are in [Working from Jira](jira.md).
