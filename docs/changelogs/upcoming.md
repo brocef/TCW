@@ -14,7 +14,9 @@ carrying everything listed under `v2.5.0`.
   `tcw --version` and, when they differ, prints both and the remedy for the side
   that is behind. Exits 0 on every path, is silent when it cannot tell, and
   abandons a `tcw --version` that has not answered within 3 seconds (a
-  plain-bash deadline, killing the command's whole process group). Lives in the
+  plain-bash deadline, killing the command's whole process group). It writes no
+  file, temporary ones included, so it also works inside Codex's read-only
+  sandbox. Lives in the
   plugin rather than the CLI because a CLI-side check would be absent whenever
   the CLI is the older side.
 - `scripts/session_bootstrap.sh` runs the check from an `EXIT` trap registered
