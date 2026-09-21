@@ -1575,39 +1575,59 @@ def test_unlink_clears_a_stale_created_record(node, monkeypatch):
     assert created_record(_sidecar(root, slug)) is None, _sidecar(root, slug)
 
 
-@pytest.mark.parametrize("record", ["created", "owed"])
-def test_a_pending_record_alone_was_never_a_binding_and_does_not_block_drop(
-        node, monkeypatch, record):
-    """`ever_bound` answered "does a sidecar file exist", and a `created` or
-    `owed` record is a sidecar with no binding in it and none in its history. So
-    strict mode refused to drop an item with "It is, or was, bound to a ticket,
-    and dropping would erase that record" when there was no such record."""
+def _pending_node(node, monkeypatch, document):
+    """A strict-mode node holding one item whose sidecar carries only `document`."""
     root, configure = node
     configure(CREATE_TRACKER)
     _create_responses(monkeypatch)
     code, out, err = _run(["work", "new", "Never bound to anything"])
     assert code == 0, err
     slug = out.strip().splitlines()[0]
-
     from tcw.store.fs import FsWorkStore
-    from tcw.tracker.intake import (BINDING_SIDECAR, with_created_record,
-                                    with_owed_record)
-    # Both records, because they are different keys read by different code. The
-    # first version of this test was named for `owed` and seeded `created`.
-    document = (with_created_record(None, {"key": "PROBE-9", "id": "9"})
-                if record == "created"
-                else with_owed_record(None, {"since": "2026-09-20",
-                                             "reason": "the network is down"}))
+    from tcw.tracker.intake import BINDING_SIDECAR
     FsWorkStore.open(root).write_sidecar(slug, BINDING_SIDECAR, document,
                                          revision="")
-
     configure({**CREATE_TRACKER, "strict": True,
                "statuses": {"backlog": "To Do", "active": "In Progress",
                             "completed": "Done", "discarded": "Won't Do"}})
+    return root, slug
+
+
+def test_an_item_that_only_owes_a_ticket_was_never_bound_and_can_be_dropped(
+        node, monkeypatch):
+    """`ever_bound` answered "does a sidecar file exist", so strict mode refused
+    to drop this with "It is, or was, bound to a ticket, and dropping would
+    erase that record" when there was no such record and no ticket."""
+    from tcw.tracker.intake import with_owed_record
+    root, slug = _pending_node(node, monkeypatch, with_owed_record(
+        None, {"since": "2026-09-20", "reason": "the network is down"}))
+
     code, _out, err = _run(["work", "drop", slug, "--confirm"])
     assert code == 0, err
     assert "was, bound to a ticket" not in err, err
+    from tcw.store.fs import FsWorkStore
     assert FsWorkStore.open(root).query() == [], "the item is still there"
+
+
+def test_an_item_holding_a_created_key_is_not_dropped_out_from_under_it(
+        node, monkeypatch):
+    """The other half, and the one that does **not** follow from `owed`.
+
+    `created` names a ticket that exists. Dropping the item deletes its sidecar,
+    which is the only place that key is written down — so the ticket would be
+    left open in a shared tracker with nothing anywhere naming it. `ever_bound`
+    is still correctly False here: it was never *bound*. The gate asks a second
+    question."""
+    from tcw.tracker.intake import with_created_record
+    root, slug = _pending_node(node, monkeypatch, with_created_record(
+        None, {"key": "PROBE-9", "id": "9"}))
+
+    code, _out, err = _run(["work", "drop", slug, "--confirm"])
+    assert code == 1, err
+    assert "PROBE-9" in err, err
+    assert "tracker unlink" in err, err
+    from tcw.store.fs import FsWorkStore
+    assert len(FsWorkStore.open(root).query()) == 1, "the item was dropped anyway"
 
 
 def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):

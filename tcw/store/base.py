@@ -548,14 +548,18 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
 def bound_value(value) -> dict | None:
     """`value` when it is a binding that names a ticket, otherwise `None`.
 
-    `WorkItem.tracker` has four shapes and only one of them has a `ticket` key:
-    a binding, `{"problem": ...}` for a sidecar that cannot be read, `{"owed":
-    ...}` for a ticket that was to be created and was not, and `None`. Readers
-    that want the ticket ask here rather than testing for the shapes they know
-    to exclude, because that test is wrong the moment a shape is added — which
-    is exactly how `{"owed": ...}` reached `value["ticket"]["key"]` in
-    `_deliver_after` and `value["project"]` in `_siblings`, each guarding on
-    the absence of `problem`. A fifth shape cannot repeat it.
+    `WorkItem.tracker` has five shapes and only one of them has a `ticket` key:
+    a binding; `{"problem": ...}` for a sidecar that cannot be read; `{"owed":
+    ...}` for a ticket that was to be created and was not; `{"created": ...}`
+    for one that was created and never bound; and `None`. Readers that want the
+    ticket ask here rather than testing for the shapes they know to exclude,
+    because that test is wrong the moment a shape is added — which is exactly
+    how `{"owed": ...}` reached `value["ticket"]["key"]` in `_deliver_after`
+    and `value["project"]` in `_siblings`, each guarding on the absence of
+    `problem`. `{"created": ...}` was added after this and cost nothing.
+
+    Keep this list current: it is the only place the shapes are enumerated in
+    prose, and a reader who trusts a stale count is back where this started.
     """
     if isinstance(value, dict) and "ticket" in value:
         return value

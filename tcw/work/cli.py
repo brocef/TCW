@@ -2560,8 +2560,8 @@ def _item_body(st, slug: str) -> str:
 #: sweep does not reach them at all.
 
 
-#: `_create_one`'s answer for "a ticket was made and this machine could not
-#: write down its key". Never an exit code: `_tracker_create` turns it into 1.
+# `_create_one`'s answer for "a ticket was made and this machine could not write
+# down its key". Never an exit code: `_tracker_create` turns it into 1.
 _CANNOT_RECORD = 2
 
 
@@ -3724,12 +3724,23 @@ def _drop(args: argparse.Namespace) -> int:
         print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
     if st.tracker_strict():
-        from tcw.tracker.intake import ever_bound
+        from tcw.tracker.intake import created_but_unbound, ever_bound
         if ever_bound(st, bare):
             return _strict_says_no("drop", f"{bare} was not dropped",
                                    f"It is, or was, bound to a ticket, and dropping would "
                                    f"erase that record. Discard it instead: `tcw work "
                                    f"complete {bare} --resolution wontfix --confirm`.")
+        if made := created_but_unbound(st, bare):
+            # Never bound, so `ever_bound` says no — but the record names a
+            # ticket that exists, and dropping the item takes the sidecar with
+            # it. The ticket would be left open with nothing naming it.
+            return _strict_says_no(
+                "drop", f"{bare} was not dropped",
+                f"{made['key']} was created for it and never bound, and dropping "
+                f"would erase the only record of that ticket. Bind it with "
+                f"`tcw work tracker create {bare}`, or forget the key with "
+                f"`tcw work tracker unlink {bare} --reason \"<why>\"` and close "
+                f"{made['key']} yourself, then drop.")
     try:
         st.drop(bare)
     except _ERRORS as e:

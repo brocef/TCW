@@ -97,7 +97,7 @@ _BLOCKER = {
 
 _STR = {"type": "string"}
 
-# `WorkItem.tracker`: exactly the four shapes `binding_value` produces, each
+# `WorkItem.tracker`: exactly the five shapes `binding_value` produces, each
 # closed, so a script can rely on `.tracker.ticket.key` meaning what it says.
 _TRACKER = {"oneOf": [
     {"type": "null"},

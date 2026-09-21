@@ -225,7 +225,7 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     item = work.get(slug) if slug else None
     epic = (body.get("type") == "epic") if action == "create" else (
         item is not None and item.type == "epic")
-    from tcw.tracker.intake import ever_bound
+    from tcw.tracker.intake import created_but_unbound, ever_bound
     lead = "refused under strict tracker mode, which the web app cannot check; "
     if action == "create" and not epic:
         return lead + "create work from a ticket with `tcw work tracker import <ticket>`."
@@ -236,6 +236,10 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     if action == "drop" and ever_bound(work, slug):
         return lead + (f"{slug} is, or was, bound to a ticket. Discard it instead: "
                        f"`tcw work complete {slug} --resolution wontfix --confirm`.")
+    if action == "drop" and (made := created_but_unbound(work, slug)):
+        return lead + (f"{made['key']} was created for {slug} and never bound; "
+                       f"dropping would erase the only record of that ticket. "
+                       f"Use `tcw work tracker create {slug}` to bind it.")
     return None
 
 

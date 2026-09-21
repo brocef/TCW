@@ -389,6 +389,48 @@ def test_reading_a_bound_item_loads_no_tracker_module(node, verb):
     assert loaded.removeprefix("LOADED").strip() == "", loaded
 
 
+#: The two shapes an unbound item can carry. Neither is a binding, and neither
+#: has a `ticket` key — that is what keeps `classify_binding` reading them as
+#: unbound — so each needs its own branch in the schema.
+OWED = {"owed": {"since": "2026-09-20", "reason": "the network is down"}}
+CREATED = {"created": {"key": "EX-604", "id": "604"}}
+
+
+@pytest.mark.parametrize("sidecar,expected", [
+    ("owed:\n  since: '2026-09-20'\n  reason: the network is down\n", OWED),
+    ("created:\n  key: EX-604\n  id: '604'\n", CREATED),
+], ids=["owed", "created"])
+def test_the_schema_accepts_an_item_that_has_no_ticket_yet(node, sidecar, expected):
+    """Both were added to `WORK_ITEM_SCHEMA` and neither was ever validated
+    through it: every existing test here carries a binding, a problem, or
+    nothing, so deleting either branch from the schema left the suite green."""
+    doc = show_json(item(node, "Pending", sidecar))      # validates on the way
+    assert doc["tracker"] == expected, doc["tracker"]
+
+
+@pytest.mark.parametrize("extra", ["ticket", "problem"])
+def test_the_schema_refuses_a_pending_record_beside_a_binding(node, extra):
+    """The point of the separate branches: these shapes are alternatives, not
+    fields that can be mixed into a binding."""
+    doc = show_json(item(node, "Bound", document()))
+    doc["tracker"] = {**CREATED, **({"problem": "x"} if extra == "problem"
+                                    else {"ticket": BOUND["ticket"]})}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(doc, WORK_ITEM_SCHEMA)
+
+
+def test_show_says_which_ticket_was_made_when_the_binding_did_not_follow(node):
+    """`_tracker_text`'s long form. Only the one-line board form was asserted,
+    so the sentence a user actually reads on `tcw work show` was uncovered."""
+    slug = item(node, "Pending", "created:\n  key: EX-604\n  id: '604'\n")
+    code, out, err = run("work", "show", slug)
+    assert code == 0, err
+    assert "EX-604" in out, out
+    assert "binding did not follow" in out, out
+    # Not a binding, and not a debt: the wordings this one replaces.
+    assert "owed since" not in out, out
+
+
 def test_serve_detail_carries_the_same_value_as_show_json(node):
     from tcw.serve import HOST, TcwServer
     slug = item(node, "Bound", document())

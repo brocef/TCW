@@ -341,6 +341,24 @@ def _with_key(content: str, key: str, record: dict | None) -> str:
     return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
 
 
+def created_but_unbound(store, slug: str) -> dict | None:
+    """The `created` record on `slug`, or `None`. Never raises.
+
+    Separate from `ever_bound`, which answers "was this ever bound" — a `created`
+    record is not a binding and never was, so that answer is correctly no. But
+    it is the only local pointer to a ticket that really exists, and deleting
+    the item deletes the sidecar with it, leaving an open ticket in a shared
+    tracker with nothing anywhere naming it. The gates that refuse to destroy a
+    binding record ask this as well.
+    """
+    from tcw.store.base import Unbound
+    try:
+        binding, _revision = binding_of(store, slug)
+    except Exception:                   # noqa: BLE001 — see the docstring
+        return None
+    return binding.created if isinstance(binding, Unbound) else None
+
+
 def without_pending_records(content: str) -> str:
     """`content` with any `created` and `owed` records removed.
 
