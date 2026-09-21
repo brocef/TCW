@@ -55,6 +55,8 @@ work:
             review: In Review
             completed: Done
             discarded: Won't Do
+        pre-backlog: # optional: statuses before the backlog, and the way out
+            Triage: Accept
         create: # optional: how to make a ticket for an item
             project: EX
             issue-type: Task
@@ -83,6 +85,7 @@ work:
 | `transitions.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say. See [Naming a transition](#naming-a-transition).  |
 | `exclusive-claim-transition` | no  | A transition `tracker claim` asserts through, where the workflow refuses a second claimant. **Moves the ticket**, which claiming otherwise does not. Not the same key as `transitions.start`. See [When two people claim at once](#when-two-people-claim-at-once). |
 | `statuses`              | no       | The Jira **status** a linked ticket should be in for each of the item's statuses. See [Tickets following their items](#tickets-following-their-items). |
+| `pre-backlog`           | no       | Each Jira status a ticket waits in **before** the backlog, mapped to the transition that takes it to `statuses.backlog`. See [Tickets waiting in triage](#tickets-waiting-in-triage). |
 | `comments`              | no       | `true` to post a short comment on the ticket for each move. See [Comments on the ticket](#comments-on-the-ticket).                                     |
 | `link`                  | no       | A web address added to each comment.                                                                                                                   |
 | `strict`                | no       | `true` to refuse work that no claimed ticket authorizes. See [Strict mode](#strict-mode-no-work-without-a-ticket).                                     |
@@ -315,6 +318,63 @@ the clash without asking Jira every time.
 **The query decides what appears.** TCW does not hide tickets that already have a
 work item, so write the query to leave them out (for example by status). A ticket
 both queries select appears in both `tracker list` and `inbox list`; both are true.
+
+### Tickets waiting in triage
+
+A ticket in a status that comes before the backlog — Jira's **Triage** is the
+usual one — does not offer the transition that starts work, so on its own TCW
+cannot claim it. `tracker import`, `inbox accept`, `start`, `link --sync-status`
+and `sync` all refuse it, and the refusal ends by naming the setting that would
+change that:
+
+```
+If 'Triage' is where tickets wait before your backlog, name it and the transition
+out of it under work.tracker.pre-backlog.
+```
+
+Name each such status, and the transition that takes a ticket from it to your
+backlog status:
+
+```yaml
+work:
+    tracker:
+        statuses:
+            backlog: To Do # required when pre-backlog is set
+            active: In Progress
+        pre-backlog:
+            Triage: Accept
+```
+
+With that set, anything that claims a ticket first takes it out of triage:
+`tracker import`, `inbox accept`, `start` (with or without strict mode),
+`link --sync-status`, `sync`, and a `submit`, `rework` or `complete` that still
+owes the ticket a claim. TCW checks that `Accept` is offered exactly once and
+leads to `statuses.backlog` **before** sending it — a transition cannot be taken
+back — then reads the ticket again and claims it from there, so it notices if
+somebody took or closed the ticket in between. Every command that does this says
+so: `SYNC-1 was moved out of 'Triage' to the backlog status first.`
+
+Nothing else takes a ticket out of triage. A move whose claim was already made, a
+discard, `tracker claim`, and `tracker create` never do, and a ticket assigned to
+somebody else is refused with nothing sent. Whether a ticket is in triage is
+decided by its status only, never by whether it happens to offer a transition
+called `Accept`.
+
+`tcw validate` refuses the key when `statuses.backlog` is unset, when a status is
+listed twice, or when a status is also mapped under `statuses` — a status cannot be
+both before the backlog and on it.
+
+**If the claim fails after the ticket left triage**, the ticket stays in your
+backlog status, which is no longer what `inbox-query` selects, so the message says
+it was moved. Pick up from there with the command you were running: `sync` for
+`link --sync-status`, `start` and the other moves; `tcw work start` again for a
+strict-mode start, which records nothing for `sync` to resume; and the same
+`tracker import <key>` or `inbox accept <key>` for those.
+
+**Without the setting**, importing a Triage ticket that is already assigned to you
+still creates the item as before, leaving the ticket in Triage, and now prints a
+warning naming `pre-backlog`. `tracker show` and `inbox show` add a note when a
+ticket is in a status you listed.
 
 ## Holding and releasing a ticket
 

@@ -20,8 +20,9 @@ with `tcw work inbox accept <entry> --title "<clear title>"`.
 When the project declares `work.tracker.inbox-query`, `inbox list` has a second
 section, `tracker tickets:`. Work those too: read one with `tcw work inbox show
 <key>`, and accept it with `tcw work inbox accept <key>`, which **claims the ticket
-in the tracker** (assigns it to the user) — so confirm with the user before
-accepting a ticket. A raw entry named like a ticket key hides it; add `--ticket`.
+in the tracker** (assigns it to the user) — and, where `work.tracker.pre-backlog`
+names the ticket's status, first moves it out of triage to the backlog — so confirm
+with the user before accepting a ticket, saying which of those will happen. A raw entry named like a ticket key hides it; add `--ticket`.
 
 Accepting an entry writes it as the item's `intake.md`. Then invoke
 the `work-stage` skill with `request` and the new item's slug, and run the `request` stage over that intake to

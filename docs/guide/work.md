@@ -225,6 +225,7 @@ tcw work inbox accept request.md --title "Clear title"
 # with work.tracker.inbox-query set, list also shows Jira tickets awaiting triage,
 # and show/accept take a ticket key (an entry of the same name wins; --ticket forces it)
 tcw work inbox accept EX-482 --part api  # claims the ticket, as `tracker import` does
+                                       # (with work.tracker.pre-backlog, first out of Triage)
 
 slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
 tcw work new "Add PDF export" --blocked-by other-slug --blocked-by "external: JIRA-123"
