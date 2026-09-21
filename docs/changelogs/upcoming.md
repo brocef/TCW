@@ -52,6 +52,13 @@ category.
 - `POST /api/work` records an owed ticket under `create.on-new`; the web app
   makes no tracker call.
 - `create_and_place` receives `item_url` from `work.tracker.link`.
+- `find_binding` raises `BindingProblem` for a sidecar it cannot read, as it
+  already did for a malformed one. It scans the whole board, so a read error
+  escaped as a traceback while binding an unrelated item.
+- `tcw/serve/dist` rebuilt. `tcw serve` serves the committed bundle, not the
+  TypeScript source, so a client fix does not ship until it is rebuilt.
+  `pnpm check:build` catches this and nothing runs it — not the test workflow,
+  which installs no Node, and no test. Worth wiring up separately.
 
 ### Fixed
 
