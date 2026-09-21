@@ -835,6 +835,7 @@
   resolution: done
   resolved: '2026-09-20'
 2026-09-21-keep-comments-and-formatting-when-tcw-writes-a-key-into-tcw-config-yaml:
+  location: a7ba9a40e179d841a5c506e24c958ebd7061347a
   resolution: done
   resolved: '2026-09-21'
 2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
