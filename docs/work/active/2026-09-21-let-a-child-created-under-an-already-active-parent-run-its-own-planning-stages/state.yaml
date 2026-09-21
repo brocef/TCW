@@ -8,3 +8,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-21T19:27:57.847330Z'
+worktree: .worktrees/2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages
+branch: work/2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages
