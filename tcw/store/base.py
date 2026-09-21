@@ -1214,6 +1214,13 @@ class TrackerConfig:
     # whatever status the tracker creates issues in, which for a Jira project with a
     # triage column is the very status `inbox-query` selects.
     statuses: dict = field(default_factory=dict)
+    # Tracker status → the transition that takes a ticket from it to
+    # `statuses.backlog`, for statuses a workflow puts *before* its backlog — Jira's
+    # `Triage` is the usual one. No local status maps to these, so they are not in
+    # `statuses`. A claim that finds its ticket in one applies the named transition
+    # first (`leave_pre_backlog` in `tcw/tracker/intake.py`); with none named, TCW
+    # never takes a ticket out of triage on its own.
+    pre_backlog: dict = field(default_factory=dict)
     # Refuse local work no claimed ticket authorizes (`work/require-tracker-backed-work`).
     strict: bool = False
     # Post a short comment on the ticket for each lifecycle move, with `link` — a URL
@@ -1238,7 +1245,8 @@ TRACKER_PROVIDERS = ("jira-cloud",)
 TRACKER_KEYS = frozenset({"provider", "base-url", "candidate-query", "credentials",
                          "exclusive-claim-transition",
                           "transitions", "statuses", "strict", "timeout-seconds",
-                          "comments", "link", "inbox-query", "create"})
+                          "comments", "link", "inbox-query", "create",
+                          "pre-backlog"})
 TRACKER_CREATE_KEYS = frozenset({"project", "issue-type", "issue-types",
                                  "components", "on-new"})
 # The item properties a project may type a ticket by. Deliberately short: each
@@ -1437,6 +1445,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value.strip()
 
     statuses = _parse_tracker_statuses(raw.get("statuses"), problems)
+    pre_backlog = _parse_tracker_pre_backlog(raw.get("pre-backlog"), statuses, problems)
     create = _parse_tracker_create(raw.get("create", _ABSENT_CREATE), problems)
     strict = raw.get("strict", False)
     if not isinstance(strict, bool):
@@ -1508,6 +1517,7 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         timeout_seconds=int(timeout),
         move_transitions=move_transitions,
         statuses=statuses,
+        pre_backlog=pre_backlog,
         strict=strict,
         comments=comments,
         link=link,
@@ -1599,6 +1609,60 @@ def _parse_tracker_statuses(raw: Any, problems: list[str]) -> dict:
     return out
 
 
+def _same_status(name: str) -> str:
+    """A status name as TCW compares statuses: trimmed, inner space collapsed,
+    case-folded. Must match `_normalize` in `tcw/tracker/claim.py`; it is written out
+    here rather than imported because parsing configuration loads no tracker code."""
+    return " ".join(name.split()).casefold()
+
+
+def _parse_tracker_pre_backlog(raw: Any, statuses: dict, problems: list[str]) -> dict:
+    """`work.tracker.pre-backlog`, appending a problem per defect. Absent is `{}`.
+
+    Each key is a status a ticket waits in before the backlog; each value the
+    transition out of it. The transition must lead to `statuses.backlog`, so that is
+    required, and a status mapped under `statuses` cannot also be one of these: it
+    would be both before the backlog and on it.
+    """
+    if raw is None:
+        return {}
+    where = "work.tracker.pre-backlog"
+    if not isinstance(raw, dict):
+        problems.append(f"{where}: expected a mapping, got {type(raw).__name__}")
+        return {}
+    mapped = {}
+    for value in statuses.values():
+        for name in (value.values() if isinstance(value, dict) else (value,)):
+            if name:
+                mapped[_same_status(name)] = name
+    out: dict = {}
+    seen: dict[str, str] = {}
+    for key in raw:
+        if not isinstance(key, str) or not key.strip():
+            problems.append(f"{where}: a status name must be a non-empty string, "
+                            f"got {key!r}")
+            continue
+        status, value = key.strip(), raw[key]
+        path = f"{where}.{status}"
+        if not isinstance(value, str) or not value.strip():
+            problems.append(f"{path}: expected a non-empty tracker transition name, "
+                            f"got {type(value).__name__}")
+            continue
+        same = _same_status(status)
+        if same in seen:
+            problems.append(f"{path}: the same status as '{seen[same]}'")
+            continue
+        if same in mapped:
+            problems.append(f"{path}: also mapped under work.tracker.statuses; a status "
+                            f"cannot come both before the backlog and on it")
+            continue
+        seen[same] = status
+        out[status] = value.strip()
+    if raw and not statuses.get("backlog"):
+        problems.append("work.tracker.statuses.backlog: required when pre-backlog is set")
+    return out
+
+
 def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
     """The per-move keys of `work.tracker.transitions`, appending a problem per defect.
 
@@ -1637,6 +1701,17 @@ def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
         else:
             out[key] = name(value, f"{where}.{key}")
     return out
+
+
+def pre_backlog_entry(pre_backlog: dict, status: str) -> tuple[str, str]:
+    """The configured `(status, transition)` under `pre-backlog` that `status` is,
+    or `("", "")`. The one place that decides whether a ticket is waiting before
+    the backlog: by its status alone, never by what transitions it offers."""
+    same = _same_status(status)
+    for key, transition in pre_backlog.items():
+        if _same_status(key) == same:
+            return key, transition
+    return "", ""
 
 
 def transition_name(transitions: dict, move: str, resolution: str | None) -> str:
