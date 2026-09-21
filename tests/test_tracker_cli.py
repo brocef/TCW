@@ -1015,8 +1015,9 @@ def test_all_skips_an_item_someone_else_holds_without_failing_the_sweep(
 
 
 def test_all_creates_for_epics_before_their_children(node, monkeypatch):
-    """A child's ticket may want to name its parent's, and a parent link cannot
-    point at a ticket that does not exist yet."""
+    """Epics lead so a sweep reads in the order a person works the board, parents
+    before their children. Presentation only: TCW sets no parent or epic link in
+    the tracker, and `create_issue` takes no parent."""
     root, _slugs = _board(node, monkeypatch,
                           [("A child", "task", "backlog"),
                            ("An epic", "epic", "backlog")])
@@ -1111,8 +1112,9 @@ def test_on_new_makes_and_binds_a_ticket_when_filing(node, monkeypatch):
 
 def test_on_new_covers_an_epic_too(node, monkeypatch):
     """Spec Rule 5, and a deliberate departure from strict mode's `and not
-    args.epic`: an epic with no ticket breaks its children's parent links, which
-    is the opposite of what exempting it would be for."""
+    args.epic`. Strict exempts epics because it cannot demand a claimed ticket
+    for a container nobody works directly; creation has no such difficulty, and
+    an epic on the board with no ticket is a hole in the tracker's picture."""
     root, configure = node
     configure(ON_NEW_TRACKER)
     posted = _create_responses(monkeypatch)
@@ -1219,6 +1221,23 @@ def test_filing_names_the_ticket_that_exists_instead_of_calling_it_owed(
     code, board, _err = _run(["work", "list"])
     assert code == 0
     assert "PROBE-1 made, not bound" in board, board
+
+
+def test_sync_on_an_owed_item_names_the_command_that_settles_it(node, monkeypatch):
+    """`sync` retries what a lifecycle command could not send for an item that
+    *has* a ticket. An owed ticket is a different kind of unfinished business
+    and `sync` does not settle it — `tracker create` does. The bare "not bound
+    to a ticket" was a dead end for exactly the person standing here."""
+    _root, configure = node
+    configure(ON_NEW_TRACKER)
+    slug = _owed_item(monkeypatch)
+
+    _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "sync", slug])
+    assert code == 1
+    assert f"tcw work tracker create {slug}" in err, err
+    # Still says the true thing it always said, alongside the useful one.
+    assert "is not bound to a ticket" in err, err
 
 
 def test_creating_the_owed_ticket_later_binds_it_and_clears_the_debt(

@@ -539,9 +539,10 @@ def _new(args: argparse.Namespace) -> int:
     body = st.body_path(item.slug)
     if body is not None:
         print(f"→ edit: {body}", file=sys.stderr)
-    # Epics included, unlike strict mode's `and not args.epic` above: an epic with
-    # no ticket breaks its children's parent links, which is the opposite of what
-    # exempting it would be for.
+    # Epics included, unlike strict mode's `and not args.epic` above. Strict mode
+    # exempts them because it cannot demand a claimed ticket for a container
+    # nobody works directly; creation has no such difficulty, and an epic on the
+    # board with no ticket is a hole in the tracker's picture of the work.
     _ticket_on_filing(st, item.slug, "new")
     if not args.epic:                         # epic's next step is delegate, not start
         print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
@@ -3252,9 +3253,23 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     else:
         if _item_or_reason(st, args.slug, "sync") is None:
             return 1
-        if not isinstance(binding_of(st, args.slug)[0], Bound):
-            print(f"tcw work tracker sync: {args.slug} is not bound to a ticket.",
-                  file=sys.stderr)
+        binding = binding_of(st, args.slug)[0]
+        if not isinstance(binding, Bound):
+            # A ticket that is owed or already made is a different kind of
+            # unfinished business from the one `sync` settles, and `sync` does
+            # not settle it — `tracker create` does. Saying only "not bound to a
+            # ticket" was a dead end for the user most likely to be standing
+            # here: somebody whose filing could not reach the tracker.
+            extra = ""
+            if getattr(binding, "owed", None):
+                extra = (f" It is owed one; `tcw work tracker create "
+                         f"{args.slug}` makes it.")
+            elif getattr(binding, "created", None):
+                extra = (f" {binding.created['key']} was created for it and "
+                         f"never bound; `tcw work tracker create {args.slug}` "
+                         f"binds it.")
+            print(f"tcw work tracker sync: {args.slug} is not bound to a "
+                  f"ticket.{extra}", file=sys.stderr)
             return 1
         slugs = [args.slug]
     me = _local_owner(st)
@@ -3858,15 +3873,21 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "only to be closed is noise — use `tracker link` if one exists); the\n"
                "item is already bound; its tracker.yaml cannot be read; or the item\n"
                "is under way and somebody else holds it.\n\n"
-               "If the ticket is made but the binding is not written, the error names\n"
-               "the key. Bind it with `tcw work tracker link <slug> <key>\n"
-               "--sync-status`; running create again would make a second ticket.\n\n"
+               "If the ticket is made but the binding is not written, the key is\n"
+               "recorded on the item and the error names it: run this command\n"
+               "again and it binds that ticket rather than making a second one.\n"
+               "The board shows the item as '<KEY> made, not bound' meanwhile. If\n"
+               "the key could not be recorded either, the error says so, and then\n"
+               "`tcw work tracker link <slug> <key> --sync-status` is the way to\n"
+               "bind it. To forget a recorded key whose ticket is gone, use\n"
+               "`tcw work tracker unlink <slug> --reason <why>`.\n\n"
                "--all sweeps every open item here that has no ticket, epics\n"
-               "before the rest so a child's parent link can name a ticket that\n"
-               "exists. It skips items somebody else holds rather than failing,\n"
-               "and reports one line each. Pair it with --dry-run first: on a\n"
-               "board of any size this is the command that turns one mistake into\n"
-               "one mistake per item.\n\n"
+               "before the rest so the sweep reads in the order a person works\n"
+               "the board. It skips items somebody else holds rather than\n"
+               "failing, and reports one line each. It stops if a ticket is made\n"
+               "and its key cannot be written down here. Pair it with --dry-run\n"
+               "first: on a board of any size this is the command that turns one\n"
+               "mistake into one mistake per item.\n\n"
                "  tcw work tracker create 2026-09-14-rename-the-widget\n"
                "  tcw work tracker create 2026-09-14-rename-the-widget --dry-run\n"
                "  tcw work tracker create --all --dry-run\n")
