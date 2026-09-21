@@ -393,8 +393,8 @@ behavior, changes to its internals, or changes to how the project itself runs.
 - **Blockers** are recorded on an item (`tcw work edit --blocked-by`). An item
   with an unresolved blocker cannot start, or be completed as done, without
   `--force`; there is no separate "blocked" status.
-- **Large items split.** A child item lives inside its parent's folder and moves
-  with it. An **epic** groups related items, including items in other
+- **Large items split.** A child item has its own status and keeps a link to its
+  parent, which cannot be closed while the child is open. An **epic** groups related items, including items in other
   repositories, and reports their combined status.
 - **Completing is checked.** `tcw work complete` prints the project's Definition
   of Done (a list you set in `docs/work/dod.yaml`) and refuses until you confirm

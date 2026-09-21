@@ -323,3 +323,39 @@ def test_a_graph_that_cannot_be_read_is_not_reported_complete(tmp_path,
     note = st.incomplete_graph_note()
     assert note != ""
     assert "could not be read" in note
+
+
+# ── an open --parent child holds the epic open too ───────────────────────────
+
+def _open_parent_child(root: Path, st: FsWorkStore, epic: str) -> Path:
+    """A child recorded by `parent:` (not `initiative:`), still in backlog."""
+    d = root / "docs" / "work" / "backlog" / "2026-01-01-parent-child"
+    d.mkdir(parents=True)
+    (d / "state.yaml").write_text(
+        f"slug: {d.name}\ntitle: child\ncreated: '2026-01-01'\n"
+        f"resolution: null\nparent: {epic}\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "child"], check=True)
+    return d
+
+
+def test_an_open_parent_child_makes_the_epic_not_completable(tmp_path):
+    root = mk_node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = make_epic(st, n_done=1, n_open=0)
+    _open_parent_child(root, st, epic)
+    assert st.epic_completable(st.get(epic)) is False
+
+
+def test_reconcile_neither_flags_nor_completes_over_an_open_parent_child(tmp_path):
+    root = mk_node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = make_epic(st, n_done=1, n_open=0)
+    child = _open_parent_child(root, st, epic)
+    block = reconcile(root, epic, complete_when_ready=True)     # must not raise
+    assert "Ready to close" not in block
+    assert FsWorkStore.open(root).get(epic).status == "backlog"
+    st.start(child.name, force=True)
+    st.complete(child.name, "done", [])
+    reconcile(root, epic, complete_when_ready=True)
+    assert FsWorkStore.open(root).get(epic).status == "completed"

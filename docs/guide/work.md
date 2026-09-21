@@ -234,7 +234,7 @@ tcw work new "Add PDF export" --blocked-by other-slug --blocked-by "external: JI
 tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
 tcw work new "Big rework" --effort high --complexity very-high
                                        # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
-tcw work new "Sub-task" --parent "$slug"  # a child item, nested inside the parent's folder
+tcw work new "Sub-task" --parent "$slug"  # a child item, starting in backlog under the parent
 
 tcw work tags add bug cli tech-debt    # register a project's valid tags (in tcw-config.yaml)
 tcw work tags list                     # print the registered tags
@@ -500,12 +500,22 @@ procedure lives in the `work` skill, so it works under either harness.
 ## Decomposing an item
 
 A large item can be **decomposed into child items** with `tcw work new
-"<title>" --parent <slug>`: the child's folder is created inside the parent's,
-and `tcw work list` renders children indented under their parent. A child shares
-its parent's status by living inside it — starting or completing the parent
-carries its children along, while transitioning a child on its own promotes it
-to a top-level item. (That keeps any one item small; for work spanning _separate
-repos_, use a cross-node epic instead — see below.)
+"<title>" --parent <slug>`. The child records its parent (a `parent:` line in its
+`state.yaml`) and has its own status: it starts in `backlog` whatever state the
+parent is in, so it can be planned on its own even after the parent has been
+started, and it keeps its parent through every one of its own moves. `tcw work
+list` renders children indented under their parent.
+
+A parent cannot be completed or discarded — not even with `--force` — while
+anything beneath it is still open, and cannot be dropped while any child names
+it; the refusal names each one. A child cannot be created under a completed or
+discarded item. `tcw validate` reports a `parent:` that names no item in the
+store.
+
+Children made by versions before this sit inside their parent's folder and still
+move with it; one that is moved on its own keeps its parent and has its own
+status from then on. (Decomposing keeps any one item small; for work spanning
+_separate repos_, use a cross-node epic instead — see below.)
 
 Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
 so moves never break references. Only the legal transitions above are permitted

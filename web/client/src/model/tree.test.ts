@@ -46,6 +46,18 @@ describe("work tree", () => {
         expect(tree[0].children[0].path).toBe("child")
     })
 
+    test("nests a child whose status differs from its parent's", () => {
+        // A child has its own status: an active parent can hold a backlog child.
+        const items: WorkItem[] = [
+            { slug: "parent", status: "active" },
+            { slug: "child", status: "backlog", parent: "parent" },
+        ]
+        const tree = sortWorkTree(buildWorkTree(items), "name", "ascending")
+        expect(tree.map((node) => node.path)).toEqual(["parent"])
+        expect(tree[0].children[0].path).toBe("child")
+        expect(tree[0].children[0].item?.status).toBe("backlog")
+    })
+
     test("resolves qualified parent in the child namespace", () => {
         const items: WorkItem[] = [
             { slug: "sub/parent" },

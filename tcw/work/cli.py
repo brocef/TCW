@@ -1235,6 +1235,11 @@ def _start(args: argparse.Namespace) -> int:
         return 1
     before = st.get(bare)
     previous = before.status if before is not None else "backlog"
+    # Where the item is before it moves, for the `--worktree` commit below. A
+    # child made by an earlier version is nested in its parent's folder, so this
+    # is not always `backlog/<slug>`; recovering an interrupted claim finds no
+    # folder at all, and git says where it was.
+    source = st.path(bare) or st._tracked_source(bare)
     strict = (before is not None and before.type != "epic" and st.tracker_strict())
     if (before is not None and before.type == "epic" and args.worktree
             and st.tracker_strict()):
@@ -1294,7 +1299,9 @@ def _start(args: argparse.Namespace) -> int:
     # item's own status move on it, producing a worktree whose item is not in it.
     same_repo = st.store_git_root == node
     rel = st.root.relative_to(st.store_git_root)
-    store_paths = [str(rel / "backlog" / bare), str(rel / "active" / bare)]
+    vacated = (source.relative_to(st.store_git_root) if source is not None
+               else rel / "backlog" / bare)
+    store_paths = [str(vacated), str(rel / "active" / bare)]
     if same_repo and ignore_changed:      # one repository, one commit, as before
         store_paths.append(".gitignore")
         ignore_changed = False
@@ -3681,6 +3688,24 @@ def _complete(args: argparse.Namespace) -> int:
     if shipping and (reason := _strict_refusal(st, bare, "complete",
                                               own=branch_store)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
+    # Also before the merge-back, for any resolution: the store refuses to close an
+    # item with anything open beneath it, and finding that out after the branch is
+    # merged would leave the merge behind a refusal. A child created in the
+    # worktree exists only on the branch until the merge, so the branch's copy is
+    # asked as well — but only about items the primary copy does not have. The
+    # branch's copy of every other item is frozen at `start --worktree`, so a child
+    # completed here since would still read open there. When the worktree cannot
+    # be read, only the primary copy is asked, and the store's own check after the
+    # merge is what catches a branch-only child.
+    still_open = st.open_descendants(bare)
+    if branch_store is not None:
+        still_open += [s for s in branch_store.open_descendants(bare)
+                       if st.get(s) is None and st.tombstone(s) is None]
+    if still_open:
+        print(f"tcw work complete: Cannot complete {bare}; these items beneath it "
+              f"are still open: {', '.join(still_open)}. Complete or discard them "
+              f"first.", file=sys.stderr)
+        return 1
     if shipping and has_worktree and branch and not args.already_integrated:
         err = merge_worktree(st.node_root, branch)
         if err:

@@ -976,3 +976,128 @@ def test_show_says_when_no_commit_held_the_documents(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "content:" in out
     assert "not retained" in out
+
+
+# ── an item made by an earlier version, nested in the resolved parent ────────
+
+def _parent_with_nested_children(root: Path, names=("old-a",)) -> tuple[str, list[str]]:
+    """A backlog item holding children the way earlier versions nested them."""
+    store = FsWorkStore.open(root)
+    parent = store.create("Holder", created="2026-01-01").slug
+    for name in names:
+        d = store.path(parent) / f"2026-01-02-{name}"
+        d.mkdir()
+        (d / "state.yaml").write_text(yaml.safe_dump(
+            {"slug": d.name, "title": name, "created": "2026-01-02", "resolution": None}))
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "holder"], check=True)
+    return parent, [f"2026-01-02-{n}" for n in names]
+
+
+def _complete_without_deleting(root: Path, slug: str) -> None:
+    store = FsWorkStore.open(root)
+    store.start(slug, owner="t@t")
+    store.complete(slug, "done", [])
+
+
+def _assert_recorded(root: Path, parent: str, children: list[str]) -> None:
+    """Every removed item is answerable by its tombstone, and each tombstone
+    names a commit that holds it."""
+    store = FsWorkStore.open(root)
+    for slug, rel in [(parent, f"completed/{parent}")] + [
+            (c, f"completed/{parent}/{c}") for c in children]:
+        grave = store.tombstone(slug)
+        assert grave is not None, slug
+        listed = subprocess.run(
+            ["git", "-C", str(root), "ls-tree", "-r", "--name-only", grave.location,
+             "--", f"docs/work/{rel}/state.yaml"], capture_output=True, text=True).stdout
+        assert listed.strip(), f"{slug}: {grave.location} does not hold it"
+        assert store.get(slug) is None
+
+
+def test_deleting_a_parent_records_its_nested_children(tmp_path, monkeypatch, capsys):
+    root = _node(tmp_path, retain={"completed": False})
+    parent, children = _parent_with_nested_children(root)
+    store = FsWorkStore.open(root)
+    store.start(parent, owner="t@t")
+    monkeypatch.chdir(root)
+    assert main(["work", "complete", parent, "--resolution", "done", "--confirm"]) == 0
+    assert not (root / "docs/work/completed" / parent).exists()
+    _assert_recorded(root, parent, children)
+    from tcw.store.fs import resolve_qualified_work_ref
+    assert resolve_qualified_work_ref(root, f"completed/{children[0]}") is not None
+    capsys.readouterr()
+    assert main(["work", "show", children[0]]) == 0
+    assert "last present in commit" in capsys.readouterr().out
+
+
+def test_graveyard_changes_once_for_a_parent_and_its_children(tmp_path):
+    root = _node(tmp_path, retain={"completed": False})
+    parent, children = _parent_with_nested_children(root, ("old-a", "old-b"))
+    _complete_without_deleting(root, parent)
+    before = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()
+    FsWorkStore.open(root).delete_resolved(parent)
+    commits = subprocess.run(
+        ["git", "-C", str(root), "log", "--format=%H", f"{before}..HEAD", "--",
+         "docs/work/graveyard.yaml"], capture_output=True, text=True).stdout.split()
+    assert len(commits) == 1
+    _assert_recorded(root, parent, children)
+
+
+def test_an_interruption_before_the_graveyard_write_is_finishable(tmp_path, monkeypatch):
+    root = _node(tmp_path, retain={"completed": False})
+    parent, children = _parent_with_nested_children(root, ("old-a", "old-b"))
+    _complete_without_deleting(root, parent)
+    store = FsWorkStore.open(root)
+    with monkeypatch.context() as m:
+        def boom(*a, **k):
+            raise RuntimeError("interrupted before the graveyard write")
+        m.setattr(FsWorkStore, "_write_tombstones", boom)
+        with pytest.raises(RuntimeError):
+            store.delete_resolved(parent)
+    assert not (root / "docs/work/completed" / parent).exists()     # folder gone
+    FsWorkStore.open(root).delete_resolved(parent)                  # rerun finishes
+    _assert_recorded(root, parent, children)
+
+
+def test_an_interruption_before_the_commit_is_finishable(tmp_path, monkeypatch):
+    root = _node(tmp_path, retain={"completed": False})
+    parent, children = _parent_with_nested_children(root, ("old-a", "old-b"))
+    _complete_without_deleting(root, parent)
+    import tcw.store.fs as fs
+    real = fs.git_commit_result
+    calls = {"n": 0}
+
+    def fail_once(*a, **k):
+        calls["n"] += 1
+        return "refused by a test" if calls["n"] == 1 else real(*a, **k)
+    monkeypatch.setattr(fs, "git_commit_result", fail_once)
+    with pytest.raises(Exception, match="committing the removal failed"):
+        FsWorkStore.open(root).delete_resolved(parent)
+    FsWorkStore.open(root).delete_resolved(parent)                  # rerun finishes
+    _assert_recorded(root, parent, children)
+    graveyard = yaml.safe_load((root / "docs/work/graveyard.yaml").read_text())
+    assert sorted(graveyard) == sorted([parent, *children])
+
+
+def test_an_unrelated_graveyard_change_still_refuses_the_rerun(tmp_path, monkeypatch):
+    root = _node(tmp_path, retain={"completed": False})
+    parent, _children = _parent_with_nested_children(root)
+    _complete_without_deleting(root, parent)
+    import tcw.store.fs as fs
+    real = fs.git_commit_result
+    calls = {"n": 0}
+
+    def fail_once(*a, **k):
+        calls["n"] += 1
+        return "refused by a test" if calls["n"] == 1 else real(*a, **k)
+    monkeypatch.setattr(fs, "git_commit_result", fail_once)
+    with pytest.raises(Exception):
+        FsWorkStore.open(root).delete_resolved(parent)
+    path = root / "docs/work/graveyard.yaml"
+    doc = yaml.safe_load(path.read_text())
+    doc["someone-else"] = {"resolution": "done", "resolved": "2026-01-01"}
+    path.write_text(yaml.safe_dump(doc))
+    with pytest.raises(ValueError, match="uncommitted changes"):
+        FsWorkStore.open(root).delete_resolved(parent)
