@@ -4112,9 +4112,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         → `backlog`), so a nested child reports its top-level status folder."""
         return d.relative_to(self.root).parts[0]
 
-    def _parent_slug(self, d: Path) -> str:
-        """Parent = the nearest `state.yaml`-bearing ancestor's name; "" if the
-        nearest ancestor is a status folder (the relation derived from nesting)."""
+    def _parent_slug(self, d: Path, state: dict | None = None) -> str:
+        """Parent = the item's `parent:` field; failing that, the folder it is
+        nested in.
+
+        A child records its parent as a field and sits in the ordinary status
+        folders, so its status is its own. Children made by earlier versions
+        were nested inside their parent's folder with no field, and still read
+        through the nesting walk. `state` is the already-loaded `state.yaml`,
+        passed by callers that have it so the file is not read twice."""
+        if state is None:
+            state = self._safe_yaml(d / "state.yaml")
+        recorded = state.get("parent") if isinstance(state, dict) else None
+        if isinstance(recorded, str) and recorded.strip():
+            return recorded.strip()
+        return self._nesting_parent(d)
+
+    def _nesting_parent(self, d: Path) -> str:
+        """The nearest `state.yaml`-bearing ancestor's name; "" if the nearest
+        ancestor is a status folder."""
         anc = d.parent
         while anc != self.root and self.root in anc.parents:
             if (anc / "state.yaml").exists():
@@ -4496,7 +4512,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             type=state.get("type", ""),
             worktree=state.get("worktree", ""),
             branch=state.get("branch", ""),
-            parent=self._parent_slug(d),
+            parent=self._parent_slug(d, state),
             owner=state.get("owner", ""),
             started=state.get("started", ""),
             tracker=tracker,
@@ -5842,6 +5858,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 if tag not in registered:
                     problems.append(f"{item.slug}: unregistered tag '{tag}'")
             problems.extend(self._status_resolution_problems(item))
+            problems.extend(self._parent_problems(item))
             try:
                 stages = self._declared_plan_stages(item.slug)
                 if stages:
@@ -5866,6 +5883,33 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 problems.append(f"{item.slug}: plan stage '{stage.id}' requires non-empty '{heading}' section")
             except ValueError as exc:
                 problems.append(f"{item.slug}: {exc}")
+        return problems
+
+    def _parent_problems(self, item) -> list[str]:
+        """A `parent:` field must name something this store knows, and must not
+        contradict the folder a nested item sits in.
+
+        A tombstone counts: a resolved parent may have been deleted under
+        `work.retain: false`, and its children still name it."""
+        d = self._find(item.slug)
+        if d is None:
+            return []
+        recorded = self._safe_yaml(d / "state.yaml").get("parent")
+        if not isinstance(recorded, str) or not recorded.strip():
+            return []
+        recorded = recorded.strip()
+        problems = []
+        try:
+            known = self.get(recorded) is not None or self.tombstone(recorded) is not None
+        except MultipleMatch:
+            known = True
+        if not known:
+            problems.append(f"{item.slug}: parent '{recorded}' names no work item "
+                            f"or tombstone in this store")
+        enclosing = self._nesting_parent(d)
+        if enclosing and enclosing != recorded:
+            problems.append(f"{item.slug}: parent field '{recorded}' disagrees with "
+                            f"the folder it sits in ('{enclosing}')")
         return problems
 
     @staticmethod
