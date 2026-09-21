@@ -27,8 +27,9 @@ project; it is not a channel to the TCW maintainers.)
 2. **Pick the kind:** a **bug** (something is broken or behaves wrong) or a
    **suggestion / feature** (something should exist or work differently). Use
    the matching skeleton below.
-3. **Grab the version.** For a bug, run `tcw --version` and include the output —
-   most reports are unactionable without it.
+3. **Grab the versions.** For a bug, run `tcw --version` and include the output,
+   along with the version of the tcw plugin the agent loaded — most reports are
+   unactionable without them, and a difference between the two explains some.
 
 ## What goes in the report
 
@@ -44,7 +45,8 @@ whatever real detail you do want in it.
   domain vocabulary.
 - **Keep** the command's shape and its flags, the config's shape, the error type
   and the fixed part of its message, and the sequence that triggered it — and the
-  real values in the Environment block (`tcw --version`, OS, install method),
+  real values in the Environment block (`tcw --version`, the plugin version, OS,
+  install method),
   which describe the install rather than the project.
 
 Written down, the swap is small:
@@ -77,6 +79,7 @@ untouched.
 ### Environment
 
 - tcw version: <output of `tcw --version`>
+- tcw plugin version: <the version of the tcw plugin your agent loaded, e.g. from its plugin list>
 - OS / platform: <e.g. macOS 14, Ubuntu 24.04>
 - Install method: <pipx / pip --user / editable / other>
 

@@ -77,7 +77,9 @@ cannot run until the next one begins. That first session needs network access. I
 installs over an existing `pipx install tcw-cli` rather than beside it, and
 leaves a development checkout (`pip install -e .`) alone. If `tcw` goes missing
 anyway, `pipx install tcw-cli` is the whole fix — the **`setup`** skill
-carries the cases where it is not.
+carries the cases where it is not. When the `tcw` CLI and the plugin's skills
+come from different releases, the session tells you which versions they are and
+what to run to line them up; it never stops your work.
 
 In **Codex**:
 
@@ -87,7 +89,9 @@ codex plugin add tcw@tcw
 ```
 
 Codex has no session-start hook, so ask the agent to run the **`setup`**
-skill — it runs the same install script Claude runs automatically.
+skill — it runs the same install script Claude runs automatically. Every tcw
+skill also asks the agent to run the plugin's version check once per session,
+which warns when the CLI and the skills come from different releases.
 
 The plugin ships the skills and read-only review agents described in
 [Skills and Agents](#skills-and-agents).
