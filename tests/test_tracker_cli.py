@@ -63,6 +63,9 @@ def node(tmp_path, monkeypatch):
     monkeypatch.chdir(root)
     monkeypatch.setenv("TCW_PROBE_EMAIL", "probe@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    # `tcw work start` needs a claimant. Without this it falls back to the git
+    # identity, which a CI runner does not have.
+    monkeypatch.setenv("TCW_WORK_OWNER", "probe@example.test")
 
     def configure(tracker=TRACKER):
         config = {"id": "probe"}
