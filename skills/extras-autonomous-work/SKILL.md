@@ -5,6 +5,7 @@ allowed-tools: Bash(tcw *), Bash(codex *), Bash(git merge *), Agent, SendMessage
 compatibility: Declares what TCW's shipped procedure needs — the Codex CLI (`codex`) on PATH and a harness with subagents (Agent, SendMessage). A project that replaces it under `work.procedures.unattended-work` may need other tools. Requires a `tcw` with `tcw work procedure prompt`.
 dynamic_skill: true # which skills a project may override, and why: ../README.md
 ---
+**Version check.** Under Claude Code, skip this: the session-start hook already ran it. Under any other harness, once per session before your first `tcw` command, run `bash "<plugin>/scripts/check_versions.sh"`, where `<plugin>` is two folders above the folder holding this `SKILL.md`, and pass on anything it prints to the user.
 
 # Autonomous TCW work
 

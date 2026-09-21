@@ -70,6 +70,33 @@ carrying everything listed under `v2.5.0`.
 - `FsCapabilitiesStore._override_problem`: `overrides → unknown alias '<alias>'`
   gains `(not declared in <path>/tcw-config.yaml: capabilities.extends)`.
 
+- `scripts/check_versions.sh`: compares the plugin manifest's version
+  (`.claude-plugin/plugin.json`, else `.codex-plugin/plugin.json`) with
+  `tcw --version` and, when they differ, prints both and the remedy for the side
+  that is behind. Exits 0 on every path, is silent when it cannot tell, and
+  abandons a `tcw --version` that has not answered within 3 seconds (a
+  plain-bash deadline, killing the command's whole process group). It writes no
+  file, temporary ones included, so it also works inside Codex's read-only
+  sandbox. Lives in the
+  plugin rather than the CLI because a CLI-side check would be absent whenever
+  the CLI is the older side.
+- `scripts/session_bootstrap.sh` runs the check from an `EXIT` trap registered
+  once the plugin root is known, so it runs after any install attempt and on
+  every early exit, including for a plugin root with no `tcw/__init__.py`. It is
+  invoked through `bash`, so it does not depend on the executable bit.
+- Every `skills/*/SKILL.md` opens with a line asking agents under any harness
+  other than Claude Code to run the check once per session.
+- `tests/test_check_versions.py`, and version-check cases in
+  `tests/test_session_bootstrap.py` for each install branch.
+
+### Changed
+
+- `skills/setup/references/install.md` points at the warning;
+  `skills/extras-report`'s bug skeleton asks for the plugin version.
+- `test_real_editable_checkout_is_left_alone` accepts the version warning as
+  its only output, since a maintainer's editable CLI can differ from the
+  checkout's manifest.
+
 ### Fixed
 
 - `capability_gate` found a ledger only at `<node root>/docs/capabilities`, so a

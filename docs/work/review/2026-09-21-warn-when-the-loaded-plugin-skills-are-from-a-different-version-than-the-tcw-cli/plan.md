@@ -81,7 +81,12 @@ Script behavior, in order:
    extracted with `sed -n` (the only `"version"` key in either manifest is the
    top-level one). No match: exit 0 silently.
 4. `command -v tcw` fails: exit 0 silently.
-5. CLI version with a 3-second deadline, plain bash (macOS has no `timeout`):
+5. _(Corrected during implement: the temporary file below made the check fall
+   silent inside Codex's read-only sandbox, where `mktemp` fails. The output is
+   captured with command substitution instead, with the deadline loop inside
+   it, and step 7 parses both versions with the regular expression rather than
+   here-strings, which bash 3.2 also backs with a temporary file. See
+   `outcome.md`.)_ CLI version with a 3-second deadline, plain bash (macOS has no `timeout`):
    `set -m` so the background job gets its own process group; run
    `tcw --version </dev/null >"$tmp"` in the background, where `$tmp` comes from
    `mktemp` and is removed by an `EXIT` trap; poll `kill -0 "$pid"` every
