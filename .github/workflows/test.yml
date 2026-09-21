@@ -69,8 +69,36 @@ jobs:
             - uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
-            # No Node: pytest never shells out to it (`tcw serve`'s runtime
-            # tests monkeypatch `shutil.which`). The Node-dependent path is
-            # scripts/check_web_build.mjs, which is not part of the suite.
+            # No Node in *this* job: pytest never shells out to it (`tcw serve`'s
+            # runtime tests monkeypatch `shutil.which`). The Node-dependent
+            # check has its own job below.
             - run: pip install -e '.[dev]'
             - run: pytest
+
+    web-build:
+        # `tcw serve` serves the committed build under `tcw/serve/dist`, not the
+        # TypeScript source, so a fix to the client does not ship until the
+        # bundle is rebuilt and committed. That went unnoticed for four commits
+        # once: the tests, the types and the source were all correct and the
+        # page still rendered blank for anyone running the web app.
+        #
+        # `pnpm check:build` rebuilds and fails if the committed output differs.
+        # It existed the whole time and nothing ran it — not this workflow,
+        # which installed no Node at all, and no test. Its own job rather than a
+        # step in `pytest`, because it is independent of the Python version and
+        # running it once per matrix leg would only repeat itself.
+        if: >-
+            github.event_name != 'pull_request'
+            || github.event.pull_request.user.login == 'dependabot[bot]'
+            || contains(github.event.pull_request.labels.*.name, 'run-ci')
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: pnpm/action-setup@v4
+            - uses: actions/setup-node@v4
+              with:
+                  # `engines.node` in package.json is >=22.12.0.
+                  node-version: "22"
+                  cache: pnpm
+            - run: pnpm install --frozen-lockfile
+            - run: pnpm check:build

@@ -57,8 +57,12 @@ category.
   escaped as a traceback while binding an unrelated item.
 - `tcw/serve/dist` rebuilt. `tcw serve` serves the committed bundle, not the
   TypeScript source, so a client fix does not ship until it is rebuilt.
-  `pnpm check:build` catches this and nothing runs it — not the test workflow,
-  which installs no Node, and no test. Worth wiring up separately.
+- `.github/workflows/test.yml` gains a `web-build` job running
+  `pnpm check:build`, which rebuilds the bundle and fails if the committed
+  output differs. The check existed and nothing ran it: the workflow installed
+  no Node at all and no test shells out to it, which is how a fixed page kept
+  rendering blank for four commits. Its own job rather than a step in `pytest`,
+  since it does not vary with the Python matrix.
 
 ### Fixed
 

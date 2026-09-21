@@ -69,19 +69,24 @@ the drop refusal said `exit=0`; measured without a pipe it is 1.
   it without the exact text being approved first.
 - **Nothing is published or pushed.** The user asked for a local merge only.
 
-## Follow-ups this item did not take
+## Follow-ups
 
-Neither is filed yet; both are the user's call.
+**Taken here, at the user's direction:** `.github/workflows/test.yml` now has a
+`web-build` job running `pnpm check:build`. The check existed the whole time and
+nothing ran it — the workflow installed no Node and no test shells out to it —
+which is how a fixed page kept rendering blank for four commits. It is a CI
+change rather than a change to this feature, and it is here because the failure
+it catches is the one this item produced.
 
-1. **Nothing runs `pnpm check:build`.** It rebuilds the web bundle and fails if
-   the committed one differs — which is exactly the defect that let a fixed page
-   keep crashing for four commits, because `tcw serve` serves the build, not the
-   source. The test workflow installs no Node and says so; no test shells out to
-   it. Wiring it up is a CI change, not a change to this feature.
-2. **`created_record` in `tcw/tracker/intake.py` duplicates `_created_key` in
-   `tcw/store/base.py`** — two definitions of a valid `created` record, one over
-   raw text and one over parsed data. They agree today. If either loosens, the
-   resume path and the board row begin disagreeing about the same file.
+That job is not covered by the suite; nothing in `tests/` reads a workflow file,
+so the gate above is unaffected by it. It is verified by `pnpm check:build`
+exiting 0 locally and by the YAML parsing into two jobs.
+
+**Filed as its own item:** `created_record` in `tcw/tracker/intake.py` duplicates
+`_created_key` in `tcw/store/base.py` — two definitions of a valid `created`
+record, one over raw text and one over parsed data. They agree today. If either
+loosens, the resume path and the board row begin disagreeing about the same
+file.
 
 ## Held at verify
 
