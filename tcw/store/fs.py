@@ -1141,9 +1141,10 @@ _UniqueKeyLoader.add_constructor(
 #: moved to `<component>.extends` in the node's `tcw-config.yaml`, so TCW writes
 #: no `config.yaml` or `.config.yaml` at all — and the work store never did,
 #: whatever this comment used to claim. A leftover copy is not a record of ours
-#: and is not held to the mapping contract; `tcw validate`'s YAML scan still
-#: reports it if it is unparseable, which is the right amount of attention to
-#: pay a file nothing reads.
+#: and is not held to the mapping contract. It is still reported: the component
+#: `check()` names any copy at a store root as no longer read
+#: (`FsTreeStore._legacy_config_problems`), and `tcw validate`'s YAML scan
+#: separately reports one that is unparseable.
 #:
 #: Three names are absent on purpose, and each is legitimately not a mapping or
 #: is never reached by that pass. `dod.yaml` is a top-level list. The node
@@ -1579,13 +1580,15 @@ class FsTreeStore:
 
     Subclasses set `COMPONENT` (the `docs/<COMPONENT>/` dir) and optionally
     `LEGACY_CONFIG_NAME` (the per-store config file this component used to
-    write, retained only so it stays out of the attachment surface).
+    write, retained so it stays out of the attachment surface and so `check`
+    can report a leftover copy).
     """
     COMPONENT: str
     #: The filename this component once kept its own `extends` in, before it
     #: moved to the node's `tcw-config.yaml`. Nothing reads or writes the file
-    #: any more; the name survives on the class for exactly one reason, in
-    #: `_node_reserved` — see the comment there.
+    #: any more. The name survives on the class for two reasons: `_node_reserved`
+    #: keeps it out of a folder's attachments (see the comment there), and
+    #: `_legacy_config_problems` reports a copy left at the store root.
     LEGACY_CONFIG_NAME: str | None = None
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
@@ -1947,6 +1950,32 @@ class FsTreeStore:
         if self.LEGACY_CONFIG_NAME:
             names.add(self.LEGACY_CONFIG_NAME)
         return names
+
+    def _legacy_config_problems(self) -> list[str]:
+        """The pre-2.5.0 config file at this store's root, reported, or `[]`.
+
+        An upgraded project that never moved its `extends` out of this file
+        silently lost every inherited entry, and nothing said why. So a copy at
+        the store root is a problem whatever it holds — even one that only
+        repeats `<component>.extends` misleads the next reader into thinking it
+        is read. Existence only: the file is never opened, so a corrupt copy
+        cannot make `check` raise, and it is never rewritten or deleted.
+
+        Only the root: a file of the same name inside a folder node is an
+        ordinary file of that node.
+        """
+        if not self.LEGACY_CONFIG_NAME:
+            return []
+        path = self.root / self.LEGACY_CONFIG_NAME
+        if not path.is_file():
+            return []
+        try:
+            shown = str(path.relative_to(self.node_root))
+        except ValueError:
+            shown = str(path)
+        return [f"{shown}: no longer read since TCW 2.5.0 — move any needed "
+                f"extends into {self._extends_label()}, then delete the file; "
+                f"if already migrated, just delete it"]
 
     def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
         """Read a folder node → (meta mapping, description text, attachment names).
@@ -2321,6 +2350,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level term"
                 )
+        if identifier is None:
+            # About the store, not any one term — left out of a scoped check,
+            # which is how `tcw serve` validates the object it just wrote.
+            problems += self._legacy_config_problems()
 
         if identifier is not None:
             selected = self.get(identifier)
@@ -3000,6 +3033,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 problems.append(
                     f"project ID '{project_id}' collides with local top-level capability"
                 )
+        if identifier is None:
+            problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
 
         selected = self.get(identifier) if identifier is not None else None
         if identifier is not None and selected is None:
@@ -3102,7 +3137,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             alias, _, cid = target.partition("/")
             st = self.extends.get(alias)
             if st is None:
-                return f"overrides → unknown alias '{alias}'"
+                # On the store being checked, an alias missing here is always
+                # one `<component>.extends` does not declare: a declared alias
+                # that cannot be resolved fails the open, and a cycle's back
+                # edge is recorded on the deepest store, never this one.
+                return (f"overrides → unknown alias '{alias}' "
+                        f"(not declared in {self._extends_label()})")
             return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
         if self.get_by_id(target):
             return f"overrides → '{target}' targets a local capability (must be inherited)"

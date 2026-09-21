@@ -107,7 +107,8 @@ inheritance.
   comments and custom formatting do not.
 - Projects written for TCW 2.x kept these lists inside the store, in
   `docs/taxonomy/config.yaml` and `docs/capabilities/.config.yaml`. Those files
-  are no longer read and nothing warns — see
+  are no longer read; `tcw taxonomy check`, `tcw capabilities check` and
+  `tcw validate` report one until it is deleted — see
   [the 2.5.0 migration guide](../../../docs/migration-guide-2.4.X-to-2.5.0.md).
 - Run `tcw taxonomy check` or `tcw capabilities check` afterwards; both report
   an inheritance cycle.

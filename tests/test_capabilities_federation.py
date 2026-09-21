@@ -159,6 +159,23 @@ def test_check_dangling_override(tmp_path):
     assert any("dangling id" in p for p in store(child).check())
 
 
+def test_check_unknown_alias_override_names_the_undeclared_extends(tmp_path):
+    """`<alias>/<id>` with an alias this project does not extend. The only way
+    that happens on the store being checked is that the alias is missing from
+    `capabilities.extends` — often because it is still sitting in a pre-2.5.0
+    `.config.yaml` — so the message says where it has to be declared rather than
+    only that the alias is unknown."""
+    base, child = child_of(tmp_path, {
+        "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
+    write_cap(child, "ov/x", overrides="shared/cap-aaa111", Status="Missing")
+    problems = [p for p in store(child).check() if "unknown alias" in p]
+    assert len(problems) == 1, problems
+    assert problems[0].startswith("ov/x: overrides → unknown alias 'shared'"), problems
+    assert "capabilities.extends" in problems[0], problems
+    assert "tcw-config.yaml" in problems[0], problems
+    assert problems[0] != "ov/x: overrides → unknown alias 'shared'"     # the old text
+
+
 def test_check_local_target_override(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})

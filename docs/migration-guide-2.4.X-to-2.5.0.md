@@ -67,18 +67,32 @@ tcw capabilities extends acme-shared
 rm docs/taxonomy/config.yaml docs/capabilities/.config.yaml
 ```
 
-### Nothing warns you
+### How you find out
 
-This is the part worth reading twice. An old file is not read, not reported and
-not deleted — it is simply inert. A project that upgrades and does nothing
-**silently loses its inherited entries**.
+This is the part worth reading twice. An old file is not read and not deleted.
+A project that upgrades and does nothing **loses its inherited entries**.
+
+From 2.5.1, `tcw taxonomy check`, `tcw capabilities check` and `tcw validate`
+report an old file as a problem, naming it and the fix — for example:
+
+```text
+docs/capabilities/.config.yaml: no longer read since TCW 2.5.0 — move any needed extends into /path/to/project/tcw-config.yaml: capabilities.extends, then delete the file; if already migrated, just delete it
+```
+
+The report stays until the file is gone, even if you have already copied its
+list, so a kept file fails `check` and `validate` — and can stop
+`tcw work complete` in a project that runs `tcw validate` first. TCW never edits
+or deletes the file itself. (Version 2.5.0 said nothing at all; if you are on
+it, the only symptom is below.)
 
 The symptom is `tcw taxonomy list` or `tcw capabilities list` showing only your
-own entries, with none of the `acme-shared/…` ones you expect. If you see that
-after upgrading, this is why.
+own entries, with none of the `acme-shared/…` ones you expect, and `check`
+reporting overrides whose project is "not declared in capabilities.extends". If
+you see that after upgrading, this is why.
 
-One exception: a *corrupt* leftover file is still reported by `tcw validate`,
-because refusing to parse is worth saying whether or not anything reads it.
+A *corrupt* old file is also reported by `tcw validate` as a file that will not
+parse, because refusing to parse is worth saying whether or not anything reads
+it.
 
 ## Two consequences worth knowing
 
