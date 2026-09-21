@@ -223,6 +223,8 @@ export function TrackerField({ binding }: { binding: TTrackerBinding }) {
                                 ? ` · sync record cannot be read: ${binding.sync.problem}`
                                 : ` · ${binding.sync.state}: ${binding.sync.reason}`)}
                     </>
+                ) : "created" in binding ? (
+                    `none yet — ${binding.created.key} was created for it and the binding did not follow; \`tcw work tracker create\` binds it`
                 ) : "owed" in binding ? (
                     `none yet — one was to be created on filing and was not (${binding.owed.reason}), owed since ${binding.owed.since}`
                 ) : (

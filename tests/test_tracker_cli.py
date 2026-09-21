@@ -791,6 +791,83 @@ def test_a_ticket_made_but_not_recorded_still_names_its_key(node, monkeypatch):
     assert "Traceback" not in err
 
 
+def test_a_recorded_key_sends_the_user_back_to_create_not_link(node, monkeypatch):
+    """The failure message after a ticket is created and placement fails used to
+    say that running `create` again "would make a second ticket". With the key
+    recorded it would not — `create` resumes from it, which is the entire point
+    of recording it — so the message steered the user away from the recovery
+    path this feature was built for.
+
+    Placement is what fails here: the ticket is made, the key is written, and
+    then the tracker offers no way out of the status it was created in.
+    """
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    _create_responses(monkeypatch, **{
+        # Created in the triage column, with nothing offered that leads out.
+        "/transitions": (200, {}, json.dumps({"transitions": []}).encode()),
+        "/issue/PROBE-1": (200, {}, json.dumps(
+            {"id": "10001", "key": "PROBE-1",
+             "fields": {"summary": "Thing", "status": {"name": "Triage"},
+                        "assignee": None, "description": None}}).encode()),
+    })
+
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1
+    assert "PROBE-1 was created" in err, err
+    assert f"tracker create {slug}" in err, err
+    # The wording this replaces. Both halves matter: the old message named
+    # `link`, and named it as the alternative to making a second ticket.
+    assert "would make a second ticket" not in err, err
+    assert "tracker link" not in err, err
+    # And the key really is on disk, which is what makes the advice true.
+    from tcw.tracker.intake import created_record
+    assert created_record(_sidecar(root, slug)) == {"key": "PROBE-1", "id": "10001"}
+
+
+def test_a_dry_run_reports_a_resumption_rather_than_a_creation(node, monkeypatch):
+    """`--dry-run` read the resumption record and then reported "would create"
+    anyway, because it returned before the notice. Wrong in exactly the case
+    somebody is checking before touching a shared tracker, and `--all --dry-run`
+    — which the help tells you to run first — overstated the number of new
+    tickets it was about to make."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    from tcw.store.fs import FsWorkStore
+    from tcw.tracker.intake import BINDING_SIDECAR, with_created_record
+    FsWorkStore.open(root).write_sidecar(
+        slug, BINDING_SIDECAR,
+        with_created_record(None, {"key": "PROBE-1", "id": "10001"}), revision="")
+
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug, "--dry-run"])
+    assert code == 0, err
+    assert "PROBE-1" in err and "would bind" in err, err
+    assert "would create" not in err, err
+    assert posted == [], posted
+
+
+def test_a_sweep_stops_once_a_created_key_cannot_be_recorded(node, monkeypatch):
+    """A ticket made whose key cannot be written down is unfindable: no record
+    survives, so a re-run makes another. Carrying on would produce one of those
+    per remaining item, and a re-run once the disk is fixed would duplicate
+    every one. The tracker is fine; this machine is not, so the sweep stops."""
+    root, slugs = _board(node, monkeypatch,
+                         [("Alpha", "task", "backlog"), ("Beta", "task", "backlog"),
+                          ("Gamma", "task", "backlog")])
+    posted = _create_responses(monkeypatch)
+    from tcw.store.fs import FsWorkStore
+
+    def refuse(self, *a, **kw):
+        raise OSError("disk is full")
+
+    monkeypatch.setattr(FsWorkStore, "write_sidecar", refuse)
+    code, _out, err = _run(["work", "tracker", "create", "--all"])
+    assert code == 1
+    creates = [p for p in posted
+               if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    assert len(creates) == 1, f"the sweep kept creating tickets it could not record: {creates}"
+    assert "stopping the sweep" in err, err
+
+
 def _board(node, monkeypatch, items, tracker=CREATE_TRACKER):
     """A node holding several items, so `--all` has something to sweep.
 
@@ -1086,6 +1163,42 @@ def test_an_owed_ticket_is_visible_on_the_board(node, monkeypatch):
     code, out, _err = _run(["work", "list"])
     assert code == 0
     assert "owed since" in out, out
+
+
+def test_filing_names_the_ticket_that_exists_instead_of_calling_it_owed(
+        node, monkeypatch):
+    """Creation succeeded and placement failed, so a real ticket exists. Filing
+    used to write an owed record over that and print "no ticket was created" —
+    and, because `_tracker_link` never appends to `reasons`, the recorded reason
+    was often the placeholder "creating it did not succeed" for a ticket that
+    had been created perfectly well. The board then read `owed since <date>` for
+    an item whose ticket was sitting in the tracker."""
+    _root, configure = node
+    configure(ON_NEW_TRACKER)
+    _create_responses(monkeypatch, **{
+        "/transitions": (200, {}, json.dumps({"transitions": []}).encode()),
+        "/issue/PROBE-1": (200, {}, json.dumps(
+            {"id": "10001", "key": "PROBE-1",
+             "fields": {"summary": "Thing", "status": {"name": "Triage"},
+                        "assignee": None, "description": None}}).encode()),
+    })
+
+    code, out, err = _run(["work", "new", "Filed with a stuck workflow"])
+    assert code == 0, err                       # filing still never fails
+    slug = out.strip().splitlines()[0]
+
+    assert "PROBE-1" in err, err
+    assert "no ticket was created" not in err, err
+    assert "creating it did not succeed" not in err, err
+
+    from tcw.store.fs import FsWorkStore
+    tracker = FsWorkStore.open(_root).get(slug).tracker
+    assert tracker == {"created": {"key": "PROBE-1", "id": "10001"}}, tracker
+
+    # And it reads as what it is on the board, not as a binding and not as a debt.
+    code, board, _err = _run(["work", "list"])
+    assert code == 0
+    assert "PROBE-1 made, not bound" in board, board
 
 
 def test_creating_the_owed_ticket_later_binds_it_and_clears_the_debt(

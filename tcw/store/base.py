@@ -345,8 +345,16 @@ class Unbound:
     thing from having none — and it has to be visible, or a project that turns on
     creation-at-filing quietly accumulates items nobody knows are missing from
     the tracker. It is still `Unbound`: nothing may treat it as a binding.
+
+    `created` is set when a ticket was made and the binding that should have
+    followed did not get written — an interrupted run, or a filing whose bind
+    failed. It is the worst state this feature can reach, a real ticket in a
+    shared tracker belonging to nothing, so it is carried here to be *visible*
+    rather than inferred from an absence. `tcw work tracker create` resumes from
+    it instead of making a second ticket. Also still `Unbound`.
     """
     owed: dict | None = None
+    created: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -397,7 +405,8 @@ def classify_binding(data: Any) -> Unbound | Malformed | Bound:
     if not isinstance(data, dict):
         return Malformed("not a YAML mapping")
     if "ticket" not in data:
-        return Unbound(owed=_owed_record(data.get("owed")))
+        return Unbound(owed=_owed_record(data.get("owed")),
+                       created=_created_key(data.get("created")))
     ticket = data["ticket"]
     if not isinstance(ticket, dict):
         return Malformed("'ticket' is not a mapping")
@@ -443,6 +452,23 @@ def _owed_record(raw) -> dict | None:
         return None
     record = {name: _binding_text(raw.get(name)) for name in OWED_FIELDS}
     return record if record["since"] else None
+
+
+CREATED_FIELDS = ("key", "id")
+
+
+def _created_key(raw) -> dict | None:
+    """A `created` record, or `None` when there is none or it is incomplete.
+
+    Both halves are required: everything downstream addresses the ticket by one
+    or the other, and half a record would resume against a ticket it cannot
+    name. Read as absent when unreadable, as `owed` is — the cost is one extra
+    ticket, and `tcw work tracker create` is what would make it either way.
+    """
+    if not isinstance(raw, dict):
+        return None
+    record = {name: _binding_text(raw.get(name)) for name in CREATED_FIELDS}
+    return record if all(record.values()) else None
 
 
 SYNC_STATES = ("pending", "conflicting")
@@ -504,6 +530,10 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
     if isinstance(binding, Malformed):
         return {"problem": binding.reason}
     if isinstance(binding, Unbound):
+        # `created` first: a ticket that exists outranks one that was owed, and
+        # when both are on the sidecar the owed note is the stale one.
+        if binding.created:
+            return {"created": binding.created}
         return {"owed": binding.owed} if binding.owed else None
     if isinstance(binding, Bound):
         return {"provider": binding.provider, "project": binding.project,

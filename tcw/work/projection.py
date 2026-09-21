@@ -111,6 +111,16 @@ _TRACKER = {"oneOf": [
                              "properties": {"since": _STR, "reason": _STR},
                              "required": ["since", "reason"]}},
      "required": ["owed"]},
+    # A ticket that was created and never bound — an interrupted run, or a
+    # filing whose bind failed. Also unbound, and also no `ticket` key: the
+    # ticket exists in the tracker and belongs to no item here.
+    {"type": "object",
+     "additionalProperties": False,
+     "properties": {"created": {"type": "object",
+                                "additionalProperties": False,
+                                "properties": {"key": _STR, "id": _STR},
+                                "required": ["key", "id"]}},
+     "required": ["created"]},
     {"type": "object",
      "additionalProperties": False,
      "properties": {

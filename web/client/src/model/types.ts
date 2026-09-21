@@ -54,6 +54,8 @@ export type TTrackerBinding =
     | { problem: string }
     /** A ticket that filing was to create and could not. Not a binding. */
     | { owed: { since: string; reason: string } }
+    /** A ticket that was created and never bound. Also not a binding. */
+    | { created: { key: string; id: string } }
 
 export interface WorkItem extends JsonRecord {
     slug: string

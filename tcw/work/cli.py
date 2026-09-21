@@ -160,6 +160,13 @@ def _tracker_text(value: dict, *, row: bool) -> str:
     """
     if "problem" in value:
         return "unreadable" if row else f"tracker.yaml cannot be read ({value['problem']})"
+    if "created" in value:
+        made = value["created"]
+        if row:
+            return f"{made['key']} made, not bound"
+        return (f"none yet — {made['key']} was created for it and the binding "
+                f"did not follow, so the ticket belongs to nothing. "
+                f"`tcw work tracker create` binds it; it will not make a second.")
     if "owed" in value:
         owed = value["owed"]
         if row:
@@ -455,7 +462,32 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
     except Exception as error:          # noqa: BLE001 — see the docstring: filing
         # has already happened, and no failure of this may undo it or hide it.
         reason = str(error) or error.__class__.__name__
+
+    # A ticket that exists is not a ticket that is owed. When creation succeeded
+    # and only the binding failed, the key is on the sidecar as `created`, the
+    # board shows it, and `tcw work tracker create` binds it. Writing an owed
+    # record over that said the opposite of what happened — and said it in the
+    # most misleading of the two ways, because `_tracker_link` never appends to
+    # `reasons`, so the recorded reason was the placeholder "creating it did not
+    # succeed" for a ticket that had been created perfectly well.
+    if made := _created_on(st, slug):
+        print(f"→ {made['key']} was created for {slug} and the binding did not "
+              f"follow ({reason}). `tcw work tracker create {slug}` binds it; "
+              f"it will not make a second.", file=sys.stderr)
+        return
     _record_owed(st, slug, reason, verb, str(date.today()))
+
+
+def _created_on(st, slug: str):
+    """The `created` record on `slug`, or `None`. Never raises: every caller is
+    on a path where filing has already succeeded and must not be undone."""
+    from tcw.store.base import Unbound
+    from tcw.tracker.intake import binding_of
+    try:
+        binding, _revision = binding_of(st, slug)
+    except Exception:                   # noqa: BLE001 — see the docstring
+        return None
+    return binding.created if isinstance(binding, Unbound) else None
 
 
 def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
@@ -2521,6 +2553,11 @@ def _item_body(st, slug: str) -> str:
 #: sweep does not reach them at all.
 
 
+#: `_create_one`'s answer for "a ticket was made and this machine could not
+#: write down its key". Never an exit code: `_tracker_create` turns it into 1.
+_CANNOT_RECORD = 2
+
+
 def _tracker_create(args: argparse.Namespace) -> int:
     """Make a ticket for one item that has none, or for every open item without one."""
     if args.all and args.slug:
@@ -2546,11 +2583,23 @@ def _tracker_create(args: argparse.Namespace) -> int:
     if not args.all:
         if _item_or_reason(st, args.slug, "create") is None:
             return 1
-        return _create_one(st, client, args.slug, args.part, args.dry_run)
+        result = _create_one(st, client, args.slug, args.part, args.dry_run)
+        # `_CANNOT_RECORD` only tells the sweep to stop. One named item has
+        # already been refused in words; its exit code is an ordinary 1.
+        return 1 if result == _CANNOT_RECORD else result
 
     code = 0
     for slug in _sweep_order(st):
         result = _create_one(st, client, slug, None, args.dry_run, sweep=True)
+        if result == _CANNOT_RECORD:
+            # A ticket was made and its key could not be written down. Carrying
+            # on would create one unfindable ticket per remaining item, and a
+            # re-run once the disk is fixed would then duplicate every one of
+            # them. The tracker is fine; this machine is not.
+            print(f"tcw work tracker create: stopping the sweep at {slug} — "
+                  f"tickets are being created and cannot be recorded here.",
+                  file=sys.stderr)
+            return 1
         code = code or result
     return code
 
@@ -2607,8 +2656,13 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     read weeks later.
     """
     def refuse(message: str) -> int:
-        print(f"tcw work tracker create: {message}", file=sys.stderr)
-        if reasons is not None:
+        if reasons is None:
+            print(f"tcw work tracker create: {message}", file=sys.stderr)
+        else:
+            # A collecting caller is the filing hook, which prints the reason
+            # itself in its own words. Printing here too said the same thing
+            # twice, the first time prefixed with `tcw work tracker create:` —
+            # a command the user had not run.
             reasons.append(message)
         return 1
 
@@ -2674,6 +2728,16 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
                           f"it as you, and it was {someone_else}")
 
     if dry_run:
+        if resume:
+            # Read above, but reported only *after* the dry-run branch returned,
+            # so a dry run said "would create" for the one item where a real run
+            # creates nothing — and `--all --dry-run`, which the help tells you
+            # to run first, overstated how many new tickets it was about to make.
+            print(f"→ {resume['key']} was already created for {slug} by a run "
+                  f"that did not finish; would bind that, and create nothing.",
+                  file=sys.stderr)
+            print("→ Nothing was created.", file=sys.stderr)
+            return 0
         settings = client.config.create
         issue_type = settings.type_for(is_epic=getattr(item, "type", "") == "epic",
                                        tags=getattr(item, "tags", ()))
@@ -2728,6 +2792,9 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
             with_created_record(content.content if content else None,
                                 {"key": key, "id": issue_id}),
             revision=content.revision if content else "")
+        # Only now is the interrupted-run guarantee actually in force. What the
+        # failure message may tell the user to do next turns on this flag.
+        made["recorded"] = True
 
     if resume:
         print(f"→ {resume['key']} was already created for {slug} by a run "
@@ -2742,12 +2809,23 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
             on_created=record, existing=resume,
         )
     except (TrackerError, *_LOCAL_WRITE_ERRORS) as error:
-        if made.get("key"):
+        if made.get("recorded"):
+            # The key is on disk, so `create` is the recovery, not the hazard.
+            # Saying otherwise sent the user to `link` and away from the one
+            # path this whole record exists to enable.
             return refuse(f"{error} {made['key']} was created and is not bound "
-                          f"to {slug}. Bind it with `tcw work tracker link "
-                          f"{slug} {made['key']} --sync-status` rather than "
-                          f"running create again, which would make a second "
-                          f"ticket.")
+                          f"to {slug}. Its key is recorded, so running "
+                          f"`tcw work tracker create {slug}` again binds that "
+                          f"ticket rather than making a second one.")
+        if made.get("key"):
+            # The store could not record the key. Re-running really would make a
+            # second ticket, and a sweep must not keep going: every item after
+            # this one would be a ticket nobody can find again.
+            refuse(f"{error} {made['key']} was created and is not bound to "
+                   f"{slug}, and its key could not be recorded. Bind it with "
+                   f"`tcw work tracker link {slug} {made['key']} --sync-status`; "
+                   f"running create again would make a second ticket.")
+            return _CANNOT_RECORD
         return refuse(str(error))
 
     print(f"→ created {created.key} in '{created.status}'.", file=sys.stderr)
