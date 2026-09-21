@@ -3136,7 +3136,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             alias, _, cid = target.partition("/")
             st = self.extends.get(alias)
             if st is None:
-                return f"overrides → unknown alias '{alias}'"
+                # On the store being checked, an alias missing here is always
+                # one `<component>.extends` does not declare: a declared alias
+                # that cannot be resolved fails the open, and a cycle's back
+                # edge is recorded on the deepest store, never this one.
+                return (f"overrides → unknown alias '{alias}' "
+                        f"(not declared in {self._extends_label()})")
             return None if st.get_by_id(cid) else f"overrides → dangling id '{target}'"
         if self.get_by_id(target):
             return f"overrides → '{target}' targets a local capability (must be inherited)"
