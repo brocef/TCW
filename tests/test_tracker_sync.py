@@ -2336,3 +2336,84 @@ def test_a_bound_nested_child_is_found_after_its_parent_moves(node, fake):
     got = FsWorkStore.open(node).get(nested.name)
     assert (got.status, got.parent) == ("active", parent)
     assert got.tracker is not None
+
+
+# ── guards that must survive the lifecycle rewrite ───────────────────────────
+#
+# Characterisation tests, written before `deliver` was rewritten to take tickets
+# through `assert_ownership`. Each pins one guard the rewrite touches the code
+# around, so removing it by accident goes red rather than shipping.
+
+
+def test_pin_rework_brings_a_ticket_in_review_back_to_progress(node, fake):
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    assert cli(node, "work", "submit", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    code, _out, err = cli(node, "work", "rework", slug)
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    assert status(node, slug) == "active" and record(node, slug) is None
+
+
+def test_pin_a_move_outside_its_window_is_refused_as_drift_and_recorded(node, fake):
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "To Do", A)                     # somebody moved it back by hand
+    fake.requests.clear()
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1 and "moved in the tracker" in err, err
+    assert status(node, slug) == "review" and fake.writes() == []
+    assert record(node, slug)["state"] == "conflicting"
+
+
+def test_pin_a_part_held_by_an_open_sibling_is_reported_and_nothing_moves(node, fake):
+    api = bound_item(node, "Api half", part="api")
+    web = bound_item(node, "Web half", part="web")
+    claimed_ticket(fake)
+    st = FsWorkStore.open(node)
+    for slug in (api, web):
+        st.start(slug, owner="a@example.test")
+    st.submit(api)
+    before = binding_text(node, api)
+    fake.requests.clear()
+    code, out, err = cli(node, "work", "tracker", "sync", api)
+    assert code == 0 and out.startswith(f"{api}: held — ") and web in out, (out, err)
+    assert fake.writes() == [] and binding_text(node, api) == before
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+
+
+def test_pin_a_finished_item_with_no_mapped_status_asks_the_tracker_nothing(tmp_path,
+                                                                           fake):
+    """A record naming the `start` makes the move one that takes a ticket, which is
+    the interesting half: finished work still asks nothing."""
+    root = make_node(tmp_path, statuses={"active": "In Progress"})
+    slug = bound_item(root)
+    fake.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(root, slug)["move"] == "start"
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    fake.requests.clear()
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "none" and fake.requests == [], outcome
+
+
+def test_pin_the_claim_block_refuses_a_resolved_ticket_itself(tmp_path, monkeypatch):
+    """The window here is not empty, so `assess_move`'s own resolved check cannot fire:
+    only the guard inside the claim block says "already resolved". Without it the
+    refusal would be the drift message."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, {
+        "To Do": [("21", "Start Progress", "In Progress")],
+        "Won't Do": [("31", "Finish", "Done")], "Done": []})
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
+    fake_.tickets[TICKET_ID].status, fake_.tickets[TICKET_ID].assignee = "Won't Do", None
+    fake_.requests.clear()
+    code, out, _err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1 and "is already resolved ('Won't Do')" in out, out
+    assert "moved in the tracker" not in out, out
+    assert fake_.writes() == []
