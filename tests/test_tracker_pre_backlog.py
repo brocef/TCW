@@ -497,7 +497,7 @@ def test_without_the_setting_the_reporters_case_names_it(tmp_path, monkeypatch):
     code, _out, err = sync_link(root, slug)
     assert code == 1, err
     assert fake_.applied == []
-    assert "not brought forward from there" in err
+    assert "offers no transition named 'Start Progress'" in err
     assert HINT in err and HINT in record(root, slug)["reason"]
 
 

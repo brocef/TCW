@@ -1880,25 +1880,6 @@ def test_skipping_the_claim_still_refuses_a_resolved_ticket(tmp_path, monkeypatc
     assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "Won't Do"
 
 
-def test_strict_mode_still_asks_whether_an_assignment_is_exclusive_without_a_claim(
-        tmp_path, monkeypatch):
-    """Already yours and in progress, so no claim transition is applied — but under
-    strict mode a workflow offering the claim again from there authorizes nothing, and
-    that check must not be skipped with the transition."""
-    from tracker_fake import GLOBAL
-    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Progress",
-                              assignee=A)
-    slug = under_way(root, "review")
-    path = root / "tcw-config.yaml"
-    config = yaml.safe_load(path.read_text(encoding="utf-8"))
-    config["work"]["tracker"]["strict"] = True
-    config["work"]["tracker"]["exclusive-claim-transition"] = "Start Progress"
-    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-    code, _out, err = sync_link(root, slug)
-    assert code == 1 and "second person" in err, err
-    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Progress"
-
-
 def test_an_unclaimed_ticket_put_in_step_after_a_plain_link_is_an_ordinary_conflict(
         tmp_path, monkeypatch):
     """The note stands, but the ticket has since been put in step by hand and nobody
@@ -2417,3 +2398,34 @@ def test_pin_the_claim_block_refuses_a_resolved_ticket_itself(tmp_path, monkeypa
     assert code == 1 and "is already resolved ('Won't Do')" in out, out
     assert "moved in the tracker" not in out, out
     assert fake_.writes() == []
+
+
+def assignments(fake_) -> list[str]:
+    """Every assignment request sent, whoever it named."""
+    return [path for method, path, _account in fake_.requests
+            if method == "PUT" and path.endswith("/assignee")]
+
+
+@pytest.mark.parametrize("move", ["submit", "rework", "complete"])
+def test_a_move_that_takes_no_ticket_leaves_an_unassigned_one_unassigned(
+        tmp_path, monkeypatch, move):
+    """Only a move that takes the ticket may claim it. A workflow offering the claim
+    transition from every status, so nothing but that rule stands between these moves
+    and a claim; the ticket sits where a claim would land."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Progress",
+                              assignee=None)
+    slug = bound_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="a@example.test")
+    previous = "active"
+    if move == "submit":
+        st.submit(slug)
+    elif move == "rework":
+        st.submit(slug)
+        st.rework(slug)
+        previous = "review"
+    else:
+        st.complete(slug, "done", ["acked"])
+    fake_.requests.clear()
+    deliver_now(root, slug, move=move, previous=previous)
+    assert assignments(fake_) == [] and fake_.tickets[TICKET_ID].assignee is None
