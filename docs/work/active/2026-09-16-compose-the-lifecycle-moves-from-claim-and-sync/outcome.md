@@ -359,3 +359,258 @@ And one this rework adds:
   That is the honest answer — the alternative is the march B1 exists to stop — but
   it is a refusal where there used to be a move, and a project on such a workflow
   finishes the ticket by hand or through `tcw work tracker sync`.
+
+---
+
+# Round 2 of rework, 2026-09-22
+
+Sent back a second time. `rework.md`'s "Round 2 of rework" section is the work
+list; this section records what each item changed and the evidence for it. Same
+worktree, same private virtual environment, `tcw work` still driven by hand.
+
+R1 and R2 are the same two defects as B1 and B2, on a second code path each. Both
+are fixed this time as a property of the run rather than of the route that was
+reported, and the paths that reach the changed code are listed under each.
+
+## Commits
+
+| Commit | Item | What |
+| --- | --- | --- |
+| `04607a7a` | R1 | A finished item never claims, never leaves triage, and never climbs for a start it no longer owes. |
+| `8cde5daa` | R2 | Every failure while a start is owed keeps the record naming the start. |
+| `7323684a` | R3 | Only a failed assignment says the ticket is unassigned; a failed read-back keeps "Run this again". |
+| `37dbb92b` | R4 | The two false sentences, and round 2 in the changelog and release notes. |
+| `c6102c72` | R5 (spec) | Criterion 2 follows criterion 1's strict-mode refusal. |
+| `aad6fb8b` | non-blocking | The strict start's claim line, and its past-the-claim reason. |
+
+## Full suite
+
+`pytest -n auto` from the worktree, in the private virtual environment:
+**4387 passed, 3 skipped, 0 failed**. The diff adds 16 test cases and rewrites two
+whose premise was the defect (listed below).
+
+## R1 — a finished item owes its ticket no start
+
+**The defect.** `move` is replaced with the record's one line before `resolving` is
+computed, so on `tcw work tracker sync` — which has no move of its own —
+`resolving` was false however finished the item was, and a discarded item carrying
+a start record claimed its ticket and marched it To Do → In Progress → Won't Do.
+
+**Changed** (`tcw/tracker/sync.py`), guarding on the **item**, as the requester
+decided, in one place that carries the property and two that the property does not
+reach:
+
+- `start_owed = start_record and local not in RESOLVED_STATUSES`, computed beside
+  `takes_ticket` and feeding it. That is what a start record means now: still owed,
+  and only while work has not stopped. It gates `takes_ticket`, so it removes the
+  claim and the `leave_pre_backlog` step in one place rather than at each of them,
+  and it gates the recorded-start hop directly. `not resolving` came out of the hop's
+  condition, which `start_owed` subsumes: a lifecycle `complete` or discard leaves
+  the item resolved, and a record naming `start` is never a record naming `complete`.
+- The `leave_pre_backlog` step keeps `not resolving` and gains
+  `local not in RESOLVED_STATUSES`. With `takes_ticket` already guarded, the only
+  case left for it is a binding still carrying `catch-up: true`, which is why the
+  test below is parametrized over both — the start-record half alone left the
+  mutation green.
+- `move` on a `sync` falls back to `MOVE_ONTO[local]` rather than to a start the
+  item has resolved past. Without this the refusal simply moves: the recorded
+  `start` is not in `MOVES_NEEDING_NO_CLAIM`, so a `sync` of a discarded item whose
+  ticket nobody holds would be refused instead of closing it, which criterion 9
+  forbids.
+
+**Proof.** `test_a_sync_of_a_resolved_item_carrying_a_start_record_sends_only_the_resolution`
+(`tests/test_tracker_sync.py`), parametrized over a discard and a completion and
+over a ticket already this account's and one nobody holds — four cases, all four
+red before the fix with `['21', '51']` and `['21', '31']`, the exact march
+`rework.md` reported. It asserts the assignee is untouched, which is the "never
+claims it" half. `test_a_sync_of_a_resolved_item_owing_a_claim_stays_in_triage`
+(`tests/test_tracker_pre_backlog.py`), parametrized over a start record and a
+`catch-up: true` binding, was red with `['11', '21', '51']` — Accept out of Triage,
+then the march.
+
+**Paths checked.** Three call sites reach `deliver`: `_deliver_after`
+(`tcw/work/cli.py:1270`, every lifecycle move, with the move passed in),
+`tcw work tracker link` (`:3195`, `move=None`) and `tcw work tracker sync`,
+including `--all` (`:3531`, `move=None`). The guard is inside `deliver`, so all
+three carry it; the `link` path cannot reach the case anyway, because `link` writes
+a fresh binding and a fresh binding carries no record. `record_unsent` is the
+fourth way a move is handled, and it delivers nothing, so R1 does not apply to it —
+R2 does.
+
+**Mutations.**
+
+| Mutation | Result |
+| --- | --- |
+| `start_owed = start_record` — drop the item guard | Red, 8 cases, including round 1's B1 tests: `start_owed` now carries B1's lifecycle guard as well. |
+| `move` back to the record's move on a `sync` | Red, 3 cases — exactly the two unassigned ones plus the record's name; the resolution is refused because the recorded start demands a claim. |
+| `leave_pre_backlog` step drops the item guard | Red, 1 case — the **catch-up** parameter only. The start-record parameter stayed green, because `takes_ticket` already covers it; this is the round-1 trap, and the test had been widened to both before the mutation was run. |
+| The hop guards on `start_record` instead of `start_owed` | Red, 5 cases. |
+
+**One test rewritten**, because its premise was the defect:
+`test_a_recorded_start_without_sync_status_is_followed_by_one_transition_only`
+asserted that a `sync` of a *completed* item claims the ticket and applies the
+start hop. It is now
+`test_a_recorded_start_a_finished_item_no_longer_owes_is_not_delivered_by_sync`
+and asserts the opposite, including that the record moves on to name the completion.
+
+## R2 — a start is owed until it is delivered, not until something else fails
+
+**The defect.** B2's fix named the start at the three failures of the start's own
+hop. Taking the ticket happens earlier on the same run, on the same start's behalf,
+and `leave_pre_backlog` and `assert_ownership` both write the later move's name —
+after which the start is forgotten for good and the item is stuck, because the later
+move's window begins at `statuses.active` where nothing ever put the ticket.
+
+**Changed** to one flag, as the requester decided. `start_owed` (above) is set beside
+`takes_ticket` and cleared the moment the start's hop has landed **and been read
+back**; `finish` writes `"start" if start_owed else move`; the three
+`move = "start"` assignments are gone. `record_unsent` — which never reaches
+`deliver` at all, because a broken tracker configuration leaves no client — follows
+the same rule for the same reason.
+
+**Proof.** Four tests, three of them new.
+
+- `test_a_refused_step_out_of_triage_keeps_the_record_naming_the_start`
+  (`tests/test_tracker_pre_backlog.py`) is the reproduction from `rework.md`, with
+  no race and no outage: `pre-backlog` naming a transition the workflow does not
+  offer, a ticket already this account's in Triage, a failed `start`, then a
+  `submit` whose step out of triage is refused. It then corrects the typo and shows
+  the item is not stuck — `sync` finishes both moves, `['11', '21', '41']`.
+- `test_a_claim_that_fails_while_the_start_is_owed_keeps_the_record_naming_it`
+  covers the other half of "taking the ticket": the assignment itself failing.
+- `test_a_move_recorded_unsent_while_the_start_is_owed_keeps_naming_the_start`
+  covers `record_unsent`.
+- `test_a_failure_after_the_start_hop_has_landed_records_the_later_move` is the
+  other side of the rule, and was added **because a mutation stayed green without
+  it** — see below.
+
+**Paths checked.** Three places write a sync record: `finish` inside `deliver`,
+`record_unsent`, and `_tracker_link`'s `with_sync_record` (`tcw/work/cli.py:3166`).
+The first two are fixed; the third only ever writes a *fresh* record naming `start`
+for `tracker create` bringing work already under way along, so it cannot overwrite
+one. Inside `deliver`, every failure that writes while a start is owed now routes
+through the one rule in `finish`: the `leave_pre_backlog` refusal (via `taken_back`)
+and its raise (via `finish` directly, which `rework.md`'s "each failure goes through
+`taken_back`" did not cover), `assert_ownership` raising and refusing, the read
+after a successful claim, the start hop's own three, the final move's two, and
+`walk()`'s.
+
+**Mutations.**
+
+| Mutation | Result |
+| --- | --- |
+| `finish` writes `move`, never `"start"` | Red, 7 cases. |
+| `start_owed = False` after the hop never runs | **Green.** The test set only covered failures *before* the hop landed, so nothing noticed the record naming `start` for ever. Widened with `test_a_failure_after_the_start_hop_has_landed_records_the_later_move` — the hop lands, the submit's own transition then fails, and the record must name `submit` with `since` at `In Progress`. The mutation is red with it. |
+| `record_unsent` drops its start guard | Red, 1 case. |
+
+**One test rewritten**, because its premise was the defect:
+`test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb` existed
+to say that once a later move records itself the start is forgotten and only
+`tcw work tracker claim` can recover it. That is what R2 forbids. It is now
+`test_a_start_a_second_failure_could_not_write_over_is_still_claimed_by_sync`:
+`sync` makes the claim the start asked for, and nobody has to reach for the verb.
+`tcw work tracker claim` keeps its own coverage in `tests/test_tracker_claim.py`.
+
+## R3 — the read-back failure is not "unassigned"
+
+**Changed.** `OwnershipOutcome.assigned` (`tcw/tracker/ownership.py`): whether this
+run's own assignment landed. False for every refusal up to and including the
+assignment failing, true from the read-back onwards. `transitioned` alone was the
+wrong fact to key the message on, because it is equally true of both failures after
+an applied assertion. `deliver` and `_strict_claim` now say "{key} was moved to
+'{status}' but is not assigned to you" only for `transitioned and not assigned`; a
+failed read-back keeps its own "Run this again to find out.", which is advice that
+works, because `assert_ownership` returns a ticket already yours as held before it
+sends anything. In `deliver` the fall-through no longer appends "Take it with
+`tcw work tracker claim`" once the assignment has landed either — it would
+contradict the sentence beside it.
+
+**Proof.** The caller-level test that was missing:
+`test_a_claim_whose_read_back_failed_does_not_call_the_ticket_unassigned`
+(`tests/test_tracker_strict.py`), parametrized over strict and not, which is how
+both callers are reached — it asserts which one ran, from whether the item moved.
+`test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led` gained
+`assigned` and the ticket's resulting assignee, and its docstring no longer claims
+the ticket is "held by nobody" after either failure, which was false for the
+read-back.
+
+**Paths checked.** Three callers consume an `OwnershipOutcome`: `deliver`,
+`_strict_claim` and `_tracker_claim` (`tcw/work/cli.py:3328`). The third prints
+`outcome.message` and nothing else on a refusal, so it never said the false thing
+and needed no change. The `.transitioned` readers at `cli.py:2503` and `:2630` are
+`intake.claim`'s `ClaimOutcome`, a different type.
+
+**Mutations.** The read-back refusal dropping `assigned=True` → red, 3 cases.
+`deliver` back to keying on `transitioned` alone → red, the non-strict case.
+`_strict_claim` back to keying on `transitioned` alone → red, the strict case.
+
+## R4 — two more false sentences
+
+- **`docs/guide/jira.md`, "the transition is never applied to a ticket already past
+  `statuses.active`"**: scoped to lifecycle moves, with `tcw work tracker claim`
+  named as the deliberate exception — it applies the transition from wherever the
+  ticket is (`tcw/work/cli.py:3322`, no rung check) and says so when it moves one. A
+  lifecycle move is doing something else and happens to need the ticket; `tracker
+  claim` is the ticket being asked for and nothing else. The same sentence in the
+  release notes is corrected the same way.
+- **"Nothing else ever takes a ticket out of triage — `complete`, a discard … never"**:
+  this turned out to be **fixed by R1 rather than false**, since the
+  `leave_pre_backlog` step is now gated on the item and a `complete` on a catch-up
+  binding leaves the item resolved. Pinned by
+  `test_a_complete_on_a_catch_up_binding_never_accepts`
+  (`tests/test_tracker_pre_backlog.py`); mutation — the item guard removed from the
+  step — red with `['11', …]`. The sentence is left as it stands, because it is now
+  true. The *ownership* half of the same exception (`jira.md`'s "one exception, and
+  only on an old binding") is unaffected and still true: `resolving` is still false
+  for that completion, so the walk still needs the ticket held.
+
+## R5 — spec criterion 2
+
+Amended in its own commit (`c6102c72`). Criterion 2 now says the assignment happens
+in the case criterion 1 leaves exiting 0, and that where criterion 1 refuses — strict
+mode on with `exclusive-claim-transition` set — nothing is sent and the ticket keeps
+whatever assignee it had.
+
+## The non-blocking list
+
+All three folded in (`aad6fb8b`).
+
+- **`Outcome.already_held`** marks a claim message that only reports the ticket as
+  *already* this account's, and `_deliver_after`'s `say_claim=False` withholds that
+  sentence alone. A claim `deliver` itself had to make — the ticket was let go
+  between `_strict_claim` and the delivery — is news and is printed. Proved by
+  `test_a_strict_start_reports_a_claim_the_delivery_had_to_make_again`, which leaves
+  the ticket held by nobody just before the delivery's own read; two claims are made
+  and two claim lines printed. Mutations: `say_claim` suppressing everything again →
+  red; `already_held` never set → red, 2 cases.
+- **The `TransitionCommitError` recovery** in `_cmd_start` passes `say_claim` too, so
+  a strict start that trips it prints one claim line, not two. Proved by
+  `test_a_strict_start_whose_commit_is_refused_still_says_it_claimed_once`, using a
+  rejecting `pre-commit` hook. Mutation: the argument dropped → red.
+- **The strict past-the-claim refusal** says the transition "would move {key} back"
+  only where the workflow offers it from the ticket's status; where it does not, the
+  refusal stands and gives that as the reason instead. Proved both ways:
+  `test_the_strict_past_the_claim_refusal_only_says_it_would_move_it_back_if_it_could`
+  on the `SYNC` workflow, and a new assertion on the existing `GLOBAL` test.
+  Mutations: the flag forced false → the `GLOBAL` test red; forced true → the `SYNC`
+  test red.
+
+## Known effects of this round
+
+- **A `sync` of a finished item that cannot reach the closing status in one hop is
+  now a refusal.** Round 1 recorded this for the lifecycle path; it now applies to
+  `sync` as well, and the test that asserted the old march was rewritten. The
+  alternative is the march R1 exists to stop, so a project on such a workflow closes
+  the ticket in the tracker or moves it up by hand.
+- **A record naming `start` whose ticket is already on the ladder keeps naming
+  `start`** if the later move then fails, where it used to name the later move. The
+  hop is skipped in that case (`lowest_rung` is not `None`), so `start_owed` is never
+  cleared. That is the flag's deliberate reach and it is recoverable: a start
+  record's window is empty, so nothing reads the ticket as drift, and the next run
+  finds the ticket already this account's and re-claims nothing.
+- **`deliver`'s "assigned then to nobody" refusal no longer appends "Take it with
+  `tcw work tracker claim`".** It is reached only once the assignment has landed, so
+  who holds the ticket is unknown or somebody else's, and its own message already
+  says to run it again. Neither that refusal nor the "lost the race" one was covered
+  by a test before or after; they are reported here rather than pinned.
+- The known effects recorded for round 1 stand unchanged.
