@@ -537,7 +537,7 @@ def test_start_claims_a_linked_ticket(node, fake):
     assert status(node, slug) == "active"
     held = fake.tickets[TICKET_ID]
     assert (held.status, held.assignee) == ("In Progress", A)
-    assert f"claimed {KEY}" in err
+    assert f"{KEY} is held by you" in err
     assert record(node, slug) is None
 
 
@@ -1392,7 +1392,8 @@ def test_sync_finishes_a_sync_status_link_the_tracker_did_not_answer(tmp_path,
     slug = under_way(root, "review")
     restore = transitions_fail(fake_, 1)
     assert sync_link(root, slug)[0] == 1
-    assert fake_.tickets[TICKET_ID].assignee is None            # the claim is still owed
+    # Taking the ticket is an assignment now, so the claim landed; the walk is owed.
+    assert fake_.tickets[TICKET_ID].assignee == A
     assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
     assert fake_.tickets[TICKET_ID].status == "To Do"
     restore()
@@ -1607,23 +1608,6 @@ def test_a_walk_interrupted_after_the_claim_resumes_on_the_next_sync(tmp_path,
     assert outcome.state == "current", outcome
     assert fake_.tickets[TICKET_ID].status == "Done"
     assert record(root, slug) is None
-
-
-def test_a_claim_landing_off_the_ladder_stops_the_catch_up(tmp_path, monkeypatch):
-    """The claim is how a ticket gets onto the first rung. If it lands somewhere the
-    project has not mapped, there is no rung to walk on from — and continuing would
-    choose each hop by the item's own move, so a refusal would name the wrong
-    `transitions` key and the record would rest on an unmapped status."""
-    workflow = {"To Do": [("21", "Start Progress", "Triage")],
-                "Triage": [("22", "Begin", "In Progress")],
-                "In Progress": [("31", "Finish", "Done")], "Done": []}
-    root, fake_ = ladder_node(tmp_path, monkeypatch, workflow)
-    slug = under_way(root, "completed")
-    assert sync_link(root, slug)[0] == 1
-    reason = record(root, slug)["reason"]
-    assert "'Triage'" in reason and "'In Progress'" in reason
-    assert fake_.tickets[TICKET_ID].status == "Triage"
-    assert fake_.applied == ["21"]          # the claim only; no hop from an unmapped rung
 
 
 def test_sync_status_on_a_resolved_item_records_its_own_move(tmp_path, monkeypatch):
@@ -2087,26 +2071,20 @@ def test_no_command_writes_a_claim_into_the_record(node, fake):
     assert set(written_record(node, slug)) == RECORD_FIELDS, written_record(node, slug)
 
 
-def test_a_claim_deliver_cannot_make_names_the_verb_that_can(node, fake):
-    """A ticket nobody else holds that the claim transition cannot reach from where it
-    sits. `tcw work tracker claim` takes it without a transition, so the refusal says
-    so — and a ticket somebody else holds is not sent there, since claiming it would
-    only produce a second refusal naming the same person."""
+def test_a_ticket_somebody_else_holds_is_not_sent_to_the_claim_verb(node, fake):
+    """A ticket somebody else holds is not sent to `tcw work tracker claim`, since
+    claiming it would only produce a second refusal naming the same person. Once they
+    let it go, `sync` takes it wherever it sits: taking a ticket is an assignment, so
+    no claim transition has to be offered from there any more."""
     slug = bound_item(node)
     claimed_ticket(fake, "In Progress", B)
     code, _out, err = cli(node, "work", "start", slug)
     assert code == 1 and "Bob" in err and "tracker claim" not in err, err
     claimed_ticket(fake, "In Progress", None)          # Bob let it go, where he had it
-    code, _out, err = cli(node, "work", "submit", slug)
-    assert code == 1, err
-    # `transitions.claim` is 'Start Progress', which 'In Progress' does not offer.
-    assert "does not offer 'Start Progress'" in err, err
-    assert f"tcw work tracker claim {slug}" in err, err
-    # ...and it is the way through.
-    assert cli(node, "work", "tracker", "claim", slug)[0] == 0
     code, out, err = cli(node, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
-    assert fake.tickets[TICKET_ID].status == "In Review"
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", A) and fake.applied == []
     assert record(node, slug) is None
 
 
@@ -2462,3 +2440,28 @@ def test_sync_still_brings_back_a_ticket_a_start_left_alone(node, fake):
     code, out, err = cli(node, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
     assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_start_takes_an_unassigned_ticket_in_review_and_leaves_it_there(node, fake):
+    """Criteria 1, 2 and 18b: taking the ticket is an assignment, so it is taken where
+    it sits; and a start does not move a ticket back, so it stays in review."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Review", None)
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Review", A)
+    assert fake.applied == [] and record(node, slug) is None
+    assert status(node, slug) == "active"
+
+
+def test_a_start_posts_the_one_transition_transitions_start_names(node, fake):
+    """Criterion 14, with `exclusive-claim-transition` unset: taking the ticket sends
+    only the assignment, and delivering the start sends `transitions.start`."""
+    slug = bound_item(node)
+    fake.requests.clear()
+    assert cli(node, "work", "start", slug)[0] == 0
+    posted = [path for method, path, _a in fake.requests
+              if method == "POST" and path.endswith("/transitions")]
+    assert len(posted) == 1 and fake.applied == ["21"]
+    assert fake.tickets[TICKET_ID].assignee == A

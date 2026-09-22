@@ -406,36 +406,42 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         return None, False                # the store refuses it, and names why
     if not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
-    from tcw.tracker.intake import claim, moved_out, read_ticket
+    from tcw.tracker.intake import leave_pre_backlog, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
-    from tcw.tracker.sync import binding_refusal, claim_refusal
+    from tcw.tracker.ownership import assert_ownership
+    from tcw.tracker.sync import binding_refusal
     bound, refusal = binding_refusal(st, bare, config)
     if bound is None:
         return _strict_says_no("start", f"{bare} was not started", refusal), False
     key = bound.ticket_key
     client = JiraClient(config)
+    left = ""
     try:
-        outcome = claim(client, read_ticket(client, bound.ticket_id))
+        ticket, step_refusal, left = leave_pre_backlog(
+            client, read_ticket(client, bound.ticket_id))
+        # Exclusivity is the configured transition's: strict mode requires
+        # `exclusive-claim-transition`, and a workflow that will not apply it to a
+        # ticket somebody already took stops a second claimant before the assignment.
+        outcome = None if step_refusal else assert_ownership(
+            client, ticket, assertion=config.exclusive_claim_transition)
     except TrackerError as error:
         return _strict_says_no("start", f"{bare} was not started",
-                               moved_out(key, getattr(error, "left_status", ""))
+                               moved_out(key, left)
                                + f"The tracker could not answer ({error}), so {key} may "
                                f"or may not have been claimed. Run it again once the "
                                f"tracker answers."), False
-    if not outcome.claimed:
-        detail = f" ({outcome.detail})" if outcome.detail else ""
+    if step_refusal is not None or not outcome.settled:
+        failed = step_refusal or outcome
+        detail = f" ({failed.detail})" if failed.detail else ""
         # A strict start that stops here writes no sync record, so `sync` has nothing
         # to resume: taking the ticket out of triage is finished by starting again.
         again = (f" Run `tcw work start {bare}` again to finish the claim."
-                 if outcome.left_status or outcome.row in ("0f", "0-read") else "")
+                 if left or getattr(step_refusal, "row", "") in ("0f", "0-read") else "")
         return _strict_says_no("start", f"{bare} was not started",
-                               moved_out(key, outcome.left_status)
-                               + outcome.message + detail + again), False
-    if outcome.left_status:
-        print(f"→ {moved_out(key, outcome.left_status)}".rstrip(), file=sys.stderr)
-    refusal = claim_refusal(client, config, bound.ticket_id, outcome)
-    if refusal:
-        return _strict_says_no("start", f"{bare} was not started", refusal), True
+                               moved_out(key, left) + failed.message + detail
+                               + again), False
+    if left:
+        print(f"→ {moved_out(key, left)}".rstrip(), file=sys.stderr)
     return None, True
 
 

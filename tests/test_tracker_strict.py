@@ -467,7 +467,10 @@ def test_an_unreachable_tracker_refuses_submit(strict, fake):
     assert status(strict, slug) == "active"
 
 
-def test_a_workflow_that_cannot_exclude_refuses_import_and_start(tmp_path, monkeypatch):
+def test_a_workflow_that_cannot_exclude_refuses_import(tmp_path, monkeypatch):
+    """`import` still claims through the claim transition and asks whether the workflow
+    offers it again. A strict `start` no longer does: its exclusivity is
+    `exclusive-claim-transition`'s (see the tests after this one)."""
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
@@ -480,13 +483,71 @@ def test_a_workflow_that_cannot_exclude_refuses_import_and_start(tmp_path, monke
     code, out, err = cli(root, "work", "tracker", "import", KEY)
     assert code == 1 and out == "" and "second person could claim it too" in err
     assert FsWorkStore.open(root).query() == []
-    slug = FsWorkStore.open(root).create("Linked").slug
-    set_tracker_key(root, "strict", False)
-    assert cli(root, "work", "tracker", "link", slug, "SYNC-2")[0] == 0
-    set_tracker_key(root, "strict", True)
+
+
+# A workflow with two ways into progress, so which one a strict start applied shows
+# whether it came from `exclusive-claim-transition` or from `transitions.start`.
+TWO_WAYS_IN = {**SYNC, "To Do": [("61", "Claim", "In Progress"), *SYNC["To Do"]]}
+
+
+def test_a_strict_start_takes_the_ticket_through_the_exclusive_claim_transition(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=TWO_WAYS_IN)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True, claim_transition="Claim")
+    slug = bound_item(root)
+    fake_.requests.clear()
     code, _out, err = cli(root, "work", "start", slug)
-    assert code == 1 and "second person could claim it too" in err
-    assert status(root, slug) == "backlog"
+    assert code == 0, err
+    assert fake_.applied == ["61"], fake_.applied
+    writes = fake_.writes()
+    # Applied first, so a workflow that refuses a second claimant stops them before
+    # they reach the assignment.
+    assert writes.index(("POST", f"/rest/api/3/issue/{TICKET_ID}/transitions")) < \
+        writes.index(("PUT", f"/rest/api/3/issue/{TICKET_ID}/assignee"))
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee, status(root, slug)) == ("In Progress", A, "active")
+
+
+def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,
+                                                                       monkeypatch):
+    """Bob reads the ticket free; before his claim goes out, Alice's whole start runs.
+    Bob's own read said nobody held it, so only the workflow refusing the exclusive
+    claim transition from 'In Progress' can stop him — and it does, before his
+    assignment could overwrite hers, and before his item moves."""
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_B_EMAIL", "b@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    fake_ = FakeJira(workflow=SYNC)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.account("b@example.test", B, "Bob")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
+    fake_.install(monkeypatch)
+    alice = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
+    bob = make_node(tmp_path, statuses=STATUSES, name="beta", email_env="TCW_B_EMAIL")
+    set_tracker_key(bob, "strict", True)
+    set_tracker_key(bob, "exclusive-claim-transition", "Start Progress")
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    hers = bound_item(alice)
+    monkeypatch.setenv("TCW_WORK_OWNER", "b@example.test")
+    his = bound_item(bob)
+
+    def alice_starts():
+        monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+        assert cli(alice, "work", "start", hers)[0] == 0
+        monkeypatch.setenv("TCW_WORK_OWNER", "b@example.test")
+
+    fake_.before("POST", "/transitions", alice_starts, account=B)
+    code, _out, err = cli(bob, "work", "start", his)
+    assert code == 1 and REFUSED in err and "would not accept" in err, err
+    assert status(bob, his) == "backlog" and status(alice, hers) == "active"
+    assert fake_.tickets[TICKET_ID].assignee == A
+    assert fake_.writes(B) == [("POST", f"/rest/api/3/issue/{TICKET_ID}/transitions")]
 
 
 def test_drop_refuses_an_item_that_was_ever_bound(strict, fake):
@@ -557,11 +618,17 @@ def test_start_claims_nothing_for_a_start_the_store_would_refuse(strict, fake):
     assert code == 1 and fake.writes() == [] and status(strict, slug) == "backlog"
 
 
-def test_start_refuses_a_ticket_already_yours_in_review(strict, fake):
+def test_start_of_a_ticket_already_yours_in_review_leaves_it_there(strict, fake):
+    """Strict mode asks that the ticket be held by you, and it is. Where it sits is not
+    strict mode's question any more — the claim no longer moves it — and a start does
+    not move a ticket back."""
     slug = bound_item(strict)
     claimed_ticket(fake, "In Review", A)
+    fake.requests.clear()
     code, _out, err = cli(strict, "work", "start", slug)
-    assert code == 1 and "not a claim" in err and status(strict, slug) == "backlog"
+    assert code == 0 and REFUSED not in err, err
+    assert status(strict, slug) == "active"
+    assert fake.tickets[TICKET_ID].status == "In Review" and fake.writes() == []
 
 
 def test_two_parts_held_in_progress_can_both_complete(strict, fake):
@@ -833,7 +900,8 @@ def test_a_discard_of_a_ticket_nobody_claimed_is_allowed(strict, fake):
     assert REFUSED not in err and status(strict, slug) == "discarded"
 
 
-def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
+def test_sync_takes_an_owed_claim_through_the_exclusive_claim_transition(tmp_path,
+                                                                       monkeypatch):
     from test_tracker_sync import record
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
@@ -850,10 +918,13 @@ def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
     claimed_ticket(fake_, "To Do", None)                     # Bob let it go
     set_tracker_key(root, "strict", True)
     set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
+    fake_.requests.clear()
     code, out, err = cli(root, "work", "tracker", "sync", slug)
-    assert code == 1 and "second person could claim it too" in out + err
-    # The claim is still owed: the record still names the `start` that owes it.
-    assert record(root, slug)["move"] == "start"
+    # The owed claim is taken through the exclusive claim transition, as `start`
+    # would take it; it is already where the item is, so nothing else is sent.
+    assert code == 0, (out, err)
+    assert fake_.applied == ["21"] and fake_.tickets[TICKET_ID].assignee == A
+    assert record(root, slug) is None
 
 
 # ── a held item and its record, with strict on ───────────────────────────────

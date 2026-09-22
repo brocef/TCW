@@ -502,18 +502,22 @@ def test_without_the_setting_the_reporters_case_names_it(tmp_path, monkeypatch):
 
 
 def test_a_claim_landing_off_the_ladder_does_not_name_pre_backlog(tmp_path, monkeypatch):
-    """The claim transition itself led to an unmapped status; naming `pre-backlog`
-    there would be wrong advice."""
+    """The claim's own transition (`exclusive-claim-transition`) led to an unmapped
+    status; naming `pre-backlog` there would be wrong advice, since the ticket was not
+    waiting in it."""
+    from test_tracker_strict import set_tracker_key
     workflow = {"To Do": [("21", "Start Progress", "Triage")],
                 "Triage": [("22", "Begin", "In Progress")],
                 "In Progress": [("31", "Finish", "Done")], "Done": []}
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None, pre_backlog=None,
                               workflow=workflow, status="To Do")
-    slug = under_way(root)
-    code, _out, err = sync_link(root, slug)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
+    slug = FsWorkStore.open(root).create("Claimed into triage").slug
+    plain_link(root, slug)
+    code, _out, err = cli(root, "work", "start", slug)
     assert code == 1, err
-    assert fake_.applied == ["21"]
-    assert "not brought forward from there" in err
+    assert fake_.applied == ["21"] and fake_.tickets[TICKET_ID].status == "Triage"
+    assert "offers no transition named 'Start Progress'" in err, err
     assert "pre-backlog" not in err
 
 
@@ -714,8 +718,8 @@ def test_a_ticket_taken_between_the_hops_is_not_advised_to_be_claimed(tmp_path,
     around_first_post(fake_, then=lambda: setattr(fake_.tickets[TICKET_ID], "assignee", B))
     code, _out, err = cli(root, "work", "start", slug)
     assert code == 1, err
-    assert f"{KEY} was moved out of 'Triage'." in err
-    assert "assigned to Bob" in err
+    assert err.count(f"{KEY} was moved out of 'Triage'.") == 1, err
+    assert "held by Bob" in err
     assert "tcw work tracker claim" not in err
 
 
