@@ -48,6 +48,12 @@ CLAIM_NOT_OFFERED = "claim not offered by this ticket"
 # reporting one at all.
 MISCONFIGURED = "misconfigured"
 AMBIGUOUS = "ambiguous"
+# The project named no start transition at all. `work.tracker.transitions.start` is
+# optional — a lifecycle start works its transition out from the status it is heading
+# for — but a claim has no target status of its own to derive from. Distinct from
+# `CLAIM_NOT_OFFERED`, which is about a name this ticket does not offer: that one
+# sends the reader to the ticket's workflow, and this one to their own configuration.
+NOT_CONFIGURED = "no start transition configured"
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,18 @@ def assess(claim_transition: str, *, current_status: str, offered,
     With no `landing_status` and no offered claim, the answer is `NOT_DETERMINED`.
     That is a real limitation, reported rather than papered over.
     """
+    # Nothing configured. Held here rather than in each caller: every reader of
+    # `config.start_transition` that has no status to derive from goes through this
+    # function, so one guard covers all of them.
+    if not claim_transition.strip():
+        return Assessment(
+            claimable=NOT_CLAIMABLE,
+            exclusivity=NOT_DETERMINED,
+            verdict=NOT_CONFIGURED,
+            detail=("work.tracker.transitions.start names no transition, so there is "
+                    "none to claim this ticket through."),
+        )
+
     wanted = _normalize(claim_transition)
     matches = [t for t in offered if _normalize(t.name) == wanted]
     offered_names = [t.name for t in offered]

@@ -37,9 +37,17 @@ def _tracker(email_env: str) -> dict:
     }
 
 
-def make_node(tmp_path: Path, name: str, *, email_env: str | None) -> Path:
+def _tracker_without_transitions(email_env: str) -> dict:
+    """The same block with `transitions` left out entirely — legal since the key
+    stopped being required, and the configuration in which `import` has no
+    transition to claim through."""
+    return {k: v for k, v in _tracker(email_env).items() if k != "transitions"}
+
+
+def make_node(tmp_path: Path, name: str, *, email_env: str | None,
+              tracker=_tracker) -> Path:
     """A git-backed work node. `email_env` is the account axis and has no default:
-    `None` means no tracker is configured at all."""
+    `None` means no tracker is configured at all. `tracker` builds the block."""
     root = tmp_path / name
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -48,7 +56,7 @@ def make_node(tmp_path: Path, name: str, *, email_env: str | None) -> Path:
     init(["work"], root, project_id=name)
     config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
     if email_env is not None:
-        config.setdefault("work", {})["tracker"] = _tracker(email_env)
+        config.setdefault("work", {})["tracker"] = tracker(email_env)
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
                                           encoding="utf-8")
     return root
@@ -173,6 +181,62 @@ def test_a_refused_claim_creates_no_item(node, fake):
     assert code == 1 and "Bob" in err and out == ""
     assert fake.writes() == []
     assert_no_item(node)
+
+
+# ── no start transition named ────────────────────────────────────────────────
+#
+# A lifecycle start works its transition out from the status it is heading for.
+# The claim `import` and `inbox accept` make cannot: it is not a lifecycle move, it
+# has no target status of its own, and a wrong guess assigns the ticket as well as
+# moving it. So it refuses, and names the key to set.
+
+
+@pytest.fixture()
+def node_without_transitions(tmp_path, fake):
+    return make_node(tmp_path, "alpha", email_env="TCW_A_EMAIL",
+                     tracker=_tracker_without_transitions)
+
+
+def _assert_named_the_key_and_changed_nothing(root, fake, code, out, err):
+    """One assertion helper for both commands, so a sibling that skips half of it
+    is visible in the diff rather than left to review."""
+    assert code != 0, (out, err)
+    assert "work.tracker.transitions.start" in err, err
+    # The message this replaces blamed the ticket for a name nobody set.
+    assert "does not offer ''" not in err, err
+    assert_no_item(root)
+    assert fake.applied == [], fake.applied
+    assert fake.writes() == [], fake.writes()
+    assert fake.tickets["10052"].assignee is None
+
+
+def test_import_with_no_start_transition_names_the_key(node_without_transitions, fake):
+    root = node_without_transitions
+    code, out, err = run(root, "import", TICKET)
+    _assert_named_the_key_and_changed_nothing(root, fake, code, out, err)
+
+
+def test_inbox_accept_with_no_start_transition_refuses_the_same_way(
+        node_without_transitions, fake):
+    """The same function reached through the other command."""
+    root = with_inbox_query(node_without_transitions)
+    code, out, err = inbox(root, "accept", TICKET)
+    _assert_named_the_key_and_changed_nothing(root, fake, code, out, err)
+
+
+def test_import_of_a_ticket_already_held_needs_no_start_transition(
+        node_without_transitions, fake):
+    """Row `1e` — a ticket the running account already holds — still wins, which is
+    what lets somebody take a ticket with `tcw work tracker claim` and then import
+    it, and what lets a claim that succeeded and then failed locally finish on a
+    re-run. A refusal placed above that row would break both."""
+    fake.tickets["10052"].assignee = A
+    code, out, err = run(node_without_transitions, "import", TICKET)
+    assert code == 0, err
+    [item] = items(node_without_transitions)
+    assert out.strip() == item.slug
+    assert binding(node_without_transitions, item.slug)["ticket"]["key"] == TICKET
+    assert fake.applied == []
 
 
 @pytest.mark.parametrize("argv", [["--part", "A B"], ["--title", ""]])

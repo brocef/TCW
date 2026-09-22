@@ -16,9 +16,9 @@ import yaml
 from tcw.store.base import STRICT_NEEDS_EXCLUSIVE_CLAIM, parse_tracker_config
 from tcw.store.fs import FsWorkStore
 from tcw.validate import validate
-from test_tracker_sync import (A, B, KEY, SENTINEL, STATUSES, TICKET_ID,  # noqa: F401
-                               bound_item, claimed_ticket, cli, fake, make_node,
-                               record, status, with_record)
+from test_tracker_sync import (A, B, KEY, NAMED_START, SENTINEL, STATUSES,  # noqa: F401
+                               TICKET_ID, bound_item, claimed_ticket, cli, fake,
+                               make_node, record, status, with_record)
 from tracker_fake import BASE_URL
 
 BASE = {
@@ -30,11 +30,12 @@ BASE = {
 
 
 def strict_node(tmp_path: Path, *, strict, claim_transition,
-                statuses: dict | None = STATUSES, name: str = "alpha") -> Path:
+                statuses: dict | None = STATUSES, name: str = "alpha",
+                transitions: dict | None = NAMED_START) -> Path:
     """`claim_transition` sets `exclusive-claim-transition`, or leaves it unset when
     `None`. No default, like `strict`: strict mode requires the key, so the parser
-    branches on it."""
-    root = make_node(tmp_path, statuses=statuses, name=name)
+    branches on it. `transitions=None` leaves `work.tracker.transitions` out."""
+    root = make_node(tmp_path, statuses=statuses, name=name, transitions=transitions)
     set_tracker_key(root, "strict", strict)
     set_tracker_key(root, "exclusive-claim-transition", claim_transition)
     return root
@@ -483,6 +484,28 @@ def test_a_workflow_that_cannot_exclude_refuses_import(tmp_path, monkeypatch):
     code, out, err = cli(root, "work", "tracker", "import", KEY)
     assert code == 1 and out == "" and "second person could claim it too" in err
     assert FsWorkStore.open(root).query() == []
+
+
+def test_strict_import_of_a_held_ticket_needs_no_start_transition(tmp_path, monkeypatch):
+    """`claim_refusal` reads `transitions.start` to ask whether the workflow could
+    still admit a second claimant. With no such key, there is no claim to re-offer
+    and nothing was promised, so the import of a ticket this account already holds
+    is not stopped. Exclusivity here is `exclusive-claim-transition`'s, which is
+    untouched by this change."""
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=SYNC)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Progress", assignee=A)
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
+                       transitions=None)
+    code, out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    [item] = FsWorkStore.open(root).query()
+    assert out.strip() == item.slug
+    assert fake_.applied == []
 
 
 # A workflow with two ways into progress, so which one a strict start applied shows

@@ -21,7 +21,7 @@ import pytest
 
 from tcw.tracker.claim import (
     AMBIGUOUS, CLAIM_NOT_OFFERED, CLAIMABLE, EXCLUSIVE, MISCONFIGURED,
-    NOT_CLAIMABLE, NOT_DETERMINED, NOT_EXCLUSIVE, assess,
+    NOT_CLAIMABLE, NOT_CONFIGURED, NOT_DETERMINED, NOT_EXCLUSIVE, assess,
 )
 from tcw.tracker.jira import Transition
 
@@ -218,3 +218,20 @@ def test_every_verdict_word_is_distinct(value):
     words = {CLAIMABLE, NOT_CLAIMABLE, EXCLUSIVE, NOT_EXCLUSIVE, NOT_DETERMINED}
     assert len(words) == 5
     assert value in words
+
+
+# ── no claim transition configured ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["", "   "], ids=["empty", "blank"])
+def test_an_unset_start_transition_is_its_own_verdict(name):
+    """A name nobody set is a different thing from a name this ticket does not
+    offer, and saying the second about the first sends the reader to look at the
+    ticket's workflow when the answer is in their own configuration file."""
+    result = assess(name, current_status="To Do", offered=DIRECTED_IN_TODO)
+    assert result.verdict is NOT_CONFIGURED
+    assert result.claimable is NOT_CLAIMABLE
+    assert result.exclusivity is NOT_DETERMINED
+    assert "work.tracker.transitions.start" in result.detail
+    # The wording this replaces reported an empty name as a wrong one.
+    assert "is ''" not in result.detail and "does not offer" not in result.detail

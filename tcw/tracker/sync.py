@@ -105,7 +105,14 @@ _MOVED_FROM = {"start": (), "submit": ("active",), "rework": ("review",),
 # The rungs of the ladder, in the order the local lifecycle reaches them. A discard and
 # a completion share the top rung: both are where a ticket stops.
 _RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
-REASON_LIMIT = 300
+# How much of a refusal is kept in the binding, so one failed delivery cannot write an
+# unbounded document. The hints that say what to *do* — name a `pre-backlog` status,
+# fix or remove a transition key — are appended last and so are the first thing a cut
+# takes, which is exactly the part a reader needs. 400 holds the longest refusal TCW
+# composes: an unoffered named transition, the transitions the ticket does offer, the
+# fix-or-remove advice and the pre-backlog hint, measured at 331 characters. Raise it
+# again rather than let a message grow past it.
+REASON_LIMIT = 400
 
 
 def ladder_steps(statuses: dict, local_target: str,

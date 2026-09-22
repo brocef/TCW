@@ -641,7 +641,7 @@ def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
     Authentication, permission, rate-limit and not-found errors on the transition
     propagate: the transition did not apply and there is nothing to read back.
     """
-    from tcw.tracker.claim import AMBIGUOUS, _normalize, assess
+    from tcw.tracker.claim import AMBIGUOUS, NOT_CONFIGURED, _normalize, assess
     from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerNotFound,
                                   TrackerPermissionError, TrackerRateLimited,
                                   TrackerRequestInvalid)
@@ -673,9 +673,23 @@ def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
                              f"is ambiguous on this ticket.", assessment.detail)
     matches = [t for t in ticket.offered if _normalize(t.name) == _normalize(name)]
     if not matches:
+        # Row `1e` first, and that order is load-bearing: a ticket this account
+        # already holds needs no transition, which is what lets a claim that
+        # succeeded and then failed locally finish on a re-run, and what lets
+        # somebody take a ticket with `tcw work tracker claim` — assignment only —
+        # and then import it. A refusal above this row would break both.
         if ticket.assignee_id == ticket.me_id:
             return claimed("1e", f"not claimed by this run: {key} is already in "
                                  f"'{status}' and assigned to you.", status, False)
+        if assessment.verdict == NOT_CONFIGURED:
+            # Refused rather than derived: a claim is not a lifecycle move, it has no
+            # target status of its own to work a transition out from, and a wrong
+            # guess here assigns the ticket as well as moving it.
+            return refused("1d", f"{key} cannot be claimed: "
+                                 f"work.tracker.transitions.start is not set, and this "
+                                 f"command claims through it. Set it, or take the "
+                                 f"ticket with `tcw work tracker claim` and bind an "
+                                 f"item to it with `tcw work tracker link`.")
         offers = ", ".join(repr(t.name) for t in ticket.offered) or "nothing"
         return refused("1f", f"{key} is in '{status}', unassigned, and does not "
                              f"offer {name!r}. It offers: {offers}."

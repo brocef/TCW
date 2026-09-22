@@ -196,6 +196,29 @@ def test_show_uses_distinct_words_for_the_ticket_and_the_workflow(node, monkeypa
     assert "exclusiv" in lowered or "not determined" in lowered
 
 
+@pytest.mark.parametrize("argv", [["work", "tracker", "show", "TCWCLAIM-1"],
+                                  ["work", "inbox", "show", "TCWCLAIM-1"]],
+                         ids=["tracker-show", "inbox-show"])
+def test_show_says_the_start_transition_is_unset_rather_than_wrong(node, monkeypatch,
+                                                                   argv):
+    """With no `transitions` mapping, `transitions.start` names nothing. Reporting
+    that as a name the ticket does not offer sends the reader to look at the
+    ticket's workflow when the answer is in their own configuration file. Both
+    commands print through the same `_print_ticket`."""
+    root, configure = node
+    configure({k: v for k, v in TRACKER.items() if k != "transitions"}
+              | {"inbox-query": "status = Triage"})
+    _responses(monkeypatch, OK_RESPONSES)
+    code, out, err = _run(argv)
+    assert code == 0, err
+    note = [line for line in out.splitlines() if line.startswith("note: ")]
+    assert note, out
+    assert "work.tracker.transitions.start" in note[0], note
+    assert "names no transition" in note[0], note
+    # The sentence this replaces, which reported an unset key as a wrong name.
+    assert "work.tracker.transitions.start is ''" not in out, out
+
+
 # ── one message per cause ────────────────────────────────────────────────────
 
 
