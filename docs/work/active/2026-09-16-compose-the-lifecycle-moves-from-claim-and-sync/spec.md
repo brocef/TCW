@@ -482,7 +482,11 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
    `work.tracker.exclusive-claim-transition` is set, when it is refused before the
    item moves** (amended at rework; see Design 3). With that key set and strict
    mode off, it still exits 0, and the claim it makes applies no transition.
-2. The same `start` assigns the ticket to the running account.
+2. The same `start` assigns the ticket to the running account — in the case
+   criterion 1 leaves exiting 0. Where criterion 1 now refuses the start (strict
+   mode on and `work.tracker.exclusive-claim-transition` set), nothing is sent at
+   all, so the ticket keeps whatever assignee it had; amended at rework alongside
+   criterion 1, which carved that case out without this one following.
 3. `tcw work start` on an item already active with an empty `owner` exits 0 and
    sets `owner` to the running identity.
 4. `tcw work start` on an item active and held by another account exits non-zero
