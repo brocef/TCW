@@ -368,7 +368,8 @@ _STRICT_BROKEN = ("The tracker configuration has problems, and strict mode refus
                   "until it is fixed. Run `tcw validate`.")
 
 
-def _strict_refusal(st, bare: str, change: str, own=None) -> str | None:
+def _strict_refusal(st, bare: str, change: str, own=None, *,
+                    ownership: bool = True) -> str | None:
     """Why strict tracker mode refuses `change` (a lifecycle move) of `bare`, or
     `None`. Loads no tracker code unless the node is strict; epics are not gated.
 
@@ -376,6 +377,9 @@ def _strict_refusal(st, bare: str, change: str, own=None) -> str | None:
     branch copy of a `--worktree` item at `complete`. The node's configuration
     (`tracker_strict`, `tracker_config`) is read from `st` either way: it is the
     checkout the completion runs in that governs it.
+
+    `ownership=False` leaves out whether the ticket is held by the running account —
+    a completion's case, since a claim gates work, not resolution.
     """
     if not st.tracker_strict():
         return None
@@ -389,7 +393,55 @@ def _strict_refusal(st, bare: str, change: str, own=None) -> str | None:
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
     target = target_status(config.statuses, MOVE_STATUS[change], None)
-    return authorize(st, bare, JiraClient(config), config, target=target, own=own)
+    return authorize(st, bare, JiraClient(config), config, target=target, own=own,
+                     ownership=ownership)
+
+
+def _claim_gate(st, bare: str) -> str | None:
+    """Why `submit` or `rework` of a bound item may not move it: its ticket is not held
+    by the account the tracker credentials sign in as. `None` otherwise.
+
+    A claim gates work, and these two moves are work. Asked whether or not strict mode
+    is on — strict mode asks the same and more, through `authorize`, so it is not
+    asked twice. Only an item with a ticket bound is gated: the local `owner` records
+    who holds the work, and is not a permission.
+
+    **Refuses only on an answer.** A tracker that cannot be reached cannot say anybody
+    else holds the ticket, so the move goes ahead and its delivery reports what did
+    not follow. Refusing on silence would stop every project's work during an outage;
+    that stronger behaviour is what strict mode is for.
+    """
+    if st.tracker_strict():
+        return None
+    try:
+        item = st.get(bare)
+    except MultipleMatch:
+        return None
+    if item is None or bound_value(item.tracker) is None:
+        return None
+    config = st.tracker_config()
+    if config is None:
+        return None
+    from tcw.tracker.intake import Bound, binding_of, read_ticket, same_site
+    from tcw.tracker.jira import JiraClient, TrackerError
+    try:
+        bound, _revision = binding_of(st, bare)
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(bound, Bound) or not same_site(bound.ticket_url, config.base_url):
+        return None
+    try:
+        ticket = read_ticket(JiraClient(config), bound.ticket_id)
+    except TrackerError:
+        return None
+    if ticket.assignee_id == ticket.me_id:
+        return None
+    if ticket.assignee_id:
+        return (f"{ticket.key} is held by {ticket.assignee_name}, not by you, so "
+                f"{bare} was not moved. Ask them to let it go, or take it with "
+                f"`tcw work tracker claim {bare} --take-over`, then run this again.")
+    return (f"{ticket.key} is held by nobody, so {bare} was not moved. Take it with "
+            f"`tcw work tracker claim {bare}`, then run this again.")
 
 
 def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
@@ -1350,6 +1402,9 @@ def _submit(args: argparse.Namespace) -> int:
         return 1
     if reason := _strict_refusal(st, bare, "submit"):
         return _strict_says_no("submit", f"{bare} was not changed", reason)
+    if reason := _claim_gate(st, bare):
+        print(f"tcw work submit: {reason}", file=sys.stderr)
+        return 1
     try:
         st.submit(bare)
     except _ERRORS as e:
@@ -1379,6 +1434,9 @@ def _rework(args: argparse.Namespace) -> int:
         return 1
     if reason := _strict_refusal(st, bare, "rework"):
         return _strict_says_no("rework", f"{bare} was not changed", reason)
+    if reason := _claim_gate(st, bare):
+        print(f"tcw work rework: {reason}", file=sys.stderr)
+        return 1
     try:
         st.rework(bare)
     except _ERRORS as e:
@@ -3690,9 +3748,10 @@ def _complete(args: argparse.Namespace) -> int:
         return 1
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
-    # refused — abandoning work authorizes none.
-    if shipping and (reason := _strict_refusal(st, bare, "complete",
-                                              own=branch_store)):
+    # refused — abandoning work authorizes none — and a completion is refused only for
+    # its binding, never for who holds the ticket.
+    if shipping and (reason := _strict_refusal(st, bare, "complete", own=branch_store,
+                                              ownership=False)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
     # Also before the merge-back, for any resolution: the store refuses to close an
     # item with anything open beneath it, and finding that out after the branch is

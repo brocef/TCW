@@ -454,9 +454,10 @@ def test_moves_with_no_claim_owed_never_accept(tmp_path, monkeypatch, move, reco
 
 
 @pytest.mark.parametrize("owed", ["catch-up", "start-record"])
-def test_a_submit_that_owes_the_claim_accepts_then_claims(tmp_path, monkeypatch, owed):
-    """A claim still owed is the same debt `sync` settles, so the move that pays it
-    takes the ticket out of triage first."""
+def test_a_sync_that_owes_the_claim_accepts_then_claims(tmp_path, monkeypatch, owed):
+    """A claim still owed is settled by `sync`, which takes the ticket out of triage
+    first. `submit` does not settle it any more: it is work, the ticket is nobody's,
+    so the claim gate refuses it before anything is sent."""
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
     slug = under_way(root)
@@ -467,9 +468,11 @@ def test_a_submit_that_owes_the_claim_accepts_then_claims(tmp_path, monkeypatch,
         with_record(root, slug, {"state": "pending", "move": "start", "since": "",
                                  "reason": "x", "at": "2026-09-21T00:00:00Z"})
     code, _out, err = cli(root, "work", "submit", slug)
-    assert code == 0, err
+    assert code == 1 and "tcw work tracker claim" in err and fake_.applied == [], err
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
     assert fake_.applied[:2] == ACCEPT_THEN_START
-    assert fake_.tickets[TICKET_ID].status == "In Review"
+    assert fake_.tickets[TICKET_ID].status == "In Progress"
 
 
 def test_a_discard_never_accepts(tmp_path, monkeypatch):

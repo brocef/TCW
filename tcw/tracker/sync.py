@@ -852,7 +852,8 @@ def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None
     return bound, None
 
 
-def authorize(store, slug: str, client, config, *, target: str, own=None) -> str | None:
+def authorize(store, slug: str, client, config, *, target: str, own=None,
+              ownership: bool = True) -> str | None:
     """`None` when the ticket bound to `slug` authorizes a change leading to the
     tracker status `target` (empty when that status is unmapped); otherwise why not.
 
@@ -863,6 +864,9 @@ def authorize(store, slug: str, client, config, *, target: str, own=None) -> str
     `binding_refusal`. `store` still answers for every *other* item: `_siblings`
     asks which other items share the ticket, and the primary checkout is where
     their current state is. The split is deliberate; they are different questions.
+
+    `ownership=False` skips the assignment check, for a completion: a claim gates
+    work, not resolution. Where the ticket is is still asked.
     """
     own = own or store
     bound, refusal = binding_refusal(store, slug, config, own=own)
@@ -884,7 +888,7 @@ def authorize(store, slug: str, client, config, *, target: str, own=None) -> str
     where = " or ".join(f"'{status}'" for status in allowed) or "its mapped status"
     unsynced = ("" if bound.status_synced else
                 f" It was linked without syncing its status. {unsynced_hint(slug, key)}")
-    if ticket.assignee_id != ticket.me_id:
+    if ownership and ticket.assignee_id != ticket.me_id:
         whose = (f"is assigned to {ticket.assignee_name}, not to you"
                  if ticket.assignee_id else "is unassigned")
         return (f"{key} {whose}. Assign it to yourself in "

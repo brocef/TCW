@@ -584,11 +584,24 @@ def test_complete_is_refused_before_the_worktree_merge(strict, fake):
     (tree / "code.txt").write_text("change\n")
     subprocess.run(["git", "-C", str(tree), "add", "code.txt"], check=True)
     subprocess.run(["git", "-C", str(tree), "commit", "-qm", "code"], check=True)
-    claimed_ticket(fake, "In Progress", B)
+    claimed_ticket(fake, "To Do", A)                   # moved back in the tracker
     code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
                           "--confirm")
-    assert code == 1 and REFUSED in err
+    assert code == 1 and REFUSED in err and "moved in the tracker" in err, err
     assert tree.exists() and not (strict / "code.txt").exists()
+
+
+def test_complete_is_not_refused_for_a_ticket_someone_else_holds(strict, fake):
+    """A claim gates work, not resolution: strict mode still asks where the ticket is
+    before a completion, but not who holds it."""
+    slug = bound_item(strict)
+    assert cli(strict, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 0 and REFUSED not in err, err
+    assert status(strict, slug) == "completed"
+    assert (fake.tickets[TICKET_ID].status, fake.tickets[TICKET_ID].assignee) == ("Done", B)
 
 
 def test_complete_judges_the_ticket_from_the_worktree_s_copy(strict, fake):

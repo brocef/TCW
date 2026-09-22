@@ -441,7 +441,8 @@ def test_a_reassigned_ticket_owes_both_until_it_comes_back(tmp_path, fake):
     root = comments_node(tmp_path)
     slug = bound_item(root)
     assert cli(root, "work", "start", slug)[0] == 0
-    claimed_ticket(fake, "In Progress", B)
+    # Reassigned after the claim gate read the ticket and before the move reached it.
+    fake.before("GET", "/myself", lambda: claimed_ticket(fake, "In Progress", B))
     assert cli(root, "work", "submit", slug)[0] == 1
     assert owed(root, slug)["state"] == "conflicting" and len(texts(fake)) == 1
     code, _out, _err = cli(root, "work", "tracker", "sync", slug)

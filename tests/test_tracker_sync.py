@@ -581,11 +581,17 @@ def test_a_start_whose_delivery_is_recorded_is_claimed_before_the_next_move(node
     cli(node, "work", "start", slug)
     assert record(node, slug)["move"] == "start"
     claimed_ticket(fake, "To Do", None)                   # Bob let it go
+    # `submit` is work, and the ticket is nobody's, so the claim gate stops it...
     code, _out, err = cli(node, "work", "submit", slug)
-    assert code == 0, err
+    assert code == 1 and "tcw work tracker claim" in err, err
+    # ...and `sync` delivers the start the record still names, claim first.
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
     held = fake.tickets[TICKET_ID]
-    assert (held.status, held.assignee) == ("In Review", A)
+    assert (held.status, held.assignee) == ("In Progress", A)
     assert record(node, slug) is None
+    assert cli(node, "work", "submit", slug)[0] == 0
+    assert fake.tickets[TICKET_ID].status == "In Review"
 
 
 def test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb(node, fake):
@@ -596,7 +602,10 @@ def test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb(nod
     slug = bound_item(root)
     claimed_ticket(fake, "In Progress", B)
     assert cli(root, "work", "start", slug)[0] == 1
-    assert cli(root, "work", "submit", slug)[0] == 1    # review unmapped; Bob still has it
+    # Unreachable, so the claim gate cannot see Bob and the move goes ahead.
+    fake.down = True
+    assert cli(root, "work", "submit", slug)[0] == 1    # review unmapped, and down
+    fake.down = False
     assert record(root, slug)["move"] == "submit"
     claimed_ticket(fake, "In Progress", None)          # Bob let it go, where he had it
     code, out, err = cli(root, "work", "tracker", "sync", slug)
@@ -1294,6 +1303,7 @@ def test_a_move_after_a_plain_link_says_why_and_moves_nothing(node, fake):
     slug = st.create("Already under way").slug
     st.start(slug, owner="a@example.test")
     assert cli(node, "work", "tracker", "link", slug, KEY)[0] == 0
+    claimed_ticket(fake, "To Do", A)       # held, so the claim gate lets it through
     code, _out, err = cli(node, "work", "submit", slug)
     assert code == 0, err
     assert "linked without syncing its status" in err and "--sync-status" in err
@@ -1733,13 +1743,15 @@ def plain_linked_in_step(tmp_path, monkeypatch, *, assignee=A):
     return root, fake_, slug
 
 
-def test_a_ticket_somebody_else_holds_stays_a_recorded_conflict_after_a_plain_link(
+def test_a_ticket_somebody_else_holds_is_refused_by_name_after_a_plain_link(
         tmp_path, monkeypatch):
+    """The note is about status; who holds the ticket is the claim gate's, and it
+    refuses before the item moves, so there is nothing to record."""
     root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=B)
     fake_.tickets[TICKET_ID].status = "To Do"          # out of step as well as Bob's
     code, _out, err = cli(root, "work", "submit", slug)
     assert code == 1 and "Bob" in err and "linked without" not in err, err
-    assert record(root, slug)["state"] == "conflicting"
+    assert status(root, slug) == "active" and record(root, slug) is None
 
 
 def test_a_plain_link_in_step_and_yours_leaves_no_note_so_drift_is_reported(
@@ -1849,8 +1861,9 @@ def test_an_unclaimed_ticket_in_step_after_a_plain_link_is_an_ordinary_conflict(
     root, fake_, slug = plain_linked_in_step(tmp_path, monkeypatch, assignee=None)
     assert "status-synced" not in yaml.safe_load(binding_text(root, slug))
     code, _out, err = cli(root, "work", "submit", slug)
-    assert code == 1 and "unassigned" in err and "linked without" not in err, err
-    assert record(root, slug)["state"] == "conflicting"
+    assert code == 1 and "held by nobody" in err and "linked without" not in err, err
+    assert "tcw work tracker claim" in err
+    assert status(root, slug) == "active" and record(root, slug) is None
 
 
 def test_a_held_check_removes_an_unreadable_record(tmp_path, monkeypatch):
@@ -1889,8 +1902,8 @@ def test_an_unclaimed_ticket_put_in_step_after_a_plain_link_is_an_ordinary_confl
     root, fake_, slug = plain_linked_out_of_step(tmp_path, monkeypatch)
     fake_.tickets[TICKET_ID].status = "In Progress"
     code, _out, err = cli(root, "work", "submit", slug)
-    assert code == 1 and "unassigned" in err and "linked without" not in err, err
-    assert record(root, slug)["state"] == "conflicting"
+    assert code == 1 and "held by nobody" in err and "linked without" not in err, err
+    assert status(root, slug) == "active" and record(root, slug) is None
 
 
 def test_strict_mode_carries_on_from_a_ticket_already_yours_in_review(tmp_path,
@@ -2148,9 +2161,10 @@ def test_a_hold_drops_a_record_that_still_owes_the_start_s_claim(node, fake):
     code, out, err = cli(node, "work", "submit", api)
     assert code == 1, (out, err)
     assert "tcw work tracker claim" in out + err, out + err
+    assert status(node, api) == "active"             # refused before the move
     # ...and the named verb is the whole recovery.
     assert cli(node, "work", "tracker", "claim", api)[0] == 0
-    code, out, err = cli(node, "work", "tracker", "sync", api)
+    code, out, err = cli(node, "work", "submit", api)
     assert code == 0, (out, err)
     assert fake.tickets[TICKET_ID].status == "In Review"
     assert record(node, api) is None
