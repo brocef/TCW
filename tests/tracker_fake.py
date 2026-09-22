@@ -49,6 +49,15 @@ SYNC = {
                   ("31", "Finish", "Done"), *_DISCARDS],
     "Done": [], "Won't Do": [], "Duplicate": [],
 }
+# `SYNC` with a second route out of the backlog status into `In Progress`. Two routes
+# into `statuses.active` is what makes a configured `transitions.start` load-bearing:
+# on `SYNC` the named transition and the one derived from the target status are the
+# same id, so a test there cannot tell the two rules apart.
+TWO_ROUTES_IN = {
+    **SYNC,
+    "To Do": [("21", "Start Progress", "In Progress"),
+              ("22", "Fast Track", "In Progress"), *_DISCARDS],
+}
 # Two routes out of one status into `Done` — a "finished" one and an "abandoned" one —
 # plus a pair sharing a name. Which transition ran cannot be read back from the status,
 # which is the whole reason a project has to be able to name it.

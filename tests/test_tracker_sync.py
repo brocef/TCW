@@ -26,7 +26,7 @@ from tcw.store.base import classify_binding
 from tcw.store.fs import FsWorkStore, init
 from tcw.tracker.intake import binding_document, unlink_document, with_sync_record
 from tcw.work.projection import WORK_ITEM_SCHEMA
-from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira, install_sites
+from tracker_fake import BASE_URL, GLOBAL, SYNC, TWO_ROUTES_IN, FakeJira, install_sites
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"
@@ -84,11 +84,19 @@ def test_unlink_takes_the_record_with_the_binding():
 # ── shared fixtures for the delivery tests ───────────────────────────────────
 
 
+NAMED_START = {"start": "Start Progress"}
+
+
 def make_node(tmp_path: Path, *, statuses: dict | None,
               name: str = "alpha", email_env: str = "TCW_A_EMAIL",
               tracker: bool = True, base_url: str = BASE_URL,
-              retain: dict | None = None) -> Path:
-    """A git-backed node. `statuses` has no default; `None` leaves the block out."""
+              retain: dict | None = None,
+              transitions: dict | None = NAMED_START) -> Path:
+    """A git-backed node. `statuses` has no default; `None` leaves the block out.
+
+    `transitions=None` leaves `work.tracker.transitions` out of the block entirely,
+    which is the configuration in which every move — `start` included — works its
+    transition out from the status it is heading for."""
     root = tmp_path / name
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
@@ -105,8 +113,9 @@ def make_node(tmp_path: Path, *, statuses: dict | None,
             "provider": "jira-cloud", "base-url": base_url,
             "candidate-query": "assignee = currentUser()",
             "credentials": {"email-env": email_env, "token-env": "TCW_PROBE_TOKEN"},
-            "transitions": {"start": "Start Progress"},
         }
+        if transitions is not None:
+            block["transitions"] = dict(transitions)
         if statuses is not None:
             block["statuses"] = statuses
         config.setdefault("work", {})["tracker"] = block
@@ -1328,7 +1337,8 @@ def test_a_move_that_arrives_after_a_plain_link_clears_the_note(node, fake):
     assert "status-synced" not in yaml.safe_load(binding_text(node, slug))
 
 
-def ladder_node(tmp_path, monkeypatch, workflow, *, status="To Do", assignee=None):
+def ladder_node(tmp_path, monkeypatch, workflow, *, status="To Do", assignee=None,
+                transitions=NAMED_START):
     from tracker_fake import FakeJira
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
@@ -1337,7 +1347,7 @@ def ladder_node(tmp_path, monkeypatch, workflow, *, status="To Do", assignee=Non
     fake_.account("a@example.test", A, "Alice")
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status=status, assignee=assignee)
     fake_.install(monkeypatch)
-    return make_node(tmp_path, statuses=STATUSES), fake_
+    return make_node(tmp_path, statuses=STATUSES, transitions=transitions), fake_
 
 
 def under_way(root, status="active") -> str:
@@ -2486,16 +2496,97 @@ def test_a_start_takes_an_unassigned_ticket_in_review_and_leaves_it_there(node, 
     assert status(node, slug) == "active"
 
 
-def test_a_start_posts_the_one_transition_transitions_start_names(node, fake):
+def _posted_transitions(fake_) -> list[str]:
+    """The paths of the transition POSTs this fake answered."""
+    return [path for method, path, _a in fake_.requests
+            if method == "POST" and path.endswith("/transitions")]
+
+
+def test_a_start_posts_the_one_transition_transitions_start_names(tmp_path, monkeypatch):
     """Criterion 14, with `exclusive-claim-transition` unset: taking the ticket sends
-    only the assignment, and delivering the start sends `transitions.start`."""
-    slug = bound_item(node)
-    fake.requests.clear()
-    assert cli(node, "work", "start", slug)[0] == 0
-    posted = [path for method, path, _a in fake.requests
-              if method == "POST" and path.endswith("/transitions")]
-    assert len(posted) == 1 and fake.applied == ["21"]
-    assert fake.tickets[TICKET_ID].assignee == A
+    only the assignment, and delivering the start sends `transitions.start`.
+
+    The workflow offers *two* routes out of 'To Do' into `statuses.active`, so the
+    derived rule cannot pick one and the configured name is the only thing that can.
+    On a workflow with one route the two rules give the same transition id, and a
+    test there proves nothing about which rule ran."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, TWO_ROUTES_IN,
+                              transitions={"start": "Start Progress"})
+    slug = bound_item(root)
+    fake_.requests.clear()
+    assert cli(root, "work", "start", slug)[0] == 0
+    assert len(_posted_transitions(fake_)) == 1 and fake_.applied == ["21"]
+    assert fake_.tickets[TICKET_ID].assignee == A
+
+
+def test_a_start_with_no_configured_name_derives_from_the_target_status(tmp_path,
+                                                                       monkeypatch):
+    """Criterion 14's other half, which could not be written while the key was
+    required. With no `transitions` mapping at all, the start finds its transition
+    the way the other four moves always have: the one the ticket offers that leads
+    to `statuses.active`."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC, transitions=None)
+    slug = bound_item(root)
+    fake_.requests.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert len(_posted_transitions(fake_)) == 1 and fake_.applied == ["21"]
+    assert fake_.tickets[TICKET_ID].assignee == A
+    assert record(root, slug) is None
+
+
+def test_a_start_with_no_configured_name_consults_no_name(tmp_path, monkeypatch):
+    """The other side of the same claim: with nothing configured, nothing is
+    consulted. On the two-route workflow the derived rule has no answer, so the start
+    refuses as ambiguous — which a configured name would have resolved. Without this
+    test, a `transition_name` that quietly invented 'Start Progress' would pass the
+    test above."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, TWO_ROUTES_IN, transitions=None)
+    slug = bound_item(root)
+    fake_.requests.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code != 0, err
+    assert _posted_transitions(fake_) == [] and fake_.applied == []
+    assert status(root, slug) == "active"           # the local move is never blocked
+    written = record(root, slug)
+    assert written["state"] == "conflicting", written
+    assert ("offers more than one transition to 'In Progress' (ids 21, 22); TCW will "
+            "not guess which" in written["reason"]), written
+
+
+def test_an_owed_start_with_no_configured_name_derives_too(tmp_path, monkeypatch):
+    """The second of the three paths that carry a start into `assess_move`: the
+    catch-up `deliver` runs before a later move, for an item whose recorded start
+    never finished. It reaches the same status-derived rule."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC, assignee=A,
+                              transitions=None)
+    slug = bound_item(root)
+    moved_to(root, slug, "review")             # the item moved on, delivering nothing
+    with_record(root, slug, {"state": "pending", "move": "start", "since": "To Do",
+                             "claim": "owed", "reason": f"could not read {KEY} back",
+                             "at": "2026-09-15T10:00:00Z"})
+    fake_.requests.clear()
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    # The owed start is delivered first, deriving '21' into 'In Progress'; the submit
+    # that follows it derives '41'. Nothing else is posted.
+    assert fake_.applied == ["21", "41"], fake_.applied
+    assert len(_posted_transitions(fake_)) == 2
+    assert fake_.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_ladder_hop_onto_the_active_rung_with_no_configured_name_derives_too(
+        tmp_path, monkeypatch):
+    """The third path: a hop inside `walk()`, whose move is `MOVE_ONTO['active']` —
+    which is `start`. `STRICT_LADDER` has no shortcut, so the walk really takes three
+    hops and the first of them is the start."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER, transitions=None)
+    slug = under_way(root, "completed")
+    code, _out, err = sync_link(root, slug)
+    assert code == 0, err
+    assert fake_.applied == ["21", "41", "31"], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "Done"
 
 
 def test_a_claim_the_tracker_did_not_answer_is_recorded_pending(node, fake):
