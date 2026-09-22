@@ -468,6 +468,7 @@ def test_sync_drops_an_owed_comment_once_comments_are_off(tmp_path, fake):
 def test_strict_mode_does_not_refuse_over_an_owed_comment(tmp_path, fake):
     root = comments_node(tmp_path)
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     slug = bound_item(root)
     assert cli(root, "work", "start", slug)[0] == 0
     fake.fail("POST", "/comment", jira.TrackerUnavailable("dropped"))

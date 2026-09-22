@@ -29,10 +29,14 @@ BASE = {
 }
 
 
-def strict_node(tmp_path: Path, *, strict, statuses: dict | None = STATUSES,
-                name: str = "alpha") -> Path:
+def strict_node(tmp_path: Path, *, strict, claim_transition,
+                statuses: dict | None = STATUSES, name: str = "alpha") -> Path:
+    """`claim_transition` sets `exclusive-claim-transition`, or leaves it unset when
+    `None`. No default, like `strict`: strict mode requires the key, so the parser
+    branches on it."""
     root = make_node(tmp_path, statuses=statuses, name=name)
     set_tracker_key(root, "strict", strict)
+    set_tracker_key(root, "exclusive-claim-transition", claim_transition)
     return root
 
 
@@ -48,13 +52,17 @@ def set_tracker_key(root: Path, key: str, value) -> None:
 
 # ── configuration ────────────────────────────────────────────────────────────
 
+# What every strict block needs besides its statuses: without it the block is
+# broken, and a test of some other broken part could pass for that reason instead.
+CLAIM = {"exclusive-claim-transition": "Start Progress"}
+
 
 def parsed(**extra):
     return parse_tracker_config({**BASE, **extra})
 
 
 def test_strict_true_with_the_required_statuses_parses():
-    config, problems = parsed(strict=True, statuses=STATUSES)
+    config, problems = parsed(strict=True, statuses=STATUSES, **CLAIM)
     assert problems == [] and config.strict is True
 
 
@@ -65,14 +73,17 @@ def test_strict_defaults_to_false():
 
 @pytest.mark.parametrize("extra, key", [
     ({"strict": "yes", "statuses": STATUSES}, "work.tracker.strict"),
-    ({"strict": True, "statuses": {"completed": "Done", "discarded": "Won't Do"}},
+    ({"strict": True, **CLAIM,
+      "statuses": {"completed": "Done", "discarded": "Won't Do"}},
      "work.tracker.statuses.active"),
-    ({"strict": True, "statuses": {"active": "In Progress", "discarded": "Won't Do"}},
+    ({"strict": True, **CLAIM,
+      "statuses": {"active": "In Progress", "discarded": "Won't Do"}},
      "work.tracker.statuses.completed"),
-    ({"strict": True, "statuses": {"active": "In Progress", "completed": "Done",
-                                   "discarded": {"wontfix": "Won't Do"}}},
+    ({"strict": True, **CLAIM,
+      "statuses": {"active": "In Progress", "completed": "Done",
+                   "discarded": {"wontfix": "Won't Do"}}},
      "work.tracker.statuses.discarded"),
-    ({"strict": True, "statuses": {"active": "In Progress", "completed": "Done"}},
+    ({"strict": True, **CLAIM, "statuses": {"active": "In Progress", "completed": "Done"}},
      "work.tracker.statuses.discarded"),
 ], ids=["not-boolean", "no-active", "no-completed", "partial-discards", "no-discarded"])
 def test_a_strict_block_missing_what_it_needs_is_a_problem(extra, key):
@@ -82,7 +93,7 @@ def test_a_strict_block_missing_what_it_needs_is_a_problem(extra, key):
 
 
 def test_validate_names_the_key_and_the_board_still_reads(tmp_path, fake):
-    root = strict_node(tmp_path, strict=True,
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
                        statuses={"active": "In Progress", "discarded": "Won't Do"})
     assert any("work.tracker.statuses.completed" in p for p in validate(root))
     assert cli(root, "work", "list")[0] == 0
@@ -96,7 +107,7 @@ def test_validate_names_the_key_and_the_board_still_reads(tmp_path, fake):
         "string-broken"])
 def test_a_broken_block_does_not_switch_strict_off(tmp_path, fake, strict, problem,
                                                   expected):
-    root = strict_node(tmp_path, strict=strict)
+    root = strict_node(tmp_path, strict=strict, claim_transition="Start Progress")
     if problem:
         set_tracker_key(root, "timeout-seconds", -1)
     st = FsWorkStore.open(root)
@@ -121,7 +132,7 @@ def authorize_now(root: Path, slug: str, target: str):
 
 @pytest.fixture()
 def strict(tmp_path, fake):
-    return strict_node(tmp_path, strict=True)
+    return strict_node(tmp_path, strict=True, claim_transition="Start Progress")
 
 
 def started(root: Path, slug: str, *, submitted: bool = False) -> None:
@@ -142,8 +153,10 @@ def test_authorize_reads_the_item_from_the_own_store_when_given_one(tmp_path, fa
     """`own=` is how `complete` judges a worktree item from its branch copy: the
     binding, status and owner come from `own`, everything else from `store`."""
     from tcw.tracker.sync import authorize
-    primary = strict_node(tmp_path, strict=True, name="alpha")
-    branch = strict_node(tmp_path, strict=True, name="beta")
+    primary = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
+                          name="alpha")
+    branch = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
+                         name="beta")
     slug = bound_item(primary)
     assert bound_item(branch) == slug          # same title, same day, same slug
     started(primary, slug)                     # the stale copy: still `active`
@@ -211,7 +224,7 @@ def test_a_claim_on_a_workflow_that_offers_it_everywhere_is_refused(tmp_path, mo
     fake_.account("a@example.test", A, "Alice")
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
     fake_.install(monkeypatch)
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     _st, client, config = client_for(root)
     outcome = claim(client, read_ticket(client, TICKET_ID))
     assert outcome.claimed
@@ -293,7 +306,7 @@ def test_strict_refuses_a_ticket_through_inbox_accept_where_import_is_refused(
     fake_.account("a@example.test", A, "Alice")
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
     fake_.install(monkeypatch)
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     set_tracker_key(root, "inbox-query", "status = Triage")
     code, out, err = cli(root, "work", "inbox", "accept", KEY)
     assert code == 1 and out == "" and "second person could claim it too" in err
@@ -302,7 +315,7 @@ def test_strict_refuses_a_ticket_through_inbox_accept_where_import_is_refused(
 
 
 def test_a_broken_strict_block_still_refuses_new(tmp_path, fake):
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     set_tracker_key(root, "timeout-seconds", -1)
     code, _out, err = cli(root, "work", "new", "x")
     assert code == 1 and REFUSED in err
@@ -316,6 +329,7 @@ def test_an_unbound_item_cannot_start_submit_or_complete_but_can_be_discarded(tm
     busy = st.create("Busy").slug
     st.start(busy, owner="a@example.test")
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     code, _out, err = cli(root, "work", "start", idle)
     assert code == 1 and REFUSED in err and status(root, idle) == "backlog"
     for argv in (("submit", busy), ("complete", busy, "--resolution", "done",
@@ -401,7 +415,7 @@ def test_a_workflow_that_cannot_exclude_refuses_import_and_start(tmp_path, monke
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
     fake_.ticket(id="20002", key="SYNC-2", summary="u")
     fake_.install(monkeypatch)
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     code, out, err = cli(root, "work", "tracker", "import", KEY)
     assert code == 1 and out == "" and "second person could claim it too" in err
     assert FsWorkStore.open(root).query() == []
@@ -542,7 +556,7 @@ def test_no_refusal_prints_the_token(strict, fake):
 
 
 def test_strict_false_runs_c3s_start_as_before(tmp_path, fake):
-    root = strict_node(tmp_path, strict=False)
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
     slug = bound_item(root)
     claimed_ticket(fake, "In Progress", B)
     code, _out, err = cli(root, "work", "start", slug)
@@ -686,7 +700,7 @@ def test_take_over_of_an_active_item_claims_first(strict, fake):
 
 
 def test_a_broken_strict_block_names_validate(tmp_path, fake):
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     set_tracker_key(root, "timeout-seconds", -1)
     code, _out, err = cli(root, "work", "new", "x")
     assert code == 1 and "tcw validate" in err
@@ -703,7 +717,7 @@ def test_an_epic_cannot_take_a_worktree(strict, fake):
 
 def test_strict_survives_problems_that_come_from_an_ancestor(tmp_path):
     from test_tracker_inheritance import ABSENT, COMPLETE, _chain, _store
-    full = {**COMPLETE, "statuses": STATUSES}
+    full = {**COMPLETE, "statuses": STATUSES, **CLAIM}
     nodes = _chain(tmp_path, root_board=False, root="off", repo=ABSENT,
                    pkg={**full, "strict": True})
     assert _store(nodes["pkg"]).tracker_config() is None
@@ -744,12 +758,13 @@ def test_sync_rechecks_an_owed_claim_under_strict_mode(tmp_path, monkeypatch):
     fake_.account("b@example.test", B, "Bob")
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t")
     fake_.install(monkeypatch)
-    root = strict_node(tmp_path, strict=False)
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
     slug = bound_item(root)
     claimed_ticket(fake_, "In Progress", B)
     assert cli(root, "work", "start", slug)[0] == 1          # started; claim owed
     claimed_ticket(fake_, "To Do", None)                     # Bob let it go
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1 and "second person could claim it too" in out + err
     # The claim is still owed: the record still names the `start` that owes it.
@@ -811,6 +826,7 @@ def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
     st.start(slug, owner="a@example.test")
     assert cli(root, "work", "tracker", "link", slug, "SYNC-1")[0] == 0
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     code, _out, err = cli(root, "work", "submit", slug)
     assert code == 1 and REFUSED in err
     assert "linked without syncing its status" in err and "--sync-status" in err
@@ -818,7 +834,7 @@ def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
 
 
 def test_a_broken_strict_block_refuses_inbox_accept_even_with_ticket(tmp_path, fake):
-    root = strict_node(tmp_path, strict=True)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
     set_tracker_key(root, "inbox-query", "status = Triage")
     set_tracker_key(root, "timeout-seconds", -1)
     code, _out, err = cli(root, "work", "inbox", "accept", "--ticket", KEY)

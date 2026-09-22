@@ -89,7 +89,8 @@ def test_a_boolean_strict_is_accepted(node):
     (`tests/test_tracker_strict.py`), so it is no longer an unknown key. Strict mode
     requires statuses, so a block turning it on sets them."""
     root, set_tracker = node
-    set_tracker({**VALID_TRACKER, "strict": True, "statuses": {
+    set_tracker({**VALID_TRACKER, "strict": True,
+                 "exclusive-claim-transition": "Start Progress", "statuses": {
         "active": "In Progress", "completed": "Done", "discarded": "Won't Do"}})
     assert [p for p in validate(root) if "tracker" in p] == []
 
@@ -324,6 +325,7 @@ def test_strict_and_on_new_together_are_a_legitimate_configuration(node):
     fails closed on any problem."""
     root, set_tracker = node
     set_tracker({**VALID_TRACKER, "strict": True, "statuses": STRICT_STATUSES,
+                 "exclusive-claim-transition": "Start Progress",
                  "create": {"project": "EX", "issue-type": "Task", "on-new": True}})
     assert [p for p in validate(root) if "tracker" in p] == []
 
@@ -331,6 +333,7 @@ def test_strict_and_on_new_together_are_a_legitimate_configuration(node):
 def test_strict_alone_validates(node):
     root, set_tracker = node
     set_tracker({**VALID_TRACKER, "strict": True, "statuses": STRICT_STATUSES,
+                 "exclusive-claim-transition": "Start Progress",
                  "create": {"project": "EX", "issue-type": "Task"}})
     assert [p for p in validate(root) if "tracker" in p] == []
 

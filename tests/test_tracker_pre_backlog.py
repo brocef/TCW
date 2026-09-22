@@ -529,6 +529,7 @@ def items(root):
 def test_strict_start_accepts_then_claims(tmp_path, monkeypatch):
     root, fake_ = ladder_node(tmp_path, monkeypatch, dict(TRIAGE), status="Triage")
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     set_pre_backlog(root, {"Triage": "Accept"})
     slug = FsWorkStore.open(root).create("Waiting in triage").slug
     plain_link(root, slug)
@@ -544,6 +545,7 @@ def test_strict_start_refused_after_the_step_is_retried_by_start(tmp_path, monke
     `sync` has nothing to resume: the refusal says to start again, and that works."""
     root, fake_ = ladder_node(tmp_path, monkeypatch, dict(TRIAGE), status="Triage")
     set_tracker_key(root, "strict", True)
+    set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     set_pre_backlog(root, {"Triage": "Accept"})
     slug = FsWorkStore.open(root).create("Waiting in triage").slug
     plain_link(root, slug)

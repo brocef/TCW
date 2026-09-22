@@ -1406,6 +1406,7 @@ def test_under_strict_mode_a_filed_epic_still_gets_its_ticket(node, monkeypatch)
     working if anyone reinstated the rule."""
     _root, configure = node
     configure({**ON_NEW_TRACKER, "strict": True,
+               "exclusive-claim-transition": "Start Progress",
                "statuses": {"backlog": "To Do", "active": "In Progress",
                             "completed": "Done", "discarded": "Won't Do"}})
     posted = _create_responses(monkeypatch)
@@ -1586,7 +1587,8 @@ def _pending_node(node, monkeypatch, document, *, strict):
     from tcw.tracker.intake import BINDING_SIDECAR
     FsWorkStore.open(root).write_sidecar(slug, BINDING_SIDECAR, document,
                                          revision="")
-    configure({**CREATE_TRACKER, **({"strict": True} if strict else {}),
+    strict_keys = {"strict": True, "exclusive-claim-transition": "Start Progress"}
+    configure({**CREATE_TRACKER, **(strict_keys if strict else {}),
                "statuses": {"backlog": "To Do", "active": "In Progress",
                             "completed": "Done", "discarded": "Won't Do"}})
     return root, slug
@@ -1642,6 +1644,7 @@ def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
     about a new path, so nothing else would notice if this one broke."""
     root, configure = node
     configure({**CREATE_TRACKER, "strict": True,
+               "exclusive-claim-transition": "Start Progress",
                "statuses": {"backlog": "To Do", "active": "In Progress",
                             "completed": "Done", "discarded": "Won't Do"}})
     posted = _create_responses(monkeypatch)

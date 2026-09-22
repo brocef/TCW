@@ -148,15 +148,6 @@ def test_an_unknown_nested_key_is_reported():
     assert any("password" in p for p in problems), problems
 
 
-def test_strict_is_reported_as_unknown_because_c4_owns_it():
-    """`strict` is deliberately not accepted here. The gates that honour it land
-    two children later, and a flag that is accepted but only half-honoured tells
-    a user their work is gated when it is not."""
-    config, problems = parse_tracker_config({**VALID, "strict": True})
-    assert config is None
-    assert any("strict" in p for p in problems), problems
-
-
 # ── the two properties ───────────────────────────────────────────────────────
 
 

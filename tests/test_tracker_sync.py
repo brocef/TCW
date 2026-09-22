@@ -1892,6 +1892,7 @@ def test_strict_mode_still_asks_whether_an_assignment_is_exclusive_without_a_cla
     path = root / "tcw-config.yaml"
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     config["work"]["tracker"]["strict"] = True
+    config["work"]["tracker"]["exclusive-claim-transition"] = "Start Progress"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     code, _out, err = sync_link(root, slug)
     assert code == 1 and "second person" in err, err
@@ -1921,6 +1922,7 @@ def test_strict_mode_carries_on_from_a_ticket_already_yours_in_review(tmp_path,
     path = root / "tcw-config.yaml"
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     config["work"]["tracker"]["strict"] = True
+    config["work"]["tracker"]["exclusive-claim-transition"] = "Start Progress"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     code, _out, err = sync_link(root, slug)
     assert code == 0, err
