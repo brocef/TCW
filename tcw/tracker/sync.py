@@ -437,7 +437,16 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         if state in (PENDING, CONFLICTING):
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
             store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
-                "state": state, "move": move, "since": since,
+                # While a start is still owed, **every** failure on this run is the
+                # start's, whatever move asked for it: taking the ticket out of a
+                # pre-backlog status, taking the ticket itself, and the start's own
+                # hop are all things the later move does on the start's behalf.
+                # Writing that later move's name forgets the start for good — its
+                # window would then begin at `statuses.active`, where nothing ever
+                # managed to put the ticket, so every later `sync` reads the ticket as
+                # drift and refuses to move it. `start_owed` is cleared the moment the
+                # hop has landed and been read back, and not before.
+                "state": state, "move": "start" if start_owed else move, "since": since,
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
             return Outcome(state, reason, recorded=True, claimed=claimed_message)
@@ -778,26 +787,25 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         verdict, detail = assess_move(
             ticket, target=active, expected=(), move="start",
             named_transition=transition_name(config.move_transitions, "start", None))
-        # Every failure below is the *start's*, so the record it writes keeps naming
-        # the start rather than the move that followed it. A record naming the later
-        # move forgets the start for good: its window then begins at
-        # `statuses.active`, where this hop never managed to put the ticket, so every
-        # later `sync` reads the ticket as drift and refuses to move it back.
+        # Every failure below is the *start's*, and `start_owed` is still set, so the
+        # record `finish` writes keeps naming the start rather than the move that
+        # followed it — the rule stated there, which holds for the whole run.
         if verdict != "apply":
-            move = "start"
             return finish(verdict, detail + hint(verdict, ticket))
         try:
             client.apply_transition(ticket.issue_id, detail.id)
         except TrackerError as error:
-            move = "start"
             return finish(classify_error(error), str(error))
         try:
             ticket = read_ticket(client, bound.ticket_id)
         except TrackerError as error:
-            move, since = "start", active   # applied, so that is where it is
+            since = active                  # applied, so that is where it is
             return finish(classify_error(error), str(error))
-        # TCW has just put it on `statuses.active`, so that is where the move that
-        # followed the start measures from — what the claim transition left, before.
+        # Landed and read back: the start is delivered, so nothing later on this run
+        # is the start's failure any more. TCW has just put the ticket on
+        # `statuses.active`, so that is where the move that followed the start
+        # measures from — what the claim transition left, before.
+        start_owed = False
         since, expected = ticket.status, (active,)
 
     # Forward only, for a lifecycle move. A move with a window already refuses a ticket
@@ -875,13 +883,18 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
     """Record that a move was not sent at all — the tracker configuration has
     problems, so there is no client to send it with. Pending: fixing the
     configuration and running `sync` sends it. Keeps an existing record's `since`,
-    as any later transition does."""
+    as any later transition does — and its `start`, for `deliver`'s reason: while a
+    start is still owed, a record naming the later move forgets it for good."""
     bound, revision = binding_of(store, slug)
     if not isinstance(bound, Bound):
         return Outcome(NONE)
     if store.pending_deletion(slug):
         return Outcome(PENDING, reason)
     record = bound.sync if bound.sync and "problem" not in bound.sync else None
+    item = store.get(slug)
+    if (record is not None and record["move"] == "start"
+            and (item is None or item.status not in RESOLVED_STATUSES)):
+        move = "start"
     content = store.read_sidecar(slug, BINDING_SIDECAR).content
     store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
         "state": PENDING, "move": move,

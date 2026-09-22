@@ -594,9 +594,12 @@ def test_a_start_whose_delivery_is_recorded_is_claimed_before_the_next_move(node
     assert fake.tickets[TICKET_ID].status == "In Review"
 
 
-def test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb(node, fake):
-    """Once a later move records itself, the record no longer names the `start`, so no
-    command claims the ticket on that start's behalf. `tcw work tracker claim` does."""
+def test_a_start_a_second_failure_could_not_write_over_is_still_claimed_by_sync(node,
+                                                                                fake):
+    """A later move's failure never writes over a start that is still owed, so the
+    claim that start asked for is still made — by `sync`, with nobody having to reach
+    for `tcw work tracker claim`. While the later move's name did get written, the
+    start was lost: nothing claimed the ticket on its behalf ever again."""
     root = make_node(node.parent, statuses={"active": "In Progress",
                                             "completed": "Done"}, name="beta")
     slug = bound_item(root)
@@ -606,13 +609,12 @@ def test_a_claim_a_second_failure_has_written_over_is_made_by_the_claim_verb(nod
     fake.down = True
     assert cli(root, "work", "submit", slug)[0] == 1    # review unmapped, and down
     fake.down = False
-    assert record(root, slug)["move"] == "submit"
+    assert record(root, slug)["move"] == "start", record(root, slug)
     claimed_ticket(fake, "In Progress", None)          # Bob let it go, where he had it
     code, out, err = cli(root, "work", "tracker", "sync", slug)
     assert code == 0, (out, err)
-    assert fake.tickets[TICKET_ID].assignee is None     # nothing claimed it
-    assert cli(root, "work", "tracker", "claim", slug)[0] == 0
     assert fake.tickets[TICKET_ID].assignee == A
+    assert record(root, slug) is None
 
 
 def test_a_move_the_tracker_misses_is_pending_and_sync_finishes_it(node, fake):
@@ -2643,6 +2645,79 @@ def test_a_failure_delivering_a_recorded_start_keeps_the_record_naming_the_start
     code, _out, err = cli(node, "work", "submit", slug)
     assert code == 1, err
     assert status(node, slug) == "review"
+    assert record(node, slug)["move"] == "start", record(node, slug)
+
+
+def test_a_failure_after_the_start_hop_has_landed_records_the_later_move(node, fake):
+    """The other side of the same rule, and the one a flag has to get right: once the
+    start's hop has been applied *and read back*, the start is delivered, so a failure
+    after that belongs to the move that asked for it. Keeping the start's name there
+    would be wrong in its own way — the record would go on asking for a claim nobody
+    owes, and the submit's window would be measured from nowhere instead of from
+    `statuses.active`, where this run has just put the ticket."""
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(node, slug)["move"] == "start"
+    claimed_ticket(fake, "To Do", A)              # ours, and still below the ladder
+    FsWorkStore.open(node).submit(slug)           # locally; this delivers nothing
+    transitions_fail(fake, 2)                     # the start hop lands, the submit does not
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == "pending", outcome
+    assert fake.applied == ["21"], fake.applied
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    written = record(node, slug)
+    assert (written["move"], written["since"]) == ("submit", "In Progress"), written
+
+
+def test_a_claim_that_fails_while_the_start_is_owed_keeps_the_record_naming_it(node,
+                                                                               fake):
+    """The start's own hop is not the only thing a later move does on the start's
+    behalf. Taking the ticket happens first, on the same run, and a failure there is
+    the start's failure just as much — so the record it writes keeps naming the start.
+    Naming the later move loses the start for good: its window then begins at
+    `statuses.active`, where nothing ever put the ticket."""
+    from tcw.tracker.jira import TrackerUnavailable
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(node, slug)["move"] == "start"
+    FsWorkStore.open(node).submit(slug)               # locally; this delivers nothing
+    fake.fail("PUT", "/assignee",
+              TrackerUnavailable("the tracker could not be reached (fake)"))
+    outcome = deliver_now(node, slug, move="submit", previous="active")
+    assert outcome.state == "pending", outcome
+    assert fake.tickets[TICKET_ID].assignee is None
+    assert record(node, slug)["move"] == "start", record(node, slug)
+
+
+def break_tracker_config(root: Path) -> None:
+    """Leave the tracker block unreadable, so a move has no client to send anything
+    with and `record_unsent` writes the record in `deliver`'s place."""
+    path = root / "tcw-config.yaml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["work"]["tracker"] = {"unknown-key": 1}
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "break tracker"],
+                   check=True)
+
+
+def test_a_move_recorded_unsent_while_the_start_is_owed_keeps_naming_the_start(node,
+                                                                               fake):
+    """The fourth way a later move can overwrite the record, and the one that never
+    reaches `deliver` at all: the tracker configuration has problems, so there is no
+    client, nothing is read and nothing is sent. The start is still what is owed."""
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(node, slug)["move"] == "start"
+    break_tracker_config(node)
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1 and "tcw validate" in err, err
     assert record(node, slug)["move"] == "start", record(node, slug)
 
 

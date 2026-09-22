@@ -510,6 +510,37 @@ def test_a_sync_of_a_resolved_item_owing_a_claim_stays_in_triage(tmp_path, monke
     assert MOVED not in out + err
 
 
+def test_a_refused_step_out_of_triage_keeps_the_record_naming_the_start(tmp_path,
+                                                                       monkeypatch):
+    """No race and no outage. The start never reached the tracker, so the record names
+    it; a later `submit` passes the claim gate because the ticket is already this
+    account's, and takes it out of triage on the start's behalf. Here `pre-backlog`
+    names a transition the workflow does not offer — a typo, or a renamed workflow —
+    so that step is refused. The record must still name the start: naming the submit
+    forgets it, and the item is then stuck for good, because the submit's window
+    begins at `statuses.active` where nothing ever put the ticket."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A,
+                              pre_backlog={"Triage": "Approve"})    # not offered
+    slug = FsWorkStore.open(root).create("Waiting in triage").slug
+    plain_link(root, slug)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    assert record(root, slug)["move"] == "start"
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1, err
+    assert FsWorkStore.open(root).get(slug).status == "review"
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "Triage"
+    assert record(root, slug)["move"] == "start", record(root, slug)
+    # And the item is not stuck: correcting the typo lets `sync` finish both moves.
+    set_pre_backlog(root, {"Triage": "Accept"})
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.applied == ["11", "21", "41"], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "In Review"
+    assert record(root, slug) is None
+
+
 def test_a_part_bound_report_only_sync_sends_nothing(tmp_path, monkeypatch):
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
