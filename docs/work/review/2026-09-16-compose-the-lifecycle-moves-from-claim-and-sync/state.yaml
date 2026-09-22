@@ -13,7 +13,7 @@ blocked_by:
 - slug: 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition
 - slug: 2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode
 - slug: 2026-09-21-let-tracker-sync-bring-a-ticket-forward-from-a-pre-backlog-status-such-as-triage
-owner: brocef@users.noreply.github.com
-started: '2026-09-22T15:14:35.547773Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-16-compose-the-lifecycle-moves-from-claim-and-sync
 branch: work/2026-09-16-compose-the-lifecycle-moves-from-claim-and-sync
