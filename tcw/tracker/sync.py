@@ -712,16 +712,23 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         verdict, detail = assess_move(
             ticket, target=active, expected=(), move="start",
             named_transition=transition_name(config.move_transitions, "start", None))
+        # Every failure below is the *start's*, so the record it writes keeps naming
+        # the start rather than the move that followed it. A record naming the later
+        # move forgets the start for good: its window then begins at
+        # `statuses.active`, where this hop never managed to put the ticket, so every
+        # later `sync` reads the ticket as drift and refuses to move it back.
         if verdict != "apply":
+            move = "start"
             return finish(verdict, detail + hint(verdict, ticket))
         try:
             client.apply_transition(ticket.issue_id, detail.id)
         except TrackerError as error:
+            move = "start"
             return finish(classify_error(error), str(error))
         try:
             ticket = read_ticket(client, bound.ticket_id)
         except TrackerError as error:
-            since = active                  # applied, so that is where it is
+            move, since = "start", active   # applied, so that is where it is
             return finish(classify_error(error), str(error))
         # TCW has just put it on `statuses.active`, so that is where the move that
         # followed the start measures from — what the claim transition left, before.

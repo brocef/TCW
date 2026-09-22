@@ -2542,6 +2542,70 @@ def test_a_resolution_carrying_a_start_record_does_not_deliver_the_start_first(
     assert fake_.tickets[TICKET_ID].status == landing
 
 
+# ── a failure while delivering a recorded start stays the start's ───────────
+
+
+def start_hop_fails(fake_, where: str) -> None:
+    """Break the hop that delivers a recorded `start`, in one of the three places it
+    can break. `refused` leaves the ticket in a status offering no way onto the
+    ladder; `transition` makes the POST unreachable; `read-back` lets the POST land
+    and makes the read that would confirm it unreachable, which is armed from inside
+    the POST so it cannot catch an earlier read."""
+    from tcw.tracker.jira import TrackerUnavailable
+
+    def unreachable():
+        return TrackerUnavailable("the tracker could not be reached (fake)")
+
+    if where == "refused":
+        claimed_ticket(fake_, "Triage", A)       # offers nothing at all
+    else:
+        claimed_ticket(fake_, "To Do", A)
+    if where == "transition":
+        fake_.fail("POST", "/transitions", unreachable())
+    elif where == "read-back":
+        fake_.before("POST", "/transitions",
+                     lambda: fake_.fail("GET", "?fields=", unreachable()))
+
+
+@pytest.mark.parametrize("where", ["refused", "transition", "read-back"])
+def test_a_failure_delivering_a_recorded_start_keeps_the_record_naming_the_start(
+        node, fake, where):
+    """The record is what says the start never reached the tracker. If a later move's
+    delivery fails while making the start's own hop, writing that later move's name
+    loses the start: its window would then begin at `statuses.active`, where the hop
+    never managed to put the ticket, so every later `sync` reads the ticket as drift
+    and refuses to move it."""
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(node, slug)["move"] == "start"
+    start_hop_fails(fake, where)
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 1, err
+    assert status(node, slug) == "review"
+    assert record(node, slug)["move"] == "start", record(node, slug)
+
+
+def test_a_submit_whose_start_hop_was_unreachable_is_recovered_by_a_later_sync(node,
+                                                                               fake):
+    """The whole cycle: a start nothing delivered, a submit whose start hop could not
+    be sent, and the `sync` that finishes both moves once the tracker answers."""
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    start_hop_fails(fake, "transition")
+    assert cli(node, "work", "submit", slug)[0] == 1
+    assert record(node, slug)["move"] == "start"
+    fake.applied.clear()
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.applied == ["21", "41"], fake.applied
+    assert fake.tickets[TICKET_ID].status == "In Review"
+    assert record(node, slug) is None
+
+
 # ── `link --sync-status` is retired; `catch-up` is read, never written ───────
 
 
