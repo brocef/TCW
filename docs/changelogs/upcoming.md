@@ -61,6 +61,21 @@ category.
   `MOVES_NEEDING_NO_CLAIM` would not exempt the resolution and a ticket nobody
   holds could not be closed. A `complete` on a `catch-up: true` binding no longer
   leaves a `pre-backlog` status either.
+- **On that path `work.tracker.transitions.complete` / `.discard` is now enforced.**
+  `assess_move`'s `named_transition` is only passed when the move's own mapped status
+  is the one being moved to, and the recorded `start` never satisfied that, so the
+  transition used to be derived from the target status whatever the project had
+  named. With the move now naming the resolution, a project that configured one gets
+  it — and a name the workflow does not offer is refused, naming the key, where it
+  was silently bypassed before.
+- A `sync` delivering a resolution takes `since` and its window from the ticket it
+  has just read: no local move just happened, and a resolution moves a ticket from
+  wherever it sits, so there is no status it was supposed to have been left in.
+  Without it a completion `sync` never managed to send recorded an empty `since`,
+  which sends `expected_statuses` to `_MOVED_FROM["complete"]` and produced a window
+  beginning at `statuses.review` — so the next run read an untouched ticket as drift
+  and refused with "TCW does not move it back". A discard never showed it, because
+  `_MOVED_FROM["discard"]` is empty.
 - While `start_owed` holds, `finish` writes `start` as the record's move whatever
   move is being delivered, and `record_unsent` does the same — replacing the three
   assignments that covered the recorded-start hop alone. Taking the ticket out of a

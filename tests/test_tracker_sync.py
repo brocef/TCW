@@ -1883,7 +1883,26 @@ def test_a_recorded_start_a_finished_item_no_longer_owes_is_not_delivered_by_syn
     ticket = fake_.tickets[TICKET_ID]
     assert (ticket.status, ticket.assignee) == ("To Do", None)
     # The record moves on with the item: what the ticket is owed is the completion.
-    assert record(root, slug)["move"] == "complete", record(root, slug)
+    # **Both fields together.** Renaming the move while leaving the start record's
+    # `since` behind sends `expected_statuses` to `_MOVED_FROM["complete"]`, which
+    # guesses the completion began at the review status — a window excluding where the
+    # ticket has sat all along.
+    written = record(root, slug)
+    assert (written["move"], written["since"]) == ("complete", "To Do"), written
+    # So running it again says the same true thing, rather than accusing somebody of
+    # moving a ticket nobody has touched.
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 1
+    assert "offers no transition to 'Done'" in out + err, (out, err)
+    assert "does not move it back" not in out + err, (out, err)
+    # And the recovery the refusal leaves open really works: put the ticket where a
+    # transition to the completed status is offered, and the next `sync` delivers it.
+    claimed_ticket(fake_, "In Review", None)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.applied == ["31"], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "Done"
+    assert record(root, slug) is None
 
 
 def test_an_unclaimed_ticket_in_step_after_a_plain_link_is_an_ordinary_conflict(

@@ -601,6 +601,23 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     except TrackerError as error:
         return finish(classify_error(error), str(error))
     found = ticket.status
+    # **A `sync` delivering a resolution has no window, and measures from the ticket
+    # it has just read.** No local move just happened — that is what `sync` is — and a
+    # resolution moves a ticket from wherever it sits (`MOVES_NEEDING_NO_CLAIM`), so
+    # there is no status it is supposed to have been left in. What stops it is the
+    # ticket already being resolved, which `assess_move` still refuses with no window.
+    #
+    # `since` is the half that had to be wrong before it could be seen. The fallback
+    # above renames a resolved item's recorded move without touching the `since` the
+    # *start* record carried, which is usually empty; and an empty `since` sends
+    # `expected_statuses` to `_MOVED_FROM["complete"]`, which guesses the completion
+    # began at `statuses.review`. So a completion this run never even managed to send
+    # was read by the next run as a ticket somebody had moved backwards, and refused
+    # with "TCW does not move it back" — about a ticket nobody had touched. A discard
+    # never showed it, because `_MOVED_FROM["discard"]` is empty and so yields no
+    # window either way; this is that same emptiness, stated for both of them.
+    if syncing and resolving:
+        since, expected = ticket.status, ()
     # A move that takes the ticket first takes it out of a `pre-backlog` status such as
     # Triage, whoever it is assigned to: a reporter's own ticket is already theirs, and
     # still has to leave triage before it can be worked. Never for a move that takes no
