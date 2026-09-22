@@ -124,3 +124,110 @@ guide rather than change it, unless the fix falls out of B1.
 Run the full suite, then re-run the adversarial review on the rework's own changes,
 bounded to B1-B3 and S1. The review ends when nothing blocking remains in "belongs
 to this change".
+
+---
+
+# Round 2 of rework (2026-09-22)
+
+The first rework was reviewed again, bounded to its own commits
+(`6be7f507..6ce7d062`). Verdict NOT DONE. B1 and B2 were each fixed at one point
+on a path that has two, and S1's new sentence is false on one of the two failures
+it was written for. Every finding below was reproduced end to end against the fake
+tracker. The coordinating session confirmed finding 1 by reading the code. The
+requester chose this round on 2026-09-22 and answered the two open questions.
+
+### R1. B1 is unfixed on the `sync` path
+
+`move` is replaced with the recorded move at `sync.py:358`, one line before
+`resolving` is computed, so on `tcw work tracker sync` with a leftover start
+record `move` becomes `"start"` and `resolving` is false however the item stands
+— including discarded and completed. `starting` is computed before that
+replacement, so the claim branch falls through too.
+
+Reproduced through the CLI with no hand-built state: items X (`--part default`)
+and Y (`--part backend`) bound to one ticket; `tcw work start X` with the tracker
+down leaves a start record; `tcw work complete X --resolution wontfix` is held
+because sibling Y is open, deliberately keeping the record; `tcw work tracker
+unlink Y`; then `tcw work tracker sync X` applies `['21', '51']`, marching the
+ticket To Do → In Progress → Won't Do. With the ticket unassigned the same sync
+also claims it first.
+
+**Requester's answer:** a `sync` of a resolved item must never claim its ticket or
+advance it into a working status first. Guard on the item, not on the move —
+`local not in RESOLVED_STATUSES` in the recorded-start condition
+(`sync.py:753-756`), which also subsumes `not resolving` for the lifecycle path.
+Apply the same reasoning to the pre-backlog step at `sync.py:572`, which on a
+`sync` of a resolved item takes the ticket out of triage for the same wrong
+reason. Reword the comments at `sync.py:114-117` and `:746-751` if they end up
+saying something other than what the code does.
+
+### R2. B2's fourth failure path: taking the ticket
+
+B2's fix covers the start hop only. Taking the ticket happens earlier on the same
+run — `leave_pre_backlog` (`sync.py:572-581`) and `assert_ownership`
+(`sync.py:669-695`) — and each failure goes through `taken_back` → `finish`, which
+writes the later move's name.
+
+Reproduced with no race and no outage: `work.tracker.pre-backlog: {Triage:
+Accept}`, a ticket already yours in Triage, and the real transition out of Triage
+named something else (a typo, or a renamed workflow). A failed `start` records
+`{move: start}`; `submit` passes the gate because the ticket is yours;
+`leave_pre_backlog` refuses; the record becomes `{move: submit}`. The start is
+forgotten, and the item is then permanently stuck: every later `sync` refuses as
+drift, and `takes_ticket` is false for ever after.
+
+**Requester's answer:** the record keeps naming `start` for the claim and the
+Triage failures too, not only for the hop. Carry one flag rather than three
+assignments — set `start_owed` beside `takes_ticket` (`sync.py:357`), clear it
+once the start hop has landed and been read back, and have `finish` write
+`"start"` while it is set. The three `move = "start"` lines then go.
+
+### R3. S1's sentence is false when the read-back failed
+
+`transitioned` is the wrong fact to key the message on. `assert_ownership` refuses
+in two later places: the assignment failing (`ownership.py:144`, the ticket really
+is unassigned) and the read-back failing (`:151`), which happens only after the
+assignment succeeded. Both callers print "was moved to X but is not assigned to
+you", which in the read-back case is false, contradicts the sentence printed
+beside it, and replaces advice that would have worked — running it again succeeds,
+because `assert_ownership` returns early for a ticket already yours.
+
+Say the ticket is unassigned only from the assign-failure return, and let the
+read-back return keep "Run this again to find out." Add the caller-level test for
+the read-back case, which is the coverage gap that let this through. Fix the wrong
+premise in `test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led`'s
+docstring while you are there.
+
+### R4. Two more false sentences
+
+- `docs/guide/jira.md:449`: "The transition is never applied to a ticket that is
+  already past `statuses.active`" is false — `tcw work tracker claim`
+  (`cli.py:3317`) still applies it, with no rung check, and says so as it does.
+  B3 was scoped to `deliver` and `_strict_claim`, so scope the sentence to
+  lifecycle moves or name `tracker claim` as the deliberate exception.
+- `docs/guide/jira.md:362`: "Nothing else ever does. `complete`, a discard …
+  never" take a ticket out of triage — false for a `complete` on a catch-up
+  binding, where `resolving` is deliberately false. Add the same "only on an old
+  binding" caveat the ownership half already carries (`jira.md:725-733`).
+
+### R5. Spec criterion 2
+
+Criterion 2 ("the same `start` assigns the ticket to the running account") was not
+amended alongside criterion 1 and is now false for the case criterion 1 carves
+out. Amend it.
+
+### Non-blocking, fold in if cheap
+
+- `cli.py:1372`: the `TransitionCommitError` recovery calls `_deliver_after`
+  without `say_claim`, so a strict start that trips it prints the claim line twice.
+- `cli.py:506-513`: the strict refusal says applying the transition "would move it
+  back" even where the workflow does not offer it from there.
+- `_deliver_after(say_claim=False)` suppresses the whole claim message, so a
+  second successful claim after someone stole the ticket mid-run is swallowed.
+  Limit the suppression to the "already held by you" sentence if that is cheap.
+
+### Where this stops
+
+This is the last scheduled round. After it, a bounded review of these fixes only.
+Anything still open is reported to the requester split into "belongs to C4" and
+"needs a separate item" rather than starting another round.
