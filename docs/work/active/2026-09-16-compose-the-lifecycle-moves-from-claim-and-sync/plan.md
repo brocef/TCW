@@ -276,3 +276,29 @@ For now `intake.claim` calls it. Read that item's `spec.md` before revising this
 - **Task 8.** Retiring `--sync-status` moves that item's regression tests for its
   `link --sync-status` criteria onto the replacement link → claim → sync flow. They
   are not dropped.
+
+## Corrected at implement, 2026-09-22
+
+The code disproved parts of this plan. What was built instead, and why, is in
+`outcome.md`; in short:
+
+- **Task 2 could not stay green alone.** Making `owed` depend on the ticket's
+  assignee skips `intake.claim` for a ticket already yours, and three things lived
+  inside that claim: the pre-backlog step, the catch-up walk, and the hint naming
+  `work.tracker.pre-backlog`. All three moved out of the claim in Task 2, not Task 4.
+- **A recorded `start` needed its own window.** With the claim no longer moving the
+  ticket onto `statuses.active`, the `(active,)` window a start record used to get
+  refused every retry of a failed start. It now gets the live start's empty window,
+  and when the item has moved past `active` that start is delivered first, then the
+  move after it — what the claim transition used to do.
+- **Task 4: `_strict_claim` was kept, not deleted.** Deleting it would have moved a
+  strict item locally before its ticket was taken, which the spec (Design 1) does not
+  ask for and an existing test forbids. It now asserts through
+  `exclusive-claim-transition` with `assert_ownership`.
+- **Task 7: complete's strict gate was narrowed, not removed.** It keeps asking where
+  the ticket is (a reviewer who sent the ticket back still stops a completion) and
+  stops asking who holds it.
+- **Task 8: the `check_only` refusal is still reachable** through a catch-up binding
+  already on disk, since the key is still read. It was kept, with a test.
+- **Task 8 missed a writer.** `tracker create` wrote `catch-up: true` through
+  `link`'s code; it now records the item's start as undelivered instead.
