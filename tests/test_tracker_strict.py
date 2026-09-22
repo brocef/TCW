@@ -603,6 +603,20 @@ def refuse_the_assignment(fake_) -> None:
 MOVED_UNASSIGNED = f"{KEY} was moved to 'In Progress' but is not assigned to you."
 
 
+def test_a_strict_start_says_it_took_the_ticket_not_that_it_was_already_held(
+        tmp_path, monkeypatch):
+    """`_strict_claim` takes the ticket before the item moves, so by the time delivery
+    runs the ticket is this account's. Reporting that as *already* held would describe
+    a claim this same command had just made."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert "already held by you" not in err, err
+    assert f"{KEY} is held by you." in err, err
+
+
 def test_a_strict_start_whose_assignment_failed_says_the_ticket_moved(tmp_path,
                                                                       monkeypatch):
     root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,

@@ -55,8 +55,11 @@ internal module names.
 - **`submit` and `rework` need the ticket to be yours**, with or without strict
   mode. For an item with a ticket, they are refused before the item moves when the
   ticket is somebody else's (the message names them) or nobody's (the message
-  names `tcw work tracker claim`). If Jira cannot be reached they go ahead, as
-  before, and report that the ticket did not follow.
+  names `tcw work tracker claim`). If Jira cannot be reached, what happens depends
+  on the mode: without strict mode they go ahead, as before, and report that the
+  ticket did not follow; under strict mode they are refused and the item does not
+  move, which is what strict mode has always done with a tracker that cannot
+  answer.
 - **`complete` and discards need no claim.** They move the ticket whoever holds
   it, and leave the assignment alone. Under strict mode, completing work is no
   longer refused because somebody else holds the ticket.

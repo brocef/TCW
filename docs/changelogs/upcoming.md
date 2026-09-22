@@ -48,7 +48,18 @@ category.
   start. When the item has moved past `active`, that start is delivered first (to
   `statuses.active`, `transitions.start`) and the later move measures from there.
 - The catch-up walk runs for any binding carrying `catch-up: true`, not only when
-  a claim was owed, and looks for a shortcut before every hop.
+  a claim was owed, and looks for a shortcut before every hop. `resolving` is false
+  for a `complete` on such a binding, so that completion still needs the ticket
+  held — the walk climbs working statuses, which is work. Documented rather than
+  changed; only bindings written before `--sync-status` was retired are affected.
+- The delivery says "{key} is already held by you." only for a `start`, not for
+  every move that takes the ticket, and `_deliver_after` takes `say_claim=False`
+  from a strict `start` — `_strict_claim` now prints the claim's own message, since
+  under strict mode the ticket was taken by that same command, not "already".
+- The past-the-claim refusal blames `exclusive-claim-transition` only where the key
+  is set; without it a claim moves nothing and could not move the ticket back. The
+  catch-up walk's "past where its item is" refusal no longer says the ticket was
+  not *claimed*: this run may have just claimed it.
 - `MOVES_ALLOWING_UNASSIGNED` is renamed `MOVES_NEEDING_NO_CLAIM` and holds
   `complete` and `discard`; `assess_move` skips the assignee check for them
   entirely, and `progress.py` posts a completion's comment on an unassigned ticket.

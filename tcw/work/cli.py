@@ -531,6 +531,10 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
                                + again), False
     if left:
         print(f"→ {moved_out(key, left)}".rstrip(), file=sys.stderr)
+    # This run took the ticket, so this run says so. `deliver` will find the ticket
+    # already assigned and would otherwise report it as *already* held, which under
+    # strict mode is never true: the claim happened moments ago, here.
+    print(f"→ {outcome.message}", file=sys.stderr)
     return None, True
 
 
@@ -1226,7 +1230,8 @@ def _local_owner(st, explicit: str | None = None) -> str:
     return owner
 
 
-def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) -> int:
+def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str, *,
+                   say_claim: bool = True) -> int:
     """Send a transition that has already happened to the item's ticket, if it has one.
 
     Returns 0 when there is nothing to send or everything followed, 1 when the ticket
@@ -1235,6 +1240,10 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
     auto-deletion removes. The move itself is never undone. An item without a
     readable binding, or a node with no tracker configured, returns 0 before
     `tcw.tracker` is imported, so a project without a tracker loads none of it.
+
+    `say_claim=False` withholds the line saying what the delivery did to take the
+    ticket. A strict `start` passes it: `_strict_claim` has already taken the ticket
+    and said so, and `deliver` would otherwise report the ticket as *already* held.
     """
     try:
         item = st.get(bare)
@@ -1265,7 +1274,7 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str) ->
               f"followed could not be recorded: {e}. Run `tcw work tracker sync "
               f"{bare}`.", file=sys.stderr)
         return 1
-    if outcome.claimed:
+    if outcome.claimed and say_claim:
         print(f"→ {outcome.claimed}", file=sys.stderr)
     if outcome.state == HELD:
         print(f"→ {outcome.reason}", file=sys.stderr)
@@ -1365,7 +1374,8 @@ def _start(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
     # Before any worktree setup, so a failure there cannot skip the claim.
-    delivered = _deliver_after(st, bare, "start", "start", previous)
+    delivered = _deliver_after(st, bare, "start", "start", previous,
+                               say_claim=not claimed)
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))

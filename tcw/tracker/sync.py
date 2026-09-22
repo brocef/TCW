@@ -481,11 +481,14 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # otherwise it walks the rungs the project itself mapped, one at a time,
         # re-reading between them because what a workflow offers depends on where the
         # ticket is. Bounded by the ladder: at most one hop per rung, each strictly
-        # higher, so it ends without a counter. Two paths get here: a claim that is
-        # owed, and a recorded move whose ticket is inside its window but has no
-        # transition straight to the target — a walk a failure interrupted. Both only
-        # on a binding `link --sync-status` made. A ticket somebody moved *back*
-        # reaches neither, so it is never walked forward.
+        # higher, so it ends without a counter. Two paths get here, and **both need
+        # `catch-up: true` on the binding**: the binding carrying that key at all,
+        # whoever holds the ticket and whether or not a claim was owed; and a
+        # recorded move on such a binding whose ticket is inside its window but has
+        # no transition straight to the target — a walk a failure interrupted.
+        # Nothing writes the key any more, so every walk is on a binding an older
+        # `link --sync-status` left behind. A ticket somebody moved *back* reaches
+        # neither path, so it is never walked forward.
         nonlocal since
         if ticket.category == "done" and _normalize(ticket.status) != _normalize(target):
             # Each hop passes the ticket's own status as `expected`, which skips
@@ -633,14 +636,20 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 return finish(CONFLICTING, (
                     f"{ticket.key} is already resolved ('{ticket.status}'), so it was "
                     f"not moved."))
-            # Nobody here holds it — `owed` says so — and claiming it from above the
-            # claim's own status could move it back.
+            # Nobody here holds it — `owed` says so — and it is above the status a
+            # claim belongs on. Only a project that named
+            # `exclusive-claim-transition` risks the ticket being moved back by
+            # claiming it; without that key a claim is an assignment and moves
+            # nothing, so saying it could would be untrue. Either way the ticket is
+            # left where it is and the remedy is the same.
             whose = (f"assigned to {ticket.assignee_name}" if ticket.assignee_id
                      else "unassigned")
+            why = ("Claiming it from there could move it back, so nothing was sent."
+                   if config.exclusive_claim_transition else
+                   "That is above the status a claim belongs on, so nothing was sent.")
             return finish(CONFLICTING, (
-                f"{ticket.key} is in '{ticket.status}' and {whose}. Claiming it from "
-                f"there could move it back, so nothing was sent. Assign it to yourself "
-                f"in the tracker, then run `tcw work tracker sync {slug}`."))
+                f"{ticket.key} is in '{ticket.status}' and {whose}. {why} Assign it to "
+                f"yourself in the tracker, then run `tcw work tracker sync {slug}`."))
         else:
             # Taking the ticket is an assignment, read back — never a move, unless the
             # project names `exclusive-claim-transition`, which is applied first so a
@@ -699,9 +708,15 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 return finish(classify_error(error), str(error))
             if outcome.transitioned:
                 since = ticket.status
-    elif takes_ticket and not check_only and not resolving:
+    elif starting and not check_only:
         # Already this account's, so nothing is sent to take it — but a start still
-        # says so, as the claim it replaces always did.
+        # says so, as the claim it replaces always did. Only a start: a `submit` or a
+        # `rework` carrying a leftover start record is a move that takes the ticket
+        # too, and telling somebody running `tcw work submit` that their ticket is
+        # already held by them says nothing about the move they asked for. A strict
+        # start is the other exception, and it is handled by the caller — under
+        # strict mode the ticket was taken moments ago by `_strict_claim`, not
+        # "already", so the CLI prints that claim's own line and suppresses this one.
         claimed_message += f"{ticket.key} is already held by you."
 
     if bound.catch_up and not check_only:
@@ -711,9 +726,11 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # only move it back.
         rung = lowest_rung(config.statuses, ticket.status)
         if rung is not None and rung > _RUNG_ORDER.get(local, rung):
+            # Says nothing about the claim: this run may well have just taken the
+            # ticket above, and what stops here is the walk, not the claim.
             return finish(CONFLICTING, (
                 f"{ticket.key} is in '{ticket.status}', which is past where its item "
-                f"is, so it was not claimed or moved back."))
+                f"is, so it was not moved back."))
         return walk(ticket)
     # Without a catch-up, delivery after a claim is the one transition it always was;
     # walking a ticket through several statuses is only ever asked for.

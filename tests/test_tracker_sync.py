@@ -1754,6 +1754,28 @@ def test_sync_status_on_a_review_item_does_not_claim_back_an_unassigned_ticket_i
     assert yaml.safe_load(binding_text(root, slug))["catch-up"] is True
 
 
+@pytest.mark.parametrize("key_set", [True, False], ids=["key-set", "no-key"])
+def test_the_past_the_claim_refusal_only_blames_the_claim_transition_when_there_is_one(
+        tmp_path, monkeypatch, key_set):
+    """Without `exclusive-claim-transition` a claim is an assignment and moves
+    nothing, so saying it could move the ticket back is untrue. The refusal itself is
+    unchanged; only its reason depends on the key."""
+    from tracker_fake import GLOBAL
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
+    if key_set:
+        config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
+        config["work"]["tracker"]["exclusive-claim-transition"] = "Start Progress"
+        (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+                                              encoding="utf-8")
+    slug = under_way(root, "review")
+    code, _out, err = sync_link(root, slug)
+    assert code == 1, err
+    blames = "Claiming it from there could move it back" in err
+    assert blames is key_set, err
+    assert "Assign it to yourself" in err, err
+    assert fake_.applied == [] and fake_.tickets[TICKET_ID].status == "In Review"
+
+
 # ── what a plain link's note does not explain away ───────────────────────────
 
 
@@ -2606,6 +2628,34 @@ def test_a_submit_whose_start_hop_was_unreachable_is_recovered_by_a_later_sync(n
     assert record(node, slug) is None
 
 
+# ── what the output claims about the claim ──────────────────────────────────
+
+
+def test_only_a_start_says_the_ticket_was_already_held(node, fake):
+    """A `submit` carrying a leftover start record is a move that takes the ticket, so
+    it used to report "already held by you" — which says nothing about the move the
+    user asked for. Only a start says it."""
+    slug = bound_item(node)
+    fake.down = True
+    assert cli(node, "work", "start", slug)[0] == 1
+    fake.down = False
+    assert record(node, slug)["move"] == "start"
+    claimed_ticket(fake, "To Do", A)
+    code, _out, err = cli(node, "work", "submit", slug)
+    assert code == 0, err
+    assert "already held by you" not in err, err
+    assert fake.tickets[TICKET_ID].status == "In Review"
+
+
+def test_a_start_on_a_ticket_already_yours_still_says_so(node, fake):
+    """The other side: the sentence the claim used to print is not lost."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "To Do", A)
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 0, err
+    assert f"{KEY} is already held by you." in err, err
+
+
 # ── `link --sync-status` is retired; `catch-up` is read, never written ───────
 
 
@@ -2655,6 +2705,9 @@ def test_create_brings_its_ticket_to_work_under_way_without_a_catch_up(node, fak
         os.chdir(previous)
     assert code == 0
     assert seen and "catch-up" not in seen and seen["sync"]["move"] == "start", seen
+    # No command writes a claim into the record — the guard the retired
+    # `test_the_link_that_asks_for_a_catch_up_writes_no_claim` used to give.
+    assert set(seen["sync"]) == RECORD_FIELDS, seen["sync"]
     held = fake.tickets[TICKET_ID]
     assert (held.status, held.assignee) == ("In Review", A)
     assert fake.applied == ["21", "41"]

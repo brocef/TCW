@@ -353,11 +353,16 @@ back — then reads the ticket again and claims it from there, so it notices if
 somebody took or closed the ticket in between. Every command that does this says
 so: `SYNC-1 was moved out of 'Triage'.`
 
-Nothing else takes a ticket out of triage. `submit`, `rework`, `complete`, a
-discard, `tracker claim`, and `tracker create` never do, and a ticket assigned to
-somebody else is refused with nothing sent. Whether a ticket is in triage is
-decided by its status only, never by whether it happens to offer a transition
-called `Accept`.
+`submit` and `rework` do it too, but only in one situation: when the item still
+carries a start that never reached the tracker. That recorded start is what takes
+the ticket, and it cannot take one that is still in triage, so the ticket leaves
+triage first and the message says so. With no such record they take no ticket and
+move nothing out of triage.
+
+Nothing else ever does. `complete`, a discard, `tracker claim`, and
+`tracker create` never do, and a ticket assigned to somebody else is refused with
+nothing sent. Whether a ticket is in triage is decided by its status only, never
+by whether it happens to offer a transition called `Accept`.
 
 `tcw validate` refuses the key when `statuses.backlog` is unset, when a status is
 listed twice, or when a status is also mapped under `statuses` — a status cannot be
@@ -716,6 +721,16 @@ strict mode refuses instead.
 **`complete` and a discard need no claim.** Finishing or abandoning work is not
 taking it, so they move a ticket assigned to somebody else, or to nobody, and leave
 the assignment as it was.
+
+**One exception, and only on an old binding.** A binding written by an earlier
+version's `link --sync-status` carries `catch-up: true`, and completing such an
+item walks the ticket up through your working statuses on the way to `completed`.
+Climbing those statuses *is* work, so that walk still needs the ticket held: a
+`complete` on a catch-up binding whose ticket somebody else holds is refused,
+naming them. Nothing writes `catch-up: true` any more, so this only affects
+bindings made before the flag was retired. Take the ticket with
+`tcw work tracker claim <slug> --take-over`, or relink the item, and the ordinary
+rule applies again.
 
 A status you leave out of `statuses` sends nothing for that move. **`active` is
 required once you map any other status**, because every move checks that the
