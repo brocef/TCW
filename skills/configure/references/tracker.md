@@ -81,9 +81,10 @@ tcw-config.yaml: work.tracker.transitions.start: required
 It is reported against the file that wrote it, which in a shared workspace is the
 parent node holding the settings, not the child being validated.
 
-`exclusive-claim-transition` is optional, sits at the top level of `work.tracker`
-rather than under `transitions`, and is the transition `tcw work tracker claim`
-asserts through. **Leave it unset unless the project needs it.** Unset, a claim
+`exclusive-claim-transition` is optional **except under strict mode**, where it is
+required (see `strict` below). It sits at the top level of `work.tracker` rather than
+under `transitions`, and is the transition `tcw work tracker claim` asserts through.
+Outside strict mode, **leave it unset unless the project needs it.** Unset, a claim
 applies no transition at all: it assigns the ticket, reads it back, and leaves the
 status alone. Set, a claim applies the named transition before assigning, so that
 on a workflow refusing a second claimant the second person is stopped before they
@@ -171,9 +172,13 @@ waiting in triage".
 
 `strict: true` makes a claimed ticket required for local work (what it refuses is in
 `commands.md`, "Strict mode"). It must be a boolean, and it needs `statuses.active`,
-`statuses.completed`, and `statuses.discarded` as one status name or a mapping of all
-three of `wontfix`, `duplicate` and `superseded` — otherwise `tcw validate` reports
-the missing key. A block with problems does **not** turn strict mode off: gated
+`statuses.completed`, `statuses.discarded` as one status name or a mapping of all
+three of `wontfix`, `duplicate` and `superseded`, and `exclusive-claim-transition` —
+otherwise `tcw validate` reports the missing key. The claim transition is required
+because strict mode promises that only one person can take a ticket, and a claim
+keeps that promise only by applying a transition the workflow will not apply to a
+ticket already taken. Name the transition that takes a ticket into work. Setting it
+means `tcw work tracker claim` applies it, which moves the ticket. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
 
@@ -184,6 +189,7 @@ made". Nothing else is filed, so nothing else gets a ticket this way.
 
 ```yaml
         strict: true
+        exclusive-claim-transition: Start Progress
         statuses:
             active: In Progress
             review: In Review

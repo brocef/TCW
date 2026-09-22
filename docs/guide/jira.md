@@ -83,7 +83,7 @@ work:
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
 | `transitions.start`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it. Called `transitions.claim` in version 2.3.0 and earlier; see [Renaming the start transition](#renaming-the-start-transition).       |
 | `transitions.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say. See [Naming a transition](#naming-a-transition).  |
-| `exclusive-claim-transition` | no  | A transition `tracker claim` asserts through, where the workflow refuses a second claimant. **Moves the ticket**, which claiming otherwise does not. Not the same key as `transitions.start`. See [When two people claim at once](#when-two-people-claim-at-once). |
+| `exclusive-claim-transition` | no; yes under [strict mode](#strict-mode-no-work-without-a-ticket) | A transition `tracker claim` asserts through, where the workflow refuses a second claimant. **Moves the ticket**, which claiming otherwise does not. Not the same key as `transitions.start`. See [When two people claim at once](#when-two-people-claim-at-once). |
 | `statuses`              | no       | The Jira **status** a linked ticket should be in for each of the item's statuses. See [Tickets following their items](#tickets-following-their-items). |
 | `pre-backlog`           | no       | Each Jira status a ticket waits in **before** the backlog, mapped to the transition that takes it to `statuses.backlog`. See [Tickets waiting in triage](#tickets-waiting-in-triage). |
 | `comments`              | no       | `true` to post a short comment on the ticket for each move. See [Comments on the ticket](#comments-on-the-ticket).                                     |
@@ -431,7 +431,8 @@ With this set, a claim applies that transition before assigning, so a second
 person's transition is refused and they never reach the assignment. **It costs a
 status move**: applying a transition moves the ticket, which is the thing claiming
 otherwise avoids. That is the trade, and it is why the setting is optional and off
-by default.
+by default — except under [strict mode](#strict-mode-no-work-without-a-ticket), which
+promises that only one person can take a ticket and so requires it.
 
 It is a different setting from `transitions.start`, which is the transition a
 `tcw work start` applies. Setting one does not set the other.
@@ -871,12 +872,21 @@ or a comment edited or deleted in Jira, can still produce a repeat. Moves made i
 ## Strict mode: no work without a ticket
 
 Set `strict: true` when every piece of work must come from a ticket you have
-claimed. Strict mode needs `statuses.active`, `statuses.completed`, and
+claimed. Strict mode needs `statuses.active`, `statuses.completed`,
 `statuses.discarded` as either one status or a status for each of `wontfix`,
-`duplicate` and `superseded`; `tcw validate` reports whichever is missing.
+`duplicate` and `superseded`, and `exclusive-claim-transition`; `tcw validate`
+reports whichever is missing, and strict commands refuse until it is set.
+
+`exclusive-claim-transition` is required because strict mode promises that only one
+person can take a ticket, and a claim keeps that promise only by applying a
+transition your workflow will not apply to a ticket someone has already taken. Set
+it to the transition that takes a ticket into work. Setting it means
+`tcw work tracker claim` applies that transition, so a claim moves the ticket. See
+[When two people claim at once](#when-two-people-claim-at-once).
 
 ```yaml
 strict: true
+exclusive-claim-transition: Start Progress
 statuses:
     active: In Progress
     review: In Review
