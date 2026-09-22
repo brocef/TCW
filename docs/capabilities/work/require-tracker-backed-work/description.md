@@ -34,7 +34,8 @@ everywhere.
 
 Strict mode needs the tracker. When Jira cannot be reached, gated changes are refused
 until it answers. `tcw validate` reports a strict block missing `statuses.active`,
-`statuses.completed`, or a `statuses.discarded` that covers every discard resolution,
+`statuses.completed`, a `statuses.discarded` that covers every discard resolution, or
+`work.tracker.exclusive-claim-transition`,
 and while the tracker configuration has problems the gates refuse rather than
 switching themselves off. Turning strict mode off is `strict: false`, or removing
 the key; a child node that inherits a strict parent's tracker block can set
