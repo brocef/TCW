@@ -831,6 +831,7 @@
   resolution: wontfix
   resolved: '2026-09-17'
 2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode:
+  location: 2bbac5b7fd58ef414536e8468966ed96159da75d
   resolution: done
   resolved: '2026-09-22'
 2026-09-19-fold-the-taxonomy-and-capabilities-store-configs-into-the-root-tcw-config-yaml:
