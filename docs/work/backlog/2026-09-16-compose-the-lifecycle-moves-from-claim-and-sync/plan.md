@@ -208,11 +208,11 @@ One pass over the finished diff, after task 8, before `outcome.md`.
 | Entry | Trigger | Fires | Why |
 | --- | --- | --- | --- |
 | `README.md` | Public-API | **yes** | `link --sync-status` is gone and `submit`/`rework` gain a refusal. |
-| `docs/guide/jira.md` | Tracker-Change | **yes** | Every `work.tracker` behaviour here changes: the gate, resolution overriding ownership, strict mode's new required key, `transitions.start` becoming optional. |
-| `docs/release-notes/upcoming.md` | Public-API | **yes** | Must **lead** with strict mode's new required key — it is the breaking change — then the gate, then the retirement. |
+| `docs/guide/jira.md` | Tracker-Change | **yes** | Every `work.tracker` behaviour here changes: the gate, resolution overriding ownership, `transitions.start` becoming optional. Strict mode's new required key is written by `2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode`; this item adds only that a strict `start` now takes its ticket through that key. |
+| `docs/release-notes/upcoming.md` | Public-API | **yes** | Placed **after** the entry `2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode` writes, which leads with strict mode's new required key. This item's entry says that a strict `start` now takes its ticket through `exclusive-claim-transition` and why, then the gate, then the retirement; it does not repeat that the key is required, what `tcw validate` does, or what to set. |
 | `docs/changelogs/upcoming.md` | Any-Code-Change | **yes** | Added / Changed / Removed. |
 | `skills/work/SKILL.md` and `skills/work/references/` | Skill-Driven-Component | **yes** | The lifecycle's guardrails change; `commands.md`'s rows for the five moves and for `link`. |
-| `skills/configure/references/tracker.md` | Configuration-Key-Change | **yes** | `transitions.start` optional; `strict` requiring `exclusive-claim-transition`. |
+| `skills/configure/references/tracker.md` | Configuration-Key-Change | **yes** | That a strict `start` takes its ticket through `exclusive-claim-transition`. The requirement itself is already written by `2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode`, and `transitions.start` becoming optional by `2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move`. |
 
 All six fire. That is expected for an item that changes the lifecycle's
 behaviour, its configuration surface and its CLI at once.

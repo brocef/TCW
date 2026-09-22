@@ -485,9 +485,9 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 14. With `exclusive-claim-transition` unset, a `tcw work start` posts exactly one
     workflow transition — the one `transitions.start` names — or none when that
     key is unset too.
-15. `tcw validate` refuses `work.tracker.strict: true` without
+15. *(Moved to `2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode`, which blocks this item.)* `tcw validate` refuses `work.tracker.strict: true` without
     `exclusive-claim-transition`, naming the key.
-16. A configuration with no `transitions.start` validates.
+16. *(Moved to `2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move`, which this item blocks.)* A configuration with no `transitions.start` validates.
 17. A sync record written by a failed `start`, on an item since moved to
     `review`, does not make a later `tcw work tracker sync` serve the `start`
     move.
@@ -516,7 +516,7 @@ and both are wanted.
 
 ## Risks
 
-1. **Strict projects must add a configuration key** (criterion 15). It is the
+1. **Strict projects must add a configuration key** (criterion 15, now delivered by `2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode`). It is the
    only way to keep a guarantee they already believe they have, but it is a
    breaking change and the release notes must lead with it.
 2. **The gate is a reversal.** Until now a tracker problem never stopped a local
