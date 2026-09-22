@@ -2429,3 +2429,36 @@ def test_a_move_that_takes_no_ticket_leaves_an_unassigned_one_unassigned(
     fake_.requests.clear()
     deliver_now(root, slug, move=move, previous=previous)
     assert assignments(fake_) == [] and fake_.tickets[TICKET_ID].assignee is None
+
+
+# ── a lifecycle move delivers forward only ───────────────────────────────────
+
+
+def test_a_start_leaves_a_ticket_already_past_it_where_it_is(node, fake):
+    """Criterion 18b's shape, on a ticket already yours: the start is made, the ticket
+    stays in review, and nothing is recorded because nothing is owed."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Review", A)
+    fake.requests.clear()
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 0, err
+    assert status(node, slug) == "active"
+    assert fake.tickets[TICKET_ID].status == "In Review" and fake.writes() == []
+    assert record(node, slug) is None
+    assert "past where" in err and "tcw work tracker sync" in err, err
+
+
+def test_sync_still_brings_back_a_ticket_a_start_left_alone(node, fake):
+    """Criterion 18c: the forward-only rule is the lifecycle's. `sync` reconciles both
+    ways — back down here, and forward again below."""
+    slug = bound_item(node)
+    claimed_ticket(fake, "In Review", A)
+    assert cli(node, "work", "start", slug)[0] == 0
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    FsWorkStore.open(node).submit(slug)
+    fake.tickets[TICKET_ID].status = "In Progress"
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Review"

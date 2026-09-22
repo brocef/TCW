@@ -685,6 +685,22 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # Without a catch-up, delivery after a claim is the one transition it always was;
     # walking a ticket through several statuses is only ever asked for.
 
+    # Forward only, for a lifecycle move. A move with a window already refuses a ticket
+    # outside it (`assess_move`); one with none — a start out of `backlog` — would
+    # otherwise pull a ticket somebody already moved on back down to its item, and
+    # nobody running `tcw work start` is asking about where the ticket is. Held, not
+    # conflicting: nothing is wrong and nothing is owed, so no record is written and
+    # the move exits cleanly. `sync` is where a person asks for reconciliation, and it
+    # still reconciles in both directions. A resolved ticket is left to `assess_move`,
+    # which refuses it.
+    if (not syncing and not expected and target and ticket.category != "done"
+            and _normalize(ticket.status) != _normalize(target)
+            and ticket_rung is not None and ticket_rung > _RUNG_ORDER.get(local, ticket_rung)):
+        return finish(HELD, (f"{ticket.key} not moved to '{target}': it is already in "
+                             f"'{ticket.status}', past where {slug} is, and a {move} does "
+                             f"not move a ticket back. `tcw work tracker sync {slug}` "
+                             f"would."))
+
     # Only when the move's own mapped status is the one being moved to. `move` here can
     # be a *recorded* move the item is already past — `move = move or record["move"]`
     # above — and the transition configured for that move leads where it lands, not to
