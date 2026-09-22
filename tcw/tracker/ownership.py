@@ -50,8 +50,10 @@ class OwnershipOutcome:
     """What one claim or release attempt established.
 
     `settled` is whether the tracker now says what the caller asked it to say —
-    held by them for a claim, held by nobody for a release. Everything else is
-    for the message.
+    held by them for a claim, held by nobody for a release. `retry` is whether an
+    unsettled claim is worth simply running again: the tracker did not answer the
+    assignment or its read-back, rather than answering no. Everything else is for
+    the message.
     """
     settled: bool
     message: str
@@ -60,6 +62,7 @@ class OwnershipOutcome:
     status: str = ""
     detail: str = ""
     transitioned: bool = False
+    retry: bool = False
 
 
 def _holder(client, ticket):
@@ -80,10 +83,11 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     """
     key = ticket.key
 
-    def refused(message: str, detail: str = "", holder=("", "")) -> OwnershipOutcome:
+    def refused(message: str, detail: str = "", holder=("", ""),
+                retry: bool = False) -> OwnershipOutcome:
         return OwnershipOutcome(settled=False, message=message, detail=detail,
                                 holder_id=holder[0], holder_name=holder[1],
-                                status=ticket.status)
+                                status=ticket.status, retry=retry)
 
     if ticket.category == "done":
         return refused(f"{key} is resolved ('{ticket.status}'), so there is nothing "
@@ -126,8 +130,9 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     try:
         client.assign(ticket.issue_id, ticket.me_id)
     except TrackerError as error:
+        # Worth retrying unless the tracker answered and refused: a 400 is an answer.
         return refused(f"{key} could not be assigned to you, so it is not held.",
-                       str(error))
+                       str(error), retry=not isinstance(error, TrackerRequestInvalid))
 
     # The read-back. Everything above is what we asked for; this is what is true.
     try:
@@ -135,7 +140,7 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     except TrackerError as error:
         return refused(f"{key} was assigned to you, but reading it back failed, so "
                        f"whether you hold it is unknown. Run this again to find out.",
-                       str(error))
+                       str(error), retry=not isinstance(error, TrackerRequestInvalid))
     if now_id == ticket.me_id:
         return OwnershipOutcome(settled=True, message=f"{key} is held by you.",
                                 holder_id=now_id, holder_name=now_name,

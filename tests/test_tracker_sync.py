@@ -2465,3 +2465,15 @@ def test_a_start_posts_the_one_transition_transitions_start_names(node, fake):
               if method == "POST" and path.endswith("/transitions")]
     assert len(posted) == 1 and fake.applied == ["21"]
     assert fake.tickets[TICKET_ID].assignee == A
+
+
+def test_a_claim_the_tracker_did_not_answer_is_recorded_pending(node, fake):
+    """Criterion 17d: pending says a re-run will clear it; conflicting would say
+    somebody has to act."""
+    from tcw.tracker.jira import TrackerUnavailable
+    slug = bound_item(node)
+    fake.fail("PUT", "/assignee", TrackerUnavailable("the tracker could not be reached"))
+    code, _out, err = cli(node, "work", "start", slug)
+    assert code == 1 and "(pending)" in err, err
+    assert record(node, slug)["state"] == "pending"
+    assert (record(node, slug)["move"], fake.tickets[TICKET_ID].assignee) == ("start", None)

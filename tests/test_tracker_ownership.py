@@ -287,3 +287,37 @@ def test_on_a_global_workflow_the_assertion_alone_does_not_exclude(monkeypatch):
                                assertion="Start Progress", take_over=True)
     assert outcome.settled          # the workflow let Bob straight in
     assert fake.tickets[TICKET].assignee == B
+
+
+# ── whether an unsettled claim is worth retrying ─────────────────────────────
+
+
+def test_an_assignment_the_tracker_did_not_answer_is_worth_retrying(fake, alice):
+    fake.fail("PUT", "/assignee", jira.TrackerUnavailable("down (fake)"))
+    outcome = assert_ownership(alice, read_ticket(alice, TICKET))
+    assert not outcome.settled and outcome.retry
+
+
+def test_a_read_back_the_tracker_did_not_answer_is_worth_retrying(fake, alice):
+    # Armed by the assignment, so it is the read-back that goes unanswered.
+    fake.before("PUT", "/assignee", lambda: fake.fail(
+        "GET", f"/rest/api/3/issue/{TICKET}?", jira.TrackerUnavailable("down (fake)")))
+    outcome = assert_ownership(alice, read_ticket(alice, TICKET))
+    assert not outcome.settled and outcome.retry
+    assert fake.tickets[TICKET].assignee == A
+
+
+@pytest.mark.parametrize("case", ["held", "resolved", "workflow-refused",
+                                  "assignment-refused"])
+def test_an_answer_is_not_worth_retrying(monkeypatch, case):
+    fake = _fake(monkeypatch, status="Done" if case == "resolved" else "To Do",
+                 assignee=B if case == "held" else None)
+    alice = jira.JiraClient(_config("TCW_A_EMAIL"))
+    assertion = ""
+    if case == "workflow-refused":
+        fake.fail("POST", "/transitions", jira._for_status(400, {}, "no", "x"))
+        assertion = "Start Progress"
+    if case == "assignment-refused":
+        fake.fail("PUT", "/assignee", jira._for_status(400, {}, "no", "x"))
+    outcome = assert_ownership(alice, read_ticket(alice, TICKET), assertion=assertion)
+    assert not outcome.settled and not outcome.retry, outcome

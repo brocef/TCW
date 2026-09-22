@@ -648,7 +648,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 where = ("" if outcome.holder_id not in ("", ticket.me_id) else
                          f" Take it with `tcw work tracker claim {slug}`, then run "
                          f"`tcw work tracker sync {slug}`.")
-                return taken_back(CONFLICTING, outcome.message + detail + where)
+                return taken_back(PENDING if outcome.retry else CONFLICTING,
+                                  outcome.message + detail + where)
             owed = False
             claimed_message += outcome.message
             if not target:
