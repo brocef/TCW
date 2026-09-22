@@ -4053,7 +4053,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if item is None:
             raise ValueError(f"no such work item: {slug}")
         if item.status == "active":
-            if not take_over:
+            # Active with nobody holding it — what `tcw work tracker release` leaves —
+            # is taken, not refused: there is nobody to displace.
+            if not take_over and item.owner:
                 raise AlreadyClaimed(slug, item.owner, item.started)
             if not owner:
                 raise ValueError("takeover requires an owner")
@@ -4061,7 +4063,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                                 {"owner": owner, "started": started})
             if self.auto_commit_transitions():
                 rel = str(self._require_dir(slug).relative_to(self.store_git_root))
-                err = git_commit_result(self.store_git_root, f"tcw work: take over {slug}", rel)
+                what = "take over" if item.owner else "claim"
+                err = git_commit_result(self.store_git_root, f"tcw work: {what} {slug}", rel)
                 if err:
                     raise TransitionCommitError(f"{slug} was taken over, but committing it failed:\n{err}")
             return self._require(slug)

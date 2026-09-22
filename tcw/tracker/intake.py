@@ -195,15 +195,17 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
 
 def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
                      ticket_key: str, ticket_url: str, bound: str,
-                     unlinked: list, status_synced: bool = True,
-                     catch_up: bool = False) -> str:
+                     unlinked: list, status_synced: bool = True) -> str:
     """The `tracker.yaml` text for a new binding. No credential goes in it.
 
     The document records that an item and a ticket are the same work and nothing
     more: it names no account, because binding does not claim the ticket.
     `status_synced=False` notes that the item was already past `backlog` and the
-    ticket was not brought along; `catch_up=True` that `link --sync-status` asked for
-    it to be.
+    ticket was not brought along.
+
+    Nothing writes `catch-up: true` any more — `link --sync-status` did, and is
+    retired — but a binding already carrying it is still read (`Bound.catch_up`), so
+    the multi-rung walk it asked for stays reachable until those bindings age out.
     """
     document = {
         "schema": 1,
@@ -216,8 +218,6 @@ def binding_document(*, provider: str, project: str, part: str, ticket_id: str,
     }
     if not status_synced:
         document["status-synced"] = False
-    if catch_up:
-        document["catch-up"] = True
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
 
 

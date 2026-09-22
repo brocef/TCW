@@ -2941,13 +2941,21 @@ class MultipleMatch(Exception):
 
 
 class AlreadyClaimed(IllegalTransition):
-    """A single-winner start lost to an existing active claim."""
+    """A single-winner start lost to an existing active claim.
+
+    Names the command that takes the item over, because a refusal that stops somebody
+    has to say what to do instead. `tcw work tracker claim --take-over` is the one
+    for an item whose work is shared through a tracker; `start --take-over` stays for
+    a project with none, and for recovering an interrupted claim."""
 
     def __init__(self, slug: str, owner: str = "", started: str = ""):
         self.slug, self.owner, self.started = slug, owner, started
         who = owner or "an unknown owner"
         when = started or "an unknown time"
-        super().__init__(f"{slug} is already claimed by {who} since {when}")
+        super().__init__(f"{slug} is already claimed by {who} since {when}. To take "
+                         f"it over, run `tcw work tracker claim {slug} --take-over` "
+                         f"(or `tcw work start {slug} --take-over` where no tracker "
+                         f"is configured)")
 
 
 @dataclass
@@ -3892,7 +3900,9 @@ class WorkStore(ABC):
               take_over: bool = False) -> WorkItem:
         item = self._require(slug)
         if item.status == "active":
-            if not take_over:
+            # Active with nobody holding it — what `tcw work tracker release` leaves —
+            # is taken, not refused: there is nobody to displace.
+            if not take_over and item.owner:
                 raise AlreadyClaimed(slug, item.owner, item.started)
             if not owner:
                 raise ValueError("takeover requires an owner")

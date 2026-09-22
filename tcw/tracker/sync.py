@@ -613,6 +613,9 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             since = ticket.status
             expected = ()
         elif check_only:
+            # Reached by a part binding still carrying `catch-up: true` with nothing
+            # recorded. Nothing writes that key any more, but it is still read, and a
+            # report-only check must never take the ticket.
             return Outcome(CONFLICTING, f"the claim of {bound.ticket_key} is still owed.")
         elif not starting and rung is not None and rung > 0:
             # Already past the claim's own status. Applying the claim transition from
@@ -903,9 +906,11 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
 
 
 def unsynced_hint(slug: str, key: str) -> str:
-    """How to opt in to syncing a ticket that `link` bound without its status."""
-    return (f"To bring it along, run `tcw work tracker unlink {slug} --reason <text>`, "
-            f"then `tcw work tracker link {slug} {key} --sync-status`.")
+    """How to bring along a ticket that `link` bound without its status."""
+    return (f"To bring {key} along, take it with `tcw work tracker claim {slug}`, then "
+            f"run `tcw work tracker sync {slug}`; where the workflow has no one "
+            f"transition from its status to where {slug} is, move it yourself in the "
+            f"tracker.")
 
 
 def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:

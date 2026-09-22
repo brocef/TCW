@@ -736,7 +736,7 @@ def test_a_closed_item_holding_a_created_key_is_told_which_ticket_to_bind(
     posted = _create_responses(monkeypatch)
     code, _out, err = _run(["work", "tracker", "create", slug])
     assert code == 1
-    assert f"tracker link {slug} PROBE-9 --sync-status" in err, err
+    assert f"tracker link {slug} PROBE-9`" in err and "--sync-status" not in err, err
     assert "<ticket>" not in err, err          # the placeholder it replaces
     assert posted == [], posted                # still refused before the tracker
 

@@ -1287,7 +1287,7 @@ def test_a_plain_link_of_started_work_leaves_the_ticket_and_warns(node, fake):
     assert record(node, slug) is None and fake.writes() == []
     assert yaml.safe_load(binding_text(node, slug))["status-synced"] is False
     assert "warning:" in err and "'To Do'" in err and "'In Progress'" in err
-    assert "--sync-status" in err
+    assert f"tcw work tracker claim {slug}" in err and "--sync-status" not in err
 
 
 def test_link_of_a_backlog_item_records_nothing(node, fake):
@@ -1306,7 +1306,8 @@ def test_a_move_after_a_plain_link_says_why_and_moves_nothing(node, fake):
     claimed_ticket(fake, "To Do", A)       # held, so the claim gate lets it through
     code, _out, err = cli(node, "work", "submit", slug)
     assert code == 0, err
-    assert "linked without syncing its status" in err and "--sync-status" in err
+    assert "linked without syncing its status" in err
+    assert f"tcw work tracker claim {slug}" in err and "--sync-status" not in err
     assert "by hand" not in err
     assert fake.writes() == [] and record(node, slug) is None
     code, out, _err = cli(node, "work", "tracker", "sync", slug)
@@ -1351,8 +1352,32 @@ def under_way(root, status="active") -> str:
     return slug
 
 
+def legacy_catch_up(root, slug) -> None:
+    """Make `slug`'s binding what a retired `link --sync-status` left: `catch-up: true`,
+    no status-synced note, and a pending record of the item's own move. Nothing
+    writes this any more; bindings carrying it are still read, so the walk they ask
+    for is still reachable, and these tests are what keep it so."""
+    from tcw.tracker.sync import MOVE_ONTO, _now
+    st = FsWorkStore.open(root)
+    content = yaml.safe_load(binding_text(root, slug))
+    content.pop("status-synced", None)
+    content["catch-up"] = True
+    content["sync"] = {"state": "pending", "move": MOVE_ONTO[st.get(slug).status],
+                       "since": "", "reason": "linked to work already under way",
+                       "at": _now()}
+    (st.path(slug) / "tracker.yaml").write_text(yaml.safe_dump(content, sort_keys=False),
+                                                encoding="utf-8")
+
+
 def sync_link(root, slug):
-    return cli(root, "work", "tracker", "link", slug, KEY, "--sync-status")
+    """A plain link, the binding an old `link --sync-status` would have written, then
+    the `sync` that delivers it. Returns `(code, stdout, stdout + stderr)`: `sync`
+    reports its outcome on stdout, where the old flag reported it on stderr."""
+    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY)
+    assert code == 0, err
+    legacy_catch_up(root, slug)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    return code, out, out + err
 
 
 def transitions_fail(fake_, *which: int):
@@ -1812,28 +1837,6 @@ def test_without_sync_status_sync_does_not_walk_a_ticket_through_statuses(tmp_pa
     assert fake_.tickets[TICKET_ID].status == "In Progress"
 
 
-def test_sync_status_refuses_an_item_somebody_else_started(tmp_path, monkeypatch):
-    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC)
-    st = FsWorkStore.open(root)
-    slug = st.create("Theirs").slug
-    st.start(slug, owner="b@example.test")
-    code, _out, err = sync_link(root, slug)
-    assert code == 1, err
-    # The command to run as them is the link that was refused, not a sync of a binding
-    # that does not exist.
-    assert (f"TCW_WORK_OWNER=b@example.test tcw work tracker link {slug} {KEY} "
-            f"--sync-status") in err, err
-    assert fake_.writes() == []
-    assert FsWorkStore.open(root).read_sidecar(slug, "tracker.yaml") is None
-
-
-def test_sync_status_on_a_backlog_item_says_it_did_nothing(node, fake):
-    slug = FsWorkStore.open(node).create("Not started").slug
-    code, _out, err = cli(node, "work", "tracker", "link", slug, KEY, "--sync-status")
-    assert code == 0 and "--sync-status did nothing" in err, err
-    assert fake.writes() == []
-
-
 def test_a_recorded_start_without_sync_status_is_followed_by_one_transition_only(
         tmp_path, monkeypatch):
     """A `start` whose claim did not reach the tracker leaves a record naming it. When
@@ -1922,19 +1925,6 @@ def test_strict_mode_carries_on_from_a_ticket_already_yours_in_review(tmp_path,
     code, _out, err = sync_link(root, slug)
     assert code == 0, err
     assert fake_.tickets[TICKET_ID].status == "Done" and fake_.applied == ["31"]
-
-
-def test_the_suggested_link_for_somebody_elses_item_keeps_its_part(tmp_path,
-                                                                  monkeypatch):
-    root, fake_ = ladder_node(tmp_path, monkeypatch, SYNC)
-    st = FsWorkStore.open(root)
-    slug = st.create("Theirs").slug
-    st.start(slug, owner="b@example.test")
-    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY, "--part", "api",
-                          "--sync-status")
-    assert code == 1, err
-    assert (f"TCW_WORK_OWNER=b@example.test tcw work tracker link {slug} {KEY} "
-            f"--part api --sync-status") in err, err
 
 
 def test_a_closed_ticket_somebody_else_holds_is_refused_as_closed(tmp_path,
@@ -2118,22 +2108,6 @@ def test_a_ticket_somebody_else_holds_is_not_sent_to_the_claim_verb(node, fake):
     assert record(node, slug) is None
 
 
-def test_a_late_link_records_its_catch_up_without_a_claim(node, fake):
-    fake.tickets[TICKET_ID].status = "To Do"
-    late = under_way(node, "active")
-    assert sync_link(node, late)[0] == 0
-    assert fake.tickets[TICKET_ID].status == "In Progress"
-    assert record(node, late) is None
-    second = under_way(node, "review")
-    fake.ticket(id="20009", key="SYNC-9", summary="Another", status="To Do")
-    transitions_fail(fake, 1)               # the claim never leaves the machine
-    code, _out, err = cli(node, "work", "tracker", "link", second, "SYNC-9",
-                          "--sync-status")
-    assert code == 1, err
-    assert set(written_record(node, second)) == RECORD_FIELDS, written_record(node, second)
-    assert yaml.safe_load(binding_text(node, second))["catch-up"] is True
-
-
 # ── what the verify assessment found ─────────────────────────────────────────
 
 
@@ -2226,27 +2200,6 @@ def test_record_unsent_writes_no_claim(node, fake):
     written = written_record(node, slug)
     assert set(written) == RECORD_FIELDS, written
     assert written["state"] == "pending" and written["move"] == "submit"
-
-
-def test_the_link_that_asks_for_a_catch_up_writes_no_claim(node, fake):
-    """`link --sync-status` writes its own record and then delivers, and the delivery
-    overwrites it — so this reads the file in the moment between the two, from a hook
-    on the first request the delivery makes."""
-    slug = under_way(node, "active")
-    seen = {}
-
-    def peek():
-        seen.update(yaml.safe_load(binding_text(node, slug)))
-
-    # `link` resolves the ticket by key (`/issue/SYNC-1`); the delivery reads it by id,
-    # and that first read is the moment after `link`'s own write and before `finish`
-    # replaces it.
-    fake.before("GET", f"/issue/{TICKET_ID}?fields=", peek)
-    assert sync_link(node, slug)[0] == 0
-    assert seen, "the hook never ran, so nothing was observed"
-    assert seen["catch-up"] is True
-    assert set(seen["sync"]) == RECORD_FIELDS, seen["sync"]
-    assert seen["sync"]["move"] == "start" and seen["sync"]["state"] == "pending"
 
 
 # ── `statuses.backlog` must not arm sync against backlog items ──────────────
@@ -2554,3 +2507,95 @@ def test_a_completion_owing_a_start_still_takes_no_ticket(tmp_path, monkeypatch)
     assert assignments(fake_) == []
     held = fake_.tickets[TICKET_ID]
     assert (held.status, held.assignee) == ("Done", None)
+
+
+# ── `link --sync-status` is retired; `catch-up` is read, never written ───────
+
+
+def test_link_sync_status_is_refused_naming_link_then_claim_then_sync(node, fake):
+    """Criterion 5. Refused before anything is read or written."""
+    slug = under_way(node, "active")
+    fake.requests.clear()
+    code, _out, err = cli(node, "work", "tracker", "link", slug, KEY, "--sync-status")
+    assert code != 0, err
+    link = err.index(f"`tcw work tracker link {slug} {KEY}`")
+    claim = err.index(f"`tcw work tracker claim {slug}`")
+    sync = err.index(f"`tcw work tracker sync {slug}`")
+    assert link < claim < sync, err
+    assert fake.requests == [] and FsWorkStore.open(node).get(slug).tracker is None
+
+
+def test_link_then_claim_then_sync_brings_the_ticket_to_the_item(node, fake):
+    """Criterion 12: the three commands that replace the flag."""
+    slug = under_way(node, "active")
+    for argv in (("link", slug, KEY), ("claim", slug), ("sync", slug)):
+        code, out, err = cli(node, "work", "tracker", *argv)
+        assert code == 0, (argv, out, err)
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", A)
+    assert "catch-up" not in yaml.safe_load(binding_text(node, slug))
+    assert record(node, slug) is None
+
+
+def test_create_brings_its_ticket_to_work_under_way_without_a_catch_up(node, fake):
+    """`tracker create` binds through `link` and brings the ticket it made to where the
+    item is. It records the item's start as undelivered instead of writing
+    `catch-up`, so the start is delivered, claim first, then the move after it."""
+    import argparse
+
+    from tcw.work.cli import _tracker_link
+    slug = under_way(node, "review")
+    seen = {}
+    fake.before("GET", f"/issue/{TICKET_ID}?fields=",
+                lambda: seen.update(yaml.safe_load(binding_text(node, slug))))
+    previous = os.getcwd()
+    os.chdir(node)
+    try:
+        code = _tracker_link(argparse.Namespace(slug=slug, ticket=KEY, part=None,
+                                                deliver_start=True),
+                             verb="tracker create")
+    finally:
+        os.chdir(previous)
+    assert code == 0
+    assert seen and "catch-up" not in seen and seen["sync"]["move"] == "start", seen
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Review", A)
+    assert fake.applied == ["21", "41"]
+    assert "catch-up" not in yaml.safe_load(binding_text(node, slug))
+    assert record(node, slug) is None
+
+
+def test_a_catch_up_already_on_disk_still_parses_and_still_walks(tmp_path, monkeypatch):
+    """Criterion 13, and the requester's decision: nothing writes `catch-up: true`,
+    but a binding carrying it is still bound, and still walks a ticket up more than
+    one rung — the only thing that can."""
+    from tracker_fake import STRICT_LADDER
+    root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
+    slug = under_way(root, "completed")
+    code, _out, err = cli(root, "work", "tracker", "link", slug, KEY)
+    assert code == 0, err
+    assert "catch-up" not in yaml.safe_load(binding_text(root, slug))
+    legacy_catch_up(root, slug)
+    bound = classify_binding(yaml.safe_load(binding_text(root, slug)))
+    assert bound.ticket_key == KEY and bound.catch_up is True
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.applied == ["21", "41", "31"] and fake_.tickets[TICKET_ID].status == "Done"
+    assert "catch-up" not in yaml.safe_load(binding_text(root, slug))
+
+
+def test_a_report_only_sync_of_an_old_part_catch_up_still_sends_nothing(node, fake):
+    """The plan called the `check_only` refusal inside the claim block unreachable once
+    `catch-up` stopped being written. It is not: the key is still read, and a part
+    binding carrying it with nothing recorded reaches it. Deleting it would let a
+    report-only `sync` take the ticket."""
+    slug = bound_item(node, part="api")
+    FsWorkStore.open(node).start(slug, owner="a@example.test")
+    content = yaml.safe_load(binding_text(node, slug))
+    content["catch-up"] = True
+    (FsWorkStore.open(node).path(slug) / "tracker.yaml").write_text(
+        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+    fake.requests.clear()
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert "still owed" in out, (out, err)
+    assert fake.writes() == [] and fake.tickets[TICKET_ID].assignee is None

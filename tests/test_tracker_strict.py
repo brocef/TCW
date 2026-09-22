@@ -998,7 +998,8 @@ def test_a_refusal_for_a_plainly_linked_ticket_names_the_opt_in(tmp_path, fake):
     set_tracker_key(root, "exclusive-claim-transition", "Start Progress")
     code, _out, err = cli(root, "work", "submit", slug)
     assert code == 1 and REFUSED in err
-    assert "linked without syncing its status" in err and "--sync-status" in err
+    assert "linked without syncing its status" in err and "tcw work tracker claim" in err
+    assert "--sync-status" not in err
     assert status(root, slug) == "active" and fake.writes() == []
 
 

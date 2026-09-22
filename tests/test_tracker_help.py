@@ -78,16 +78,33 @@ def test_every_tracker_epilog_shows_an_example_invocation(command):
 
 def test_tracker_link_help_does_not_promise_a_claim():
     """`link` used to claim the ticket. Its own help said so, and that sentence is
-    the one a reader would act on, so its absence is worth pinning. Claiming is now
-    only what `--sync-status` opts in to, and only the text about that flag says so."""
+    the one a reader would act on, so its absence is worth pinning. Claiming is
+    `tcw work tracker claim`'s, and the only mention of it is the paragraph that
+    names that command as the way to bring a ticket along."""
     link = tracker_subparsers()["link"]
-    opt_in = [p for p in link.epilog.split("\n\n") if "--sync-status" in p]
-    plain = [p for p in link.epilog.split("\n\n") if "--sync-status" not in p]
+    paragraphs = link.epilog.split("\n\n")
+    names_it = [p for p in paragraphs if "tcw work tracker claim" in p]
+    plain = [p for p in paragraphs if "tcw work tracker claim" not in p]
     text = (f"{link.description}\n{chr(10).join(plain)}\n"
             f"{listing_help('link')}").lower()
     assert "claim" not in text
     assert "assign" not in text
-    assert opt_in and "claim" in " ".join(opt_in).lower()
+    assert names_it
+
+
+def test_no_help_text_offers_the_retired_sync_status_flag():
+    """Criterion 5: `link --sync-status` is retired, and appears in no help."""
+    import contextlib
+    import io
+    from tcw.cli import main
+    link = tracker_subparsers()["link"]
+    assert "--sync-status" not in link.format_help()
+    for name, parser in tracker_subparsers().items():
+        assert "--sync-status" not in parser.format_help(), name
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.suppress(SystemExit):
+        main(["work", "tracker", "--help"])
+    assert "--sync-status" not in out.getvalue()
 
 
 def test_claim_help_says_it_moves_nothing():
