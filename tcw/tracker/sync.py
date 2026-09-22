@@ -31,7 +31,9 @@ A move that takes the ticket — a start, a record naming the `start` (that star
 delivery never finished), or a binding still carrying `catch-up: true` from an older
 `link --sync-status` — takes it first when it is not already this account's. Taking
 it is an assignment, read back (`assert_ownership`), and moves it only when
-`work.tracker.exclusive-claim-transition` names a transition to assert through.
+`work.tracker.exclusive-claim-transition` names a transition to assert through —
+and never even then from above the status that transition leads to, since applying
+it from there could only move the ticket back.
 Delivery then carries on from wherever the ticket is, and a catch-up is walked
 forward rung by rung. Nothing else takes a ticket: taking one in any other
 circumstance is `tcw work tracker claim`.

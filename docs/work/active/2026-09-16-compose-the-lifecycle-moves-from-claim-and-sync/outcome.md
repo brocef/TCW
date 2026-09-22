@@ -153,3 +153,209 @@ Every new assertion was broken on purpose and seen to go red for the stated reas
   claim can no longer move anything back. A `sync` of a recorded start whose unowned
   ticket sits in review is therefore refused where a live `start` would claim it.
 - The originating GitHub issue, if any, is answered only after the version is cut.
+
+---
+
+# Rework, 2026-09-22
+
+Sent back at verify. `rework.md` is the work list; this section records what each
+item changed and the evidence for it. Same worktree, same private virtual
+environment, `tcw work` still driven by hand.
+
+## Commits
+
+| Commit | Item | What |
+| --- | --- | --- |
+| `3f00b942` | B1 | A completion or a discard never delivers a recorded start first. |
+| `c9088ae7` | B2 | A failure during the recorded-start hop leaves the record naming `start`. |
+| `d724b270` | B3 | No claim applies `exclusive-claim-transition` from above the claim's own status. |
+| `4c498e03` | B3 (spec) | Design 3 and criterion 1 restated, because B3 changes a rule the spec describes. |
+| `a57fcffa` | S1 | A claim whose transition landed and whose assignment did not says so, and how to recover. |
+| `0f3bbb94` | S2, false text, coverage gap | The claim's false sentences corrected, the catch-up completion documented, the created record's fields covered. |
+
+## B1 — a resolution never delivers a recorded start first
+
+**Changed.** `not resolving` added to the recorded-start block
+(`tcw/tracker/sync.py`), with the reason in the comment above it: a completion or a
+discard is where work stops, so a start it never delivered is not owed any more,
+and marching the ticket up into a working status only to close it is what
+`ladder_steps` already refuses to do for a discard. `resolving` is true for both
+`complete` and `discard`, so the one condition covers the completion side the
+rework asked about. A catch-up binding toward a completion never reaches this
+block — it returns through `walk()` first — so nothing there changes.
+
+**Proof.**
+`test_a_resolution_carrying_a_start_record_does_not_deliver_the_start_first`
+(`tests/test_tracker_sync.py`), parametrized over a discard and a completion, on a
+workflow offering a way onto the ladder and both ways off it from every status, so
+nothing but the rule under test decides how many transitions are sent.
+
+**Mutation.** `not resolving` removed → both cases red, `['21', '31']` where
+`['31']` was asserted: the march through `In Progress` the rework's probe saw.
+
+## B2 — a failed start hop keeps the record naming `start`
+
+**Changed.** All three failure returns in the recorded-start block set
+`move = "start"` before calling `finish`. The comment says why: a record naming the
+later move gives that move a window beginning at `statuses.active`, where the hop
+never managed to put the ticket, so every later `sync` reads the ticket as drift.
+
+**Proof.** Two tests.
+`test_a_failure_delivering_a_recorded_start_keeps_the_record_naming_the_start`
+covers all three failure points — a hop with no transition offered, an unreachable
+`POST`, and a read-back that fails after the `POST` landed (armed from inside the
+`POST`, so it cannot catch an earlier read). `test_a_submit_whose_start_hop_was_
+unreachable_is_recovered_by_a_later_sync` runs the whole cycle through to the
+`sync` that finishes both moves.
+
+**Mutations.** All three assignments removed → all four cases red with
+`'submit' == 'start'`. Separately, the transition-failure assignment removed *and*
+the record assertion deleted from the recovery test → the `sync` refused with
+exactly the drift message `rework.md` predicted, "TCW does not move it back: put it
+in 'In Progress' or 'In Review'".
+
+## B3 — the claim never moves a ticket back
+
+**Changed**, as the requester decided, in two places.
+
+- `deliver` (`tcw/tracker/sync.py`): where the key is set and the ticket's rung is
+  above 0, the assertion is not passed to `assert_ownership`. The ticket is taken
+  by the assignment and its read-back alone and left where it is, and the claim's
+  message says so, naming the setting, so nobody reads a weaker claim as the
+  stronger one they configured.
+- `_strict_claim` (`tcw/work/cli.py`): the same case is refused before the item
+  moves, naming both ways out — move the ticket back to `statuses.active`, or turn
+  strict mode off.
+
+**One narrowing the rework did not name, and it came from a shipped test.** The
+strict refusal fires only where the assertion would really be applied: not for a
+ticket already this account's (`assert_ownership` returns before the transition, so
+nothing could move back and exclusivity is already settled), not for a resolved one,
+and not for one somebody else holds — `assert_ownership` refuses those itself with
+far better messages. Without the narrowing,
+`test_start_of_a_ticket_already_yours_in_review_leaves_it_there` went red, which is
+how it was found.
+
+**Proof.** In `tests/test_tracker_strict.py`, on the `GLOBAL` workflow, which offers
+the claim transition from every status:
+`test_a_start_above_the_claim_transition_takes_the_ticket_without_applying_it`,
+`test_a_strict_start_above_the_claim_transition_is_refused_before_the_item_moves`,
+and `test_a_strict_start_on_the_claims_own_status_still_asserts_through_it`
+(parametrized over a ticket below the ladder and one on the claim's own rung).
+
+**Mutations.** `weaker = False` in `deliver` → the non-strict test red, `['21']`
+applied: the backwards move. `past = ""` in `_strict_claim` → the strict test red,
+exit 0 with the ticket dragged back. `rung > 0` widened to `rung is not None` in
+`_strict_claim` → the on-the-claim's-own-rung case red. The same widening in
+`deliver` → `test_start_of_a_ticket_already_yours_in_review_leaves_it_there` red.
+Dropping the "would the assertion really apply" narrowing → that same test red.
+The first version of the rung test only covered a ticket below the ladder and went
+**green** under the widening mutation; it was widened until it went red.
+
+**Spec.** Design 3 gains a subsection stating the rule and why the two modes differ,
+and criterion 1 now says the start is refused under strict mode with the key set.
+Committed separately as `4c498e03`.
+
+## S1 — a claim whose transition landed and whose assignment did not
+
+**Changed.** (a) In `tcw/tracker/ownership.py`, `refused()` carries `transitioned`,
+and `OwnershipOutcome.status` now reports where an applied assertion left the
+ticket rather than where it was found — a caller told the old status cannot tell
+the user what to put right. (b) `deliver` and `_strict_claim` both say "{key} was
+moved to '{status}' but is not assigned to you. Assign it to yourself in the
+tracker, then run this again.", in place of advice that would send the user in a
+circle: re-running cannot finish the claim, because the assertion transition is no
+longer offered from where the ticket now sits, which is the very property that makes
+it exclusive.
+
+**Proof.** `test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led`
+(`tests/test_tracker_ownership.py`), over a refused assignment and a failed
+read-back, and its negative twin
+`test_a_refusal_before_the_assertion_reports_no_transition`. Through the two
+callers: `test_a_strict_start_whose_assignment_failed_says_the_ticket_moved` and
+`test_a_start_whose_assignment_failed_after_the_transition_says_the_ticket_moved`.
+
+**Mutations.** `refused()` dropping `transitioned` → all four red. `landed` not
+updated after the transition → all four red. `deliver` back to the old advice → the
+`deliver` test red. `_strict_claim` back to the old advice → the strict test red.
+
+## S2 — completing an older catch-up binding still needs the ticket
+
+**Documented, not changed**, as `rework.md` asked, and the fix did not fall out of
+B1: `resolving` is false for a `complete` on a catch-up binding, so such a
+completion goes through `walk()` and is still refused when somebody else holds the
+ticket. Recorded in the Jira guide's "`complete` and a discard need no claim"
+paragraph as a named exception, with the remedy, and in the changelog. Only
+bindings written before `link --sync-status` was retired are affected, and nothing
+writes the key any more.
+
+## False text
+
+- **The triage sentence** (`docs/guide/jira.md`): `submit` and `rework` *do* take a
+  ticket out of triage when the item still carries an undelivered start, because
+  the recorded start is what takes the ticket. Said, with the condition. The list
+  of commands that never do keeps `complete`, a discard, `tracker claim` and
+  `tracker create`.
+- **"Only `tcw work tracker sync` moves a ticket backwards"** (release notes and
+  the Jira guide): replaced with the actual rule — no lifecycle move takes a ticket
+  back out of its own window, which is why `rework` still brings a ticket from
+  review down to active (criterion 18d) while a `start` leaves a ticket somebody
+  moved on alone.
+- **The `submit`/`rework` release-note bullet**: "If Jira cannot be reached they go
+  ahead" now says what strict mode does instead — refuses, and the item does not
+  move (criterion 11).
+- **`sync.py`'s past-the-claim refusal**: "Claiming it from there could move it
+  back" is said only where `exclusive-claim-transition` is set; without the key a
+  claim is an assignment and moves nothing, and the refusal gives the true reason
+  instead. The refusal itself is unchanged, as the spec's Design 2 table asks.
+  Pinned by
+  `test_the_past_the_claim_refusal_only_blames_the_claim_transition_when_there_is_one`,
+  parametrized both ways; mutation — the reason stopped depending on the key — red
+  on the no-key case.
+- **"is already held by you"**: printed only for a `start` now, not for every move
+  that takes the ticket, so a `submit` carrying a leftover start record no longer
+  reports something about a move nobody asked for. The strict half needed the CLI,
+  which is the only layer that knows: `_strict_claim` prints its own claim line
+  ("{key} is held by you.") and passes `say_claim=False` to `_deliver_after`, so the
+  claim this command just made is never reported as *already* held. Pinned by
+  `test_only_a_start_says_the_ticket_was_already_held`,
+  `test_a_start_on_a_ticket_already_yours_still_says_so` and
+  `test_a_strict_start_says_it_took_the_ticket_not_that_it_was_already_held`;
+  three mutations (the old condition restored, the strict line removed, `say_claim`
+  ignored) each red.
+- **The catch-up walk's "past where its item is" refusal** no longer says the
+  ticket was not *claimed*: this run may well have just claimed it.
+- **The `walk()` comment**: both paths into it need `catch-up: true` on the
+  binding, and neither depends on a claim being owed any more. Rewritten to say
+  that, and that nothing writes the key so every walk is on an older binding.
+
+## Coverage gap
+
+`test_create_brings_its_ticket_to_work_under_way_without_a_catch_up` now asserts
+that the record `tracker create` writes has exactly `RECORD_FIELDS`, restoring the
+guard the removed `test_the_link_that_asks_for_a_catch_up_writes_no_claim` gave:
+no command writes a claim into the record. Mutation — a `claim: owed` key added to
+what `create` writes — red.
+
+## Known effects, recorded and not fixed
+
+From `rework.md`'s "not this item's" list, carried here so they are not lost:
+
+- The web app's `work.start` on an active item nobody holds now returns HTTP 422
+  (`ValueError("takeover requires an owner")`): the store accepts the case and the
+  web app passes no owner (`tcw/serve/__init__.py:953`, `tcw/store/fs.py:4056-4059`).
+  A candidate follow-up item.
+- Two simultaneous starts of an unowned active item from different checkouts: the
+  last writer wins.
+- The contradictory "resolved … take it with `tracker claim`" advice, which is on
+  `main` already, and the untested backup refusal in `_tracker_link` for an item
+  somebody else holds.
+
+And one this rework adds:
+
+- Under B1, a completion carrying an undelivered start, on a workflow with no
+  transition from the ticket's current status straight to `statuses.completed`, is
+  now reported as conflicting rather than walked up through the working statuses.
+  That is the honest answer — the alternative is the march B1 exists to stop — but
+  it is a refusal where there used to be a move, and a project on such a workflow
+  finishes the ticket by hand or through `tcw work tracker sync`.
