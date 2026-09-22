@@ -65,7 +65,7 @@ work:
                 bug: Bug
             components: [Platform] # optional
             on-new: false # optional, default false
-        exclusive-claim-transition: Start Progress # optional; see below
+        exclusive-claim-transition: Start Progress # optional; required under strict mode
         comments: false # optional, default false
         link: https://tcw.example.com/work/{slug} # optional
         strict: false # optional, default false
@@ -878,8 +878,8 @@ claimed. Strict mode needs `statuses.active`, `statuses.completed`,
 reports whichever is missing, and strict commands refuse until it is set.
 
 `exclusive-claim-transition` is required because strict mode promises that only one
-person can take a ticket, and a claim keeps that promise only by applying a
-transition your workflow will not apply to a ticket someone has already taken. Set
+person can take a ticket, and a transition your workflow will not apply to a ticket someone has already
+taken is what stops a second person. Set
 it to the transition that takes a ticket into work. Setting it means
 `tcw work tracker claim` applies that transition, so a claim moves the ticket. See
 [When two people claim at once](#when-two-people-claim-at-once).

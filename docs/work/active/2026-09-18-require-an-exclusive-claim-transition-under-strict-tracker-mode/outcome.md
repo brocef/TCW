@@ -71,6 +71,12 @@ tcw work tracker list: the tracker configuration has problems:
 
 The first and third name the key; the second names `tcw validate`, as planned.
 
+*Reworded at verify.* The message's middle sentence now reads "…and this
+transition, which your workflow will not apply to a ticket that has already been
+taken, is what stops a second person." The old "a claim keeps that promise by
+applying this transition" was true only of `tcw work tracker claim` until C4
+lands. The output above predates the change; everything else about it holds.
+
 **The texts read together.** The validate message, the `tracker.md` and `jira.md`
 passages, and the release-note entry were read side by side. None says that
 `tcw work start` uses the key; each says only that a claim applies it and that

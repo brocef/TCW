@@ -175,9 +175,8 @@ waiting in triage".
 `statuses.completed`, `statuses.discarded` as one status name or a mapping of all
 three of `wontfix`, `duplicate` and `superseded`, and `exclusive-claim-transition` —
 otherwise `tcw validate` reports the missing key. The claim transition is required
-because strict mode promises that only one person can take a ticket, and a claim
-keeps that promise only by applying a transition the workflow will not apply to a
-ticket already taken. Name the transition that takes a ticket into work. Setting it
+because strict mode promises that only one person can take a ticket, and a transition the workflow will not apply to a
+ticket already taken is what stops a second person. Name the transition that takes a ticket into work. Setting it
 means `tcw work tracker claim` applies it, which moves the ticket. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.

@@ -1275,15 +1275,15 @@ TRACKER_RENAMED_KEYS = {
         "renamed to work.tracker.transitions.start, the transition the start move "
         "applies, alongside submit, rework, complete and discard",
 }
-# Strict mode promises that only one person can take a ticket, and nothing but this
-# transition can keep that promise: a claim applies it first, and a workflow that
-# will not apply it to a ticket already taken stops the second person there.
+# Strict mode promises that only one person can take a ticket. A claim that applies
+# this transition first keeps that promise, because a workflow that will not apply
+# it to a ticket already taken stops the second person there.
 STRICT_NEEDS_EXCLUSIVE_CLAIM = (
     "work.tracker.exclusive-claim-transition: required when strict is true. Strict "
-    "mode promises that only one person can take a ticket, and a claim keeps that "
-    "promise by applying this transition, which your workflow will not apply to a "
-    "ticket that has already been taken. Name the transition that takes a ticket "
-    "into work.")
+    "mode promises that only one person can take a ticket, and this transition, "
+    "which your workflow will not apply to a ticket that has already been taken, "
+    "is what stops a second person. Name the transition that takes a ticket into "
+    "work.")
 # `backlog` first: it is where an item begins, and where creation puts its ticket.
 # The other four are the statuses a *bound* ticket is moved through afterwards.
 TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")

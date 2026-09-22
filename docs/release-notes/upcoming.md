@@ -9,9 +9,9 @@ internal module names.
   `work.tracker.exclusive-claim-transition`. Until it is set, `tcw validate`
   reports it missing, and every command strict mode checks refuses and tells you to
   run `tcw validate`. Projects that do not use strict mode are not affected.
-- **Why.** Strict mode promises that only one person can take a ticket. A claim
-  keeps that promise only by applying a transition your workflow will not apply to
-  a ticket someone has already taken, so strict mode now insists you name one.
+- **Why.** Strict mode promises that only one person can take a ticket. A
+  transition your workflow will not apply to a ticket someone has already taken is
+  what stops a second person, so strict mode now insists you name one.
 - **What to set.** The transition your workflow uses to take a ticket into work,
   one it will not apply to a ticket already taken:
 
