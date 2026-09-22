@@ -564,6 +564,9 @@ def test_a_strict_start_above_the_claim_transition_is_refused_before_the_item_mo
     fake_.requests.clear()
     code, _out, err = cli(root, "work", "start", slug)
     assert code == 1 and REFUSED in err, err
+    # GLOBAL offers the transition from every status, so here it really would have
+    # moved the ticket back — the reason the refusal is entitled to give.
+    assert f"would move {KEY} back" in err, err
     assert f"Move {KEY} back to 'In Progress'" in err, err
     assert "turn work.tracker.strict off" in err, err
     assert status(root, slug) == "backlog"
@@ -680,6 +683,82 @@ def test_a_claim_whose_read_back_failed_does_not_call_the_ticket_unassigned(
     assert status(root, slug) == ("backlog" if strict else "active")
     held = fake_.tickets[TICKET_ID]
     assert (held.status, held.assignee) == ("In Progress", A)
+
+
+def test_the_strict_past_the_claim_refusal_only_says_it_would_move_it_back_if_it_could(
+        tmp_path, monkeypatch):
+    """The refusal is the same either way — strict mode's proof of exclusivity is
+    missing whether or not the transition is offered from there — but the reason is
+    not. On a workflow that does not offer it from the ticket's status, nothing would
+    have moved the ticket back, and saying it would is untrue."""
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=SYNC)               # 'Start Progress' only from 'To Do'
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Review")
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
+    slug = bound_item(root)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1 and REFUSED in err, err
+    assert f"{KEY}'s workflow does not offer that transition from there" in err, err
+    assert "would move" not in err, err
+    assert f"Move {KEY} back to 'In Progress'" in err, err
+    assert status(root, slug) == "backlog" and fake_.writes() == []
+
+
+# ── what a strict start's own claim line withholds, and what it must not ────
+
+
+def test_a_strict_start_whose_commit_is_refused_still_says_it_claimed_once(
+        tmp_path, monkeypatch):
+    """A refused commit leaves the item moved, so that path delivers the move too —
+    and it has to withhold the delivery's claim line for the same reason the ordinary
+    path does: this very command took the ticket moments ago and already said so."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    hook = root / ".git" / "hooks" / "pre-commit"       # the commit, and only it, fails
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert f"{KEY} is already held by you." not in err, err
+    assert err.count(f"{KEY} is held by you.") == 1, err
+
+
+def steal_before_the_nth_read(fake_, n: int) -> None:
+    """Leave the ticket held by nobody just before the `n`th read of it from now on:
+    somebody letting it go in the window between the claim and the delivery."""
+    answer, reads = fake_.answer, []
+
+    def counting(client, method, path, body):
+        if method == "GET" and "?fields=" in path:
+            reads.append(path)
+            if len(reads) == n:
+                fake_.tickets[TICKET_ID].assignee = None
+        return answer(client, method, path, body)
+
+    fake_.answer = counting
+
+
+def test_a_strict_start_reports_a_claim_the_delivery_had_to_make_again(tmp_path,
+                                                                      monkeypatch):
+    """The other half of the same rule: what a strict start withholds is the sentence
+    saying the ticket was *already* held, and nothing else. If the ticket is let go
+    between the strict claim and the delivery, the delivery takes it back — and a
+    claim this run made is news whoever said what before it."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    steal_before_the_nth_read(fake_, 3)       # the strict claim's two reads, then this
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert err.count(f"{KEY} is held by you.") == 2, err
+    assigned = [path for _method, path in fake_.writes() if path.endswith("/assignee")]
+    assert len(assigned) == 2, fake_.writes()
+    assert fake_.tickets[TICKET_ID].assignee == A
 
 
 def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,

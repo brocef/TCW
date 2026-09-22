@@ -78,6 +78,15 @@ category.
   every move that takes the ticket, and `_deliver_after` takes `say_claim=False`
   from a strict `start` — `_strict_claim` now prints the claim's own message, since
   under strict mode the ticket was taken by that same command, not "already".
+- `Outcome.already_held` (`tcw/tracker/sync.py`) marks a claim message that only
+  reports the ticket as *already* this account's, and `_deliver_after`'s
+  `say_claim=False` now withholds that alone: a claim `deliver` itself had to make —
+  the ticket was let go between `_strict_claim` and the delivery — is printed. The
+  `TransitionCommitError` recovery in `_cmd_start` passes `say_claim` too, so a
+  strict start that trips it no longer prints a claim line twice.
+- `_strict_claim`'s past-the-claim refusal says the transition "would move {key}
+  back" only where the workflow offers it from the ticket's status; where it does
+  not, the refusal stands but gives that as the reason.
 - The past-the-claim refusal blames `exclusive-claim-transition` only where the key
   is set; without it a claim moves nothing and could not move the ticket back. The
   catch-up walk's "past where its item is" refusal no longer says the ticket was

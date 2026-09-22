@@ -459,6 +459,7 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         return None, False                # the store refuses it, and names why
     if not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
+    from tcw.tracker.claim import _normalize
     from tcw.tracker.intake import leave_pre_backlog, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
     from tcw.tracker.ownership import assert_ownership
@@ -469,6 +470,7 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     key = bound.ticket_key
     client = JiraClient(config)
     left = past = ""
+    offers_it_there = False
     try:
         ticket, step_refusal, left = leave_pre_backlog(
             client, read_ticket(client, bound.ticket_id))
@@ -487,6 +489,13 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
                    and not ticket.assignee_id)
         past = (ticket.status if config.exclusive_claim_transition and asserts
                 and rung is not None and rung > 0 else "")
+        # Whether the transition is offered from there at all. Both cases are refused
+        # — strict mode's proof of exclusivity is missing either way — but only one of
+        # them would actually have moved the ticket back, and saying so about a
+        # workflow that does not offer it there would be untrue.
+        offers_it_there = bool(past) and any(
+            _normalize(t.name) == _normalize(config.exclusive_claim_transition)
+            for t in ticket.offered)
         # Exclusivity is the configured transition's: strict mode requires
         # `exclusive-claim-transition`, and a workflow that will not apply it to a
         # ticket somebody already took stops a second claimant before the assignment.
@@ -501,15 +510,17 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     if past:
         from tcw.store.base import target_status
         active = target_status(config.statuses, "active", None)
+        why = (f"Applying that transition from there would move {key} back"
+               if offers_it_there else
+               f"{key}'s workflow does not offer that transition from there")
         return _strict_says_no(
             "start", f"{bare} was not started",
             moved_out(key, left)
             + f"{key} is in '{past}', past '{active}', where "
-              f"work.tracker.exclusive-claim-transition leads. Applying that "
-              f"transition from there would move {key} back, and strict mode does not "
-              f"accept an assignment on its own as proof that nobody else holds the "
-              f"ticket. Move {key} back to '{active}' in the tracker and run this "
-              f"again, or turn work.tracker.strict off."), False
+              f"work.tracker.exclusive-claim-transition leads. {why}, and strict mode "
+              f"does not accept an assignment on its own as proof that nobody else "
+              f"holds the ticket. Move {key} back to '{active}' in the tracker and run "
+              f"this again, or turn work.tracker.strict off."), False
     if step_refusal is not None or not outcome.settled:
         failed = step_refusal or outcome
         detail = f" ({failed.detail})" if failed.detail else ""
@@ -1246,9 +1257,12 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str, *,
     readable binding, or a node with no tracker configured, returns 0 before
     `tcw.tracker` is imported, so a project without a tracker loads none of it.
 
-    `say_claim=False` withholds the line saying what the delivery did to take the
-    ticket. A strict `start` passes it: `_strict_claim` has already taken the ticket
-    and said so, and `deliver` would otherwise report the ticket as *already* held.
+    `say_claim=False` withholds the delivery's claim line **when all it says is that
+    the ticket was already this account's**. A strict `start` passes it:
+    `_strict_claim` has already taken the ticket and said so, and `deliver` would
+    otherwise report the ticket as *already* held. A claim `deliver` itself made —
+    somebody took the ticket between the two, and it was taken back — is news, and is
+    printed whatever the caller asked for.
     """
     try:
         item = st.get(bare)
@@ -1279,7 +1293,7 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str, *,
               f"followed could not be recorded: {e}. Run `tcw work tracker sync "
               f"{bare}`.", file=sys.stderr)
         return 1
-    if outcome.claimed and say_claim:
+    if outcome.claimed and (say_claim or not outcome.already_held):
         print(f"→ {outcome.claimed}", file=sys.stderr)
     if outcome.state == HELD:
         print(f"→ {outcome.reason}", file=sys.stderr)
@@ -1374,7 +1388,8 @@ def _start(args: argparse.Namespace) -> int:
                   f"before the start was refused, and is left claimed. Run "
                   f"`tcw work start {bare}` again once that is fixed.", file=sys.stderr)
         if isinstance(e, TransitionCommitError):      # the item did move
-            _deliver_after(st, bare, "start", "start", previous)
+            _deliver_after(st, bare, "start", "start", previous,
+                           say_claim=not claimed)
         return 1
     post_err = run_post(st.lifecycle_policy(), "start", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))

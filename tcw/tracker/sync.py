@@ -172,6 +172,11 @@ class Outcome:
     claimed: str = ""            # the claim's own message, when this run claimed
     note: str = ""               # a warning for the caller to print: set when the
                                  # move that was made took the ticket backwards
+    already_held: bool = False   # `claimed` only reports that the ticket was
+                                 # *already* this account's, rather than a claim this
+                                 # run made. A caller that has just claimed the ticket
+                                 # itself suppresses this one sentence; a claim this
+                                 # run made is news whatever the caller did before it.
 
 
 def classify_error(error: TrackerError) -> str:
@@ -418,6 +423,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                                  item.resolution, shared=shared)
     since = record["since"] if record else (expected[0] if expected else "")
     claimed_message = ""
+    # Whether `claimed_message` says only that the ticket was already this account's.
+    # A claim this run made replaces that, and a caller that suppresses the former
+    # must still print the latter.
+    already_held = False
     backwards = ""
 
     def finish(state: str, reason: str = "") -> Outcome:
@@ -433,6 +442,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             return Outcome(state, reason)
         if store.pending_deletion(slug):
             return Outcome(state, reason, claimed=claimed_message,
+                           already_held=already_held,
                            note=backwards if state == CURRENT else "")
         if state in (PENDING, CONFLICTING):
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
@@ -449,7 +459,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 "state": state, "move": "start" if start_owed else move, "since": since,
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
-            return Outcome(state, reason, recorded=True, claimed=claimed_message)
+            return Outcome(state, reason, recorded=True, claimed=claimed_message,
+                           already_held=already_held)
         drop_record = bound.sync is not None
         # Once the ticket is where its item says, however it got there, the note that
         # its status was never synced is no longer true.
@@ -462,6 +473,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 content = with_status_synced(content)
             store.write_sidecar(slug, BINDING_SIDECAR, content, revision=revision)
         return Outcome(state, reason, claimed=claimed_message,
+                       already_held=already_held,
                        note=backwards if state == CURRENT else "")
 
     def taken_back(state: str, reason: str) -> Outcome:
@@ -754,6 +766,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # strict mode the ticket was taken moments ago by `_strict_claim`, not
         # "already", so the CLI prints that claim's own line and suppresses this one.
         claimed_message += f"{ticket.key} is already held by you."
+        already_held = True
 
     if bound.catch_up and not check_only:
         # A binding an older `link --sync-status` wrote: the ticket is walked up rung by
