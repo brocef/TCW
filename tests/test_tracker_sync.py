@@ -1859,11 +1859,14 @@ def test_without_sync_status_sync_does_not_walk_a_ticket_through_statuses(tmp_pa
     assert fake_.tickets[TICKET_ID].status == "In Progress"
 
 
-def test_a_recorded_start_without_sync_status_is_followed_by_one_transition_only(
+def test_a_recorded_start_a_finished_item_no_longer_owes_is_not_delivered_by_sync(
         tmp_path, monkeypatch):
-    """A `start` whose claim did not reach the tracker leaves a record naming it. When
-    the item has moved on, `sync` claims and then makes the single move it always made —
-    walking through several statuses is only for a binding that asked for it."""
+    """A `start` whose claim did not reach the tracker leaves a record naming it. Once
+    the item is finished that start is owed to nobody, so `sync` neither claims the
+    ticket nor climbs to a working status on the way: it sends the resolution alone.
+    On a workflow with no transition from where the ticket sits to `statuses.completed`
+    that is a refusal — the honest answer, where marching the ticket up through the
+    statuses that mean somebody is working on it, purely to close it, is not."""
     from tracker_fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = bound_item(root)
@@ -1874,8 +1877,11 @@ def test_a_recorded_start_without_sync_status_is_followed_by_one_transition_only
     FsWorkStore.open(root).complete(slug, "done", ["acked"])    # delivers nothing
     code, _out, _err = cli(root, "work", "tracker", "sync", slug)
     assert code == 1
-    assert fake_.applied == ["21"], fake_.applied
-    assert fake_.tickets[TICKET_ID].status == "In Progress"
+    assert fake_.applied == [], fake_.applied
+    ticket = fake_.tickets[TICKET_ID]
+    assert (ticket.status, ticket.assignee) == ("To Do", None)
+    # The record moves on with the item: what the ticket is owed is the completion.
+    assert record(root, slug)["move"] == "complete", record(root, slug)
 
 
 def test_an_unclaimed_ticket_in_step_after_a_plain_link_is_an_ordinary_conflict(
@@ -2562,6 +2568,37 @@ def test_a_resolution_carrying_a_start_record_does_not_deliver_the_start_first(
     assert outcome.state == "current", outcome
     assert fake_.applied == sent, fake_.applied
     assert fake_.tickets[TICKET_ID].status == landing
+
+
+@pytest.mark.parametrize("assignee", [A, None], ids=["yours", "unassigned"])
+@pytest.mark.parametrize("resolution, landing, sent", [
+    ("wontfix", "Won't Do", ["51"]),
+    ("done", "Done", ["31"]),
+], ids=["discard", "complete"])
+def test_a_sync_of_a_resolved_item_carrying_a_start_record_sends_only_the_resolution(
+        tmp_path, monkeypatch, resolution, landing, sent, assignee):
+    """The same rule on the `sync` path, where the move being made is not passed in.
+    `sync` reads the move from the record, so a resolved item carrying a start record
+    used to look like a start whatever the item said: it claimed the ticket and
+    marched it up into a working status before closing it from there. The item is
+    what says work has stopped, and it says so whatever the record names."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, ANY_WAY_OUT)
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    assert record(root, slug)["move"] == "start"
+    claimed_ticket(fake_, "To Do", assignee)
+    FsWorkStore.open(root).complete(slug, resolution, dod_ack=["acked"], force=True)
+    fake_.applied.clear()
+    outcome = deliver_now(root, slug, move=None, previous=None)      # a `sync`
+    assert outcome.state == "current", outcome
+    assert fake_.applied == sent, fake_.applied
+    ticket = fake_.tickets[TICKET_ID]
+    # The assignee is untouched: a resolution takes no ticket, so a `sync` that
+    # finds one nobody holds closes it without claiming it first.
+    assert (ticket.status, ticket.assignee) == (landing, assignee)
+    assert record(root, slug) is None
 
 
 # ── a failure while delivering a recorded start stays the start's ───────────

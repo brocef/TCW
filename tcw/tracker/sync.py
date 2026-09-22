@@ -28,8 +28,12 @@ recorded for it: several items share it, another part may be holding it back, an
 hold leaves no evidence outside the checkout it happened in.
 
 A move that takes the ticket — a start, a record naming the `start` (that start's
-delivery never finished), or a binding still carrying `catch-up: true` from an older
-`link --sync-status` — takes it first when it is not already this account's. Taking
+delivery never finished) on an item that has not finished since, or a binding still
+carrying `catch-up: true` from an older `link --sync-status` — takes it first when it
+is not already this account's. **A finished item takes no ticket**, whatever its
+record names: the start is owed to nobody once work has stopped, and `sync`, which
+has no move of its own and reads the record's, would otherwise see a start wherever
+one was recorded. Taking
 it is an assignment, read back (`assert_ownership`), and moves it only when
 `work.tracker.exclusive-claim-transition` names a transition to assert through —
 and never even then from above the status that transition leads to, since applying
@@ -348,15 +352,27 @@ def deliver(store, slug: str, client, config, *, move: str | None,
               else target_status(config.statuses, local, item.resolution))
     syncing = move is None                   # `sync`, not a lifecycle move
     starting = move == "start"
+    start_record = record is not None and record["move"] == "start"
+    # A recorded start is still owed while — and only while — the item is unfinished.
+    # **Read from the item, never from the move**, because `sync` has no move of its
+    # own and takes the record's just below: a resolved item carrying a start record
+    # would otherwise look like a start however finished the item is, which is how a
+    # `sync` came to claim a discarded item's ticket and march it up into a working
+    # status before closing it from there. Once work has stopped, the start is not
+    # owed: nothing is left for it to lead to.
+    start_owed = start_record and local not in RESOLVED_STATUSES
     # Whether this is a move that takes the ticket: a start, a binding still carrying
-    # `catch-up: true` (which older versions' `link --sync-status` wrote), or a record
-    # whose move is the `start`, meaning that start's delivery never finished. A
-    # property of the move alone, so the early exit below can decide on it without
-    # asking the tracker anything. Whether the ticket is actually still to be taken is
-    # the ticket's to answer, once it has been read: `owed`, below.
-    takes_ticket = starting or bound.catch_up or (record is not None
-                                                  and record["move"] == "start")
-    move = move or (record["move"] if record else None)
+    # `catch-up: true` (which older versions' `link --sync-status` wrote), or a start
+    # still owed. A property of the move and the item, so the early exit below can
+    # decide on it without asking the tracker anything. Whether the ticket is actually
+    # still to be taken is the ticket's to answer, once it has been read: `owed`, below.
+    takes_ticket = starting or bound.catch_up or start_owed
+    # `sync` delivers what the record names — unless that is a start the item has
+    # resolved past, when what the ticket is owed is the resolution itself. Naming the
+    # start there would also demand a claim `MOVES_NEEDING_NO_CLAIM` exempts a
+    # resolution from, so a `sync` would refuse to close a ticket nobody holds.
+    move = move or (MOVE_ONTO[local] if start_record and not start_owed
+                    else record["move"] if record else None)
     # A resolution takes no ticket (`MOVES_NEEDING_NO_CLAIM`) — except on a catch-up
     # binding toward a completion, whose walk climbs the working statuses on the way
     # and so still needs the ticket held, exactly as it always did.
@@ -568,8 +584,11 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # Triage, whoever it is assigned to: a reporter's own ticket is already theirs, and
     # still has to leave triage before it can be worked. Never for a move that takes no
     # ticket — `submit`, `rework`, `complete`, a discard — and never for a report-only
-    # check, which sends nothing.
-    if takes_ticket and not check_only and not resolving:
+    # check, which sends nothing. Never for a finished item either, whatever move is
+    # being delivered: taking a ticket out of triage is preparation for work, and work
+    # has stopped. That is read from the item for the reason `start_owed` gives.
+    if (takes_ticket and not check_only and not resolving
+            and local not in RESOLVED_STATUSES):
         try:
             ticket, refusal, left = leave_pre_backlog(client, ticket)
         except TrackerError as error:
@@ -743,15 +762,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # account now holds and still below the ladder — one already on it has had its
     # start, and one nobody holds is a resolution's to move, which needs no start.
     #
-    # **Never for a resolution.** A completion or a discard is where work stops, and
-    # a start it never delivered is not owed any more: sending it would march the
-    # ticket up into a status meaning somebody is working on it purely so the next
-    # transition could close it, which is what `ladder_steps` refuses to do for a
-    # discard for the same reason. Worse, a refused start hop would stop the
-    # resolution being delivered at all.
+    # **Never once the item is resolved.** A completion or a discard is where work
+    # stops, and a start it never delivered is not owed any more (`start_owed`):
+    # sending it would march the ticket up into a status meaning somebody is working
+    # on it purely so the next transition could close it, which is what `ladder_steps`
+    # refuses to do for a discard for the same reason. Worse, a refused start hop
+    # would stop the resolution being delivered at all. The item is what says work has
+    # stopped — asking the move instead misses every `sync`, which has no move of its
+    # own and reads the record's, so the start record answered for itself.
     active = target_status(config.statuses, "active", None)
-    if (record is not None and record["move"] == "start" and local != "active"
-            and active and not check_only and not resolving
+    if (start_owed and local != "active"
+            and active and not check_only
             and ticket.assignee_id == ticket.me_id
             and lowest_rung(config.statuses, ticket.status) is None):
         verdict, detail = assess_move(

@@ -484,6 +484,32 @@ def test_a_discard_never_accepts(tmp_path, monkeypatch):
     assert "11" not in fake_.applied
 
 
+@pytest.mark.parametrize("owed", ["start-record", "catch-up"])
+def test_a_sync_of_a_resolved_item_owing_a_claim_stays_in_triage(tmp_path, monkeypatch,
+                                                                 owed):
+    """`sync` reads its move from the record, so a resolved item carrying a start
+    record used to take its ticket out of triage — and then march it on up — for a
+    start nobody owes any more. A binding still carrying `catch-up: true` took it out
+    for the same wrong reason. Only the item says whether work has stopped, and it
+    says so whatever the binding names: the ticket is closed where it stands."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A,
+                              pre_backlog={"Triage": "Accept"})
+    slug = FsWorkStore.open(root).create("Never really started").slug
+    plain_link(root, slug)
+    if owed == "catch-up":
+        set_binding_key(root, slug, "catch-up", True)
+    else:
+        with_record(root, slug, {"state": "pending", "move": "start", "since": "",
+                                 "reason": "x", "at": "2026-09-21T00:00:00Z"})
+    FsWorkStore.open(root).complete(slug, "wontfix", dod_ack=[], force=True)
+    fake_.applied.clear()
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake_.applied == ["12"], fake_.applied     # 'Cancel', straight out of Triage
+    assert fake_.tickets[TICKET_ID].status == "Won't Do"
+    assert MOVED not in out + err
+
+
 def test_a_part_bound_report_only_sync_sends_nothing(tmp_path, monkeypatch):
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
