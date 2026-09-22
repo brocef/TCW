@@ -8,7 +8,7 @@ tags:
 - work
 - cli
 initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
-owner: brocef@users.noreply.github.com
-started: '2026-09-22T13:42:01.853550Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode
 branch: work/2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode
