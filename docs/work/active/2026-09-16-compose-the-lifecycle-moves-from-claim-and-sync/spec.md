@@ -311,6 +311,38 @@ This also explains C2's `rework` defect in one rule rather than as a special
 case: the "ticket was ahead of its item" note was a `sync` fact leaking into a
 lifecycle move, which is the same leak in the other direction.
 
+**The claim itself is a hole in this rule, and closing it changed a decision.**
+Amended at rework on 2026-09-22, after the adversarial review found it. The rule
+above governs the *delivery*; the claim happens before the delivery, and where
+`work.tracker.exclusive-claim-transition` is set the claim applies a transition of
+its own. That transition leads onto `statuses.active`, so on a workflow that
+offers it from everywhere — the review's probe used one — a `start` whose ticket
+sat in the review status applied it and dragged the ticket back down, which is
+exactly what this section forbids. Worse, the `HELD` check below then measured
+against the rung the ticket was on *before* the claim, so the message described a
+ticket that was no longer there.
+
+The requester decided the rule, and it is not the same on both sides of strict
+mode, because the two modes promise different things:
+
+- **Outside strict mode**, the assertion transition is skipped when the ticket is
+  already above `statuses.active`. The ticket is taken by the assignment and its
+  read-back alone, and left exactly where it is. The output says so, naming the
+  setting, so nobody reads a weaker claim as the stronger one they configured.
+- **Under strict mode**, the start is refused before the item moves, and nothing
+  is sent. Strict mode's whole promise is that a workflow, not a read-after-write,
+  is what keeps a second person out; accepting the assignment alone here would be
+  silently dropping that promise on the one path where it is hardest to notice.
+  The refusal says what to do: move the ticket back to `statuses.active` in the
+  tracker and run the start again, or turn `work.tracker.strict` off.
+
+The strict refusal fires only where the assertion would really be applied. A
+ticket already this account's sends nothing at all — `assert_ownership` returns
+before the transition — so there is nothing to move back and the exclusivity
+question is already answered; a resolved ticket and one somebody else holds are
+refused by `assert_ownership` itself, with messages that say far more than this
+one could.
+
 ### 4. Strict mode's exclusivity moves to C1's key
 
 `claim_refusal` asks whether a workflow would refuse a second claimant, by asking
@@ -446,7 +478,10 @@ of them. `tcw serve` and `web/` are read for callers, not changed.
 ## Acceptance criteria
 
 1. `tcw work start` on a backlog item whose bound ticket is in the review status
-   exits 0 and leaves the ticket in that status.
+   exits 0 and leaves the ticket in that status — **unless strict mode is on and
+   `work.tracker.exclusive-claim-transition` is set, when it is refused before the
+   item moves** (amended at rework; see Design 3). With that key set and strict
+   mode off, it still exits 0, and the claim it makes applies no transition.
 2. The same `start` assigns the ticket to the running account.
 3. `tcw work start` on an item already active with an empty `owner` exits 0 and
    sets `owner` to the running identity.
