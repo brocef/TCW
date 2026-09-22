@@ -273,15 +273,10 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
                  if _normalize(t.name) == _normalize(named_transition)]
         if not named:
             offers = ", ".join(f"'{t.name}' to '{t.to_status}'" for t in ticket.offered)
-            # `transitions.start` is the one key of the five that cannot be removed:
-            # a start has no status-derived rule to fall back to, so the parser
-            # requires it (`TRACKER_MOVE_TRANSITION_KEYS` in `tcw/store/base.py`).
-            # Offering to remove it would advise something `tcw validate` refuses.
-            drop = ("" if move == "start"
-                    else ", or remove it to let TCW find the transition itself")
             return CONFLICTING, (f"{key} in '{where}' offers no transition named "
                                  f"'{named_transition}'. It offers: {offers or 'nothing'}."
-                                 f" Fix work.tracker.transitions.{move}{drop}.")
+                                 f" Fix work.tracker.transitions.{move}, or remove it "
+                                 f"to let TCW find the transition itself.")
         if len(named) > 1:
             ids = ", ".join(sorted(t.id for t in named))
             return CONFLICTING, (f"'{named_transition}' matches more than one transition "

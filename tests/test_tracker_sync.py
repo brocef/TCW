@@ -1528,22 +1528,20 @@ def _ticket_offering(*offered, status: str = "In Progress"):
                       for i, (name, to) in enumerate(offered, start=1)))
 
 
-@pytest.mark.parametrize("move, removable", [("start", False), ("complete", True)],
-                         ids=["start-is-required", "complete-is-optional"])
-def test_only_a_removable_transition_key_is_offered_for_removal(move, removable):
+@pytest.mark.parametrize("move", ["start", "submit", "rework", "complete", "discard"])
+def test_every_transition_key_is_offered_for_removal(move):
     """The refusal tells you to fix the key it named, and offers to let TCW work the
-    transition out instead — which means deleting the key. Four of the five may be
-    deleted. `transitions.start` may not: the parser requires it, because a start has
-    no status-derived rule to fall back to, so advising its removal would advise
-    something `tcw validate` then refuses."""
+    transition out instead — which means deleting the key. All five may be deleted:
+    none of the keys under `work.tracker.transitions` is required, and every move,
+    `start` included, falls back to the status-derived rule when nobody names one."""
     from tcw.tracker.sync import CONFLICTING, assess_move
     verdict, reason = assess_move(
         _ticket_offering(("Ready for Review", "In Review")),
         target="Done", expected=("In Progress",), move=move,
         named_transition="Not Offered Here")
     assert verdict == CONFLICTING, reason
-    assert f"Fix work.tracker.transitions.{move}" in reason, reason
-    assert ("remove it to let TCW find the transition itself" in reason) is removable, reason
+    assert (f"Fix work.tracker.transitions.{move}, or remove it to let TCW find the "
+            f"transition itself." in reason), reason
 
 
 def _also_name(root: Path, **moves: str) -> None:
