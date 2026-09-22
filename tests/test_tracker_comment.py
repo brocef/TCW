@@ -554,6 +554,17 @@ def test_a_comment_owed_on_a_binding_from_another_site_is_reported(tmp_path, fak
     assert cli(root, "work", "tracker", "sync", slug)[0] == 1
 
 
+def test_a_completion_of_an_unassigned_ticket_posts_its_comment(tmp_path, fake):
+    """A completion moves a ticket nobody holds now (a claim gates work, not
+    resolution), so it says so on the ticket, as a discard already did. It used to be
+    skipped, because a completion could not move such a ticket."""
+    root = comments_node(tmp_path)
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Progress", None)
+    assert publish_now(root, slug, move="complete").state == "current"
+    assert len(texts(fake)) == 1 and owed(root, slug) is None
+
+
 def test_a_discard_of_an_unassigned_ticket_still_posts_its_comment(tmp_path, fake):
     """A discard may close a ticket nobody holds, so the comment saying why must go
     with it — otherwise the ticket is closed with no trace of what closed it, which

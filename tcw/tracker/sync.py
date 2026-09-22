@@ -17,9 +17,10 @@ brought back, and one that fell behind is brought forward.** A backwards move is
 reported, so somebody who moved the ticket on purpose sees that it was undone.
 
 Three things stop a move in either direction, and none of them is about which way it
-goes: a ticket assigned to another account, a ticket nobody holds (except for a
-discard, the one move an unheld ticket authorizes), and a ticket already resolved,
-whose resolution TCW never changes. Anything else that stops a move is reported as
+goes: a ticket assigned to another account, a ticket nobody holds, and a ticket
+already resolved, whose resolution TCW never changes. The first two do not stop a
+completion or a discard: a claim gates work, not resolution
+(`MOVES_NEEDING_NO_CLAIM`). Anything else that stops a move is reported as
 conflicting.
 
 A ticket the user bound as a named `--part` is left alone by `sync` when nothing is
@@ -80,11 +81,14 @@ MOVE_STATUS = {"start": "active", "submit": "review", "rework": "active",
 # and `transitions.start` names the transition that does it.
 MOVE_ONTO = {"active": "start", "review": "submit", "completed": "complete",
              "discarded": "discard"}
-# The moves that may act on a ticket nobody holds. Abandoning work is the one thing
-# an unassigned ticket authorizes: every other move is somebody saying they are doing
-# the work, which is a claim, and a claim assigns. Widening this set would let TCW
-# march a ticket through a workflow on behalf of a person who never took it.
-MOVES_ALLOWING_UNASSIGNED = frozenset({"discard"})
+# The moves that need no claim: they move a ticket whoever holds it, or nobody. A
+# claim gates work, not resolution. Finishing and abandoning work are not statements
+# that you are doing it — they say nobody is any longer — and refusing them on
+# ownership would leave a resolved item with a ticket nothing can close. This
+# reverses the rule this set used to state, that only a discard could act on a
+# ticket nobody held: every other move then had to be a claim first, and a claim
+# assigns. `start`, `submit` and `rework` are still work, and still need one.
+MOVES_NEEDING_NO_CLAIM = frozenset({"complete", "discard"})
 # Where to look for the status a ticket was left in, from an item's previous status.
 _EARLIER = {"active": ("active",), "review": ("review", "active")}
 # The same, from a recorded move whose `since` is unknown: where that move started.
@@ -220,8 +224,8 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
     """Steps 4–7 of a status move, over one ticket read. Pure. Returns `(state, reason)`, or
     `("apply", transition)` when one transition to apply can be identified.
 
-    `move` is the lifecycle move being served, which decides whether a ticket nobody
-    holds may be acted on (`MOVES_ALLOWING_UNASSIGNED`). `named_transition` is what the
+    `move` is the lifecycle move being served, which decides whether who holds the
+    ticket matters at all (`MOVES_NEEDING_NO_CLAIM`). `named_transition` is what the
     project configured for that move, if anything; without one the transition is derived
     from the target status, which is the only rule that existed before.
     """
@@ -234,16 +238,17 @@ def assess_move(ticket, *, target: str, expected: tuple[str, ...], move: str | N
     # refusal one command later.
     if not expected and ticket.category == "done":
         return CONFLICTING, f"{key} is already resolved ('{where}'), so it was not moved."
-    if ticket.assignee_id != ticket.me_id:
+    # Skipped whole for a resolution, not only for a ticket nobody holds: one held by
+    # another account is theirs to work, not theirs to keep open.
+    if move not in MOVES_NEEDING_NO_CLAIM and ticket.assignee_id != ticket.me_id:
         if ticket.assignee_id:
             return CONFLICTING, (f"{key} is assigned to {ticket.assignee_name}, not to "
                                  f"you, so it was not moved from '{where}' to "
                                  f"'{target}'.")
-        if move not in MOVES_ALLOWING_UNASSIGNED:
-            return CONFLICTING, (f"{key} is unassigned, so it was not moved from "
-                                 f"'{where}' to '{target}'. Take it with `tcw work "
-                                 f"tracker claim`, or assign it to yourself in the "
-                                 f"tracker.")
+        return CONFLICTING, (f"{key} is unassigned, so it was not moved from "
+                             f"'{where}' to '{target}'. Take it with `tcw work "
+                             f"tracker claim`, or assign it to yourself in the "
+                             f"tracker.")
     if expected:
         if _normalize(where) not in {_normalize(status) for status in expected}:
             wanted = " or ".join(f"'{status}'" for status in expected)
@@ -350,6 +355,11 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     takes_ticket = starting or bound.catch_up or (record is not None
                                                   and record["move"] == "start")
     move = move or (record["move"] if record else None)
+    # A resolution takes no ticket (`MOVES_NEEDING_NO_CLAIM`) — except on a catch-up
+    # binding toward a completion, whose walk climbs the working statuses on the way
+    # and so still needs the ticket held, exactly as it always did.
+    resolving = move in MOVES_NEEDING_NO_CLAIM and not (bound.catch_up
+                                                       and move == "complete")
     # Nothing is sent and nothing is written: the ticket is only reported on. A `sync`
     # with no record has no window of statuses the ticket may be in — no local move
     # just happened — so it reconciles the ticket to the item from wherever it sits, in
@@ -554,7 +564,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # still has to leave triage before it can be worked. Never for a move that takes no
     # ticket — `submit`, `rework`, `complete`, a discard — and never for a report-only
     # check, which sends nothing.
-    if takes_ticket and not check_only and move != "discard":
+    if takes_ticket and not check_only and not resolving:
         try:
             ticket, refusal, left = leave_pre_backlog(client, ticket)
         except TrackerError as error:
@@ -592,13 +602,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             # offers it.
             return finish(CURRENT)
         rung = lowest_rung(config.statuses, ticket.status)
-        if move == "discard":
-            # A discard claims nothing. Abandoning work is not a statement that you are
-            # doing it, and claiming would assign the ticket and move it into a working
-            # status purely so it could be closed. Nothing is owed afterwards either —
-            # the item is resolved, so no later move will ever want a claim — and
-            # `assess_move` still refuses a ticket somebody else holds, and with no
-            # window one that is already resolved.
+        if resolving:
+            # A resolution claims nothing. Finishing or abandoning work is not a
+            # statement that you are doing it, and claiming would assign the ticket —
+            # and, for a discard, move it into a working status purely so it could be
+            # closed. Nothing is owed afterwards either: the item is resolved, so no
+            # later move will ever want a claim. `assess_move`, with no window, still
+            # refuses a ticket that is already resolved.
             owed = False
             since = ticket.status
             expected = ()
@@ -660,7 +670,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 return finish(classify_error(error), str(error))
             if outcome.transitioned:
                 since = ticket.status
-    elif takes_ticket and not check_only and move != "discard":
+    elif takes_ticket and not check_only and not resolving:
         # Already this account's, so nothing is sent to take it — but a start still
         # says so, as the claim it replaces always did.
         claimed_message += f"{ticket.key} is already held by you."
@@ -764,9 +774,10 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     except TrackerError as error:
         return finish(classify_error(failure or error), str(failure or error))
     # The assignment clause is relaxed for finished work exactly as the owed
-    # short-circuit above relaxes it: a discard may move a ticket nobody holds, and
-    # moving it assigns nothing, so demanding the ticket be ours afterwards would
-    # turn that success into "did not reach 'Won't Do': it is in 'Won't Do'".
+    # short-circuit above relaxes it: a completion or a discard may move a ticket
+    # whoever holds it, and moving it assigns nothing, so demanding the ticket be ours
+    # afterwards would turn that success into "did not reach 'Won't Do': it is in
+    # 'Won't Do'".
     if _normalize(again.status) == _normalize(target) and (
             local in RESOLVED_STATUSES or again.assignee_id == again.me_id):
         return finish(CURRENT)

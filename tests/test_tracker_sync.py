@@ -375,12 +375,12 @@ def test_a_hand_move_to_the_recorded_target_is_accepted(node, fake):
     assert record(node, slug) is None
 
 
-# `(nobody, discard)` is deliberately absent: an unassigned ticket is the one case a
-# discard may move, so that pairing lives in
-# `test_an_unassigned_ticket_is_closed_by_a_discard` below.
+# `complete` and `discard` are deliberately absent: a claim gates work, not
+# resolution, so they move a ticket whoever holds it. Those pairings live in
+# `test_a_resolution_moves_a_ticket_whoever_holds_it` below.
 @pytest.mark.parametrize("assignee, move", [
-    *[(B, move) for move in ("submit", "rework", "complete", "discard")],
-    *[(None, move) for move in ("submit", "rework", "complete")]],
+    *[(B, move) for move in ("submit", "rework")],
+    *[(None, move) for move in ("submit", "rework")]],
     ids=lambda v: {B: "someone-else", None: "nobody"}.get(v, v))
 def test_a_ticket_not_assigned_to_you_is_never_moved(node, fake, assignee, move):
     slug = bound_item(node)
@@ -395,12 +395,6 @@ def test_a_ticket_not_assigned_to_you_is_never_moved(node, fake, assignee, move)
         st.rework(slug)
         previous = "review"
         claimed_ticket(fake, "In Review", assignee)
-    elif move == "complete":
-        st.complete(slug, "done", ["acked"])
-        claimed_ticket(fake, "In Progress", assignee)
-    else:
-        st.complete(slug, "wontfix", dod_ack=[], force=True)
-        claimed_ticket(fake, "In Progress", assignee)
     outcome = deliver_now(node, slug, move=move, previous=previous)
     # Whose it is decides the wording: a ticket somebody holds names them, one nobody
     # holds says so and points at claiming it rather than implying a holder.
@@ -433,13 +427,36 @@ def test_an_unassigned_ticket_is_not_moved_by_anything_but_a_discard(node, fake)
     assert fake.writes() == []
 
 
-def test_a_discard_still_refuses_a_ticket_someone_else_holds(node, fake):
+def test_a_discard_closes_a_ticket_someone_else_holds_and_leaves_it_theirs(node, fake):
+    """This test used to assert the opposite — that a discard refused a ticket another
+    account held. Resolution now overrides ownership: abandoning the work is not taking
+    the ticket, so it is closed and stays assigned to whoever held it."""
     slug = bound_item(node)
     claimed_ticket(fake, "To Do", B)
     FsWorkStore.open(node).complete(slug, "wontfix", dod_ack=[], force=True)
     outcome = deliver_now(node, slug, move="discard", previous=None)
-    assert outcome.state == "conflicting" and "Bob" in outcome.reason
-    assert fake.writes() == []
+    assert outcome.state == "current", outcome
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("Won't Do", B)
+    assert assignments(fake) == [] and record(node, slug) is None
+
+
+@pytest.mark.parametrize("assignee", [B, None], ids=["someone-else", "nobody"])
+@pytest.mark.parametrize("move", ["complete", "discard"])
+def test_a_resolution_moves_a_ticket_whoever_holds_it(node, fake, move, assignee):
+    slug = bound_item(node)
+    st = FsWorkStore.open(node)
+    st.start(slug, owner="a@example.test")
+    if move == "complete":
+        st.complete(slug, "done", ["acked"])
+    else:
+        st.complete(slug, "wontfix", dod_ack=[], force=True)
+    claimed_ticket(fake, "In Progress", assignee)
+    outcome = deliver_now(node, slug, move=move, previous="active")
+    assert outcome.state == "current", outcome
+    held = fake.tickets[TICKET_ID]
+    assert held.status == ("Done" if move == "complete" else "Won't Do")
+    assert held.assignee == assignee and assignments(fake) == []
 
 
 def test_no_transition_or_two_to_the_target_is_conflicting(tmp_path, monkeypatch):
@@ -2477,3 +2494,49 @@ def test_a_claim_the_tracker_did_not_answer_is_recorded_pending(node, fake):
     assert code == 1 and "(pending)" in err, err
     assert record(node, slug)["state"] == "pending"
     assert (record(node, slug)["move"], fake.tickets[TICKET_ID].assignee) == ("start", None)
+
+
+# ── a claim gates work, not resolution ───────────────────────────────────────
+
+
+def test_complete_finishes_a_ticket_someone_else_holds(node, fake):
+    """Criterion 8, through the command."""
+    slug = bound_item(node)
+    assert cli(node, "work", "start", slug)[0] == 0
+    claimed_ticket(fake, "In Progress", B)
+    code, _out, err = cli(node, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 0, err
+    assert status(node, slug) == "completed"
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("Done", B)
+
+
+def test_a_discard_of_a_never_started_unassigned_ticket_closes_it(node, fake):
+    """Criterion 9, through the command."""
+    slug = bound_item(node)
+    code, _out, err = cli(node, "work", "complete", slug, "--resolution", "wontfix",
+                          "--confirm")
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("Won't Do", None)
+    assert status(node, slug) == "discarded"
+
+
+def test_a_completion_owing_a_start_still_takes_no_ticket(tmp_path, monkeypatch):
+    """A start whose delivery never finished leaves a record that makes the next move
+    one that takes the ticket. A completion is not work, so even then it assigns
+    nothing: it closes the ticket as nobody's."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL)
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    assert record(root, slug)["move"] == "start"
+    FsWorkStore.open(root).complete(slug, "done", ["acked"])
+    fake_.requests.clear()
+    outcome = deliver_now(root, slug, move="complete", previous="active")
+    assert outcome.state == "current", outcome
+    assert assignments(fake_) == []
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("Done", None)

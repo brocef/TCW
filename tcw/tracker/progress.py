@@ -28,7 +28,7 @@ from tcw.store.base import link_for
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, read_ticket,
                                 same_site, with_comment_record)
 from tcw.tracker.jira import TrackerError
-from tcw.tracker.sync import (CONFLICTING, CURRENT, MOVES_ALLOWING_UNASSIGNED, NONE,
+from tcw.tracker.sync import (CONFLICTING, CURRENT, MOVES_NEEDING_NO_CLAIM, NONE,
                               PENDING, REASON_LIMIT, Outcome, _now, classify_error)
 
 SKIPPED, CLEARED = "skipped", "cleared"
@@ -122,7 +122,7 @@ def _send(store, slug: str, client, config, bound: Bound, move: str, event: str,
     # comment is the only record of why the ticket closed, and skipping it would close
     # the ticket silently. A ticket somebody *else* holds is still theirs to annotate.
     if ticket.assignee_id != ticket.me_id and not (
-            not ticket.assignee_id and move in MOVES_ALLOWING_UNASSIGNED):
+            not ticket.assignee_id and move in MOVES_NEEDING_NO_CLAIM):
         holder = ticket.assignee_name if ticket.assignee_id else "nobody"
         _write(store, slug, None)
         return Outcome(SKIPPED, f"{key} is assigned to {holder}, so no progress comment "
