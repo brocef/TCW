@@ -788,6 +788,7 @@
   resolution: done
   resolved: '2026-09-16'
 2026-09-16-compose-the-lifecycle-moves-from-claim-and-sync:
+  location: 8e9937b46c051419074c37879730758c9c2727b7
   resolution: done
   resolved: '2026-09-22'
 2026-09-16-fix-the-guide-s-taxonomy-example-and-a-stale-readme-citation:
