@@ -697,9 +697,17 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # the start it records, then the move that followed it. Only for a ticket this
     # account now holds and still below the ladder — one already on it has had its
     # start, and one nobody holds is a resolution's to move, which needs no start.
+    #
+    # **Never for a resolution.** A completion or a discard is where work stops, and
+    # a start it never delivered is not owed any more: sending it would march the
+    # ticket up into a status meaning somebody is working on it purely so the next
+    # transition could close it, which is what `ladder_steps` refuses to do for a
+    # discard for the same reason. Worse, a refused start hop would stop the
+    # resolution being delivered at all.
     active = target_status(config.statuses, "active", None)
     if (record is not None and record["move"] == "start" and local != "active"
-            and active and not check_only and ticket.assignee_id == ticket.me_id
+            and active and not check_only and not resolving
+            and ticket.assignee_id == ticket.me_id
             and lowest_rung(config.statuses, ticket.status) is None):
         verdict, detail = assess_move(
             ticket, target=active, expected=(), move="start",

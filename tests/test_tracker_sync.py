@@ -2509,6 +2509,39 @@ def test_a_completion_owing_a_start_still_takes_no_ticket(tmp_path, monkeypatch)
     assert (held.status, held.assignee) == ("Done", None)
 
 
+# A workflow offering, from every status, a way onto the ladder and both ways off
+# it: so nothing but the rule under test decides how many transitions are sent.
+ANY_WAY_OUT = {status: [("21", "Start Progress", "In Progress"),
+                        ("31", "Finish", "Done"),
+                        ("51", "Won't Do", "Won't Do")]
+               for status in ("To Do", "In Progress", "In Review", "Done", "Won't Do")}
+
+
+@pytest.mark.parametrize("move, resolution, landing, sent", [
+    ("discard", "wontfix", "Won't Do", ["51"]),
+    ("complete", "done", "Done", ["31"]),
+], ids=["discard", "complete"])
+def test_a_resolution_carrying_a_start_record_does_not_deliver_the_start_first(
+        tmp_path, monkeypatch, move, resolution, landing, sent):
+    """A start whose delivery never reached the tracker leaves a record naming it, and
+    the ticket is this account's. Resolving the item must still send one transition —
+    the resolution's — and not march the ticket up into a working status first only to
+    close it from there."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, ANY_WAY_OUT)
+    slug = bound_item(root)
+    fake_.down = True
+    assert cli(root, "work", "start", slug)[0] == 1
+    fake_.down = False
+    assert record(root, slug)["move"] == "start"
+    claimed_ticket(fake_, "To Do", A)            # the claim landed later, by hand
+    FsWorkStore.open(root).complete(slug, resolution, dod_ack=["acked"], force=True)
+    fake_.applied.clear()
+    outcome = deliver_now(root, slug, move=move, previous="active")
+    assert outcome.state == "current", outcome
+    assert fake_.applied == sent, fake_.applied
+    assert fake_.tickets[TICKET_ID].status == landing
+
+
 # ── `link --sync-status` is retired; `catch-up` is read, never written ───────
 
 
