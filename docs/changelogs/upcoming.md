@@ -5,6 +5,17 @@ category.
 
 ### Added
 
+- `claim.NOT_CONFIGURED` (`tcw/tracker/claim.py`): `assess` returns it, with
+  `NOT_CLAIMABLE` / `NOT_DETERMINED`, for a claim transition name that is blank.
+  One guard in the shared function rather than three in its callers, which are the
+  three readers of `config.start_transition` that have no target status to derive
+  from: `intake._claim_from`, `_print_ticket` (`tcw/work/cli.py`) and
+  `sync.claim_refusal`.
+- Row `1d` in `intake._claim_from`: `tracker import` and `inbox accept` refuse a
+  ticket when `work.tracker.transitions.start` names nothing, and say which key to
+  set. Placed **after** row `1e`, so a ticket the running account already holds is
+  still imported — the re-run recovery and the `tracker claim` then `import`
+  sequence both depend on that order.
 - The claim gate (`_claim_gate`, `tcw/work/cli.py`): `submit` and `rework` of a
   bound item refuse before the local move unless the ticket's assignee is the
   signed-in account, in every mode. Refuses only on an answer; skipped under strict
@@ -30,6 +41,23 @@ category.
 
 ### Changed
 
+- `work.tracker.transitions` and `work.tracker.transitions.start` are both
+  optional. `parse_tracker_config` (`tcw/store/base.py`) loses both required checks:
+  the shared `nested` call for the mapping, and `if "start" not in transitions`.
+  An absent mapping yields `{}`; `transitions: null` is now reported as
+  `work.tracker.transitions: expected a mapping, got NoneType` rather than as a
+  missing required key, the shape `inbox-query` and `exclusive-claim-transition`
+  already use. A start with no configured name reaches `assess_move`'s
+  status-derived tail, which it has done since the lifecycle moves were composed
+  from claim and sync; the parser's requirement was the only thing preventing the
+  configuration.
+- `assess_move`'s "offers no transition named" refusal offers removal for all five
+  moves. The `start` special case existed because the parser then refused a
+  configuration without the key.
+- `REASON_LIMIT` (`tcw/tracker/sync.py`) 300 → 400. The uniform removal advice
+  added 50 characters to the longest refusal TCW composes (331 measured), and the
+  cut took the `pre-backlog` hint — the part that says what to do — off the
+  recorded reason.
 - `deliver` (`tcw/tracker/sync.py`) takes a ticket through `assert_ownership`
   (asserting through `exclusive-claim-transition`) instead of `intake.claim`. The
   claim-landing refusal and the early `CURRENT` return for a start are gone; the
@@ -127,6 +155,19 @@ category.
 
 ### Internal
 
+- The comments in `tcw/store/base.py` (above `TRACKER_TRANSITION_KEYS`, in
+  `_parse_tracker_transitions` and in `attribute_tracker_problems`) and in
+  `tcw/tracker/sync.py` that stated `start` had no status-derived fallback. That
+  stopped being true when the lifecycle moves were composed from claim and sync.
+  `attribute_tracker_problems`' docstring used `transitions.start: required` as its
+  worked example of a problem about a key nobody set; the parser can no longer
+  produce that message, so the example is now `credentials.token-env: required`.
+- `make_node` and `ladder_node` (`tests/test_tracker_sync.py`) and `strict_node`
+  (`tests/test_tracker_strict.py`) take a `transitions` argument, where `None`
+  leaves the mapping out of the block. `TWO_ROUTES_IN` (`tests/tracker_fake.py`) is
+  `SYNC` with a second route out of the backlog status into `In Progress`: two
+  routes into `statuses.active` is what makes a configured name load-bearing, since
+  on `SYNC` the named and the derived answers are the same transition id.
 - Every strict test fixture now sets `exclusive-claim-transition`, so a fixture
   broken on purpose is broken only by what it breaks. `strict_node`
   (`tests/test_tracker_strict.py`) takes it as a required `claim_transition`

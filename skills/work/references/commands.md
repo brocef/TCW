@@ -135,6 +135,9 @@ offering every transition from every status — Jira's default — a started tic
 reports `not exclusive`, and two people claiming it would both succeed. On an
 exclusive workflow a started ticket still reports `not determined`, and a second
 `show` will not change that; only a claim, or the workflow definition, confirms it.
+Where `work.tracker.transitions.start` is not set at all, `show` says the setting
+names no transition rather than reporting it as a name the ticket does not offer —
+the reader is sent to their own configuration file, not to the ticket's workflow.
 
 ### Claiming and binding
 
@@ -220,6 +223,11 @@ is imported.
   `work.tracker.pre-backlog` names when the ticket is in one of its statuses, and says
   the ticket was moved out; nothing else leaves triage, and without the key the
   refusal names it.
+- **No `transitions.start`:** the key is optional, and a lifecycle `start` with no
+  name works its transition out from `statuses.active`. `import` and `inbox accept`
+  cannot — a claim has no status of its own to derive from — so they refuse and name
+  the key (row `1d`), unless the ticket is already assigned to the running account,
+  which needs no transition and still imports (row `1e`).
 - **Parts:** a status move is held while another open item here shares the ticket.
 - **Another site:** a binding whose `ticket.url` is not on `base-url` is never
   written through; `import`/`link` refuse it naming the item.
@@ -330,7 +338,9 @@ starting. `unlink` makes no tracker call and needs no tracker configured.
 
 Neither `list` nor `show` detects a wrong `transitions.start` value. A ticket not offering it
 may not have reached the claim yet, or may have been claimed already, and both are
-indistinguishable from a typo without reading the project's workflow definition.
+indistinguishable from a typo without reading the project's workflow definition. An
+*unset* key is a different case and both do report it: nothing has to be read from
+the workflow to know the setting is empty.
 
 ## Addressing
 

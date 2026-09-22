@@ -3,6 +3,29 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
+## Naming the start transition is now optional
+
+- **`work.tracker.transitions.start` is no longer required.** Leave it out — or
+  leave the whole `transitions` block out — and TCW works the transition out for
+  itself, from the status the start is heading for. That is what the other four
+  moves have always done; a start could not do it while the setting was required.
+- **A project that sets it sees no change at all.** The name is still honoured
+  exactly as before. Nothing you have today needs editing.
+- **Two reasons to keep setting it.** If your workflow has two transitions out of
+  your backlog status into your active status, the status alone cannot say which
+  one a start means, so TCW refuses rather than guessing — the item still moves
+  locally and `tcw work tracker sync` retries once you name the transition. And
+  `tcw work tracker import` and `tcw work inbox accept` claim a ticket *through*
+  that transition whatever your workflow looks like, so they still need it.
+- **When it is not set, the two commands that need it say so.**
+  `tcw work tracker import` and `tcw work inbox accept` refuse and name the
+  setting, instead of reporting that the ticket does not offer a transition called
+  nothing. `tcw work tracker show` and `tcw work inbox show` say the setting names
+  no transition, rather than reporting it as a name the ticket does not offer.
+- **The advice on a wrong transition name is the same for all five moves.** When a
+  ticket does not offer the transition you named, the message now offers removing
+  the setting for `start` too, since removing it is allowed.
+
 ## Strict mode needs one more setting
 
 - **Breaking change for projects that set `strict: true`.** Strict mode now needs

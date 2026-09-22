@@ -2,7 +2,8 @@
 
 A node connects to an external tracker for `tcw work tracker list` and `show`,
 which read tickets; for `import`, which claims a ticket through the workflow
-transition named in `transitions.start`, and `link`, which only records a binding
+transition named in `transitions.start` and refuses, naming the key, when nothing
+is set there; and `link`, which only records a binding
 (`link --sync-status` is retired: `link`, then `tracker claim`, then `tracker sync`);
 and for the lifecycle commands, which claim a bound item's ticket at `start` — an
 assignment, moving it only through `exclusive-claim-transition` when that is set —
@@ -31,8 +32,8 @@ work:
 ```
 
 Configured under `work.tracker` in the node sentinel: `provider` (only
-`jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env`,
-`credentials.token-env`, `transitions.start`, and optional `statuses`, `pre-backlog`,
+`jira-cloud`), `base-url`, `candidate-query`, `credentials.email-env` and
+`credentials.token-env`, and optional `transitions`, `statuses`, `pre-backlog`,
 `strict`, `comments`, `link`, `inbox-query`, `exclusive-claim-transition` and
 `timeout-seconds` (default 15). All but the optional ones are required once the node's block is merged with
 its ancestors' blocks (below), so a node can set only the keys that differ from its
@@ -50,8 +51,10 @@ names, read at request time. Set those two variables in the shell that runs `tcw
 never write the email address or the token into `tcw-config.yaml`.
 
 `transitions.start` is the name of the tracker's workflow transition that starts
-a ticket, exactly as the tracker spells it. `tcw` cannot tell a wrong name from a
-ticket that simply does not offer it yet, so copy it from the project's workflow.
+a ticket, exactly as the tracker spells it. It is optional. `tcw` cannot tell a wrong
+name from a ticket that simply does not offer it yet, so copy it from the project's
+workflow; it *can* tell you the key is unset, and both `tracker show` and `import`
+say so.
 
 `transitions` also takes `submit`, `rework`, `complete` and `discard`, all optional.
 Each names the transition that move should use, for a workflow where the target
@@ -60,10 +63,14 @@ and one for abandoned work, is the usual case, and without a name neither `compl
 nor a discard can sync at all. `discard` takes one name or one per discard resolution
 (`wontfix`, `duplicate`, `superseded`), and unlike `statuses.discarded` under strict
 mode it may be partial: it exists to disambiguate, so name only what is ambiguous.
-A move with no entry keeps deriving its transition from the status. `start` is the
-exception and is still required by `tcw validate`, although a start now moves its
-ticket the same way as the other four once the claim (an assignment) is made;
-making it optional is a separate change. A named
+A move with no entry keeps deriving its transition from the status, and that now
+includes `start`: a start moves its ticket the same way as the other four, so with
+no name it derives its transition from `statuses.active`. Two things still want the
+name. A workflow with two transitions out of the backlog status into the active one
+cannot be resolved from the status, so a start there refuses rather than guessing.
+And `tracker import` and `inbox accept` claim a ticket *through* that transition and
+have no status of their own to derive from, so they refuse and name the key when it
+is unset. A named
 transition the ticket does not offer, or that matches twice, or that leads to a
 status other than the mapped one, is refused rather than ignored. **Upgrade every
 copy of `tcw` first:** version 2.3.0 and earlier report the four optional keys as
@@ -78,8 +85,10 @@ one word, with the value left as it is. `tcw validate` reports it by name:
 tcw-config.yaml: work.tracker.transitions.claim: renamed to
 work.tracker.transitions.start, the transition the start move applies, alongside
 submit, rework, complete and discard
-tcw-config.yaml: work.tracker.transitions.start: required
 ```
+
+The replacement is not reported as missing, because it is not required: renaming the
+key is the whole upgrade, and deleting it outright is also allowed.
 
 It is reported against the file that wrote it, which in a shared workspace is the
 parent node holding the settings, not the child being validated.

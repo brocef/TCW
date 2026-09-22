@@ -81,8 +81,7 @@ work:
 | `create`                | no       | How to make a ticket for an item that has none. Required before `tcw work tracker create` will run. See [Making a ticket for an item](#making-a-ticket-for-an-item).                                                |
 | `credentials.email-env` | yes      | The **name** of the environment variable holding your Jira account's e-mail address.                                                                   |
 | `credentials.token-env` | yes      | The **name** of the environment variable holding your Jira API token.                                                                                  |
-| `transitions.start`     | yes      | The workflow transition that starts a ticket, spelled exactly as Jira spells it. Called `transitions.claim` in version 2.3.0 and earlier; see [Renaming the start transition](#renaming-the-start-transition).       |
-| `transitions.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say. See [Naming a transition](#naming-a-transition).  |
+| `transitions.start`, `.submit`, `.rework`, `.complete`, `.discard` | no | The transition each move should use, for a workflow where the status alone cannot say which one. Leave a move out and TCW works its transition out from the status the move is heading for. Naming `start` is still the right answer on a workflow with two transitions into the active status, and `tcw work tracker import` needs it whatever your workflow looks like. `transitions.start` was called `transitions.claim` in version 2.3.0 and earlier; see [Renaming the start transition](#renaming-the-start-transition). See [Naming a transition](#naming-a-transition).  |
 | `exclusive-claim-transition` | no; yes under [strict mode](#strict-mode-no-work-without-a-ticket) | A transition `tracker claim` asserts through, where the workflow refuses a second claimant. **Moves the ticket**, which claiming otherwise does not. Not the same key as `transitions.start`. See [When two people claim at once](#when-two-people-claim-at-once). |
 | `statuses`              | no       | The Jira **status** a linked ticket should be in for each of the item's statuses. See [Tickets following their items](#tickets-following-their-items). |
 | `pre-backlog`           | no       | Each Jira status a ticket waits in **before** the backlog, mapped to the transition that takes it to `statuses.backlog`. See [Tickets waiting in triage](#tickets-waiting-in-triage). |
@@ -118,6 +117,9 @@ or may already be past it, and a whole query of such tickets looks the same as a
 typo. `tracker show` reports it as information, not as an error. Copy the name
 from your project's workflow.
 
+It *can* tell you the key is not set at all, which is a different thing: `tracker
+show` says so in as many words, and `tracker import` refuses and names the key.
+
 After editing the block, run `tcw validate`, then `tcw work tracker list` to
 confirm the query and the credentials work.
 
@@ -126,8 +128,8 @@ confirm the query and the credentials work.
 A project's **board** below means its own work store: the work items it keeps.
 
 In a workspace of connected projects that all use one Jira site, the site, the
-credential variable names and the claim transition are usually the same
-everywhere, and only the query differs. A project can therefore write only what is
+credential variable names and the start transition — where a project sets one —
+are usually the same everywhere, and only the query differs. A project can therefore write only what is
 its own:
 
 ```yaml
@@ -245,7 +247,9 @@ worded as a permissions problem when someone else had simply got there first. So
 TCW:
 
 1. reads the ticket, and refuses one that is closed or assigned to someone else;
-2. applies the transition named in `transitions.start`;
+2. applies the transition named in `transitions.start`, and refuses, naming the
+   key, when nothing is set there — a claim has no status of its own to work a
+   transition out from, and guessing would assign the ticket as well as move it;
 3. assigns the ticket to you, only if that transition applied and nobody had it;
 4. reads the ticket again, and counts the claim only if the ticket is now in the
    status the claim leads to and assigned to you.
@@ -866,9 +870,15 @@ transitions:
 You only need to name the moves that are ambiguous — anything you leave out keeps
 working out the transition from the status, exactly as before. `discard` takes one
 name, or one per resolution, and a resolution you leave out falls back to the derived
-rule. `start` is the exception: it is required, because a start applies its
-transition through the claim rather than by working it out from the status, so it
-has nothing to fall back to.
+rule. That includes `start`: leave it out and a start finds its transition from the
+status it is heading for, the same way the other four moves do.
+
+Two reasons to name `start` anyway. If your workflow has **two** transitions out of
+the backlog status into the active one, the status cannot say which, so a start with
+no name refuses rather than guessing — that is the ambiguous case this whole section
+is about. And `tcw work tracker import` and `tcw work inbox accept` claim a ticket
+*through* that transition, whatever your workflow looks like, so without the key
+they refuse and tell you to set it.
 
 A name that the ticket does not offer, or that matches two transitions, or that leads
 somewhere other than the status you mapped, is refused and nothing is sent — TCW does
@@ -881,17 +891,20 @@ In version 2.3.0 and earlier, the key that names the start transition was called
 `complete` and `discard`, because claiming a ticket and starting one stopped being
 the same act.
 
-It was a required key, so **every project connected to a tracker has to change that
-one word.** Nothing else moves, and the value stays exactly as it was. TCW does not
-accept the old spelling, so nothing changes quietly behind you: `tcw validate` names
-the file and the replacement.
+It was a required key when it was called `transitions.claim`, so **every project
+connected to a tracker has to change that one word.** Nothing else moves, and the
+value stays exactly as it was. TCW does not accept the old spelling, so nothing
+changes quietly behind you: `tcw validate` names the file and the replacement.
 
 ```
 tcw-config.yaml: work.tracker.transitions.claim: renamed to
 work.tracker.transitions.start, the transition the start move applies, alongside
 submit, rework, complete and discard
-tcw-config.yaml: work.tracker.transitions.start: required
 ```
+
+`transitions.start` itself is no longer required, so you may also simply delete the
+old key — but read [Naming a transition](#naming-a-transition) first, because
+`tracker import` still needs a name and so does a workflow with two ways in.
 
 In a workspace where a parent node holds the shared settings, the old key is in the
 parent's file and that is the file the message names, even when you are validating a
