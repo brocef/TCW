@@ -600,8 +600,11 @@ All three folded in (`aad6fb8b`).
 - **A `sync` of a finished item that cannot reach the closing status in one hop is
   now a refusal.** Round 1 recorded this for the lifecycle path; it now applies to
   `sync` as well, and the test that asserted the old march was rewritten. The
-  alternative is the march R1 exists to stop, so a project on such a workflow closes
-  the ticket in the tracker or moves it up by hand.
+  alternative is the march R1 exists to stop, so a project on such a workflow
+  finishes the ticket in the tracker: either closing it outright, or moving it to a
+  status that does offer the closing transition and running `sync` again. Both halves
+  work — the second only since the follow-up fix below, which is what made the first
+  writing of this sentence half false.
 - **A record naming `start` whose ticket is already on the ladder keeps naming
   `start`** if the later move then fails, where it used to name the later move. The
   hop is skipped in that case (`lowest_rung` is not `None`), so `start_owed` is never
@@ -614,3 +617,93 @@ All three folded in (`aad6fb8b`).
   says to run it again. Neither that refusal nor the "lost the race" one was covered
   by a test before or after; they are reported here rather than pinned.
 - The known effects recorded for round 1 stand unchanged.
+
+## Follow-up fix, from the bounded review of round 2
+
+One defect, in the `move` fallback R1 added, reported with the arithmetic already
+confirmed by the coordinator. Fixed in the same worktree, same rules.
+
+**The defect.** The fallback renames a resolved item's recorded move to
+`MOVE_ONTO[local]` but leaves `since` carrying the *start* record's value, which is
+usually empty — and `since` is otherwise only assigned inside `if owed:`, inside
+`walk`, or inside the start hop, none of which is on this path. An empty `since`
+sends `expected_statuses` to `_MOVED_FROM["complete"]`, which guesses the completion
+began at `statuses.review`, so the next run read the ticket as drift and refused
+with "TCW does not move it back: put it in 'In Review' or 'Done'". Only `complete`
+is affected: `_MOVED_FROM["discard"]` is empty, which is why the `wontfix`
+parametrization never saw it.
+
+**Measured before changing anything**, on `STRICT_LADDER`, after a `start` the
+tracker never received and a completion held by a sibling part:
+
+| Hand move after the first refusing `sync` | Before |
+| --- | --- |
+| none — the ticket never moved at all | refused, "TCW does not move it back" — about a ticket nobody had touched |
+| to `In Progress` | the same false refusal |
+| to `In Review` | delivered `['31']` |
+| to `Done` | current |
+
+**The instruction was `since = ticket.status` on the fallback path. I measured it
+and did not ship it**, because it is necessary but not sufficient and carries a
+regression: it fixes the "never moved" case, still gives the false refusal from
+`In Progress`, and **breaks the `In Review` case that works today** — the window
+becomes `('To Do', 'Done')`, and `expected_statuses` narrows to the two ends
+whenever `since` is off the ladder. The `In Review` case only worked before by
+coincidence, on a window derived from a completion that never happened.
+
+**Shipped instead**, one guard that carries the property rather than the route:
+
+```python
+if syncing and resolving:
+    since, expected = ticket.status, ()
+```
+
+A `sync` delivering a resolution has no window and measures from the ticket it has
+just read. Both halves are already stated elsewhere in this module — the docstring's
+"`tcw work tracker sync` has no such window, no local transition just happened", and
+`MOVES_NEEDING_NO_CLAIM`'s "a resolution moves a ticket from wherever it sits" — and
+the existing `if resolving:` branch inside `if owed:` already does exactly this
+assignment; it was simply unreachable here, because the ticket was this account's.
+It subsumes the requested `since` assignment (the fallback path is always a syncing
+resolution) and extends it to the *second* run, which is where the false sentence
+was actually printed. After it, every row above is either delivered or refused with
+the honest reason, and nothing regresses.
+
+**`record_unsent` needs no equivalent, and I decided that rather than skipped it.**
+It runs when the tracker configuration has problems, so there is no client, nothing
+is read, and there is no ticket status to record — writing one would be a guess
+presented as a fact, and the empty `since` it writes already means "unknown". The
+only consumer that could be misled by the resulting `{move: complete, since: ""}`
+pair is a later `sync`, and a `sync` delivering a resolution now takes both `since`
+and its window from the ticket it has just read, before either is used. So the rule
+holds there through the fix above rather than through a second copy of it.
+
+**Proof.** `test_a_recorded_start_a_finished_item_no_longer_owes_is_not_delivered_by_sync`
+extended to assert the record's `since` alongside its `move`, then that a second
+`sync` with nothing changed gives the honest reason and never says "does not move it
+back", then that moving the ticket to a status offering the closing transition lets
+the next `sync` deliver it. The instruction's "move the ticket to In Progress and
+assert the next sync still delivers" cannot hold on that test's workflow by any
+window fix — `STRICT_LADDER` offers `In Progress → In Review` and no route to `Done`
+— so the delivery is asserted from `In Review`, and the `In Progress` case is
+covered by the "no false refusal" assertion instead.
+
+**Mutations**, each red on a different assertion, so both halves of the guard are
+pinned independently:
+
+| Mutation | Result |
+| --- | --- |
+| The whole guard removed | Red on the `since` assertion — the defect restored. |
+| `since = ticket.status` only, window left alone | Red on the **delivery** assertion: the `In Review` regression the measurement predicted. |
+| `expected = ()` only, `since` left alone | Red on the `since` assertion. |
+
+**Also recorded.** `work.tracker.transitions.complete` / `.discard` is now enforced
+on this path, where the recorded `start` used to bypass it and let the transition be
+derived from the target status. Verified directly: a `transitions.complete` naming
+something the workflow does not offer is now refused with "Fix
+work.tracker.transitions.complete". Added to the changelog, which had not mentioned
+it.
+
+Not taken on, as directed — these belong to a separate item: the unreachable walk
+re-entry at `sync.py:864-868`, and the `rework` / forward-only interaction with an
+empty start window.
