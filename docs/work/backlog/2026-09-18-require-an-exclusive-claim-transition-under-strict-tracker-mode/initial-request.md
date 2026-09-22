@@ -68,6 +68,12 @@ has C4's behaviour without this requirement.
   listed below.
 - No project on this machine sets `strict: true` today, including this
   repository's own `tcw-config.yaml`, so nothing here needs migrating.
+- **Corrected at `spec` (2026-09-22).** The Request above says the window between
+  this item and C4 never reaches a user because the whole epic ships in one
+  version cut. That is wrong: C1 and C3 shipped in v2.4.0, and v2.5.0 and v2.5.1
+  were cut after them without C4. The spec treats a release between this item and
+  C4 as possible (its Risk 2) and keeps every sentence this item writes true in
+  that state.
 
 ## References
 
