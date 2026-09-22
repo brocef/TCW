@@ -70,7 +70,7 @@ def test_an_absent_block_is_not_a_problem():
 
 
 @pytest.mark.parametrize("key", ["provider", "base-url", "candidate-query",
-                                 "credentials", "transitions"])
+                                 "credentials"])
 def test_a_missing_required_key_is_reported_by_name(key):
     config, problems = parse_tracker_config(_without(key))
     assert config is None
@@ -85,10 +85,29 @@ def test_a_missing_credential_key_is_reported_by_name(key):
     assert any(f"work.tracker.credentials.{key}" in p for p in problems), problems
 
 
-def test_a_missing_start_transition_is_reported_by_name():
-    config, problems = parse_tracker_config({**VALID, "transitions": {}})
+@pytest.mark.parametrize("raw", [_without("transitions"), {**VALID, "transitions": {}}],
+                         ids=["key-absent", "empty-mapping"])
+def test_a_tracker_block_with_no_transitions_validates(raw):
+    """Naming a transition per move is an override, for a workflow where the status
+    alone cannot say which transition to apply. A project that names none — by
+    leaving the mapping out, or by writing it empty — leaves all five moves on the
+    status-derived rule, `start` included."""
+    config, problems = parse_tracker_config(raw)
+    assert problems == []
+    assert config is not None
+    assert config.move_transitions == {}
+    assert config.start_transition == ""
+
+
+def test_a_null_transitions_block_is_a_wrong_value_not_a_missing_one():
+    """`transitions:` with nothing after it is somebody starting to write the block
+    and stopping, not somebody choosing to name no transition. It is reported as the
+    wrong value it is — the shape `inbox-query` and `exclusive-claim-transition`
+    already use — and never as a key that is required."""
+    config, problems = parse_tracker_config({**VALID, "transitions": None})
     assert config is None
-    assert any("work.tracker.transitions.start" in p for p in problems), problems
+    assert problems == ["work.tracker.transitions: expected a mapping, got NoneType"]
+    assert not any(p.endswith("work.tracker.transitions: required") for p in problems)
 
 
 def test_required_keys_are_required_independently():
@@ -201,8 +220,9 @@ def test_a_discard_transition_may_be_named_per_resolution_and_may_be_partial():
     assert config.move_transitions["discard"] == {"wontfix": "Abandon"}
 
 
-def test_only_the_required_start_transition_is_there_by_default():
-    """The four optional moves are absent; `start` is not optional, so it is not."""
+def test_only_the_named_moves_are_on_the_config():
+    """A move nobody named is absent from `move_transitions` rather than present and
+    empty, so the derived rule is reached by the key being missing."""
     config, problems = parse_tracker_config(VALID)
     assert problems == [] and config.move_transitions == {"start": "Start Progress"}
 
@@ -256,16 +276,17 @@ def test_the_retired_claim_key_names_its_replacement():
     assert len(about_claim) == 1, problems
     assert "work.tracker.transitions.start" in about_claim[0], about_claim
     assert "unknown key" not in about_claim[0], about_claim
-    # And the replacement is still reported as missing, so the two problems together
-    # say exactly what to edit.
-    assert "work.tracker.transitions.start: required" in problems, problems
+    # The retired-key message stands alone. `transitions.start` is optional now, so
+    # nothing tells the reader to supply the replacement as well as rename the key.
+    assert "work.tracker.transitions.start: required" not in problems, problems
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", 5], ids=["null", "empty", "blank",
                                                              "not-a-string"])
 def test_a_present_but_unusable_start_transition_is_reported(value):
     """A wrong value is reported by the same loop that reports its four siblings',
-    with the same wording. Only an absent key is the caller's `required` check."""
+    with the same wording. An absent key is not a problem at all: it means the move
+    keeps the status-derived rule."""
     config, problems = parse_tracker_config({**VALID, "transitions": {"start": value}})
     assert config is None
     matched = [p for p in problems if p.startswith("work.tracker.transitions.start")]
@@ -334,6 +355,17 @@ def test_an_exclusive_claim_transition_is_kept():
         {**VALID, "exclusive-claim-transition": "Take It"})
     assert (config.exclusive_claim_transition, config.start_transition) == (
         "Take It", "Start Progress")
+
+
+def test_a_block_with_an_exclusive_claim_and_no_transitions_validates():
+    """The two keys are independent. Making `transitions` optional must not drag
+    `exclusive-claim-transition` with it, and setting the latter must not start
+    requiring the former."""
+    config, problems = parse_tracker_config(
+        {**_without("transitions"), "exclusive-claim-transition": "Take It"})
+    assert problems == []
+    assert config.exclusive_claim_transition == "Take It"
+    assert config.start_transition == ""
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", 7, True])

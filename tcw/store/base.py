@@ -1259,11 +1259,11 @@ TRACKER_CREDENTIAL_KEYS = frozenset({"email-env", "token-env"})
 # These name *how* it gets there, and are needed only where the status cannot say: a
 # workflow offering two transitions into one status — a "finished" and an "abandoned"
 # route both landing in `Done` is the common shape — is otherwise unreachable, since
-# TCW will not guess which. A move with no name here keeps the status-derived rule.
-# `start` is the exception and is required: a start applies its transition through the
-# claim rather than through `assess_move`, so it has no status-derived rule to fall
-# back to. An unknown key is reported, because silently ignoring a key someone set is
-# silently not doing what they asked.
+# TCW will not guess which. A move with no name here keeps the status-derived rule, and
+# that now includes `start`: a start goes through `assess_move` like the other four, so
+# it derives its transition from the status it is heading for when nobody names one. An
+# unknown key is reported, because silently ignoring a key someone set is silently not
+# doing what they asked.
 TRACKER_TRANSITION_KEYS = frozenset({"start", "submit", "rework", "complete", "discard"})
 TRACKER_MOVE_TRANSITION_KEYS = ("start", "submit", "rework", "complete", "discard")
 # A key that used to exist, with what replaced it, so a config written for an older
@@ -1440,7 +1440,13 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
         return value
 
     credentials = nested("credentials", TRACKER_CREDENTIAL_KEYS)
-    transitions = nested("transitions", TRACKER_TRANSITION_KEYS)
+    # Optional — every move derives its transition from the status when nobody names
+    # one — so a lone `null` is a wrong value rather than a missing required one, the
+    # shape `inbox-query` above and `exclusive-claim-transition` below both use.
+    if "transitions" in raw and raw["transitions"] is None:
+        problems.append("work.tracker.transitions: expected a mapping, got NoneType")
+    transitions = (nested("transitions", TRACKER_TRANSITION_KEYS)
+                   if raw.get("transitions") is not None else {})
 
     def nested_str(block: dict, key: str, path: str) -> str:
         value = block.get(key)
@@ -1500,12 +1506,6 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
     exclusive_claim = (required_str("exclusive-claim-transition")
                        if raw.get("exclusive-claim-transition") is not None else "")
     move_transitions = _parse_tracker_transitions(transitions, problems)
-    # `start` is the one move whose transition is required: it is the only move with no
-    # status-derived fallback, because a start applies its transition through the claim
-    # rather than through `assess_move`. A wrong *value* is reported by the loop above,
-    # like its four siblings; an absent *key* is reported here.
-    if "start" not in transitions:
-        problems.append("work.tracker.transitions.start: required")
     start = move_transitions.get("start", "")
 
     timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
@@ -1690,9 +1690,8 @@ def _parse_tracker_pre_backlog(raw: Any, statuses: dict, problems: list[str]) ->
 def _parse_tracker_transitions(raw: dict, problems: list[str]) -> dict:
     """The per-move keys of `work.tracker.transitions`, appending a problem per defect.
 
-    All five keys are parsed here, uniformly. That `start` is required is the
-    caller's check, not this one's: absent is `{}` here, which leaves every move on
-    the status-derived rule.
+    All five keys are parsed here, uniformly. Absent is `{}`, which leaves every
+    move on the status-derived rule; no key here is required.
     """
     where = "work.tracker.transitions"
 
@@ -1858,7 +1857,7 @@ def attribute_tracker_problems(problems: list[str], record: dict[TrackerKeyPath,
     """Prefix each parser problem with the label of the file that caused it.
 
     Matched on the problem's exact key path, never the nearest enclosing
-    mapping: `transitions.start: required` under a `transitions` an ancestor
+    mapping: `credentials.token-env: required` under a `credentials` an ancestor
     supplied is about a key nobody set, and goes to `own_label`. The parser
     writes a path as its keys joined with `.` followed by `: `, so the longest
     recorded path whose spelling prefixes the problem that way is the one it is

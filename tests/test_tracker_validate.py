@@ -70,12 +70,21 @@ def test_a_valid_tracker_produces_no_problems(node):
 
 
 @pytest.mark.parametrize("key", ["provider", "base-url", "candidate-query",
-                                 "credentials", "transitions"])
+                                 "credentials"])
 def test_a_missing_required_key_is_reported_by_validate(node, key):
     root, set_tracker = node
     set_tracker({k: v for k, v in VALID_TRACKER.items() if k != key})
     problems = validate(root)
     assert any(f"work.tracker.{key}" in p for p in problems), problems
+
+
+def test_a_tracker_block_with_no_transitions_is_validated_by_the_cli(node):
+    """`transitions` is not a required key, so the whole command is quiet about a
+    block that leaves it out. The parser's own test for this is in
+    `tests/test_tracker_config.py`; this is the same claim through `tcw validate`."""
+    root, set_tracker = node
+    set_tracker({k: v for k, v in VALID_TRACKER.items() if k != "transitions"})
+    assert [p for p in validate(root) if "tracker" in p] == []
 
 
 def test_a_bad_provider_is_reported_with_its_value(node):
