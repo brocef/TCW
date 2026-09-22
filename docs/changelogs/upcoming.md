@@ -12,6 +12,12 @@ category.
 - `OwnershipOutcome.retry` (`tcw/tracker/ownership.py`): true when an unsettled
   claim failed on an unanswered assignment or read-back; `deliver` records those
   `pending`.
+- `OwnershipOutcome.transitioned` is now set on a *refusal* as well as a success,
+  and `OwnershipOutcome.status` reports where an applied assertion left the ticket
+  rather than where it was found. `deliver` and `_strict_claim` use both to say
+  "{key} was moved to '{status}' but is not assigned to you. Assign it to yourself
+  in the tracker, then run this again." — the only advice that works, since the
+  assertion transition is no longer offered from where the ticket now sits.
 - `authorize(..., ownership=False)` and `_strict_refusal(..., ownership=False)`:
   strict `complete` checks where the ticket is, not who holds it.
 - `tcw work tracker sync` prints what its delivery did to take the ticket

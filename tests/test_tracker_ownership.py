@@ -321,3 +321,38 @@ def test_an_answer_is_not_worth_retrying(monkeypatch, case):
         fake.fail("PUT", "/assignee", jira._for_status(400, {}, "no", "x"))
     outcome = assert_ownership(alice, read_ticket(alice, TICKET), assertion=assertion)
     assert not outcome.settled and not outcome.retry, outcome
+
+
+# ── a claim whose transition landed and whose assignment did not ────────────
+
+
+@pytest.mark.parametrize("case, where", [
+    ("assignment", "PUT"), ("read-back", "GET")], ids=["assignment", "read-back"])
+def test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led(
+        monkeypatch, case, where):
+    """The assertion moved the ticket and the claim then failed, so the ticket is
+    somewhere new and held by nobody. The outcome has to carry both facts, or its
+    caller cannot tell the user what this run actually did."""
+    fake = _fake(monkeypatch, status="To Do", assignee=None)
+    alice = jira.JiraClient(_config("TCW_A_EMAIL"))
+    if case == "assignment":
+        fake.fail("PUT", "/assignee", jira._for_status(400, {}, "no", "x"))
+    else:
+        fake.before("PUT", "/assignee", lambda: fake.fail(
+            "GET", f"/rest/api/3/issue/{TICKET}?",
+            jira.TrackerUnavailable("down (fake)")))
+    outcome = assert_ownership(alice, read_ticket(alice, TICKET),
+                               assertion="Start Progress")
+    assert not outcome.settled
+    assert outcome.transitioned is True, outcome
+    assert outcome.status == "In Progress", outcome
+    assert fake.tickets[TICKET].status == "In Progress"
+
+
+def test_a_refusal_before_the_assertion_reports_no_transition(fake, alice):
+    """The other side of it: nothing was applied, so nothing claims it was."""
+    fake.fail("POST", "/transitions", jira._for_status(400, {}, "no", "x"))
+    outcome = assert_ownership(alice, read_ticket(alice, TICKET),
+                               assertion="Start Progress")
+    assert not outcome.settled and outcome.transitioned is False
+    assert outcome.status == "To Do" and fake.tickets[TICKET].status == "To Do"

@@ -666,7 +666,18 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 # then: telling somebody to claim a ticket another account holds would
                 # send them to a refusal naming that account, which this message
                 # already does.
-                where = ("" if outcome.holder_id not in ("", ticket.me_id) else
+                #
+                # A claim whose assertion transition landed and whose assignment then
+                # did not has moved the ticket and left it unassigned, so saying
+                # nothing about it would hide a change this run made. Running the
+                # claim again cannot recover it either: the transition is no longer
+                # offered from where it now sits, which is the very property that
+                # makes it exclusive. So the advice is the only one that works.
+                where = (f" {ticket.key} was moved to '{outcome.status}' but is not "
+                         f"assigned to you. Assign it to yourself in the tracker, "
+                         f"then run this again."
+                         if outcome.transitioned else
+                         "" if outcome.holder_id not in ("", ticket.me_id) else
                          f" Take it with `tcw work tracker claim {slug}`, then run "
                          f"`tcw work tracker sync {slug}`.")
                 return taken_back(PENDING if outcome.retry else CONFLICTING,

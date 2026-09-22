@@ -52,8 +52,13 @@ class OwnershipOutcome:
     `settled` is whether the tracker now says what the caller asked it to say —
     held by them for a claim, held by nobody for a release. `retry` is whether an
     unsettled claim is worth simply running again: the tracker did not answer the
-    assignment or its read-back, rather than answering no. Everything else is for
-    the message.
+    assignment or its read-back, rather than answering no. `transitioned` is whether
+    the assertion transition was applied — **set on a failure as well as a success**,
+    because a claim whose transition landed and whose assignment then did not has
+    moved the ticket and left it unassigned, and only the caller that knows this can
+    say so. `status` is where the ticket is when the outcome is made, so after an
+    applied assertion it is where that transition led, not where the ticket was
+    found. Everything else is for the message.
     """
     settled: bool
     message: str
@@ -82,12 +87,18 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     them is an answer about who holds the ticket.
     """
     key = ticket.key
+    # Where the ticket is as this runs. An applied assertion moves it, and every
+    # refusal after that has to report where it left the ticket, not where it found
+    # it: a caller told the old status cannot tell the user what to put right.
+    landed = ticket.status
+    transitioned = False
 
     def refused(message: str, detail: str = "", holder=("", ""),
                 retry: bool = False) -> OwnershipOutcome:
         return OwnershipOutcome(settled=False, message=message, detail=detail,
                                 holder_id=holder[0], holder_name=holder[1],
-                                status=ticket.status, retry=retry)
+                                status=landed, retry=retry,
+                                transitioned=transitioned)
 
     if ticket.category == "done":
         return refused(f"{key} is resolved ('{ticket.status}'), so there is nothing "
@@ -103,7 +114,6 @@ def assert_ownership(client, ticket, *, assertion: str = "",
                                 holder_id=ticket.me_id, holder_name=ticket.me_name,
                                 message=f"{key} is already held by you.")
 
-    transitioned = False
     if assertion:
         matches = [t for t in ticket.offered
                    if _normalize(t.name) == _normalize(assertion)]
@@ -119,7 +129,7 @@ def assert_ownership(client, ticket, *, assertion: str = "",
                            f"offers: {offers}.")
         try:
             client.apply_transition(ticket.issue_id, matches[0].id)
-            transitioned = True
+            transitioned, landed = True, matches[0].to_status
         except TrackerRequestInvalid as error:
             # The workflow refused it, which is the whole point of naming one: on a
             # workflow that excludes a second claimant this is where they stop, and

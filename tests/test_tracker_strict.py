@@ -586,6 +586,55 @@ def test_a_strict_start_on_the_claims_own_status_still_asserts_through_it(
     assert fake_.tickets[TICKET_ID].assignee == A and status(root, slug) == "active"
 
 
+# ── a claim whose transition landed and whose assignment did not ────────────
+#
+# The ticket has moved and is held by nobody, and running the command again cannot
+# recover it: the transition is no longer offered from where the ticket now sits,
+# which is the very property that makes it exclusive. Both callers have to say what
+# happened and name the one thing that does work.
+
+
+def refuse_the_assignment(fake_) -> None:
+    from tcw.tracker import jira
+    fake_.fail("PUT", "/assignee",
+               jira._for_status(400, {}, "cannot assign", "x"))
+
+
+MOVED_UNASSIGNED = f"{KEY} was moved to 'In Progress' but is not assigned to you."
+
+
+def test_a_strict_start_whose_assignment_failed_says_the_ticket_moved(tmp_path,
+                                                                      monkeypatch):
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    refuse_the_assignment(fake_)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1 and REFUSED in err, err
+    assert MOVED_UNASSIGNED in err, err
+    assert "Assign it to yourself in the tracker, then run this again." in err, err
+    assert f"Run `tcw work start {slug}` again" not in err, err
+    assert status(root, slug) == "backlog"
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", None)
+
+
+def test_a_start_whose_assignment_failed_after_the_transition_says_the_ticket_moved(
+        tmp_path, monkeypatch):
+    """The same through `deliver`, which claims for a start outside strict mode."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=False,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    refuse_the_assignment(fake_)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert MOVED_UNASSIGNED in err, err
+    assert f"Take it with `tcw work tracker claim {slug}`" not in err, err
+    assert status(root, slug) == "active"
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", None)
+
+
 def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,
                                                                        monkeypatch):
     """Bob reads the ticket free; before his claim goes out, Alice's whole start runs.

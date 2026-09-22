@@ -46,6 +46,12 @@ internal module names.
   so. Under strict mode `tcw work start` is refused before the item moves, because
   an assignment on its own is not the exclusivity strict mode promises; the message
   tells you to move the ticket back in Jira or turn strict mode off.
+- **If a claim's transition lands and the assignment then fails, TCW says so.**
+  With `exclusive-claim-transition` set, the transition goes first, so a failed
+  assignment leaves the ticket moved and held by nobody. The message now names the
+  status it was moved to and tells you to assign it to yourself in Jira, because
+  running the command again cannot finish the claim: the transition is no longer
+  offered from where the ticket now sits, which is exactly what makes it exclusive.
 - **`submit` and `rework` need the ticket to be yours**, with or without strict
   mode. For an item with a ticket, they are refused before the item moves when the
   ticket is somebody else's (the message names them) or nobody's (the message

@@ -515,7 +515,16 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         detail = f" ({failed.detail})" if failed.detail else ""
         # A strict start that stops here writes no sync record, so `sync` has nothing
         # to resume: taking the ticket out of triage is finished by starting again.
-        again = (f" Run `tcw work start {bare}` again to finish the claim."
+        #
+        # Unless the claim's own transition landed and the assignment then did not.
+        # The ticket has moved and is held by nobody, and starting again cannot fix
+        # it: the transition is no longer offered from where the ticket now sits,
+        # which is the very property that makes it exclusive. So the ticket has to be
+        # assigned by hand, and saying "run it again" would send the user in a circle.
+        again = (f" {key} was moved to '{failed.status}' but is not assigned to you. "
+                 f"Assign it to yourself in the tracker, then run this again."
+                 if getattr(failed, "transitioned", False) else
+                 f" Run `tcw work start {bare}` again to finish the claim."
                  if left or getattr(step_refusal, "row", "") in ("0f", "0-read") else "")
         return _strict_says_no("start", f"{bare} was not started",
                                moved_out(key, left) + failed.message + detail
