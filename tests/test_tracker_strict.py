@@ -514,6 +514,78 @@ def test_a_strict_start_takes_the_ticket_through_the_exclusive_claim_transition(
     assert (held.status, held.assignee, status(root, slug)) == ("In Progress", A, "active")
 
 
+# ── the claim transition never moves a ticket backwards ─────────────────────
+#
+# `exclusive-claim-transition` leads onto `statuses.active`. A workflow that offers
+# it from every status — the `GLOBAL` one below — would therefore apply it to a
+# ticket already in review and drag that ticket back down, which is the one thing no
+# lifecycle move does. What happens instead depends on strict mode.
+
+
+def global_claim_node(tmp_path, monkeypatch, *, strict: bool, ticket_status: str):
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=GLOBAL)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status=ticket_status)
+    fake_.install(monkeypatch)
+    return strict_node(tmp_path, strict=strict,
+                       claim_transition="Start Progress"), fake_
+
+
+def test_a_start_above_the_claim_transition_takes_the_ticket_without_applying_it(
+        tmp_path, monkeypatch):
+    """Without strict mode: the transition is skipped, the ticket is taken by the
+    assignment and its read-back alone, it is left in review, and the output says the
+    claim was the weaker kind."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=False,
+                                    ticket_status="In Review")
+    slug = bound_item(root)
+    fake_.applied.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert fake_.applied == [], fake_.applied
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Review", A)
+    assert status(root, slug) == "active"
+    assert "exclusive-claim-transition" in err, err
+    assert "assignment and reading it back" in err, err
+
+
+def test_a_strict_start_above_the_claim_transition_is_refused_before_the_item_moves(
+        tmp_path, monkeypatch):
+    """Under strict mode: refused, because strict mode's exclusivity *is* that
+    transition and an assignment on its own is not the proof it asks for. The item
+    does not move, nothing is sent, and the message names both ways out."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status="In Review")
+    slug = bound_item(root)
+    fake_.requests.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1 and REFUSED in err, err
+    assert f"Move {KEY} back to 'In Progress'" in err, err
+    assert "turn work.tracker.strict off" in err, err
+    assert status(root, slug) == "backlog"
+    assert fake_.writes() == [] and fake_.tickets[TICKET_ID].status == "In Review"
+
+
+@pytest.mark.parametrize("ticket_status", ["To Do", "In Progress"],
+                         ids=["below-the-ladder", "on-the-claims-own-rung"])
+def test_a_strict_start_on_the_claims_own_status_still_asserts_through_it(
+        tmp_path, monkeypatch, ticket_status):
+    """The refusal above is only for a ticket *past* the claim's status. One on it, or
+    below it, is claimed through the transition exactly as before."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+                                    ticket_status=ticket_status)
+    slug = bound_item(root)
+    fake_.applied.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 0, err
+    assert fake_.applied == ["21"], fake_.applied
+    assert fake_.tickets[TICKET_ID].assignee == A and status(root, slug) == "active"
+
+
 def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,
                                                                        monkeypatch):
     """Bob reads the ticket free; before his claim goes out, Alice's whole start runs.

@@ -646,10 +646,18 @@ def deliver(store, slug: str, client, config, *, move: str | None,
             # project names `exclusive-claim-transition`, which is applied first so a
             # workflow that refuses a second claimant stops one here. Whatever status
             # it is left in, the move below delivers from there.
+            #
+            # **Except from above the claim's own status.** That transition leads onto
+            # `statuses.active`, so applying it to a ticket already past there would
+            # move the ticket *back* — the one thing no lifecycle move does. It is
+            # skipped, the ticket is taken by the assignment and its read-back alone,
+            # and the output says plainly that this claim was the weaker kind.
             since = ticket.status
+            assertion = config.exclusive_claim_transition
+            weaker = bool(assertion) and rung is not None and rung > 0
             try:
                 outcome = assert_ownership(
-                    client, ticket, assertion=config.exclusive_claim_transition)
+                    client, ticket, assertion="" if weaker else assertion)
             except TrackerError as error:
                 return taken_back(classify_error(error), str(error))
             if not outcome.settled:
@@ -665,6 +673,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                                   outcome.message + detail + where)
             owed = False
             claimed_message += outcome.message
+            if weaker:
+                claimed_message += (
+                    f" {ticket.key} is in '{ticket.status}', past where "
+                    f"work.tracker.exclusive-claim-transition applies, so that "
+                    f"transition was not sent: this claim is the assignment and "
+                    f"reading it back, nothing more, and {ticket.key} was left where "
+                    f"it is.")
             if not target:
                 return finish(NONE)
             try:

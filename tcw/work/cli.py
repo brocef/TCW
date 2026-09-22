@@ -462,20 +462,35 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     from tcw.tracker.intake import leave_pre_backlog, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
     from tcw.tracker.ownership import assert_ownership
-    from tcw.tracker.sync import binding_refusal
+    from tcw.tracker.sync import binding_refusal, lowest_rung
     bound, refusal = binding_refusal(st, bare, config)
     if bound is None:
         return _strict_says_no("start", f"{bare} was not started", refusal), False
     key = bound.ticket_key
     client = JiraClient(config)
-    left = ""
+    left = past = ""
     try:
         ticket, step_refusal, left = leave_pre_backlog(
             client, read_ticket(client, bound.ticket_id))
+        # The exclusive claim transition leads onto `statuses.active`, so from above
+        # that status it could only move the ticket back. Strict mode will not take
+        # the ticket by assignment alone instead — that is exactly the weaker claim
+        # it exists to rule out — so it refuses here, before the item moves, and says
+        # which of the two ways out the user has.
+        #
+        # Only where the claim would really apply that transition. A ticket already
+        # yours sends nothing at all, so nothing could move back and the exclusivity
+        # question is already answered; one resolved or held by somebody else is
+        # refused by `assert_ownership` itself, and says so far more usefully.
+        rung = (None if step_refusal else lowest_rung(config.statuses, ticket.status))
+        asserts = (step_refusal is None and ticket.category != "done"
+                   and not ticket.assignee_id)
+        past = (ticket.status if config.exclusive_claim_transition and asserts
+                and rung is not None and rung > 0 else "")
         # Exclusivity is the configured transition's: strict mode requires
         # `exclusive-claim-transition`, and a workflow that will not apply it to a
         # ticket somebody already took stops a second claimant before the assignment.
-        outcome = None if step_refusal else assert_ownership(
+        outcome = None if step_refusal or past else assert_ownership(
             client, ticket, assertion=config.exclusive_claim_transition)
     except TrackerError as error:
         return _strict_says_no("start", f"{bare} was not started",
@@ -483,6 +498,18 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
                                + f"The tracker could not answer ({error}), so {key} may "
                                f"or may not have been claimed. Run it again once the "
                                f"tracker answers."), False
+    if past:
+        from tcw.store.base import target_status
+        active = target_status(config.statuses, "active", None)
+        return _strict_says_no(
+            "start", f"{bare} was not started",
+            moved_out(key, left)
+            + f"{key} is in '{past}', past '{active}', where "
+              f"work.tracker.exclusive-claim-transition leads. Applying that "
+              f"transition from there would move {key} back, and strict mode does not "
+              f"accept an assignment on its own as proof that nobody else holds the "
+              f"ticket. Move {key} back to '{active}' in the tracker and run this "
+              f"again, or turn work.tracker.strict off."), False
     if step_refusal is not None or not outcome.settled:
         failed = step_refusal or outcome
         detail = f" ({failed.detail})" if failed.detail else ""

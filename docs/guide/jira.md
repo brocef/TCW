@@ -441,6 +441,22 @@ It is a different setting from `transitions.start`, which is the transition a
 claimed. Setting one does not set the other. When both name the same transition, a
 start applies it once: the claim moves the ticket there, and nothing is left to do.
 
+**The transition is never applied to a ticket that is already past
+`statuses.active`** — one in your review status, say. It leads *onto*
+`statuses.active`, so applying it from above would move the ticket backwards, and
+no lifecycle move does that. What happens instead depends on strict mode:
+
+- **Without strict mode**, the transition is skipped. The ticket is taken by the
+  assignment and its read-back alone — the ordinary claim, without the extra
+  guarantee — and it is left where it is. The output says so, naming the setting,
+  so you can see which kind of claim you got.
+- **Under strict mode**, `tcw work start` is refused before the item moves, and
+  nothing is sent. Strict mode's promise that only one person can take a ticket
+  *is* that transition, and an assignment on its own is not the proof it asks for.
+  The message gives you the two ways out: move the ticket back to
+  `statuses.active` in the tracker and run the start again, or turn
+  `work.tracker.strict` off.
+
 ### Taking something somebody else holds
 
 `claim --take-over` claims an item and ticket held by another account.
@@ -675,8 +691,18 @@ which the claim applies first (see
 
 **A start leaves a ticket already past `active` where it is.** If the ticket is in
 review already, say, `start` claims it, says it was not moved back, and exits 0.
-Only `tcw work tracker sync` moves a ticket backwards, because that is the command
-you run to ask for it.
+Where `exclusive-claim-transition` is set, that claim skips the transition rather
+than move the ticket back with it, and says so — or, under strict mode, the start
+is refused before the item moves (see
+[When two people claim at once](#when-two-people-claim-at-once)).
+
+**No lifecycle move moves a ticket back past its own window.** A `rework` does move
+a ticket from your review status down to your active status — that is the move's
+whole purpose, and the ticket is inside the window `rework` is entitled to act in.
+What no lifecycle move does is drag a ticket back out of somebody else's window:
+a `start` out of the backlog has no window at all, so a ticket anybody moved on
+ahead of it is left alone. `tcw work tracker sync` has no window either, and does
+reconcile in both directions, because that is the command you run to ask for it.
 
 **`submit` and `rework` need the ticket to be yours.** For an item with a ticket
 bound, they are refused before the item moves when the ticket is assigned to

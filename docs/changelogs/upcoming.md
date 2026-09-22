@@ -31,6 +31,13 @@ category.
 - A lifecycle move with an empty `expected` window whose ticket is above the target
   returns `HELD` and writes no record (forward only). `sync` still reconciles both
   ways.
+- A claim never applies `exclusive-claim-transition` to a ticket whose
+  `lowest_rung` is above 0: in `deliver` the assertion is skipped and the claim's
+  message says the claim was the assignment and its read-back only; in
+  `_strict_claim` the start is refused before the item moves, naming the two ways
+  out. `_strict_claim` refuses only where the assertion would really be applied —
+  not for a ticket already this account's, one resolved, or one held by somebody
+  else, which `assert_ownership` answers better.
 - A record naming `start` has an empty window (`expected_statuses`), like a live
   start. When the item has moved past `active`, that start is delivered first (to
   `statuses.active`, `transitions.start`) and the later move measures from there.

@@ -34,8 +34,18 @@ internal module names.
 - **Claiming a ticket no longer moves it**, unless that setting names a
   transition. `tcw work start` assigns the ticket to you, then moves it to your
   `active` status as an ordinary move. A ticket already past `active` — in review,
-  say — is claimed and left where it is; only `tcw work tracker sync` moves a
-  ticket backwards.
+  say — is claimed and left where it is. No lifecycle move takes a ticket back out
+  of its own window: `tcw work rework` still brings a ticket from your review
+  status down to your active status, because that is what a rework is, but nothing
+  drags a ticket back because somebody else moved it on. `tcw work tracker sync`
+  has no window and reconciles both ways, because that is what you run it for.
+- **`exclusive-claim-transition` is never applied to a ticket already past your
+  `active` status.** It leads onto that status, so applying it from above would
+  move the ticket backwards. Without strict mode the transition is skipped, the
+  ticket is taken by the assignment alone and left where it is, and the output says
+  so. Under strict mode `tcw work start` is refused before the item moves, because
+  an assignment on its own is not the exclusivity strict mode promises; the message
+  tells you to move the ticket back in Jira or turn strict mode off.
 - **`submit` and `rework` need the ticket to be yours**, with or without strict
   mode. For an item with a ticket, they are refused before the item moves when the
   ticket is somebody else's (the message names them) or nobody's (the message
