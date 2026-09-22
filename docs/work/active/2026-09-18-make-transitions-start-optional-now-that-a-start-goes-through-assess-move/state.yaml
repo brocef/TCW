@@ -12,3 +12,5 @@ blocked_by:
 initiative: 2026-09-16-separate-claim-from-status-movement-in-the-tracker-verbs
 owner: brocef@users.noreply.github.com
 started: '2026-09-22T21:09:29.724314Z'
+worktree: .worktrees/2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move
+branch: work/2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move
