@@ -649,6 +649,39 @@ def test_a_start_whose_assignment_failed_after_the_transition_says_the_ticket_mo
     assert (held.status, held.assignee) == ("In Progress", None)
 
 
+def fail_the_read_back(fake_) -> None:
+    """Let the assignment land and break the read that would confirm it, armed from
+    inside the assignment so it cannot catch an earlier read."""
+    from tcw.tracker import jira
+    fake_.before("PUT", "/assignee", lambda: fake_.fail(
+        "GET", f"/rest/api/3/issue/{TICKET_ID}?",
+        jira.TrackerUnavailable("down (fake)")))
+
+
+@pytest.mark.parametrize("strict", [True, False], ids=["strict", "not-strict"])
+def test_a_claim_whose_read_back_failed_does_not_call_the_ticket_unassigned(
+        tmp_path, monkeypatch, strict):
+    """The read-back is the *other* failure after an applied assertion, and it happens
+    only once the assignment has landed — so the ticket is not unassigned, and saying
+    it is contradicts the sentence printed beside it. It also replaces advice that
+    would have worked: running the command again succeeds, because a claim of a ticket
+    already yours returns before it sends anything."""
+    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=strict,
+                                    ticket_status="To Do")
+    slug = bound_item(root)
+    fail_the_read_back(fake_)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert code == 1, err
+    assert "but is not assigned to you" not in err, err
+    assert "Run this again to find out." in err, err
+    assert f"Take it with `tcw work tracker claim {slug}`" not in err, err
+    # Which of the two callers ran: strict mode refuses before the item moves
+    # (`_strict_claim`), and without it the claim is `deliver`'s, after the move.
+    assert status(root, slug) == ("backlog" if strict else "active")
+    held = fake_.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", A)
+
+
 def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,
                                                                        monkeypatch):
     """Bob reads the ticket free; before his claim goes out, Alice's whole start runs.

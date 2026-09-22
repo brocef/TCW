@@ -56,9 +56,13 @@ class OwnershipOutcome:
     the assertion transition was applied — **set on a failure as well as a success**,
     because a claim whose transition landed and whose assignment then did not has
     moved the ticket and left it unassigned, and only the caller that knows this can
-    say so. `status` is where the ticket is when the outcome is made, so after an
-    applied assertion it is where that transition led, not where the ticket was
-    found. Everything else is for the message.
+    say so. `assigned` is whether this run's own assignment landed: false for every
+    refusal up to and including the assignment failing, true from the read-back
+    onwards. The two together are what separate *the ticket is unassigned* — the
+    assignment did not land — from *who holds it is unknown*, which is all a failed
+    read-back establishes. `status` is where the ticket is when the outcome is made,
+    so after an applied assertion it is where that transition led, not where the
+    ticket was found. Everything else is for the message.
     """
     settled: bool
     message: str
@@ -68,6 +72,7 @@ class OwnershipOutcome:
     detail: str = ""
     transitioned: bool = False
     retry: bool = False
+    assigned: bool = False
 
 
 def _holder(client, ticket):
@@ -93,12 +98,12 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     landed = ticket.status
     transitioned = False
 
-    def refused(message: str, detail: str = "", holder=("", ""),
-                retry: bool = False) -> OwnershipOutcome:
+    def refused(message: str, detail: str = "", holder=("", ""), retry: bool = False,
+                assigned: bool = False) -> OwnershipOutcome:
         return OwnershipOutcome(settled=False, message=message, detail=detail,
                                 holder_id=holder[0], holder_name=holder[1],
                                 status=landed, retry=retry,
-                                transitioned=transitioned)
+                                transitioned=transitioned, assigned=assigned)
 
     if ticket.category == "done":
         return refused(f"{key} is resolved ('{ticket.status}'), so there is nothing "
@@ -148,19 +153,25 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     try:
         status, category, now_id, now_name = _holder(client, ticket)
     except TrackerError as error:
+        # `assigned`: the write above landed, so the ticket is **not** known to be
+        # unassigned — a caller that says it is contradicts this very message, and
+        # replaces advice that works. Running the claim again does recover it, because
+        # a ticket already yours is returned as held before anything is sent.
         return refused(f"{key} was assigned to you, but reading it back failed, so "
                        f"whether you hold it is unknown. Run this again to find out.",
-                       str(error), retry=not isinstance(error, TrackerRequestInvalid))
+                       str(error), retry=not isinstance(error, TrackerRequestInvalid),
+                       assigned=True)
     if now_id == ticket.me_id:
         return OwnershipOutcome(settled=True, message=f"{key} is held by you.",
                                 holder_id=now_id, holder_name=now_name,
-                                status=status, transitioned=transitioned)
+                                status=status, transitioned=transitioned,
+                                assigned=True)
     if not now_id:
         # Assigned, then unassigned before the read-back — somebody released it out
         # from under this claim. Nobody holds it, so saying somebody does would be a
         # lie, and there is nobody whose claim re-running could stamp on.
         return OwnershipOutcome(
-            settled=False, status=status, transitioned=transitioned,
+            settled=False, status=status, transitioned=transitioned, assigned=True,
             message=(f"{key} was assigned to you and then to nobody, so you do not "
                      f"hold it: somebody unassigned it while this claim was in "
                      f"flight. Run this again to take it."))
@@ -169,7 +180,7 @@ def assert_ownership(client, ticket, *, assertion: str = "",
     # between our write and our read — undoing it would stamp on their claim.
     return OwnershipOutcome(
         settled=False, holder_id=now_id, holder_name=now_name, status=status,
-        transitioned=transitioned,
+        transitioned=transitioned, assigned=True,
         message=(f"{key} is held by {now_name or 'another account'}, not by you: they "
                  f"took it while this claim was in flight. Nothing here is yours; "
                  f"run this again if they let it go."))

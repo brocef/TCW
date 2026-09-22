@@ -706,17 +706,23 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 # send them to a refusal naming that account, which this message
                 # already does.
                 #
-                # A claim whose assertion transition landed and whose assignment then
-                # did not has moved the ticket and left it unassigned, so saying
+                # A claim whose assertion transition landed and whose *assignment*
+                # then did not has moved the ticket and left it unassigned, so saying
                 # nothing about it would hide a change this run made. Running the
                 # claim again cannot recover it either: the transition is no longer
                 # offered from where it now sits, which is the very property that
                 # makes it exclusive. So the advice is the only one that works.
+                #
+                # Said only when the assignment is what failed (`assigned`). A failed
+                # *read-back* comes after an assignment that landed, so the ticket is
+                # not unassigned; nothing here knows who holds it, and the outcome's
+                # own message already says to run it again, which works.
                 where = (f" {ticket.key} was moved to '{outcome.status}' but is not "
                          f"assigned to you. Assign it to yourself in the tracker, "
                          f"then run this again."
-                         if outcome.transitioned else
-                         "" if outcome.holder_id not in ("", ticket.me_id) else
+                         if outcome.transitioned and not outcome.assigned else
+                         "" if outcome.assigned
+                         or outcome.holder_id not in ("", ticket.me_id) else
                          f" Take it with `tcw work tracker claim {slug}`, then run "
                          f"`tcw work tracker sync {slug}`.")
                 return taken_back(PENDING if outcome.retry else CONFLICTING,

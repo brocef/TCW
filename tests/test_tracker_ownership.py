@@ -331,8 +331,11 @@ def test_an_answer_is_not_worth_retrying(monkeypatch, case):
 def test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led(
         monkeypatch, case, where):
     """The assertion moved the ticket and the claim then failed, so the ticket is
-    somewhere new and held by nobody. The outcome has to carry both facts, or its
-    caller cannot tell the user what this run actually did."""
+    somewhere new. The outcome has to carry both facts, or its caller cannot tell the
+    user what this run actually did. Who holds the ticket afterwards differs between
+    the two failures, and `assigned` is what separates them: the assignment failing
+    leaves it held by nobody, while a failed read-back comes after an assignment that
+    landed, so it establishes only that who holds it is unknown."""
     fake = _fake(monkeypatch, status="To Do", assignee=None)
     alice = jira.JiraClient(_config("TCW_A_EMAIL"))
     if case == "assignment":
@@ -345,8 +348,10 @@ def test_a_failure_after_the_assertion_reports_the_transition_and_where_it_led(
                                assertion="Start Progress")
     assert not outcome.settled
     assert outcome.transitioned is True, outcome
+    assert outcome.assigned is (case == "read-back"), outcome
     assert outcome.status == "In Progress", outcome
     assert fake.tickets[TICKET].status == "In Progress"
+    assert fake.tickets[TICKET].assignee == (A if case == "read-back" else None)
 
 
 def test_a_refusal_before_the_assertion_reports_no_transition(fake, alice):

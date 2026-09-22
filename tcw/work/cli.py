@@ -521,9 +521,14 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         # it: the transition is no longer offered from where the ticket now sits,
         # which is the very property that makes it exclusive. So the ticket has to be
         # assigned by hand, and saying "run it again" would send the user in a circle.
+        #
+        # Only when the assignment is what failed. A failed read-back happens after an
+        # assignment that landed, so the ticket is not unassigned and its own message
+        # already gives the advice that works there.
         again = (f" {key} was moved to '{failed.status}' but is not assigned to you. "
                  f"Assign it to yourself in the tracker, then run this again."
-                 if getattr(failed, "transitioned", False) else
+                 if getattr(failed, "transitioned", False)
+                 and not getattr(failed, "assigned", False) else
                  f" Run `tcw work start {bare}` again to finish the claim."
                  if left or getattr(step_refusal, "row", "") in ("0f", "0-read") else "")
         return _strict_says_no("start", f"{bare} was not started",
