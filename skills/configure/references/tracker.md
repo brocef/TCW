@@ -2,9 +2,11 @@
 
 A node connects to an external tracker for `tcw work tracker list` and `show`,
 which read tickets; for `import`, which claims a ticket through the workflow
-transition named in `transitions.start`, and `link`, which only records a binding unless `--sync-status` asks it to bring the ticket up to date;
-and for the lifecycle commands, which claim a bound item's ticket at `start` and
-move it to the statuses under `statuses` as the item moves. What those commands do, which
+transition named in `transitions.start`, and `link`, which only records a binding
+(`link --sync-status` is retired: `link`, then `tracker claim`, then `tracker sync`);
+and for the lifecycle commands, which claim a bound item's ticket at `start` — an
+assignment, moving it only through `exclusive-claim-transition` when that is set —
+and move it to the statuses under `statuses` as the item moves. What those commands do, which
 file a tracker problem names, and what a malformed block does at runtime is in the
 `work` skill's `commands.md`. This document is how to set the connection up,
 in one node or shared from a parent node.
@@ -59,8 +61,9 @@ nor a discard can sync at all. `discard` takes one name or one per discard resol
 (`wontfix`, `duplicate`, `superseded`), and unlike `statuses.discarded` under strict
 mode it may be partial: it exists to disambiguate, so name only what is ambiguous.
 A move with no entry keeps deriving its transition from the status. `start` is the
-exception and is required: a start applies its transition through the claim rather
-than deriving it from the status, so there is nothing for it to fall back to. A named
+exception and is still required by `tcw validate`, although a start now moves its
+ticket the same way as the other four once the claim (an assignment) is made;
+making it optional is a separate change. A named
 transition the ticket does not offer, or that matches twice, or that leads to a
 status other than the mapped one, is refused rather than ignored. **Upgrade every
 copy of `tcw` first:** version 2.3.0 and earlier report the four optional keys as
@@ -83,7 +86,9 @@ parent node holding the settings, not the child being validated.
 
 `exclusive-claim-transition` is optional **except under strict mode**, where it is
 required (see `strict` below). It sits at the top level of `work.tracker` rather than
-under `transitions`, and is the transition `tcw work tracker claim` asserts through.
+under `transitions`, and is the transition every claim asserts through: `tcw work
+tracker claim`, the claim a `tcw work start` makes (strict or not), and the claim
+`tracker sync` makes for a start that was never delivered.
 Outside strict mode, **leave it unset unless the project needs it.** Unset, a claim
 applies no transition at all: it assigns the ticket, reads it back, and leaves the
 status alone. Set, a claim applies the named transition before assigning, so that
@@ -161,8 +166,8 @@ column the start transition is not offered from:
             Triage: Accept
 ```
 
-Anything that claims a ticket — `tracker import`, `inbox accept`, `start`,
-`link --sync-status`, `sync` — then applies `Accept` first. `tcw validate` reports
+Anything that takes a ticket for work — `tracker import`, `inbox accept`, `start`,
+and a `sync` that still owes a claim — then applies `Accept` first. `tcw validate` reports
 a non-mapping, a blank status or transition, the same status listed twice
 (compared ignoring case and spacing), a status that is also mapped under
 `statuses`, and `pre-backlog` without `statuses.backlog`. It merges from ancestors
@@ -177,7 +182,8 @@ three of `wontfix`, `duplicate` and `superseded`, and `exclusive-claim-transitio
 otherwise `tcw validate` reports the missing key. The claim transition is required
 because strict mode promises that only one person can take a ticket, and a transition the workflow will not apply to a
 ticket already taken is what stops a second person. Name the transition that takes a ticket into work. Setting it
-means `tcw work tracker claim` applies it, which moves the ticket. A block with problems does **not** turn strict mode off: gated
+means `tcw work tracker claim`, and the claim a strict `tcw work start` makes before
+the item moves, apply it, which moves the ticket. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
 

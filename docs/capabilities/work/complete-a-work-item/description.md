@@ -1,5 +1,7 @@
 As a user, I run `tcw work complete <slug> --resolution <r>` to close an item, and **the resolution picks where it lands**: `done` files it under `completed/`, while `wontfix`, `duplicate`, and `superseded` file it under `discarded/` (see [Discard a work item](tcw://C/work/discard-a-work-item)). So `completed/` answers "what shipped?" on its own.
 
+When the item has a tracker ticket, completing moves it to its mapped status whoever holds it: finishing work needs no claim (`work/synchronize-external-tracker-work`).
+
 I may complete from either `active` or `review`. Completing from `active` skips the verify stage, so the tool prints a note saying so on stderr — advisory only: it does not refuse and does not ask for a second confirmation.
 
 Completing as `done`, the tool checks for unresolved blockers (refused unless I pass `--force`), then prints the Definition-of-Done checklist and refuses until I re-run with `--confirm`. Discarding skips both checks — a blocker is a reason to give up, not a reason I can't — but still requires `--confirm`.

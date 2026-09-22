@@ -3,41 +3,50 @@ through its lifecycle and have its ticket follow, without the tracker ever undoi
 or blocking what I did locally — unless I turn on `work.tracker.strict`, where the
 ticket authorizes local changes before they happen (`work/require-tracker-backed-work`).
 
-`tcw work start` claims a bound item's ticket, by the same rules `tcw work tracker
-import` uses. `submit`, `rework`, `complete` and discarding move the ticket to the
+`tcw work start` claims a bound item's ticket — an assignment, read back, applying
+no transition unless `work.tracker.exclusive-claim-transition` names one — and then
+moves it to the status mapped for `active`. `submit`, `rework`, `complete` and
+discarding move the ticket to the
 tracker status I map each local status to under `work.tracker.statuses` — `active`,
 `review`, `completed`, and `discarded`, which may name a status per discard
 resolution. A status I leave unmapped sends nothing.
 
-A ticket is only ever moved when it is assigned to me — or unassigned and being
-discarded, since abandoning work is the one thing a ticket nobody holds authorizes —
-and when TCW can tell which transition to use. Where two transitions lead to the
+A claim gates work, not resolution. `submit` and `rework` of an item with a ticket
+are refused before the item moves unless the ticket is assigned to me — the refusal
+names whoever holds it, or `tcw work tracker claim` when nobody does — in every
+mode; when Jira cannot be reached they go ahead and report that the ticket did not
+follow. Completing and discarding need no claim and move the ticket whoever holds it.
+Otherwise a ticket is only ever moved when it is assigned to me, and when TCW can
+tell which transition to use. Where two transitions lead to the
 status I mapped, I name the one each move should use under `work.tracker.transitions`
 (`submit`, `rework`, `complete`, `discard`, the last taking one name or one per
 resolution); with nothing named, the old rule stands and exactly one transition must
 lead there. If someone else holds the ticket, if it has been moved on past where its
 item is, or if the named transition is not offered or leads elsewhere, TCW leaves it
-alone and tells me why. It never follows Jira and never pulls a ticket back.
+alone and tells me why. It never follows Jira, and a lifecycle move never pulls a
+ticket back: a `start` whose ticket is already past `active` leaves it there and
+says so.
 
-Linking a ticket to work already under way changes nothing in Jira unless I ask.
+Linking a ticket to work already under way changes nothing in Jira.
 `tcw work tracker link` warns me when the ticket does not match the item, and while it
 stays out of step later moves of that item say the ticket was linked without its
-status synced instead of blaming a hand move nobody made. With `--sync-status`, TCW claims the ticket and
-brings it to where the item is — in one transition when the workflow offers one,
-otherwise up through the statuses I mapped, one at a time. Forward only, never on a
-ticket already resolved, only through statuses I named, and it stops at the first
-step it cannot make, leaving the ticket where it reached for `sync` to carry on from.
-A ticket TCW did claim and someone then moved backwards stays drift, and is not
-walked forward again.
+status synced instead of blaming a hand move nobody made. To bring it along I run
+`tcw work tracker claim` and then `tcw work tracker sync`, which moves it in one
+transition. `link --sync-status` is retired and refuses, naming those commands. A
+binding an older `--sync-status` wrote (`catch-up: true`) still has its ticket brought
+up through the statuses I mapped, one at a time: forward only, never on a ticket
+already resolved, and stopping at the first step it cannot make, for `sync` to carry
+on from. A ticket TCW did claim and someone then moved backwards stays drift, and is
+not walked forward again.
 
 A ticket waiting in a status before the backlog — Jira's `Triage` is the usual
 one — is left there unless I name that status, and the transition out of it, under
 `work.tracker.pre-backlog` (for example `Triage: Accept`). With it named, whatever
-claims the ticket — `start`, `link --sync-status`, `sync`, or a move that still owes
-a claim — first takes it through that transition to `statuses.backlog`, reads it
+takes the ticket for work — `start`, or a `sync` that still owes a claim — first
+takes it through that transition to `statuses.backlog`, reads it
 back, and claims it from there; I am told the ticket left triage even when the
-claim afterwards fails. Nothing else takes a ticket out of triage: not a move with
-no claim owed, not a discard, and not `tcw work tracker claim`. Without the setting
+claim afterwards fails. Nothing else takes a ticket out of triage: not `submit`,
+`rework`, completing or discarding, and not `tcw work tracker claim`. Without the setting
 the refusal names it.
 
 A hand move that takes the ticket part of the way TCW was trying to take it is
@@ -49,11 +58,13 @@ ticket was in the wrong place — the item still moves and is committed, the com
 exits 1 saying so, and the binding records whether that is pending or conflicting.
 `tcw work show` and `tcw work list` show that state, and `tcw work tracker sync
 <slug>` or `--all` retries it, including a claim that did not succeed at start, while
-the record still names that `start` as what it owes. Two things clear that note — a
-second failure recording its own move over it, and another part's item holding the
-ticket, which drops this item's record because a held item owes the tracker nothing —
-and after either, no command claims the ticket for me any more: `tcw work tracker
-claim <slug>` takes it and `sync` then delivers the move.
+the record still names that `start` as what it owes: it claims, delivers the start,
+then the move that came after it. A claim Jira did not answer is pending; one it
+refused is conflicting. Two things clear that note — a second failure recording its
+own move over it, and another part's item holding the ticket, which drops this item's
+record because a held item owes the tracker nothing — and after either, no command
+claims the ticket for me any more: `tcw work tracker claim <slug>` takes it and `sync`
+then delivers the move.
 `sync` acts only on items I started, since it acts as whoever runs it; naming one
 somebody else started fails and tells me how to run it as them or take the item over,
 while a `--all` sweep walks past their work and still succeeds. A ticket that followed

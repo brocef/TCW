@@ -26,7 +26,7 @@ Two things hold whatever you configure:
   expired.
 
 Which commands reach Jira: `list`, `show` and `link` read a ticket; `import`
-changes the ticket and then writes the work item, and so does `link --sync-status`; `unlink` touches only your
+changes the ticket and then writes the work item; `unlink` touches only your
 repository and needs no tracker configured. For an item linked to a ticket,
 `start`, `submit`, `rework`, `complete` and `tcw work tracker sync` also write to
 the ticket. No other command reaches Jira.
@@ -323,8 +323,8 @@ both queries select appears in both `tracker list` and `inbox list`; both are tr
 
 A ticket in a status that comes before the backlog — Jira's **Triage** is the
 usual one — does not offer the transition that starts work, so on its own TCW
-cannot claim it. `tracker import`, `inbox accept`, `start`, `link --sync-status`
-and `sync` all refuse it, and the refusal ends by naming the setting that would
+cannot claim it. `tracker import`, `inbox accept`, `start` and `sync` all refuse
+it, and the refusal ends by naming the setting that would
 change that:
 
 ```
@@ -345,16 +345,15 @@ work:
             Triage: Accept
 ```
 
-With that set, anything that claims a ticket first takes it out of triage:
-`tracker import`, `inbox accept`, `start` (with or without strict mode),
-`link --sync-status`, `sync`, and a `submit`, `rework` or `complete` that still
-owes the ticket a claim. TCW checks that `Accept` is offered exactly once and
+With that set, anything that takes a ticket for work first takes it out of triage:
+`tracker import`, `inbox accept`, `start` (with or without strict mode), and a
+`sync` that still owes the ticket a claim. TCW checks that `Accept` is offered exactly once and
 leads to `statuses.backlog` **before** sending it — a transition cannot be taken
 back — then reads the ticket again and claims it from there, so it notices if
 somebody took or closed the ticket in between. Every command that does this says
 so: `SYNC-1 was moved out of 'Triage'.`
 
-Nothing else takes a ticket out of triage. A move whose claim was already made, a
+Nothing else takes a ticket out of triage. `submit`, `rework`, `complete`, a
 discard, `tracker claim`, and `tracker create` never do, and a ticket assigned to
 somebody else is refused with nothing sent. Whether a ticket is in triage is
 decided by its status only, never by whether it happens to offer a transition
@@ -367,7 +366,7 @@ both before the backlog and on it.
 **If the claim fails after the ticket left triage**, the ticket stays in your
 backlog status, which is no longer what `inbox-query` selects, so the message says
 it was moved. Pick up from there with the command you were running: `sync` for
-`link --sync-status`, `start` and the other moves; `tcw work start` again for a
+`start` and the other moves; `tcw work start` again for a
 strict-mode start, which records nothing for `sync` to resume; and the same
 `tracker import <key>` or `inbox accept <key>` for those.
 
@@ -399,7 +398,9 @@ tells you why.
 **`release` gives it back.** It clears the owner and leaves the ticket assigned to
 nobody. The item's status, the ticket's status and the binding are all untouched.
 Releasing an item that is already under way is the normal way to hand work over:
-it stays active with no owner until somebody claims it.
+it stays active with no owner until somebody claims it — with `tracker claim`, or
+with `tcw work start`, which takes an active item nobody holds rather than refusing
+it. Until then `submit` and `rework` are refused, since the ticket is nobody's.
 
 **Running either one twice is safe.** Claiming something you already hold succeeds
 and sends nothing; releasing something nobody holds does the same. So after a
@@ -427,7 +428,8 @@ work:
     exclusive-claim-transition: "Start Progress"
 ```
 
-With this set, a claim applies that transition before assigning, so a second
+With this set, a claim — `tracker claim`, or the claim `tcw work start` makes —
+applies that transition before assigning, so a second
 person's transition is refused and they never reach the assignment. **It costs a
 status move**: applying a transition moves the ticket, which is the thing claiming
 otherwise avoids. That is the trade, and it is why the setting is optional and off
@@ -435,7 +437,9 @@ by default — except under [strict mode](#strict-mode-no-work-without-a-ticket)
 promises that only one person can take a ticket and so requires it.
 
 It is a different setting from `transitions.start`, which is the transition a
-`tcw work start` applies. Setting one does not set the other.
+`tcw work start` applies to move the ticket to `statuses.active` once it is
+claimed. Setting one does not set the other. When both name the same transition, a
+start applies it once: the claim moves the ticket there, and nothing is left to do.
 
 ### Taking something somebody else holds
 
@@ -575,8 +579,8 @@ owed — it exists. The item reads `<KEY> made, not bound` instead, and
 
 ## Linking and unlinking
 
-**`tracker link` records that an item and a ticket are the same work, and — unless
-you pass `--sync-status` — does nothing else.** It reads the ticket, which is how a key that does not exist is
+**`tracker link` records that an item and a ticket are the same work, and does
+nothing else.** It reads the ticket, which is how a key that does not exist is
 refused, and writes the binding. Jira is left alone: the ticket keeps its status
 and whoever holds it, so you can link a ticket somebody else is assigned. In your
 repository nothing but `tracker.yaml` is written, so the item keeps its status,
@@ -600,27 +604,23 @@ the ticket is in step, by your hand or otherwise, it is an ordinary linked ticke
 follows its item from then on. A ticket already in step when you link it is an
 ordinary linked ticket from the start.
 
-**`tracker link <slug> <KEY> --sync-status`** asks for the ticket to be brought up
-to date as part of linking. TCW claims the ticket if it has to, then moves it to the
-status the item maps to — in one transition when the workflow offers one, otherwise
-forward through the statuses you mapped, one at a time (see
-[Tickets following their items](#tickets-following-their-items)). It never moves a
-ticket backwards, so a ticket already past where its item is stays put, and it never
-changes a ticket that is already resolved. Whatever cannot be done right away — Jira
-could not be reached, say — is recorded, and `tcw work tracker sync <slug>` finishes
-it. On an item still in the backlog the flag does nothing, and says so, because
-there is nothing to catch up yet. A ticket already past the claim's own status is
-never claimed again, since claiming could move it back: one assigned to you carries
-on from where it is, and one that is not is refused with a request to assign it to
-yourself first. `--sync-status` acts as you, so it refuses an item somebody else
-started, as `sync` does. Walking a ticket through several statuses happens only for a
-binding made with `--sync-status`; any other linked ticket still follows its item one
-transition at a time.
+**To bring a linked ticket along, take it and then sync it:**
 
-**A binding made by an earlier version whose ticket is stuck** — every move reported
-as a conflict because the ticket was linked after the work started — is repaired the
-same way: `tcw work tracker unlink <slug> --reason "sync its status"`, then
-`tcw work tracker link <slug> <KEY> --sync-status`.
+```sh
+tcw work tracker link <slug> <KEY>
+tcw work tracker claim <slug>     # assigns it to you; moves nothing
+tcw work tracker sync <slug>      # moves it to where the item is
+```
+
+`sync` moves it in one transition, so a ticket that has to pass through more than
+one status to reach the item is left for you to move by hand. This replaces
+`link --sync-status`, which is retired: passing it now refuses, names these three
+commands, and writes nothing.
+
+A binding an earlier version's `--sync-status` wrote carries `catch-up: true`. TCW
+still reads it, and `sync` still walks such a ticket up through the statuses you
+mapped, one at a time, so nothing already linked that way is stranded. No command
+writes it any more.
 
 **`tracker unlink <slug> --reason <text>`** removes a binding. It keeps a record
 of what was bound, when, and your reason, makes no call to Jira, and needs no
@@ -661,11 +661,35 @@ each move on to the ticket, **after** the move itself is done and committed:
 
 | Command                        | What happens to the ticket                                                 |
 | ------------------------------ | -------------------------------------------------------------------------- |
-| `tcw work start`               | claims it, by the same rules as `import`                                   |
+| `tcw work start`               | claims it — assigns it to you and reads that back — then moves it to `statuses.active` |
 | `tcw work submit`              | moves it to `statuses.review`                                              |
 | `tcw work rework`              | moves it back to `statuses.active`                                         |
-| `tcw work complete` as `done`  | moves it to `statuses.completed`                                           |
-| `tcw work complete` as discard | moves it to `statuses.discarded`, or the status mapped for that resolution |
+| `tcw work complete` as `done`  | moves it to `statuses.completed`, whoever holds it                         |
+| `tcw work complete` as discard | moves it to `statuses.discarded`, or the status mapped for that resolution, whoever holds it |
+
+**Claiming does not move the ticket.** It is an assignment, read back, exactly as
+`tcw work tracker claim` does it — unless you name `exclusive-claim-transition`,
+which the claim applies first (see
+[When two people claim at once](#when-two-people-claim-at-once)). The move to
+`statuses.active` is then an ordinary move, using `transitions.start`.
+
+**A start leaves a ticket already past `active` where it is.** If the ticket is in
+review already, say, `start` claims it, says it was not moved back, and exits 0.
+Only `tcw work tracker sync` moves a ticket backwards, because that is the command
+you run to ask for it.
+
+**`submit` and `rework` need the ticket to be yours.** For an item with a ticket
+bound, they are refused before the item moves when the ticket is assigned to
+somebody else (the message names them) or to nobody (the message names
+`tcw work tracker claim`). This applies with or without strict mode. An item with no
+ticket is not affected, and neither is the item's local owner: only the ticket's
+assignee counts. When Jira cannot be reached, nothing can say the ticket is
+somebody else's, so the move goes ahead and reports that the ticket did not follow;
+strict mode refuses instead.
+
+**`complete` and a discard need no claim.** Finishing or abandoning work is not
+taking it, so they move a ticket assigned to somebody else, or to nobody, and leave
+the assignment as it was.
 
 A status you leave out of `statuses` sends nothing for that move. **`active` is
 required once you map any other status**, because every move checks that the
@@ -683,12 +707,12 @@ statuses:
 
 The only resolutions are `wontfix`, `duplicate` and `superseded`.
 
-**TCW moves a ticket only when it is assigned to you** — or unassigned and being
-discarded — **and only when it can tell which transition to use.** With no
+**TCW moves a ticket only when it is assigned to you** — or it is being completed
+or discarded — **and only when it can tell which transition to use.** With no
 `transitions` entry for the move, that means exactly one of the ticket's offered
 transitions leads to the target status; where two do, name the one you want (see
-[Naming a transition](#naming-a-transition)). A ticket someone else holds is left
-alone. So is a ticket already resolved: TCW does not reopen one, and does not
+[Naming a transition](#naming-a-transition)). Otherwise a ticket someone else holds is
+left alone. So is a ticket already resolved: TCW does not reopen one, and does not
 change one resolution to another.
 
 A lifecycle move — `start`, `submit`, `rework`, `complete`, a discard — also
@@ -704,10 +728,11 @@ forward. Your work item is what decides. A backwards move prints a line naming t
 ticket, the status it was in and the status it was put in, so a move you made on
 purpose does not get undone in silence.
 
-**A ticket several rungs behind its item is walked up when you asked for that.**
-If you linked it to work already under way with `--sync-status`, TCW claims it and
-moves it to where the item is: straight there when the workflow allows, otherwise up
-through the statuses you mapped, one transition at a time. It only ever goes forward,
+**A ticket several rungs behind its item is walked up only for an older binding
+that asked for it.** A binding an earlier version's `link --sync-status` wrote
+(it carries `catch-up: true`) is still honoured: TCW claims the ticket and moves it
+to where the item is, straight there when the workflow allows, otherwise up through
+the statuses you mapped, one transition at a time. It only ever goes forward,
 only through statuses in your `statuses` mapping, and it stops at the first step it
 cannot make, leaving the ticket where it got to and telling you; `tcw work tracker
 sync <slug>` carries on from there. A plain `sync` makes one move, not a walk.
@@ -726,12 +751,11 @@ the command then exits 1, says the item moved, and records why in `tracker.yaml`
   the ticket is assigned to someone else or is no longer where TCW expected.
 
 If the claim at `start` never succeeded, the record says so by naming the `start`
-as the move it still owes, and every later attempt tries the claim first. When that
-attempt cannot be made — the ticket has moved on and no longer offers the
-`transitions.claim` transition, say — the refusal names `tcw work tracker claim
-<slug>`, which takes the ticket without moving it; run `tcw work tracker sync
-<slug>` after. A ticket somebody else holds is not sent there, because the refusal
-already names them.
+as the move it still owes, and `tcw work tracker sync <slug>` tries the claim
+first, then delivers that start, then whatever move came after it. `submit` and
+`rework` will not do it for you: the ticket is not yet yours, so they are refused
+and name `tcw work tracker claim <slug>`. A claim that failed because Jira did not
+answer is recorded as pending; one Jira refused is conflicting.
 
 Once a second failure writes a different move over that record, no command claims
 the ticket for you any more, and the same two commands are how you take it. The
@@ -881,7 +905,8 @@ reports whichever is missing, and strict commands refuse until it is set.
 person can take a ticket, and a transition your workflow will not apply to a ticket someone has already
 taken is what stops a second person. Set
 it to the transition that takes a ticket into work. Setting it means
-`tcw work tracker claim` applies that transition, so a claim moves the ticket. See
+`tcw work tracker claim`, and the claim a strict `tcw work start` makes, apply that
+transition, so a claim moves the ticket. See
 [When two people claim at once](#when-two-people-claim-at-once).
 
 ```yaml
@@ -899,11 +924,12 @@ With it on:
 | Command                                             | Under strict mode                                                                                                                                                                                                                                                      |
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tcw work new`, `tcw work inbox accept` of an entry | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed, because an epic only groups work. Where `inbox-query` is set, `inbox accept` of a ticket is allowed, and refused exactly where `tracker import` would be.                                                      |
-| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, and the item starts only if the claim worked. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
-| `tcw work submit`, `rework`, `complete` as `done`   | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged, and against the item as its worktree holds it — the moves made there are committed on the branch, so the primary checkout's copy is out of date until the merge-back.                                                                                   |
+| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, through `exclusive-claim-transition`, and the item starts only if the claim worked: a second person whose claim the workflow refuses is stopped before their item moves. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
+| `tcw work submit`, `rework`                         | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged, and against the item as its worktree holds it — the moves made there are committed on the branch, so the primary checkout's copy is out of date until the merge-back.                                                                                   |
+| `tcw work complete` as `done`                       | the ticket is read first; refused unless it is in the status the item's last move left it in. Who holds it is not asked: a claim gates work, not finishing it. Checked before anything is merged, as above. |
 | `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                                                                                                        |
 | `tcw work drop`                                     | refused for an item that was ever bound. Discard it instead, so the record stays.                                                                                                                                                                                      |
-| `tcw work tracker import`, and the claim at `start` | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition. The ticket stays claimed for you to release.                                                                                                                 |
+| `tcw work tracker import`                           | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition. The ticket stays claimed for you to release.                                                                                                                 |
 | `tcw serve`                                         | refuses the same changes, since it cannot check a ticket, and names the command to use.                                                                                                                                                                                |
 
 Also under strict mode:

@@ -19,10 +19,15 @@ carries the code side only: a Git branch cannot contain lifecycle files that liv
 in another repository, and the item stays visible through `tcw work path <slug>`.
 
 When the item is bound to a tracker ticket and a tracker is configured, starting it
-also claims that ticket (`work/synchronize-external-tracker-work`). The claim comes
-after the local start and never blocks it: if the ticket is held by someone else or
-Jira cannot be reached, the item is still started, the command exits 1 saying so,
-and the claim is retried by the next lifecycle command or `tcw work tracker sync`.
+also claims that ticket — assigns it to me, moving it only if
+`exclusive-claim-transition` names a transition — and then moves it to the status
+mapped for `active` (`work/synchronize-external-tracker-work`); a ticket already past
+that is left where it is. The claim comes after the local start and never blocks it:
+if the ticket is held by someone else or Jira cannot be reached, the item is still
+started, the command exits 1 saying so, and `tcw work tracker sync` retries the
+claim. Starting an item that is already active but held by nobody — what
+`tcw work tracker release` leaves — takes it rather than refusing; one somebody else
+holds is refused, naming `tcw work tracker claim <slug> --take-over`.
 Under `work.tracker.strict: true` the order reverses: an item with no ticket is not
 started, and a bound item's ticket is claimed first, the item starting only when the
 claim succeeded (`work/require-tracker-backed-work`).

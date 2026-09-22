@@ -23,3 +23,32 @@ internal module names.
   ```
 - **What it costs.** With it set, `tcw work tracker claim` applies that transition,
   so claiming a ticket moves it.
+
+## Taking a ticket and moving it are separate
+
+- **A strict `tcw work start` now takes its ticket through
+  `exclusive-claim-transition`.** Before it moves the item, it applies that
+  transition and then assigns the ticket to you. A workflow that will not apply
+  the transition to a ticket somebody already took refuses the second person
+  there, and their item does not move. That is what makes the setting required.
+- **Claiming a ticket no longer moves it**, unless that setting names a
+  transition. `tcw work start` assigns the ticket to you, then moves it to your
+  `active` status as an ordinary move. A ticket already past `active` — in review,
+  say — is claimed and left where it is; only `tcw work tracker sync` moves a
+  ticket backwards.
+- **`submit` and `rework` need the ticket to be yours**, with or without strict
+  mode. For an item with a ticket, they are refused before the item moves when the
+  ticket is somebody else's (the message names them) or nobody's (the message
+  names `tcw work tracker claim`). If Jira cannot be reached they go ahead, as
+  before, and report that the ticket did not follow.
+- **`complete` and discards need no claim.** They move the ticket whoever holds
+  it, and leave the assignment alone. Under strict mode, completing work is no
+  longer refused because somebody else holds the ticket.
+- **`tcw work start` on an active item nobody holds takes it** instead of
+  refusing — that is what `tcw work tracker release` leaves. An item somebody else
+  holds is still refused, and the message now names
+  `tcw work tracker claim <slug> --take-over`.
+- **`tcw work tracker link --sync-status` is retired.** Run
+  `tcw work tracker link <slug> <KEY>`, then `tcw work tracker claim <slug>`, then
+  `tcw work tracker sync <slug>`. Using the old flag refuses and names those three
+  commands. Tickets linked with it by an earlier version keep working.

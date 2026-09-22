@@ -8,10 +8,11 @@ refuse and point me at `tcw work tracker import <ticket>`, which claims a ticket
 creates its item. `tcw work inbox accept` of a ticket key is not refused for being
 strict: it is that same import, and refuses exactly where the import would.
 `tcw work start` of an item with no ticket refuses; of a bound item, it claims the
-ticket first and starts the item only when the claim succeeded. `submit`, `rework`
-and completing an item as `done` first read the ticket and refuse unless it is
-assigned to me and sits where the item's lifecycle left it — for a `worktree` item,
-before anything is merged. A refusal says what did not happen and what to fix, and
+ticket first and starts the item only when the claim succeeded. `submit` and `rework`
+first read the ticket and refuse unless it is assigned to me and sits where the
+item's lifecycle left it. Completing an item as `done` refuses only when the ticket
+is not where the lifecycle left it — for a `worktree` item, before anything is
+merged — and not for who holds it: a claim gates work, not finishing it. A refusal says what did not happen and what to fix, and
 changes no file; a `start` refused after its claim leaves the ticket claimed.
 Discarding an item is always allowed, so no item is trapped; `drop` refuses an item
 that has ever been bound, since dropping would erase that record, and tells me to
@@ -19,12 +20,13 @@ discard it instead. Epics are not gated, since they only group work — which is
 `tcw work edit --type` refuses to turn an item into an epic or an epic into an
 item — except that an epic cannot be started in a worktree.
 
-A claim only authorizes work when the workflow could have refused a second person:
-if, once claimed, the ticket still offers the claim transition, `start` and
-`tcw work tracker import` refuse and leave the ticket claimed for me to release. A
-claim retried later — by the next lifecycle command or `tcw work tracker sync`, while
-the binding's record still names the `start` it owes — is checked the same way, and
-stays owed while the check fails.
+A claim only authorizes work when the workflow could have refused a second person.
+The claim `start` makes applies `work.tracker.exclusive-claim-transition` before it
+assigns the ticket, so on a workflow that will not apply that transition to a ticket
+somebody already took, a second person is refused there and their item does not
+move. `tcw work tracker import` still asks it the older way: if, once claimed, the
+ticket still offers the claim transition, it refuses and leaves the ticket claimed
+for me to release.
 
 The web app cannot check a ticket, so under strict mode its create, start, complete
 as `done` and drop actions answer with a refusal naming the `tcw work` command to use;
@@ -43,8 +45,7 @@ the key; a child node that inherits a strict parent's tracker block can set
 
 Limits I accept: one claimed ticket can authorize several items, through `tracker
 link` and `import --part`; `new --parent` and `new --initiative` are refused, so a
-child is imported and linked rather than nested; and whether a workflow can refuse a
-second claimant is learned from the ticket after the claim, as the account I use sees
-it, not from the project's workflow definition — a workflow that hides the claim from
-my account but offers it to another is not caught. A ticket held back for another
+child is imported and linked rather than nested; and a workflow that offers
+`exclusive-claim-transition` again from where it leads excludes nobody — that is a
+fact about the workflow I name it on, which TCW does not check. A ticket held back for another
 part whose item is not in this checkout is refused as out of place until I move it.

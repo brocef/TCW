@@ -152,21 +152,39 @@ claims a linked ticket; `import` on one refuses, saying it is linked but not cla
 
 For a **bound** item in a node with a tracker configured, a lifecycle command sends
 its move to the ticket **after** the local move, its commit and `post` hooks:
-`start` claims (same rules as `import`, including taking a ticket out of a
-`work.tracker.pre-backlog` status such as `Triage` first); `submit`, `rework`, `complete` and a
-discard move the ticket to `work.tracker.statuses` for the item's new status
-(nothing when unmapped). No tracker configured, or an unbound item: nothing, and no
-tracker code is imported.
+`start` claims — first taking a ticket out of a `work.tracker.pre-backlog` status
+such as `Triage`, then an assignment read back, applying no transition unless
+`exclusive-claim-transition` names one — and then moves the ticket to
+`statuses.active` like any other move; `submit`, `rework`, `complete` and a discard
+move the ticket to `work.tracker.statuses` for the item's new status (nothing when
+unmapped). No tracker configured, or an unbound item: nothing, and no tracker code
+is imported.
 
-- **Moved only when** assigned to the signed-in account, not already resolved, and —
+- **A claim gates work, not resolution.** `submit` and `rework` of a bound item are
+  **refused before the local move** unless the ticket is assigned to the signed-in
+  account — held by another names them; held by nobody names `tcw work tracker
+  claim <slug>` — in every mode, strict or not. An unreachable tracker does not
+  refuse outside strict mode. An unbound item is not gated; the local `owner` is not a
+  permission. `complete` and a discard need no claim: they move the ticket whoever
+  holds it, and leave the assignee alone.
+- **Forward only for a lifecycle move.** A `start` whose ticket is already past
+  `active` (in review, say) claims it, leaves it there, reports it `held`, and exits 0
+  with no record. Only `tracker sync` moves a ticket backwards.
+- **`start` on an active item nobody holds** (after `tracker release`) takes it,
+  rather than refusing. Active and held by somebody else is refused, naming
+  `tcw work tracker claim <slug> --take-over`.
+
+- **Moved only when** assigned to the signed-in account (not asked for `complete` or
+  a discard), not already resolved, and —
   for a lifecycle move — in the status the previous local status maps to (or, with a
   record, its `since` or its move's target). Otherwise *conflicting*. Exactly one
   offered transition must lead to the target.
 - **Not updated → the item still moved**, exit 1, and `tracker.yaml` gains a `sync`
   record: `pending` (unreachable, rate limited, no or bad credentials, a tracker
   block with problems) or `conflicting` (Jira answered: 400/403/404, assignee,
-  drift, no single transition). A record whose `move` is `start` means that start's
-  claim never succeeded; every later delivery claims first. There is no `claim` key —
+  drift, no single transition; a claim that failed because Jira did not answer is
+  `pending`). A record whose `move` is `start` means that start was never delivered:
+  `tracker sync` claims first, delivers the start, then the move after it. There is no `claim` key —
   one still on disk from an older version is read and ignored. Success removes the
   record; a first-time success writes nothing.
 - **`show`** prints `tracker sync: <state> after <move> (<at>): <reason>`; the board
@@ -181,25 +199,27 @@ tracker code is imported.
   Exit 1 while any stays unresolved — and a **named** slug skipped while it still owes a
   record is itself exit 1, naming `TCW_WORK_OWNER` and `start --take-over`; a `--all`
   sweep still exits 0 over other people's items.
-- **Catching a ticket up is opt-in.** A plain `link` on an item past `backlog` changes
-  nothing in the tracker. When the ticket's status does not match the item's, it warns
-  and notes `status-synced: false` on the binding; while the ticket's status stays out
-  of step, later moves report it `held` — linked without its status synced — and move
-  nothing, and strict mode refuses them with the same explanation. Another holder, an
-  unclaimed ticket in step, or a misnamed transition is still `conflicting`. The note clears once
-  a delivery or `sync` finds the ticket in step. **`link <slug> <KEY>
-  --sync-status`** notes `catch-up: true` on the binding — which is what says the ticket
-  has never been held — and delivers it at once: claim — skipped for a ticket already yours on a mapped status, refused for one past
-  `active` that is not yours — then
-  straight to the item's mapped status if the workflow offers it, otherwise forward
-  one mapped status at a time. Never backwards, never on a resolved ticket, never for
-  an item somebody else started; what does not arrive is left for `tracker sync`.
-  Only a `catch-up` binding is walked through several statuses; a plain `sync` makes
-  one move. A claim — from `start`, `link --sync-status`, `sync`, `import`, `inbox
-  accept`, or a move that still owes one — first applies the transition
-  `work.tracker.pre-backlog` names when the ticket is in one of its statuses, and
-  says the ticket was moved out; nothing else leaves triage, and without the key the
-  refusal names it. To repair an older stuck binding: `unlink`, then `link --sync-status`.
+- **Bringing a ticket along is `link`, then `claim`, then `sync`.** A plain `link` on
+  an item past `backlog` changes nothing in the tracker. When the ticket's status does
+  not match the item's, it warns and notes `status-synced: false` on the binding;
+  while the ticket's status stays out of step, later moves report it `held` — linked
+  without its status synced — and move nothing, and strict mode refuses them with the
+  same explanation. Another holder, an unclaimed ticket in step, or a misnamed
+  transition is still `conflicting`. The note clears once a delivery or `sync` finds
+  the ticket in step. `tcw work tracker claim <slug>` then `tcw work tracker sync
+  <slug>` brings it along in one transition. **`link --sync-status` is retired**:
+  it refuses, names those three commands, and writes nothing.
+- **`catch-up: true` is read, never written.** A binding an older `--sync-status`
+  wrote still walks its ticket forward one mapped status at a time (straight there
+  when the workflow offers it), never backwards and never on a resolved ticket; a
+  plain `sync` makes one move. `tracker create` for work under way records the item's
+  start as undelivered instead, so it claims, delivers the start, then the move after
+  it.
+- **Triage:** a move that takes a ticket — `start`, `sync` of an undelivered start or
+  a catch-up, `import`, `inbox accept` — first applies the transition
+  `work.tracker.pre-backlog` names when the ticket is in one of its statuses, and says
+  the ticket was moved out; nothing else leaves triage, and without the key the
+  refusal names it.
 - **Parts:** a status move is held while another open item here shares the ticket.
 - **Another site:** a binding whose `ticket.url` is not on `base-url` is never
   written through; `import`/`link` refuse it naming the item.
@@ -242,11 +262,13 @@ that got as far as claiming leaves the ticket claimed.
 | Command | Under strict |
 | ------- | ------------ |
 | `new` (not `--epic`), `inbox accept` of a raw entry | refused → `tcw work tracker import <ticket>` (`inbox accept <ticket>` is import, gated as import) |
-| `start` | unbound: refused. Bound: claim first (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed. An epic cannot start with `--worktree` |
-| `submit`, `rework`, `complete --resolution done` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused. `complete` checks before the worktree merge |
+| `start` | unbound: refused. Bound: claim first, through `exclusive-claim-transition` (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed — so a second claimant the workflow refuses is stopped before their item moves. An epic cannot start with `--worktree` |
+| `submit`, `rework` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused |
+| `complete --resolution done` | read the ticket: in that status, as above; who holds it is not asked. Checked before the worktree merge |
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
-| `tracker import`, strict `start` claim | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
+| `tracker import` | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
+| strict `start` claim | refused when `exclusive-claim-transition` is not offered or the workflow refuses it, or the assignment does not read back as yours. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
 | `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item | 409, naming the `tcw work` command (PUT `tracker.yaml` is refused in every mode, below) |
 
 - **Tracker unreachable, or an undelivered `sync` record:** refused. Run
@@ -336,7 +358,8 @@ reaches a stage only if the agent resumes into one.
 
 Treat `start` as a claim: supply a stable owner (flag, environment, or Git
 identity), choose another item after contention, and use `--take-over` only as a
-deliberate ownership replacement.
+deliberate ownership replacement. An active item with no owner (after `tracker
+release`) is simply taken by `start`.
 
 A claim is briefly in flight, and reads settle across that window rather than
 reporting the item missing — a blocker being started elsewhere still blocks. If a

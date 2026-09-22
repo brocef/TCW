@@ -515,10 +515,11 @@ to the transitions.
 | `request`, `spec`, `plan` stages        | unchanged                      | unchanged                                                                                                                                      |
 | at any time                             | —                              | `tcw work tracker link` / `unlink` records or removes the link between an existing item and a ticket; Jira itself is not touched               |
 | an item has no ticket                   | —                              | `tcw work tracker create <slug>` makes one for it and binds it; `--all` sweeps every open item without one. Needs `work.tracker.create` and `statuses.backlog`. With `create.on-new`, filing an item makes its ticket |
-| `start`                                 | moves the item                 | also claims a linked ticket, and posts a comment if `comments: true`                                                                           |
-| `submit`, `rework`, `complete`, discard | moves the item                 | also moves a linked ticket to the Jira status mapped under `statuses`, and posts a comment if `comments: true`                                 |
+| `start`                                 | moves the item                 | also claims a linked ticket (assigns it to you) and moves it to the status mapped for `active`; a ticket already past that stays where it is. Posts a comment if `comments: true` |
+| `submit`, `rework`                      | moves the item                 | refused before the item moves unless a linked ticket is assigned to you (`tcw work tracker claim` takes it). Then moves the ticket to the Jira status mapped under `statuses`, and posts a comment if `comments: true` |
+| `complete`, discard                     | moves the item                 | moves a linked ticket to its mapped status whoever holds it — finishing work needs no claim — and posts a comment if `comments: true`          |
 | the ticket could not follow             | —                              | the item still moves; the command exits 1 and records the ticket as pending or conflicting; `tcw work tracker sync` retries                    |
-| the ticket is behind its item           | —                              | with `tcw work tracker link --sync-status`, a ticket linked to work already under way is claimed and moved forward to where the item is      |
+| the ticket is behind its item           | —                              | for a ticket linked to work already under way: `tcw work tracker claim <slug>`, then `tcw work tracker sync <slug>`                          |
 | the ticket does not match its item      | —                              | `tcw work tracker sync <slug>` puts it where the item's status says, whether the ticket is ahead of the item or behind it; a backwards move says so |
 
 Setting `strict: true` changes several steps, so that no work happens without a
@@ -528,9 +529,12 @@ claimed ticket:
   and point you at `tcw work tracker import`. Where `inbox-query` is set, `inbox accept`
   of a ticket is allowed, because it claims the ticket.
 - `start` refuses an item with no ticket. For a linked item it claims the ticket
-  first, and moves the item only if the claim worked.
-- `submit`, `rework` and `complete --resolution done` read the ticket first, and
-  refuse unless it is assigned to you and where the item's last move left it.
+  first, through the transition `exclusive-claim-transition` names, and moves the
+  item only if the claim worked.
+- `submit` and `rework` read the ticket first, and refuse unless it is assigned to
+  you and where the item's last move left it. `complete --resolution done` refuses
+  only if the ticket is not where the item's last move left it: who holds it does
+  not matter for finishing work.
 - Discarding is always allowed. `drop` refuses an item that was ever linked, so
   the record stays.
 - While Jira cannot be reached, those commands refuse, and `tcw serve` refuses
