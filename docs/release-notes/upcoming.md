@@ -39,19 +39,38 @@ internal module names.
   status down to your active status, because that is what a rework is, but nothing
   drags a ticket back because somebody else moved it on. `tcw work tracker sync`
   has no window and reconciles both ways, because that is what you run it for.
-- **`exclusive-claim-transition` is never applied to a ticket already past your
-  `active` status.** It leads onto that status, so applying it from above would
-  move the ticket backwards. Without strict mode the transition is skipped, the
-  ticket is taken by the assignment alone and left where it is, and the output says
-  so. Under strict mode `tcw work start` is refused before the item moves, because
-  an assignment on its own is not the exclusivity strict mode promises; the message
-  tells you to move the ticket back in Jira or turn strict mode off.
+- **No lifecycle move applies `exclusive-claim-transition` to a ticket already past
+  your `active` status.** It leads onto that status, so applying it from above
+  would move the ticket backwards. Without strict mode the transition is skipped,
+  the ticket is taken by the assignment alone and left where it is, and the output
+  says so. Under strict mode `tcw work start` is refused before the item moves,
+  because an assignment on its own is not the exclusivity strict mode promises; the
+  message tells you to move the ticket back in Jira or turn strict mode off.
+  `tcw work tracker claim` is the deliberate exception — you asked for the ticket
+  and nothing else, so it applies the transition from wherever the ticket is and
+  tells you it moved one.
 - **If a claim's transition lands and the assignment then fails, TCW says so.**
   With `exclusive-claim-transition` set, the transition goes first, so a failed
   assignment leaves the ticket moved and held by nobody. The message now names the
   status it was moved to and tells you to assign it to yourself in Jira, because
   running the command again cannot finish the claim: the transition is no longer
   offered from where the ticket now sits, which is exactly what makes it exclusive.
+  A claim that gets as far as *reading back* the assignment and cannot is a
+  different thing and is reported differently: the assignment landed, so the ticket
+  is not unassigned, and running the command again is what settles it.
+- **Finishing an item never moves its ticket into a working status first.** If a
+  `tcw work start` never reached Jira and you later complete or discard the item,
+  `tcw work tracker sync` sends the closing transition alone: it does not claim the
+  ticket, take it out of a triage column, or walk it up through In Progress only to
+  close it from there. On a workflow with no transition from where the ticket sits
+  straight to your `completed` status, that is reported instead of done — close the
+  ticket in Jira, which is the honest end of a journey that never started.
+- **A start Jira never received is not forgotten by the next failure.** The item
+  remembers an undelivered start until it is delivered, so a `submit` or `rework`
+  that fails while taking the ticket on that start's behalf leaves the start
+  recorded, and `tcw work tracker sync` still finishes both moves once Jira answers.
+  Before, the later move overwrote it and the item was stuck: every later sync read
+  the ticket as drift and refused to move it.
 - **`submit` and `rework` need the ticket to be yours**, with or without strict
   mode. For an item with a ticket, they are refused before the item moves when the
   ticket is somebody else's (the message names them) or nobody's (the message

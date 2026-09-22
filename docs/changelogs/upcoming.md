@@ -18,6 +18,11 @@ category.
   "{key} was moved to '{status}' but is not assigned to you. Assign it to yourself
   in the tracker, then run this again." — the only advice that works, since the
   assertion transition is no longer offered from where the ticket now sits.
+- `OwnershipOutcome.assigned`: whether this run's own assignment landed — false up
+  to and including the assignment failing, true from the read-back onwards. It is
+  what separates *the ticket is unassigned* from *who holds it is unknown*, so the
+  sentence above is said only for a failed assignment; a failed read-back keeps
+  "Run this again to find out", which is advice that works.
 - `authorize(..., ownership=False)` and `_strict_refusal(..., ownership=False)`:
   strict `complete` checks where the ticket is, not who holds it.
 - `tcw work tracker sync` prints what its delivery did to take the ticket
@@ -47,11 +52,28 @@ category.
 - A record naming `start` has an empty window (`expected_statuses`), like a live
   start. When the item has moved past `active`, that start is delivered first (to
   `statuses.active`, `transitions.start`) and the later move measures from there.
+- A recorded start is owed only while the **item** is unresolved (`start_owed` in
+  `deliver`), never decided from the move: `sync` has none of its own and reads the
+  record's, so a resolved item carrying a start record used to read as a start. It
+  gates `takes_ticket`, the `leave_pre_backlog` step and the recorded-start hop, so
+  a `sync` of a finished item claims nothing and climbs nothing; and `sync` falls
+  back to `MOVE_ONTO[local]` rather than the recorded start, without which
+  `MOVES_NEEDING_NO_CLAIM` would not exempt the resolution and a ticket nobody
+  holds could not be closed. A `complete` on a `catch-up: true` binding no longer
+  leaves a `pre-backlog` status either.
+- While `start_owed` holds, `finish` writes `start` as the record's move whatever
+  move is being delivered, and `record_unsent` does the same — replacing the three
+  assignments that covered the recorded-start hop alone. Taking the ticket out of a
+  `pre-backlog` status and taking the ticket itself are done on the start's behalf
+  too, and naming the later move there lost the start for good. The flag is cleared
+  the moment the start's hop has landed and been read back.
 - The catch-up walk runs for any binding carrying `catch-up: true`, not only when
   a claim was owed, and looks for a shortcut before every hop. `resolving` is false
   for a `complete` on such a binding, so that completion still needs the ticket
   held — the walk climbs working statuses, which is work. Documented rather than
   changed; only bindings written before `--sync-status` was retired are affected.
+  Leaving a `pre-backlog` status is now gated on the item instead, so that
+  completion no longer takes its ticket out of triage.
 - The delivery says "{key} is already held by you." only for a `start`, not for
   every move that takes the ticket, and `_deliver_after` takes `say_claim=False`
   from a strict `start` — `_strict_claim` now prints the claim's own message, since

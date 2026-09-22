@@ -446,7 +446,7 @@ It is a different setting from `transitions.start`, which is the transition a
 claimed. Setting one does not set the other. When both name the same transition, a
 start applies it once: the claim moves the ticket there, and nothing is left to do.
 
-**The transition is never applied to a ticket that is already past
+**No lifecycle move applies the transition to a ticket that is already past
 `statuses.active`** — one in your review status, say. It leads *onto*
 `statuses.active`, so applying it from above would move the ticket backwards, and
 no lifecycle move does that. What happens instead depends on strict mode:
@@ -461,6 +461,12 @@ no lifecycle move does that. What happens instead depends on strict mode:
   The message gives you the two ways out: move the ticket back to
   `statuses.active` in the tracker and run the start again, or turn
   `work.tracker.strict` off.
+
+`tcw work tracker claim` is the deliberate exception: it applies the transition
+from wherever the ticket is, and says so when it has moved one. A lifecycle move
+is doing something else and happens to need the ticket; `tracker claim` is you
+asking for the ticket and nothing else, so it does what you asked and tells you
+what that cost.
 
 ### Taking something somebody else holds
 

@@ -541,6 +541,23 @@ def test_a_refused_step_out_of_triage_keeps_the_record_naming_the_start(tmp_path
     assert record(root, slug) is None
 
 
+def test_a_complete_on_a_catch_up_binding_never_accepts(tmp_path, monkeypatch):
+    """The Jira guide says a `complete` never takes a ticket out of triage, and a
+    binding still carrying `catch-up: true` used to be the one case where that was
+    false: the binding makes a completion a move that takes the ticket, and the step
+    only ever asked the move. It asks the item now, and the item is finished."""
+    root, fake_ = triage_node(tmp_path, monkeypatch, assignee=A,
+                              pre_backlog={"Triage": "Accept"})
+    slug = under_way(root)
+    plain_link(root, slug)
+    set_binding_key(root, slug, "catch-up", True)
+    fake_.tickets[TICKET_ID].status = "Triage"
+    fake_.applied.clear()
+    cli(root, "work", "complete", slug, "--resolution", "done", "--confirm", "--force")
+    assert fake_.applied == [], fake_.applied
+    assert fake_.tickets[TICKET_ID].status == "Triage"
+
+
 def test_a_part_bound_report_only_sync_sends_nothing(tmp_path, monkeypatch):
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
