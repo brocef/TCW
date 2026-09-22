@@ -27,8 +27,8 @@ The ceiling, for a project whose workflow genuinely refuses a second claimant:
 name a transition in `work.tracker.exclusive-claim-transition` and it is applied
 first, so a second claimant's transition is refused and never reaches the assign.
 That is `intake.claim`'s own reasoning, and it is the one case where claiming
-does move the ticket — which is why it is opt-in, and why the guide says plainly
-what opting in costs.
+does move the ticket — which is why it is opt-in (required under strict mode),
+and why the guide says plainly what opting in costs.
 
 One rule is carried across from `intake.claim` by hand rather than by import: a
 ticket already assigned to the caller is already held, whatever the workflow now

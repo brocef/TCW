@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tcw.store.base import parse_tracker_config
+from tcw.store.base import STRICT_NEEDS_EXCLUSIVE_CLAIM, parse_tracker_config
 from tcw.store.fs import FsWorkStore
 from tcw.validate import validate
 from test_tracker_sync import (A, B, KEY, SENTINEL, STATUSES, TICKET_ID,  # noqa: F401
@@ -97,6 +97,67 @@ def test_validate_names_the_key_and_the_board_still_reads(tmp_path, fake):
                        statuses={"active": "In Progress", "discarded": "Won't Do"})
     assert any("work.tracker.statuses.completed" in p for p in validate(root))
     assert cli(root, "work", "list")[0] == 0
+
+
+# ── strict mode requires exclusive-claim-transition ─────────────────────────
+
+
+def test_strict_without_the_claim_transition_is_one_problem_naming_it():
+    config, problems = parsed(strict=True, statuses=STATUSES)
+    assert config is None
+    assert problems == [STRICT_NEEDS_EXCLUSIVE_CLAIM]
+    [problem] = problems
+    assert problem.startswith(
+        "work.tracker.exclusive-claim-transition: required when strict is true")
+    assert "only one person" in problem and "Name the transition" in problem
+
+
+def test_strict_with_the_claim_transition_parses():
+    config, problems = parsed(strict=True, statuses=STATUSES,
+                              **{"exclusive-claim-transition": "Start Progress"})
+    assert problems == [] and config.strict is True
+
+
+@pytest.mark.parametrize("extra", [{}, {"strict": False}], ids=["absent", "false"])
+def test_without_strict_the_claim_transition_stays_optional(extra):
+    config, problems = parsed(statuses=STATUSES, **extra)
+    assert problems == [] and config is not None
+
+
+@pytest.mark.parametrize("value", [None, ""], ids=["null", "blank"])
+def test_a_written_but_empty_claim_transition_keeps_its_own_one_problem(value):
+    config, problems = parsed(strict=True, statuses=STATUSES,
+                              **{"exclusive-claim-transition": value})
+    assert config is None
+    [problem] = [p for p in problems if "exclusive-claim-transition" in p]
+    assert len(problems) == 1, problems
+    assert "expected a non-empty string" in problem
+    assert problem != STRICT_NEEDS_EXCLUSIVE_CLAIM
+
+
+def test_validate_names_the_missing_claim_transition_and_the_board_still_reads(
+        tmp_path, fake):
+    root = strict_node(tmp_path, strict=True, claim_transition=None)
+    assert f"tcw-config.yaml: {STRICT_NEEDS_EXCLUSIVE_CLAIM}" in validate(root)
+    assert cli(root, "work", "list")[0] == 0
+
+
+def test_without_the_claim_transition_strict_moves_refuse_and_name_validate(
+        tmp_path, fake):
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress")
+    idle = bound_item(root, "Idle", part="idle")
+    busy = bound_item(root, "Busy", part="busy")
+    started(root, busy)
+    set_tracker_key(root, "exclusive-claim-transition", None)
+    st = FsWorkStore.open(root)
+    assert st.tracker_strict() is True
+    assert st.tracker_config() is None
+    assert st.tracker_problems() == [f"tcw-config.yaml: {STRICT_NEEDS_EXCLUSIVE_CLAIM}"]
+    for argv, slug, before in ((("start", idle), idle, "backlog"),
+                               (("submit", busy), busy, "active")):
+        code, _out, err = cli(root, "work", *argv)
+        assert code == 1 and REFUSED in err and "tcw validate" in err, (argv, err)
+        assert status(root, slug) == before, argv
 
 
 @pytest.mark.parametrize("strict, problem, expected", [
@@ -729,6 +790,30 @@ def test_strict_survives_problems_that_come_from_an_ancestor(tmp_path):
     nodes = _chain(tmp_path / "c", root_board=False, root={**full, "strict": True,
                    "colour": "red"}, repo=ABSENT, pkg={"strict": False})
     assert _store(nodes["pkg"]).tracker_strict() is False
+
+
+CLAIM_FROM_PARENT = "Start"
+MISSING = [f"tcw-config.yaml: {STRICT_NEEDS_EXCLUSIVE_CLAIM}"]
+
+
+@pytest.mark.parametrize("parent_has_key, pkg_extra, expected", [
+    (True, {}, []),
+    (False, {}, MISSING),
+    (False, {"exclusive-claim-transition": CLAIM_FROM_PARENT}, []),
+    (False, {"strict": False}, []),
+], ids=["parent-sets-it", "nobody-sets-it", "child-sets-it", "child-not-strict"])
+def test_the_claim_transition_requirement_follows_inheritance(tmp_path, parent_has_key,
+                                                              pkg_extra, expected):
+    """The key can come from the parent or the child, and a child that turns strict
+    off needs none. Missing, it is the child's own problem even though `strict`
+    came from the parent: nobody wrote the key, so no ancestor file is to blame."""
+    from test_tracker_inheritance import ABSENT, COMPLETE, QUERY_ONLY, _chain, _store
+    parent = {**COMPLETE, "statuses": STATUSES, "strict": True}
+    if parent_has_key:
+        parent["exclusive-claim-transition"] = CLAIM_FROM_PARENT
+    nodes = _chain(tmp_path, root_board=False, root=parent, repo=ABSENT,
+                   pkg={**QUERY_ONLY, **pkg_extra})
+    assert _store(nodes["pkg"]).tracker_problems() == expected
 
 
 def test_an_unreadable_binding_is_refused_not_a_traceback(strict, fake):

@@ -1275,6 +1275,15 @@ TRACKER_RENAMED_KEYS = {
         "renamed to work.tracker.transitions.start, the transition the start move "
         "applies, alongside submit, rework, complete and discard",
 }
+# Strict mode promises that only one person can take a ticket, and nothing but this
+# transition can keep that promise: a claim applies it first, and a workflow that
+# will not apply it to a ticket already taken stops the second person there.
+STRICT_NEEDS_EXCLUSIVE_CLAIM = (
+    "work.tracker.exclusive-claim-transition: required when strict is true. Strict "
+    "mode promises that only one person can take a ticket, and a claim keeps that "
+    "promise by applying this transition, which your workflow will not apply to a "
+    "ticket that has already been taken. Name the transition that takes a ticket "
+    "into work.")
 # `backlog` first: it is where an item begins, and where creation puts its ticket.
 # The other four are the statuses a *bound* ticket is moved through afterwards.
 TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")
@@ -1453,8 +1462,10 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
                         f"got {type(strict).__name__}")
         strict = False
     if strict:
-        # Strict mode gates completing and discarding against these, so a missing
-        # one would be a gate that can never pass or never check.
+        # Strict mode gates completing and discarding against these statuses, so a
+        # missing one would be a gate that can never pass or never check. It also
+        # needs `exclusive-claim-transition`, the only thing that makes a claim
+        # exclusive; that check is after these.
         for key in ("active", "completed"):
             if not statuses.get(key):
                 problems.append(f"work.tracker.statuses.{key}: required when "
@@ -1466,6 +1477,10 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
             problems.append(f"work.tracker.statuses.discarded: required when strict "
                             f"is true, as one status or one for each of "
                             f"{', '.join(sorted(resolutions))}")
+        # Absent only: a key written as `null` or blank already has its own problem
+        # below, and one problem per key is enough.
+        if "exclusive-claim-transition" not in raw:
+            problems.append(STRICT_NEEDS_EXCLUSIVE_CLAIM)
 
     comments = raw.get("comments", False)
     if not isinstance(comments, bool):
@@ -1476,8 +1491,9 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
 
     email_env = nested_str(credentials, "email-env", "credentials.email-env")
     token_env = nested_str(credentials, "token-env", "credentials.token-env")
-    # Optional, so a lone `null` is a wrong value rather than a missing required one —
-    # the same shape `inbox-query` uses above.
+    # Optional unless strict (required above, only when the key is absent), so a lone
+    # `null` is a wrong value rather than a missing required one — the same shape
+    # `inbox-query` uses above.
     if "exclusive-claim-transition" in raw and raw["exclusive-claim-transition"] is None:
         problems.append("work.tracker.exclusive-claim-transition: expected a "
                         "non-empty string, got NoneType")
