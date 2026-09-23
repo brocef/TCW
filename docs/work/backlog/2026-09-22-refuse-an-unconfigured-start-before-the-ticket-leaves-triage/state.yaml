@@ -1,0 +1,9 @@
+slug: 2026-09-22-refuse-an-unconfigured-start-before-the-ticket-leaves-triage
+title: Refuse an unconfigured start before the ticket leaves triage
+created: '2026-09-22'
+resolution: null
+priority: 3
+effort: low
+tags:
+- work
+- cli
