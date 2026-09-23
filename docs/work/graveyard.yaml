@@ -834,6 +834,9 @@
 2026-09-17-scratch-handoff-tolerance-probe:
   resolution: wontfix
   resolved: '2026-09-17'
+2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move:
+  resolution: done
+  resolved: '2026-09-22'
 2026-09-18-require-an-exclusive-claim-transition-under-strict-tracker-mode:
   location: 2bbac5b7fd58ef414536e8468966ed96159da75d
   resolution: done

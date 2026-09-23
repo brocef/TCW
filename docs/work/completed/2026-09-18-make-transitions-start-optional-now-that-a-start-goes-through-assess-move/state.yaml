@@ -1,7 +1,7 @@
 slug: 2026-09-18-make-transitions-start-optional-now-that-a-start-goes-through-assess-move
 title: Make transitions.start optional now that a start goes through assess_move
 created: '2026-09-18'
-resolution: null
+resolution: done
 priority: 2
 effort: low
 tags:
