@@ -65,8 +65,8 @@ jobs:
                 # runs.
                 python-version: ["3.11", "3.14"]
         steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
+            - uses: actions/checkout@v7
+            - uses: actions/setup-python@v7
               with:
                   python-version: ${{ matrix.python-version }}
             # No Node in *this* job: pytest never shells out to it (`tcw serve`'s
@@ -93,9 +93,9 @@ jobs:
             || contains(github.event.pull_request.labels.*.name, 'run-ci')
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
-            - uses: pnpm/action-setup@v4
-            - uses: actions/setup-node@v4
+            - uses: actions/checkout@v7
+            - uses: pnpm/action-setup@v6
+            - uses: actions/setup-node@v7
               with:
                   # `engines.node` in package.json is >=22.12.0.
                   node-version: "22"
