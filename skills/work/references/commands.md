@@ -339,8 +339,9 @@ starting. `unlink` makes no tracker call and needs no tracker configured.
 Neither `list` nor `show` detects a wrong `transitions.start` value. A ticket not offering it
 may not have reached the claim yet, or may have been claimed already, and both are
 indistinguishable from a typo without reading the project's workflow definition. An
-*unset* key is a different case and both do report it: nothing has to be read from
-the workflow to know the setting is empty.
+*unset* key is a different case, and `show` does report it: nothing has to be read
+from the workflow to know the setting is empty. `list` reports it no more than it
+reports a wrong value — it prints one row per ticket and consults no transition.
 
 ## Addressing
 

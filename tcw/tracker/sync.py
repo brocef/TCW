@@ -108,10 +108,15 @@ _RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
 # How much of a refusal is kept in the binding, so one failed delivery cannot write an
 # unbounded document. The hints that say what to *do* — name a `pre-backlog` status,
 # fix or remove a transition key — are appended last and so are the first thing a cut
-# takes, which is exactly the part a reader needs. 400 holds the longest refusal TCW
-# composes: an unoffered named transition, the transitions the ticket does offer, the
-# fix-or-remove advice and the pre-backlog hint, measured at 331 characters. Raise it
-# again rather than let a message grow past it.
+# takes, which is exactly the part a reader needs. 400 fits the refusals measured
+# against this project's own fixtures, and no more than that: the longest message —
+# an unoffered named transition, the transitions the ticket does offer, the
+# fix-or-remove advice and the pre-backlog hint — is built from a configured
+# transition name, tracker-supplied status names and however many transitions the
+# workflow offers, none of which TCW caps. A six-transition workflow with ordinary
+# names already composes 507 characters and still loses the hint. So this is a cap on
+# how much of a reason the binding stores, not a ceiling the text is known to fit
+# under. Only the stored record is cut; the CLI prints the reason in full.
 REASON_LIMIT = 400
 
 

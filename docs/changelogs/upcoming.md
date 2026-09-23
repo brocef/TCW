@@ -55,9 +55,11 @@ category.
   moves. The `start` special case existed because the parser then refused a
   configuration without the key.
 - `REASON_LIMIT` (`tcw/tracker/sync.py`) 300 → 400. The uniform removal advice
-  added 50 characters to the longest refusal TCW composes (331 measured), and the
-  cut took the `pre-backlog` hint — the part that says what to do — off the
-  recorded reason.
+  added 50 characters to a refusal that then measured 331, and the cut took the
+  `pre-backlog` hint — the part that says what to do — off the recorded reason.
+  The limit caps how much of a reason the binding stores; it is not a size the
+  message is known to fit under, since the transition names and status names the
+  message quotes come from the project's configuration and from the tracker.
 - `deliver` (`tcw/tracker/sync.py`) takes a ticket through `assert_ownership`
   (asserting through `exclusive-claim-transition`) instead of `intake.claim`. The
   claim-landing refusal and the early `CURRENT` return for a start are gone; the
