@@ -865,6 +865,9 @@
   location: 8968195215ced4867887e2df1c69f01ef0a31783
   resolution: done
   resolved: '2026-09-17'
+2026-09-16-record-a-blocker-naming-a-resolved-item-as-a-slug-not-as-free-text:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-09-16-retire-the-claim-transition-key-into-a-named-start-transition:
   location: a2b72dace9ab1332fc06cd19986d5e1b9dd371d5
   resolution: done
