@@ -65,3 +65,7 @@ so could not fix them.
   something and the sections deliberately left alone.
 - `docs/work/active/2026-09-15-rewrite-the-readme-to-a-new-outline/spec.md` — criterion 13
   and Design § 2, which set the blocking constraints above.
+
+## Note (2026-09-24 backlog cleanup)
+
+The README rewrite this waited on is done, so the blocker was removed. Part 4 is now only deleting the `pnpm prettify` copy from `docs/guide/web-viewer.md`: the README Development section already documents it. Line numbers in the intake have moved.

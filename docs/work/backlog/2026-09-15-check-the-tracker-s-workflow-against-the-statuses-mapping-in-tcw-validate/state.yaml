@@ -8,3 +8,5 @@ tags:
 - cli
 priority: 45
 effort: high
+blocked_by:
+- slug: 2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes

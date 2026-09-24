@@ -2,10 +2,9 @@ slug: 2026-09-11-run-the-eval-harness-and-act-on-what-it-finds
 title: Run the eval harness and report what it finds
 created: '2026-09-11'
 resolution: null
-priority: 45
+priority: 1
 tags:
 - skills
 - work
 - docs
-blocked_by:
-- slug: 2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly
+blocked_by: []

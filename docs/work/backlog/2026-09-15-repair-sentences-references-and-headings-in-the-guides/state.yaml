@@ -3,8 +3,7 @@ title: Repair misplaced sentences, broken references and overloaded headings in 
   guides
 created: '2026-09-15'
 resolution: null
-blocked_by:
-- slug: 2026-09-15-rewrite-the-readme-to-a-new-outline
+blocked_by: []
 tags:
 - docs
 priority: 20

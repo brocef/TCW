@@ -42,3 +42,7 @@ Today they do neither reliably:
 
 - `tests/test_plugin_manifests.py`, `tests/test_committed_paths.py` — existing tests that
   already read the tree from `git ls-files`.
+
+## Scope narrowed (2026-09-24 backlog cleanup)
+
+Part of this shipped: `LIVE_ROUTES` in `tests/test_skill_lifecycle_parity.py` now covers `agents`, `hooks`, `scripts`, `evals`, `tcw` and `tcw-config.yaml`. Still missing: `tests`, `AGENTS.md`, `CLAUDE.md`, `docs/capabilities` and `docs/taxonomy`, and the disk walk still skips `.claude` by name.

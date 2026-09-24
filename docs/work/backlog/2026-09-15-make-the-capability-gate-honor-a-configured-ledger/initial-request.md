@@ -65,3 +65,7 @@ cover both configured forms, crediting this item's regression idea.
 This item narrows to **part 2**: an unreadable `capabilities.yaml` (not valid UTF-8,
 a directory of that name, no read permission, deeply nested content) is reported on
 its own item instead of taking down `tcw work list`, and the `_json_safe` check.
+
+## Scope narrowed (2026-09-24 backlog cleanup)
+
+Part 1 (the completion gate finding a ledger configured with `capabilities.path` or `capabilities.repository`) shipped with `2026-09-21-let-a-work-item-on-a-board-with-no-capabilities-ledger-declare-deltas-against-its-child-nodes-ledgers` (commits 6939d75a, f1d4d16e); `capability_gate` now calls `_open_ledger`. What remains is part 2: one unreadable `capabilities.yaml` (not UTF-8, a directory, no read permission) must be reported on its item instead of failing `tcw work list` — the sidecar read in `tcw/store/fs.py` catches only `yaml.YAMLError`. The unreproduced `_json_safe` sub-point is dropped. Title changed to match.

@@ -26,3 +26,7 @@ Both are about what the command *should* do, not whether it does what it says.
 
 Neither is a defect against the documented behaviour. Both are the kind of thing
 that is much cheaper to decide now than after someone depends on it.
+
+## Scope narrowed (2026-09-24 backlog cleanup)
+
+Question 1 (`--component` cannot keep provision from contacting connected-project remotes) is dropped: it is about convenience only. Remaining: `repository.checkout` in a config found more than one hop away is read with a plain `_optional_string` (`parse_repository_declaration` in `tcw/store/base.py`), so it may be absolute or use `..` and plant a clone outside the project; bound it the way `path` is bounded.

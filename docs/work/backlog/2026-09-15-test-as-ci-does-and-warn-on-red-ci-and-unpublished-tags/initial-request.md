@@ -51,3 +51,7 @@ and pushed but never reached PyPI**, and nobody knew for two days. The import is
 - `scripts/cut_version.py` — where the release-time warning would be seen.
 - `tests/test_documented_cli_surface.py` — the test already changed to run its own
   repository rather than the installed CLI.
+
+## Scope narrowed (2026-09-24 backlog cleanup)
+
+Part 3 (subprocess tests running the installed `tcw` instead of the worktree copy) is out of scope: the venv rule and the worktree section of CLAUDE.md already handle it in practice. Remaining: run the suite the way CI does (bare `pytest --collect-only`), and warn about a red CI run and a tag that never reached PyPI when cutting and pushing a release.
