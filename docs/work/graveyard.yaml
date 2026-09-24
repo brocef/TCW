@@ -785,6 +785,9 @@
   location: c3e24c9ce474588785441cce9450f5f3b91ea8c2
   resolution: done
   resolved: '2026-09-16'
+2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-09-15-fill-codex-gaps-in-skills-and-give-each-skill-one-capability:
   location: f3594072c320bb4c5783434ef049343b76f325a1
   resolution: done
