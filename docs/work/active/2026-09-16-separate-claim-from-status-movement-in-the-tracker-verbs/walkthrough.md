@@ -112,5 +112,8 @@ posted (`comments` is off).
 - **Also checked:** no `sync:` record in any of the three items' `tracker.yaml`, and
   no comments posted on either ticket (`comments` is off).
 
-**Cleanup.** Both tickets were deleted from Jira at the requester's request (see
-below), and the scratch node was removed.
+**Cleanup.** The scratch node was removed. The requester asked for both tickets to
+be deleted, but Jira refused: `DELETE /rest/api/3/issue/<key>` returned **403** for
+both, because the account lacks the project's "Delete issues" permission. TCW-65
+(Done) and TCW-66 (Won't Do) are still in the project, closed, with the throwaway
+summary. Deleting them needs someone with that permission.
