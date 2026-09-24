@@ -1,7 +1,0 @@
-slug: 2026-09-21-say-that-a-tcw-config-yaml-edit-was-staged-so-git-diff-showing-nothing-isn-t-a-surprise
-title: Say that a tcw-config.yaml edit was staged, so git diff showing nothing isn't
-  a surprise
-created: '2026-09-21'
-resolution: null
-tags:
-- cli

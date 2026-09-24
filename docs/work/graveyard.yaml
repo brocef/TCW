@@ -938,6 +938,9 @@
   location: 49ceb80a89f2162d2ad695a4dc16d617660df163
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-say-that-a-tcw-config-yaml-edit-was-staged-so-git-diff-showing-nothing-isn-t-a-surprise:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-09-21-warn-when-the-loaded-plugin-skills-are-from-a-different-version-than-the-tcw-cli:
   location: 5487f3656ed7105963c7708366c3e39237bcf9c7
   resolution: done
