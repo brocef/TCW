@@ -157,7 +157,8 @@ red under that mutation.
    ran a strict `start` on `GLOBAL`, which excludes nobody, and expected success.
    They were written during the window the regression opened, so they encoded it,
    and neither the spec's nor the plan's sweep listed them. None of them was about
-   exclusivity. Four moved to `SYNC` with their assertions unchanged, and the helper
+   exclusivity. Three moved to `SYNC` with their assertions unchanged, one was
+   split so its on-the-active-status case asserts the refusal, and the helper
    became `claim_node` with a required `workflow` argument, as the rule against
    fixture defaults asks. `test_a_strict_start_reports_a_claim_the_delivery_had_to_make_again`
    could not be kept. On an exclusive workflow, a delivery cannot take back a
