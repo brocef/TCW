@@ -81,6 +81,36 @@ posted (`comments` is off).
   requester asks, through `DELETE /rest/api/3/issue/<key>`.
 - The scratch node is deleted from the scratchpad.
 
-## Results
+## Results — run 2026-09-24, on `main` at `a5342c0a`
 
-_To be filled in by the run._
+**All four criteria hold against real Jira.** Nothing disagreed with the fake tracker.
+
+- **Setup.** `tcw` resolved to `/Users/brian/Projects/TCW/tcw/__init__.py`, and the
+  scratch node passed `tcw validate`. The tickets were **X = TCW-65** and
+  **Y = TCW-66**, both created in Triage and accepted to To Do, unassigned.
+- **Criterion 7 — met, following the current design.** After `start` (unbound) and
+  `link`, `link --sync-status` was refused (exit 2) and named the three commands to
+  use instead. `link` warned that the ticket was out of step. A bare `sync` reported
+  `held — … linked without syncing its status` with the same advice, exit 0, and
+  moved nothing. Then `tracker claim` assigned X without moving it, and `sync`
+  moved it: **TCW-65 In Progress, assigned to the caller.** The criterion's wording
+  ("`link` followed by `sync`") predates the design that puts `claim` between them.
+  The end state it asks for holds, and the guide documents this sequence.
+- **Criterion 8 — met.** X was moved by hand to In Review (Submit). `sync` printed
+  "TCW-65 was in 'In Review', past where … is, and was put back to 'In Progress'"
+  (exit 0): **TCW-65 In Progress.** In Review offers Rework → In Progress,
+  Complete → Done and Cancel → Won't Do, which completes the workflow table above.
+- **Criterion 5 — met.** A was unlinked, and X was put in In Review by hand and
+  unassigned. For item B, `link` then `start` printed "TCW-65 is held by you" and
+  "not moved to 'In Progress': it is already in 'In Review' … a start does not move a
+  ticket back" (exit 0): **TCW-65 stayed in In Review, now assigned to the caller.**
+  B was then submitted (the ticket was already there) and completed as `done`:
+  **TCW-65 Done.**
+- **Criterion 6 — met.** Item C was never started, and Y was unassigned in To Do.
+  `link`, then `complete --resolution wontfix --confirm` gave exit 0 and
+  **TCW-66 Won't Do, still unassigned.**
+- **Also checked:** no `sync:` record in any of the three items' `tracker.yaml`, and
+  no comments posted on either ticket (`comments` is off).
+
+**Cleanup.** Both tickets were deleted from Jira at the requester's request (see
+below), and the scratch node was removed.
