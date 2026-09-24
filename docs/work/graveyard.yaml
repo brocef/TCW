@@ -771,6 +771,9 @@
   location: b0e8dc6c290348e1ff4a75a4dc6df4dda9e94ac5
   resolution: done
   resolved: '2026-09-17'
+2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes:
+  resolution: wontfix
+  resolved: '2026-09-24'
 2026-09-15-refuse-web-writes-to-sidecars-a-command-generates:
   location: 62a7da21e568bfb865d466efbd491e83688fcf65
   resolution: done
