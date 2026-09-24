@@ -2472,14 +2472,25 @@ def _print_ticket(client, ref: str, issue: dict, offered) -> None:
     print(f"summary: {fields.get('summary', '')}")
     print(f"assignee: {assignee}")
 
-    result = assess(client.config.start_transition,
-                    current_status=status, offered=offered)
+    from tcw.store.base import target_status
+    config = client.config
+    result = assess(config.start_transition, current_status=status, offered=offered)
+    # The exclusivity question is `exclusive-claim-transition`'s, the key strict mode's
+    # promise rests on; a project that names none claims through `transitions.start`,
+    # so that is what is asked about there. The claim lands on `statuses.active`, and
+    # knowing it is what lets a transition absent from there read as exclusive.
+    exclusivity = assess(config.exclusive_claim_transition or config.start_transition,
+                         current_status=status, offered=offered,
+                         landing_status=target_status(config.statuses, "active", None)
+                         ).exclusivity
     # Two words, deliberately never one. "claimable" is this ticket right now;
     # "exclusive" is whether the workflow would refuse a second claimant. A reader
     # told "claimable" about a ticket on a non-excluding workflow has been told
     # something true and misleading at once.
     print(f"claimable: {result.claimable}")
-    print(f"workflow: {result.exclusivity}")
+    print(f"workflow: {exclusivity}")
+    # The note is the `claimable:` assessment's: it is what says a `transitions.start`
+    # is unset or not offered, which is the thing a reader can fix in their own file.
     if result.detail:
         print(f"note: {result.detail}")
     from tcw.store.base import pre_backlog_entry

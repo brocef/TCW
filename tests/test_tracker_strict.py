@@ -1555,3 +1555,27 @@ def test_a_project_that_is_not_strict_is_unaffected_on_both_workflows(
     code, out, err = cli(root, "work", *argv)
     assert code == 0, (out, err)
     assert NOT_EXCLUSIVE_WORDS not in err
+
+
+@pytest.mark.parametrize("command", ["tracker", "inbox"])
+@pytest.mark.parametrize("start, exclusive, claimable, workflow", [
+    ("Pick Up", "Start Progress", "claimable", "exclusive"),
+    ("Start Progress", "Pick Up", "not claimable", "not exclusive"),
+], ids=["exclusive-key-names-the-mutex", "exclusive-key-names-the-open-route"])
+def test_show_answers_each_line_about_its_own_key(tmp_path, monkeypatch, command, start,
+                                                   exclusive, claimable, workflow):
+    """Criterion 33. `claimable:` is about `transitions.start`, the key a claim goes
+    through; `workflow:` is about `exclusive-claim-transition`, the key strict mode's
+    promise rests on. With the two naming different transitions, each line shows
+    which one it was asked about."""
+    from tracker_fake import ONE_MUTEX_ONE_NOT
+    root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=ONE_MUTEX_ONE_NOT,
+                                   strict=False, assignee=None,
+                                   ticket_status="In Progress", start=start,
+                                   exclusive=exclusive)
+    set_tracker_key(root, "inbox-query", "status = Triage")
+    code, out, err = cli(root, "work", command, "show", KEY)
+    assert code == 0, err
+    lines = dict(line.split(": ", 1) for line in out.splitlines()[1:] if ": " in line)
+    assert lines["claimable"] == claimable, out
+    assert lines["workflow"] == workflow, out
