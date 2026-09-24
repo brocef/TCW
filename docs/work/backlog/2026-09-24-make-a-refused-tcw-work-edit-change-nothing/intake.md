@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-17-tcw-work-edit-writes-blockers-before-refusing-a-bad-tag.md`
+
+## Inbox body
+
 # tcw work edit writes blockers before refusing a bad tag
 
 ## Desired outcome
