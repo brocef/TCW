@@ -30,13 +30,21 @@
 
 ## What the plan or spec got wrong
 
-- **The plan's `outcome.transitioned` condition was redundant.** Removing it
-  changed no test result. A claim that sends no transition (row `1e`) leaves the
-  ticket in `claimed_from`, so the status comparison already skips it. It was
-  dropped, and the status comparison is now the one guard. The test was
-  tightened so that removing the guard fails (see mutation checks). Without the
-  guard, an import of a ticket already under way would make three extra tracker
-  reads, and a failure in any of them would print a misleading warning.
+- **I first dropped the plan's `outcome.transitioned` condition as redundant.
+  It was not, and it is back** (found at verify). Row `1e` is caught by the status
+  comparison, but a claim can also count as row `3a` when this run's transition was
+  refused because somebody else had just moved a ticket already yours. Only
+  `transitioned` tells that apart, and without it that work under way would be
+  moved back to To Do. Both conditions are now in place, each with a test that
+  fails without it:
+  - `test_a_ticket_moved_by_someone_else_during_the_claim_is_left_alone`
+  - the read-once assertion in `test_a_ticket_already_yours_and_under_way_is_left_alone`
+- **`put_back` assumed where the ticket was after a tracker error** (found at
+  verify). A transition whose answer was lost may have landed, so the ticket is
+  now read again before the warning names a status. Tested by
+  `test_an_unanswered_way_back_reports_where_the_ticket_really_is`.
+- **No test started an imported item** (found at verify). Added
+  `test_starting_an_imported_item_moves_its_ticket_on`.
 - **AC6's test mechanism in the plan (`before` arming `fail`) does not work.** The
   hook armed inside `before` matches the same request. The test uses the existing
   `post_fails` helper from `test_tracker_pre_backlog.py` instead.
