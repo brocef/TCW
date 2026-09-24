@@ -543,6 +543,9 @@
   location: 7fce8ab4bb4619de8320f959146bfe1ecd45e3a9
   resolution: done
   resolved: '2026-08-20'
+2026-08-21-nothing-enforces-a-spec-s-declared-capability-deltas-without-a-capabilities-yaml:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-08-25-avoid-rescanning-work-items-for-every-tcw-work-reference:
   resolution: wontfix
   resolved: '2026-09-24'
