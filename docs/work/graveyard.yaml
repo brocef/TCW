@@ -921,6 +921,9 @@
   location: 9f1af885349bb55b93b63c74e532b78fc0d82f99
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-one-definition-of-a-valid-created-record:
+  resolution: wontfix
+  resolved: '2026-09-24'
 2026-09-21-point-a-refused-drop-of-an-active-or-in-review-item-to-the-discard-route:
   location: b354b99759a8ccfe1ba3de00e38b1ab2d6fe1239
   resolution: done
