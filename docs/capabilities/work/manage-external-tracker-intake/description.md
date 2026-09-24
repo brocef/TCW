@@ -7,7 +7,13 @@ it to me if nobody had it, and reads the ticket back: only when it is now in the
 status the claim leads to and assigned to me is an item created. A ticket assigned
 to someone else, or already closed, is refused, and I am told who has it and where
 it is. The item's intake holds the ticket's description with a link to the ticket,
-its request is still mine to write, and it has no owner until I start it.
+its request is still mine to write, and it has no owner until I start it. Once
+the item exists, a ticket the claim moved goes back to the status the claim found
+it in, still assigned to me, so the ticket does not say the work has started until
+I start the item; where the workflow offers no single way back, the import still
+succeeds and warns that the ticket stayed. A ticket I already held and was working
+on is left where it is, and so is every ticket under `work.tracker.strict: true`,
+whose proof of exclusivity is the status the claim led to.
 
 A ticket waiting in a status before the backlog, such as `Triage`, is claimable
 once I name that status and the transition out of it under
@@ -40,9 +46,13 @@ carries it as `tracker`, and the web app's item detail links to the ticket. It r
 It is never treated as proof of a claim: importing re-reads the ticket and refuses
 when Jira disagrees.
 
-Four limits are accepted rather than prevented. On a workflow that offers the claim
+Five limits are accepted rather than prevented. On a workflow that offers the claim
 from every status, two people can both claim one ticket (under `work.tracker.strict:
-true`, `import` refuses to create an item for such a claim). Two runs by the same Jira
+true`, `import` refuses to create an item for such a claim). Because the ticket goes
+back to a status that offers the claim again, a second import that read the ticket
+before mine claimed it, and claims after mine has finished, can still take it; that
+needs two imports of one unassigned ticket within seconds, and strict mode is not
+exposed to it. Two runs by the same Jira
 account at the same moment can both create an item. Each node keeps its own
 bindings, so importing one ticket in two nodes gives an item in each. And a ticket
 held by a finished item can be bound to a second item, open or finished, without a

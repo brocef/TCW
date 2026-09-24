@@ -297,7 +297,11 @@ that got as far as claiming leaves the ticket claimed.
 reads the ticket, applies the configured claim transition, assigns the ticket to the
 signed-in account only if that transition applied and nobody had it, then reads the
 ticket again. It counts as claimed only when it is now in the status the claim
-leads to and assigned to this account. A transition's error text is shown on a
+leads to and assigned to this account. Once the backlog item exists and is bound,
+`import` moves a ticket its claim moved back to where the claim found it (the
+backlog status, after any triage step), still assigned; where the workflow offers
+no single way back it warns and leaves it. Not under strict mode, and not for a
+ticket already held and under way, which the claim does not move. A transition's error text is shown on a
 `detail:` line and never used as the reason.
 
 - **Who may claim:** an unassigned ticket, or one already assigned to this

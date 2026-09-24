@@ -268,6 +268,30 @@ explanation.
   ticket. The `request` stage still runs as usual;
 - a **binding**, `tracker.yaml` in the item's folder, naming the ticket.
 
+**Then the ticket goes back where the claim found it.** The claim moved it, usually
+to In Progress, but the item is in the backlog, so once the item and its binding
+exist, TCW moves the ticket back to the status it was in before the claim, and it
+stays assigned to you. For a ticket taken out of triage, that is
+`statuses.backlog`, not the triage status. `tcw work start` later moves it on,
+like any other start. TCW uses the one transition the ticket offers back to that
+status. If there is none, or more than one, or Jira fails to answer, the import
+still succeeds and prints a `warning:` saying where the ticket stayed. Move it back
+yourself, or leave it until you start the item.
+
+Two cases are left where the claim put them:
+
+- **A ticket you already held and were working on** when you imported it. The
+  claim sends no transition for it, so there is nothing to undo.
+- **Everything under [strict mode](#strict-mode-no-work-without-a-ticket).** Strict
+  mode's proof that nobody else can take the ticket is that it sits where the
+  exclusive transition led, and moving it back would offer that transition again.
+
+One gap comes with this. While the ticket is back in the backlog status, it offers
+the claim transition again. Somebody whose `import` read the ticket before yours
+claimed it, and whose claim reaches Jira after yours has finished, can still take
+it. That needs two imports of the same unassigned ticket within the few seconds one
+import takes; anyone later is refused, because the ticket is assigned to you.
+
 **Running it again is safe.** A second `import` of the same ticket prints the item
 you already have. If the first run took the ticket but stopped before creating the
 item, the ticket is already yours and no longer offers the claim, so the second

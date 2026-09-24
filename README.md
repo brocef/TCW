@@ -511,7 +511,7 @@ to the transitions.
 
 | Lifecycle step                          | Without Jira                   | With Jira configured                                                                                                                           |
 | --------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| an item is created                      | `tcw work inbox accept`, `new` | `tcw work tracker import <ticket>` claims the ticket (starts it and assigns it to you), then creates a backlog item whose intake is the ticket. With `inbox-query` set, `tcw work inbox accept <ticket>` does the same |
+| an item is created                      | `tcw work inbox accept`, `new` | `tcw work tracker import <ticket>` claims the ticket (assigns it to you), then creates a backlog item whose intake is the ticket and puts the ticket back in the backlog with it. With `inbox-query` set, `tcw work inbox accept <ticket>` does the same |
 | `request`, `spec`, `plan` stages        | unchanged                      | unchanged                                                                                                                                      |
 | at any time                             | —                              | `tcw work tracker link` / `unlink` records or removes the link between an existing item and a ticket; Jira itself is not touched               |
 | an item has no ticket                   | —                              | `tcw work tracker create <slug>` makes one for it and binds it; `--all` sweeps every open item without one. Needs `work.tracker.create` and `statuses.backlog`. With `create.on-new`, filing an item makes its ticket |
@@ -581,9 +581,9 @@ e-mail address or token themselves.
 
 ```sh
 tcw work tracker list                  # TCW: lists tickets the query selects.   Jira: unchanged
-tcw work tracker import ENG-482         # TCW: creates a backlog item.            Jira: ENG-482 → In Progress, assigned to you
+tcw work tracker import ENG-482         # TCW: creates a backlog item.            Jira: ENG-482 stays in To Do, assigned to you
 #   …the request, spec and plan stages run as usual…
-tcw work start <slug>                   # TCW: backlog → active.                  Jira: confirms the claim import made
+tcw work start <slug>                   # TCW: backlog → active.                  Jira: ENG-482 → In Progress
 tcw work submit <slug>                  # TCW: active → review.                   Jira: ENG-482 → In Review
 tcw work complete <slug> --resolution done --confirm
                                         # TCW: review → completed.                Jira: ENG-482 → Done
