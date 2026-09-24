@@ -938,6 +938,9 @@
   location: 49ceb80a89f2162d2ad695a4dc16d617660df163
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-report-a-missing-taxonomy-path-as-a-validate-problem-instead-of-crashing-inside-the-capabilities-check:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-09-21-say-that-a-tcw-config-yaml-edit-was-staged-so-git-diff-showing-nothing-isn-t-a-surprise:
   resolution: superseded
   resolved: '2026-09-24'
