@@ -907,6 +907,9 @@
   location: 9121652d02106aee6efea1e65f48c4cfa0867e2a
   resolution: done
   resolved: '2026-09-20'
+2026-09-21-a-create-response-that-never-arrives-leaves-a-ticket-nothing-can-find:
+  resolution: superseded
+  resolved: '2026-09-24'
 2026-09-21-decide-whether-capabilities-drift-should-judge-a-shared-master-ledger-s-missing-defaults:
   resolution: wontfix
   resolved: '2026-09-24'
