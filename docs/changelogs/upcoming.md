@@ -214,6 +214,14 @@ category.
   status, and re-applying the transition is what the idempotent claim must avoid.
   Deciding that needs the workflow definition
   (`2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition`).
+- Found at verify: a strict `tracker claim --take-over` (and `start --take-over`) on
+  a workflow offering the claim transition from `statuses.active` applied it, took
+  the holder's ticket, then refused — leaving the item owned by the holder and the
+  ticket by the caller. `_unclaimable_on_active(..., take_over=)` now refuses before
+  `assert_ownership` whenever the ticket is on `statuses.active` and the transition
+  is offered there, and `claim_refusal` asks the question at `outcome.status` when an
+  applied claim transition landed off `statuses.active` rather than skipping it.
+  `not_exclusive_advice` (`tcw/tracker/sync.py`) gives both refusals a next step.
 - `_print_ticket` (`tracker show`, `inbox show`) answered its `workflow:` line from
   the `transitions.start` assessment; it now assesses
   `exclusive_claim_transition or start_transition` with `statuses.active` as the

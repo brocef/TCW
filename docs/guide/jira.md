@@ -451,7 +451,9 @@ that is already yours, no transition is applied and none can be — the claim ha
 be safe to run twice, and TCW cannot tell a ticket whose transition ran earlier from
 one somebody assigned in Jira without it. Under strict mode, what is checked there
 instead is that your workflow would still refuse a second person: that the
-transition is not offered again from the status it leads to. **It costs a
+transition is not offered again from the status it leads to. That can be read only
+from a ticket in `statuses.active`; one you hold that is still in your backlog
+status says nothing about it, and is accepted unchecked. **It costs a
 status move**: applying a transition moves the ticket, which is the thing claiming
 otherwise avoids. That is the trade, and it is why the setting is optional and off
 by default — except under [strict mode](#strict-mode-no-work-without-a-ticket), which
@@ -478,10 +480,12 @@ no lifecycle move does that. What happens instead depends on strict mode:
   `statuses.active` in the tracker and run the start again, or turn
   `work.tracker.strict` off.
 
-`tcw work tracker claim` is the deliberate exception: without strict mode it
-applies the transition from wherever the ticket is, and says so when it has moved
-one. Under strict mode it does not — where the ticket's status does not offer the
-transition it refuses, as `tcw work start` does, and says what to do instead. A lifecycle move
+`tcw work tracker claim` is the deliberate exception: it applies the transition
+from wherever the ticket is — refusing only where that status does not offer it —
+and says so when it has moved one. Under strict mode it also refuses where the
+workflow would let a second person claim the ticket, before anything is sent when
+the ticket is already in `statuses.active`, and for a released item's ticket it
+names the way forward. Elsewhere its refusal lists what the ticket does offer. A lifecycle move
 is doing something else and happens to need the ticket; `tracker claim` is you
 asking for the ticket and nothing else, so it does what you asked and tells you
 what that cost.

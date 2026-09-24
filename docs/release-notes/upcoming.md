@@ -76,14 +76,17 @@ internal module names.
   does would let a second person claim the same ticket. This is how strict mode
   behaved before the previous changes to claiming, which had quietly stopped
   checking it for `start` and `tracker claim`.
-- **A ticket that is already yours is checked too.** No transition is applied to
-  it — none needs to be — but the same question is asked of what the ticket offers.
+- **A ticket that is already yours is checked too**, when it is in your active
+  status. No transition is applied to it — none needs to be — but the same question
+  is asked of what the ticket offers. One you hold that is still in your backlog
+  status cannot be checked this way, and is accepted.
 - **You may now be refused where you were accepted.** If your workflow never
   excluded a second claimant, a strict `tcw work start` or `tcw work tracker claim`
-  is refused and your item does not move. On a ticket nobody held, the claim has
-  already moved and assigned the ticket before the check runs, so the ticket is left
-  claimed by you while the item stays in the backlog; release it, or fix the
-  workflow. If your workflow cannot be changed, turning strict mode off is the
+  is refused and your item does not move. Where the ticket is already in your
+  active status, the refusal comes before anything is sent. Where it is still in
+  your backlog status, the claim has already moved and assigned the ticket before
+  the check runs, so the ticket is left claimed by you while the item stays in the
+  backlog; release it, or fix the workflow. The refusal says both. If your workflow cannot be changed, turning strict mode off is the
   remaining option.
 - **A released item's ticket now gets a useful refusal.** After
   `tcw work tracker release`, the ticket sits unassigned in your active status. On
