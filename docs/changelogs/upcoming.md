@@ -39,6 +39,28 @@ category.
 - `tcw work tracker sync` prints what its delivery did to take the ticket
   (`Outcome.claimed`) on stderr.
 
+- `STRICT_NEEDS_START_TRANSITION` (`tcw/store/base.py`): `parse_tracker_config`
+  reports `work.tracker.transitions.start` as required when `strict` is true and the
+  key is absent from the `transitions` mapping (or the mapping is absent). Checked
+  after `_parse_tracker_transitions`, absent-only like
+  `STRICT_NEEDS_EXCLUSIVE_CLAIM`; attributed to the node being validated by the
+  existing prefix match in `attribute_tracker_problems`.
+- `OwnershipOutcome.key` (`tcw/tracker/ownership.py`), set by `assert_ownership`
+  (now a wrapper over `_assert_ownership`) on every outcome, so `claim_refusal`
+  serves an ownership outcome and an `intake.claim` outcome alike.
+- `claim_refusal(..., off_active_refuses=True)` (`tcw/tracker/sync.py`): the two
+  lifecycle callers pass `False`, so a ticket found off `statuses.active` is a
+  question this run cannot answer rather than a refusal — a strict `start` of a
+  held ticket in the backlog status goes on to move it there itself.
+- `_unclaimable_on_active` (`tcw/work/cli.py`): the refusal for an unassigned
+  ticket on `statuses.active` whose workflow does not offer
+  `exclusive-claim-transition` there (a released item's ticket), shared by
+  `_strict_claim` and `_tracker_claim` so the three retake commands agree. It names
+  the state and both ways forward.
+- `ONE_MUTEX_ONE_NOT` (`tests/tracker_fake.py`): a workflow with two routes into
+  `In Progress`, one exclusive and one not — the only fixture on which
+  `transitions.start` and `exclusive-claim-transition` can be told apart.
+
 ### Changed
 
 - `work.tracker.transitions` and `work.tracker.transitions.start` are both
@@ -155,8 +177,64 @@ category.
   string` problem. The problem names a key nobody wrote, so under inheritance it is
   attributed to the node being validated even when `strict` came from an ancestor.
 
+### Fixed
+
+- **A recordless `tcw work tracker sync` wrote an unreadable record**
+  (`deliver`, `tcw/tracker/sync.py`). With no sync record, `move` stayed `None`, and
+  a pending or conflicting run wrote `move: null`, which `classify_binding` rejects.
+  Under strict mode `binding_refusal` then blocked the next move. `deliver` now keeps
+  two values: `assessed = move or MOVE_ONTO.get(local)` feeds `resolving` and
+  `assess_move(move=...)` only, and the recorded move is unchanged — so a failure
+  with nothing owed writes no record at all. The derived move never reaches the
+  configured-transition lookup (that broke `sync`'s both-ways reconciliation when
+  tried), and is never written (a recorded `start` would re-arm the claim on the
+  next run). An earlier version's `move: null` record is cleared by the next
+  successful sync; no migration.
+- **A reopened ticket on a completed or discarded item could not be closed by
+  `sync`** without a claim, for the same reason: `None` is not in
+  `MOVES_NEEDING_NO_CLAIM`. Fixed by the same derived move. A catch-up binding
+  heading for a completion still requires the ticket held.
+- **Strict mode stopped checking claim exclusivity — a regression.** Three
+  children of the tracker-verbs epic combined to cause it: the one that made
+  `exclusive-claim-transition` required under strict mode (so the promise rested on
+  that key alone), the one that composed the lifecycle moves out of claim and sync
+  (which removed `claim_refusal`'s lifecycle call sites), and the one that made
+  `transitions.start` optional (which broke the one surviving check, since it asked
+  about that key). Each was correct alone and reviewed alone; the invariant spanning
+  all three — *strict mode checks that the transition carrying its promise is a
+  mutex* — had no owner, and only a review of the combined change found it.
+  `claim_refusal` now asks `assess(config.exclusive_claim_transition, ...)` and
+  names that key, and is called from `_strict_claim` and `_tracker_claim` (under
+  `config.strict`) after a settled `assert_ownership`, including on the
+  already-held early return. Measured against the pre-epic tree `bfb2ff33`: a strict
+  start on a workflow offering the claim from its own destination is refused again
+  for an unassigned ticket and for one the caller holds on the active status. One
+  path stays unprovable: a ticket the caller holds in the backlog status, on such a
+  workflow, is accepted — what it offers from there says nothing about the active
+  status, and re-applying the transition is what the idempotent claim must avoid.
+  Deciding that needs the workflow definition
+  (`2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition`).
+- `_print_ticket` (`tracker show`, `inbox show`) answered its `workflow:` line from
+  the `transitions.start` assessment; it now assesses
+  `exclusive_claim_transition or start_transition` with `statuses.active` as the
+  landing status. `claimable:` and `note:` stay about `transitions.start`.
+- The strict binding refusal read "first; It is held by … . if that cannot …"; now
+  ordinary sentences.
+
 ### Internal
 
+- Tests: `test_strict_import_of_a_held_ticket_needs_no_start_transition` deleted —
+  its node is invalid under strict mode now, and its premise (`claim_refusal` reads
+  `transitions.start`) is false. Its held-ticket-succeeds-and-sends-nothing
+  properties are held by `test_a_strict_claim_of_a_ticket_you_already_hold_sends_nothing`;
+  the unset-key half survives only outside strict mode, in
+  `test_tracker_import.py::test_import_of_a_ticket_already_held_needs_no_start_transition`.
+  Five strict tests ran a strict start on `GLOBAL`, which excludes nobody, and
+  encoded the regression: four now run on `SYNC`, the on-its-own-rung case asserts
+  the refusal, and `test_a_strict_start_reports_a_claim_the_delivery_had_to_make_again`
+  is replaced — its re-claim is unreachable on an exclusive workflow. Each
+  successor was mutation-checked. The fixture `global_claim_node` is now
+  `claim_node` with a required `workflow`.
 - The comments in `tcw/store/base.py` (above `TRACKER_TRANSITION_KEYS`, in
   `_parse_tracker_transitions` and in `attribute_tracker_problems`) and in
   `tcw/tracker/sync.py` that stated `start` had no status-derived fallback. That

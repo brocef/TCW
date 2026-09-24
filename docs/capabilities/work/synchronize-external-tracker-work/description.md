@@ -15,7 +15,9 @@ A claim gates work, not resolution. `submit` and `rework` of an item with a tick
 are refused before the item moves unless the ticket is assigned to me — the refusal
 names whoever holds it, or `tcw work tracker claim` when nobody does — in every
 mode; when Jira cannot be reached they go ahead and report that the ticket did not
-follow. Completing and discarding need no claim and move the ticket whoever holds it.
+follow. Completing and discarding need no claim and move the ticket whoever holds it,
+and so does a `tcw work tracker sync` of a completed or discarded item whose ticket
+somebody reopened: it is closed again without anyone having to take it.
 Otherwise a ticket is only ever moved when it is assigned to me, and when TCW can
 tell which transition to use. Where two transitions lead to the
 status I mapped, I name the one each move should use under `work.tracker.transitions`
@@ -56,6 +58,8 @@ was left and where the move was going counts as in step.
 When the ticket did not follow — Jira was down, my credentials are missing, or the
 ticket was in the wrong place — the item still moves and is committed, the command
 exits 1 saying so, and the binding records whether that is pending or conflicting.
+That is for a lifecycle move only: a `tcw work tracker sync` of an item with nothing
+recorded reports what it found and writes nothing at all, whatever Jira answers.
 `tcw work show` and `tcw work list` show that state, and `tcw work tracker sync
 <slug>` or `--all` retries it, including a claim that did not succeed at start, while
 the record still names that `start` as what it owes: it claims, delivers the start,

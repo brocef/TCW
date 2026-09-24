@@ -20,13 +20,19 @@ discard it instead. Epics are not gated, since they only group work — which is
 `tcw work edit --type` refuses to turn an item into an epic or an epic into an
 item — except that an epic cannot be started in a worktree.
 
-A claim only authorizes work when the workflow could have refused a second person.
-The claim `start` makes applies `work.tracker.exclusive-claim-transition` before it
-assigns the ticket, so on a workflow that will not apply that transition to a ticket
-somebody already took, a second person is refused there and their item does not
-move. `tcw work tracker import` still asks it the older way: if, once claimed, the
-ticket still offers the claim transition, it refuses and leaves the ticket claimed
-for me to release.
+A claim only authorizes work when the workflow could have refused a second person,
+and the key that carries that promise is `work.tracker.exclusive-claim-transition`.
+The claim `start` and `tcw work tracker claim` make applies that transition before
+assigning the ticket, so on a workflow that will not apply it to a ticket somebody
+already took, a second person is refused there and their item does not move. Every
+strict claim — `start`, `tracker claim`, `import` and `inbox accept` — then checks
+that the ticket does not offer the transition again from the status it led to, and
+refuses when it does, leaving the ticket claimed for me to release. On a ticket I
+already hold no transition is applied, since the claim must be safe to repeat; what
+is checked there is that the workflow would still refuse a second person. A released
+item whose ticket sits unassigned where the transition cannot be applied is refused,
+and the refusal tells me to assign the ticket to myself in the tracker or move it
+back to a status that offers the transition.
 
 The web app cannot check a ticket, so under strict mode its create, start, complete
 as `done` and drop actions answer with a refusal naming the `tcw work` command to use;
@@ -36,8 +42,10 @@ everywhere.
 
 Strict mode needs the tracker. When Jira cannot be reached, gated changes are refused
 until it answers. `tcw validate` reports a strict block missing `statuses.active`,
-`statuses.completed`, a `statuses.discarded` that covers every discard resolution, or
-`work.tracker.exclusive-claim-transition`,
+`statuses.completed`, a `statuses.discarded` that covers every discard resolution,
+`work.tracker.exclusive-claim-transition`, or `work.tracker.transitions.start` —
+required because strict mode creates work only from a ticket, and `tcw work tracker
+import` and `tcw work inbox accept` claim through it —
 and while the tracker configuration has problems the gates refuse rather than
 switching themselves off. Turning strict mode off is `strict: false`, or removing
 the key; a child node that inherits a strict parent's tracker block can set
@@ -46,6 +54,7 @@ the key; a child node that inherits a strict parent's tracker block can set
 Limits I accept: one claimed ticket can authorize several items, through `tracker
 link` and `import --part`; `new --parent` and `new --initiative` are refused, so a
 child is imported and linked rather than nested; and a workflow that offers
-`exclusive-claim-transition` again from where it leads excludes nobody — that is a
-fact about the workflow I name it on, which TCW does not check. A ticket held back for another
+`exclusive-claim-transition` again from where it leads excludes nobody, and TCW can
+tell only from a ticket in that status — so a strict `start` of a ticket I already
+hold in the backlog status is accepted without that check. A ticket held back for another
 part whose item is not in this checkout is refused as out of place until I move it.

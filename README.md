@@ -530,7 +530,12 @@ claimed ticket:
   of a ticket is allowed, because it claims the ticket.
 - `start` refuses an item with no ticket. For a linked item it claims the ticket
   first, through the transition `exclusive-claim-transition` names, and moves the
-  item only if the claim worked.
+  item only if the claim worked and the workflow would refuse a second person —
+  that is, it does not offer that transition again once the ticket has it. Every
+  strict claim checks this, `tracker claim` and `tracker import` included.
+- Strict mode needs `exclusive-claim-transition` and `transitions.start` set, and
+  `tcw validate` reports either one missing: `tracker import`, the way work is
+  created, claims through `transitions.start`.
 - `submit` and `rework` read the ticket first, and refuse unless it is assigned to
   you and where the item's last move left it. `complete --resolution done` refuses
   only if the ticket is not where the item's last move left it: who holds it does

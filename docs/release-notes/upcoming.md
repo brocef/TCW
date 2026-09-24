@@ -9,6 +9,8 @@ internal module names.
   leave the whole `transitions` block out — and TCW works the transition out for
   itself, from the status the start is heading for. That is what the other four
   moves have always done; a start could not do it while the setting was required.
+- **Except under strict mode.** A project with `strict: true` still has to set it
+  — see below.
 - **A project that sets it sees no change at all.** The name is still honoured
   exactly as before. Nothing you have today needs editing.
 - **Two reasons to keep setting it.** If your workflow has two transitions out of
@@ -46,6 +48,67 @@ internal module names.
   ```
 - **What it costs.** With it set, `tcw work tracker claim` applies that transition,
   so claiming a ticket moves it.
+- **Strict mode also needs `work.tracker.transitions.start`.** This is a second
+  breaking change for a project that has `strict: true` and no `transitions.start`
+  today: after upgrading, `tcw validate` reports it missing and strict commands
+  refuse until it is set. Strict mode creates work only from a ticket, and the two
+  commands that do that — `tcw work tracker import` and `tcw work inbox accept` —
+  take the ticket through this transition, so without it a strict project could
+  create no work at all. Set it to the transition that takes a ticket from your
+  backlog status into work; it is often the same one as
+  `exclusive-claim-transition`:
+
+  ```yaml
+  work:
+    tracker:
+      strict: true
+      exclusive-claim-transition: Start Progress
+      transitions:
+        start: Start Progress
+  ```
+
+## Strict mode checks that only one person can claim a ticket
+
+- **Every strict claim checks your workflow again.** `tcw work start`,
+  `tcw work tracker claim`, `tcw work tracker import` and `tcw work inbox accept`
+  now all check, under strict mode, that your workflow does not offer
+  `exclusive-claim-transition` again from the status it leads to. A workflow that
+  does would let a second person claim the same ticket. This is how strict mode
+  behaved before the previous changes to claiming, which had quietly stopped
+  checking it for `start` and `tracker claim`.
+- **A ticket that is already yours is checked too.** No transition is applied to
+  it — none needs to be — but the same question is asked of what the ticket offers.
+- **You may now be refused where you were accepted.** If your workflow never
+  excluded a second claimant, a strict `tcw work start` or `tcw work tracker claim`
+  is refused and your item does not move. On a ticket nobody held, the claim has
+  already moved and assigned the ticket before the check runs, so the ticket is left
+  claimed by you while the item stays in the backlog; release it, or fix the
+  workflow. If your workflow cannot be changed, turning strict mode off is the
+  remaining option.
+- **A released item's ticket now gets a useful refusal.** After
+  `tcw work tracker release`, the ticket sits unassigned in your active status. On
+  a workflow that does not offer the claim transition from there, retaking it under
+  strict mode is refused — and the message now says what to do: assign the ticket
+  to yourself in Jira and run the command again, or move it back to a status that
+  offers the transition.
+- **`tcw work tracker show` and `tcw work inbox show`** now answer the `workflow:`
+  line about `exclusive-claim-transition`, the setting strict mode relies on, and
+  the `claimable:` line about `transitions.start`, the one a claim goes through.
+
+## `tcw work tracker sync` no longer makes things worse
+
+- **Checking an item can no longer damage it.** Running `tcw work tracker sync` on
+  an item with nothing waiting to be delivered used to write an unreadable note into
+  the item's tracker file whenever Jira could not be reached or refused the move.
+  Under strict mode that note then blocked the item's next move, with advice to
+  unlink and discard it. Now such a run records nothing at all: it tells you what
+  it found and leaves the item as it was. An item already carrying one of those
+  notes is put right by the next `sync` that succeeds.
+- **A ticket reopened on finished work can be closed again without taking it.** If
+  somebody moves the ticket of a completed or discarded item back into work,
+  `tcw work tracker sync` closes it again whoever holds it — as the completion
+  itself would have. It used to demand that you claim the ticket first, and where
+  `exclusive-claim-transition` was set that claim could not be made at all.
 
 ## Taking a ticket and moving it are separate
 

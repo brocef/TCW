@@ -51,7 +51,8 @@ names, read at request time. Set those two variables in the shell that runs `tcw
 never write the email address or the token into `tcw-config.yaml`.
 
 `transitions.start` is the name of the tracker's workflow transition that starts
-a ticket, exactly as the tracker spells it. It is optional. `tcw` cannot tell a wrong
+a ticket, exactly as the tracker spells it. It is optional **except under strict
+mode**, where it is required (see `strict` below). `tcw` cannot tell a wrong
 name from a ticket that simply does not offer it yet, so copy it from the project's
 workflow; it *can* tell you the key is unset, and both `tracker show` and `import`
 say so.
@@ -187,12 +188,19 @@ waiting in triage".
 `strict: true` makes a claimed ticket required for local work (what it refuses is in
 `commands.md`, "Strict mode"). It must be a boolean, and it needs `statuses.active`,
 `statuses.completed`, `statuses.discarded` as one status name or a mapping of all
-three of `wontfix`, `duplicate` and `superseded`, and `exclusive-claim-transition` —
-otherwise `tcw validate` reports the missing key. The claim transition is required
+three of `wontfix`, `duplicate` and `superseded`, `exclusive-claim-transition`, and
+`transitions.start` — otherwise `tcw validate` reports the missing key, against the
+node being validated. `transitions.start` is required because strict mode creates
+work only from a ticket, and the two commands that do that, `tracker import` and
+`inbox accept`, claim through it; only its absence is reported, since a `null` or
+blank value already has its own problem. The claim transition is required
 because strict mode promises that only one person can take a ticket, and a transition the workflow will not apply to a
 ticket already taken is what stops a second person. Name the transition that takes a ticket into work. Setting it
 means `tcw work tracker claim`, and the claim a strict `tcw work start` makes before
-the item moves, apply it, which moves the ticket. A block with problems does **not** turn strict mode off: gated
+the item moves, apply it, which moves the ticket. Every strict claim — `import`,
+`inbox accept`, `start` and `tracker claim`, including one of a ticket already held —
+then refuses when the workflow still offers that transition from the status it
+leads to, since such a workflow would let a second person claim it too. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
 

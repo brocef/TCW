@@ -128,13 +128,15 @@ nothing changes and no tracker code is even imported.
 network call to that path.
 
 `show` reports two distinct things. **claimable** is about this ticket now: does it
-offer the configured claim transition. **exclusive** is about the workflow: would a
-second claimant be refused. Exclusivity is only readable from the status the claim
-leads to, so a ticket nobody has started reports `not determined`. On a workflow
-offering every transition from every status — Jira's default — a started ticket
-reports `not exclusive`, and two people claiming it would both succeed. On an
-exclusive workflow a started ticket still reports `not determined`, and a second
-`show` will not change that; only a claim, or the workflow definition, confirms it.
+offer `transitions.start`, the transition `import` claims through. **workflow** is
+about exclusivity: would a second claimant be refused. It is asked about
+`exclusive-claim-transition` — the key strict mode's promise rests on — or about
+`transitions.start` where that key is unset, and it is only readable from
+`statuses.active`, where the claim leads, so a ticket nobody has started reports
+`not determined`. On a workflow offering every transition from every status — Jira's
+default — a started ticket reports `not exclusive`, and two people claiming it would
+both succeed. On a workflow that does not offer the transition from
+`statuses.active`, a started ticket reports `exclusive`.
 Where `work.tracker.transitions.start` is not set at all, `show` says the setting
 names no transition rather than reporting it as a name the ticket does not offer —
 the reader is sent to their own configuration file, not to the ticket's workflow.
@@ -223,7 +225,8 @@ is imported.
   `work.tracker.pre-backlog` names when the ticket is in one of its statuses, and says
   the ticket was moved out; nothing else leaves triage, and without the key the
   refusal names it.
-- **No `transitions.start`:** the key is optional, and a lifecycle `start` with no
+- **No `transitions.start`:** the key is optional (required under strict mode —
+  `validate` reports it), and a lifecycle `start` with no
   name works its transition out from `statuses.active`. `import` and `inbox accept`
   cannot — a claim has no status of its own to derive from — so they refuse and name
   the key (row `1d`), unless the ticket is already assigned to the running account,
@@ -270,17 +273,19 @@ that got as far as claiming leaves the ticket claimed.
 | Command | Under strict |
 | ------- | ------------ |
 | `new` (not `--epic`), `inbox accept` of a raw entry | refused → `tcw work tracker import <ticket>` (`inbox accept <ticket>` is import, gated as import) |
-| `start` | unbound: refused. Bound: claim first, through `exclusive-claim-transition` (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed — so a second claimant the workflow refuses is stopped before their item moves. An epic cannot start with `--worktree` |
+| `start` | unbound: refused. Bound: claim first, through `exclusive-claim-transition` (after the store's own status and blocker checks; the epic-active and repository checks come after it), move only if claimed and the workflow does not offer that transition again from `statuses.active` — so a second claimant the workflow refuses is stopped before their item moves. A ticket already yours is checked the same way without applying anything. An epic cannot start with `--worktree` |
 | `submit`, `rework` | read the ticket: assigned to you, and in the mapped status of the item's status (or the target), or of an earlier status when an item for another part of the ticket is here; else refused |
 | `complete --resolution done` | read the ticket: in that status, as above; who holds it is not asked. Checked before the worktree merge |
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
-| `tracker import` | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition; the ticket stays claimed |
-| strict `start` claim | refused when `exclusive-claim-transition` is not offered or the workflow refuses it, or the assignment does not read back as yours. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
+| `tracker import` | claims through `transitions.start` (required under strict). Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` there; the ticket stays claimed |
+| `tracker claim` | the same exclusivity check as `start`, before the item is claimed locally. On an unassigned ticket in `statuses.active` that does not offer the transition (a released item's ticket), refused with both ways out: assign it to yourself in the tracker, or move it back to a status offering the transition. `start --take-over` gives the same refusal |
+| strict `start` claim | refused when `exclusive-claim-transition` is not offered or the workflow refuses it, when the workflow still offers it from `statuses.active`, or when the assignment does not read back as yours. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
 | `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item | 409, naming the `tcw work` command (PUT `tracker.yaml` is refused in every mode, below) |
 
 - **Tracker unreachable, or an undelivered `sync` record:** refused. Run
-  `tcw work tracker sync <slug>` first.
+  `tcw work tracker sync <slug>` first. A `sync` of an item with nothing recorded
+  never writes a record, so it cannot create one of these.
 - **A tracker block with problems:** refused, not switched off; run `tcw validate`.
 - **Not gated:** `edit`, artifact writes, `tracker link`/`unlink`.
 - **Parts held elsewhere:** the earlier-status allowance needs another part's item

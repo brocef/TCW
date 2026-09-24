@@ -411,6 +411,13 @@ it stays active with no owner until somebody claims it — with `tracker claim`,
 with `tcw work start`, which takes an active item nobody holds rather than refusing
 it. Until then `submit` and `rework` are refused, since the ticket is nobody's.
 
+Under [strict mode](#strict-mode-no-work-without-a-ticket) that retake can be
+refused. A released ticket is left in `statuses.active`, and strict mode takes a
+ticket only through `exclusive-claim-transition` — which a workflow that excludes a
+second claimant does not offer from there. The refusal says so and names the two
+ways forward: assign the ticket to yourself in Jira and run the command again, or
+move the ticket back to a status that offers the transition and run it again.
+
 **Running either one twice is safe.** Claiming something you already hold succeeds
 and sends nothing; releasing something nobody holds does the same. So after a
 failure that left one half done, running the command again is the fix.
@@ -439,7 +446,12 @@ work:
 
 With this set, a claim — `tracker claim`, or the claim `tcw work start` makes —
 applies that transition before assigning, so a second
-person's transition is refused and they never reach the assignment. **It costs a
+person's transition is refused and they never reach the assignment. On a ticket
+that is already yours, no transition is applied and none can be — the claim has to
+be safe to run twice, and TCW cannot tell a ticket whose transition ran earlier from
+one somebody assigned in Jira without it. Under strict mode, what is checked there
+instead is that your workflow would still refuse a second person: that the
+transition is not offered again from the status it leads to. **It costs a
 status move**: applying a transition moves the ticket, which is the thing claiming
 otherwise avoids. That is the trade, and it is why the setting is optional and off
 by default — except under [strict mode](#strict-mode-no-work-without-a-ticket), which
@@ -466,8 +478,10 @@ no lifecycle move does that. What happens instead depends on strict mode:
   `statuses.active` in the tracker and run the start again, or turn
   `work.tracker.strict` off.
 
-`tcw work tracker claim` is the deliberate exception: it applies the transition
-from wherever the ticket is, and says so when it has moved one. A lifecycle move
+`tcw work tracker claim` is the deliberate exception: without strict mode it
+applies the transition from wherever the ticket is, and says so when it has moved
+one. Under strict mode it does not — where the ticket's status does not offer the
+transition it refuses, as `tcw work start` does, and says what to do instead. A lifecycle move
 is doing something else and happens to need the ticket; `tracker claim` is you
 asking for the ticket and nothing else, so it does what you asked and tells you
 what that cost.
@@ -835,6 +849,12 @@ A `--all` sweep visits the items that have a record or an owed comment, which is
 what it is for; reconciling a ticket nothing is recorded for is something you ask
 for by naming the item.
 
+Naming an item that has nothing recorded is only a check, and it never leaves a
+record behind: if Jira cannot be reached, or refuses the move, the command says so
+and the item is exactly as it was. For a finished item — completed or discarded —
+whose ticket somebody reopened in Jira, it closes the ticket again whoever holds
+it, as the completion itself would have. A claim gates work, not finishing it.
+
 **Several parts.** A ticket bound to several parts moves only when the last open
 part in this project moves. Parts in other projects are not seen — and because a
 hold leaves no trace outside the checkout it happened in, `tcw work tracker sync`
@@ -958,20 +978,31 @@ or a comment edited or deleted in Jira, can still produce a repeat. Moves made i
 Set `strict: true` when every piece of work must come from a ticket you have
 claimed. Strict mode needs `statuses.active`, `statuses.completed`,
 `statuses.discarded` as either one status or a status for each of `wontfix`,
-`duplicate` and `superseded`, and `exclusive-claim-transition`; `tcw validate`
-reports whichever is missing, and strict commands refuse until it is set.
+`duplicate` and `superseded`, `exclusive-claim-transition`, and
+`transitions.start`; `tcw validate` reports whichever is missing, and strict
+commands refuse until it is set.
+
+`transitions.start` is optional everywhere else, but not here. Strict mode creates
+work only from a ticket, and the two commands that do that — `tcw work tracker
+import` and `tcw work inbox accept` — claim the ticket through this transition.
+Without it, a strict project could create no work at all.
 
 `exclusive-claim-transition` is required because strict mode promises that only one
 person can take a ticket, and a transition your workflow will not apply to a ticket someone has already
 taken is what stops a second person. Set
 it to the transition that takes a ticket into work. Setting it means
 `tcw work tracker claim`, and the claim a strict `tcw work start` makes, apply that
-transition, so a claim moves the ticket. See
+transition, so a claim moves the ticket. Every strict claim — `import`,
+`inbox accept`, `start` and `tracker claim` — then checks that your workflow does
+not offer the transition again from where it led, and refuses when it does: such a
+workflow would let a second person claim the ticket too. See
 [When two people claim at once](#when-two-people-claim-at-once).
 
 ```yaml
 strict: true
 exclusive-claim-transition: Start Progress
+transitions:
+    start: Start Progress
 statuses:
     active: In Progress
     review: In Review
@@ -984,12 +1015,12 @@ With it on:
 | Command                                             | Under strict mode                                                                                                                                                                                                                                                      |
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tcw work new`, `tcw work inbox accept` of an entry | refused, pointing you at `tcw work tracker import <ticket>`. `new --epic` is allowed, because an epic only groups work. Where `inbox-query` is set, `inbox accept` of a ticket is allowed, and refused exactly where `tracker import` would be.                                                      |
-| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, through `exclusive-claim-transition`, and the item starts only if the claim worked: a second person whose claim the workflow refuses is stopped before their item moves. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
+| `tcw work start`                                    | refused for an item with no ticket. For a bound item, the ticket is claimed **first**, through `exclusive-claim-transition`, and the item starts only if the claim worked and the workflow does not offer that transition again from where it led: a second person whose claim the workflow refuses is stopped before their item moves. An epic may start without a ticket, but not with `--worktree`, since code on an epic's own branch would have no ticket behind it. |
 | `tcw work submit`, `rework`                         | the ticket is read first; refused unless it is assigned to you and in the status the item's last move left it in. For a `--worktree` item this is checked before anything is merged, and against the item as its worktree holds it — the moves made there are committed on the branch, so the primary checkout's copy is out of date until the merge-back.                                                                                   |
 | `tcw work complete` as `done`                       | the ticket is read first; refused unless it is in the status the item's last move left it in. Who holds it is not asked: a claim gates work, not finishing it. Checked before anything is merged, as above. |
 | `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                                                                                                        |
 | `tcw work drop`                                     | refused for an item that was ever bound. Discard it instead, so the record stays.                                                                                                                                                                                      |
-| `tcw work tracker import`                           | refused after the claim when the ticket is not in `statuses.active` or still offers the claim transition. The ticket stays claimed for you to release.                                                                                                                 |
+| `tcw work tracker import`                           | the way into strict work; it claims through `transitions.start`, which strict mode therefore requires. Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` from there. The ticket stays claimed for you to release.                                                                                                                 |
 | `tcw serve`                                         | refuses the same changes, since it cannot check a ticket, and names the command to use.                                                                                                                                                                                |
 
 Also under strict mode:
