@@ -486,28 +486,6 @@ def test_a_workflow_that_cannot_exclude_refuses_import(tmp_path, monkeypatch):
     assert FsWorkStore.open(root).query() == []
 
 
-def test_strict_import_of_a_held_ticket_needs_no_start_transition(tmp_path, monkeypatch):
-    """`claim_refusal` reads `transitions.start` to ask whether the workflow could
-    still admit a second claimant. With no such key, there is no claim to re-offer
-    and nothing was promised, so the import of a ticket this account already holds
-    is not stopped. Exclusivity here is `exclusive-claim-transition`'s, which is
-    untouched by this change."""
-    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
-    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
-    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
-    fake_ = FakeJira(workflow=SYNC)
-    fake_.account("a@example.test", A, "Alice")
-    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status="In Progress", assignee=A)
-    fake_.install(monkeypatch)
-    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
-                       transitions=None)
-    code, out, err = cli(root, "work", "tracker", "import", KEY)
-    assert code == 0, err
-    [item] = FsWorkStore.open(root).query()
-    assert out.strip() == item.slug
-    assert fake_.applied == []
-
-
 # A workflow with two ways into progress, so which one a strict start applied shows
 # whether it came from `exclusive-claim-transition` or from `transitions.start`.
 TWO_WAYS_IN = {**SYNC, "To Do": [("61", "Claim", "In Progress"), *SYNC["To Do"]]}
@@ -1358,3 +1336,96 @@ def test_the_strict_binding_refusal_reads_as_ordinary_prose(strict, fake):
     _bound, refusal = binding_refusal(st, slug, st.tracker_config())
     assert "TCW_WORK_OWNER=b@example.test" in refusal
     assert "; It " not in refusal and ". if " not in refusal, refusal
+
+
+# ── strict mode requires transitions.start ──────────────────────────────────
+#
+# Strict mode creates work only from a ticket, and both commands that do that —
+# `tcw work tracker import` and `tcw work inbox accept` — claim through this
+# transition. Without it a strict project can create no work at all.
+
+NEEDS_START = "work.tracker.transitions.start: required when strict is true"
+WITHOUT_TRANSITIONS = {k: v for k, v in BASE.items() if k != "transitions"}
+
+
+@pytest.mark.parametrize("transitions", [None, {"submit": "Ready for Review"}],
+                         ids=["no-block", "block-without-start"])
+def test_strict_without_a_start_transition_is_refused(transitions):
+    extra = {} if transitions is None else {"transitions": transitions}
+    config, problems = parse_tracker_config({**WITHOUT_TRANSITIONS, **extra,
+                                             "strict": True, "statuses": STATUSES,
+                                             **CLAIM})
+    assert config is None
+    [problem] = problems
+    assert problem.startswith(NEEDS_START), problem
+    assert "tcw work tracker import" in problem and "tcw work inbox accept" in problem
+
+
+def test_validate_refuses_a_strict_node_with_no_start_transition(tmp_path, fake):
+    root = strict_node(tmp_path, strict=True, claim_transition="Start Progress",
+                       transitions=None)
+    problems = [p for p in validate(root) if "work.tracker" in p]
+    assert len(problems) == 1 and NEEDS_START in problems[0], problems
+    code, out, err = cli(root, "validate")
+    assert code != 0 and "work.tracker.transitions.start" in out + err
+
+
+@pytest.mark.parametrize("value", [None, "  "], ids=["null", "blank"])
+def test_a_null_or_blank_start_transition_keeps_its_one_problem(value):
+    config, problems = parsed(strict=True, statuses=STATUSES, **CLAIM,
+                              transitions={"start": value})
+    assert config is None
+    [problem] = problems
+    assert problem.startswith("work.tracker.transitions.start: expected a non-empty "
+                              "tracker transition name"), problem
+
+
+def test_the_missing_start_transition_is_attributed_to_the_node_being_validated(
+        tmp_path):
+    """The parent supplies a `transitions` block without `start`; the child turns
+    strict on. Nobody wrote the missing key, so no ancestor file is to blame."""
+    from test_tracker_inheritance import ABSENT, COMPLETE, QUERY_ONLY, _chain, _store
+    parent = {**COMPLETE, "statuses": STATUSES, **CLAIM,
+              "transitions": {"submit": "Ready for Review"}}
+    nodes = _chain(tmp_path, root_board=False, root=parent, repo=ABSENT,
+                   pkg={**QUERY_ONLY, "strict": True})
+    [problem] = _store(nodes["pkg"]).tracker_problems()
+    assert problem.startswith(f"tcw-config.yaml: {NEEDS_START}"), problem
+
+
+@pytest.mark.parametrize("extra", [{}, {"strict": False}], ids=["absent", "false"])
+def test_a_node_that_is_not_strict_needs_no_transitions_block(extra):
+    config, problems = parse_tracker_config({**WITHOUT_TRANSITIONS, **extra, **CLAIM,
+                                             "statuses": STATUSES})
+    assert problems == [] and config is not None
+
+
+def test_a_node_that_is_not_strict_starts_and_finishes_with_no_transitions_block(
+        tmp_path, fake):
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress",
+                       transitions=None)
+    assert [p for p in validate(root) if "work.tracker" in p] == []
+    slug = bound_item(root)
+    for argv in (("start", slug), ("submit", slug),
+                 ("complete", slug, "--resolution", "done", "--confirm")):
+        code, out, err = cli(root, "work", *argv)
+        assert code == 0, (argv, out, err)
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_strict_claim_of_a_ticket_you_already_hold_sends_nothing(strict, fake):
+    """Criterion 25: on a directed workflow, a claim of a ticket this account already
+    holds on the active status is idempotent — every strict entry point accepts it,
+    and none applies a transition."""
+    claimed_ticket(fake, "In Progress", A)
+    code, out, err = cli(strict, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    [item] = FsWorkStore.open(strict).query()
+    assert fake.applied == []
+    code, out, err = cli(strict, "work", "tracker", "claim", item.slug)
+    assert code == 0, (out, err)
+    assert fake.applied == []
+    code, out, err = cli(strict, "work", "start", item.slug)
+    assert code == 0, (out, err)
+    assert fake.applied == [] and status(strict, item.slug) == "active"
+    assert fake.tickets[TICKET_ID].assignee == A

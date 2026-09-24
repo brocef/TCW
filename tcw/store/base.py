@@ -1284,6 +1284,14 @@ STRICT_NEEDS_EXCLUSIVE_CLAIM = (
     "which your workflow will not apply to a ticket that has already been taken, "
     "is what stops a second person. Name the transition that takes a ticket into "
     "work.")
+# Strict mode creates work only from a ticket, and the two commands that do it claim
+# through this transition, so a strict project without it can create no work at all.
+STRICT_NEEDS_START_TRANSITION = (
+    "work.tracker.transitions.start: required when strict is true. Strict mode "
+    "creates work only from a ticket, and the two commands that do that — `tcw work "
+    "tracker import` and `tcw work inbox accept` — claim the ticket through this "
+    "transition. Name the transition that takes a ticket from the backlog status "
+    "into work.")
 # `backlog` first: it is where an item begins, and where creation puts its ticket.
 # The other four are the statuses a *bound* ticket is moved through afterwards.
 TRACKER_STATUS_KEYS = ("backlog", "active", "review", "completed", "discarded")
@@ -1507,6 +1515,10 @@ def parse_tracker_config(raw: Any) -> tuple["TrackerConfig | None", list[str]]:
                        if raw.get("exclusive-claim-transition") is not None else "")
     move_transitions = _parse_tracker_transitions(transitions, problems)
     start = move_transitions.get("start", "")
+    # After `transitions` is parsed, and absent only — the same rule as
+    # `exclusive-claim-transition`: `null` or blank already has its own problem.
+    if strict and "start" not in transitions:
+        problems.append(STRICT_NEEDS_START_TRANSITION)
 
     timeout: Any = raw.get("timeout-seconds", TRACKER_DEFAULT_TIMEOUT)
     # `bool` before `int`, because a bool *is* an int and `timeout-seconds: true`
