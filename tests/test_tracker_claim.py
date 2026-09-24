@@ -74,6 +74,16 @@ def test_a_ready_unassigned_ticket_is_transitioned_then_assigned(fake, alice):
     assert outcome.url == f"{BASE_URL}/browse/TCWCLAIM-6"
 
 
+def test_a_claim_records_the_status_it_found_the_ticket_in(fake, alice):
+    """What `import` puts the ticket back to once its item exists."""
+    assert _claim(alice).claimed_from == "To Do"
+
+
+def test_a_refused_claim_records_no_status(fake, alice):
+    fake.tickets["10052"].assignee = B
+    assert _claim(alice).claimed_from == ""
+
+
 def test_the_key_the_user_typed_resolves_to_the_canonical_one(fake, alice):
     assert _claim(alice, "tcwclaim-6").key == "TCWCLAIM-6"
 

@@ -445,6 +445,9 @@ class ClaimOutcome:
     # when no such step ran. Set on success and on a refusal alike: either way the
     # ticket has left triage, and the caller has to say so (`moved_out`).
     left_status: str = ""
+    # The status the claim found the ticket in, after any `pre-backlog` step: where
+    # `import` puts a ticket its claim moved (`put_back`). Set only on a claim.
+    claimed_from: str = ""
 
 
 def _fields(issue: dict) -> tuple[str, str, str, str]:
@@ -625,7 +628,8 @@ def claim(client, ticket: TicketRead) -> ClaimOutcome:
         if left:
             error.left_status = left
         raise
-    return replace(outcome, left_status=left)
+    return replace(outcome, left_status=left,
+                   claimed_from=ticket.status if outcome.claimed else "")
 
 
 def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:

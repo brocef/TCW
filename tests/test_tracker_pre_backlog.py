@@ -157,6 +157,11 @@ def test_an_unassigned_triage_ticket_is_accepted_then_claimed(fake):
     assert (fake.tickets[ID].status, fake.tickets[ID].assignee) == ("In Progress", A)
 
 
+def test_a_triage_ticket_is_recorded_as_found_in_the_backlog_status(fake):
+    """The step's landing, not Triage: an import puts the ticket back there."""
+    assert _claim().claimed_from == "To Do"
+
+
 def test_a_triage_ticket_already_yours_is_accepted_then_claimed(fake):
     """The reporter's case: a creator is often the ticket's assignee, and today that
     is row 1e — "already held" — with the ticket left in Triage."""
