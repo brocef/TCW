@@ -749,3 +749,39 @@ def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
     return refused("3f", f"could not tell whether this run's claim applied: {key} is "
                          f"in '{now_status}', unassigned. Check the ticket's history "
                          f"in the tracker before assigning it.", detail)
+
+
+def put_back(client, outcome: ClaimOutcome) -> tuple[str, str]:
+    """Move a ticket this run's claim took back to `outcome.claimed_from`, where the
+    claim found it. `import` does this once its backlog item exists, so the ticket
+    does not say the work has started while the item says it has not.
+
+    The claim's own transition is what kept a second claimant out, so it is taken
+    first and only undone here, after the item is bound. The way back is the one
+    transition the ticket offers to that status, chosen as a lifecycle move with no
+    named transition chooses it (`assess_move`); none, or more than one, sends
+    nothing.
+
+    Returns `(the status the ticket is in, why it is not back or "")`. Never raises a
+    tracker error: by now the item exists, so a ticket left where the claim put it is
+    something to report, not a reason to fail.
+    """
+    from tcw.tracker.claim import _normalize
+    from tcw.tracker.jira import TrackerError
+    from tcw.tracker.sync import CURRENT, assess_move
+
+    target = outcome.claimed_from
+    try:
+        ticket = read_ticket(client, outcome.issue_id)
+        state, found = assess_move(ticket, target=target, expected=(), move=None)
+        if state == CURRENT:
+            return ticket.status, ""
+        if state != "apply":
+            return ticket.status, found
+        client.apply_transition(ticket.issue_id, found.id)
+        status = _fields(client.issue(ticket.issue_id))[0]
+    except TrackerError as error:
+        return outcome.status, str(error)
+    if _normalize(status) != _normalize(target):
+        return status, f"it is in '{status}' after '{found.name}'"
+    return status, ""

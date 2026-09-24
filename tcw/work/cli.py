@@ -2600,11 +2600,13 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     locally is finished by running the command again: the ticket is then already
     assigned to this account, which the claim accepts without a second transition.
     """
+    from dataclasses import replace
     from datetime import date
 
+    from tcw.tracker.claim import _normalize
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, claim,
                                     find_binding, moved_out, pre_backlog_hint,
-                                    read_ticket, validate_part)
+                                    put_back, read_ticket, validate_part)
     from tcw.tracker.jira import TrackerError
 
     client = _tracker_client(label)
@@ -2706,8 +2708,25 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         print(f"tcw work {label}: claimed {outcome.key}, but the binding could "
               f"not be written: {e}. Run this command again.", file=sys.stderr)
         return 1
+    # The item is in the backlog, so a ticket this run's claim moved goes back where
+    # the claim found it. Only now: every failure above is finished by running the
+    # command again, which finds the ticket already assigned (row `1e`) and moves
+    # nothing — so a ticket put back earlier would be left claimed with no item.
+    # Not under strict mode, whose proof that nobody else can claim the ticket is
+    # that it sits where the exclusive transition led; and not for a ticket still
+    # where the claim found it — one already yours sends no transition (row `1e`),
+    # and is work already under way.
+    put_back_failed = ""
+    if (outcome.claimed_from and not client.config.strict
+            and _normalize(outcome.claimed_from) != _normalize(outcome.status)):
+        status, put_back_failed = put_back(client, outcome)
+        outcome = replace(outcome, status=status)
     print(slug)
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
+    if put_back_failed:
+        print(f"warning: {outcome.key} stays in '{outcome.status}', although its item "
+              f"is in the backlog: {put_back_failed.rstrip('.')}. Move it back in the "
+              f"tracker, or leave it until the item starts.", file=sys.stderr)
     if not outcome.transitioned:
         print(f"→ {outcome.message}", file=sys.stderr)
     if outcome.row == "1e" and (hint := pre_backlog_hint(client.config, outcome.status,

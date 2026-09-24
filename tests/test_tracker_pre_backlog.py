@@ -666,7 +666,9 @@ def test_import_of_a_triage_ticket_already_yours(tmp_path, monkeypatch):
     code, _out, err = cli(root, "work", "tracker", "import", KEY)
     assert code == 0, err
     assert fake_.applied == ACCEPT_THEN_START
-    assert "warning:" not in err
+    # No "stays in Triage" warning. `TRIAGE` offers no way back from In Progress,
+    # so the ticket's own put-back warning is expected and is not what this is about.
+    assert "stays in 'Triage'" not in err and HINT not in err
 
 
 def test_without_the_setting_import_of_a_triage_ticket_already_yours_warns(tmp_path,
