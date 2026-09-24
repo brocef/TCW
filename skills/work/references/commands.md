@@ -278,7 +278,7 @@ that got as far as claiming leaves the ticket claimed.
 | `complete --resolution done` | read the ticket: in that status, as above; who holds it is not asked. Checked before the worktree merge |
 | `complete` with a discard resolution | allowed |
 | `drop` | refused if the item has a `tracker.yaml` (bound, unlinked or unreadable) → discard instead |
-| `tracker import` | claims through `transitions.start` (required under strict). Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` there; the ticket stays claimed |
+| `tracker import` | claims through `transitions.start` (required under strict). Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` or `transitions.start` there — it takes the ticket through the latter, so both must exclude; the ticket stays claimed |
 | `tracker claim` | the same exclusivity check as `start`, before the item is claimed locally. On an unassigned ticket in `statuses.active` that does not offer the transition (a released item's ticket), refused with both ways out: assign it to yourself in the tracker, or move it back to a status offering the transition. `start --take-over` gives the same refusal |
 | strict `start` claim | refused when `exclusive-claim-transition` is not offered or the workflow refuses it, when the workflow still offers it from `statuses.active`, or when the assignment does not read back as yours. A strict `start` refused after leaving a `pre-backlog` status writes no sync record: run `start` again |
 | `tcw serve` create (not an epic), start, complete `done`, drop of an ever-bound item | 409, naming the `tcw work` command (PUT `tracker.yaml` is refused in every mode, below) |

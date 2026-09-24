@@ -73,7 +73,9 @@ internal module names.
   `tcw work tracker claim`, `tcw work tracker import` and `tcw work inbox accept`
   now all check, under strict mode, that your workflow does not offer
   `exclusive-claim-transition` again from the status it leads to. A workflow that
-  does would let a second person claim the same ticket. This is how strict mode
+  does would let a second person claim the same ticket. `import` and
+  `inbox accept` check `transitions.start` the same way, since that is the
+  transition they take the ticket through. This is how strict mode
   behaved before the previous changes to claiming, which had quietly stopped
   checking it for `start` and `tracker claim`.
 - **A ticket that is already yours is checked too**, when it is in your active

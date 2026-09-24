@@ -222,6 +222,12 @@ category.
   is offered there, and `claim_refusal` asks the question at `outcome.status` when an
   applied claim transition landed off `statuses.active` rather than skipping it.
   `not_exclusive_advice` (`tcw/tracker/sync.py`) gives both refusals a next step.
+- Decided at verify, departing from the spec's goal 8: for `import` and
+  `inbox accept` (`off_active_refuses=True`), `claim_refusal` asks about
+  `transitions.start` as well as `exclusive-claim-transition` when they differ —
+  those two commands take the ticket through `transitions.start`, so a second
+  claimant could come in through it. The lifecycle callers ask about
+  `exclusive-claim-transition` only.
 - `_print_ticket` (`tracker show`, `inbox show`) answered its `workflow:` line from
   the `transitions.start` assessment; it now assesses
   `exclusive_claim_transition or start_transition` with `statuses.active` as the

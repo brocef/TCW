@@ -27,7 +27,9 @@ assigning the ticket, so on a workflow that will not apply it to a ticket somebo
 already took, a second person is refused there and their item does not move. Every
 strict claim — `start`, `tracker claim`, `import` and `inbox accept` — then checks
 that the ticket does not offer the transition again from the status it led to, and
-refuses when it does, leaving the ticket claimed for me to release. On a ticket I
+refuses when it does, leaving the ticket claimed for me to release; `import` and
+`inbox accept` check `transitions.start` the same way, since they take the ticket
+through it. On a ticket I
 already hold no transition is applied, since the claim must be safe to repeat; what
 is checked there is that the workflow would still refuse a second person. A released
 item whose ticket sits unassigned where the transition cannot be applied is refused,

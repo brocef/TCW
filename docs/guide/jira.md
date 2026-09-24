@@ -999,7 +999,9 @@ it to the transition that takes a ticket into work. Setting it means
 transition, so a claim moves the ticket. Every strict claim — `import`,
 `inbox accept`, `start` and `tracker claim` — then checks that your workflow does
 not offer the transition again from where it led, and refuses when it does: such a
-workflow would let a second person claim the ticket too. See
+workflow would let a second person claim the ticket too. `import` and `inbox accept`
+take the ticket through `transitions.start`, so for them that transition is checked
+the same way. See
 [When two people claim at once](#when-two-people-claim-at-once).
 
 ```yaml
@@ -1024,7 +1026,7 @@ With it on:
 | `tcw work complete` as `done`                       | the ticket is read first; refused unless it is in the status the item's last move left it in. Who holds it is not asked: a claim gates work, not finishing it. Checked before anything is merged, as above. |
 | `tcw work complete` as a discard                    | always allowed.                                                                                                                                                                                                                                                        |
 | `tcw work drop`                                     | refused for an item that was ever bound. Discard it instead, so the record stays.                                                                                                                                                                                      |
-| `tcw work tracker import`                           | the way into strict work; it claims through `transitions.start`, which strict mode therefore requires. Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` from there. The ticket stays claimed for you to release.                                                                                                                 |
+| `tcw work tracker import`                           | the way into strict work; it claims through `transitions.start`, which strict mode therefore requires. Refused after the claim when the ticket is not in `statuses.active` or still offers `exclusive-claim-transition` or `transitions.start` from there — it takes the ticket through `transitions.start`, so a second person could come in that way too. The ticket stays claimed for you to release.                                                                                                                 |
 | `tcw serve`                                         | refuses the same changes, since it cannot check a ticket, and names the command to use.                                                                                                                                                                                |
 
 Also under strict mode:

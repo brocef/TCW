@@ -200,7 +200,8 @@ means `tcw work tracker claim`, and the claim a strict `tcw work start` makes be
 the item moves, apply it, which moves the ticket. Every strict claim — `import`,
 `inbox accept`, `start` and `tracker claim`, including one of a ticket already held —
 then refuses when the workflow still offers that transition from the status it
-leads to, since such a workflow would let a second person claim it too. A block with problems does **not** turn strict mode off: gated
+leads to, since such a workflow would let a second person claim it too; `import` and
+`inbox accept` also check `transitions.start`, the transition they claim through. A block with problems does **not** turn strict mode off: gated
 commands refuse until it is fixed. Turn strict mode off with `strict: false` or by
 removing the key; it merges from ancestors like any other key.
 
