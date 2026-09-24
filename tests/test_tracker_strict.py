@@ -1579,3 +1579,53 @@ def test_show_answers_each_line_about_its_own_key(tmp_path, monkeypatch, command
     lines = dict(line.split(": ", 1) for line in out.splitlines()[1:] if ": " in line)
     assert lines["claimable"] == claimable, out
     assert lines["workflow"] == workflow, out
+
+
+# ── a released item under strict mode: the refusal names a way forward ──────
+
+RETAKE = [("tracker", "claim"), ("tracker", "claim", "--take-over"),
+          ("start", "--take-over")]
+
+
+def released_active_item(tmp_path, fake) -> tuple[Path, str]:
+    """Started, strict turned on, then released: `active` with no owner, and the
+    ticket unassigned on the active status, where the directed workflow does not
+    offer the claim transition."""
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    set_tracker_key(root, "strict", True)
+    assert cli(root, "work", "tracker", "release", slug)[0] == 0
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("In Progress", None)
+    return root, slug
+
+
+def retake(root: Path, slug: str, argv: tuple) -> tuple[int, str, str]:
+    return cli(root, "work", argv[0], *argv[1:2], slug, *argv[2:]) if argv[0] == "tracker" \
+        else cli(root, "work", argv[0], slug, *argv[1:])
+
+
+def test_a_strict_claim_of_a_released_item_names_a_way_forward(tmp_path, fake):
+    root, slug = released_active_item(tmp_path, fake)
+    advice = set()
+    for argv in RETAKE:
+        code, _out, err = retake(root, slug, argv)
+        said = " ".join(err.split())
+        assert code == 1 and REFUSED in said, (argv, said)
+        assert "It offers:" not in said, said                 # what it replaces
+        assert "'In Progress'" in said and "nobody holds it" in said, said
+        assert f"Assign {KEY} to yourself in the tracker" in said, said
+        advice.add(said.split("; ", 1)[1].split(". ", 1)[1])  # past "X was not ..."
+    assert len(advice) == 1, advice
+    assert FsWorkStore.open(root).get(slug).owner in ("", None)
+
+
+@pytest.mark.parametrize("argv", RETAKE, ids=["claim", "claim-take-over", "start"])
+def test_following_that_advice_lets_the_claim_succeed(tmp_path, fake, argv):
+    root, slug = released_active_item(tmp_path, fake)
+    assert retake(root, slug, argv)[0] == 1
+    fake.tickets[TICKET_ID].assignee = A          # assigned to yourself in the tracker
+    code, out, err = retake(root, slug, argv)
+    assert code == 0, (out, err)
+    assert FsWorkStore.open(root).get(slug).owner == "a@example.test"

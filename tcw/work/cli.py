@@ -444,6 +444,31 @@ def _claim_gate(st, bare: str) -> str | None:
             f"`tcw work tracker claim {bare}`, then run this again.")
 
 
+def _unclaimable_on_active(config, ticket) -> str:
+    """Why a strict claim cannot take `ticket`, when it sits unassigned on
+    `statuses.active` and the workflow does not offer the exclusive claim transition
+    from there — or `""`. What a released item leaves behind.
+
+    Both strict claim paths say it, in these words, so `tracker claim` and a
+    `start --take-over` agree on what to do next. The two ways out are the ones that
+    work: a ticket already yours is checked for exclusivity without applying anything,
+    and from a status that offers the transition the claim applies it as usual.
+    """
+    from tcw.tracker.claim import _normalize
+    from tcw.tracker.sync import lowest_rung
+    named = config.exclusive_claim_transition
+    if (not named or ticket.assignee_id or ticket.category == "done"
+            or lowest_rung(config.statuses, ticket.status) != 0
+            or any(_normalize(t.name) == _normalize(named) for t in ticket.offered)):
+        return ""
+    return (f"{ticket.key} is in '{ticket.status}', where "
+            f"work.tracker.exclusive-claim-transition leads, and nobody holds it. Its "
+            f"workflow does not offer '{named}' from there, and strict mode does not "
+            f"take a ticket by assignment alone. Assign {ticket.key} to yourself in the "
+            f"tracker and run this again, or move it back to a status that offers "
+            f"'{named}' and run this again.")
+
+
 def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     """Under strict mode, claim a bound item's ticket before `start` moves it.
 
@@ -496,10 +521,13 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         offers_it_there = bool(past) and any(
             _normalize(t.name) == _normalize(config.exclusive_claim_transition)
             for t in ticket.offered)
+        # On `statuses.active` itself, where the transition is not offered: a released
+        # item's ticket. Refused like the rungs above, with its own two ways out.
+        stuck = "" if step_refusal or past else _unclaimable_on_active(config, ticket)
         # Exclusivity is the configured transition's: strict mode requires
         # `exclusive-claim-transition`, and a workflow that will not apply it to a
         # ticket somebody already took stops a second claimant before the assignment.
-        outcome = None if step_refusal or past else assert_ownership(
+        outcome = None if step_refusal or past or stuck else assert_ownership(
             client, ticket, assertion=config.exclusive_claim_transition)
     except TrackerError as error:
         return _strict_says_no("start", f"{bare} was not started",
@@ -521,6 +549,9 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
               f"does not accept an assignment on its own as proof that nobody else "
               f"holds the ticket. Move {key} back to '{active}' in the tracker and run "
               f"this again, or turn work.tracker.strict off."), False
+    if stuck:
+        return _strict_says_no("start", f"{bare} was not started",
+                               moved_out(key, left) + stuck), False
     if step_refusal is not None or not outcome.settled:
         failed = step_refusal or outcome
         detail = f" ({failed.detail})" if failed.detail else ""
@@ -3352,9 +3383,13 @@ def _tracker_claim(args: argparse.Namespace) -> int:
               f"{client.config.base_url}; nothing was sent.", file=sys.stderr)
         return 1
     try:
+        ticket = read_ticket(client, bound.ticket_id)
+        if client.config.strict and (
+                stuck := _unclaimable_on_active(client.config, ticket)):
+            return _strict_says_no("tracker claim", f"{args.slug} was not claimed",
+                                   stuck)
         outcome = assert_ownership(
-            client, read_ticket(client, bound.ticket_id),
-            assertion=client.config.exclusive_claim_transition,
+            client, ticket, assertion=client.config.exclusive_claim_transition,
             take_over=args.take_over)
     except TrackerError as e:
         print(f"tcw work tracker claim: {e}", file=sys.stderr)
