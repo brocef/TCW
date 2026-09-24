@@ -2969,3 +2969,147 @@ def test_a_report_only_sync_of_an_old_part_catch_up_still_sends_nothing(node, fa
     code, out, err = cli(node, "work", "tracker", "sync", slug)
     assert "still owed" in out, (out, err)
     assert fake.writes() == [] and fake.tickets[TICKET_ID].assignee is None
+
+
+# ── a `sync` with nothing recorded ───────────────────────────────────────────
+#
+# A bare `tcw work tracker sync` has no move of its own. What the ticket is assessed
+# against is the move that lands the item on its status; what is written to the record
+# is nothing, because no local move happened and so nothing is owed. These hold both
+# halves: a record naming `None` could not be read back, and a record naming `start`
+# would make the next run claim a ticket the user only asked TCW to look at.
+
+
+def show_says_nothing_about_sync(root: Path, slug: str) -> None:
+    code, out, err = cli(root, "work", "show", slug)
+    assert code == 0, err
+    assert "record cannot be read" not in out + err
+    assert "tracker sync:" not in out, out
+
+
+def test_a_recordless_sync_that_cannot_reach_the_tracker_writes_no_record(node, fake):
+    slug = started_and_bound(node, fake)
+    before = binding_text(node, slug)
+    fake.down = True
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    fake.down = False
+    assert code == 1 and "pending" in out + err, (out, err)
+    assert binding_text(node, slug) == before
+    assert "sync" not in yaml.safe_load(binding_text(node, slug))
+    show_says_nothing_about_sync(node, slug)
+
+
+def test_a_recordless_sync_the_tracker_refuses_writes_no_record(node, fake):
+    slug = started_and_bound(node, fake)
+    claimed_ticket(fake, "In Review", B)                    # moved on and handed over
+    before = binding_text(node, slug)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1 and "conflicting" in out + err, (out, err)
+    assert binding_text(node, slug) == before
+    show_says_nothing_about_sync(node, slug)
+
+
+@pytest.mark.parametrize("assignee", [None, B], ids=["released", "bobs"])
+def test_a_failed_recordless_sync_does_not_claim_the_ticket_next_time(node, fake,
+                                                                      assignee):
+    """The trap. A fix that wrote `start` into the record would make this next run
+    claim the ticket, because a recorded start on an unfinished item is a claim still
+    owed: a released ticket would be assigned, and Bob's would be asked for."""
+    slug = started_and_bound(node, fake)
+    fake.tickets[TICKET_ID].assignee = assignee
+    fake.down = True
+    assert cli(node, "work", "tracker", "sync", slug)[0] == 1
+    fake.down = False
+    fake.requests.clear()
+    fake.applied.clear()
+    cli(node, "work", "tracker", "sync", slug)
+    assert fake.tickets[TICKET_ID].assignee == assignee
+    assert fake.applied == []
+    assert fake.writes() == []
+
+
+def test_a_binding_with_a_null_move_record_is_cleared_by_the_next_sync(node, fake):
+    """What an earlier version wrote. It needs no migration: a successful `sync`
+    drops any record it finds."""
+    slug = started_and_bound(node, fake)
+    with_record(node, slug, {**RECORD, "move": None})
+    assert set(record(node, slug)) == {"problem"}
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert record(node, slug) is None
+    show_says_nothing_about_sync(node, slug)
+
+
+def completed_and_reopened(root: Path, fake, assignee: str | None, *,
+                           resolution: str = "done") -> str:
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    if resolution == "done":
+        assert cli(root, "work", "submit", slug)[0] == 0
+    code, _out, err = cli(root, "work", "complete", slug, "--resolution", resolution,
+                          "--confirm")
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    held.status, held.assignee = "In Progress", assignee    # somebody reopened it
+    return slug
+
+
+RESOLVED_STATUS = {"done": "Done", "wontfix": "Won't Do", "duplicate": "Duplicate",
+                   "superseded": "Won't Do"}
+DISCARDS = {"wontfix": "Won't Do", "duplicate": "Duplicate", "superseded": "Won't Do"}
+
+
+@pytest.mark.parametrize("assignee", [None, A, B], ids=["unassigned", "yours", "bobs"])
+def test_sync_of_a_reopened_ticket_on_a_completed_item(node, fake, assignee):
+    slug = completed_and_reopened(node, fake, assignee)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert "tcw work tracker claim" not in out + err
+    assert fake.tickets[TICKET_ID].status == "Done"
+    assert fake.tickets[TICKET_ID].assignee == assignee     # closed, not taken
+    assert record(node, slug) is None
+
+
+@pytest.mark.parametrize("resolution", sorted(DISCARDS))
+@pytest.mark.parametrize("assignee", [None, A, B], ids=["unassigned", "yours", "bobs"])
+def test_sync_of_a_reopened_ticket_on_a_discarded_item(tmp_path, fake, assignee,
+                                                       resolution):
+    root = make_node(tmp_path, statuses={**STATUSES, "discarded": DISCARDS})
+    slug = completed_and_reopened(root, fake, assignee, resolution=resolution)
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert "tcw work tracker claim" not in out + err
+    assert fake.tickets[TICKET_ID].status == DISCARDS[resolution]
+    assert fake.tickets[TICKET_ID].assignee == assignee
+
+
+def test_a_catch_up_binding_heading_for_a_completion_still_needs_the_ticket_held(
+        node, fake):
+    """A guard. The move `sync` assesses a recordless completed item against is
+    `complete`, which needs no claim — except on a catch-up binding, whose walk climbs
+    the working statuses on the way. That exception must survive the derived move."""
+    slug = under_way(node, "completed")
+    assert cli(node, "work", "tracker", "link", slug, KEY)[0] == 0
+    content = yaml.safe_load(binding_text(node, slug))
+    content["catch-up"] = True
+    content.pop("sync", None)
+    (FsWorkStore.open(node).path(slug) / "tracker.yaml").write_text(
+        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+    claimed_ticket(fake, "To Do", B)
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 1, (out, err)
+    assert "held by Bob" in out + err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("To Do", B)
+    assert fake.applied == []
+
+
+def test_a_bare_sync_still_brings_back_a_ticket_moved_on_by_hand(node, fake):
+    """A guard, restating the two reconciliation tests above for the recordless case:
+    the derived move decides whether a claim is needed, never which transition runs."""
+    slug = started_and_bound(node, fake)
+    fake.tickets[TICKET_ID].status = "In Review"
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert fake.tickets[TICKET_ID].status == "In Progress"
+    assert record(node, slug) is None

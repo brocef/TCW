@@ -1288,3 +1288,73 @@ def test_strict_without_an_inbox_query_refuses_an_unknown_ref_in_todays_words(st
     assert (code, out) == (1, "")
     assert REFUSED in err and "no-such-thing was not accepted" in err
     assert "no such inbox entry" not in err
+
+
+# ── a failed `sync` with nothing recorded leaves strict mode as it found it ──
+
+UNDELIVERED = "has a change that has not reached the tracker"
+MOVES_AFTER = {"submit": ("start",), "rework": ("start", "submit"),
+               "complete": ("start", "submit")}
+MOVE_ARGV = {"submit": (), "rework": (), "complete": ("--resolution", "done", "--confirm")}
+
+
+@pytest.mark.parametrize("move", sorted(MOVES_AFTER))
+def test_a_failed_recordless_sync_does_not_block_the_next_strict_move(tmp_path, fake,
+                                                                      move):
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
+    slug = bound_item(root)
+    for earlier in MOVES_AFTER[move]:
+        assert cli(root, "work", earlier, slug)[0] == 0
+    set_tracker_key(root, "strict", True)
+    fake.down = True
+    assert cli(root, "work", "tracker", "sync", slug)[0] == 1
+    fake.down = False
+    code, out, err = cli(root, "work", move, slug, *MOVE_ARGV[move])
+    assert UNDELIVERED not in err
+    assert code == 0, (out, err)
+
+
+def test_a_failed_recordless_sync_leaves_the_accurate_strict_refusal_in_place(tmp_path,
+                                                                              fake):
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
+    slug = bound_item(root)
+    assert cli(root, "work", "start", slug)[0] == 0
+    set_tracker_key(root, "strict", True)
+    claimed_ticket(fake, "To Do", None)        # sent back and dropped in the tracker
+    accurate = ("SYNC-1 is unassigned. Assign it to yourself in the tracker and put it "
+                "in 'In Progress' or 'In Review'")
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and accurate in " ".join(err.split()), err
+    assert cli(root, "work", "tracker", "sync", slug)[0] == 1
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 1 and UNDELIVERED not in err
+    assert accurate in " ".join(err.split()), err
+    assert status(root, slug) == "active"
+
+
+def test_a_reopened_ticket_closes_again_under_an_exclusive_claim_transition(tmp_path,
+                                                                           fake):
+    """The `sync → claim → claim --take-over → sync` loop ends at its first step."""
+    root = strict_node(tmp_path, strict=False, claim_transition="Start Progress")
+    slug = bound_item(root)
+    for argv in (("start", slug), ("submit", slug),
+                 ("complete", slug, "--resolution", "done", "--confirm")):
+        assert cli(root, "work", *argv)[0] == 0
+    claimed_ticket(fake, "In Progress", None)                 # reopened, unassigned
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, (out, err)
+    assert "tcw work tracker claim" not in out + err
+    held = fake.tickets[TICKET_ID]
+    assert (held.status, held.assignee) == ("Done", None)
+
+
+def test_the_strict_binding_refusal_reads_as_ordinary_prose(strict, fake):
+    from tcw.tracker.sync import binding_refusal
+    slug = bound_item(strict)
+    FsWorkStore.open(strict).start(slug, owner="b@example.test")
+    with_record(strict, slug, {"state": "pending", "move": "start", "since": "",
+                               "reason": "down", "at": "2026-09-15T00:00:00Z"})
+    st = FsWorkStore.open(strict)
+    _bound, refusal = binding_refusal(st, slug, st.tracker_config())
+    assert "TCW_WORK_OWNER=b@example.test" in refusal
+    assert "; It " not in refusal and ". if " not in refusal, refusal

@@ -385,11 +385,21 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # resolution from, so a `sync` would refuse to close a ticket nobody holds.
     move = move or (MOVE_ONTO[local] if start_record and not start_owed
                     else record["move"] if record else None)
+    # The move the ticket is *assessed* against, which is a different question from the
+    # move that is *recorded*. A `sync` with nothing recorded has no move — no local move
+    # happened, so nothing is owed and nothing is written — but whether it needs the
+    # ticket held is still the item's status to answer: a completed item's reopened
+    # ticket is closed again by anybody, as the completion itself would have closed it.
+    # Used for that question only. It never names a configured transition below, since
+    # `sync` reconciles from wherever the ticket sits and `transitions.start` leads only
+    # out of the backlog status; and it is never written, because a recorded `start`
+    # is a claim still owed and the next run would take the ticket.
+    assessed = move or MOVE_ONTO.get(local)
     # A resolution takes no ticket (`MOVES_NEEDING_NO_CLAIM`) — except on a catch-up
     # binding toward a completion, whose walk climbs the working statuses on the way
     # and so still needs the ticket held, exactly as it always did.
-    resolving = move in MOVES_NEEDING_NO_CLAIM and not (bound.catch_up
-                                                       and move == "complete")
+    resolving = assessed in MOVES_NEEDING_NO_CLAIM and not (bound.catch_up
+                                                           and assessed == "complete")
     # Nothing is sent and nothing is written: the ticket is only reported on. A `sync`
     # with no record has no window of statuses the ticket may be in — no local move
     # just happened — so it reconciles the ticket to the item from wherever it sits, in
@@ -452,6 +462,13 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                            already_held=already_held,
                            note=backwards if state == CURRENT else "")
         if state in (PENDING, CONFLICTING):
+            owed = "start" if start_owed else move
+            if owed is None:
+                # A `sync` with nothing recorded: nothing was owed before it ran, and a
+                # failure to look does not make anything owed. Any existing record is
+                # left alone too — an unreadable one is cleared by a run that succeeds.
+                return Outcome(state, reason, claimed=claimed_message,
+                               already_held=already_held)
             content = store.read_sidecar(slug, BINDING_SIDECAR).content
             store.write_sidecar(slug, BINDING_SIDECAR, with_sync_record(content, {
                 # While a start is still owed, **every** failure on this run is the
@@ -463,7 +480,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 # managed to put the ticket, so every later `sync` reads the ticket as
                 # drift and refuses to move it. `start_owed` is cleared the moment the
                 # hop has landed and been read back, and not before.
-                "state": state, "move": "start" if start_owed else move, "since": since,
+                "state": state, "move": owed, "since": since,
                 "reason": reason[:REASON_LIMIT], "at": _now(),
             }), revision=revision)
             return Outcome(state, reason, recorded=True, claimed=claimed_message,
@@ -878,8 +895,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # joined them, and reached the same refusal wherever a project had named that one.
     named = (transition_name(config.move_transitions, move, item.resolution)
              if move and MOVE_STATUS.get(move) == local else "")
-    verdict, detail = assess_move(ticket, target=target, expected=expected, move=move,
-                                  named_transition=named)
+    verdict, detail = assess_move(ticket, target=target, expected=expected,
+                                  move=assessed, named_transition=named)
     if verdict != "apply":
         # A recorded move whose ticket is inside its window, with more than one rung
         # still to climb, is a walk a failure stopped part-way — the claim landed, so
@@ -986,7 +1003,7 @@ def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None
         whose = (f" It is held by {owner}, so run it as them: "
                  f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")
         return None, (f"{key} has a change that has not reached the tracker ({what}). Run "
-                      f"`tcw work tracker sync {slug}` first;{whose} if that cannot clear "
+                      f"`tcw work tracker sync {slug}` first.{whose} If that cannot clear "
                       f"it, fix the ticket in the tracker, or unlink the item and discard "
                       f"it.")
     return bound, None
