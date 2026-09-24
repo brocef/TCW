@@ -596,14 +596,15 @@ def test_a_strict_start_on_the_claims_own_status_is_refused_where_it_is_offered_
         tmp_path, monkeypatch):
     """An unassigned ticket already on the claim's status can only be claimed through
     the transition if the workflow still offers it there — which is the workflow
-    excluding nobody. The claim is made, then refused, as the pre-epic tree did."""
+    excluding nobody. That is known from the ticket as read, so the refusal comes
+    before anything is sent: the pre-epic tree claimed first and then refused."""
     root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
                              ticket_status="In Progress")
     slug = bound_item(root)
-    fake_.applied.clear()
+    fake_.requests.clear()
     code, _out, err = cli(root, "work", "start", slug)
     assert_refused_as_not_exclusive(code, err, "Start Progress")
-    assert fake_.applied == ["21"], fake_.applied
+    assert fake_.writes() == [] and fake_.tickets[TICKET_ID].assignee is None
     assert status(root, slug) == "backlog"
 
 
@@ -1629,3 +1630,49 @@ def test_following_that_advice_lets_the_claim_succeed(tmp_path, fake, argv):
     code, out, err = retake(root, slug, argv)
     assert code == 0, (out, err)
     assert FsWorkStore.open(root).get(slug).owner == "a@example.test"
+
+
+def test_a_strict_take_over_on_a_workflow_that_cannot_exclude_takes_nothing(
+        tmp_path, monkeypatch):
+    """Refused before anything is sent. Claiming first and refusing afterwards took
+    Bob's ticket in the tracker while the item still said Bob held it."""
+    root, fake_ = exclusivity_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=False,
+                                   assignee=None, ticket_status="To Do",
+                                   start="Start Progress", exclusive="Start Progress")
+    slug = bound_item(root)
+    FsWorkStore.open(root).start(slug, owner="b@example.test")
+    claimed_ticket(fake_, "In Progress", B)
+    set_tracker_key(root, "strict", True)
+    fake_.requests.clear()
+    for argv in (("tracker", "claim", slug, "--take-over"),
+                 ("start", slug, "--take-over")):
+        code, _out, err = cli(root, "work", *argv)
+        assert_refused_as_not_exclusive(code, err, "Start Progress")
+        assert "Nothing was sent" in err
+    assert fake_.writes() == [] and fake_.tickets[TICKET_ID].assignee == B
+    assert FsWorkStore.open(root).get(slug).owner == "b@example.test"
+
+
+# `Select` leads to 'Selected', not to the active status, and is offered again there.
+SELECT_ELSEWHERE = {**SYNC,
+                    "To Do": [("71", "Select", "Selected"), *SYNC["To Do"]],
+                    "Selected": [("71", "Select", "Selected"),
+                                 ("21", "Start Progress", "In Progress")]}
+
+
+@pytest.mark.parametrize("command", ["start", "claim"])
+def test_an_applied_claim_transition_is_checked_where_it_landed(tmp_path, monkeypatch,
+                                                                command):
+    """The claim applied the transition, so the ticket is where it leads, and whether
+    it is offered again there is answerable — even off `statuses.active`."""
+    from tracker_fake import CATEGORY
+    monkeypatch.setitem(CATEGORY, "Selected", "indeterminate")
+    root, fake_ = exclusivity_node(tmp_path, monkeypatch, workflow=SELECT_ELSEWHERE,
+                                   strict=True, assignee=None, ticket_status="To Do",
+                                   start="Start Progress", exclusive="Select")
+    slug = bound_item(root)
+    argv = ("start", slug) if command == "start" else ("tracker", "claim", slug)
+    code, _out, err = cli(root, "work", *argv)
+    said = " ".join(err.split())
+    assert code == 1 and NOT_EXCLUSIVE_WORDS in said and "'Selected'" in said, said
+    assert status(root, slug) == "backlog"

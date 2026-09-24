@@ -444,22 +444,38 @@ def _claim_gate(st, bare: str) -> str | None:
             f"`tcw work tracker claim {bare}`, then run this again.")
 
 
-def _unclaimable_on_active(config, ticket) -> str:
-    """Why a strict claim cannot take `ticket`, when it sits unassigned on
-    `statuses.active` and the workflow does not offer the exclusive claim transition
-    from there — or `""`. What a released item leaves behind.
+def _unclaimable_on_active(config, ticket, *, take_over: bool) -> str:
+    """Why a strict claim cannot take `ticket` sitting on `statuses.active`, decided
+    before anything is sent — or `""`.
+
+    Two cases, both knowable from the ticket as read:
+
+    - The workflow still offers the exclusive claim transition from there. Applying
+      it would succeed, which is the workflow excluding nobody, and the exclusivity
+      check afterwards would refuse — after the ticket had been moved and assigned,
+      and on a `--take-over` after it had been taken from its holder.
+    - It does not offer it and nobody holds the ticket: what a released item leaves
+      behind. The two ways out are the ones that work: a ticket already yours is
+      checked for exclusivity without applying anything, and from a status that
+      offers the transition the claim applies it as usual.
 
     Both strict claim paths say it, in these words, so `tracker claim` and a
-    `start --take-over` agree on what to do next. The two ways out are the ones that
-    work: a ticket already yours is checked for exclusivity without applying anything,
-    and from a status that offers the transition the claim applies it as usual.
+    `start --take-over` agree on what to do next. A ticket already yours, or one
+    somebody else holds without `--take-over`, is left to the claim to answer.
     """
     from tcw.tracker.claim import _normalize
-    from tcw.tracker.sync import lowest_rung
+    from tcw.tracker.sync import lowest_rung, not_exclusive_advice
     named = config.exclusive_claim_transition
-    if (not named or ticket.assignee_id or ticket.category == "done"
-            or lowest_rung(config.statuses, ticket.status) != 0
-            or any(_normalize(t.name) == _normalize(named) for t in ticket.offered)):
+    if (not named or ticket.category == "done" or ticket.assignee_id == ticket.me_id
+            or (ticket.assignee_id and not take_over)
+            or lowest_rung(config.statuses, ticket.status) != 0):
+        return ""
+    if any(_normalize(t.name) == _normalize(named) for t in ticket.offered):
+        return (f"{ticket.key} is in '{ticket.status}', and its workflow still offers "
+                f"'{named}', the transition work.tracker.exclusive-claim-transition "
+                f"names, from '{ticket.status}', so a second person could claim it "
+                f"too. Nothing was sent. {not_exclusive_advice()}")
+    if ticket.assignee_id:
         return ""
     return (f"{ticket.key} is in '{ticket.status}', where "
             f"work.tracker.exclusive-claim-transition leads, and nobody holds it. Its "
@@ -523,7 +539,8 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
             for t in ticket.offered)
         # On `statuses.active` itself, where the transition is not offered: a released
         # item's ticket. Refused like the rungs above, with its own two ways out.
-        stuck = "" if step_refusal or past else _unclaimable_on_active(config, ticket)
+        stuck = ("" if step_refusal or past else
+                 _unclaimable_on_active(config, ticket, take_over=args.take_over))
         # Exclusivity is the configured transition's: strict mode requires
         # `exclusive-claim-transition`, and a workflow that will not apply it to a
         # ticket somebody already took stops a second claimant before the assignment.
@@ -3385,7 +3402,8 @@ def _tracker_claim(args: argparse.Namespace) -> int:
     try:
         ticket = read_ticket(client, bound.ticket_id)
         if client.config.strict and (
-                stuck := _unclaimable_on_active(client.config, ticket)):
+                stuck := _unclaimable_on_active(client.config, ticket,
+                                                take_over=args.take_over)):
             return _strict_says_no("tracker claim", f"{args.slug} was not claimed",
                                    stuck)
         outcome = assert_ownership(

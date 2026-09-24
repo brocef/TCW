@@ -1067,6 +1067,14 @@ def unsynced_hint(slug: str, key: str) -> str:
             f"tracker.")
 
 
+def not_exclusive_advice() -> str:
+    """What to do about a workflow that excludes nobody: the same words wherever
+    strict mode refuses for it."""
+    return ("Name a transition your workflow does not offer again once a ticket has "
+            "taken it in work.tracker.exclusive-claim-transition, or turn "
+            "work.tracker.strict off.")
+
+
 def claim_refusal(client, config, ticket_id: str, outcome, *,
                   off_active_refuses: bool = True) -> str | None:
     """`None` when a successful claim authorizes work under strict mode; otherwise why
@@ -1081,19 +1089,24 @@ def claim_refusal(client, config, ticket_id: str, outcome, *,
 
     `off_active_refuses` is what a ticket found off `statuses.active` means. For
     `import` and `inbox accept` it is a refusal: the claim was of a ticket already
-    held somewhere else. For `tcw work start` and `tcw work tracker claim` it is a
-    question this run cannot answer — a start goes on to move the ticket there, and
-    what a ticket offers from another status says nothing about what it offers from
-    `statuses.active` — so it is not refused.
+    held somewhere else. For `tcw work start` and `tcw work tracker claim` it is not.
+    Where this claim applied the transition, the ticket is where the transition
+    leads, and the question is asked there. Where it applied nothing — a ticket
+    already held — it is a question this run cannot answer, since what a ticket
+    offers from another status says nothing about what it offers from
+    `statuses.active`, and a start goes on to move it there itself.
     """
     from tcw.tracker.claim import NOT_EXCLUSIVE, assess
     active = target_status(config.statuses, "active", None)
     key = outcome.key
+    landing = active or outcome.status
     if active and _normalize(outcome.status) != _normalize(active):
-        if not off_active_refuses:
+        if off_active_refuses:
+            return (f"{key} is assigned to you but is in '{outcome.status}', not "
+                    f"'{active}', so this is not a claim of it.")
+        if not getattr(outcome, "transitioned", False):
             return None
-        return (f"{key} is assigned to you but is in '{outcome.status}', not '{active}', "
-                f"so this is not a claim of it.")
+        landing = outcome.status
     try:
         offered = client.transitions(ticket_id)
     except TrackerError as error:
@@ -1102,10 +1115,10 @@ def claim_refusal(client, config, ticket_id: str, outcome, *,
                 f"run this again once the tracker answers.")
     named = config.exclusive_claim_transition
     verdict = assess(named, current_status=outcome.status,
-                     offered=offered, landing_status=active or outcome.status)
+                     offered=offered, landing_status=landing)
     if verdict.exclusivity == NOT_EXCLUSIVE:
         return (f"{key} is held by you, but its workflow still offers '{named}', the "
                 f"transition work.tracker.exclusive-claim-transition names, from "
                 f"'{outcome.status}', so a second person could claim it too. TCW "
-                f"leaves the ticket claimed.")
+                f"leaves the ticket claimed. {not_exclusive_advice()}")
     return None
