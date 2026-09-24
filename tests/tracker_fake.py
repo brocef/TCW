@@ -58,6 +58,17 @@ TWO_ROUTES_IN = {
     "To Do": [("21", "Start Progress", "In Progress"),
               ("22", "Fast Track", "In Progress"), *_DISCARDS],
 }
+# `SYNC` with a second route into `In Progress` that is still offered once the ticket
+# is there. `Start Progress` excludes a second claimant and `Pick Up` does not, so this
+# is the fixture on which `transitions.start` and `exclusive-claim-transition` can be
+# told apart: name one in each key, and which key an exclusivity verdict came from
+# shows in whether it refuses.
+ONE_MUTEX_ONE_NOT = {
+    **SYNC,
+    "To Do": [("21", "Start Progress", "In Progress"),
+              ("23", "Pick Up", "In Progress"), *_DISCARDS],
+    "In Progress": [("23", "Pick Up", "In Progress"), *SYNC["In Progress"]],
+}
 # Two routes out of one status into `Done` — a "finished" one and an "abandoned" one —
 # plus a pair sharing a name. Which transition ran cannot be read back from the status,
 # which is the whole reason a project has to be able to name it.

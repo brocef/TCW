@@ -545,6 +545,13 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
         return _strict_says_no("start", f"{bare} was not started",
                                moved_out(key, left) + failed.message + detail
                                + again), False
+    # Strict mode's promise: the claim transition must exclude a second claimant.
+    # Asked of a ticket already held too, where the claim applied nothing.
+    from tcw.tracker.sync import claim_refusal
+    if refusal := claim_refusal(client, config, bound.ticket_id, outcome,
+                                off_active_refuses=False):
+        return _strict_says_no("start", f"{bare} was not started",
+                               moved_out(key, left) + refusal), False
     if left:
         print(f"→ {moved_out(key, left)}".rstrip(), file=sys.stderr)
     # This run took the ticket, so this run says so. `deliver` will find the ticket
@@ -3345,6 +3352,14 @@ def _tracker_claim(args: argparse.Namespace) -> int:
         detail = f" ({outcome.detail})" if outcome.detail else ""
         print(f"tcw work tracker claim: {outcome.message}{detail}", file=sys.stderr)
         return 1
+    if client.config.strict:
+        # The same exclusivity check a strict `start` makes, before the item is
+        # claimed locally: the ticket is left claimed, the item is not.
+        from tcw.tracker.sync import claim_refusal
+        if refusal := claim_refusal(client, client.config, bound.ticket_id, outcome,
+                                    off_active_refuses=False):
+            return _strict_says_no("tracker claim", f"{args.slug} was not claimed",
+                                   refusal)
     if (code := _own_locally(st, args.slug, owner, "claim")) != 0:
         return code
     moved = (f" It moved to '{outcome.status}', which is what naming "

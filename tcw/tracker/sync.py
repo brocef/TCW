@@ -1067,14 +1067,31 @@ def unsynced_hint(slug: str, key: str) -> str:
             f"tracker.")
 
 
-def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
+def claim_refusal(client, config, ticket_id: str, outcome, *,
+                  off_active_refuses: bool = True) -> str | None:
     """`None` when a successful claim authorizes work under strict mode; otherwise why
     not. Asked right after the claim, when the ticket is where the claim leads and so
-    shows whether the workflow would let a second claimant claim it too."""
+    shows whether the workflow would let a second claimant claim it too.
+
+    The question is about `exclusive-claim-transition`, the key strict mode's promise
+    rests on, and never about `transitions.start`. It is asked of a ticket this
+    account already held as well: that claim applied nothing, and must not, but
+    whether the workflow would refuse a second person is answerable without applying
+    anything — read what the ticket offers from the status the claim leads to.
+
+    `off_active_refuses` is what a ticket found off `statuses.active` means. For
+    `import` and `inbox accept` it is a refusal: the claim was of a ticket already
+    held somewhere else. For `tcw work start` and `tcw work tracker claim` it is a
+    question this run cannot answer — a start goes on to move the ticket there, and
+    what a ticket offers from another status says nothing about what it offers from
+    `statuses.active` — so it is not refused.
+    """
     from tcw.tracker.claim import NOT_EXCLUSIVE, assess
     active = target_status(config.statuses, "active", None)
     key = outcome.key
     if active and _normalize(outcome.status) != _normalize(active):
+        if not off_active_refuses:
+            return None
         return (f"{key} is assigned to you but is in '{outcome.status}', not '{active}', "
                 f"so this is not a claim of it.")
     try:
@@ -1083,10 +1100,12 @@ def claim_refusal(client, config, ticket_id: str, outcome) -> str | None:
         return (f"{key} was claimed, but whether its workflow can refuse a second "
                 f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
                 f"run this again once the tracker answers.")
-    verdict = assess(config.start_transition, current_status=outcome.status,
+    named = config.exclusive_claim_transition
+    verdict = assess(named, current_status=outcome.status,
                      offered=offered, landing_status=active or outcome.status)
     if verdict.exclusivity == NOT_EXCLUSIVE:
-        return (f"{key} was claimed, but its workflow still offers "
-                f"'{config.start_transition}' from '{outcome.status}', so a second person "
-                f"could claim it too. TCW leaves the ticket claimed.")
+        return (f"{key} is held by you, but its workflow still offers '{named}', the "
+                f"transition work.tracker.exclusive-claim-transition names, from "
+                f"'{outcome.status}', so a second person could claim it too. TCW "
+                f"leaves the ticket claimed.")
     return None

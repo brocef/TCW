@@ -39,7 +39,7 @@ being idempotent the moment a project opted in.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from tcw.tracker.claim import _normalize
 from tcw.tracker.jira import TrackerError, TrackerRequestInvalid
@@ -73,6 +73,9 @@ class OwnershipOutcome:
     transitioned: bool = False
     retry: bool = False
     assigned: bool = False
+    # The ticket's key, so a caller holding only the outcome can name the ticket —
+    # `claim_refusal` serves this outcome and `intake.claim`'s alike.
+    key: str = ""
 
 
 def _holder(client, ticket):
@@ -83,6 +86,14 @@ def _holder(client, ticket):
 
 def assert_ownership(client, ticket, *, assertion: str = "",
                      take_over: bool = False) -> OwnershipOutcome:
+    """Make `ticket` held by the account `client` authenticates as — see
+    `_assert_ownership`. Every outcome carries the ticket's key."""
+    return replace(_assert_ownership(client, ticket, assertion=assertion,
+                                     take_over=take_over), key=ticket.key)
+
+
+def _assert_ownership(client, ticket, *, assertion: str = "",
+                      take_over: bool = False) -> OwnershipOutcome:
     """Make `ticket` held by the account `client` authenticates as.
 
     Idempotent for whoever already holds it. Refuses a second holder by name,

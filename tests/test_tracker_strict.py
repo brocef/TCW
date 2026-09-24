@@ -469,9 +469,10 @@ def test_an_unreachable_tracker_refuses_submit(strict, fake):
 
 
 def test_a_workflow_that_cannot_exclude_refuses_import(tmp_path, monkeypatch):
-    """`import` still claims through the claim transition and asks whether the workflow
-    offers it again. A strict `start` no longer does: its exclusivity is
-    `exclusive-claim-transition`'s (see the tests after this one)."""
+    """`import` claims through `transitions.start`, then asks whether the workflow
+    still offers `exclusive-claim-transition` from where the claim led. A strict
+    `start` and `tracker claim` ask the same question: see the exclusivity tests
+    further down."""
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
@@ -523,11 +524,14 @@ def test_a_strict_start_takes_the_ticket_through_the_exclusive_claim_transition(
 # lifecycle move does. What happens instead depends on strict mode.
 
 
-def global_claim_node(tmp_path, monkeypatch, *, strict: bool, ticket_status: str):
+def claim_node(tmp_path, monkeypatch, *, workflow: dict, strict: bool,
+               ticket_status: str):
+    """`workflow` has no default: whether the claim transition excludes a second
+    claimant is decided by it, and a strict claim is refused on one that does not."""
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
-    fake_ = FakeJira(workflow=GLOBAL)
+    fake_ = FakeJira(workflow=workflow)
     fake_.account("a@example.test", A, "Alice")
     fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status=ticket_status)
     fake_.install(monkeypatch)
@@ -540,7 +544,7 @@ def test_a_start_above_the_claim_transition_takes_the_ticket_without_applying_it
     """Without strict mode: the transition is skipped, the ticket is taken by the
     assignment and its read-back alone, it is left in review, and the output says the
     claim was the weaker kind."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=False,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=False,
                                     ticket_status="In Review")
     slug = bound_item(root)
     fake_.applied.clear()
@@ -559,7 +563,7 @@ def test_a_strict_start_above_the_claim_transition_is_refused_before_the_item_mo
     """Under strict mode: refused, because strict mode's exclusivity *is* that
     transition and an assignment on its own is not the proof it asks for. The item
     does not move, nothing is sent, and the message names both ways out."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
                                     ticket_status="In Review")
     slug = bound_item(root)
     fake_.requests.clear()
@@ -574,20 +578,33 @@ def test_a_strict_start_above_the_claim_transition_is_refused_before_the_item_mo
     assert fake_.writes() == [] and fake_.tickets[TICKET_ID].status == "In Review"
 
 
-@pytest.mark.parametrize("ticket_status", ["To Do", "In Progress"],
-                         ids=["below-the-ladder", "on-the-claims-own-rung"])
-def test_a_strict_start_on_the_claims_own_status_still_asserts_through_it(
-        tmp_path, monkeypatch, ticket_status):
-    """The refusal above is only for a ticket *past* the claim's status. One on it, or
-    below it, is claimed through the transition exactly as before."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
-                                    ticket_status=ticket_status)
+def test_a_strict_start_below_the_claims_status_still_asserts_through_it(
+        tmp_path, monkeypatch):
+    """The refusal above is only for a ticket *past* the claim's status. One below
+    it is claimed through the transition exactly as before."""
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=SYNC, strict=True,
+                             ticket_status="To Do")
     slug = bound_item(root)
     fake_.applied.clear()
     code, _out, err = cli(root, "work", "start", slug)
     assert code == 0, err
     assert fake_.applied == ["21"], fake_.applied
     assert fake_.tickets[TICKET_ID].assignee == A and status(root, slug) == "active"
+
+
+def test_a_strict_start_on_the_claims_own_status_is_refused_where_it_is_offered_again(
+        tmp_path, monkeypatch):
+    """An unassigned ticket already on the claim's status can only be claimed through
+    the transition if the workflow still offers it there — which is the workflow
+    excluding nobody. The claim is made, then refused, as the pre-epic tree did."""
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
+                             ticket_status="In Progress")
+    slug = bound_item(root)
+    fake_.applied.clear()
+    code, _out, err = cli(root, "work", "start", slug)
+    assert_refused_as_not_exclusive(code, err, "Start Progress")
+    assert fake_.applied == ["21"], fake_.applied
+    assert status(root, slug) == "backlog"
 
 
 # ── a claim whose transition landed and whose assignment did not ────────────
@@ -612,7 +629,7 @@ def test_a_strict_start_says_it_took_the_ticket_not_that_it_was_already_held(
     """`_strict_claim` takes the ticket before the item moves, so by the time delivery
     runs the ticket is this account's. Reporting that as *already* held would describe
     a claim this same command had just made."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=SYNC, strict=True,
                                     ticket_status="To Do")
     slug = bound_item(root)
     code, _out, err = cli(root, "work", "start", slug)
@@ -623,7 +640,7 @@ def test_a_strict_start_says_it_took_the_ticket_not_that_it_was_already_held(
 
 def test_a_strict_start_whose_assignment_failed_says_the_ticket_moved(tmp_path,
                                                                       monkeypatch):
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
                                     ticket_status="To Do")
     slug = bound_item(root)
     refuse_the_assignment(fake_)
@@ -640,7 +657,7 @@ def test_a_strict_start_whose_assignment_failed_says_the_ticket_moved(tmp_path,
 def test_a_start_whose_assignment_failed_after_the_transition_says_the_ticket_moved(
         tmp_path, monkeypatch):
     """The same through `deliver`, which claims for a start outside strict mode."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=False,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=False,
                                     ticket_status="To Do")
     slug = bound_item(root)
     refuse_the_assignment(fake_)
@@ -670,7 +687,7 @@ def test_a_claim_whose_read_back_failed_does_not_call_the_ticket_unassigned(
     it is contradicts the sentence printed beside it. It also replaces advice that
     would have worked: running the command again succeeds, because a claim of a ticket
     already yours returns before it sends anything."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=strict,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=strict,
                                     ticket_status="To Do")
     slug = bound_item(root)
     fail_the_read_back(fake_)
@@ -717,7 +734,7 @@ def test_a_strict_start_whose_commit_is_refused_still_says_it_claimed_once(
     """A refused commit leaves the item moved, so that path delivers the move too —
     and it has to withhold the delivery's claim line for the same reason the ordinary
     path does: this very command took the ticket moments ago and already said so."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=SYNC, strict=True,
                                     ticket_status="To Do")
     slug = bound_item(root)
     hook = root / ".git" / "hooks" / "pre-commit"       # the commit, and only it, fails
@@ -744,22 +761,27 @@ def steal_before_the_nth_read(fake_, n: int) -> None:
     fake_.answer = counting
 
 
-def test_a_strict_start_reports_a_claim_the_delivery_had_to_make_again(tmp_path,
-                                                                      monkeypatch):
-    """The other half of the same rule: what a strict start withholds is the sentence
-    saying the ticket was *already* held, and nothing else. If the ticket is let go
-    between the strict claim and the delivery, the delivery takes it back — and a
-    claim this run made is news whoever said what before it."""
-    root, fake_ = global_claim_node(tmp_path, monkeypatch, strict=True,
-                                    ticket_status="To Do")
+def test_a_ticket_let_go_between_a_strict_claim_and_its_delivery_is_not_retaken(
+        tmp_path, monkeypatch):
+    """The ticket is let go between the strict claim and the delivery. On a workflow
+    whose claim transition excludes a second claimant it is not offered from 'In
+    Progress', so the delivery cannot take the ticket back: it says so, and the only
+    line saying the ticket is held is the one the strict claim printed.
+
+    This replaced a test in which the delivery *did* retake it. That was reachable
+    only on a workflow still offering the transition from 'In Progress' — one that
+    excludes nobody — and strict mode now refuses that claim before the item moves."""
+    root, fake_ = claim_node(tmp_path, monkeypatch, workflow=SYNC, strict=True,
+                             ticket_status="To Do")
     slug = bound_item(root)
     steal_before_the_nth_read(fake_, 3)       # the strict claim's two reads, then this
     code, _out, err = cli(root, "work", "start", slug)
-    assert code == 0, err
-    assert err.count(f"{KEY} is held by you.") == 2, err
-    assigned = [path for _method, path in fake_.writes() if path.endswith("/assignee")]
-    assert len(assigned) == 2, fake_.writes()
-    assert fake_.tickets[TICKET_ID].assignee == A
+    assert code == 1, err
+    assert status(root, slug) == "active"
+    assert "(conflicting)" in err and "does not offer 'Start Progress'" in err, err
+    assert err.count(f"{KEY} is held by you.") == 1, err
+    assert f"{KEY} is already held by you." not in err, err
+    assert fake_.tickets[TICKET_ID].assignee is None
 
 
 def test_a_strict_start_refuses_a_second_claimant_the_workflow_excludes(tmp_path,
@@ -1429,3 +1451,107 @@ def test_a_strict_claim_of_a_ticket_you_already_hold_sends_nothing(strict, fake)
     assert code == 0, (out, err)
     assert fake.applied == [] and status(strict, item.slug) == "active"
     assert fake.tickets[TICKET_ID].assignee == A
+
+
+# ── strict mode checks that its claim transition excludes a second claimant ──
+#
+# On every strict claim path: `import`, `inbox accept`, `tcw work start` and
+# `tcw work tracker claim`. The question is asked about
+# `exclusive-claim-transition`, the key strict mode's promise rests on.
+
+NOT_EXCLUSIVE_WORDS = "so a second person could claim it too"
+
+
+def exclusivity_node(tmp_path, monkeypatch, *, workflow, strict, assignee,
+                     ticket_status, start, exclusive):
+    """Every axis the exclusivity check branches on is an argument, none defaulted."""
+    monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
+    monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
+    monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
+    fake_ = FakeJira(workflow=workflow)
+    fake_.account("a@example.test", A, "Alice")
+    fake_.account("b@example.test", B, "Bob")
+    fake_.ticket(id=TICKET_ID, key=KEY, summary="t", status=ticket_status,
+                 assignee=assignee)
+    fake_.install(monkeypatch)
+    root = strict_node(tmp_path, strict=strict, claim_transition=exclusive,
+                       transitions={"start": start})
+    return root, fake_
+
+
+def assert_refused_as_not_exclusive(code: int, err: str, transition: str) -> None:
+    said = " ".join(err.split())
+    assert code == 1 and REFUSED in said, said
+    assert NOT_EXCLUSIVE_WORDS in said, said
+    assert f"'{transition}'" in said and "'In Progress'" in said, said
+    assert "work.tracker.exclusive-claim-transition" in said, said
+
+
+@pytest.mark.parametrize("assignee, ticket_status", [(None, "To Do"),
+                                                     (A, "In Progress")],
+                         ids=["unassigned", "already-yours"])
+def test_a_strict_start_on_a_workflow_that_cannot_exclude_is_refused(
+        tmp_path, monkeypatch, assignee, ticket_status):
+    """Criteria 22 and 23: the regression. The pre-epic tree refused both."""
+    root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
+                                   assignee=assignee, ticket_status=ticket_status,
+                                   start="Start Progress", exclusive="Start Progress")
+    slug = bound_item(root)
+    code, _out, err = cli(root, "work", "start", slug)
+    assert_refused_as_not_exclusive(code, err, "Start Progress")
+    assert status(root, slug) == "backlog"
+
+
+def test_a_strict_tracker_claim_on_a_workflow_that_cannot_exclude_is_refused(
+        tmp_path, monkeypatch):
+    root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=GLOBAL, strict=True,
+                                   assignee=None, ticket_status="To Do",
+                                   start="Start Progress", exclusive="Start Progress")
+    slug = bound_item(root)
+    code, _out, err = cli(root, "work", "tracker", "claim", slug)
+    assert_refused_as_not_exclusive(code, err, "Start Progress")
+    assert FsWorkStore.open(root).get(slug).owner in ("", None)
+
+
+@pytest.mark.parametrize("command", ["import", "start", "claim"])
+@pytest.mark.parametrize("start, exclusive, refused", [
+    ("Pick Up", "Start Progress", False),
+    ("Start Progress", "Pick Up", True),
+], ids=["exclusive-key-names-the-mutex", "exclusive-key-names-the-open-route"])
+def test_the_exclusivity_verdict_comes_from_the_exclusive_claim_transition(
+        tmp_path, monkeypatch, command, start, exclusive, refused):
+    """Criteria 26 and 27. The two keys name different transitions, so the verdict
+    shows which one it was asked about."""
+    from tracker_fake import ONE_MUTEX_ONE_NOT
+    root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=ONE_MUTEX_ONE_NOT,
+                                   strict=True, assignee=None, ticket_status="To Do",
+                                   start=start, exclusive=exclusive)
+    if command == "import":
+        code, out, err = cli(root, "work", "tracker", "import", KEY)
+    else:
+        slug = bound_item(root)
+        argv = ("start", slug) if command == "start" else ("tracker", "claim", slug)
+        code, out, err = cli(root, "work", *argv)
+    if refused:
+        assert_refused_as_not_exclusive(code, err, exclusive)
+        assert f"'{start}'" not in " ".join(err.split())
+    else:
+        assert code == 0, (out, err)
+        assert NOT_EXCLUSIVE_WORDS not in err
+
+
+@pytest.mark.parametrize("workflow", ["GLOBAL", "SYNC"])
+@pytest.mark.parametrize("command", ["start", "claim"])
+def test_a_project_that_is_not_strict_is_unaffected_on_both_workflows(
+        tmp_path, monkeypatch, workflow, command):
+    """Criterion 28, a guard: without strict mode the weaker claim is a documented
+    choice, and nothing asks whether the workflow excludes anybody."""
+    root, _fake = exclusivity_node(tmp_path, monkeypatch,
+                                   workflow={"GLOBAL": GLOBAL, "SYNC": SYNC}[workflow],
+                                   strict=False, assignee=None, ticket_status="To Do",
+                                   start="Start Progress", exclusive="Start Progress")
+    slug = bound_item(root)
+    argv = ("start", slug) if command == "start" else ("tracker", "claim", slug)
+    code, out, err = cli(root, "work", *argv)
+    assert code == 0, (out, err)
+    assert NOT_EXCLUSIVE_WORDS not in err
