@@ -2713,11 +2713,14 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     # command again, which finds the ticket already assigned (row `1e`) and moves
     # nothing — so a ticket put back earlier would be left claimed with no item.
     # Not under strict mode, whose proof that nobody else can claim the ticket is
-    # that it sits where the exclusive transition led; and not for a ticket still
-    # where the claim found it — one already yours sends no transition (row `1e`),
-    # and is work already under way.
+    # that it sits where the exclusive transition led. Only for a ticket this run's
+    # transition moved: a claim can also count when somebody else moved a ticket
+    # already yours (row `3a` with a refused transition), and that is work under way,
+    # not a move of ours to undo. And not for a ticket still where the claim found
+    # it, which saves an already-held ticket (row `1e`) the tracker reads — a failure
+    # in them would warn about work nobody moved.
     put_back_failed = ""
-    if (outcome.claimed_from and not client.config.strict
+    if (outcome.transitioned and outcome.claimed_from and not client.config.strict
             and _normalize(outcome.claimed_from) != _normalize(outcome.status)):
         status, put_back_failed = put_back(client, outcome)
         outcome = replace(outcome, status=status)

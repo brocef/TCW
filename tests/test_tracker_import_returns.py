@@ -122,3 +122,41 @@ def test_strict_mode_leaves_the_ticket_where_the_claim_put_it(tmp_path, monkeypa
     assert len(items(root)) == 1
     assert ticket(fake_) == ("In Progress", A)
     assert fake_.applied == [START]
+
+
+def test_a_ticket_moved_by_someone_else_during_the_claim_is_left_alone(
+        tmp_path, monkeypatch):
+    """The claim still counts — the ticket is yours and where the claim leads — but
+    this run's transition did not move it: somebody else did. That is work under
+    way, not a move of ours to undo."""
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(WITH_STOP), assignee=A)
+
+    def moved_first():
+        fake_.tickets[TICKET_ID].status = "In Progress"
+
+    fake_.before("POST", "/transitions", moved_first)
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    assert len(items(root)) == 1
+    assert ticket(fake_) == ("In Progress", A)
+    assert fake_.applied == []
+
+
+def test_an_unanswered_way_back_reports_where_the_ticket_really_is(tmp_path, monkeypatch):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(WITH_STOP))
+    post_fails(fake_, 2, TrackerUnavailable("no answer (fake)"), apply_first=True)
+    code, _out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    assert ticket(fake_) == ("To Do", A)
+    assert f"{KEY} is in 'To Do', claimed by this run" in err
+    assert warnings(err) == []
+
+
+def test_starting_an_imported_item_moves_its_ticket_on(tmp_path, monkeypatch):
+    root, fake_ = ladder_node(tmp_path, monkeypatch, dict(WITH_STOP))
+    code, out, err = cli(root, "work", "tracker", "import", KEY)
+    assert code == 0, err
+    code, _out, err = cli(root, "work", "start", out.strip())
+    assert code == 0, err
+    assert ticket(fake_) == ("In Progress", A)
+    assert fake_.applied == [START, BACK, START]

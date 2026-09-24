@@ -781,7 +781,15 @@ def put_back(client, outcome: ClaimOutcome) -> tuple[str, str]:
         client.apply_transition(ticket.issue_id, found.id)
         status = _fields(client.issue(ticket.issue_id))[0]
     except TrackerError as error:
-        return outcome.status, str(error)
+        # The transition may have landed with its answer lost, so where the ticket
+        # is has to be read rather than assumed.
+        try:
+            status = _fields(client.issue(outcome.issue_id))[0]
+        except TrackerError:
+            return outcome.status, f"{error}; where it is now could not be read"
+        if _normalize(status) == _normalize(target):
+            return status, ""
+        return status, str(error)
     if _normalize(status) != _normalize(target):
         return status, f"it is in '{status}' after '{found.name}'"
     return status, ""
