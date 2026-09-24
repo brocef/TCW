@@ -1522,7 +1522,9 @@ def test_a_strict_tracker_claim_on_a_workflow_that_cannot_exclude_is_refused(
 def test_the_exclusivity_verdict_comes_from_the_exclusive_claim_transition(
         tmp_path, monkeypatch, command, start, exclusive, refused):
     """Criteria 26 and 27. The two keys name different transitions, so the verdict
-    shows which one it was asked about."""
+    shows which one it was asked about. `import` is asked about both, since it takes
+    the ticket through `transitions.start`; `start` and `tracker claim` take it
+    through `exclusive-claim-transition` only."""
     from tracker_fake import ONE_MUTEX_ONE_NOT
     root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=ONE_MUTEX_ONE_NOT,
                                    strict=True, assignee=None, ticket_status="To Do",
@@ -1536,6 +1538,13 @@ def test_the_exclusivity_verdict_comes_from_the_exclusive_claim_transition(
     if refused:
         assert_refused_as_not_exclusive(code, err, exclusive)
         assert f"'{start}'" not in " ".join(err.split())
+    elif command == "import":
+        # `import` takes the ticket through `transitions.start`, so a second person
+        # could come in through that transition too: both keys must exclude.
+        said = " ".join(err.split())
+        assert code == 1 and REFUSED in said and NOT_EXCLUSIVE_WORDS in said, said
+        assert f"'{start}'" in said and "work.tracker.transitions.start" in said, said
+        assert FsWorkStore.open(root).query() == []
     else:
         assert code == 0, (out, err)
         assert NOT_EXCLUSIVE_WORDS not in err

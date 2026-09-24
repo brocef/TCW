@@ -1071,8 +1071,7 @@ def not_exclusive_advice() -> str:
     """What to do about a workflow that excludes nobody: the same words wherever
     strict mode refuses for it."""
     return ("Name a transition your workflow does not offer again once a ticket has "
-            "taken it in work.tracker.exclusive-claim-transition, or turn "
-            "work.tracker.strict off.")
+            "taken it, or turn work.tracker.strict off.")
 
 
 def claim_refusal(client, config, ticket_id: str, outcome, *,
@@ -1082,7 +1081,8 @@ def claim_refusal(client, config, ticket_id: str, outcome, *,
     shows whether the workflow would let a second claimant claim it too.
 
     The question is about `exclusive-claim-transition`, the key strict mode's promise
-    rests on, and never about `transitions.start`. It is asked of a ticket this
+    rests on — and, for `import` and `inbox accept`, about `transitions.start` as
+    well, the transition those two take the ticket through. It is asked of a ticket this
     account already held as well: that claim applied nothing, and must not, but
     whether the workflow would refuse a second person is answerable without applying
     anything — read what the ticket offers from the status the claim leads to.
@@ -1113,12 +1113,21 @@ def claim_refusal(client, config, ticket_id: str, outcome, *,
         return (f"{key} was claimed, but whether its workflow can refuse a second "
                 f"claimant could not be read ({error}). TCW leaves the ticket claimed; "
                 f"run this again once the tracker answers.")
-    named = config.exclusive_claim_transition
-    verdict = assess(named, current_status=outcome.status,
-                     offered=offered, landing_status=landing)
-    if verdict.exclusivity == NOT_EXCLUSIVE:
-        return (f"{key} is held by you, but its workflow still offers '{named}', the "
-                f"transition work.tracker.exclusive-claim-transition names, from "
-                f"'{outcome.status}', so a second person could claim it too. TCW "
-                f"leaves the ticket claimed. {not_exclusive_advice()}")
+    # `import` and `inbox accept` take the ticket through `transitions.start`, so a
+    # second person could come in through that transition as well as through
+    # `exclusive-claim-transition`: both must exclude. The lifecycle callers take it
+    # through `exclusive-claim-transition` only.
+    keys = [("exclusive-claim-transition", config.exclusive_claim_transition)]
+    if (off_active_refuses and config.start_transition
+            and _normalize(config.start_transition)
+            != _normalize(config.exclusive_claim_transition)):
+        keys.append(("transitions.start", config.start_transition))
+    for path, named in keys:
+        verdict = assess(named, current_status=outcome.status,
+                         offered=offered, landing_status=landing)
+        if verdict.exclusivity == NOT_EXCLUSIVE:
+            return (f"{key} is held by you, but its workflow still offers '{named}', "
+                    f"the transition work.tracker.{path} names, from "
+                    f"'{outcome.status}', so a second person could claim it too. TCW "
+                    f"leaves the ticket claimed. {not_exclusive_advice()}")
     return None
