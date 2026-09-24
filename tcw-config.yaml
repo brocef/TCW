@@ -12,10 +12,13 @@ work:
     transitions:
       start: Start
     statuses:
+      backlog: To Do
       active: In Progress
       review: In Review
       completed: Done
       discarded: Won't Do
+    pre-backlog:
+      Triage: Accept
   tags:
   - bug
   - capabilities
