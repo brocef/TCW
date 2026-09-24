@@ -241,8 +241,13 @@ C3 starts whenever; C2 waits for C1; C4 waits for both.
    never-started, unassigned ticket moves the ticket to the discarded status and
    exits 0.
 7. `tcw work tracker link <slug> <key>` on an active item, followed by
-   `tcw work tracker sync <slug>`, leaves the ticket at `statuses.active`; no
-   `--sync-status` flag is accepted.
+   `tcw work tracker claim <slug>` and `tcw work tracker sync <slug>`, leaves the
+   ticket at `statuses.active`; no `--sync-status` flag is accepted. **Amended**
+   at the epic's verify (2026-09-24, requester's decision). The original read
+   "`link`, followed by `sync`". The design the children shipped keeps `link` from
+   taking the ticket, so a bare `sync` of a ticket linked without its status holds
+   it and names `tracker claim`; link, claim, sync reaches the end state, in the
+   suite and against real Jira (`walkthrough.md`).
 8. A ticket moved by hand to a status ahead of its item is returned to the item's
    mapped status by `sync`.
 9. A ticket held back because another `--part` item is open is not moved by
