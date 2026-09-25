@@ -2,3 +2,11 @@
 
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
+
+## Security updates for the web app
+
+- **`tcw serve` now ships with patched versions of the libraries it is built on.**
+  The web server and the page it serves were built from versions of Fastify and
+  React Router with published security problems, including ways to get past the
+  server's checks on what a request contains. Nothing changes in how the app looks
+  or works.
