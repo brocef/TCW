@@ -139,6 +139,9 @@ test("applies and persists light, dark, and live system preferences before React
     await expect
         .poll(() => page.evaluate(() => document.documentElement.className))
         .toContain("dark")
+    // The work list loads after the page does; overwriting its times before it
+    // renders would leave the real time in the screenshot.
+    await expect(page.locator("time.modified-at").first()).toBeVisible()
     await stableScreenshot(page, "shell-system-dark.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -146,6 +149,7 @@ test("applies and persists light, dark, and live system preferences before React
     await expect(page.locator("html")).toHaveClass(/light/)
     await page.reload()
     await expect(page.locator("html")).toHaveClass(/light/)
+    await expect(page.locator("time.modified-at").first()).toBeVisible()
     await stableScreenshot(page, "shell-explicit-light.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -388,20 +392,19 @@ test("searches references and surfaces targeted validation warnings", async ({
     await page
         .getByRole("combobox", { name: "Superseded by" })
         .fill("missing-capability")
+    // A reference that resolves to nothing is refused at write time, and the
+    // form keeps the draft so it can be corrected.
     await page.getByRole("button", { name: "Save" }).click()
-    await expect(page.getByRole("alert")).toContainText(
-        "Saved with validation issues"
-    )
+    await expect(page.getByRole("alert")).toContainText("Validation errors")
     await expect(page.getByRole("alert")).toContainText("missing-capability")
-    const saved = await (
-        await request.get(`${baseUrl}/api/capabilities/react%2Fnative-client`)
-    ).json()
-    expect(saved.capability.fields.Feature).toBe("use-feature")
-    await page.getByRole("button", { name: "Edit", exact: true }).click()
     await page.getByRole("combobox", { name: "Superseded by" }).fill("")
     await page.getByRole("button", { name: "Save" }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
     await expect(page.locator(".toast")).toHaveText("Saved")
+    const saved = await (
+        await request.get(`${baseUrl}/api/capabilities/react%2Fnative-client`)
+    ).json()
+    expect(saved.capability.fields.Feature).toBe("use-feature")
 })
 
 test("applies axis-specific facets and browser history navigation", async ({
@@ -554,6 +557,14 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
         }
     )
     expect(sidecar.ok()).toBeTruthy()
+    // Save resolves in the page, not here, so read the stored copy until the
+    // write lands rather than racing it.
+    const savedContent = async (path: string) =>
+        (
+            await (
+                await request.get(`${baseUrl}/api/work/${fixture.slug}/${path}`)
+            ).json()
+        ).content as string
 
     await page.goto(`${baseUrl}/work/${fixture.slug}`)
     await expect(
@@ -575,10 +586,9 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
         .getByLabel("Markdown", { exact: true })
         .fill("# Updated specification\n")
     await page.getByRole("button", { name: "Save" }).click()
-    const savedSpec = await request.get(
-        `${baseUrl}/api/work/${fixture.slug}/artifacts/spec`
-    )
-    expect((await savedSpec.json()).content).toContain("Updated specification")
+    await expect
+        .poll(() => savedContent(`artifacts/spec`))
+        .toContain("Updated specification")
 
     await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
     await expect(page.getByRole("heading", { name: "plan" })).toBeVisible()
@@ -587,20 +597,16 @@ test("edits lifecycle artifacts and preserves a draft across a stale write", asy
         .getByLabel("Markdown", { exact: true })
         .fill("# Updated implementation plan\n")
     await page.getByRole("button", { name: "Save" }).click()
-    const savedPlan = await request.get(
-        `${baseUrl}/api/work/${fixture.slug}/artifacts/plan`
-    )
-    expect((await savedPlan.json()).content).toContain(
-        "Updated implementation plan"
-    )
+    await expect
+        .poll(() => savedContent(`artifacts/plan`))
+        .toContain("Updated implementation plan")
 
     await page.locator(".sidecar-edit-btn").click()
     await page.getByLabel("Markdown", { exact: true }).fill("changed:\n- web\n")
     await page.getByRole("button", { name: "Save" }).click()
-    const savedSidecar = await request.get(
-        `${baseUrl}/api/work/${fixture.slug}/sidecars/capabilities.yaml`
-    )
-    expect((await savedSidecar.json()).content).toContain("- web")
+    await expect
+        .poll(() => savedContent(`sidecars/capabilities.yaml`))
+        .toContain("- web")
 
     await page.locator(".edit-btn").click()
     await page.getByLabel("Title").fill("Local stale draft")
