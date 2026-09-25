@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { vi } from "vitest"
+import type { ComponentProps } from "react"
+import { vi, type Mock } from "vitest"
 import { ThemeProvider } from "../theme"
 import { WorkDocumentTabs } from "./work-document-tabs"
 
@@ -14,7 +15,9 @@ function renderTabs(
         slug?: string
         body?: string
         present?: string[]
-        onReadArtifact?: ReturnType<typeof vi.fn>
+        onReadArtifact?: Mock<
+            ComponentProps<typeof WorkDocumentTabs>["onReadArtifact"]
+        >
     } = {}
 ) {
     const present = options.present ?? ["initial-request", "spec", "plan"]
