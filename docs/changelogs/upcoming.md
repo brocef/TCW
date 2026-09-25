@@ -13,3 +13,12 @@ category.
   versions. `work-document-tabs.test.tsx` types its mock as
   `Mock<ComponentProps<typeof WorkDocumentTabs>["onReadArtifact"]>`, which
   vitest 4 requires.
+
+### Internal
+
+- `web/e2e/parity.spec.ts` passes again (14 of 14). Four fixes:
+  - The references test expects the write-time refusal of a dangling
+    reference (`c73abdb7`).
+  - The artifact read-backs poll with `expect.poll` rather than racing Save.
+  - The `lifecycle-dialog` baseline drops "version offered" (`4cfdcaab`).
+  - The theme test waits for `time.modified-at` before its screenshots.
