@@ -61,9 +61,9 @@ var require_reusify = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastq@1.20.1/node_modules/fastq/queue.js
+// node_modules/.pnpm/fastq@1.20.3/node_modules/fastq/queue.js
 var require_queue = __commonJS({
-  "node_modules/.pnpm/fastq@1.20.1/node_modules/fastq/queue.js"(exports2, module2) {
+  "node_modules/.pnpm/fastq@1.20.3/node_modules/fastq/queue.js"(exports2, module2) {
     "use strict";
     var reusify = require_reusify();
     function fastqueue(context, worker, _concurrency) {
@@ -242,11 +242,12 @@ var require_queue = __commonJS({
           current.value = null;
           current.callback = noop;
           current.errorHandler = null;
+          current.next = null;
           if (errorHandler2) {
             errorHandler2(new Error("abort"), val);
           }
           callback.call(context2, new Error("abort"));
-          current.release(current);
+          cache.release(current);
           current = next;
         }
         self.drain = noop;
@@ -1485,9 +1486,9 @@ var require_avvio = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/symbols.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/symbols.js
 var require_symbols2 = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/symbols.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/symbols.js"(exports2, module2) {
     "use strict";
     var keys = {
       kAvvioBoot: Symbol("fastify.avvioBoot"),
@@ -1502,7 +1503,6 @@ var require_symbols2 = __commonJS({
       kContentTypeParser: Symbol("fastify.contentTypeParser"),
       kState: Symbol("fastify.state"),
       kOptions: Symbol("fastify.options"),
-      kDisableRequestLogging: Symbol("fastify.disableRequestLogging"),
       kPluginNameChain: Symbol("fastify.pluginNameChain"),
       kRouteContext: Symbol("fastify.context"),
       kGenReqId: Symbol("fastify.genReqId"),
@@ -1521,7 +1521,12 @@ var require_symbols2 = __commonJS({
       kRequestPayloadStream: Symbol("fastify.RequestPayloadStream"),
       kRequestAcceptVersion: Symbol("fastify.RequestAcceptVersion"),
       kRequestCacheValidateFns: Symbol("fastify.request.cache.validateFns"),
+      kRequestContentType: Symbol("fastify.request.contentType"),
       kRequestOriginalUrl: Symbol("fastify.request.originalUrl"),
+      kRequestSignal: Symbol("fastify.request.signal"),
+      kHandlerTimeout: Symbol("fastify.handlerTimeout"),
+      kTimeoutTimer: Symbol("fastify.request.timeoutTimer"),
+      kOnAbort: Symbol("fastify.request.onAbort"),
       // 404
       kFourOhFour: Symbol("fastify.404"),
       kCanSetNotFoundHandler: Symbol("fastify.canSetNotFoundHandler"),
@@ -1550,17 +1555,57 @@ var require_symbols2 = __commonJS({
       kChildLoggerFactory: Symbol("fastify.childLoggerFactory"),
       kHasBeenDecorated: Symbol("fastify.hasBeenDecorated"),
       kKeepAliveConnections: Symbol("fastify.keepAliveConnections"),
-      kRouteByFastify: Symbol("fastify.routeByFastify")
+      kRouteByFastify: Symbol("fastify.routeByFastify"),
+      kLogController: Symbol("fastify.logController"),
+      kDiagnosticsStore: Symbol("fastify.diagnosticsStore")
     };
     module2.exports = keys;
   }
 });
 
-// node_modules/.pnpm/process-warning@5.0.0/node_modules/process-warning/index.js
+// node_modules/.pnpm/process-warning@5.1.0/node_modules/process-warning/index.js
 var require_process_warning = __commonJS({
-  "node_modules/.pnpm/process-warning@5.0.0/node_modules/process-warning/index.js"(exports2, module2) {
+  "node_modules/.pnpm/process-warning@5.1.0/node_modules/process-warning/index.js"(exports2, module2) {
     "use strict";
     var { format } = require("node:util");
+    var kWarningFn = Symbol("process-warning.fn");
+    var kWarningSpyData = Symbol("process-warning.spyData");
+    function spyWarning(warning) {
+      if (warning[kWarningSpyData] === null) {
+        const warningFn = warning[kWarningFn];
+        warning[kWarningFn] = function(a, b, c) {
+          const args = [];
+          if (c) {
+            args.push(a, b, c);
+          } else if (b) {
+            args.push(a, b);
+          } else if (a) {
+            args.push(a);
+          }
+          warning[kWarningSpyData].calls.push({
+            arguments: args,
+            result: warningFn(a, b, c)
+          });
+        };
+        const spyData = {
+          calls: [],
+          callCount() {
+            return spyData.calls.length;
+          },
+          reset() {
+            warning.emitted = false;
+            spyData.calls.length = 0;
+          },
+          restore() {
+            spyData.reset();
+            warning[kWarningFn] = warningFn;
+            warning[kWarningSpyData] = null;
+          }
+        };
+        warning[kWarningSpyData] = spyData;
+      }
+      return warning[kWarningSpyData];
+    }
     function createDeprecation(params) {
       return createWarning({ ...params, name: "DeprecationWarning" });
     }
@@ -1570,28 +1615,30 @@ var require_process_warning = __commonJS({
       if (!message) throw new Error("Warning message must not be empty");
       if (typeof unlimited !== "boolean") throw new Error("Warning opts.unlimited must be a boolean");
       code = code.toUpperCase();
-      let warningContainer = {
+      const warningFn = unlimited === true ? function(a, b, c) {
+        warning.emitted = true;
+        process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
+        return true;
+      } : function(a, b, c) {
+        if (warning.emitted === true && warning.unlimited !== true) {
+          return false;
+        }
+        warning.emitted = true;
+        process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
+        return true;
+      };
+      const warningContainer = {
         [name]: function(a, b, c) {
-          if (warning.emitted === true && warning.unlimited !== true) {
-            return;
-          }
-          warning.emitted = true;
-          process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
+          return warning[kWarningFn](a, b, c);
         }
       };
-      if (unlimited) {
-        warningContainer = {
-          [name]: function(a, b, c) {
-            warning.emitted = true;
-            process.emitWarning(warning.format(a, b, c), warning.name, warning.code);
-          }
-        };
-      }
       const warning = warningContainer[name];
       warning.emitted = false;
       warning.message = message;
       warning.unlimited = unlimited;
       warning.code = code;
+      warning[kWarningFn] = warningFn;
+      warning[kWarningSpyData] = null;
       warning.format = function(a, b, c) {
         let formatted;
         if (a && b && c) {
@@ -1607,16 +1654,16 @@ var require_process_warning = __commonJS({
       };
       return warning;
     }
-    var out = { createWarning, createDeprecation };
+    var out = { createWarning, createDeprecation, spyWarning };
     module2.exports = out;
     module2.exports.default = out;
     module2.exports.processWarning = out;
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/warnings.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/warnings.js
 var require_warnings = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/warnings.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/warnings.js"(exports2, module2) {
     "use strict";
     var { createWarning } = require_process_warning();
     var FSTWRN001 = createWarning({
@@ -1634,7 +1681,7 @@ var require_warnings = __commonJS({
     var FSTWRN004 = createWarning({
       name: "FastifyWarning",
       code: "FSTWRN004",
-      message: "It seems that you are overriding an errorHandler in the same scope, which can lead to subtle bugs.",
+      message: "It seems that you are overriding an errorHandler in the same scope, which can lead to subtle bugs. To disable this behavior, set 'allowErrorHandlerOverride' to false. For more information, visit: https://fastify.dev/docs/latest/Reference/Server/#allowerrorhandleroverride",
       unlimited: true
     });
     var FSTSEC001 = createWarning({
@@ -1643,10 +1690,34 @@ var require_warnings = __commonJS({
       message: 'You are using /%s/ Content-Type which may be vulnerable to CORS attack. Please make sure your RegExp start with "^" or include ";?" to proper detection of the essence MIME type.',
       unlimited: true
     });
+    var FSTSEC002 = createWarning({
+      name: "FastifySecurity",
+      code: "FSTSEC002",
+      message: "The headers schema for %s: %s references an external $ref (%s) that is not case-normalized. Header names in the referenced schema keep their original case and will not match the lowercased request headers, so case-insensitive assertions such as required and dependencies may not apply. Inline the header schema instead of referencing it with an external $ref.",
+      unlimited: true
+    });
     var FSTDEP022 = createWarning({
       name: "FastifyWarning",
       code: "FSTDEP022",
       message: 'The router options for %s property access is deprecated. Please use "options.routerOptions" instead for accessing router options. The router options will be removed in `fastify@6`.',
+      unlimited: true
+    });
+    var FSTDEP023 = createWarning({
+      name: "FastifyDeprecation",
+      code: "FSTDEP023",
+      message: "disableRequestLogging option is deprecated. Use the logController option with disableRequestLogging or isLogDisabled override instead. The disableRequestLogging top-level option will be removed in `fastify@6`.",
+      unlimited: true
+    });
+    var FSTDEP024 = createWarning({
+      name: "FastifyDeprecation",
+      code: "FSTDEP024",
+      message: "requestIdLogLabel option is deprecated. Use the logController option with requestIdLogLabel instead. The requestIdLogLabel top-level option will be removed in `fastify@6`.",
+      unlimited: true
+    });
+    var FSTDEP025 = createWarning({
+      name: "FastifyDeprecation",
+      code: "FSTDEP025",
+      message: 'Calling addHttpMethod for existing method "%s" without { overrideExisting: true } is deprecated. In Fastify v6, this will throw an error.',
       unlimited: true
     });
     module2.exports = {
@@ -1654,14 +1725,18 @@ var require_warnings = __commonJS({
       FSTWRN003,
       FSTWRN004,
       FSTSEC001,
-      FSTDEP022
+      FSTSEC002,
+      FSTDEP022,
+      FSTDEP023,
+      FSTDEP024,
+      FSTDEP025
     };
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/errors.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/errors.js
 var require_errors2 = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/errors.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/errors.js"(exports2, module2) {
     "use strict";
     var createError = require_error();
     var codes = {
@@ -1771,7 +1846,7 @@ var require_errors2 = __commonJS({
       ),
       FST_ERR_CTP_INVALID_MEDIA_TYPE: createError(
         "FST_ERR_CTP_INVALID_MEDIA_TYPE",
-        "Unsupported Media Type: %s",
+        "Unsupported Media Type",
         415
       ),
       FST_ERR_CTP_INVALID_CONTENT_LENGTH: createError(
@@ -1894,6 +1969,12 @@ var require_errors2 = __commonJS({
         500,
         TypeError
       ),
+      FST_ERR_LOG_INVALID_LOG_CONTROLLER: createError(
+        "FST_ERR_LOG_INVALID_LOG_CONTROLLER",
+        "logController option must be an instance of LogController, got '%s'.",
+        500,
+        TypeError
+      ),
       /**
        * reply
       */
@@ -2012,6 +2093,12 @@ var require_errors2 = __commonJS({
         400,
         URIError
       ),
+      FST_ERR_MAX_PARAM_LENGTH: createError(
+        "FST_ERR_MAX_PARAM_LENGTH",
+        "'%s' is exceeding the max param length",
+        414,
+        URIError
+      ),
       FST_ERR_ASYNC_CONSTRAINT: createError(
         "FST_ERR_ASYNC_CONSTRAINT",
         "Unexpected error from async constraint",
@@ -2056,6 +2143,12 @@ var require_errors2 = __commonJS({
         "%s method is not supported.",
         500
       ),
+      FST_ERR_ROUTE_LOG_LEVEL_INVALID: createError(
+        "FST_ERR_ROUTE_LOG_LEVEL_INVALID",
+        "Log level for '%s:%s' route must be a valid logger level. Received: '%s'",
+        500,
+        TypeError
+      ),
       FST_ERR_ROUTE_BODY_VALIDATION_SCHEMA_NOT_SUPPORTED: createError(
         "FST_ERR_ROUTE_BODY_VALIDATION_SCHEMA_NOT_SUPPORTED",
         "Body validation schema for %s:%s route is not supported!",
@@ -2067,11 +2160,32 @@ var require_errors2 = __commonJS({
         500,
         TypeError
       ),
+      FST_ERR_HANDLER_TIMEOUT: createError(
+        "FST_ERR_HANDLER_TIMEOUT",
+        "Request timed out after %s ms on route '%s'",
+        503
+      ),
+      FST_ERR_ROUTE_HANDLER_TIMEOUT_OPTION_NOT_INT: createError(
+        "FST_ERR_ROUTE_HANDLER_TIMEOUT_OPTION_NOT_INT",
+        "'handlerTimeout' option must be an integer > 0. Got '%s'",
+        500,
+        TypeError
+      ),
       FST_ERR_ROUTE_REWRITE_NOT_STR: createError(
         "FST_ERR_ROUTE_REWRITE_NOT_STR",
         'Rewrite url for "%s" needs to be of type "string" but received "%s"',
         500,
         TypeError
+      ),
+      FST_ERR_ROUTE_MISSING_CONTENT_TYPE: createError(
+        "FST_ERR_ROUTE_MISSING_CONTENT_TYPE",
+        "Method '%s' must provide a 'Content-Type' header.",
+        400
+      ),
+      FST_ERR_ROUTE_MISSING_CONTENT: createError(
+        "FST_ERR_ROUTE_MISSING_CONTENT",
+        "Method '%s' must provide a request body.",
+        400
       ),
       /**
        *  again listen when close server
@@ -2104,6 +2218,10 @@ var require_errors2 = __commonJS({
         "The %s plugin being registered mixes async and callback styles. Async plugin should not mix async and callback style.",
         500,
         TypeError
+      ),
+      FST_ERR_PLUGIN_DEPENDENCY_NOT_REGISTERED: createError(
+        "FST_ERR_PLUGIN_DEPENDENCY_NOT_REGISTERED",
+        "The dependency '%s' of plugin '%s' is not registered"
       ),
       /**
        *  Avvio Errors
@@ -2148,9 +2266,9 @@ var require_errors2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/hooks.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/hooks.js
 var require_hooks = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/hooks.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/hooks.js"(exports2, module2) {
     "use strict";
     var applicationHooks = [
       "onRoute",
@@ -2408,7 +2526,11 @@ var require_hooks = __commonJS({
         }
       }
       function handleResolve(newPayload) {
-        next(null, newPayload);
+        try {
+          next(null, newPayload);
+        } catch (err) {
+          cb(err, request, reply, payload);
+        }
       }
       function handleReject(err) {
         if (!err) {
@@ -2509,9 +2631,29 @@ var require_hooks = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/promise.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/noop-set.js
+var require_noop_set = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/noop-set.js"(exports2, module2) {
+    "use strict";
+    module2.exports = function noopSet() {
+      return {
+        [Symbol.iterator]: function* () {
+        },
+        add() {
+        },
+        delete() {
+        },
+        has() {
+          return true;
+        }
+      };
+    };
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/promise.js
 var require_promise = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/promise.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/promise.js"(exports2, module2) {
     "use strict";
     var { kTestInternals } = require_symbols2();
     function withResolvers() {
@@ -2533,9 +2675,9 @@ var require_promise = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/server.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/server.js
 var require_server = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/server.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/server.js"(exports2, module2) {
     "use strict";
     var http = require("node:http");
     var https = require("node:https");
@@ -2548,8 +2690,10 @@ var require_server = __commonJS({
     var {
       FST_ERR_REOPENED_CLOSE_SERVER,
       FST_ERR_REOPENED_SERVER,
-      FST_ERR_LISTEN_OPTIONS_INVALID
+      FST_ERR_LISTEN_OPTIONS_INVALID,
+      FST_ERR_FORCE_CLOSE_CONNECTIONS_IDLE_NOT_AVAILABLE
     } = require_errors2();
+    var noopSet = require_noop_set();
     var PonyPromise = require_promise();
     module2.exports.createServer = createServer;
     function defaultResolveServerListeningText(address) {
@@ -2630,7 +2774,24 @@ var require_server = __commonJS({
         }
         this.ready(listenCallback.call(this, server, listenOptions));
       }
-      return { server, listen };
+      const serverHasCloseAllConnections = typeof server.closeAllConnections === "function";
+      const serverHasCloseIdleConnections = typeof server.closeIdleConnections === "function";
+      const serverHasCloseHttp2Sessions = typeof server.closeHttp2Sessions === "function";
+      let forceCloseConnections = options.forceCloseConnections;
+      if (forceCloseConnections === "idle" && !serverHasCloseIdleConnections) {
+        throw new FST_ERR_FORCE_CLOSE_CONNECTIONS_IDLE_NOT_AVAILABLE();
+      } else if (typeof forceCloseConnections !== "boolean") {
+        forceCloseConnections = serverHasCloseIdleConnections ? "idle" : false;
+      }
+      const keepAliveConnections = !serverHasCloseAllConnections && forceCloseConnections === true ? /* @__PURE__ */ new Set() : noopSet();
+      return {
+        server,
+        listen,
+        forceCloseConnections,
+        serverHasCloseAllConnections,
+        serverHasCloseHttp2Sessions,
+        keepAliveConnections
+      };
     }
     function multipleBindings(mainServer, httpHandler, serverOpts, listenOptions, onListen) {
       this[kState].listening = false;
@@ -2696,7 +2857,11 @@ var require_server = __commonJS({
         server.removeListener("error", wrap);
         server.removeListener("listening", wrap);
         if (!err) {
-          const address = logServerAddress.call(this, server, listenOptions.listenTextResolver || defaultResolveServerListeningText);
+          const address = logServerAddress.call(
+            this,
+            server,
+            listenOptions.listenTextResolver || defaultResolveServerListeningText
+          );
           listenOptions.cb(null, address);
         } else {
           this[kState].listening = false;
@@ -2737,7 +2902,11 @@ var require_server = __commonJS({
         const listeningEventHandler = () => {
           cleanup();
           this[kState].listening = true;
-          resolve(logServerAddress.call(this, server, listenOptions.listenTextResolver || defaultResolveServerListeningText));
+          resolve(logServerAddress.call(
+            this,
+            server,
+            listenOptions.listenTextResolver || defaultResolveServerListeningText
+          ));
         };
         function cleanup() {
           server.removeListener("error", errEventHandler);
@@ -2834,9 +3003,89 @@ var require_server = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/validation.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-status.js
+var require_error_status = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-status.js"(exports2, module2) {
+    "use strict";
+    var {
+      kReplyHasStatusCode
+    } = require_symbols2();
+    function setErrorStatusCode(reply, err) {
+      if (!reply[kReplyHasStatusCode] || reply.statusCode === 200) {
+        const statusCode = err && (err.statusCode || err.status);
+        reply.code(statusCode >= 400 ? statusCode : 500);
+      }
+    }
+    module2.exports = { setErrorStatusCode };
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/wrap-thenable.js
+var require_wrap_thenable = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/wrap-thenable.js"(exports2, module2) {
+    "use strict";
+    var {
+      kReplyIsError,
+      kReplyHijacked
+    } = require_symbols2();
+    var { setErrorStatusCode } = require_error_status();
+    var diagnostics = require("node:diagnostics_channel");
+    var channels = diagnostics.tracingChannel("fastify.request.handler");
+    function wrapThenable(thenable, reply, store) {
+      if (store) store.async = true;
+      thenable.then(function(payload) {
+        if (reply[kReplyHijacked] === true) {
+          return;
+        }
+        if (store) {
+          channels.asyncStart.publish(store);
+        }
+        try {
+          if (payload !== void 0 || //
+          reply.sent === false && //
+          reply.raw.headersSent === false && reply.request.raw.aborted === false && reply.request.socket && !reply.request.socket.destroyed) {
+            try {
+              reply.send(payload);
+            } catch (err) {
+              reply[kReplyIsError] = true;
+              reply.send(err);
+            }
+          }
+        } finally {
+          if (store) {
+            channels.asyncEnd.publish(store);
+          }
+        }
+      }, function(err) {
+        if (store) {
+          store.error = err;
+          setErrorStatusCode(reply, err);
+          channels.error.publish(store);
+          channels.asyncStart.publish(store);
+        }
+        try {
+          if (reply.sent === true) {
+            reply.log.error({ err }, "Promise errored, but reply.sent = true was set");
+            return;
+          }
+          reply[kReplyIsError] = true;
+          reply.send(err);
+        } catch (err2) {
+          reply.send(err2);
+        } finally {
+          if (store) {
+            channels.asyncEnd.publish(store);
+          }
+        }
+      });
+    }
+    module2.exports = wrapThenable;
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/validation.js
 var require_validation = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/validation.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/validation.js"(exports2, module2) {
     "use strict";
     var {
       kSchemaHeaders: headersSchema,
@@ -2849,7 +3098,7 @@ var require_validation = __commonJS({
     var {
       FST_ERR_SCH_RESPONSE_SCHEMA_NOT_NESTED_2XX
     } = require_errors2();
-    var { FSTWRN001 } = require_warnings();
+    var { FSTWRN001, FSTSEC002 } = require_warnings();
     function compileSchemasForSerialization(context, compile) {
       if (!context.schema || !context.schema.response) {
         return;
@@ -2885,6 +3134,135 @@ var require_validation = __commonJS({
         return acc;
       }, {});
     }
+    function lowerCaseHeadersSchema(schema) {
+      if (Array.isArray(schema)) {
+        return schema.map(lowerCaseHeadersSchema);
+      }
+      if (schema === null || typeof schema !== "object") {
+        return schema;
+      }
+      const result = {};
+      for (const key of Object.keys(schema)) {
+        const value = schema[key];
+        switch (key) {
+          case "properties": {
+            if (value === null || typeof value !== "object") {
+              result.properties = value;
+              break;
+            }
+            const normalized = {};
+            for (const prop of Object.keys(value)) {
+              normalized[prop.toLowerCase()] = lowerCaseHeadersSchema(value[prop]);
+            }
+            result.properties = normalized;
+            break;
+          }
+          case "required":
+            result.required = Array.isArray(value) ? value.map((name) => name.toLowerCase()) : value;
+            break;
+          case "dependencies": {
+            if (value === null || typeof value !== "object") {
+              result.dependencies = value;
+              break;
+            }
+            const normalized = {};
+            for (const dep of Object.keys(value)) {
+              const depValue = value[dep];
+              if (Array.isArray(depValue)) {
+                normalized[dep.toLowerCase()] = depValue.map((name) => name.toLowerCase());
+              } else {
+                normalized[dep.toLowerCase()] = lowerCaseHeadersSchema(depValue);
+              }
+            }
+            result.dependencies = normalized;
+            break;
+          }
+          case "dependentSchemas": {
+            if (value === null || typeof value !== "object") {
+              result.dependentSchemas = value;
+              break;
+            }
+            const normalized = {};
+            for (const dep of Object.keys(value)) {
+              normalized[dep.toLowerCase()] = lowerCaseHeadersSchema(value[dep]);
+            }
+            result.dependentSchemas = normalized;
+            break;
+          }
+          case "dependentRequired": {
+            if (value === null || typeof value !== "object") {
+              result.dependentRequired = value;
+              break;
+            }
+            const normalized = {};
+            for (const dep of Object.keys(value)) {
+              normalized[dep.toLowerCase()] = value[dep].map((name) => name.toLowerCase());
+            }
+            result.dependentRequired = normalized;
+            break;
+          }
+          // Arrays of subschemas (`allOf`/`anyOf`/`oneOf`) or a single subschema
+          // (`not`/`if`/`then`/`else`/`items`/`additionalItems`/...). `lowerCaseHeadersSchema`
+          // handles arrays, objects and booleans, so recursing here covers them all.
+          case "allOf":
+          case "anyOf":
+          case "oneOf":
+          case "not":
+          case "if":
+          case "then":
+          case "else":
+          case "items":
+          case "additionalItems":
+          case "additionalProperties":
+          case "unevaluatedItems":
+          case "unevaluatedProperties":
+          case "contains":
+          case "propertyNames":
+          case "contentSchema":
+            result[key] = lowerCaseHeadersSchema(value);
+            break;
+          // Maps of subschemas whose keys are not header names (definition names,
+          // regex patterns): keep the keys, normalize the subschema values.
+          case "definitions":
+          case "$defs":
+          case "patternProperties": {
+            if (value === null || typeof value !== "object") {
+              result[key] = value;
+              break;
+            }
+            const normalized = {};
+            for (const k of Object.keys(value)) {
+              normalized[k] = lowerCaseHeadersSchema(value[k]);
+            }
+            result[key] = normalized;
+            break;
+          }
+          default:
+            result[key] = value;
+        }
+      }
+      return result;
+    }
+    function findExternalHeaderRef(schema) {
+      if (Array.isArray(schema)) {
+        for (const item of schema) {
+          const ref = findExternalHeaderRef(item);
+          if (ref !== void 0) return ref;
+        }
+        return void 0;
+      }
+      if (schema === null || typeof schema !== "object") {
+        return void 0;
+      }
+      if (typeof schema.$ref === "string" && schema.$ref[0] !== "#") {
+        return schema.$ref;
+      }
+      for (const key of Object.keys(schema)) {
+        const ref = findExternalHeaderRef(schema[key]);
+        if (ref !== void 0) return ref;
+      }
+      return void 0;
+    }
     function compileSchemasForValidation(context, compile, isCustom) {
       const { schema } = context;
       if (!schema) {
@@ -2892,28 +3270,22 @@ var require_validation = __commonJS({
       }
       const { method, url } = context.config || {};
       const headers = schema.headers;
-      if (headers && (isCustom || Object.getPrototypeOf(headers) !== Object.prototype)) {
-        context[headersSchema] = compile({ schema: headers, method, url, httpPart: "headers" });
-      } else if (headers) {
-        const headersSchemaLowerCase = {};
-        Object.keys(headers).forEach((k) => {
-          headersSchemaLowerCase[k] = headers[k];
-        });
-        if (headersSchemaLowerCase.required instanceof Array) {
-          headersSchemaLowerCase.required = headersSchemaLowerCase.required.map((h) => h.toLowerCase());
+      if (headers !== void 0) {
+        if (isCustom || typeof headers !== "object" || headers === null || Object.getPrototypeOf(headers) !== Object.prototype) {
+          context[headersSchema] = compile({ schema: headers, method, url, httpPart: "headers" });
+        } else {
+          const headersSchemaLowerCase = lowerCaseHeadersSchema(headers);
+          const externalRef = findExternalHeaderRef(headers);
+          if (externalRef !== void 0) {
+            FSTSEC002(method, url, externalRef);
+          }
+          context[headersSchema] = compile({ schema: headersSchemaLowerCase, method, url, httpPart: "headers" });
         }
-        if (headers.properties) {
-          headersSchemaLowerCase.properties = {};
-          Object.keys(headers.properties).forEach((k) => {
-            headersSchemaLowerCase.properties[k.toLowerCase()] = headers.properties[k];
-          });
-        }
-        context[headersSchema] = compile({ schema: headersSchemaLowerCase, method, url, httpPart: "headers" });
       } else if (Object.hasOwn(schema, "headers")) {
         FSTWRN001("headers", method, url);
       }
-      if (schema.body) {
-        const contentProperty = schema.body.content;
+      if (schema.body !== void 0) {
+        const contentProperty = schema.body !== null && typeof schema.body === "object" ? schema.body.content : void 0;
         if (contentProperty) {
           const contentTypeSchemas = {};
           for (const contentType of Object.keys(contentProperty)) {
@@ -2927,23 +3299,38 @@ var require_validation = __commonJS({
       } else if (Object.hasOwn(schema, "body")) {
         FSTWRN001("body", method, url);
       }
-      if (schema.querystring) {
+      if (schema.querystring !== void 0) {
         context[querystringSchema] = compile({ schema: schema.querystring, method, url, httpPart: "querystring" });
       } else if (Object.hasOwn(schema, "querystring")) {
         FSTWRN001("querystring", method, url);
       }
-      if (schema.params) {
+      if (schema.params !== void 0) {
         context[paramsSchema] = compile({ schema: schema.params, method, url, httpPart: "params" });
       } else if (Object.hasOwn(schema, "params")) {
         FSTWRN001("params", method, url);
       }
     }
     function validateParam(validatorFunction, request, paramName) {
-      const isUndefined = request[paramName] === void 0;
-      const ret = validatorFunction && validatorFunction(isUndefined ? null : request[paramName]);
+      if (validatorFunction == null) return false;
+      const value = request[paramName];
+      let ret;
+      try {
+        const data = value === void 0 ? null : value;
+        if (validatorFunction.schemaEnv) {
+          ret = validatorFunction(data, {
+            parentData: request,
+            parentDataProperty: paramName
+          });
+        } else {
+          ret = validatorFunction(data);
+        }
+      } catch (err) {
+        err.statusCode = 500;
+        return err;
+      }
       if (ret && typeof ret.then === "function") {
         return ret.then((res) => {
-          return answer(res);
+          return res === false ? validatorFunction.errors : false;
         }).catch((err) => {
           return err;
         });
@@ -2952,12 +3339,15 @@ var require_validation = __commonJS({
       function answer(ret2) {
         if (ret2 === false) return validatorFunction.errors;
         if (ret2 && ret2.error) return ret2.error;
-        if (ret2 && ret2.value) request[paramName] = ret2.value;
+        if (ret2 && typeof ret2 === "object" && "value" in ret2) request[paramName] = ret2.value;
         return false;
       }
     }
     function validate(context, request, execution) {
       const runExecution = execution === void 0;
+      if (runExecution && context[paramsSchema] === void 0 && context[bodySchema] === void 0 && context[querystringSchema] === void 0 && context[headersSchema] === void 0) {
+        return false;
+      }
       if (runExecution || !execution.skipParams) {
         const params = validateParam(context[paramsSchema], request, "params");
         if (params) {
@@ -2973,8 +3363,7 @@ var require_validation = __commonJS({
         if (typeof context[bodySchema] === "function") {
           validatorFunction = context[bodySchema];
         } else if (context[bodySchema]) {
-          const contentType = getEssenceMediaType(request.headers["content-type"]);
-          const contentSchema = context[bodySchema][contentType];
+          const contentSchema = context[bodySchema][request.mediaType];
           if (contentSchema) {
             validatorFunction = contentSchema;
           }
@@ -3054,10 +3443,6 @@ var require_validation = __commonJS({
       error.validationContext = dataVar;
       return error;
     }
-    function getEssenceMediaType(header) {
-      if (!header) return "";
-      return header.split(/[ ;]/, 1)[0].trim().toLowerCase();
-    }
     module2.exports = {
       symbols: { bodySchema, querystringSchema, responseSchema, paramsSchema, headersSchema },
       compileSchemasForValidation,
@@ -3067,81 +3452,820 @@ var require_validation = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/wrapThenable.js
-var require_wrapThenable = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/wrapThenable.js"(exports2, module2) {
+// node_modules/.pnpm/toad-cache@3.7.4/node_modules/toad-cache/dist/toad-cache.cjs
+var require_toad_cache = __commonJS({
+  "node_modules/.pnpm/toad-cache@3.7.4/node_modules/toad-cache/dist/toad-cache.cjs"(exports2) {
     "use strict";
-    var {
-      kReplyIsError,
-      kReplyHijacked
-    } = require_symbols2();
-    var diagnostics = require("node:diagnostics_channel");
-    var channels = diagnostics.tracingChannel("fastify.request.handler");
-    function wrapThenable(thenable, reply, store) {
-      if (store) store.async = true;
-      thenable.then(function(payload) {
-        if (reply[kReplyHijacked] === true) {
-          return;
-        }
-        if (store) {
-          channels.asyncStart.publish(store);
-        }
-        try {
-          if (payload !== void 0 || //
-          reply.sent === false && //
-          reply.raw.headersSent === false && reply.request.raw.aborted === false && reply.request.socket && !reply.request.socket.destroyed) {
-            try {
-              reply.send(payload);
-            } catch (err) {
-              reply[kReplyIsError] = true;
-              reply.send(err);
-            }
+    function validateCacheParams(max, ttlInMsecs) {
+      if (typeof max !== "number" || !Number.isInteger(max) || max < 0) {
+        throw new Error("Invalid max value");
+      }
+      if (typeof ttlInMsecs !== "number" || !Number.isInteger(ttlInMsecs) || ttlInMsecs < 0) {
+        throw new Error("Invalid ttl value");
+      }
+    }
+    var FifoMap = class {
+      constructor(max = 1e3, ttlInMsecs = 0) {
+        validateCacheParams(max, ttlInMsecs);
+        this.first = null;
+        this.items = /* @__PURE__ */ new Map();
+        this.last = null;
+        this.max = max;
+        this.ttl = ttlInMsecs;
+      }
+      get size() {
+        return this.items.size;
+      }
+      clear() {
+        this.items.clear();
+        this.first = null;
+        this.last = null;
+      }
+      delete(key) {
+        const deletedItem = this.items.get(key);
+        if (deletedItem !== void 0) {
+          this.items.delete(key);
+          if (deletedItem.prev !== null) {
+            deletedItem.prev.next = deletedItem.next;
           }
-        } finally {
-          if (store) {
-            channels.asyncEnd.publish(store);
+          if (deletedItem.next !== null) {
+            deletedItem.next.prev = deletedItem.prev;
+          }
+          if (this.first === deletedItem) {
+            this.first = deletedItem.next;
+          }
+          if (this.last === deletedItem) {
+            this.last = deletedItem.prev;
           }
         }
-      }, function(err) {
-        if (store) {
-          store.error = err;
-          channels.error.publish(store);
-          channels.asyncStart.publish(store);
+      }
+      deleteMany(keys) {
+        for (var i = 0; i < keys.length; i++) {
+          this.delete(keys[i]);
         }
-        try {
-          if (reply.sent === true) {
-            reply.log.error({ err }, "Promise errored, but reply.sent = true was set");
+      }
+      evict() {
+        if (this.size > 0) {
+          const item = this.first;
+          this.items.delete(item.key);
+          if (this.size === 0) {
+            this.first = null;
+            this.last = null;
+          } else {
+            this.first = item.next;
+            this.first.prev = null;
+          }
+        }
+      }
+      expiresAt(key) {
+        const item = this.items.get(key);
+        if (item !== void 0) {
+          return item.expiry;
+        }
+      }
+      get(key) {
+        const item = this.items.get(key);
+        if (item !== void 0) {
+          if (this.ttl > 0 && item.expiry <= Date.now()) {
+            this.delete(key);
             return;
           }
-          reply[kReplyIsError] = true;
-          reply.send(err);
-        } catch (err2) {
-          reply.send(err2);
-        } finally {
-          if (store) {
-            channels.asyncEnd.publish(store);
+          return item.value;
+        }
+      }
+      getMany(keys) {
+        const result = new Array(keys.length);
+        for (var i = 0; i < keys.length; i++) {
+          result[i] = this.get(keys[i]);
+        }
+        return result;
+      }
+      keys() {
+        return this.items.keys();
+      }
+      set(key, value) {
+        const existing = this.items.get(key);
+        if (existing !== void 0) {
+          existing.value = value;
+          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
+          return;
+        }
+        if (this.max > 0 && this.size >= this.max) {
+          this.evict();
+        }
+        const item = {
+          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
+          key,
+          prev: this.last,
+          next: null,
+          value
+        };
+        this.items.set(key, item);
+        if (this.size === 1) {
+          this.first = item;
+        } else {
+          this.last.next = item;
+        }
+        this.last = item;
+      }
+    };
+    var FifoObject = class {
+      constructor(max = 1e3, ttlInMsecs = 0) {
+        validateCacheParams(max, ttlInMsecs);
+        this.first = null;
+        this.items = /* @__PURE__ */ Object.create(null);
+        this.last = null;
+        this.size = 0;
+        this.max = max;
+        this.ttl = ttlInMsecs;
+      }
+      clear() {
+        this.items = /* @__PURE__ */ Object.create(null);
+        this.first = null;
+        this.last = null;
+        this.size = 0;
+      }
+      delete(key) {
+        const deletedItem = this.items[key];
+        if (deletedItem !== void 0) {
+          delete this.items[key];
+          this.size--;
+          if (deletedItem.prev !== null) {
+            deletedItem.prev.next = deletedItem.next;
+          }
+          if (deletedItem.next !== null) {
+            deletedItem.next.prev = deletedItem.prev;
+          }
+          if (this.first === deletedItem) {
+            this.first = deletedItem.next;
+          }
+          if (this.last === deletedItem) {
+            this.last = deletedItem.prev;
           }
         }
-      });
+      }
+      deleteMany(keys) {
+        for (var i = 0; i < keys.length; i++) {
+          this.delete(keys[i]);
+        }
+      }
+      evict() {
+        if (this.size > 0) {
+          const item = this.first;
+          delete this.items[item.key];
+          if (--this.size === 0) {
+            this.first = null;
+            this.last = null;
+          } else {
+            this.first = item.next;
+            this.first.prev = null;
+          }
+        }
+      }
+      expiresAt(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          return item.expiry;
+        }
+      }
+      get(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          if (this.ttl > 0 && item.expiry <= Date.now()) {
+            this.delete(key);
+            return;
+          }
+          return item.value;
+        }
+      }
+      getMany(keys) {
+        const result = new Array(keys.length);
+        for (var i = 0; i < keys.length; i++) {
+          result[i] = this.get(keys[i]);
+        }
+        return result;
+      }
+      keys() {
+        return Object.keys(this.items);
+      }
+      set(key, value) {
+        const existing = this.items[key];
+        if (existing !== void 0) {
+          existing.value = value;
+          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
+          return;
+        }
+        if (this.max > 0 && this.size >= this.max) {
+          this.evict();
+        }
+        const item = {
+          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
+          key,
+          prev: this.last,
+          next: null,
+          value
+        };
+        this.items[key] = item;
+        if (++this.size === 1) {
+          this.first = item;
+        } else {
+          this.last.next = item;
+        }
+        this.last = item;
+      }
+    };
+    function createEmptyStatisticsRecord() {
+      return {
+        cacheSize: 0,
+        hits: 0,
+        falsyHits: 0,
+        emptyHits: 0,
+        misses: 0,
+        expirations: 0,
+        evictions: 0,
+        invalidateOne: 0,
+        invalidateAll: 0,
+        sets: 0
+      };
     }
-    module2.exports = wrapThenable;
+    var HitStatisticsRecord = class {
+      constructor() {
+        this.records = {};
+      }
+      initForCache(cacheId, currentTimeStamp) {
+        this.records[cacheId] = {
+          [currentTimeStamp]: createEmptyStatisticsRecord()
+        };
+      }
+      resetForCache(cacheId) {
+        if (!this.records[cacheId]) {
+          return;
+        }
+        for (let key of Object.keys(this.records[cacheId])) {
+          this.records[cacheId][key] = createEmptyStatisticsRecord();
+        }
+      }
+      getStatistics() {
+        return this.records;
+      }
+    };
+    var LruMap = class {
+      constructor(max = 1e3, ttlInMsecs = 0) {
+        validateCacheParams(max, ttlInMsecs);
+        this.first = null;
+        this.items = /* @__PURE__ */ new Map();
+        this.last = null;
+        this.max = max;
+        this.ttl = ttlInMsecs;
+      }
+      get size() {
+        return this.items.size;
+      }
+      bumpLru(item) {
+        if (this.last === item) {
+          return;
+        }
+        const last = this.last;
+        const next = item.next;
+        const prev = item.prev;
+        if (this.first === item) {
+          this.first = next;
+        }
+        item.next = null;
+        item.prev = last;
+        last.next = item;
+        if (prev !== null) {
+          prev.next = next;
+        }
+        if (next !== null) {
+          next.prev = prev;
+        }
+        this.last = item;
+      }
+      clear() {
+        this.items.clear();
+        this.first = null;
+        this.last = null;
+      }
+      delete(key) {
+        const item = this.items.get(key);
+        if (item !== void 0) {
+          this.items.delete(key);
+          if (item.prev !== null) {
+            item.prev.next = item.next;
+          }
+          if (item.next !== null) {
+            item.next.prev = item.prev;
+          }
+          if (this.first === item) {
+            this.first = item.next;
+          }
+          if (this.last === item) {
+            this.last = item.prev;
+          }
+        }
+      }
+      deleteMany(keys) {
+        for (var i = 0; i < keys.length; i++) {
+          this.delete(keys[i]);
+        }
+      }
+      evict() {
+        if (this.size > 0) {
+          const item = this.first;
+          this.items.delete(item.key);
+          if (this.size === 0) {
+            this.first = null;
+            this.last = null;
+          } else {
+            this.first = item.next;
+            this.first.prev = null;
+          }
+        }
+      }
+      expiresAt(key) {
+        const item = this.items.get(key);
+        if (item !== void 0) {
+          return item.expiry;
+        }
+      }
+      get(key) {
+        const item = this.items.get(key);
+        if (item !== void 0) {
+          if (this.ttl > 0 && item.expiry <= Date.now()) {
+            this.delete(key);
+            return;
+          }
+          this.bumpLru(item);
+          return item.value;
+        }
+      }
+      getMany(keys) {
+        const result = new Array(keys.length);
+        for (var i = 0; i < keys.length; i++) {
+          result[i] = this.get(keys[i]);
+        }
+        return result;
+      }
+      keys() {
+        return this.items.keys();
+      }
+      set(key, value) {
+        const existing = this.items.get(key);
+        if (existing !== void 0) {
+          existing.value = value;
+          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
+          this.bumpLru(existing);
+          return;
+        }
+        if (this.max > 0 && this.size >= this.max) {
+          this.evict();
+        }
+        const item = {
+          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
+          key,
+          prev: this.last,
+          next: null,
+          value
+        };
+        this.items.set(key, item);
+        if (this.size === 1) {
+          this.first = item;
+        } else {
+          this.last.next = item;
+        }
+        this.last = item;
+      }
+    };
+    var LruObject = class {
+      constructor(max = 1e3, ttlInMsecs = 0) {
+        validateCacheParams(max, ttlInMsecs);
+        this.first = null;
+        this.items = /* @__PURE__ */ Object.create(null);
+        this.last = null;
+        this.size = 0;
+        this.max = max;
+        this.ttl = ttlInMsecs;
+      }
+      bumpLru(item) {
+        if (this.last === item) {
+          return;
+        }
+        const last = this.last;
+        const next = item.next;
+        const prev = item.prev;
+        if (this.first === item) {
+          this.first = next;
+        }
+        item.next = null;
+        item.prev = last;
+        last.next = item;
+        if (prev !== null) {
+          prev.next = next;
+        }
+        if (next !== null) {
+          next.prev = prev;
+        }
+        this.last = item;
+      }
+      clear() {
+        this.items = /* @__PURE__ */ Object.create(null);
+        this.first = null;
+        this.last = null;
+        this.size = 0;
+      }
+      delete(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          delete this.items[key];
+          this.size--;
+          if (item.prev !== null) {
+            item.prev.next = item.next;
+          }
+          if (item.next !== null) {
+            item.next.prev = item.prev;
+          }
+          if (this.first === item) {
+            this.first = item.next;
+          }
+          if (this.last === item) {
+            this.last = item.prev;
+          }
+        }
+      }
+      deleteMany(keys) {
+        for (var i = 0; i < keys.length; i++) {
+          this.delete(keys[i]);
+        }
+      }
+      evict() {
+        if (this.size > 0) {
+          const item = this.first;
+          delete this.items[item.key];
+          if (--this.size === 0) {
+            this.first = null;
+            this.last = null;
+          } else {
+            this.first = item.next;
+            this.first.prev = null;
+          }
+        }
+      }
+      expiresAt(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          return item.expiry;
+        }
+      }
+      get(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          if (this.ttl > 0 && item.expiry <= Date.now()) {
+            this.delete(key);
+            return;
+          }
+          this.bumpLru(item);
+          return item.value;
+        }
+      }
+      getMany(keys) {
+        const result = new Array(keys.length);
+        for (var i = 0; i < keys.length; i++) {
+          result[i] = this.get(keys[i]);
+        }
+        return result;
+      }
+      keys() {
+        return Object.keys(this.items);
+      }
+      set(key, value) {
+        const existing = this.items[key];
+        if (existing !== void 0) {
+          existing.value = value;
+          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
+          this.bumpLru(existing);
+          return;
+        }
+        if (this.max > 0 && this.size >= this.max) {
+          this.evict();
+        }
+        const item = {
+          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
+          key,
+          prev: this.last,
+          next: null,
+          value
+        };
+        this.items[key] = item;
+        if (++this.size === 1) {
+          this.first = item;
+        } else {
+          this.last.next = item;
+        }
+        this.last = item;
+      }
+    };
+    function getTimestamp(date) {
+      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
+    }
+    var HitStatistics = class {
+      constructor(cacheId, statisticTtlInHours, globalStatisticsRecord) {
+        this.cacheId = cacheId;
+        this.statisticTtlInHours = statisticTtlInHours;
+        this.collectionStart = /* @__PURE__ */ new Date();
+        this.currentTimeStamp = getTimestamp(this.collectionStart);
+        this.archiveAfter = this.collectionStart.getTime() + this.statisticTtlInHours * 36e5;
+        this.records = globalStatisticsRecord || new HitStatisticsRecord();
+        this.records.initForCache(this.cacheId, this.currentTimeStamp);
+      }
+      get currentRecord() {
+        const cacheRecords = this.records.records[this.cacheId];
+        if (!cacheRecords[this.currentTimeStamp]) {
+          cacheRecords[this.currentTimeStamp] = createEmptyStatisticsRecord();
+        }
+        return cacheRecords[this.currentTimeStamp];
+      }
+      /* v8 ignore next 3 -- kept for compatibility, no longer used internally */
+      hoursPassed() {
+        return (Date.now() - this.collectionStart) / 1e3 / 60 / 60;
+      }
+      addHit() {
+        this.archiveIfNeeded();
+        this.currentRecord.hits++;
+      }
+      addFalsyHit() {
+        this.archiveIfNeeded();
+        this.currentRecord.falsyHits++;
+      }
+      addEmptyHit() {
+        this.archiveIfNeeded();
+        this.currentRecord.emptyHits++;
+      }
+      addMiss() {
+        this.archiveIfNeeded();
+        this.currentRecord.misses++;
+      }
+      addEviction() {
+        this.archiveIfNeeded();
+        this.currentRecord.evictions++;
+      }
+      setCacheSize(currentSize) {
+        this.archiveIfNeeded();
+        this.currentRecord.cacheSize = currentSize;
+      }
+      addExpiration() {
+        this.archiveIfNeeded();
+        this.currentRecord.expirations++;
+      }
+      addSet() {
+        this.archiveIfNeeded();
+        this.currentRecord.sets++;
+      }
+      addInvalidateOne() {
+        this.archiveIfNeeded();
+        this.currentRecord.invalidateOne++;
+      }
+      addInvalidateAll() {
+        this.archiveIfNeeded();
+        this.currentRecord.invalidateAll++;
+      }
+      getStatistics() {
+        return this.records.getStatistics();
+      }
+      archiveIfNeeded() {
+        if (Date.now() >= this.archiveAfter) {
+          this.collectionStart = /* @__PURE__ */ new Date();
+          this.currentTimeStamp = getTimestamp(this.collectionStart);
+          this.archiveAfter = this.collectionStart.getTime() + this.statisticTtlInHours * 36e5;
+          this.records.initForCache(this.cacheId, this.currentTimeStamp);
+        }
+      }
+    };
+    var LruObjectHitStatistics = class extends LruObject {
+      constructor(max, ttlInMsecs, cacheId, globalStatisticsRecord, statisticTtlInHours) {
+        super(max, ttlInMsecs);
+        if (!cacheId) {
+          throw new Error("Cache id is mandatory");
+        }
+        this.hitStatistics = new HitStatistics(
+          cacheId,
+          statisticTtlInHours !== void 0 ? statisticTtlInHours : 24,
+          globalStatisticsRecord
+        );
+      }
+      getStatistics() {
+        return this.hitStatistics.getStatistics();
+      }
+      set(key, value) {
+        super.set(key, value);
+        this.hitStatistics.addSet();
+        this.hitStatistics.setCacheSize(this.size);
+      }
+      evict() {
+        const hadItems = this.size > 0;
+        super.evict();
+        if (hadItems) {
+          this.hitStatistics.addEviction();
+        }
+        this.hitStatistics.setCacheSize(this.size);
+      }
+      delete(key, isExpiration = false) {
+        const existed = this.items[key] !== void 0;
+        super.delete(key);
+        if (existed && !isExpiration) {
+          this.hitStatistics.addInvalidateOne();
+        }
+        this.hitStatistics.setCacheSize(this.size);
+      }
+      clear() {
+        super.clear();
+        this.hitStatistics.addInvalidateAll();
+        this.hitStatistics.setCacheSize(this.size);
+      }
+      get(key) {
+        const item = this.items[key];
+        if (item !== void 0) {
+          if (this.ttl > 0 && item.expiry <= Date.now()) {
+            this.delete(key, true);
+            this.hitStatistics.addExpiration();
+            return;
+          }
+          this.bumpLru(item);
+          if (!item.value) {
+            this.hitStatistics.addFalsyHit();
+            if (item.value === void 0 || item.value === null || item.value === "") {
+              this.hitStatistics.addEmptyHit();
+            }
+          }
+          this.hitStatistics.addHit();
+          return item.value;
+        }
+        this.hitStatistics.addMiss();
+      }
+    };
+    exports2.Fifo = FifoObject;
+    exports2.FifoMap = FifoMap;
+    exports2.FifoObject = FifoObject;
+    exports2.HitStatisticsRecord = HitStatisticsRecord;
+    exports2.Lru = LruObject;
+    exports2.LruHitStatistics = LruObjectHitStatistics;
+    exports2.LruMap = LruMap;
+    exports2.LruObject = LruObject;
+    exports2.LruObjectHitStatistics = LruObjectHitStatistics;
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/handleRequest.js
-var require_handleRequest = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/handleRequest.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/content-type.js
+var require_content_type = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/content-type.js"(exports2, module2) {
+    "use strict";
+    var { LruMap: Lru } = require_toad_cache();
+    var keyValuePairsReg = /(?:^|;)\s*([\w!#$%&'*+.^`|~-]+)=("(?:[\t\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\t\u0020-\u00ff])*"|[\w!#$%&'*+.^`|~-]+)/gu;
+    var quotedPairReg = /\\([\t\u0020-\u00ff])/gu;
+    var typeNameReg = /^[\w!#$%&'*+.^`|~-]+$/;
+    var subtypeNameReg = /^[\w!#$%&'*+.^`|~-]+\s*$/;
+    var cache = new Lru(100);
+    var ContentType = class _ContentType {
+      #valid = false;
+      #empty = true;
+      #type = "";
+      #subtype = "";
+      #parameters = /* @__PURE__ */ new Map();
+      #string;
+      /**
+       * The shared cache of ContentType instances. The cache is used to avoid
+       * creating multiple instances of ContentType for the same header value.
+       * @type {Lru<ContentType>}
+       */
+      static get cache() {
+        return cache;
+      }
+      /**
+       * Create a ContentType instance from a header value. If the value has been
+       * previously parsed, the cached instance will be returned.
+       * @param {string} headerValue
+       * @returns {ContentType | undefined}
+       */
+      static from(headerValue) {
+        let contentType = cache.get(headerValue);
+        if (contentType !== void 0) return contentType;
+        contentType = new _ContentType(headerValue);
+        cache.set(headerValue, contentType);
+        return contentType;
+      }
+      constructor(headerValue) {
+        if (headerValue == null || headerValue === "" || headerValue === "undefined") {
+          return;
+        }
+        let sepIdx = headerValue.indexOf(";");
+        if (sepIdx === -1) {
+          sepIdx = headerValue.indexOf("/");
+          if (sepIdx === -1) {
+            return;
+          }
+          const type2 = headerValue.slice(0, sepIdx).trimStart().toLowerCase();
+          const subtype2 = headerValue.slice(sepIdx + 1).trimEnd().toLowerCase();
+          if (typeNameReg.test(type2) === true && subtypeNameReg.test(subtype2) === true) {
+            this.#valid = true;
+            this.#empty = false;
+            this.#type = type2;
+            this.#subtype = subtype2;
+          }
+          return;
+        }
+        const mediaType = headerValue.slice(0, sepIdx).toLowerCase();
+        const paramsList = headerValue.slice(sepIdx + 1).trim();
+        sepIdx = mediaType.indexOf("/");
+        if (sepIdx === -1) {
+          return;
+        }
+        const type = mediaType.slice(0, sepIdx).trimStart();
+        const subtype = mediaType.slice(sepIdx + 1).trimEnd();
+        if (typeNameReg.test(type) === false || subtypeNameReg.test(subtype) === false) {
+          return;
+        }
+        this.#type = type;
+        this.#subtype = subtype;
+        this.#valid = true;
+        this.#empty = false;
+        let matches = keyValuePairsReg.exec(paramsList);
+        while (matches) {
+          const key = matches[1].toLowerCase();
+          let value = matches[2];
+          if (value.charCodeAt(0) === 34) {
+            value = value.slice(1, -1);
+            if (value.indexOf("\\") !== -1) {
+              value = value.replace(quotedPairReg, "$1");
+            }
+          }
+          this.#parameters.set(key, value);
+          matches = keyValuePairsReg.exec(paramsList);
+        }
+      }
+      get [Symbol.toStringTag]() {
+        return "ContentType";
+      }
+      get isEmpty() {
+        return this.#empty;
+      }
+      get isValid() {
+        return this.#valid;
+      }
+      get mediaType() {
+        if (this.#valid === false) return void 0;
+        return `${this.#type}/${this.#subtype}`;
+      }
+      get type() {
+        return this.#type;
+      }
+      get subtype() {
+        return this.#subtype;
+      }
+      get parameters() {
+        return this.#parameters;
+      }
+      toString() {
+        if (this.#string) return this.#string;
+        const parameters = [];
+        for (const [key, value] of this.#parameters.entries()) {
+          parameters.push(`${key}="${value}"`);
+        }
+        const result = [this.#type, "/", this.#subtype];
+        if (parameters.length > 0) {
+          result.push("; ");
+          result.push(parameters.join("; "));
+        }
+        this.#string = result.join("");
+        return this.#string;
+      }
+    };
+    module2.exports = ContentType;
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/handle-request.js
+var require_handle_request = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/handle-request.js"(exports2, module2) {
     "use strict";
     var diagnostics = require("node:diagnostics_channel");
+    var wrapThenable = require_wrap_thenable();
     var { validate: validateSchema } = require_validation();
     var { preValidationHookRunner, preHandlerHookRunner } = require_hooks();
-    var wrapThenable = require_wrapThenable();
+    var {
+      FST_ERR_CTP_INVALID_MEDIA_TYPE,
+      FST_ERR_ROUTE_MISSING_CONTENT_TYPE,
+      FST_ERR_ROUTE_MISSING_CONTENT
+    } = require_errors2();
+    var { setErrorStatusCode } = require_error_status();
     var {
       kReplyIsError,
       kRouteContext,
       kFourOhFourContext,
-      kSupportedHTTPMethods
+      kSupportedHTTPMethods,
+      kRequestContentType,
+      kDiagnosticsStore
     } = require_symbols2();
+    var ContentType = require_content_type();
     var channels = diagnostics.tracingChannel("fastify.request.handler");
     function handleRequest(err, request, reply) {
       if (reply.sent === true) return;
@@ -3157,19 +4281,36 @@ var require_handleRequest = __commonJS({
       }
       if (this[kSupportedHTTPMethods].bodywith.has(method)) {
         const headers = request.headers;
-        const contentType = headers["content-type"];
-        if (contentType === void 0) {
-          const contentLength = headers["content-length"];
-          const transferEncoding = headers["transfer-encoding"];
-          const isEmptyBody = transferEncoding === void 0 && (contentLength === void 0 || contentLength === "0");
-          if (isEmptyBody) {
+        const ctHeader = headers["content-type"];
+        if (method === "QUERY") {
+          if (ctHeader === void 0) {
+            reply[kReplyIsError] = true;
+            reply.status(400).send(new FST_ERR_ROUTE_MISSING_CONTENT_TYPE(method));
+            return;
+          }
+          if (isEmptyBody(headers)) {
+            reply[kReplyIsError] = true;
+            reply.status(400).send(new FST_ERR_ROUTE_MISSING_CONTENT(method));
+            return;
+          }
+        }
+        if (ctHeader === void 0) {
+          if (isEmptyBody(headers)) {
             handler(request, reply);
             return;
           }
           request[kRouteContext].contentTypeParser.run("", handler, request, reply);
           return;
         }
-        request[kRouteContext].contentTypeParser.run(contentType, handler, request, reply);
+        if (!request[kRequestContentType]) {
+          request[kRequestContentType] = ContentType.from(ctHeader);
+        }
+        if (request[kRequestContentType].isValid === false) {
+          reply[kReplyIsError] = true;
+          reply.status(415).send(new FST_ERR_CTP_INVALID_MEDIA_TYPE());
+          return;
+        }
+        request[kRouteContext].contentTypeParser.run(request[kRequestContentType].toString(), handler, request, reply);
         return;
       }
       handler(request, reply);
@@ -3189,6 +4330,11 @@ var require_handleRequest = __commonJS({
       } catch (err) {
         preValidationCallback(err, request, reply);
       }
+    }
+    function isEmptyBody(headers) {
+      const contentLength = headers["content-length"];
+      const transferEncoding = headers["transfer-encoding"];
+      return transferEncoding === void 0 && (contentLength === void 0 || contentLength === "0");
     }
     function preValidationCallback(err, request, reply) {
       if (reply.sent === true) return;
@@ -3240,6 +4386,7 @@ var require_handleRequest = __commonJS({
             method: context.config.method
           }
         };
+        reply[kDiagnosticsStore] = store;
         channels.start.runStores(store, preHandlerCallbackInner, void 0, err, request, reply, store);
       }
     }
@@ -3248,11 +4395,12 @@ var require_handleRequest = __commonJS({
       try {
         if (err != null) {
           reply[kReplyIsError] = true;
-          reply.send(err);
           if (store) {
             store.error = err;
+            setErrorStatusCode(reply, err);
             channels.error.publish(store);
           }
+          reply.send(err);
           return;
         }
         let result;
@@ -3261,6 +4409,7 @@ var require_handleRequest = __commonJS({
         } catch (err2) {
           if (store) {
             store.error = err2;
+            setErrorStatusCode(reply, err2);
             channels.error.publish(store);
           }
           reply[kReplyIsError] = true;
@@ -3280,6 +4429,1552 @@ var require_handleRequest = __commonJS({
     }
     module2.exports = handleRequest;
     module2.exports[Symbol.for("internals")] = { handler, preHandlerCallback };
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/config-validator.js
+var require_config_validator = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/config-validator.js"(exports2, module2) {
+    "use strict";
+    module2.exports = validate10;
+    module2.exports.default = validate10;
+    var schema11 = { "type": "object", "additionalProperties": false, "properties": { "connectionTimeout": { "type": "integer", "default": 0 }, "keepAliveTimeout": { "type": "integer", "default": 72e3 }, "forceCloseConnections": { "oneOf": [{ "type": "string", "pattern": "idle" }, { "type": "boolean" }] }, "maxRequestsPerSocket": { "type": "integer", "default": 0, "nullable": true }, "requestTimeout": { "type": "integer", "default": 0 }, "handlerTimeout": { "type": "integer", "default": 0 }, "bodyLimit": { "type": "integer", "default": 1048576 }, "caseSensitive": { "type": "boolean", "default": true }, "allowUnsafeRegex": { "type": "boolean", "default": false }, "http2": { "type": "boolean" }, "https": { "if": { "not": { "oneOf": [{ "type": "boolean" }, { "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["allowHTTP1"], "properties": { "allowHTTP1": { "type": "boolean" } } }] } }, "then": { "setDefaultValue": true } }, "ignoreTrailingSlash": { "type": "boolean", "default": false }, "ignoreDuplicateSlashes": { "type": "boolean", "default": false }, "disableRequestLogging": { "default": false }, "maxParamLength": { "type": "integer", "default": 100 }, "onProtoPoisoning": { "type": "string", "default": "error" }, "onConstructorPoisoning": { "type": "string", "default": "error" }, "pluginTimeout": { "type": "integer", "default": 1e4 }, "requestIdHeader": { "anyOf": [{ "type": "boolean" }, { "type": "string" }], "default": false }, "requestIdLogLabel": { "type": "string", "default": "reqId" }, "http2SessionTimeout": { "type": "integer", "default": 72e3 }, "exposeHeadRoutes": { "type": "boolean", "default": true }, "useSemicolonDelimiter": { "type": "boolean", "default": false }, "routerOptions": { "type": "object", "additionalProperties": true, "properties": { "ignoreTrailingSlash": { "type": "boolean", "default": false }, "ignoreDuplicateSlashes": { "type": "boolean", "default": false }, "maxParamLength": { "type": "integer", "default": 100 }, "allowUnsafeRegex": { "type": "boolean", "default": false }, "useSemicolonDelimiter": { "type": "boolean", "default": false } } }, "constraints": { "type": "object", "additionalProperties": { "type": "object", "required": ["name", "storage", "validate", "deriveConstraint"], "additionalProperties": true, "properties": { "name": { "type": "string" }, "storage": {}, "validate": {}, "deriveConstraint": {} } } } } };
+    var func2 = Object.prototype.hasOwnProperty;
+    var pattern0 = new RegExp("idle", "u");
+    function validate10(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
+      let vErrors = null;
+      let errors = 0;
+      if (errors === 0) {
+        if (data && typeof data == "object" && !Array.isArray(data)) {
+          if (data.connectionTimeout === void 0) {
+            data.connectionTimeout = 0;
+          }
+          if (data.keepAliveTimeout === void 0) {
+            data.keepAliveTimeout = 72e3;
+          }
+          if (data.maxRequestsPerSocket === void 0) {
+            data.maxRequestsPerSocket = 0;
+          }
+          if (data.requestTimeout === void 0) {
+            data.requestTimeout = 0;
+          }
+          if (data.handlerTimeout === void 0) {
+            data.handlerTimeout = 0;
+          }
+          if (data.bodyLimit === void 0) {
+            data.bodyLimit = 1048576;
+          }
+          if (data.caseSensitive === void 0) {
+            data.caseSensitive = true;
+          }
+          if (data.allowUnsafeRegex === void 0) {
+            data.allowUnsafeRegex = false;
+          }
+          if (data.ignoreTrailingSlash === void 0) {
+            data.ignoreTrailingSlash = false;
+          }
+          if (data.ignoreDuplicateSlashes === void 0) {
+            data.ignoreDuplicateSlashes = false;
+          }
+          if (data.disableRequestLogging === void 0) {
+            data.disableRequestLogging = false;
+          }
+          if (data.maxParamLength === void 0) {
+            data.maxParamLength = 100;
+          }
+          if (data.onProtoPoisoning === void 0) {
+            data.onProtoPoisoning = "error";
+          }
+          if (data.onConstructorPoisoning === void 0) {
+            data.onConstructorPoisoning = "error";
+          }
+          if (data.pluginTimeout === void 0) {
+            data.pluginTimeout = 1e4;
+          }
+          if (data.requestIdHeader === void 0) {
+            data.requestIdHeader = false;
+          }
+          if (data.requestIdLogLabel === void 0) {
+            data.requestIdLogLabel = "reqId";
+          }
+          if (data.http2SessionTimeout === void 0) {
+            data.http2SessionTimeout = 72e3;
+          }
+          if (data.exposeHeadRoutes === void 0) {
+            data.exposeHeadRoutes = true;
+          }
+          if (data.useSemicolonDelimiter === void 0) {
+            data.useSemicolonDelimiter = false;
+          }
+          const _errs1 = errors;
+          for (const key0 in data) {
+            if (!func2.call(schema11.properties, key0)) {
+              delete data[key0];
+            }
+          }
+          if (_errs1 === errors) {
+            let data0 = data.connectionTimeout;
+            const _errs2 = errors;
+            if (!(typeof data0 == "number" && (!(data0 % 1) && !isNaN(data0)) && isFinite(data0))) {
+              let dataType0 = typeof data0;
+              let coerced0 = void 0;
+              if (!(coerced0 !== void 0)) {
+                if (dataType0 === "boolean" || data0 === null || dataType0 === "string" && data0 && data0 == +data0 && !(data0 % 1)) {
+                  coerced0 = +data0;
+                } else {
+                  validate10.errors = [{ instancePath: instancePath + "/connectionTimeout", schemaPath: "#/properties/connectionTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                  return false;
+                }
+              }
+              if (coerced0 !== void 0) {
+                data0 = coerced0;
+                if (data !== void 0) {
+                  data["connectionTimeout"] = coerced0;
+                }
+              }
+            }
+            var valid0 = _errs2 === errors;
+            if (valid0) {
+              let data1 = data.keepAliveTimeout;
+              const _errs4 = errors;
+              if (!(typeof data1 == "number" && (!(data1 % 1) && !isNaN(data1)) && isFinite(data1))) {
+                let dataType1 = typeof data1;
+                let coerced1 = void 0;
+                if (!(coerced1 !== void 0)) {
+                  if (dataType1 === "boolean" || data1 === null || dataType1 === "string" && data1 && data1 == +data1 && !(data1 % 1)) {
+                    coerced1 = +data1;
+                  } else {
+                    validate10.errors = [{ instancePath: instancePath + "/keepAliveTimeout", schemaPath: "#/properties/keepAliveTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                    return false;
+                  }
+                }
+                if (coerced1 !== void 0) {
+                  data1 = coerced1;
+                  if (data !== void 0) {
+                    data["keepAliveTimeout"] = coerced1;
+                  }
+                }
+              }
+              var valid0 = _errs4 === errors;
+              if (valid0) {
+                if (data.forceCloseConnections !== void 0) {
+                  let data2 = data.forceCloseConnections;
+                  const _errs6 = errors;
+                  const _errs7 = errors;
+                  let valid1 = false;
+                  let passing0 = null;
+                  const _errs8 = errors;
+                  if (typeof data2 !== "string") {
+                    let dataType2 = typeof data2;
+                    let coerced2 = void 0;
+                    if (!(coerced2 !== void 0)) {
+                      if (dataType2 == "number" || dataType2 == "boolean") {
+                        coerced2 = "" + data2;
+                      } else if (data2 === null) {
+                        coerced2 = "";
+                      } else {
+                        const err0 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                        if (vErrors === null) {
+                          vErrors = [err0];
+                        } else {
+                          vErrors.push(err0);
+                        }
+                        errors++;
+                      }
+                    }
+                    if (coerced2 !== void 0) {
+                      data2 = coerced2;
+                      if (data !== void 0) {
+                        data["forceCloseConnections"] = coerced2;
+                      }
+                    }
+                  }
+                  if (errors === _errs8) {
+                    if (typeof data2 === "string") {
+                      if (!pattern0.test(data2)) {
+                        const err1 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/0/pattern", keyword: "pattern", params: { pattern: "idle" }, message: 'must match pattern "idle"' };
+                        if (vErrors === null) {
+                          vErrors = [err1];
+                        } else {
+                          vErrors.push(err1);
+                        }
+                        errors++;
+                      }
+                    }
+                  }
+                  var _valid0 = _errs8 === errors;
+                  if (_valid0) {
+                    valid1 = true;
+                    passing0 = 0;
+                  }
+                  const _errs10 = errors;
+                  if (typeof data2 !== "boolean") {
+                    let coerced3 = void 0;
+                    if (!(coerced3 !== void 0)) {
+                      if (data2 === "false" || data2 === 0 || data2 === null) {
+                        coerced3 = false;
+                      } else if (data2 === "true" || data2 === 1) {
+                        coerced3 = true;
+                      } else {
+                        const err2 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/1/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+                        if (vErrors === null) {
+                          vErrors = [err2];
+                        } else {
+                          vErrors.push(err2);
+                        }
+                        errors++;
+                      }
+                    }
+                    if (coerced3 !== void 0) {
+                      data2 = coerced3;
+                      if (data !== void 0) {
+                        data["forceCloseConnections"] = coerced3;
+                      }
+                    }
+                  }
+                  var _valid0 = _errs10 === errors;
+                  if (_valid0 && valid1) {
+                    valid1 = false;
+                    passing0 = [passing0, 1];
+                  } else {
+                    if (_valid0) {
+                      valid1 = true;
+                      passing0 = 1;
+                    }
+                  }
+                  if (!valid1) {
+                    const err3 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf", keyword: "oneOf", params: { passingSchemas: passing0 }, message: "must match exactly one schema in oneOf" };
+                    if (vErrors === null) {
+                      vErrors = [err3];
+                    } else {
+                      vErrors.push(err3);
+                    }
+                    errors++;
+                    validate10.errors = vErrors;
+                    return false;
+                  } else {
+                    errors = _errs7;
+                    if (vErrors !== null) {
+                      if (_errs7) {
+                        vErrors.length = _errs7;
+                      } else {
+                        vErrors = null;
+                      }
+                    }
+                  }
+                  var valid0 = _errs6 === errors;
+                } else {
+                  var valid0 = true;
+                }
+                if (valid0) {
+                  let data3 = data.maxRequestsPerSocket;
+                  const _errs12 = errors;
+                  if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3)) && data3 !== null) {
+                    let dataType4 = typeof data3;
+                    let coerced4 = void 0;
+                    if (!(coerced4 !== void 0)) {
+                      if (dataType4 === "boolean" || data3 === null || dataType4 === "string" && data3 && data3 == +data3 && !(data3 % 1)) {
+                        coerced4 = +data3;
+                      } else if (data3 === "" || data3 === 0 || data3 === false) {
+                        coerced4 = null;
+                      } else {
+                        validate10.errors = [{ instancePath: instancePath + "/maxRequestsPerSocket", schemaPath: "#/properties/maxRequestsPerSocket/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                        return false;
+                      }
+                    }
+                    if (coerced4 !== void 0) {
+                      data3 = coerced4;
+                      if (data !== void 0) {
+                        data["maxRequestsPerSocket"] = coerced4;
+                      }
+                    }
+                  }
+                  var valid0 = _errs12 === errors;
+                  if (valid0) {
+                    let data4 = data.requestTimeout;
+                    const _errs15 = errors;
+                    if (!(typeof data4 == "number" && (!(data4 % 1) && !isNaN(data4)) && isFinite(data4))) {
+                      let dataType5 = typeof data4;
+                      let coerced5 = void 0;
+                      if (!(coerced5 !== void 0)) {
+                        if (dataType5 === "boolean" || data4 === null || dataType5 === "string" && data4 && data4 == +data4 && !(data4 % 1)) {
+                          coerced5 = +data4;
+                        } else {
+                          validate10.errors = [{ instancePath: instancePath + "/requestTimeout", schemaPath: "#/properties/requestTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                          return false;
+                        }
+                      }
+                      if (coerced5 !== void 0) {
+                        data4 = coerced5;
+                        if (data !== void 0) {
+                          data["requestTimeout"] = coerced5;
+                        }
+                      }
+                    }
+                    var valid0 = _errs15 === errors;
+                    if (valid0) {
+                      let data5 = data.handlerTimeout;
+                      const _errs17 = errors;
+                      if (!(typeof data5 == "number" && (!(data5 % 1) && !isNaN(data5)) && isFinite(data5))) {
+                        let dataType6 = typeof data5;
+                        let coerced6 = void 0;
+                        if (!(coerced6 !== void 0)) {
+                          if (dataType6 === "boolean" || data5 === null || dataType6 === "string" && data5 && data5 == +data5 && !(data5 % 1)) {
+                            coerced6 = +data5;
+                          } else {
+                            validate10.errors = [{ instancePath: instancePath + "/handlerTimeout", schemaPath: "#/properties/handlerTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                            return false;
+                          }
+                        }
+                        if (coerced6 !== void 0) {
+                          data5 = coerced6;
+                          if (data !== void 0) {
+                            data["handlerTimeout"] = coerced6;
+                          }
+                        }
+                      }
+                      var valid0 = _errs17 === errors;
+                      if (valid0) {
+                        let data6 = data.bodyLimit;
+                        const _errs19 = errors;
+                        if (!(typeof data6 == "number" && (!(data6 % 1) && !isNaN(data6)) && isFinite(data6))) {
+                          let dataType7 = typeof data6;
+                          let coerced7 = void 0;
+                          if (!(coerced7 !== void 0)) {
+                            if (dataType7 === "boolean" || data6 === null || dataType7 === "string" && data6 && data6 == +data6 && !(data6 % 1)) {
+                              coerced7 = +data6;
+                            } else {
+                              validate10.errors = [{ instancePath: instancePath + "/bodyLimit", schemaPath: "#/properties/bodyLimit/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                              return false;
+                            }
+                          }
+                          if (coerced7 !== void 0) {
+                            data6 = coerced7;
+                            if (data !== void 0) {
+                              data["bodyLimit"] = coerced7;
+                            }
+                          }
+                        }
+                        var valid0 = _errs19 === errors;
+                        if (valid0) {
+                          let data7 = data.caseSensitive;
+                          const _errs21 = errors;
+                          if (typeof data7 !== "boolean") {
+                            let coerced8 = void 0;
+                            if (!(coerced8 !== void 0)) {
+                              if (data7 === "false" || data7 === 0 || data7 === null) {
+                                coerced8 = false;
+                              } else if (data7 === "true" || data7 === 1) {
+                                coerced8 = true;
+                              } else {
+                                validate10.errors = [{ instancePath: instancePath + "/caseSensitive", schemaPath: "#/properties/caseSensitive/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                return false;
+                              }
+                            }
+                            if (coerced8 !== void 0) {
+                              data7 = coerced8;
+                              if (data !== void 0) {
+                                data["caseSensitive"] = coerced8;
+                              }
+                            }
+                          }
+                          var valid0 = _errs21 === errors;
+                          if (valid0) {
+                            let data8 = data.allowUnsafeRegex;
+                            const _errs23 = errors;
+                            if (typeof data8 !== "boolean") {
+                              let coerced9 = void 0;
+                              if (!(coerced9 !== void 0)) {
+                                if (data8 === "false" || data8 === 0 || data8 === null) {
+                                  coerced9 = false;
+                                } else if (data8 === "true" || data8 === 1) {
+                                  coerced9 = true;
+                                } else {
+                                  validate10.errors = [{ instancePath: instancePath + "/allowUnsafeRegex", schemaPath: "#/properties/allowUnsafeRegex/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                  return false;
+                                }
+                              }
+                              if (coerced9 !== void 0) {
+                                data8 = coerced9;
+                                if (data !== void 0) {
+                                  data["allowUnsafeRegex"] = coerced9;
+                                }
+                              }
+                            }
+                            var valid0 = _errs23 === errors;
+                            if (valid0) {
+                              if (data.http2 !== void 0) {
+                                let data9 = data.http2;
+                                const _errs25 = errors;
+                                if (typeof data9 !== "boolean") {
+                                  let coerced10 = void 0;
+                                  if (!(coerced10 !== void 0)) {
+                                    if (data9 === "false" || data9 === 0 || data9 === null) {
+                                      coerced10 = false;
+                                    } else if (data9 === "true" || data9 === 1) {
+                                      coerced10 = true;
+                                    } else {
+                                      validate10.errors = [{ instancePath: instancePath + "/http2", schemaPath: "#/properties/http2/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                      return false;
+                                    }
+                                  }
+                                  if (coerced10 !== void 0) {
+                                    data9 = coerced10;
+                                    if (data !== void 0) {
+                                      data["http2"] = coerced10;
+                                    }
+                                  }
+                                }
+                                var valid0 = _errs25 === errors;
+                              } else {
+                                var valid0 = true;
+                              }
+                              if (valid0) {
+                                if (data.https !== void 0) {
+                                  let data10 = data.https;
+                                  const _errs27 = errors;
+                                  const _errs28 = errors;
+                                  let valid2 = true;
+                                  const _errs29 = errors;
+                                  const _errs30 = errors;
+                                  const _errs31 = errors;
+                                  const _errs32 = errors;
+                                  let valid4 = false;
+                                  let passing1 = null;
+                                  const _errs33 = errors;
+                                  if (typeof data10 !== "boolean") {
+                                    let coerced11 = void 0;
+                                    if (!(coerced11 !== void 0)) {
+                                      if (data10 === "false" || data10 === 0 || data10 === null) {
+                                        coerced11 = false;
+                                      } else if (data10 === "true" || data10 === 1) {
+                                        coerced11 = true;
+                                      } else {
+                                        const err4 = {};
+                                        if (vErrors === null) {
+                                          vErrors = [err4];
+                                        } else {
+                                          vErrors.push(err4);
+                                        }
+                                        errors++;
+                                      }
+                                    }
+                                    if (coerced11 !== void 0) {
+                                      data10 = coerced11;
+                                      if (data !== void 0) {
+                                        data["https"] = coerced11;
+                                      }
+                                    }
+                                  }
+                                  var _valid2 = _errs33 === errors;
+                                  if (_valid2) {
+                                    valid4 = true;
+                                    passing1 = 0;
+                                  }
+                                  const _errs35 = errors;
+                                  if (data10 !== null) {
+                                    let coerced12 = void 0;
+                                    if (!(coerced12 !== void 0)) {
+                                      if (data10 === "" || data10 === 0 || data10 === false) {
+                                        coerced12 = null;
+                                      } else {
+                                        const err5 = {};
+                                        if (vErrors === null) {
+                                          vErrors = [err5];
+                                        } else {
+                                          vErrors.push(err5);
+                                        }
+                                        errors++;
+                                      }
+                                    }
+                                    if (coerced12 !== void 0) {
+                                      data10 = coerced12;
+                                      if (data !== void 0) {
+                                        data["https"] = coerced12;
+                                      }
+                                    }
+                                  }
+                                  var _valid2 = _errs35 === errors;
+                                  if (_valid2 && valid4) {
+                                    valid4 = false;
+                                    passing1 = [passing1, 1];
+                                  } else {
+                                    if (_valid2) {
+                                      valid4 = true;
+                                      passing1 = 1;
+                                    }
+                                    const _errs37 = errors;
+                                    if (errors === _errs37) {
+                                      if (data10 && typeof data10 == "object" && !Array.isArray(data10)) {
+                                        let missing0;
+                                        if (data10.allowHTTP1 === void 0 && (missing0 = "allowHTTP1")) {
+                                          const err6 = {};
+                                          if (vErrors === null) {
+                                            vErrors = [err6];
+                                          } else {
+                                            vErrors.push(err6);
+                                          }
+                                          errors++;
+                                        } else {
+                                          const _errs39 = errors;
+                                          for (const key1 in data10) {
+                                            if (!(key1 === "allowHTTP1")) {
+                                              delete data10[key1];
+                                            }
+                                          }
+                                          if (_errs39 === errors) {
+                                            if (data10.allowHTTP1 !== void 0) {
+                                              let data11 = data10.allowHTTP1;
+                                              if (typeof data11 !== "boolean") {
+                                                let coerced13 = void 0;
+                                                if (!(coerced13 !== void 0)) {
+                                                  if (data11 === "false" || data11 === 0 || data11 === null) {
+                                                    coerced13 = false;
+                                                  } else if (data11 === "true" || data11 === 1) {
+                                                    coerced13 = true;
+                                                  } else {
+                                                    const err7 = {};
+                                                    if (vErrors === null) {
+                                                      vErrors = [err7];
+                                                    } else {
+                                                      vErrors.push(err7);
+                                                    }
+                                                    errors++;
+                                                  }
+                                                }
+                                                if (coerced13 !== void 0) {
+                                                  data11 = coerced13;
+                                                  if (data10 !== void 0) {
+                                                    data10["allowHTTP1"] = coerced13;
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      } else {
+                                        const err8 = {};
+                                        if (vErrors === null) {
+                                          vErrors = [err8];
+                                        } else {
+                                          vErrors.push(err8);
+                                        }
+                                        errors++;
+                                      }
+                                    }
+                                    var _valid2 = _errs37 === errors;
+                                    if (_valid2 && valid4) {
+                                      valid4 = false;
+                                      passing1 = [passing1, 2];
+                                    } else {
+                                      if (_valid2) {
+                                        valid4 = true;
+                                        passing1 = 2;
+                                      }
+                                    }
+                                  }
+                                  if (!valid4) {
+                                    const err9 = {};
+                                    if (vErrors === null) {
+                                      vErrors = [err9];
+                                    } else {
+                                      vErrors.push(err9);
+                                    }
+                                    errors++;
+                                  } else {
+                                    errors = _errs32;
+                                    if (vErrors !== null) {
+                                      if (_errs32) {
+                                        vErrors.length = _errs32;
+                                      } else {
+                                        vErrors = null;
+                                      }
+                                    }
+                                  }
+                                  var valid3 = _errs31 === errors;
+                                  if (valid3) {
+                                    const err10 = {};
+                                    if (vErrors === null) {
+                                      vErrors = [err10];
+                                    } else {
+                                      vErrors.push(err10);
+                                    }
+                                    errors++;
+                                  } else {
+                                    errors = _errs30;
+                                    if (vErrors !== null) {
+                                      if (_errs30) {
+                                        vErrors.length = _errs30;
+                                      } else {
+                                        vErrors = null;
+                                      }
+                                    }
+                                  }
+                                  var _valid1 = _errs29 === errors;
+                                  errors = _errs28;
+                                  if (vErrors !== null) {
+                                    if (_errs28) {
+                                      vErrors.length = _errs28;
+                                    } else {
+                                      vErrors = null;
+                                    }
+                                  }
+                                  if (_valid1) {
+                                    const _errs42 = errors;
+                                    data["https"] = true;
+                                    var _valid1 = _errs42 === errors;
+                                    valid2 = _valid1;
+                                  }
+                                  if (!valid2) {
+                                    const err11 = { instancePath: instancePath + "/https", schemaPath: "#/properties/https/if", keyword: "if", params: { failingKeyword: "then" }, message: 'must match "then" schema' };
+                                    if (vErrors === null) {
+                                      vErrors = [err11];
+                                    } else {
+                                      vErrors.push(err11);
+                                    }
+                                    errors++;
+                                    validate10.errors = vErrors;
+                                    return false;
+                                  }
+                                  var valid0 = _errs27 === errors;
+                                } else {
+                                  var valid0 = true;
+                                }
+                                if (valid0) {
+                                  let data12 = data.ignoreTrailingSlash;
+                                  const _errs43 = errors;
+                                  if (typeof data12 !== "boolean") {
+                                    let coerced14 = void 0;
+                                    if (!(coerced14 !== void 0)) {
+                                      if (data12 === "false" || data12 === 0 || data12 === null) {
+                                        coerced14 = false;
+                                      } else if (data12 === "true" || data12 === 1) {
+                                        coerced14 = true;
+                                      } else {
+                                        validate10.errors = [{ instancePath: instancePath + "/ignoreTrailingSlash", schemaPath: "#/properties/ignoreTrailingSlash/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                        return false;
+                                      }
+                                    }
+                                    if (coerced14 !== void 0) {
+                                      data12 = coerced14;
+                                      if (data !== void 0) {
+                                        data["ignoreTrailingSlash"] = coerced14;
+                                      }
+                                    }
+                                  }
+                                  var valid0 = _errs43 === errors;
+                                  if (valid0) {
+                                    let data13 = data.ignoreDuplicateSlashes;
+                                    const _errs45 = errors;
+                                    if (typeof data13 !== "boolean") {
+                                      let coerced15 = void 0;
+                                      if (!(coerced15 !== void 0)) {
+                                        if (data13 === "false" || data13 === 0 || data13 === null) {
+                                          coerced15 = false;
+                                        } else if (data13 === "true" || data13 === 1) {
+                                          coerced15 = true;
+                                        } else {
+                                          validate10.errors = [{ instancePath: instancePath + "/ignoreDuplicateSlashes", schemaPath: "#/properties/ignoreDuplicateSlashes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                          return false;
+                                        }
+                                      }
+                                      if (coerced15 !== void 0) {
+                                        data13 = coerced15;
+                                        if (data !== void 0) {
+                                          data["ignoreDuplicateSlashes"] = coerced15;
+                                        }
+                                      }
+                                    }
+                                    var valid0 = _errs45 === errors;
+                                    if (valid0) {
+                                      let data14 = data.maxParamLength;
+                                      const _errs47 = errors;
+                                      if (!(typeof data14 == "number" && (!(data14 % 1) && !isNaN(data14)) && isFinite(data14))) {
+                                        let dataType16 = typeof data14;
+                                        let coerced16 = void 0;
+                                        if (!(coerced16 !== void 0)) {
+                                          if (dataType16 === "boolean" || data14 === null || dataType16 === "string" && data14 && data14 == +data14 && !(data14 % 1)) {
+                                            coerced16 = +data14;
+                                          } else {
+                                            validate10.errors = [{ instancePath: instancePath + "/maxParamLength", schemaPath: "#/properties/maxParamLength/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                            return false;
+                                          }
+                                        }
+                                        if (coerced16 !== void 0) {
+                                          data14 = coerced16;
+                                          if (data !== void 0) {
+                                            data["maxParamLength"] = coerced16;
+                                          }
+                                        }
+                                      }
+                                      var valid0 = _errs47 === errors;
+                                      if (valid0) {
+                                        let data15 = data.onProtoPoisoning;
+                                        const _errs49 = errors;
+                                        if (typeof data15 !== "string") {
+                                          let dataType17 = typeof data15;
+                                          let coerced17 = void 0;
+                                          if (!(coerced17 !== void 0)) {
+                                            if (dataType17 == "number" || dataType17 == "boolean") {
+                                              coerced17 = "" + data15;
+                                            } else if (data15 === null) {
+                                              coerced17 = "";
+                                            } else {
+                                              validate10.errors = [{ instancePath: instancePath + "/onProtoPoisoning", schemaPath: "#/properties/onProtoPoisoning/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                              return false;
+                                            }
+                                          }
+                                          if (coerced17 !== void 0) {
+                                            data15 = coerced17;
+                                            if (data !== void 0) {
+                                              data["onProtoPoisoning"] = coerced17;
+                                            }
+                                          }
+                                        }
+                                        var valid0 = _errs49 === errors;
+                                        if (valid0) {
+                                          let data16 = data.onConstructorPoisoning;
+                                          const _errs51 = errors;
+                                          if (typeof data16 !== "string") {
+                                            let dataType18 = typeof data16;
+                                            let coerced18 = void 0;
+                                            if (!(coerced18 !== void 0)) {
+                                              if (dataType18 == "number" || dataType18 == "boolean") {
+                                                coerced18 = "" + data16;
+                                              } else if (data16 === null) {
+                                                coerced18 = "";
+                                              } else {
+                                                validate10.errors = [{ instancePath: instancePath + "/onConstructorPoisoning", schemaPath: "#/properties/onConstructorPoisoning/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                return false;
+                                              }
+                                            }
+                                            if (coerced18 !== void 0) {
+                                              data16 = coerced18;
+                                              if (data !== void 0) {
+                                                data["onConstructorPoisoning"] = coerced18;
+                                              }
+                                            }
+                                          }
+                                          var valid0 = _errs51 === errors;
+                                          if (valid0) {
+                                            let data17 = data.pluginTimeout;
+                                            const _errs53 = errors;
+                                            if (!(typeof data17 == "number" && (!(data17 % 1) && !isNaN(data17)) && isFinite(data17))) {
+                                              let dataType19 = typeof data17;
+                                              let coerced19 = void 0;
+                                              if (!(coerced19 !== void 0)) {
+                                                if (dataType19 === "boolean" || data17 === null || dataType19 === "string" && data17 && data17 == +data17 && !(data17 % 1)) {
+                                                  coerced19 = +data17;
+                                                } else {
+                                                  validate10.errors = [{ instancePath: instancePath + "/pluginTimeout", schemaPath: "#/properties/pluginTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                                  return false;
+                                                }
+                                              }
+                                              if (coerced19 !== void 0) {
+                                                data17 = coerced19;
+                                                if (data !== void 0) {
+                                                  data["pluginTimeout"] = coerced19;
+                                                }
+                                              }
+                                            }
+                                            var valid0 = _errs53 === errors;
+                                            if (valid0) {
+                                              let data18 = data.requestIdHeader;
+                                              const _errs55 = errors;
+                                              const _errs56 = errors;
+                                              let valid6 = false;
+                                              const _errs57 = errors;
+                                              if (typeof data18 !== "boolean") {
+                                                let coerced20 = void 0;
+                                                if (!(coerced20 !== void 0)) {
+                                                  if (data18 === "false" || data18 === 0 || data18 === null) {
+                                                    coerced20 = false;
+                                                  } else if (data18 === "true" || data18 === 1) {
+                                                    coerced20 = true;
+                                                  } else {
+                                                    const err12 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf/0/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
+                                                    if (vErrors === null) {
+                                                      vErrors = [err12];
+                                                    } else {
+                                                      vErrors.push(err12);
+                                                    }
+                                                    errors++;
+                                                  }
+                                                }
+                                                if (coerced20 !== void 0) {
+                                                  data18 = coerced20;
+                                                  if (data !== void 0) {
+                                                    data["requestIdHeader"] = coerced20;
+                                                  }
+                                                }
+                                              }
+                                              var _valid3 = _errs57 === errors;
+                                              valid6 = valid6 || _valid3;
+                                              if (!valid6) {
+                                                const _errs59 = errors;
+                                                if (typeof data18 !== "string") {
+                                                  let dataType21 = typeof data18;
+                                                  let coerced21 = void 0;
+                                                  if (!(coerced21 !== void 0)) {
+                                                    if (dataType21 == "number" || dataType21 == "boolean") {
+                                                      coerced21 = "" + data18;
+                                                    } else if (data18 === null) {
+                                                      coerced21 = "";
+                                                    } else {
+                                                      const err13 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf/1/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                                                      if (vErrors === null) {
+                                                        vErrors = [err13];
+                                                      } else {
+                                                        vErrors.push(err13);
+                                                      }
+                                                      errors++;
+                                                    }
+                                                  }
+                                                  if (coerced21 !== void 0) {
+                                                    data18 = coerced21;
+                                                    if (data !== void 0) {
+                                                      data["requestIdHeader"] = coerced21;
+                                                    }
+                                                  }
+                                                }
+                                                var _valid3 = _errs59 === errors;
+                                                valid6 = valid6 || _valid3;
+                                              }
+                                              if (!valid6) {
+                                                const err14 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                                                if (vErrors === null) {
+                                                  vErrors = [err14];
+                                                } else {
+                                                  vErrors.push(err14);
+                                                }
+                                                errors++;
+                                                validate10.errors = vErrors;
+                                                return false;
+                                              } else {
+                                                errors = _errs56;
+                                                if (vErrors !== null) {
+                                                  if (_errs56) {
+                                                    vErrors.length = _errs56;
+                                                  } else {
+                                                    vErrors = null;
+                                                  }
+                                                }
+                                              }
+                                              var valid0 = _errs55 === errors;
+                                              if (valid0) {
+                                                let data19 = data.requestIdLogLabel;
+                                                const _errs61 = errors;
+                                                if (typeof data19 !== "string") {
+                                                  let dataType22 = typeof data19;
+                                                  let coerced22 = void 0;
+                                                  if (!(coerced22 !== void 0)) {
+                                                    if (dataType22 == "number" || dataType22 == "boolean") {
+                                                      coerced22 = "" + data19;
+                                                    } else if (data19 === null) {
+                                                      coerced22 = "";
+                                                    } else {
+                                                      validate10.errors = [{ instancePath: instancePath + "/requestIdLogLabel", schemaPath: "#/properties/requestIdLogLabel/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                      return false;
+                                                    }
+                                                  }
+                                                  if (coerced22 !== void 0) {
+                                                    data19 = coerced22;
+                                                    if (data !== void 0) {
+                                                      data["requestIdLogLabel"] = coerced22;
+                                                    }
+                                                  }
+                                                }
+                                                var valid0 = _errs61 === errors;
+                                                if (valid0) {
+                                                  let data20 = data.http2SessionTimeout;
+                                                  const _errs63 = errors;
+                                                  if (!(typeof data20 == "number" && (!(data20 % 1) && !isNaN(data20)) && isFinite(data20))) {
+                                                    let dataType23 = typeof data20;
+                                                    let coerced23 = void 0;
+                                                    if (!(coerced23 !== void 0)) {
+                                                      if (dataType23 === "boolean" || data20 === null || dataType23 === "string" && data20 && data20 == +data20 && !(data20 % 1)) {
+                                                        coerced23 = +data20;
+                                                      } else {
+                                                        validate10.errors = [{ instancePath: instancePath + "/http2SessionTimeout", schemaPath: "#/properties/http2SessionTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                                        return false;
+                                                      }
+                                                    }
+                                                    if (coerced23 !== void 0) {
+                                                      data20 = coerced23;
+                                                      if (data !== void 0) {
+                                                        data["http2SessionTimeout"] = coerced23;
+                                                      }
+                                                    }
+                                                  }
+                                                  var valid0 = _errs63 === errors;
+                                                  if (valid0) {
+                                                    let data21 = data.exposeHeadRoutes;
+                                                    const _errs65 = errors;
+                                                    if (typeof data21 !== "boolean") {
+                                                      let coerced24 = void 0;
+                                                      if (!(coerced24 !== void 0)) {
+                                                        if (data21 === "false" || data21 === 0 || data21 === null) {
+                                                          coerced24 = false;
+                                                        } else if (data21 === "true" || data21 === 1) {
+                                                          coerced24 = true;
+                                                        } else {
+                                                          validate10.errors = [{ instancePath: instancePath + "/exposeHeadRoutes", schemaPath: "#/properties/exposeHeadRoutes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                          return false;
+                                                        }
+                                                      }
+                                                      if (coerced24 !== void 0) {
+                                                        data21 = coerced24;
+                                                        if (data !== void 0) {
+                                                          data["exposeHeadRoutes"] = coerced24;
+                                                        }
+                                                      }
+                                                    }
+                                                    var valid0 = _errs65 === errors;
+                                                    if (valid0) {
+                                                      let data22 = data.useSemicolonDelimiter;
+                                                      const _errs67 = errors;
+                                                      if (typeof data22 !== "boolean") {
+                                                        let coerced25 = void 0;
+                                                        if (!(coerced25 !== void 0)) {
+                                                          if (data22 === "false" || data22 === 0 || data22 === null) {
+                                                            coerced25 = false;
+                                                          } else if (data22 === "true" || data22 === 1) {
+                                                            coerced25 = true;
+                                                          } else {
+                                                            validate10.errors = [{ instancePath: instancePath + "/useSemicolonDelimiter", schemaPath: "#/properties/useSemicolonDelimiter/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                            return false;
+                                                          }
+                                                        }
+                                                        if (coerced25 !== void 0) {
+                                                          data22 = coerced25;
+                                                          if (data !== void 0) {
+                                                            data["useSemicolonDelimiter"] = coerced25;
+                                                          }
+                                                        }
+                                                      }
+                                                      var valid0 = _errs67 === errors;
+                                                      if (valid0) {
+                                                        if (data.routerOptions !== void 0) {
+                                                          let data23 = data.routerOptions;
+                                                          const _errs69 = errors;
+                                                          if (errors === _errs69) {
+                                                            if (data23 && typeof data23 == "object" && !Array.isArray(data23)) {
+                                                              if (data23.ignoreTrailingSlash === void 0) {
+                                                                data23.ignoreTrailingSlash = false;
+                                                              }
+                                                              if (data23.ignoreDuplicateSlashes === void 0) {
+                                                                data23.ignoreDuplicateSlashes = false;
+                                                              }
+                                                              if (data23.maxParamLength === void 0) {
+                                                                data23.maxParamLength = 100;
+                                                              }
+                                                              if (data23.allowUnsafeRegex === void 0) {
+                                                                data23.allowUnsafeRegex = false;
+                                                              }
+                                                              if (data23.useSemicolonDelimiter === void 0) {
+                                                                data23.useSemicolonDelimiter = false;
+                                                              }
+                                                              let data24 = data23.ignoreTrailingSlash;
+                                                              const _errs72 = errors;
+                                                              if (typeof data24 !== "boolean") {
+                                                                let coerced26 = void 0;
+                                                                if (!(coerced26 !== void 0)) {
+                                                                  if (data24 === "false" || data24 === 0 || data24 === null) {
+                                                                    coerced26 = false;
+                                                                  } else if (data24 === "true" || data24 === 1) {
+                                                                    coerced26 = true;
+                                                                  } else {
+                                                                    validate10.errors = [{ instancePath: instancePath + "/routerOptions/ignoreTrailingSlash", schemaPath: "#/properties/routerOptions/properties/ignoreTrailingSlash/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                                    return false;
+                                                                  }
+                                                                }
+                                                                if (coerced26 !== void 0) {
+                                                                  data24 = coerced26;
+                                                                  if (data23 !== void 0) {
+                                                                    data23["ignoreTrailingSlash"] = coerced26;
+                                                                  }
+                                                                }
+                                                              }
+                                                              var valid7 = _errs72 === errors;
+                                                              if (valid7) {
+                                                                let data25 = data23.ignoreDuplicateSlashes;
+                                                                const _errs74 = errors;
+                                                                if (typeof data25 !== "boolean") {
+                                                                  let coerced27 = void 0;
+                                                                  if (!(coerced27 !== void 0)) {
+                                                                    if (data25 === "false" || data25 === 0 || data25 === null) {
+                                                                      coerced27 = false;
+                                                                    } else if (data25 === "true" || data25 === 1) {
+                                                                      coerced27 = true;
+                                                                    } else {
+                                                                      validate10.errors = [{ instancePath: instancePath + "/routerOptions/ignoreDuplicateSlashes", schemaPath: "#/properties/routerOptions/properties/ignoreDuplicateSlashes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                                      return false;
+                                                                    }
+                                                                  }
+                                                                  if (coerced27 !== void 0) {
+                                                                    data25 = coerced27;
+                                                                    if (data23 !== void 0) {
+                                                                      data23["ignoreDuplicateSlashes"] = coerced27;
+                                                                    }
+                                                                  }
+                                                                }
+                                                                var valid7 = _errs74 === errors;
+                                                                if (valid7) {
+                                                                  let data26 = data23.maxParamLength;
+                                                                  const _errs76 = errors;
+                                                                  if (!(typeof data26 == "number" && (!(data26 % 1) && !isNaN(data26)) && isFinite(data26))) {
+                                                                    let dataType28 = typeof data26;
+                                                                    let coerced28 = void 0;
+                                                                    if (!(coerced28 !== void 0)) {
+                                                                      if (dataType28 === "boolean" || data26 === null || dataType28 === "string" && data26 && data26 == +data26 && !(data26 % 1)) {
+                                                                        coerced28 = +data26;
+                                                                      } else {
+                                                                        validate10.errors = [{ instancePath: instancePath + "/routerOptions/maxParamLength", schemaPath: "#/properties/routerOptions/properties/maxParamLength/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                                                        return false;
+                                                                      }
+                                                                    }
+                                                                    if (coerced28 !== void 0) {
+                                                                      data26 = coerced28;
+                                                                      if (data23 !== void 0) {
+                                                                        data23["maxParamLength"] = coerced28;
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                  var valid7 = _errs76 === errors;
+                                                                  if (valid7) {
+                                                                    let data27 = data23.allowUnsafeRegex;
+                                                                    const _errs78 = errors;
+                                                                    if (typeof data27 !== "boolean") {
+                                                                      let coerced29 = void 0;
+                                                                      if (!(coerced29 !== void 0)) {
+                                                                        if (data27 === "false" || data27 === 0 || data27 === null) {
+                                                                          coerced29 = false;
+                                                                        } else if (data27 === "true" || data27 === 1) {
+                                                                          coerced29 = true;
+                                                                        } else {
+                                                                          validate10.errors = [{ instancePath: instancePath + "/routerOptions/allowUnsafeRegex", schemaPath: "#/properties/routerOptions/properties/allowUnsafeRegex/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                                          return false;
+                                                                        }
+                                                                      }
+                                                                      if (coerced29 !== void 0) {
+                                                                        data27 = coerced29;
+                                                                        if (data23 !== void 0) {
+                                                                          data23["allowUnsafeRegex"] = coerced29;
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                    var valid7 = _errs78 === errors;
+                                                                    if (valid7) {
+                                                                      let data28 = data23.useSemicolonDelimiter;
+                                                                      const _errs80 = errors;
+                                                                      if (typeof data28 !== "boolean") {
+                                                                        let coerced30 = void 0;
+                                                                        if (!(coerced30 !== void 0)) {
+                                                                          if (data28 === "false" || data28 === 0 || data28 === null) {
+                                                                            coerced30 = false;
+                                                                          } else if (data28 === "true" || data28 === 1) {
+                                                                            coerced30 = true;
+                                                                          } else {
+                                                                            validate10.errors = [{ instancePath: instancePath + "/routerOptions/useSemicolonDelimiter", schemaPath: "#/properties/routerOptions/properties/useSemicolonDelimiter/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                                            return false;
+                                                                          }
+                                                                        }
+                                                                        if (coerced30 !== void 0) {
+                                                                          data28 = coerced30;
+                                                                          if (data23 !== void 0) {
+                                                                            data23["useSemicolonDelimiter"] = coerced30;
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                      var valid7 = _errs80 === errors;
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            } else {
+                                                              validate10.errors = [{ instancePath: instancePath + "/routerOptions", schemaPath: "#/properties/routerOptions/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                              return false;
+                                                            }
+                                                          }
+                                                          var valid0 = _errs69 === errors;
+                                                        } else {
+                                                          var valid0 = true;
+                                                        }
+                                                        if (valid0) {
+                                                          if (data.constraints !== void 0) {
+                                                            let data29 = data.constraints;
+                                                            const _errs82 = errors;
+                                                            if (errors === _errs82) {
+                                                              if (data29 && typeof data29 == "object" && !Array.isArray(data29)) {
+                                                                for (const key2 in data29) {
+                                                                  let data30 = data29[key2];
+                                                                  const _errs85 = errors;
+                                                                  if (errors === _errs85) {
+                                                                    if (data30 && typeof data30 == "object" && !Array.isArray(data30)) {
+                                                                      let missing1;
+                                                                      if (data30.name === void 0 && (missing1 = "name") || data30.storage === void 0 && (missing1 = "storage") || data30.validate === void 0 && (missing1 = "validate") || data30.deriveConstraint === void 0 && (missing1 = "deriveConstraint")) {
+                                                                        validate10.errors = [{ instancePath: instancePath + "/constraints/" + key2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/constraints/additionalProperties/required", keyword: "required", params: { missingProperty: missing1 }, message: "must have required property '" + missing1 + "'" }];
+                                                                        return false;
+                                                                      } else {
+                                                                        if (data30.name !== void 0) {
+                                                                          let data31 = data30.name;
+                                                                          if (typeof data31 !== "string") {
+                                                                            let dataType31 = typeof data31;
+                                                                            let coerced31 = void 0;
+                                                                            if (!(coerced31 !== void 0)) {
+                                                                              if (dataType31 == "number" || dataType31 == "boolean") {
+                                                                                coerced31 = "" + data31;
+                                                                              } else if (data31 === null) {
+                                                                                coerced31 = "";
+                                                                              } else {
+                                                                                validate10.errors = [{ instancePath: instancePath + "/constraints/" + key2.replace(/~/g, "~0").replace(/\//g, "~1") + "/name", schemaPath: "#/properties/constraints/additionalProperties/properties/name/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                                                return false;
+                                                                              }
+                                                                            }
+                                                                            if (coerced31 !== void 0) {
+                                                                              data31 = coerced31;
+                                                                              if (data30 !== void 0) {
+                                                                                data30["name"] = coerced31;
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    } else {
+                                                                      validate10.errors = [{ instancePath: instancePath + "/constraints/" + key2.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/constraints/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                      return false;
+                                                                    }
+                                                                  }
+                                                                  var valid8 = _errs85 === errors;
+                                                                  if (!valid8) {
+                                                                    break;
+                                                                  }
+                                                                }
+                                                              } else {
+                                                                validate10.errors = [{ instancePath: instancePath + "/constraints", schemaPath: "#/properties/constraints/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                return false;
+                                                              }
+                                                            }
+                                                            var valid0 = _errs82 === errors;
+                                                          } else {
+                                                            var valid0 = true;
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } else {
+          validate10.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+          return false;
+        }
+      }
+      validate10.errors = vErrors;
+      return errors === 0;
+    }
+    module2.exports.defaultInitOptions = { "connectionTimeout": 0, "keepAliveTimeout": 72e3, "maxRequestsPerSocket": 0, "requestTimeout": 0, "handlerTimeout": 0, "bodyLimit": 1048576, "caseSensitive": true, "allowUnsafeRegex": false, "disableRequestLogging": false, "ignoreTrailingSlash": false, "ignoreDuplicateSlashes": false, "maxParamLength": 100, "onProtoPoisoning": "error", "onConstructorPoisoning": "error", "pluginTimeout": 1e4, "requestIdHeader": false, "requestIdLogLabel": "reqId", "http2SessionTimeout": 72e3, "exposeHeadRoutes": true, "useSemicolonDelimiter": false, "allowErrorHandlerOverride": true, "routerOptions": { "ignoreTrailingSlash": false, "ignoreDuplicateSlashes": false, "maxParamLength": 100, "allowUnsafeRegex": false, "useSemicolonDelimiter": false } };
+  }
+});
+
+// node_modules/.pnpm/rfdc@1.4.1/node_modules/rfdc/index.js
+var require_rfdc = __commonJS({
+  "node_modules/.pnpm/rfdc@1.4.1/node_modules/rfdc/index.js"(exports2, module2) {
+    "use strict";
+    module2.exports = rfdc;
+    function copyBuffer(cur) {
+      if (cur instanceof Buffer) {
+        return Buffer.from(cur);
+      }
+      return new cur.constructor(cur.buffer.slice(), cur.byteOffset, cur.length);
+    }
+    function rfdc(opts) {
+      opts = opts || {};
+      if (opts.circles) return rfdcCircles(opts);
+      const constructorHandlers = /* @__PURE__ */ new Map();
+      constructorHandlers.set(Date, (o) => new Date(o));
+      constructorHandlers.set(Map, (o, fn) => new Map(cloneArray(Array.from(o), fn)));
+      constructorHandlers.set(Set, (o, fn) => new Set(cloneArray(Array.from(o), fn)));
+      if (opts.constructorHandlers) {
+        for (const handler2 of opts.constructorHandlers) {
+          constructorHandlers.set(handler2[0], handler2[1]);
+        }
+      }
+      let handler = null;
+      return opts.proto ? cloneProto : clone;
+      function cloneArray(a, fn) {
+        const keys = Object.keys(a);
+        const a2 = new Array(keys.length);
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          const cur = a[k];
+          if (typeof cur !== "object" || cur === null) {
+            a2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            a2[k] = handler(cur, fn);
+          } else if (ArrayBuffer.isView(cur)) {
+            a2[k] = copyBuffer(cur);
+          } else {
+            a2[k] = fn(cur);
+          }
+        }
+        return a2;
+      }
+      function clone(o) {
+        if (typeof o !== "object" || o === null) return o;
+        if (Array.isArray(o)) return cloneArray(o, clone);
+        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
+          return handler(o, clone);
+        }
+        const o2 = {};
+        for (const k in o) {
+          if (Object.hasOwnProperty.call(o, k) === false) continue;
+          const cur = o[k];
+          if (typeof cur !== "object" || cur === null) {
+            o2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            o2[k] = handler(cur, clone);
+          } else if (ArrayBuffer.isView(cur)) {
+            o2[k] = copyBuffer(cur);
+          } else {
+            o2[k] = clone(cur);
+          }
+        }
+        return o2;
+      }
+      function cloneProto(o) {
+        if (typeof o !== "object" || o === null) return o;
+        if (Array.isArray(o)) return cloneArray(o, cloneProto);
+        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
+          return handler(o, cloneProto);
+        }
+        const o2 = {};
+        for (const k in o) {
+          const cur = o[k];
+          if (typeof cur !== "object" || cur === null) {
+            o2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            o2[k] = handler(cur, cloneProto);
+          } else if (ArrayBuffer.isView(cur)) {
+            o2[k] = copyBuffer(cur);
+          } else {
+            o2[k] = cloneProto(cur);
+          }
+        }
+        return o2;
+      }
+    }
+    function rfdcCircles(opts) {
+      const refs = [];
+      const refsNew = [];
+      const constructorHandlers = /* @__PURE__ */ new Map();
+      constructorHandlers.set(Date, (o) => new Date(o));
+      constructorHandlers.set(Map, (o, fn) => new Map(cloneArray(Array.from(o), fn)));
+      constructorHandlers.set(Set, (o, fn) => new Set(cloneArray(Array.from(o), fn)));
+      if (opts.constructorHandlers) {
+        for (const handler2 of opts.constructorHandlers) {
+          constructorHandlers.set(handler2[0], handler2[1]);
+        }
+      }
+      let handler = null;
+      return opts.proto ? cloneProto : clone;
+      function cloneArray(a, fn) {
+        const keys = Object.keys(a);
+        const a2 = new Array(keys.length);
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          const cur = a[k];
+          if (typeof cur !== "object" || cur === null) {
+            a2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            a2[k] = handler(cur, fn);
+          } else if (ArrayBuffer.isView(cur)) {
+            a2[k] = copyBuffer(cur);
+          } else {
+            const index = refs.indexOf(cur);
+            if (index !== -1) {
+              a2[k] = refsNew[index];
+            } else {
+              a2[k] = fn(cur);
+            }
+          }
+        }
+        return a2;
+      }
+      function clone(o) {
+        if (typeof o !== "object" || o === null) return o;
+        if (Array.isArray(o)) return cloneArray(o, clone);
+        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
+          return handler(o, clone);
+        }
+        const o2 = {};
+        refs.push(o);
+        refsNew.push(o2);
+        for (const k in o) {
+          if (Object.hasOwnProperty.call(o, k) === false) continue;
+          const cur = o[k];
+          if (typeof cur !== "object" || cur === null) {
+            o2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            o2[k] = handler(cur, clone);
+          } else if (ArrayBuffer.isView(cur)) {
+            o2[k] = copyBuffer(cur);
+          } else {
+            const i = refs.indexOf(cur);
+            if (i !== -1) {
+              o2[k] = refsNew[i];
+            } else {
+              o2[k] = clone(cur);
+            }
+          }
+        }
+        refs.pop();
+        refsNew.pop();
+        return o2;
+      }
+      function cloneProto(o) {
+        if (typeof o !== "object" || o === null) return o;
+        if (Array.isArray(o)) return cloneArray(o, cloneProto);
+        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
+          return handler(o, cloneProto);
+        }
+        const o2 = {};
+        refs.push(o);
+        refsNew.push(o2);
+        for (const k in o) {
+          const cur = o[k];
+          if (typeof cur !== "object" || cur === null) {
+            o2[k] = cur;
+          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
+            o2[k] = handler(cur, cloneProto);
+          } else if (ArrayBuffer.isView(cur)) {
+            o2[k] = copyBuffer(cur);
+          } else {
+            const i = refs.indexOf(cur);
+            if (i !== -1) {
+              o2[k] = refsNew[i];
+            } else {
+              o2[k] = cloneProto(cur);
+            }
+          }
+        }
+        refs.pop();
+        refsNew.pop();
+        return o2;
+      }
+    }
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/initial-config-validation.js
+var require_initial_config_validation = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/initial-config-validation.js"(exports2, module2) {
+    "use strict";
+    var validate = require_config_validator();
+    var deepClone = require_rfdc()({ circles: true, proto: false });
+    var { FST_ERR_INIT_OPTS_INVALID } = require_errors2();
+    function validateInitialConfig(options) {
+      const opts = deepClone(options);
+      if (!validate(opts)) {
+        const error = new FST_ERR_INIT_OPTS_INVALID(JSON.stringify(validate.errors.map((e) => e.message)));
+        error.errors = validate.errors;
+        throw error;
+      }
+      return deepFreezeObject(opts);
+    }
+    function deepFreezeObject(object) {
+      const properties = Object.getOwnPropertyNames(object);
+      for (const name of properties) {
+        const value = object[name];
+        if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+          continue;
+        }
+        object[name] = value && typeof value === "object" ? deepFreezeObject(value) : value;
+      }
+      return Object.freeze(object);
+    }
+    module2.exports = validateInitialConfig;
+    module2.exports.defaultInitOptions = validate.defaultInitOptions;
+    module2.exports.utils = { deepFreezeObject };
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/log-controller.js
+var require_log_controller = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/log-controller.js"(exports2, module2) {
+    "use strict";
+    var { defaultInitOptions } = require_initial_config_validation();
+    var LogController = class {
+      /**
+       * @param {object} [options]
+       * @param {boolean | ((req: object) => boolean)} [options.disableRequestLogging=false]
+       *   When `true` (or a function returning `true`), per-request log lines
+       *   (incoming, completed, errors) are suppressed.
+       * @param {string} [options.requestIdLogLabel='reqId']
+       *   The label used for the request identifier when logging the request.
+       */
+      constructor(options) {
+        const opts = options || {};
+        this.disableRequestLogging = opts.disableRequestLogging || defaultInitOptions.disableRequestLogging;
+        this.isDisableRequestLoggingFunction = typeof this.disableRequestLogging === "function";
+        this.requestIdLogLabel = opts.requestIdLogLabel || defaultInitOptions.requestIdLogLabel;
+      }
+      /**
+       * Checks whether request logging is disabled for the given request.
+       *
+       * @param {object} req  Raw or Fastify request object.
+       * @returns {boolean}   `true` when logging should be skipped.
+       */
+      isLogDisabled(req) {
+        return this.isDisableRequestLoggingFunction ? this.disableRequestLogging(req) : this.disableRequestLogging;
+      }
+      /**
+       * Logs an incoming request at `info` level.
+       *
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      incomingRequest(request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        request.log.info({ req: request }, "incoming request");
+      }
+      /**
+       * Logs the outcome of a completed request.
+       * Uses `error` level when an error is present, `info` otherwise.
+       *
+       * @param {Error | null | undefined} error  Error that occurred during the response, if any.
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      requestCompleted(error, request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        if (error) {
+          reply.log.error({ res: reply, err: error, responseTime: reply.elapsedTime }, "request errored");
+        } else {
+          reply.log.info({ res: reply, responseTime: reply.elapsedTime }, "request completed");
+        }
+      }
+      /**
+       * Logs an error handled by the default error handler.
+       * Uses `error` for 5xx status codes, `info` for 4xx.
+       *
+       * @param {Error} error         The error being handled.
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object (must have `statusCode`).
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      defaultErrorLog(error, request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        if (reply.statusCode >= 500) {
+          reply.log.error({ req: request, res: reply, err: error }, error?.message);
+        } else {
+          reply.log.info({ res: reply, err: error }, error?.message);
+        }
+      }
+      /**
+       * Logs stream-level errors that occur after headers have been sent.
+       * Premature closes are logged at `info`; other errors at `warn`.
+       *
+       * @param {Error} error         The stream error.
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      streamError(error, request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        if (error.code === "ERR_STREAM_PREMATURE_CLOSE") {
+          reply.log.info({ res: reply }, "stream closed prematurely");
+        } else {
+          reply.log.warn({ err: error }, "response terminated with an error with headers already sent");
+        }
+      }
+      /**
+       * Logs a "route not found" message at `info` level.
+       * Used by the default 404 handler.
+       *
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      routeNotFound(request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        const { url, method } = request.raw;
+        request.log.info(`Route ${method}:${url} not found`);
+      }
+      /**
+       * Logs a warning when writeHead fails during error handling.
+       *
+       * @param {Error} error         The error thrown by writeHead.
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} [metadata]   Extra contextual data (unused).
+       */
+      writeHeadError(error, request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        reply.log.warn(
+          { req: request, res: reply, err: error },
+          error?.message
+        );
+      }
+      /**
+       * Logs an error when the serializer for a given status code fails.
+       *
+       * @param {Error} error         The serialization error.
+       * @param {object} request      Fastify request object.
+       * @param {object} reply        Fastify reply object.
+       * @param {object} metadata     Extra contextual data.
+       * @param {number} metadata.statusCode The status code that triggered the serializer.
+       */
+      serializerError(error, request, reply, metadata) {
+        if (this.isLogDisabled(request)) {
+          return;
+        }
+        reply.log.error({ err: error, statusCode: metadata.statusCode }, "The serializer for the given status code failed");
+      }
+      /**
+       * Logs a 503 Service Unavailable when the server is closing.
+       * Always emitted (not gated by `disableRequestLogging`).
+       *
+       * @param {import('../fastify').FastifyBaseLogger} logger
+       * @param {import('../fastify').FastifyInstance} server
+       */
+      serviceUnavailable(logger, server) {
+        logger.info({ res: { statusCode: 503 } }, "request aborted - refusing to accept new requests as server is closing");
+      }
+    };
+    module2.exports = { LogController };
   }
 });
 
@@ -3677,9 +6372,9 @@ var require_pino_std_serializers = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/caller.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/caller.js
 var require_caller = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/caller.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/caller.js"(exports2, module2) {
     "use strict";
     function noOpPrepareStackTrace(_, stack) {
       return stack;
@@ -4138,9 +6833,9 @@ var require_redact = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/symbols.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/symbols.js
 var require_symbols3 = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/symbols.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/symbols.js"(exports2, module2) {
     "use strict";
     var setLevelSym = Symbol("pino.setLevel");
     var getLevelSym = Symbol("pino.getLevel");
@@ -4209,9 +6904,9 @@ var require_symbols3 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/redaction.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/redaction.js
 var require_redaction = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/redaction.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/redaction.js"(exports2, module2) {
     "use strict";
     var Redact = require_redact();
     var { redactFmtSym, wildcardFirstSym } = require_symbols3();
@@ -4291,9 +6986,9 @@ var require_redaction = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/time.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/time.js
 var require_time = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/time.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/time.js"(exports2, module2) {
     "use strict";
     var nullTime = () => "";
     var epochTime = () => `,"time":${Date.now()}`;
@@ -5157,48 +7852,41 @@ var require_on_exit_leak_free = __commonJS({
   }
 });
 
-// node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/package.json
+// node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/package.json
 var require_package = __commonJS({
-  "node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/package.json"(exports2, module2) {
+  "node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/package.json"(exports2, module2) {
     module2.exports = {
       name: "thread-stream",
-      version: "3.2.0",
+      version: "4.2.0",
       description: "A streaming way to send data to a Node.js Worker Thread",
       main: "index.js",
       types: "index.d.ts",
+      engines: {
+        node: ">=20"
+      },
       dependencies: {
-        "real-require": "^0.2.0"
+        "real-require": "^1.0.0"
       },
       devDependencies: {
-        "@types/node": "^20.1.0",
-        "@types/tap": "^15.0.0",
-        "@yao-pkg/pkg": "^5.11.5",
+        "@types/node": "^25.0.2",
+        "@yao-pkg/pkg": "^6.0.0",
+        borp: "^1.0.0",
         desm: "^1.3.0",
+        eslint: "^9.39.1",
         fastbench: "^1.0.1",
-        husky: "^9.0.6",
-        "pino-elasticsearch": "^8.0.0",
-        "sonic-boom": "^4.0.1",
-        standard: "^17.0.0",
-        tap: "^16.2.0",
+        neostandard: "^0.13.0",
+        "pino-elasticsearch": "^9.0.0",
+        "sonic-boom": "^5.0.0",
         "ts-node": "^10.8.0",
-        typescript: "^5.3.2",
-        "why-is-node-running": "^2.2.2"
+        typescript: "~5.7.3"
       },
       scripts: {
         build: "tsc --noEmit",
-        test: 'standard && npm run build && npm run transpile && tap "test/**/*.test.*js" && tap --ts test/*.test.*ts',
-        "test:ci": "standard && npm run transpile && npm run test:ci:js && npm run test:ci:ts",
-        "test:ci:js": 'tap --no-check-coverage --timeout=120 --coverage-report=lcovonly "test/**/*.test.*js"',
-        "test:ci:ts": 'tap --ts --no-check-coverage --coverage-report=lcovonly "test/**/*.test.*ts"',
-        "test:yarn": 'npm run transpile && tap "test/**/*.test.js" --no-check-coverage',
-        transpile: "sh ./test/ts/transpile.sh",
-        prepare: "husky install"
-      },
-      standard: {
-        ignore: [
-          "test/ts/**/*",
-          "test/syntax-error.mjs"
-        ]
+        lint: "eslint",
+        test: 'npm run lint && npm run build && npm run transpile && borp --pattern "test/*.test.{js,mjs}"',
+        "test:ci": 'npm run lint && npm run transpile && borp --pattern "test/*.test.{js,mjs}"',
+        "test:yarn": 'npm run transpile && borp --pattern "test/*.test.js"',
+        transpile: "sh ./test/ts/transpile.sh"
       },
       repository: {
         type: "git",
@@ -5220,67 +7908,68 @@ var require_package = __commonJS({
   }
 });
 
-// node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/lib/wait.js
+// node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/wait.js
 var require_wait = __commonJS({
-  "node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/lib/wait.js"(exports2, module2) {
+  "node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/wait.js"(exports2, module2) {
     "use strict";
-    var MAX_TIMEOUT = 1e3;
+    var WAIT_MS = 1e4;
     function wait(state, index, expected, timeout, done) {
-      const max = Date.now() + timeout;
-      let current = Atomics.load(state, index);
-      if (current === expected) {
-        done(null, "ok");
-        return;
-      }
-      let prior = current;
-      const check = (backoff) => {
-        if (Date.now() > max) {
+      const max = timeout === Infinity ? Infinity : Date.now() + timeout;
+      const check = () => {
+        const current = Atomics.load(state, index);
+        if (current === expected) {
+          done(null, "ok");
+          return;
+        }
+        if (max !== Infinity && Date.now() > max) {
           done(null, "timed-out");
+          return;
+        }
+        const remaining = max === Infinity ? WAIT_MS : Math.min(WAIT_MS, Math.max(1, max - Date.now()));
+        const result = Atomics.waitAsync(state, index, current, remaining);
+        if (result.async) {
+          result.value.then(check);
         } else {
-          setTimeout(() => {
-            prior = current;
-            current = Atomics.load(state, index);
-            if (current === prior) {
-              check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2);
-            } else {
-              if (current === expected) done(null, "ok");
-              else done(null, "not-equal");
-            }
-          }, backoff);
+          setImmediate(check);
         }
       };
-      check(1);
+      check();
     }
     function waitDiff(state, index, expected, timeout, done) {
-      const max = Date.now() + timeout;
-      let current = Atomics.load(state, index);
-      if (current !== expected) {
-        done(null, "ok");
-        return;
-      }
-      const check = (backoff) => {
-        if (Date.now() > max) {
+      const max = timeout === Infinity ? Infinity : Date.now() + timeout;
+      const check = () => {
+        const current = Atomics.load(state, index);
+        if (current !== expected) {
+          done(null, "ok");
+          return;
+        }
+        if (max !== Infinity && Date.now() > max) {
           done(null, "timed-out");
-        } else {
-          setTimeout(() => {
-            current = Atomics.load(state, index);
-            if (current !== expected) {
+          return;
+        }
+        const remaining = max === Infinity ? WAIT_MS : Math.min(WAIT_MS, Math.max(1, max - Date.now()));
+        const result = Atomics.waitAsync(state, index, expected, remaining);
+        if (result.async) {
+          result.value.then((res) => {
+            if (res === "ok") {
               done(null, "ok");
-            } else {
-              check(backoff >= MAX_TIMEOUT ? MAX_TIMEOUT : backoff * 2);
+              return;
             }
-          }, backoff);
+            check();
+          });
+        } else {
+          setImmediate(check);
         }
       };
-      check(1);
+      check();
     }
     module2.exports = { wait, waitDiff };
   }
 });
 
-// node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/lib/indexes.js
+// node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/indexes.js
 var require_indexes = __commonJS({
-  "node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/lib/indexes.js"(exports2, module2) {
+  "node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/lib/indexes.js"(exports2, module2) {
     "use strict";
     var SEQ_INDEX = 2;
     var WRITE_INDEX = 4;
@@ -5293,9 +7982,9 @@ var require_indexes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/index.js
+// node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/index.js
 var require_thread_stream = __commonJS({
-  "node_modules/.pnpm/thread-stream@3.2.0/node_modules/thread-stream/index.js"(exports2, module2) {
+  "node_modules/.pnpm/thread-stream@4.2.0/node_modules/thread-stream/index.js"(exports2, module2) {
     "use strict";
     var { version } = require_package();
     var { EventEmitter } = require("events");
@@ -5312,11 +8001,19 @@ var require_thread_stream = __commonJS({
     var assert = require("assert");
     var kImpl = Symbol("kImpl");
     var MAX_STRING = buffer.constants.MAX_STRING_LENGTH;
+    function noop() {
+    }
     function updateState(stream, fn) {
       Atomics.add(stream[kImpl].state, SEQ_INDEX, 1);
       fn();
       Atomics.add(stream[kImpl].state, SEQ_INDEX, 1);
       Atomics.notify(stream[kImpl].state, SEQ_INDEX);
+    }
+    function resetIndexes(stream) {
+      updateState(stream, () => {
+        Atomics.store(stream[kImpl].state, READ_INDEX, 0);
+        Atomics.store(stream[kImpl].state, WRITE_INDEX, 0);
+      });
     }
     var FakeWeakRef = class {
       constructor(value) {
@@ -5346,6 +8043,7 @@ var require_thread_stream = __commonJS({
       const toExecute = bundlerOverrides["thread-stream-worker"] || join2(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
+        name: opts.workerOpts?.name || "thread-stream",
         trackUnmanagedFds: false,
         workerData: {
           filename: filename.indexOf("file://") === 0 ? filename : pathToFileURL(filename).href,
@@ -5373,56 +8071,37 @@ var require_thread_stream = __commonJS({
       }
     }
     function nextFlush(stream) {
-      const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX);
-      let leftover = stream[kImpl].data.length - writeIndex;
-      if (leftover > 0) {
-        if (stream[kImpl].buf.length === 0) {
-          stream[kImpl].flushing = false;
-          if (stream[kImpl].ending) {
-            end(stream);
-          } else if (stream[kImpl].needDrain) {
-            process.nextTick(drain, stream);
+      while (true) {
+        const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX);
+        const leftover = stream[kImpl].data.length - writeIndex;
+        if (leftover > 0) {
+          if (stream[kImpl].bufLen === 0) {
+            stream[kImpl].flushing = false;
+            if (stream[kImpl].ending) {
+              end(stream);
+            } else if (stream[kImpl].needDrain) {
+              process.nextTick(drain, stream);
+            }
+            return;
           }
-          return;
+          write(stream, leftover, noop);
+          continue;
         }
-        let toWrite = stream[kImpl].buf.slice(0, leftover);
-        let toWriteBytes = Buffer.byteLength(toWrite);
-        if (toWriteBytes <= leftover) {
-          stream[kImpl].buf = stream[kImpl].buf.slice(leftover);
-          write(stream, toWrite, nextFlush.bind(null, stream));
-        } else {
-          stream.flush(() => {
+        if (leftover === 0) {
+          if (writeIndex === 0 && stream[kImpl].bufLen === 0) {
+            return;
+          }
+          waitForRead(stream, () => {
             if (stream.destroyed) {
               return;
             }
-            updateState(stream, () => {
-              Atomics.store(stream[kImpl].state, READ_INDEX, 0);
-              Atomics.store(stream[kImpl].state, WRITE_INDEX, 0);
-            });
-            Atomics.notify(stream[kImpl].state, READ_INDEX);
-            while (toWriteBytes > stream[kImpl].data.length) {
-              leftover = leftover / 2;
-              toWrite = stream[kImpl].buf.slice(0, leftover);
-              toWriteBytes = Buffer.byteLength(toWrite);
-            }
-            stream[kImpl].buf = stream[kImpl].buf.slice(leftover);
-            write(stream, toWrite, nextFlush.bind(null, stream));
+            resetIndexes(stream);
+            nextFlush(stream);
           });
-        }
-      } else if (leftover === 0) {
-        if (writeIndex === 0 && stream[kImpl].buf.length === 0) {
           return;
         }
-        stream.flush(() => {
-          updateState(stream, () => {
-            Atomics.store(stream[kImpl].state, READ_INDEX, 0);
-            Atomics.store(stream[kImpl].state, WRITE_INDEX, 0);
-          });
-          Atomics.notify(stream[kImpl].state, READ_INDEX);
-          nextFlush(stream);
-        });
-      } else {
         destroy(stream, new Error("overwritten"));
+        return;
       }
     }
     function onWorkerMessage(msg) {
@@ -5438,7 +8117,7 @@ var require_thread_stream = __commonJS({
       switch (msg.code) {
         case "READY":
           this.stream = new WeakRef2(stream);
-          stream.flush(() => {
+          waitForRead(stream, () => {
             stream[kImpl].ready = true;
             stream.emit("ready");
           });
@@ -5453,6 +8132,18 @@ var require_thread_stream = __commonJS({
             stream.emit(msg.name, msg.args);
           }
           break;
+        case "FLUSHED": {
+          if (msg.context !== "thread-stream") {
+            destroy(stream, new Error("this should not happen: " + msg.code));
+            break;
+          }
+          const cb = stream[kImpl].flushCallbacks.get(msg.id);
+          if (cb) {
+            stream[kImpl].flushCallbacks.delete(msg.id);
+            process.nextTick(cb);
+          }
+          break;
+        }
         case "WARNING":
           process.emitWarning(msg.err);
           break;
@@ -5491,13 +8182,18 @@ var require_thread_stream = __commonJS({
         this[kImpl].finished = false;
         this[kImpl].errored = null;
         this[kImpl].closed = false;
-        this[kImpl].buf = "";
+        this[kImpl].buf = [];
+        this[kImpl].bufHead = 0;
+        this[kImpl].bufLen = 0;
+        this[kImpl].flushCallbacks = /* @__PURE__ */ new Map();
+        this[kImpl].nextFlushId = 0;
         this.worker = createWorker(this, opts);
         this.on("message", (message, transferList) => {
           this.worker.postMessage(message, transferList);
         });
       }
       write(data) {
+        const dataBuf = Buffer.isBuffer(data) ? data : Buffer.from(data);
         if (this[kImpl].destroyed) {
           error(this, new Error("the worker has exited"));
           return false;
@@ -5506,7 +8202,7 @@ var require_thread_stream = __commonJS({
           error(this, new Error("the worker is ending"));
           return false;
         }
-        if (this[kImpl].flushing && this[kImpl].buf.length + data.length >= MAX_STRING) {
+        if (this[kImpl].flushing && this[kImpl].bufLen + dataBuf.length >= MAX_STRING) {
           try {
             writeSync(this);
             this[kImpl].flushing = true;
@@ -5515,7 +8211,8 @@ var require_thread_stream = __commonJS({
             return false;
           }
         }
-        this[kImpl].buf += data;
+        this[kImpl].buf.push(dataBuf);
+        this[kImpl].bufLen += dataBuf.length;
         if (this[kImpl].sync) {
           try {
             writeSync(this);
@@ -5529,7 +8226,7 @@ var require_thread_stream = __commonJS({
           this[kImpl].flushing = true;
           setImmediate(nextFlush, this);
         }
-        this[kImpl].needDrain = this[kImpl].data.length - this[kImpl].buf.length - Atomics.load(this[kImpl].state, WRITE_INDEX) <= 0;
+        this[kImpl].needDrain = this[kImpl].data.length - this[kImpl].bufLen - Atomics.load(this[kImpl].state, WRITE_INDEX) <= 0;
         return !this[kImpl].needDrain;
       }
       end() {
@@ -5540,24 +8237,13 @@ var require_thread_stream = __commonJS({
         end(this);
       }
       flush(cb) {
-        if (this[kImpl].destroyed) {
-          if (typeof cb === "function") {
-            process.nextTick(cb, new Error("the worker has exited"));
-          }
-          return;
-        }
-        const writeIndex = Atomics.load(this[kImpl].state, WRITE_INDEX);
-        wait(this[kImpl].state, READ_INDEX, writeIndex, Infinity, (err, res) => {
+        cb = typeof cb === "function" ? cb : noop;
+        flushBuffer(this, (err) => {
           if (err) {
-            destroy(this, err);
             process.nextTick(cb, err);
             return;
           }
-          if (res === "not-equal") {
-            this.flush(cb);
-            return;
-          }
-          process.nextTick(cb);
+          requestWorkerFlush(this, cb);
         });
       }
       flushSync() {
@@ -5601,6 +8287,79 @@ var require_thread_stream = __commonJS({
         return this[kImpl].errored;
       }
     };
+    function flushBuffer(stream, cb) {
+      if (stream[kImpl].destroyed) {
+        process.nextTick(cb, new Error("the worker has exited"));
+        return;
+      }
+      if (!stream[kImpl].sync && (stream[kImpl].flushing || stream[kImpl].bufLen > 0)) {
+        setImmediate(flushBuffer, stream, cb);
+        return;
+      }
+      waitForRead(stream, cb);
+    }
+    function waitForRead(stream, cb) {
+      const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX);
+      wait(stream[kImpl].state, READ_INDEX, writeIndex, Infinity, (err, res) => {
+        if (err) {
+          destroy(stream, err);
+          cb(err);
+          return;
+        }
+        if (res !== "ok") {
+          waitForRead(stream, cb);
+          return;
+        }
+        cb();
+      });
+    }
+    function requestWorkerFlush(stream, cb) {
+      if (stream[kImpl].destroyed) {
+        process.nextTick(cb, new Error("the worker has exited"));
+        return;
+      }
+      if (!stream[kImpl].ready) {
+        const onReady = () => {
+          cleanup();
+          requestWorkerFlush(stream, cb);
+        };
+        const onClose = () => {
+          cleanup();
+          process.nextTick(cb, new Error("the worker has exited"));
+        };
+        const cleanup = () => {
+          stream.off("ready", onReady);
+          stream.off("close", onClose);
+        };
+        stream.once("ready", onReady);
+        stream.once("close", onClose);
+        return;
+      }
+      const id = ++stream[kImpl].nextFlushId;
+      stream[kImpl].flushCallbacks.set(id, cb);
+      try {
+        stream.worker.postMessage({
+          code: "FLUSH",
+          context: "thread-stream",
+          id
+        });
+      } catch (err) {
+        stream[kImpl].flushCallbacks.delete(id);
+        destroy(stream, err);
+        process.nextTick(cb, err);
+      }
+    }
+    function failPendingFlushCallbacks(stream, err) {
+      const callbacks = stream[kImpl].flushCallbacks;
+      if (callbacks.size === 0) {
+        return;
+      }
+      const flushErr = err || new Error("the worker has exited");
+      for (const cb of callbacks.values()) {
+        process.nextTick(cb, flushErr);
+      }
+      callbacks.clear();
+    }
     function error(stream, err) {
       setImmediate(() => {
         stream.emit("error", err);
@@ -5611,6 +8370,7 @@ var require_thread_stream = __commonJS({
         return;
       }
       stream[kImpl].destroyed = true;
+      failPendingFlushCallbacks(stream, err);
       if (err) {
         stream[kImpl].errored = err;
         error(stream, err);
@@ -5628,12 +8388,36 @@ var require_thread_stream = __commonJS({
         });
       }
     }
-    function write(stream, data, cb) {
+    function write(stream, maxBytes, cb) {
       const current = Atomics.load(stream[kImpl].state, WRITE_INDEX);
-      const length = Buffer.byteLength(data);
-      stream[kImpl].data.write(data, current);
+      let offset = current;
+      let remaining = maxBytes;
+      while (remaining > 0 && stream[kImpl].bufLen !== 0) {
+        const head = stream[kImpl].bufHead;
+        const buf = stream[kImpl].buf[head];
+        if (buf.length <= remaining) {
+          buf.copy(stream[kImpl].data, offset);
+          offset += buf.length;
+          remaining -= buf.length;
+          stream[kImpl].bufLen -= buf.length;
+          stream[kImpl].bufHead = head + 1;
+          if (stream[kImpl].bufHead === stream[kImpl].buf.length) {
+            stream[kImpl].buf.length = 0;
+            stream[kImpl].bufHead = 0;
+          } else if (stream[kImpl].bufHead >= 1024 && stream[kImpl].bufHead * 2 >= stream[kImpl].buf.length) {
+            stream[kImpl].buf.splice(0, stream[kImpl].bufHead);
+            stream[kImpl].bufHead = 0;
+          }
+          continue;
+        }
+        buf.copy(stream[kImpl].data, offset, 0, remaining);
+        stream[kImpl].buf[head] = buf.subarray(remaining);
+        stream[kImpl].bufLen -= remaining;
+        offset += remaining;
+        remaining = 0;
+      }
       updateState(stream, () => {
-        Atomics.store(stream[kImpl].state, WRITE_INDEX, current + length);
+        Atomics.store(stream[kImpl].state, WRITE_INDEX, offset);
       });
       cb();
       return true;
@@ -5679,40 +8463,17 @@ var require_thread_stream = __commonJS({
         }
       };
       stream[kImpl].flushing = false;
-      while (stream[kImpl].buf.length !== 0) {
+      while (stream[kImpl].bufLen !== 0) {
         const writeIndex = Atomics.load(stream[kImpl].state, WRITE_INDEX);
-        let leftover = stream[kImpl].data.length - writeIndex;
+        const leftover = stream[kImpl].data.length - writeIndex;
         if (leftover === 0) {
           flushSync(stream);
-          updateState(stream, () => {
-            Atomics.store(stream[kImpl].state, READ_INDEX, 0);
-            Atomics.store(stream[kImpl].state, WRITE_INDEX, 0);
-          });
-          Atomics.notify(stream[kImpl].state, READ_INDEX);
+          resetIndexes(stream);
           continue;
         } else if (leftover < 0) {
           throw new Error("overwritten");
         }
-        let toWrite = stream[kImpl].buf.slice(0, leftover);
-        let toWriteBytes = Buffer.byteLength(toWrite);
-        if (toWriteBytes <= leftover) {
-          stream[kImpl].buf = stream[kImpl].buf.slice(leftover);
-          write(stream, toWrite, cb);
-        } else {
-          flushSync(stream);
-          updateState(stream, () => {
-            Atomics.store(stream[kImpl].state, READ_INDEX, 0);
-            Atomics.store(stream[kImpl].state, WRITE_INDEX, 0);
-          });
-          Atomics.notify(stream[kImpl].state, READ_INDEX);
-          while (toWriteBytes > stream[kImpl].buf.length) {
-            leftover = leftover / 2;
-            toWrite = stream[kImpl].buf.slice(0, leftover);
-            toWriteBytes = Buffer.byteLength(toWrite);
-          }
-          stream[kImpl].buf = stream[kImpl].buf.slice(leftover);
-          write(stream, toWrite, cb);
-        }
+        write(stream, leftover, cb);
       }
     }
     function flushSync(stream) {
@@ -5740,13 +8501,15 @@ var require_thread_stream = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/transport.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/transport.js
 var require_transport = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/transport.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/transport.js"(exports2, module2) {
     "use strict";
     var { createRequire } = require("module");
+    var { existsSync: existsSync2 } = require("node:fs");
     var getCallers = require_caller();
     var { join: join2, isAbsolute, sep } = require("node:path");
+    var { fileURLToPath } = require("node:url");
     var sleep = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
     var ThreadStream = require_thread_stream();
@@ -5757,7 +8520,96 @@ var require_transport = __commonJS({
         onExit.unregister(stream);
       });
     }
-    function buildStream(filename, workerData, workerOpts, sync) {
+    function hasPreloadFlags() {
+      const execArgv = process.execArgv;
+      for (let i = 0; i < execArgv.length; i++) {
+        const arg = execArgv[i];
+        if (arg === "--import" || arg === "--require" || arg === "-r") {
+          return true;
+        }
+        if (arg.startsWith("--import=") || arg.startsWith("--require=") || arg.startsWith("-r=")) {
+          return true;
+        }
+      }
+      return false;
+    }
+    function sanitizeNodeOptions(nodeOptions) {
+      const tokens = nodeOptions.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g);
+      if (!tokens) {
+        return nodeOptions;
+      }
+      const sanitized = [];
+      let changed = false;
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        if (token === "--require" || token === "-r" || token === "--import") {
+          const next = tokens[i + 1];
+          if (next && shouldDropPreload(next)) {
+            changed = true;
+            i++;
+            continue;
+          }
+          sanitized.push(token);
+          if (next) {
+            sanitized.push(next);
+            i++;
+          }
+          continue;
+        }
+        if (token.startsWith("--require=") || token.startsWith("-r=") || token.startsWith("--import=")) {
+          const value = token.slice(token.indexOf("=") + 1);
+          if (shouldDropPreload(value)) {
+            changed = true;
+            continue;
+          }
+        }
+        sanitized.push(token);
+      }
+      return changed ? sanitized.join(" ") : nodeOptions;
+    }
+    function shouldDropPreload(value) {
+      const unquoted = stripQuotes(value);
+      if (!unquoted) {
+        return false;
+      }
+      let path = unquoted;
+      if (path.startsWith("file://")) {
+        try {
+          path = fileURLToPath(path);
+        } catch {
+          return false;
+        }
+      }
+      return isAbsolute(path) && !existsSync2(path);
+    }
+    function stripQuotes(value) {
+      const first = value[0];
+      const last = value[value.length - 1];
+      if (first === '"' && last === '"' || first === "'" && last === "'") {
+        return value.slice(1, -1);
+      }
+      return value;
+    }
+    function buildStream(filename, workerData, workerOpts, sync, name) {
+      if (!workerOpts.execArgv && hasPreloadFlags() && require.main === void 0) {
+        workerOpts = {
+          ...workerOpts,
+          execArgv: []
+        };
+      }
+      if (!workerOpts.env && process.env.NODE_OPTIONS) {
+        const nodeOptions = sanitizeNodeOptions(process.env.NODE_OPTIONS);
+        if (nodeOptions !== process.env.NODE_OPTIONS) {
+          workerOpts = {
+            ...workerOpts,
+            env: {
+              ...process.env,
+              NODE_OPTIONS: nodeOptions
+            }
+          };
+        }
+      }
+      workerOpts = { ...workerOpts, name };
       const stream = new ThreadStream({
         filename,
         workerData,
@@ -5803,7 +8655,7 @@ var require_transport = __commonJS({
         ...fullOptions.options
       };
       const callers = typeof caller === "string" ? [caller] : caller;
-      const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
+      const bundlerOverrides = typeof globalThis === "object" && Object.prototype.hasOwnProperty.call(globalThis, "__bundlerPathsOverrides") && globalThis.__bundlerPathsOverrides && typeof globalThis.__bundlerPathsOverrides === "object" ? globalThis.__bundlerPathsOverrides : /* @__PURE__ */ Object.create(null);
       let target = fullOptions.target;
       if (target && targets) {
         throw new Error("only one of target or targets can be specified");
@@ -5842,7 +8694,8 @@ var require_transport = __commonJS({
         options.dedupe = dedupe;
       }
       options.pinoWillSendConfig = true;
-      return buildStream(fixTarget(target), options, worker, sync);
+      const name = targets || pipeline ? "pino.transport" : target;
+      return buildStream(fixTarget(target), options, worker, sync, name);
       function fixTarget(origin) {
         origin = bundlerOverrides[origin] || origin;
         if (isAbsolute(origin) || origin.indexOf("file://") === 0) {
@@ -5871,9 +8724,9 @@ var require_transport = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/tools.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/tools.js
 var require_tools = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/tools.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/tools.js"(exports2, module2) {
     "use strict";
     var diagChan = require("node:diagnostics_channel");
     var format = require_quick_format_unescaped();
@@ -5900,17 +8753,9 @@ var require_tools = __commonJS({
     } = require_symbols3();
     var { isMainThread } = require("worker_threads");
     var transport = require_transport();
-    var asJsonChan;
-    if (typeof diagChan.tracingChannel === "function") {
-      asJsonChan = diagChan.tracingChannel("pino_asJson");
-    } else {
-      asJsonChan = {
-        hasSubscribers: false,
-        traceSync(fn, store, thisArg, ...args) {
-          return fn.call(thisArg, ...args);
-        }
-      };
-    }
+    var [nodeMajor] = process.versions.node.split(".").map((v) => Number(v));
+    var asJsonChan = diagChan.tracingChannel("pino_asJson");
+    var asString = nodeMajor >= 25 ? (str) => JSON.stringify(str) : _asString;
     function noop() {
     }
     function genLog(level, hook) {
@@ -5948,7 +8793,7 @@ var require_tools = __commonJS({
         }
       }
     }
-    function asString(str) {
+    function _asString(str) {
       let result = "";
       let last = 0;
       let found = false;
@@ -6208,9 +9053,9 @@ var require_tools = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/constants.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/constants.js
 var require_constants = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/constants.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/constants.js"(exports2, module2) {
     var DEFAULT_LEVELS = {
       trace: 10,
       debug: 20,
@@ -6230,9 +9075,9 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/levels.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/levels.js
 var require_levels = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/levels.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/levels.js"(exports2, module2) {
     "use strict";
     var {
       lsCacheSym,
@@ -6423,17 +9268,17 @@ var require_levels = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/meta.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/meta.js
 var require_meta = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/meta.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/meta.js"(exports2, module2) {
     "use strict";
-    module2.exports = { version: "9.14.0" };
+    module2.exports = { version: "10.3.1" };
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/proto.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/proto.js
 var require_proto = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/proto.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/proto.js"(exports2, module2) {
     "use strict";
     var { EventEmitter } = require("node:events");
     var {
@@ -6442,7 +9287,6 @@ var require_proto = __commonJS({
       setLevelSym,
       getLevelSym,
       chindingsSym,
-      parsedChindingsSym,
       mixinSym,
       asJsonSym,
       writeSym,
@@ -6538,7 +9382,6 @@ var require_proto = __commonJS({
           );
         }
         instance[chindingsSym] = asChindings(instance, bindings2);
-        instance[setLevelSym](this.level);
         if (this.onChild !== noop) {
           this.onChild(instance);
         }
@@ -6594,8 +9437,10 @@ var require_proto = __commonJS({
         instance[msgPrefixSym] = (this[msgPrefixSym] || "") + options.msgPrefix;
       }
       instance[chindingsSym] = asChindings(instance, bindings2);
-      const childLevel = options.level || this.level;
-      instance[setLevelSym](childLevel);
+      if (options.level !== void 0 && options.level !== this.level || options.hasOwnProperty("customLevels")) {
+        const childLevel = options.level || this.level;
+        instance[setLevelSym](childLevel);
+      }
       this.onChild(instance);
       return instance;
     }
@@ -6610,7 +9455,6 @@ var require_proto = __commonJS({
     function setBindings(newBindings) {
       const chindings = asChindings(this, newBindings);
       this[chindingsSym] = chindings;
-      delete this[parsedChindingsSym];
     }
     function defaultMixinMergeStrategy(mergeObject, mixinObject) {
       return Object.assign(mixinObject, mergeObject);
@@ -7258,9 +10102,9 @@ ${originalIndentation}`;
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/multistream.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/multistream.js
 var require_multistream = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/lib/multistream.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/lib/multistream.js"(exports2, module2) {
     "use strict";
     var metadata = Symbol.for("pino.metadata");
     var { DEFAULT_LEVELS } = require_constants();
@@ -7426,9 +10270,9 @@ var require_multistream = __commonJS({
   }
 });
 
-// node_modules/.pnpm/pino@9.14.0/node_modules/pino/pino.js
+// node_modules/.pnpm/pino@10.3.1/node_modules/pino/pino.js
 var require_pino = __commonJS({
-  "node_modules/.pnpm/pino@9.14.0/node_modules/pino/pino.js"(exports2, module2) {
+  "node_modules/.pnpm/pino@10.3.1/node_modules/pino/pino.js"(exports2, module2) {
     "use strict";
     var os = require("node:os");
     var stdSerializers = require_pino_std_serializers();
@@ -7636,9 +10480,9 @@ var require_pino = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/logger-pino.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/logger-pino.js
 var require_logger_pino = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/logger-pino.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/logger-pino.js"(exports2, module2) {
     "use strict";
     var pino = require_pino();
     var { serializersSym } = pino.symbols;
@@ -7694,19 +10538,25 @@ var require_logger_pino = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/logger-factory.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/logger-factory.js
 var require_logger_factory = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/logger-factory.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/logger-factory.js"(exports2, module2) {
     "use strict";
+    var { performance } = require("node:perf_hooks");
     var {
       FST_ERR_LOG_LOGGER_AND_LOGGER_INSTANCE_PROVIDED,
       FST_ERR_LOG_INVALID_LOGGER_CONFIG,
       FST_ERR_LOG_INVALID_LOGGER_INSTANCE,
-      FST_ERR_LOG_INVALID_LOGGER
+      FST_ERR_LOG_INVALID_LOGGER,
+      FST_ERR_LOG_INVALID_LOG_CONTROLLER
     } = require_errors2();
+    var {
+      kLogController
+    } = require_symbols2();
+    var { LogController } = require_log_controller();
     function createChildLogger(context, logger, req, reqId, loggerOpts) {
       const loggerBindings = {
-        [context.requestIdLogLabel]: reqId
+        [context.server[kLogController].requestIdLogLabel]: reqId
       };
       const child = context.childLoggerFactory.call(context.server, logger, loggerBindings, loggerOpts || {}, req);
       if (context.childLoggerFactory !== defaultChildLoggerFactory) {
@@ -7769,212 +10619,34 @@ var require_logger_factory = __commonJS({
       const logger = createPinoLogger(options.logger);
       return { logger, hasLogger: true };
     }
+    function createLogController(options) {
+      const userController = options.logController;
+      if (!userController) {
+        return new LogController(options);
+      }
+      if (userController instanceof LogController) {
+        return userController;
+      }
+      throw new FST_ERR_LOG_INVALID_LOG_CONTROLLER(typeof userController);
+    }
     function now() {
-      const ts = process.hrtime();
-      return ts[0] * 1e3 + ts[1] / 1e6;
+      return performance.now();
     }
     module2.exports = {
       createChildLogger,
       defaultChildLoggerFactory,
+      createLogController,
       createLogger,
+      LogController,
       validateLogger,
       now
     };
   }
 });
 
-// node_modules/.pnpm/rfdc@1.4.1/node_modules/rfdc/index.js
-var require_rfdc = __commonJS({
-  "node_modules/.pnpm/rfdc@1.4.1/node_modules/rfdc/index.js"(exports2, module2) {
-    "use strict";
-    module2.exports = rfdc;
-    function copyBuffer(cur) {
-      if (cur instanceof Buffer) {
-        return Buffer.from(cur);
-      }
-      return new cur.constructor(cur.buffer.slice(), cur.byteOffset, cur.length);
-    }
-    function rfdc(opts) {
-      opts = opts || {};
-      if (opts.circles) return rfdcCircles(opts);
-      const constructorHandlers = /* @__PURE__ */ new Map();
-      constructorHandlers.set(Date, (o) => new Date(o));
-      constructorHandlers.set(Map, (o, fn) => new Map(cloneArray(Array.from(o), fn)));
-      constructorHandlers.set(Set, (o, fn) => new Set(cloneArray(Array.from(o), fn)));
-      if (opts.constructorHandlers) {
-        for (const handler2 of opts.constructorHandlers) {
-          constructorHandlers.set(handler2[0], handler2[1]);
-        }
-      }
-      let handler = null;
-      return opts.proto ? cloneProto : clone;
-      function cloneArray(a, fn) {
-        const keys = Object.keys(a);
-        const a2 = new Array(keys.length);
-        for (let i = 0; i < keys.length; i++) {
-          const k = keys[i];
-          const cur = a[k];
-          if (typeof cur !== "object" || cur === null) {
-            a2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            a2[k] = handler(cur, fn);
-          } else if (ArrayBuffer.isView(cur)) {
-            a2[k] = copyBuffer(cur);
-          } else {
-            a2[k] = fn(cur);
-          }
-        }
-        return a2;
-      }
-      function clone(o) {
-        if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, clone);
-        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, clone);
-        }
-        const o2 = {};
-        for (const k in o) {
-          if (Object.hasOwnProperty.call(o, k) === false) continue;
-          const cur = o[k];
-          if (typeof cur !== "object" || cur === null) {
-            o2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, clone);
-          } else if (ArrayBuffer.isView(cur)) {
-            o2[k] = copyBuffer(cur);
-          } else {
-            o2[k] = clone(cur);
-          }
-        }
-        return o2;
-      }
-      function cloneProto(o) {
-        if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, cloneProto);
-        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, cloneProto);
-        }
-        const o2 = {};
-        for (const k in o) {
-          const cur = o[k];
-          if (typeof cur !== "object" || cur === null) {
-            o2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, cloneProto);
-          } else if (ArrayBuffer.isView(cur)) {
-            o2[k] = copyBuffer(cur);
-          } else {
-            o2[k] = cloneProto(cur);
-          }
-        }
-        return o2;
-      }
-    }
-    function rfdcCircles(opts) {
-      const refs = [];
-      const refsNew = [];
-      const constructorHandlers = /* @__PURE__ */ new Map();
-      constructorHandlers.set(Date, (o) => new Date(o));
-      constructorHandlers.set(Map, (o, fn) => new Map(cloneArray(Array.from(o), fn)));
-      constructorHandlers.set(Set, (o, fn) => new Set(cloneArray(Array.from(o), fn)));
-      if (opts.constructorHandlers) {
-        for (const handler2 of opts.constructorHandlers) {
-          constructorHandlers.set(handler2[0], handler2[1]);
-        }
-      }
-      let handler = null;
-      return opts.proto ? cloneProto : clone;
-      function cloneArray(a, fn) {
-        const keys = Object.keys(a);
-        const a2 = new Array(keys.length);
-        for (let i = 0; i < keys.length; i++) {
-          const k = keys[i];
-          const cur = a[k];
-          if (typeof cur !== "object" || cur === null) {
-            a2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            a2[k] = handler(cur, fn);
-          } else if (ArrayBuffer.isView(cur)) {
-            a2[k] = copyBuffer(cur);
-          } else {
-            const index = refs.indexOf(cur);
-            if (index !== -1) {
-              a2[k] = refsNew[index];
-            } else {
-              a2[k] = fn(cur);
-            }
-          }
-        }
-        return a2;
-      }
-      function clone(o) {
-        if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, clone);
-        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, clone);
-        }
-        const o2 = {};
-        refs.push(o);
-        refsNew.push(o2);
-        for (const k in o) {
-          if (Object.hasOwnProperty.call(o, k) === false) continue;
-          const cur = o[k];
-          if (typeof cur !== "object" || cur === null) {
-            o2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, clone);
-          } else if (ArrayBuffer.isView(cur)) {
-            o2[k] = copyBuffer(cur);
-          } else {
-            const i = refs.indexOf(cur);
-            if (i !== -1) {
-              o2[k] = refsNew[i];
-            } else {
-              o2[k] = clone(cur);
-            }
-          }
-        }
-        refs.pop();
-        refsNew.pop();
-        return o2;
-      }
-      function cloneProto(o) {
-        if (typeof o !== "object" || o === null) return o;
-        if (Array.isArray(o)) return cloneArray(o, cloneProto);
-        if (o.constructor !== Object && (handler = constructorHandlers.get(o.constructor))) {
-          return handler(o, cloneProto);
-        }
-        const o2 = {};
-        refs.push(o);
-        refsNew.push(o2);
-        for (const k in o) {
-          const cur = o[k];
-          if (typeof cur !== "object" || cur === null) {
-            o2[k] = cur;
-          } else if (cur.constructor !== Object && (handler = constructorHandlers.get(cur.constructor))) {
-            o2[k] = handler(cur, cloneProto);
-          } else if (ArrayBuffer.isView(cur)) {
-            o2[k] = copyBuffer(cur);
-          } else {
-            const i = refs.indexOf(cur);
-            if (i !== -1) {
-              o2[k] = refsNew[i];
-            } else {
-              o2[k] = cloneProto(cur);
-            }
-          }
-        }
-        refs.pop();
-        refsNew.pop();
-        return o2;
-      }
-    }
-  }
-});
-
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/schemas.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/schemas.js
 var require_schemas = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/schemas.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/schemas.js"(exports2, module2) {
     "use strict";
     var fastClone = require_rfdc()({ circles: false, proto: true });
     var { kSchemaVisited, kSchemaResponse } = require_symbols2();
@@ -7985,6 +10657,7 @@ var require_schemas = __commonJS({
       FST_ERR_SCH_DUPLICATE,
       FST_ERR_SCH_CONTENT_MISSING_SCHEMA
     } = require_errors2();
+    var ContentType = require_content_type();
     var SCHEMAS_SOURCE = ["params", "body", "querystring", "query", "headers"];
     function Schemas(initStore) {
       this.store = initStore || {};
@@ -8015,8 +10688,8 @@ var require_schemas = __commonJS({
       if (routeSchemas[kSchemaVisited]) {
         return routeSchemas;
       }
-      if (routeSchemas.query) {
-        if (routeSchemas.querystring) {
+      if (routeSchemas.query !== void 0) {
+        if (routeSchemas.querystring !== void 0) {
           throw new FST_ERR_SCH_DUPLICATE("querystring");
         }
         routeSchemas.querystring = routeSchemas.query;
@@ -8081,42 +10754,48 @@ var require_schemas = __commonJS({
         return false;
       }
       if (responseSchemaDef[statusCode]) {
-        if (responseSchemaDef[statusCode].constructor === Object && contentType) {
-          const mediaName = contentType.split(";", 1)[0];
-          if (responseSchemaDef[statusCode][mediaName]) {
-            return responseSchemaDef[statusCode][mediaName];
+        if (responseSchemaDef[statusCode].constructor === Object) {
+          const ct = ContentType.from(contentType);
+          if (ct.isValid) {
+            if (responseSchemaDef[statusCode][ct.mediaType]) {
+              return responseSchemaDef[statusCode][ct.mediaType];
+            }
+            if (responseSchemaDef[statusCode]["*/*"]) {
+              return responseSchemaDef[statusCode]["*/*"];
+            }
+            return false;
           }
-          if (responseSchemaDef[statusCode]["*/*"]) {
-            return responseSchemaDef[statusCode]["*/*"];
-          }
-          return false;
         }
         return responseSchemaDef[statusCode];
       }
       const fallbackStatusCode = (statusCode + "")[0] + "xx";
       if (responseSchemaDef[fallbackStatusCode]) {
-        if (responseSchemaDef[fallbackStatusCode].constructor === Object && contentType) {
-          const mediaName = contentType.split(";", 1)[0];
-          if (responseSchemaDef[fallbackStatusCode][mediaName]) {
-            return responseSchemaDef[fallbackStatusCode][mediaName];
+        if (responseSchemaDef[fallbackStatusCode].constructor === Object) {
+          const ct = ContentType.from(contentType);
+          if (ct.isValid) {
+            if (responseSchemaDef[fallbackStatusCode][ct.mediaType]) {
+              return responseSchemaDef[fallbackStatusCode][ct.mediaType];
+            }
+            if (responseSchemaDef[fallbackStatusCode]["*/*"]) {
+              return responseSchemaDef[fallbackStatusCode]["*/*"];
+            }
+            return false;
           }
-          if (responseSchemaDef[fallbackStatusCode]["*/*"]) {
-            return responseSchemaDef[fallbackStatusCode]["*/*"];
-          }
-          return false;
         }
         return responseSchemaDef[fallbackStatusCode];
       }
       if (responseSchemaDef.default) {
-        if (responseSchemaDef.default.constructor === Object && contentType) {
-          const mediaName = contentType.split(";", 1)[0];
-          if (responseSchemaDef.default[mediaName]) {
-            return responseSchemaDef.default[mediaName];
+        if (responseSchemaDef.default.constructor === Object) {
+          const ct = ContentType.from(contentType);
+          if (ct.isValid) {
+            if (responseSchemaDef.default[ct.mediaType]) {
+              return responseSchemaDef.default[ct.mediaType];
+            }
+            if (responseSchemaDef.default["*/*"]) {
+              return responseSchemaDef.default["*/*"];
+            }
+            return false;
           }
-          if (responseSchemaDef.default["*/*"]) {
-            return responseSchemaDef.default["*/*"];
-          }
-          return false;
         }
         return responseSchemaDef.default;
       }
@@ -8132,9 +10811,9 @@ var require_schemas = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-json-stringify@6.4.0/node_modules/fast-json-stringify/lib/serializer.js
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/serializer.js
 var require_serializer = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@6.4.0/node_modules/fast-json-stringify/lib/serializer.js"(exports2, module2) {
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/serializer.js"(exports2, module2) {
     "use strict";
     var STR_ESCAPE = /[\u0000-\u001f\u0022\u005c\ud800-\udfff]/;
     module2.exports = class Serializer {
@@ -8250,15 +10929,25 @@ var require_serializer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/error-serializer.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-serializer.js
 var require_error_serializer = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/error-serializer.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-serializer.js"(exports2, module2) {
     "use strict";
     var Serializer = require_serializer();
     var serializerState = { "mode": "standalone" };
     var serializer = Serializer.restoreFromState(serializerState);
     var validator = null;
     module2.exports = (function anonymous(validator2, serializer2) {
+      const {
+        asString,
+        asNumber,
+        asBoolean,
+        asDateTime,
+        asDate,
+        asTime,
+        asUnsafeString
+      } = serializer2;
+      const asInteger = serializer2.asInteger.bind(serializer2);
       const JSON_STR_BEGIN_OBJECT = "{";
       const JSON_STR_END_OBJECT = "}";
       const JSON_STR_BEGIN_ARRAY = "[";
@@ -8273,70 +10962,71 @@ var require_error_serializer = __commonJS({
       function anonymous0(input) {
         const obj = input && typeof input.toJSON === "function" ? input.toJSON() : input;
         if (obj === null) return JSON_STR_EMPTY_OBJECT;
-        let value;
-        let json = JSON_STR_BEGIN_OBJECT;
-        let addComma = false;
-        value = obj["statusCode"];
-        if (value !== void 0) {
-          !addComma && (addComma = true) || (json += JSON_STR_COMMA);
+        let json = "";
+        json += JSON_STR_BEGIN_OBJECT;
+        let addComma_0 = false;
+        const value_statusCode_1 = obj["statusCode"];
+        if (value_statusCode_1 !== void 0) {
+          !addComma_0 && (addComma_0 = true) || (json += JSON_STR_COMMA);
           json += '"statusCode":';
-          json += serializer2.asNumber(value);
+          json += asNumber(value_statusCode_1);
         }
-        value = obj["code"];
-        if (value !== void 0) {
-          !addComma && (addComma = true) || (json += JSON_STR_COMMA);
+        const value_code_2 = obj["code"];
+        if (value_code_2 !== void 0) {
+          !addComma_0 && (addComma_0 = true) || (json += JSON_STR_COMMA);
           json += '"code":';
-          if (typeof value !== "string") {
-            if (value === null) {
+          if (typeof value_code_2 !== "string") {
+            if (value_code_2 === null) {
               json += JSON_STR_EMPTY_STRING;
-            } else if (value instanceof Date) {
-              json += JSON_STR_QUOTE + value.toISOString() + JSON_STR_QUOTE;
-            } else if (value instanceof RegExp) {
-              json += serializer2.asString(value.source);
+            } else if (value_code_2 instanceof Date) {
+              json += JSON_STR_QUOTE + value_code_2.toISOString() + JSON_STR_QUOTE;
+            } else if (value_code_2 instanceof RegExp) {
+              json += asString(value_code_2.source);
             } else {
-              json += serializer2.asString(value.toString());
+              json += asString(value_code_2.toString());
             }
           } else {
-            json += serializer2.asString(value);
+            json += asString(value_code_2);
           }
         }
-        value = obj["error"];
-        if (value !== void 0) {
-          !addComma && (addComma = true) || (json += JSON_STR_COMMA);
+        const value_error_3 = obj["error"];
+        if (value_error_3 !== void 0) {
+          !addComma_0 && (addComma_0 = true) || (json += JSON_STR_COMMA);
           json += '"error":';
-          if (typeof value !== "string") {
-            if (value === null) {
+          if (typeof value_error_3 !== "string") {
+            if (value_error_3 === null) {
               json += JSON_STR_EMPTY_STRING;
-            } else if (value instanceof Date) {
-              json += JSON_STR_QUOTE + value.toISOString() + JSON_STR_QUOTE;
-            } else if (value instanceof RegExp) {
-              json += serializer2.asString(value.source);
+            } else if (value_error_3 instanceof Date) {
+              json += JSON_STR_QUOTE + value_error_3.toISOString() + JSON_STR_QUOTE;
+            } else if (value_error_3 instanceof RegExp) {
+              json += asString(value_error_3.source);
             } else {
-              json += serializer2.asString(value.toString());
+              json += asString(value_error_3.toString());
             }
           } else {
-            json += serializer2.asString(value);
+            json += asString(value_error_3);
           }
         }
-        value = obj["message"];
-        if (value !== void 0) {
-          !addComma && (addComma = true) || (json += JSON_STR_COMMA);
+        const value_message_4 = obj["message"];
+        if (value_message_4 !== void 0) {
+          !addComma_0 && (addComma_0 = true) || (json += JSON_STR_COMMA);
           json += '"message":';
-          if (typeof value !== "string") {
-            if (value === null) {
+          if (typeof value_message_4 !== "string") {
+            if (value_message_4 === null) {
               json += JSON_STR_EMPTY_STRING;
-            } else if (value instanceof Date) {
-              json += JSON_STR_QUOTE + value.toISOString() + JSON_STR_QUOTE;
-            } else if (value instanceof RegExp) {
-              json += serializer2.asString(value.source);
+            } else if (value_message_4 instanceof Date) {
+              json += JSON_STR_QUOTE + value_message_4.toISOString() + JSON_STR_QUOTE;
+            } else if (value_message_4 instanceof RegExp) {
+              json += asString(value_message_4.source);
             } else {
-              json += serializer2.asString(value.toString());
+              json += asString(value_message_4.toString());
             }
           } else {
-            json += serializer2.asString(value);
+            json += asString(value_message_4);
           }
         }
-        return json + JSON_STR_END_OBJECT;
+        json += JSON_STR_END_OBJECT;
+        return json;
       }
       const main = anonymous0;
       return main;
@@ -8344,19 +11034,20 @@ var require_error_serializer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/error-handler.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-handler.js
 var require_error_handler = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/error-handler.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/error-handler.js"(exports2, module2) {
     "use strict";
     var statusCodes = require("node:http").STATUS_CODES;
-    var wrapThenable = require_wrapThenable();
+    var wrapThenable = require_wrap_thenable();
+    var { setErrorStatusCode } = require_error_status();
     var {
       kReplyHeaders,
       kReplyNextErrorHandler,
       kReplyIsRunningOnErrorHook,
-      kReplyHasStatusCode,
       kRouteContext,
-      kDisableRequestLogging
+      kLogController,
+      kDiagnosticsStore
     } = require_symbols2();
     var {
       FST_ERR_REP_INVALID_PAYLOAD_TYPE,
@@ -8378,12 +11069,7 @@ var require_error_handler = __commonJS({
           try {
             reply2.raw.writeHead(reply2.raw.statusCode, reply2[kReplyHeaders]);
           } catch (error2) {
-            if (!reply2.log[kDisableRequestLogging]) {
-              reply2.log.warn(
-                { req: reply2.request, res: reply2, err: error2 },
-                error2?.message
-              );
-            }
+            reply2.server[kLogController].writeHeadError(error2, reply2.request, reply2);
             reply2.raw.writeHead(reply2.raw.statusCode);
           }
           reply2.raw.end(payload);
@@ -8404,7 +11090,8 @@ var require_error_handler = __commonJS({
         const result = func(error, reply.request, reply);
         if (result !== void 0) {
           if (result !== null && typeof result.then === "function") {
-            wrapThenable(result, reply);
+            const store = reply[kDiagnosticsStore] || null;
+            wrapThenable(result, reply, store);
           } else {
             reply.send(result);
           }
@@ -8415,25 +11102,8 @@ var require_error_handler = __commonJS({
     }
     function defaultErrorHandler(error, request, reply) {
       setErrorHeaders(error, reply);
-      if (!reply[kReplyHasStatusCode] || reply.statusCode === 200) {
-        const statusCode = error.statusCode || error.status;
-        reply.code(statusCode >= 400 ? statusCode : 500);
-      }
-      if (reply.statusCode < 500) {
-        if (!reply.log[kDisableRequestLogging]) {
-          reply.log.info(
-            { res: reply, err: error },
-            error?.message
-          );
-        }
-      } else {
-        if (!reply.log[kDisableRequestLogging]) {
-          reply.log.error(
-            { req: request, res: reply, err: error },
-            error?.message
-          );
-        }
-      }
+      setErrorStatusCode(reply, error);
+      request.server[kLogController].defaultErrorLog(error, request, reply);
       reply.send(error);
     }
     function fallbackErrorHandler(error, reply, cb) {
@@ -8458,9 +11128,7 @@ var require_error_handler = __commonJS({
           }));
         }
       } catch (err) {
-        if (!reply.log[kDisableRequestLogging]) {
-          reply.log.error({ err, statusCode: res.statusCode }, "The serializer for the given status code failed");
-        }
+        reply.server[kLogController].serializerError(err, reply.request, reply, { statusCode: res.statusCode });
         reply.code(500);
         payload = serializeError(new FST_ERR_FAILED_ERROR_SERIALIZATION(err.message, error.message));
       }
@@ -8501,9 +11169,9 @@ var require_error_handler = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/decorate.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/decorate.js
 var require_decorate = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/decorate.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/decorate.js"(exports2, module2) {
     "use strict";
     var {
       kReply,
@@ -8544,7 +11212,7 @@ var require_decorate = __commonJS({
     }
     function decorateConstructor(konstructor, name, fn, dependencies) {
       const instance = konstructor.prototype;
-      if (Object.hasOwn(instance, name) || hasKey(konstructor, name)) {
+      if (Object.hasOwn(instance, name) || hasKey(konstructor, name) || hasInstanceProperty(konstructor, name)) {
         throw new FST_ERR_DEC_ALREADY_PRESENT(name);
       }
       konstructor[kHasBeenDecorated] = true;
@@ -8577,17 +11245,24 @@ var require_decorate = __commonJS({
       return instance in this;
     }
     function hasKey(fn, name) {
-      if (fn.props) {
-        return fn.props.find(({ key }) => key === name);
+      return fn.props ? fn.props.some((p) => p.key === name) : false;
+    }
+    function hasInstanceProperty(konstructor, name) {
+      let k = konstructor;
+      while (k) {
+        if (k.instanceProperties && k.instanceProperties.has(name)) return true;
+        k = k.parent;
       }
       return false;
     }
     function checkRequestExistence(name) {
       if (name && hasKey(this[kRequest], name)) return true;
+      if (name && hasInstanceProperty(this[kRequest], name)) return true;
       return checkExistence(this[kRequest].prototype, name);
     }
     function checkReplyExistence(name) {
       if (name && hasKey(this[kReply], name)) return true;
+      if (name && hasInstanceProperty(this[kReply], name)) return true;
       return checkExistence(this[kReply].prototype, name);
     }
     function checkDependencies(instance, name, deps) {
@@ -8598,7 +11273,7 @@ var require_decorate = __commonJS({
         throw new FST_ERR_DEC_DEPENDENCY_INVALID_TYPE(name);
       }
       for (let i = 0; i !== deps.length; ++i) {
-        if (!checkExistence(instance, deps[i])) {
+        if (!checkExistence(instance, deps[i]) && !hasInstanceProperty(instance, deps[i])) {
           throw new FST_ERR_DEC_MISSING_DEPENDENCY(deps[i]);
         }
       }
@@ -8634,12 +11309,11 @@ var require_decorate = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/reply.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/reply.js
 var require_reply = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/reply.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/reply.js"(exports2, module2) {
     "use strict";
     var eos = require("node:stream").finished;
-    var Readable = require("node:stream").Readable;
     var {
       kFourOhFourContext,
       kReplyErrorHandlerCalled,
@@ -8654,12 +11328,15 @@ var require_reply = __commonJS({
       kReplyHasStatusCode,
       kReplyIsRunningOnErrorHook,
       kReplyNextErrorHandler,
-      kDisableRequestLogging,
       kSchemaResponse,
       kReplyCacheSerializeFns,
       kSchemaController,
       kOptions,
-      kRouteContext
+      kRouteContext,
+      kTimeoutTimer,
+      kOnAbort,
+      kRequestSignal,
+      kLogController
     } = require_symbols2();
     var {
       onSendHookRunner,
@@ -8667,7 +11344,7 @@ var require_reply = __commonJS({
       preHandlerHookRunner,
       preSerializationHookRunner
     } = require_hooks();
-    var internals = require_handleRequest()[Symbol.for("internals")];
+    var internals = require_handle_request()[Symbol.for("internals")];
     var loggerUtils = require_logger_factory();
     var now = loggerUtils.now;
     var { handleError } = require_error_handler();
@@ -8691,7 +11368,9 @@ var require_reply = __commonJS({
       FST_ERR_DEC_UNDECLARED
     } = require_errors2();
     var decorators = require_decorate();
+    var ContentType = require_content_type();
     var toString = Object.prototype.toString;
+    var HTTP2_WRITE_CHUNK_SIZE = 64 * 1024;
     function Reply(res, request, log) {
       this.raw = res;
       this[kReplySerializer] = null;
@@ -8706,6 +11385,7 @@ var require_reply = __commonJS({
       this.log = log;
     }
     Reply.props = [];
+    Reply.instanceProperties = /* @__PURE__ */ new Set(["raw", "request", "log"]);
     Object.defineProperties(Reply.prototype, {
       [kRouteContext]: {
         get() {
@@ -8718,6 +11398,12 @@ var require_reply = __commonJS({
             return 0;
           }
           return (this[kReplyEndTime] || now()) - this[kReplyStartTime];
+        }
+      },
+      mediaType: {
+        get() {
+          const contentTypeHeader = this[kReplyHeaders]["content-type"];
+          return ContentType.from(contentTypeHeader).mediaType;
         }
       },
       server: {
@@ -8751,6 +11437,19 @@ var require_reply = __commonJS({
     };
     Reply.prototype.hijack = function() {
       this[kReplyHijacked] = true;
+      if (this.request[kRequestSignal]) {
+        clearTimeout(this.request[kTimeoutTimer]);
+        this.request[kTimeoutTimer] = null;
+        if (this.request[kOnAbort]) {
+          this.request.raw.removeListener("close", this.request[kOnAbort]);
+          this.request[kOnAbort] = null;
+        }
+      }
+      const socket = this.request.raw.socket;
+      if (socket?._meta?.request === this.request) {
+        socket.removeListener("timeout", socket._meta.onTimeout);
+        socket._meta = null;
+      }
       return this;
     };
     Reply.prototype.send = function(payload) {
@@ -8770,14 +11469,14 @@ var require_reply = __commonJS({
         onSendHook(this, payload);
         return this;
       }
-      const contentType = this.getHeader("content-type");
-      const hasContentType = contentType !== void 0;
+      const contentType = ContentType.from(this.getHeader("content-type"));
+      const hasContentType = contentType.isEmpty === false;
       if (payload !== null) {
         if (
           // node:stream
           typeof payload.pipe === "function" || // node:stream/web
           typeof payload.getReader === "function" || // Response
-          toString.call(payload) === "[object Response]"
+          typeof payload === "object" && toString.call(payload) === "[object Response]"
         ) {
           onSendHook(this, payload);
           return this;
@@ -8802,16 +11501,12 @@ var require_reply = __commonJS({
           return this;
         }
         payload = this[kReplySerializer](payload);
-      } else if (!hasContentType || contentType.indexOf("json") !== -1) {
+      } else if (!hasContentType || contentType.mediaType.indexOf("json") !== -1) {
         if (!hasContentType) {
           this[kReplyHeaders]["content-type"] = CONTENT_TYPE.JSON;
-        } else if (contentType.indexOf("charset") === -1) {
-          const customContentType = contentType.trim();
-          if (customContentType.endsWith(";")) {
-            this[kReplyHeaders]["content-type"] = `${customContentType} charset=utf-8`;
-          } else {
-            this[kReplyHeaders]["content-type"] = `${customContentType}; charset=utf-8`;
-          }
+        } else if (contentType.parameters.has("charset") === false) {
+          const customContentType = contentType.toString();
+          this[kReplyHeaders]["content-type"] = `${customContentType}; charset=utf-8`;
         }
         if (typeof payload !== "string") {
           preSerializationHook(this, payload);
@@ -8837,7 +11532,11 @@ var require_reply = __commonJS({
       return this[kReplyHeaders][key] !== void 0 || this.raw.hasHeader(key);
     };
     Reply.prototype.removeHeader = function(key) {
-      delete this[kReplyHeaders][key.toLowerCase()];
+      key = key.toLowerCase();
+      delete this[kReplyHeaders][key];
+      if (!this.raw.headersSent) {
+        this.raw.removeHeader(key);
+      }
       return this;
     };
     Reply.prototype.header = function(key, value = "") {
@@ -9101,10 +11800,16 @@ var require_reply = __commonJS({
           header += " ";
           header += trailerName;
         }
-        reply.header("Transfer-Encoding", "chunked");
-        reply.header("Trailer", header.trim());
+        if (header !== "") {
+          if (!isHttp2Reply(reply)) {
+            reply.header("Transfer-Encoding", "chunked");
+          }
+          reply.header("Trailer", header.trim());
+        } else {
+          reply[kReplyTrailers] = null;
+        }
       }
-      if (toString.call(payload) === "[object Response]") {
+      if (payload != null && typeof payload === "object" && toString.call(payload) === "[object Response]") {
         if (typeof payload.status === "number") {
           reply.code(payload.status);
         }
@@ -9158,24 +11863,111 @@ var require_reply = __commonJS({
         }
       }
       safeWriteHead(reply, statusCode);
-      res.write(payload);
-      sendTrailer(payload, res, reply);
+      writePayload(payload, res, reply);
     }
-    function logStreamError(logger, err, res) {
-      if (err.code === "ERR_STREAM_PREMATURE_CLOSE") {
-        if (!logger[kDisableRequestLogging]) {
-          logger.info({ res }, "stream closed prematurely");
+    function isHttp2Reply(reply) {
+      return reply.request.raw?.httpVersionMajor === 2;
+    }
+    function writePayload(payload, res, reply) {
+      if (!isHttp2Reply(reply) || Buffer.byteLength(payload) <= HTTP2_WRITE_CHUNK_SIZE) {
+        if (reply[kReplyTrailers] === null) {
+          res.end(payload, null, null);
+          return;
         }
-      } else {
-        logger.warn({ err }, "response terminated with an error with headers already sent");
+        res.write(payload);
+        sendTrailer(payload, res, reply);
+        return;
       }
+      writeHttp2Payload(payload, res, () => {
+        sendTrailer(payload, res, reply);
+      });
+    }
+    function writeHttp2Payload(payload, res, done) {
+      const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+      let offset = 0;
+      function writeChunk() {
+        while (offset < buffer.length) {
+          if (res.destroyed || res.writableEnded) {
+            return;
+          }
+          const end = Math.min(offset + HTTP2_WRITE_CHUNK_SIZE, buffer.length);
+          const shouldContinue = res.write(buffer.subarray(offset, end));
+          offset = end;
+          if (shouldContinue === false) {
+            res.once("drain", writeChunk);
+            return;
+          }
+        }
+        done();
+      }
+      writeChunk();
+    }
+    function logStreamError(err, reply, res) {
+      reply.server[kLogController].streamError(err, reply.request, reply);
     }
     function sendWebStream(payload, res, reply) {
       if (payload.locked) {
-        throw FST_ERR_REP_READABLE_STREAM_LOCKED();
+        throw new FST_ERR_REP_READABLE_STREAM_LOCKED();
       }
-      const nodeStream = Readable.fromWeb(payload);
-      sendStream(nodeStream, res, reply);
+      let sourceOpen = true;
+      let errorLogged = false;
+      let waitingDrain = false;
+      const reader = payload.getReader();
+      eos(res, function(err) {
+        if (sourceOpen) {
+          if (err != null && res.headersSent && !errorLogged) {
+            errorLogged = true;
+            logStreamError(err, reply, res);
+          }
+          reader.cancel().catch(noop);
+        }
+      });
+      if (!res.headersSent) {
+        for (const key in reply[kReplyHeaders]) {
+          res.setHeader(key, reply[kReplyHeaders][key]);
+        }
+      } else {
+        reply.log.warn("response will send, but you shouldn't use res.writeHead in stream mode");
+      }
+      function onRead(result) {
+        if (result.done) {
+          sourceOpen = false;
+          sendTrailer(null, res, reply);
+          return;
+        }
+        if (res.destroyed) {
+          sourceOpen = false;
+          reader.cancel().catch(noop);
+          return;
+        }
+        const shouldContinue = res.write(result.value);
+        if (shouldContinue === false) {
+          waitingDrain = true;
+          res.once("drain", onDrain);
+          return;
+        }
+        reader.read().then(onRead, onReadError);
+      }
+      function onDrain() {
+        if (!waitingDrain || !sourceOpen || res.destroyed) {
+          return;
+        }
+        waitingDrain = false;
+        reader.read().then(onRead, onReadError);
+      }
+      function onReadError(err) {
+        sourceOpen = false;
+        if (res.headersSent || reply.request.raw.aborted === true) {
+          if (!errorLogged) {
+            errorLogged = true;
+            logStreamError(err, reply, reply);
+          }
+          res.destroy();
+        } else {
+          onErrorHook(reply, err);
+        }
+      }
+      reader.read().then(onRead, onReadError);
     }
     function sendStream(payload, res, reply) {
       let sourceOpen = true;
@@ -9187,7 +11979,7 @@ var require_reply = __commonJS({
           if (res.headersSent || reply.request.raw.aborted === true) {
             if (!errorLogged) {
               errorLogged = true;
-              logStreamError(reply.log, err, reply);
+              logStreamError(err, reply, reply);
             }
             res.destroy();
           } else {
@@ -9199,7 +11991,7 @@ var require_reply = __commonJS({
         if (sourceOpen) {
           if (err != null && res.headersSent && !errorLogged) {
             errorLogged = true;
-            logStreamError(reply.log, err, res);
+            logStreamError(err, reply, res);
           }
           if (typeof payload.destroy === "function") {
             payload.destroy();
@@ -9230,14 +12022,18 @@ var require_reply = __commonJS({
       const trailers = {};
       let handled = 0;
       let skipped = true;
+      let sent = false;
       function send() {
-        if (handled === 0) {
+        if (handled === 0 && !sent) {
+          sent = true;
           res.addTrailers(trailers);
           res.end(null, null, null);
         }
       }
       for (const trailerName of trailerHeaders) {
         let cb = function(err, value) {
+          if (cbAlreadyCalled) return;
+          cbAlreadyCalled = true;
           handled++;
           if (err) reply.log.debug(err);
           else trailers[trailerName] = value;
@@ -9246,6 +12042,7 @@ var require_reply = __commonJS({
         if (typeof reply[kReplyTrailers][trailerName] !== "function") continue;
         skipped = false;
         handled--;
+        let cbAlreadyCalled = false;
         const result = reply[kReplyTrailers][trailerName](reply, payload, cb);
         if (typeof result === "object" && typeof result.then === "function") {
           result.then((v) => cb(null, v), cb);
@@ -9278,6 +12075,19 @@ var require_reply = __commonJS({
         reply.raw.removeListener("finish", onResFinished);
         reply.raw.removeListener("error", onResFinished);
         const ctx = reply[kRouteContext];
+        if (reply.request[kRequestSignal]) {
+          clearTimeout(reply.request[kTimeoutTimer]);
+          reply.request[kTimeoutTimer] = null;
+          if (reply.request[kOnAbort]) {
+            reply.request.raw.removeListener("close", reply.request[kOnAbort]);
+            reply.request[kOnAbort] = null;
+          }
+        }
+        const socket = reply.request.raw.socket;
+        if (socket && socket._meta && socket._meta.request === reply.request) {
+          socket.removeListener("timeout", socket._meta.onTimeout);
+          socket._meta = null;
+        }
         if (ctx && ctx.onResponse !== null) {
           onResponseHookRunner(
             ctx.onResponse,
@@ -9293,22 +12103,7 @@ var require_reply = __commonJS({
       reply.raw.on("error", onResFinished);
     }
     function onResponseCallback(err, request, reply) {
-      if (reply.log[kDisableRequestLogging]) {
-        return;
-      }
-      const responseTime = reply.elapsedTime;
-      if (err != null) {
-        reply.log.error({
-          res: reply,
-          err,
-          responseTime
-        }, "request errored");
-        return;
-      }
-      reply.log.info({
-        res: reply,
-        responseTime
-      }, "request completed");
+      reply.server[kLogController].requestCompleted(err, request, reply);
     }
     function buildReply(R) {
       const props = R.props.slice();
@@ -9369,9 +12164,9 @@ var require_reply = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+forwarded@3.0.1/node_modules/@fastify/forwarded/index.js
+// node_modules/.pnpm/@fastify+forwarded@3.0.2/node_modules/@fastify/forwarded/index.js
 var require_forwarded = __commonJS({
-  "node_modules/.pnpm/@fastify+forwarded@3.0.1/node_modules/@fastify/forwarded/index.js"(exports2, module2) {
+  "node_modules/.pnpm/@fastify+forwarded@3.0.2/node_modules/@fastify/forwarded/index.js"(exports2, module2) {
     "use strict";
     function forwarded(req) {
       if (!req) {
@@ -9396,7 +12191,7 @@ var require_forwarded = __commonJS({
       let i;
       for (i = end - 1; i >= 0; --i) {
         char = header[i];
-        if (char === " ") {
+        if (char === " " || char === "	") {
           start === end && (start = end = i);
         } else if (char === ",") {
           start !== end && result.push(header.slice(start, end));
@@ -9414,9 +12209,9 @@ var require_forwarded = __commonJS({
   }
 });
 
-// node_modules/.pnpm/ipaddr.js@2.4.0/node_modules/ipaddr.js/lib/ipaddr.js
+// node_modules/.pnpm/ipaddr.js@2.5.0/node_modules/ipaddr.js/lib/ipaddr.js
 var require_ipaddr = __commonJS({
-  "node_modules/.pnpm/ipaddr.js@2.4.0/node_modules/ipaddr.js/lib/ipaddr.js"(exports2, module2) {
+  "node_modules/.pnpm/ipaddr.js@2.5.0/node_modules/ipaddr.js/lib/ipaddr.js"(exports2, module2) {
     (function(root) {
       "use strict";
       const ipv4Part = "(0?\\d+|0x[a-f0-9]+)";
@@ -9457,7 +12252,7 @@ var require_ipaddr = __commonJS({
         if (string.substr(-2, 2) === "::") {
           colonCount--;
         }
-        if (colonCount > parts) {
+        if (colonCount >= parts) {
           return null;
         }
         replacementCount = parts - colonCount;
@@ -9476,7 +12271,7 @@ var require_ipaddr = __commonJS({
           const ref = string.split(":");
           const results = [];
           for (let i = 0; i < ref.length; i++) {
-            results.push(parseInt(ref[i], 16));
+            results.push(ref[i].length > 4 ? NaN : parseInt(ref[i], 16));
           }
           return results;
         })();
@@ -9651,7 +12446,7 @@ var require_ipaddr = __commonJS({
           }
           return new this(octets);
         } catch (e) {
-          throw new Error("ipaddr: the address does not have IPv4 CIDR format");
+          throw new Error("ipaddr: the address does not have IPv4 CIDR format", { cause: e });
         }
       };
       ipaddr.IPv4.isIPv4 = function(string) {
@@ -9661,7 +12456,7 @@ var require_ipaddr = __commonJS({
         try {
           new this(this.parser(string));
           return true;
-        } catch (e) {
+        } catch {
           return false;
         }
       };
@@ -9669,7 +12464,7 @@ var require_ipaddr = __commonJS({
         try {
           this.parseCIDR(string);
           return true;
-        } catch (e) {
+        } catch {
           return false;
         }
       };
@@ -9701,7 +12496,7 @@ var require_ipaddr = __commonJS({
           }
           return new this(octets);
         } catch (e) {
-          throw new Error("ipaddr: the address does not have IPv4 CIDR format");
+          throw new Error("ipaddr: the address does not have IPv4 CIDR format", { cause: e });
         }
       };
       ipaddr.IPv4.parse = function(string) {
@@ -9786,7 +12581,7 @@ var require_ipaddr = __commonJS({
       };
       ipaddr.IPv4.subnetMaskFromPrefixLength = function(prefix) {
         prefix = parseInt(prefix);
-        if (prefix < 0 || prefix > 32) {
+        if (Number.isNaN(prefix) || prefix < 0 || prefix > 32) {
           throw new Error("ipaddr: invalid IPv4 prefix length");
         }
         const octets = [0, 0, 0, 0];
@@ -9986,20 +12781,28 @@ var require_ipaddr = __commonJS({
         };
         IPv6.prototype.toRFC5952String = function() {
           const regex = /((^|:)(0(:|$)){2,})/g;
-          const string = this.toNormalizedString();
+          let suffix = "";
+          if (this.zoneId) {
+            suffix = `%${this.zoneId}`;
+          }
+          const normalized = this.toNormalizedString();
+          const string = normalized.slice(0, normalized.length - suffix.length);
           let bestMatchIndex = 0;
           let bestMatchLength = -1;
+          let bestMatchGroups = -1;
           let match;
           while (match = regex.exec(string)) {
-            if (match[0].length > bestMatchLength) {
+            const groups = (match[0].match(/0/g) || []).length;
+            if (groups > bestMatchGroups) {
+              bestMatchGroups = groups;
               bestMatchIndex = match.index;
               bestMatchLength = match[0].length;
             }
           }
           if (bestMatchLength < 0) {
-            return string;
+            return string + suffix;
           }
-          return `${string.substring(0, bestMatchIndex)}::${string.substring(bestMatchIndex + bestMatchLength)}`;
+          return `${string.substring(0, bestMatchIndex)}::${string.substring(bestMatchIndex + bestMatchLength)}${suffix}`;
         };
         IPv6.prototype.toString = function() {
           return this.toRFC5952String();
@@ -10019,7 +12822,7 @@ var require_ipaddr = __commonJS({
           }
           return new this(octets);
         } catch (e) {
-          throw new Error(`ipaddr: the address does not have IPv6 CIDR format (${e})`);
+          throw new Error("ipaddr: the address does not have IPv6 CIDR format", { cause: e });
         }
       };
       ipaddr.IPv6.isIPv6 = function(string) {
@@ -10033,7 +12836,7 @@ var require_ipaddr = __commonJS({
           const addr = this.parser(string);
           new this(addr.parts, addr.zoneId);
           return true;
-        } catch (e) {
+        } catch {
           return false;
         }
       };
@@ -10044,7 +12847,7 @@ var require_ipaddr = __commonJS({
         try {
           this.parseCIDR(string);
           return true;
-        } catch (e) {
+        } catch {
           return false;
         }
       };
@@ -10062,12 +12865,12 @@ var require_ipaddr = __commonJS({
           }
           return new this(octets);
         } catch (e) {
-          throw new Error(`ipaddr: the address does not have IPv6 CIDR format (${e})`);
+          throw new Error("ipaddr: the address does not have IPv6 CIDR format", { cause: e });
         }
       };
       ipaddr.IPv6.parse = function(string) {
         const addr = this.parser(string);
-        if (addr.parts === null) {
+        if (addr === null) {
           throw new Error("ipaddr: string is not formatted like an IPv6 Address");
         }
         return new this(addr.parts, addr.zoneId);
@@ -10103,7 +12906,7 @@ var require_ipaddr = __commonJS({
             addr = addr.slice(0, -1);
           }
           addr = expandIPv6(addr + zoneId, 6);
-          if (addr.parts) {
+          if (addr && addr.parts) {
             octets = [
               parseInt(match[2]),
               parseInt(match[3]),
@@ -10128,7 +12931,7 @@ var require_ipaddr = __commonJS({
       };
       ipaddr.IPv6.subnetMaskFromPrefixLength = function(prefix) {
         prefix = parseInt(prefix);
-        if (prefix < 0 || prefix > 128) {
+        if (Number.isNaN(prefix) || prefix < 0 || prefix > 128) {
           throw new Error("ipaddr: invalid IPv6 prefix length");
         }
         const octets = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -10171,11 +12974,11 @@ var require_ipaddr = __commonJS({
       ipaddr.parseCIDR = function(string) {
         try {
           return ipaddr.IPv6.parseCIDR(string);
-        } catch (e) {
+        } catch {
           try {
             return ipaddr.IPv4.parseCIDR(string);
-          } catch (e2) {
-            throw new Error("ipaddr: the address has neither IPv6 nor IPv4 CIDR format");
+          } catch (e) {
+            throw new Error("ipaddr: the address has neither IPv6 nor IPv4 CIDR format", { cause: e });
           }
         }
       };
@@ -10217,9 +13020,9 @@ var require_ipaddr = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+proxy-addr@5.1.0/node_modules/@fastify/proxy-addr/index.js
+// node_modules/.pnpm/@fastify+proxy-addr@5.1.1/node_modules/@fastify/proxy-addr/index.js
 var require_proxy_addr = __commonJS({
-  "node_modules/.pnpm/@fastify+proxy-addr@5.1.0/node_modules/@fastify/proxy-addr/index.js"(exports2, module2) {
+  "node_modules/.pnpm/@fastify+proxy-addr@5.1.1/node_modules/@fastify/proxy-addr/index.js"(exports2, module2) {
     "use strict";
     module2.exports = proxyaddr;
     module2.exports.default = proxyaddr;
@@ -10331,7 +13134,10 @@ var require_proxy_addr = __commonJS({
     function trustMulti(subnets) {
       return function trust(addr) {
         if (!isip(addr)) return false;
-        const ip = parseip(addr);
+        let ip = parseip(addr);
+        if (ip.kind() === "ipv6" && ip.isIPv4MappedAddress()) {
+          ip = ip.toIPv4Address();
+        }
         let ipconv;
         const kind = ip.kind();
         for (let i = 0; i < subnets.length; i++) {
@@ -10345,10 +13151,15 @@ var require_proxy_addr = __commonJS({
             if (subnetisipv4 && !ip.isIPv4MappedAddress()) {
               continue;
             }
+            if (!subnetisipv4 && !(subnetrange >= 96 && subnetip.isIPv4MappedAddress())) {
+              continue;
+            }
             if (!ipconv) {
-              ipconv = subnetisipv4 ? ip.toIPv4Address() : ip.toIPv4MappedAddress();
+              ipconv = ip.toIPv4MappedAddress();
             }
             trusted = ipconv;
+          } else if (kind === "ipv6" && subnetip.isIPv4MappedAddress()) {
+            continue;
           }
           if (trusted.match(subnetip, subnetrange)) {
             return true;
@@ -10365,12 +13176,20 @@ var require_proxy_addr = __commonJS({
       return function trust(addr) {
         if (!isip(addr)) return false;
         let ip = parseip(addr);
+        if (ip.kind() === "ipv6" && ip.isIPv4MappedAddress()) {
+          ip = ip.toIPv4Address();
+        }
         const kind = ip.kind();
         if (kind !== subnetkind) {
           if (subnetisipv4 && !ip.isIPv4MappedAddress()) {
             return false;
           }
-          ip = subnetisipv4 ? ip.toIPv4Address() : ip.toIPv4MappedAddress();
+          if (!subnetisipv4 && !(subnetrange >= 96 && subnetip.isIPv4MappedAddress())) {
+            return false;
+          }
+          ip = ip.toIPv4MappedAddress();
+        } else if (kind === "ipv6" && subnetip.isIPv4MappedAddress()) {
+          return false;
         }
         return ip.match(subnetip, subnetrange);
       };
@@ -10378,9 +13197,9 @@ var require_proxy_addr = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/request.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/request.js
 var require_request = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/request.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/request.js"(exports2, module2) {
     "use strict";
     var proxyAddr = require_proxy_addr();
     var {
@@ -10392,11 +13211,15 @@ var require_request = __commonJS({
       kSchemaController,
       kOptions,
       kRequestCacheValidateFns,
+      kRequestContentType,
       kRouteContext,
-      kRequestOriginalUrl
+      kRequestOriginalUrl,
+      kRequestSignal,
+      kOnAbort
     } = require_symbols2();
     var { FST_ERR_REQ_INVALID_VALIDATION_INVOCATION, FST_ERR_DEC_UNDECLARED } = require_errors2();
     var decorators = require_decorate();
+    var ContentType = require_content_type();
     var HTTP_PART_SYMBOL_MAP = {
       body: kSchemaBody,
       headers: kSchemaHeaders,
@@ -10414,16 +13237,19 @@ var require_request = __commonJS({
       this.body = void 0;
     }
     Request.props = [];
+    Request.instanceProperties = /* @__PURE__ */ new Set(["id", "params", "raw", "query", "log", "body"]);
     function getTrustProxyFn(tp) {
       if (typeof tp === "function") {
         return tp;
       }
       if (tp === true) {
-        return null;
+        return function() {
+          return true;
+        };
       }
       if (typeof tp === "number") {
-        return function(a, i) {
-          return i < tp;
+        return function() {
+          return false;
         };
       }
       if (typeof tp === "string") {
@@ -10482,7 +13308,8 @@ var require_request = __commonJS({
         },
         host: {
           get() {
-            if (this.ip !== void 0 && this.headers["x-forwarded-host"]) {
+            const socket = this.raw.socket;
+            if (this.headers["x-forwarded-host"] && socket != null && proxyFn(socket.remoteAddress, 0)) {
               return getLastEntryInMultiHeaderValue(this.headers["x-forwarded-host"]);
             }
             return this.headers.host ?? this.headers[":authority"] ?? "";
@@ -10490,7 +13317,8 @@ var require_request = __commonJS({
         },
         protocol: {
           get() {
-            if (this.headers["x-forwarded-proto"]) {
+            const socket = this.raw.socket;
+            if (this.headers["x-forwarded-proto"] && socket != null && proxyFn(socket.remoteAddress, 0)) {
               return getLastEntryInMultiHeaderValue(this.headers["x-forwarded-proto"]);
             }
             if (this.socket) {
@@ -10540,6 +13368,7 @@ var require_request = __commonJS({
             method: context.config?.method,
             url: context.config?.url,
             bodyLimit: routeLimit || serverLimit,
+            handlerTimeout: context.handlerTimeout,
             attachValidation: context.attachValidation,
             logLevel: context.logLevel,
             exposeHeadRoute: context.exposeHeadRoute,
@@ -10562,6 +13391,20 @@ var require_request = __commonJS({
           return this.raw.socket;
         }
       },
+      signal: {
+        get() {
+          let ac = this[kRequestSignal];
+          if (ac) return ac.signal;
+          ac = new AbortController();
+          this[kRequestSignal] = ac;
+          const onAbort = () => {
+            if (!ac.signal.aborted) ac.abort();
+          };
+          this.raw.on("close", onAbort);
+          this[kOnAbort] = onAbort;
+          return ac.signal;
+        }
+      },
       ip: {
         get() {
           if (this.socket) {
@@ -10576,21 +13419,20 @@ var require_request = __commonJS({
       },
       hostname: {
         get() {
+          if (this.host[0] === "[") {
+            return this.host.slice(0, this.host.indexOf("]") + 1);
+          }
           return this.host.split(":", 1)[0];
         }
       },
       port: {
         get() {
-          const portFromHost = parseInt(this.host.split(":").slice(-1)[0]);
-          if (!isNaN(portFromHost)) {
-            return portFromHost;
+          const portReg = /(?<port>:\d+)$/;
+          const matches = portReg.exec(this.host);
+          if (matches === null || matches[1] === void 0) {
+            return null;
           }
-          const host = this.headers.host ?? this.headers[":authority"] ?? "";
-          const portFromHeader = parseInt(host.split(":").slice(-1)[0]);
-          if (!isNaN(portFromHeader)) {
-            return portFromHeader;
-          }
-          return null;
+          return parseInt(matches.groups.port.slice(1), 10);
         }
       },
       protocol: {
@@ -10609,6 +13451,14 @@ var require_request = __commonJS({
         },
         set(headers) {
           this.additionalHeaders = headers;
+        }
+      },
+      mediaType: {
+        get() {
+          if (!this[kRequestContentType] && this.headers["content-type"] !== void 0) {
+            this[kRequestContentType] = ContentType.from(this.headers["content-type"]);
+          }
+          return this[kRequestContentType]?.mediaType;
         }
       },
       getValidationFunction: {
@@ -10686,9 +13536,9 @@ var require_request = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/context.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/context.js
 var require_context = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/context.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/context.js"(exports2, module2) {
     "use strict";
     var {
       kFourOhFourContext,
@@ -10696,7 +13546,6 @@ var require_context = __commonJS({
       kSchemaErrorFormatter,
       kErrorHandler,
       kChildLoggerFactory,
-      kOptions,
       kReply,
       kRequest,
       kBodyLimit,
@@ -10704,13 +13553,13 @@ var require_context = __commonJS({
       kContentTypeParser,
       kRouteByFastify,
       kRequestCacheValidateFns,
-      kReplyCacheSerializeFns
+      kReplyCacheSerializeFns,
+      kHandlerTimeout
     } = require_symbols2();
     function Context({
       schema,
       handler,
       config,
-      requestIdLogLabel,
       childLoggerFactory,
       errorHandler,
       bodyLimit,
@@ -10724,7 +13573,8 @@ var require_context = __commonJS({
       exposeHeadRoute,
       prefixTrailingSlash,
       server,
-      isFastify
+      isFastify,
+      handlerTimeout
     }) {
       this.schema = schema;
       this.handler = handler;
@@ -10741,7 +13591,6 @@ var require_context = __commonJS({
       this.onRequestAbort = null;
       this.config = config;
       this.errorHandler = errorHandler || server[kErrorHandler];
-      this.requestIdLogLabel = requestIdLogLabel || server[kOptions].requestIdLogLabel;
       this.childLoggerFactory = childLoggerFactory || server[kChildLoggerFactory];
       this._middie = null;
       this._parserOptions = {
@@ -10760,6 +13609,7 @@ var require_context = __commonJS({
       this[kReplyCacheSerializeFns] = null;
       this.validatorCompiler = validatorCompiler || null;
       this.serializerCompiler = serializerCompiler || null;
+      this.handlerTimeout = handlerTimeout || server[kHandlerTimeout] || 0;
       this.server = server;
     }
     function defaultSchemaErrorFormatter(errors, dataVar) {
@@ -10772,669 +13622,6 @@ var require_context = __commonJS({
       return new Error(text.slice(0, -separator.length));
     }
     module2.exports = Context;
-  }
-});
-
-// node_modules/.pnpm/toad-cache@3.7.4/node_modules/toad-cache/dist/toad-cache.cjs
-var require_toad_cache = __commonJS({
-  "node_modules/.pnpm/toad-cache@3.7.4/node_modules/toad-cache/dist/toad-cache.cjs"(exports2) {
-    "use strict";
-    function validateCacheParams(max, ttlInMsecs) {
-      if (typeof max !== "number" || !Number.isInteger(max) || max < 0) {
-        throw new Error("Invalid max value");
-      }
-      if (typeof ttlInMsecs !== "number" || !Number.isInteger(ttlInMsecs) || ttlInMsecs < 0) {
-        throw new Error("Invalid ttl value");
-      }
-    }
-    var FifoMap = class {
-      constructor(max = 1e3, ttlInMsecs = 0) {
-        validateCacheParams(max, ttlInMsecs);
-        this.first = null;
-        this.items = /* @__PURE__ */ new Map();
-        this.last = null;
-        this.max = max;
-        this.ttl = ttlInMsecs;
-      }
-      get size() {
-        return this.items.size;
-      }
-      clear() {
-        this.items.clear();
-        this.first = null;
-        this.last = null;
-      }
-      delete(key) {
-        const deletedItem = this.items.get(key);
-        if (deletedItem !== void 0) {
-          this.items.delete(key);
-          if (deletedItem.prev !== null) {
-            deletedItem.prev.next = deletedItem.next;
-          }
-          if (deletedItem.next !== null) {
-            deletedItem.next.prev = deletedItem.prev;
-          }
-          if (this.first === deletedItem) {
-            this.first = deletedItem.next;
-          }
-          if (this.last === deletedItem) {
-            this.last = deletedItem.prev;
-          }
-        }
-      }
-      deleteMany(keys) {
-        for (var i = 0; i < keys.length; i++) {
-          this.delete(keys[i]);
-        }
-      }
-      evict() {
-        if (this.size > 0) {
-          const item = this.first;
-          this.items.delete(item.key);
-          if (this.size === 0) {
-            this.first = null;
-            this.last = null;
-          } else {
-            this.first = item.next;
-            this.first.prev = null;
-          }
-        }
-      }
-      expiresAt(key) {
-        const item = this.items.get(key);
-        if (item !== void 0) {
-          return item.expiry;
-        }
-      }
-      get(key) {
-        const item = this.items.get(key);
-        if (item !== void 0) {
-          if (this.ttl > 0 && item.expiry <= Date.now()) {
-            this.delete(key);
-            return;
-          }
-          return item.value;
-        }
-      }
-      getMany(keys) {
-        const result = new Array(keys.length);
-        for (var i = 0; i < keys.length; i++) {
-          result[i] = this.get(keys[i]);
-        }
-        return result;
-      }
-      keys() {
-        return this.items.keys();
-      }
-      set(key, value) {
-        const existing = this.items.get(key);
-        if (existing !== void 0) {
-          existing.value = value;
-          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
-          return;
-        }
-        if (this.max > 0 && this.size >= this.max) {
-          this.evict();
-        }
-        const item = {
-          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
-          key,
-          prev: this.last,
-          next: null,
-          value
-        };
-        this.items.set(key, item);
-        if (this.size === 1) {
-          this.first = item;
-        } else {
-          this.last.next = item;
-        }
-        this.last = item;
-      }
-    };
-    var FifoObject = class {
-      constructor(max = 1e3, ttlInMsecs = 0) {
-        validateCacheParams(max, ttlInMsecs);
-        this.first = null;
-        this.items = /* @__PURE__ */ Object.create(null);
-        this.last = null;
-        this.size = 0;
-        this.max = max;
-        this.ttl = ttlInMsecs;
-      }
-      clear() {
-        this.items = /* @__PURE__ */ Object.create(null);
-        this.first = null;
-        this.last = null;
-        this.size = 0;
-      }
-      delete(key) {
-        const deletedItem = this.items[key];
-        if (deletedItem !== void 0) {
-          delete this.items[key];
-          this.size--;
-          if (deletedItem.prev !== null) {
-            deletedItem.prev.next = deletedItem.next;
-          }
-          if (deletedItem.next !== null) {
-            deletedItem.next.prev = deletedItem.prev;
-          }
-          if (this.first === deletedItem) {
-            this.first = deletedItem.next;
-          }
-          if (this.last === deletedItem) {
-            this.last = deletedItem.prev;
-          }
-        }
-      }
-      deleteMany(keys) {
-        for (var i = 0; i < keys.length; i++) {
-          this.delete(keys[i]);
-        }
-      }
-      evict() {
-        if (this.size > 0) {
-          const item = this.first;
-          delete this.items[item.key];
-          if (--this.size === 0) {
-            this.first = null;
-            this.last = null;
-          } else {
-            this.first = item.next;
-            this.first.prev = null;
-          }
-        }
-      }
-      expiresAt(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          return item.expiry;
-        }
-      }
-      get(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          if (this.ttl > 0 && item.expiry <= Date.now()) {
-            this.delete(key);
-            return;
-          }
-          return item.value;
-        }
-      }
-      getMany(keys) {
-        const result = new Array(keys.length);
-        for (var i = 0; i < keys.length; i++) {
-          result[i] = this.get(keys[i]);
-        }
-        return result;
-      }
-      keys() {
-        return Object.keys(this.items);
-      }
-      set(key, value) {
-        const existing = this.items[key];
-        if (existing !== void 0) {
-          existing.value = value;
-          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
-          return;
-        }
-        if (this.max > 0 && this.size >= this.max) {
-          this.evict();
-        }
-        const item = {
-          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
-          key,
-          prev: this.last,
-          next: null,
-          value
-        };
-        this.items[key] = item;
-        if (++this.size === 1) {
-          this.first = item;
-        } else {
-          this.last.next = item;
-        }
-        this.last = item;
-      }
-    };
-    function createEmptyStatisticsRecord() {
-      return {
-        cacheSize: 0,
-        hits: 0,
-        falsyHits: 0,
-        emptyHits: 0,
-        misses: 0,
-        expirations: 0,
-        evictions: 0,
-        invalidateOne: 0,
-        invalidateAll: 0,
-        sets: 0
-      };
-    }
-    var HitStatisticsRecord = class {
-      constructor() {
-        this.records = {};
-      }
-      initForCache(cacheId, currentTimeStamp) {
-        this.records[cacheId] = {
-          [currentTimeStamp]: createEmptyStatisticsRecord()
-        };
-      }
-      resetForCache(cacheId) {
-        if (!this.records[cacheId]) {
-          return;
-        }
-        for (let key of Object.keys(this.records[cacheId])) {
-          this.records[cacheId][key] = createEmptyStatisticsRecord();
-        }
-      }
-      getStatistics() {
-        return this.records;
-      }
-    };
-    var LruMap = class {
-      constructor(max = 1e3, ttlInMsecs = 0) {
-        validateCacheParams(max, ttlInMsecs);
-        this.first = null;
-        this.items = /* @__PURE__ */ new Map();
-        this.last = null;
-        this.max = max;
-        this.ttl = ttlInMsecs;
-      }
-      get size() {
-        return this.items.size;
-      }
-      bumpLru(item) {
-        if (this.last === item) {
-          return;
-        }
-        const last = this.last;
-        const next = item.next;
-        const prev = item.prev;
-        if (this.first === item) {
-          this.first = next;
-        }
-        item.next = null;
-        item.prev = last;
-        last.next = item;
-        if (prev !== null) {
-          prev.next = next;
-        }
-        if (next !== null) {
-          next.prev = prev;
-        }
-        this.last = item;
-      }
-      clear() {
-        this.items.clear();
-        this.first = null;
-        this.last = null;
-      }
-      delete(key) {
-        const item = this.items.get(key);
-        if (item !== void 0) {
-          this.items.delete(key);
-          if (item.prev !== null) {
-            item.prev.next = item.next;
-          }
-          if (item.next !== null) {
-            item.next.prev = item.prev;
-          }
-          if (this.first === item) {
-            this.first = item.next;
-          }
-          if (this.last === item) {
-            this.last = item.prev;
-          }
-        }
-      }
-      deleteMany(keys) {
-        for (var i = 0; i < keys.length; i++) {
-          this.delete(keys[i]);
-        }
-      }
-      evict() {
-        if (this.size > 0) {
-          const item = this.first;
-          this.items.delete(item.key);
-          if (this.size === 0) {
-            this.first = null;
-            this.last = null;
-          } else {
-            this.first = item.next;
-            this.first.prev = null;
-          }
-        }
-      }
-      expiresAt(key) {
-        const item = this.items.get(key);
-        if (item !== void 0) {
-          return item.expiry;
-        }
-      }
-      get(key) {
-        const item = this.items.get(key);
-        if (item !== void 0) {
-          if (this.ttl > 0 && item.expiry <= Date.now()) {
-            this.delete(key);
-            return;
-          }
-          this.bumpLru(item);
-          return item.value;
-        }
-      }
-      getMany(keys) {
-        const result = new Array(keys.length);
-        for (var i = 0; i < keys.length; i++) {
-          result[i] = this.get(keys[i]);
-        }
-        return result;
-      }
-      keys() {
-        return this.items.keys();
-      }
-      set(key, value) {
-        const existing = this.items.get(key);
-        if (existing !== void 0) {
-          existing.value = value;
-          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
-          this.bumpLru(existing);
-          return;
-        }
-        if (this.max > 0 && this.size >= this.max) {
-          this.evict();
-        }
-        const item = {
-          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
-          key,
-          prev: this.last,
-          next: null,
-          value
-        };
-        this.items.set(key, item);
-        if (this.size === 1) {
-          this.first = item;
-        } else {
-          this.last.next = item;
-        }
-        this.last = item;
-      }
-    };
-    var LruObject = class {
-      constructor(max = 1e3, ttlInMsecs = 0) {
-        validateCacheParams(max, ttlInMsecs);
-        this.first = null;
-        this.items = /* @__PURE__ */ Object.create(null);
-        this.last = null;
-        this.size = 0;
-        this.max = max;
-        this.ttl = ttlInMsecs;
-      }
-      bumpLru(item) {
-        if (this.last === item) {
-          return;
-        }
-        const last = this.last;
-        const next = item.next;
-        const prev = item.prev;
-        if (this.first === item) {
-          this.first = next;
-        }
-        item.next = null;
-        item.prev = last;
-        last.next = item;
-        if (prev !== null) {
-          prev.next = next;
-        }
-        if (next !== null) {
-          next.prev = prev;
-        }
-        this.last = item;
-      }
-      clear() {
-        this.items = /* @__PURE__ */ Object.create(null);
-        this.first = null;
-        this.last = null;
-        this.size = 0;
-      }
-      delete(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          delete this.items[key];
-          this.size--;
-          if (item.prev !== null) {
-            item.prev.next = item.next;
-          }
-          if (item.next !== null) {
-            item.next.prev = item.prev;
-          }
-          if (this.first === item) {
-            this.first = item.next;
-          }
-          if (this.last === item) {
-            this.last = item.prev;
-          }
-        }
-      }
-      deleteMany(keys) {
-        for (var i = 0; i < keys.length; i++) {
-          this.delete(keys[i]);
-        }
-      }
-      evict() {
-        if (this.size > 0) {
-          const item = this.first;
-          delete this.items[item.key];
-          if (--this.size === 0) {
-            this.first = null;
-            this.last = null;
-          } else {
-            this.first = item.next;
-            this.first.prev = null;
-          }
-        }
-      }
-      expiresAt(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          return item.expiry;
-        }
-      }
-      get(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          if (this.ttl > 0 && item.expiry <= Date.now()) {
-            this.delete(key);
-            return;
-          }
-          this.bumpLru(item);
-          return item.value;
-        }
-      }
-      getMany(keys) {
-        const result = new Array(keys.length);
-        for (var i = 0; i < keys.length; i++) {
-          result[i] = this.get(keys[i]);
-        }
-        return result;
-      }
-      keys() {
-        return Object.keys(this.items);
-      }
-      set(key, value) {
-        const existing = this.items[key];
-        if (existing !== void 0) {
-          existing.value = value;
-          existing.expiry = this.ttl > 0 ? Date.now() + this.ttl : this.ttl;
-          this.bumpLru(existing);
-          return;
-        }
-        if (this.max > 0 && this.size >= this.max) {
-          this.evict();
-        }
-        const item = {
-          expiry: this.ttl > 0 ? Date.now() + this.ttl : this.ttl,
-          key,
-          prev: this.last,
-          next: null,
-          value
-        };
-        this.items[key] = item;
-        if (++this.size === 1) {
-          this.first = item;
-        } else {
-          this.last.next = item;
-        }
-        this.last = item;
-      }
-    };
-    function getTimestamp(date) {
-      return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
-    }
-    var HitStatistics = class {
-      constructor(cacheId, statisticTtlInHours, globalStatisticsRecord) {
-        this.cacheId = cacheId;
-        this.statisticTtlInHours = statisticTtlInHours;
-        this.collectionStart = /* @__PURE__ */ new Date();
-        this.currentTimeStamp = getTimestamp(this.collectionStart);
-        this.archiveAfter = this.collectionStart.getTime() + this.statisticTtlInHours * 36e5;
-        this.records = globalStatisticsRecord || new HitStatisticsRecord();
-        this.records.initForCache(this.cacheId, this.currentTimeStamp);
-      }
-      get currentRecord() {
-        const cacheRecords = this.records.records[this.cacheId];
-        if (!cacheRecords[this.currentTimeStamp]) {
-          cacheRecords[this.currentTimeStamp] = createEmptyStatisticsRecord();
-        }
-        return cacheRecords[this.currentTimeStamp];
-      }
-      /* v8 ignore next 3 -- kept for compatibility, no longer used internally */
-      hoursPassed() {
-        return (Date.now() - this.collectionStart) / 1e3 / 60 / 60;
-      }
-      addHit() {
-        this.archiveIfNeeded();
-        this.currentRecord.hits++;
-      }
-      addFalsyHit() {
-        this.archiveIfNeeded();
-        this.currentRecord.falsyHits++;
-      }
-      addEmptyHit() {
-        this.archiveIfNeeded();
-        this.currentRecord.emptyHits++;
-      }
-      addMiss() {
-        this.archiveIfNeeded();
-        this.currentRecord.misses++;
-      }
-      addEviction() {
-        this.archiveIfNeeded();
-        this.currentRecord.evictions++;
-      }
-      setCacheSize(currentSize) {
-        this.archiveIfNeeded();
-        this.currentRecord.cacheSize = currentSize;
-      }
-      addExpiration() {
-        this.archiveIfNeeded();
-        this.currentRecord.expirations++;
-      }
-      addSet() {
-        this.archiveIfNeeded();
-        this.currentRecord.sets++;
-      }
-      addInvalidateOne() {
-        this.archiveIfNeeded();
-        this.currentRecord.invalidateOne++;
-      }
-      addInvalidateAll() {
-        this.archiveIfNeeded();
-        this.currentRecord.invalidateAll++;
-      }
-      getStatistics() {
-        return this.records.getStatistics();
-      }
-      archiveIfNeeded() {
-        if (Date.now() >= this.archiveAfter) {
-          this.collectionStart = /* @__PURE__ */ new Date();
-          this.currentTimeStamp = getTimestamp(this.collectionStart);
-          this.archiveAfter = this.collectionStart.getTime() + this.statisticTtlInHours * 36e5;
-          this.records.initForCache(this.cacheId, this.currentTimeStamp);
-        }
-      }
-    };
-    var LruObjectHitStatistics = class extends LruObject {
-      constructor(max, ttlInMsecs, cacheId, globalStatisticsRecord, statisticTtlInHours) {
-        super(max, ttlInMsecs);
-        if (!cacheId) {
-          throw new Error("Cache id is mandatory");
-        }
-        this.hitStatistics = new HitStatistics(
-          cacheId,
-          statisticTtlInHours !== void 0 ? statisticTtlInHours : 24,
-          globalStatisticsRecord
-        );
-      }
-      getStatistics() {
-        return this.hitStatistics.getStatistics();
-      }
-      set(key, value) {
-        super.set(key, value);
-        this.hitStatistics.addSet();
-        this.hitStatistics.setCacheSize(this.size);
-      }
-      evict() {
-        const hadItems = this.size > 0;
-        super.evict();
-        if (hadItems) {
-          this.hitStatistics.addEviction();
-        }
-        this.hitStatistics.setCacheSize(this.size);
-      }
-      delete(key, isExpiration = false) {
-        const existed = this.items[key] !== void 0;
-        super.delete(key);
-        if (existed && !isExpiration) {
-          this.hitStatistics.addInvalidateOne();
-        }
-        this.hitStatistics.setCacheSize(this.size);
-      }
-      clear() {
-        super.clear();
-        this.hitStatistics.addInvalidateAll();
-        this.hitStatistics.setCacheSize(this.size);
-      }
-      get(key) {
-        const item = this.items[key];
-        if (item !== void 0) {
-          if (this.ttl > 0 && item.expiry <= Date.now()) {
-            this.delete(key, true);
-            this.hitStatistics.addExpiration();
-            return;
-          }
-          this.bumpLru(item);
-          if (!item.value) {
-            this.hitStatistics.addFalsyHit();
-            if (item.value === void 0 || item.value === null || item.value === "") {
-              this.hitStatistics.addEmptyHit();
-            }
-          }
-          this.hitStatistics.addHit();
-          return item.value;
-        }
-        this.hitStatistics.addMiss();
-      }
-    };
-    exports2.Fifo = FifoObject;
-    exports2.FifoMap = FifoMap;
-    exports2.FifoObject = FifoObject;
-    exports2.HitStatisticsRecord = HitStatisticsRecord;
-    exports2.Lru = LruObject;
-    exports2.LruHitStatistics = LruObjectHitStatistics;
-    exports2.LruMap = LruMap;
-    exports2.LruObject = LruObject;
-    exports2.LruObjectHitStatistics = LruObjectHitStatistics;
   }
 });
 
@@ -11542,13 +13729,14 @@ var require_secure_json_parse = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/contentTypeParser.js
-var require_contentTypeParser = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/contentTypeParser.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/content-type-parser.js
+var require_content_type_parser = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/content-type-parser.js"(exports2, module2) {
     "use strict";
     var { AsyncResource } = require("node:async_hooks");
     var { FifoMap: Fifo } = require_toad_cache();
     var { parse: secureJsonParse } = require_secure_json_parse();
+    var ContentType = require_content_type();
     var {
       kDefaultJsonParse,
       kContentTypeParser,
@@ -11611,8 +13799,13 @@ var require_contentTypeParser = __commonJS({
         this.customParsers.set("", parser);
       } else {
         if (contentTypeIsString) {
-          this.parserList.unshift(contentType);
-          this.customParsers.set(contentType, parser);
+          const ct = new ContentType(contentType);
+          if (ct.isValid === false) {
+            throw new FST_ERR_CTP_INVALID_TYPE();
+          }
+          const normalizedContentType = ct.toString();
+          this.parserList.unshift(normalizedContentType);
+          this.customParsers.set(normalizedContentType, parser);
         } else {
           validateRegExp(contentType);
           this.parserRegExpList.unshift(contentType);
@@ -11622,7 +13815,7 @@ var require_contentTypeParser = __commonJS({
     };
     ContentTypeParser.prototype.hasParser = function(contentType) {
       if (typeof contentType === "string") {
-        contentType = contentType.trim().toLowerCase();
+        contentType = new ContentType(contentType).toString();
       } else {
         if (!(contentType instanceof RegExp)) throw new FST_ERR_CTP_INVALID_TYPE();
         contentType = contentType.toString();
@@ -11630,33 +13823,42 @@ var require_contentTypeParser = __commonJS({
       return this.customParsers.has(contentType);
     };
     ContentTypeParser.prototype.existingParser = function(contentType) {
-      if (contentType === "application/json" && this.customParsers.has(contentType)) {
-        return this.customParsers.get(contentType).fn !== this[kDefaultJsonParse];
-      }
-      if (contentType === "text/plain" && this.customParsers.has(contentType)) {
-        return this.customParsers.get(contentType).fn !== defaultPlainTextParser;
+      if (typeof contentType === "string") {
+        const ct = new ContentType(contentType).toString();
+        if (contentType === "application/json" && this.customParsers.has(contentType)) {
+          return this.customParsers.get(ct).fn !== this[kDefaultJsonParse];
+        }
+        if (contentType === "text/plain" && this.customParsers.has(contentType)) {
+          return this.customParsers.get(ct).fn !== defaultPlainTextParser;
+        }
       }
       return this.hasParser(contentType);
     };
     ContentTypeParser.prototype.getParser = function(contentType) {
-      let parser = this.customParsers.get(contentType);
+      if (typeof contentType === "string") {
+        const cached = this.cache.get(contentType);
+        if (cached !== void 0) return cached;
+        contentType = new ContentType(contentType);
+      }
+      const ct = contentType.toString();
+      let parser = this.cache.get(ct);
       if (parser !== void 0) return parser;
-      parser = this.cache.get(contentType);
-      if (parser !== void 0) return parser;
-      const caseInsensitiveContentType = contentType.toLowerCase();
-      for (let i = 0; i !== this.parserList.length; ++i) {
-        const parserListItem = this.parserList[i];
-        if (caseInsensitiveContentType.slice(0, parserListItem.length) === parserListItem && (caseInsensitiveContentType.length === parserListItem.length || caseInsensitiveContentType.charCodeAt(parserListItem.length) === 59 || caseInsensitiveContentType.charCodeAt(parserListItem.length) === 32)) {
-          parser = this.customParsers.get(parserListItem);
-          this.cache.set(contentType, parser);
-          return parser;
-        }
+      parser = this.customParsers.get(ct);
+      if (parser !== void 0) {
+        this.cache.set(ct, parser);
+        return parser;
+      }
+      parser = this.customParsers.get(contentType.mediaType);
+      if (parser !== void 0) {
+        this.cache.set(ct, parser);
+        return parser;
       }
       for (let j = 0; j !== this.parserRegExpList.length; ++j) {
         const parserRegExp = this.parserRegExpList[j];
-        if (parserRegExp.test(contentType)) {
+        parserRegExp.lastIndex = 0;
+        if (parserRegExp.test(ct)) {
           parser = this.customParsers.get(parserRegExp.toString());
-          this.cache.set(contentType, parser);
+          this.cache.set(ct, parser);
           return parser;
         }
       }
@@ -11671,7 +13873,7 @@ var require_contentTypeParser = __commonJS({
     ContentTypeParser.prototype.remove = function(contentType) {
       let parsers;
       if (typeof contentType === "string") {
-        contentType = contentType.trim().toLowerCase();
+        contentType = new ContentType(contentType).toString();
         parsers = this.parserList;
       } else {
         if (!(contentType instanceof RegExp)) throw new FST_ERR_CTP_INVALID_TYPE();
@@ -11693,11 +13895,13 @@ var require_contentTypeParser = __commonJS({
           return;
         }
         reply[kReplyIsError] = true;
-        reply.send(new FST_ERR_CTP_INVALID_MEDIA_TYPE(contentType || void 0));
+        reply.send(new FST_ERR_CTP_INVALID_MEDIA_TYPE());
         return;
       }
       const resource = new AsyncResource("content-type-parser:run", request);
-      const done = resource.bind(onDone);
+      function done(error, body) {
+        resource.runInAsyncScope(onDone, void 0, error, body);
+      }
       if (parser.asString === true || parser.asBuffer === true) {
         rawBody(
           request,
@@ -11874,445 +14078,6 @@ var require_contentTypeParser = __commonJS({
       defaultTextParser: defaultPlainTextParser
     };
     module2.exports[kTestInternals] = { rawBody };
-  }
-});
-
-// node_modules/.pnpm/dequal@2.0.3/node_modules/dequal/dist/index.js
-var require_dist = __commonJS({
-  "node_modules/.pnpm/dequal@2.0.3/node_modules/dequal/dist/index.js"(exports2) {
-    var has = Object.prototype.hasOwnProperty;
-    function find(iter, tar, key) {
-      for (key of iter.keys()) {
-        if (dequal(key, tar)) return key;
-      }
-    }
-    function dequal(foo, bar) {
-      var ctor, len, tmp;
-      if (foo === bar) return true;
-      if (foo && bar && (ctor = foo.constructor) === bar.constructor) {
-        if (ctor === Date) return foo.getTime() === bar.getTime();
-        if (ctor === RegExp) return foo.toString() === bar.toString();
-        if (ctor === Array) {
-          if ((len = foo.length) === bar.length) {
-            while (len-- && dequal(foo[len], bar[len])) ;
-          }
-          return len === -1;
-        }
-        if (ctor === Set) {
-          if (foo.size !== bar.size) {
-            return false;
-          }
-          for (len of foo) {
-            tmp = len;
-            if (tmp && typeof tmp === "object") {
-              tmp = find(bar, tmp);
-              if (!tmp) return false;
-            }
-            if (!bar.has(tmp)) return false;
-          }
-          return true;
-        }
-        if (ctor === Map) {
-          if (foo.size !== bar.size) {
-            return false;
-          }
-          for (len of foo) {
-            tmp = len[0];
-            if (tmp && typeof tmp === "object") {
-              tmp = find(bar, tmp);
-              if (!tmp) return false;
-            }
-            if (!dequal(len[1], bar.get(tmp))) {
-              return false;
-            }
-          }
-          return true;
-        }
-        if (ctor === ArrayBuffer) {
-          foo = new Uint8Array(foo);
-          bar = new Uint8Array(bar);
-        } else if (ctor === DataView) {
-          if ((len = foo.byteLength) === bar.byteLength) {
-            while (len-- && foo.getInt8(len) === bar.getInt8(len)) ;
-          }
-          return len === -1;
-        }
-        if (ArrayBuffer.isView(foo)) {
-          if ((len = foo.byteLength) === bar.byteLength) {
-            while (len-- && foo[len] === bar[len]) ;
-          }
-          return len === -1;
-        }
-        if (!ctor || typeof foo === "object") {
-          len = 0;
-          for (ctor in foo) {
-            if (has.call(foo, ctor) && ++len && !has.call(bar, ctor)) return false;
-            if (!(ctor in bar) || !dequal(foo[ctor], bar[ctor])) return false;
-          }
-          return Object.keys(bar).length === len;
-        }
-      }
-      return foo !== foo && bar !== bar;
-    }
-    exports2.dequal = dequal;
-  }
-});
-
-// node_modules/.pnpm/json-schema-ref-resolver@3.0.0/node_modules/json-schema-ref-resolver/index.js
-var require_json_schema_ref_resolver = __commonJS({
-  "node_modules/.pnpm/json-schema-ref-resolver@3.0.0/node_modules/json-schema-ref-resolver/index.js"(exports2, module2) {
-    "use strict";
-    var { dequal: deepEqual } = require_dist();
-    var jsonSchemaRefSymbol = Symbol.for("json-schema-ref");
-    var RefResolver = class {
-      #schemas;
-      #derefSchemas;
-      #insertRefSymbol;
-      #allowEqualDuplicates;
-      #cloneSchemaWithoutRefs;
-      constructor(opts = {}) {
-        this.#schemas = {};
-        this.#derefSchemas = {};
-        this.#insertRefSymbol = opts.insertRefSymbol ?? false;
-        this.#allowEqualDuplicates = opts.allowEqualDuplicates ?? true;
-        this.#cloneSchemaWithoutRefs = opts.cloneSchemaWithoutRefs ?? false;
-      }
-      addSchema(schema, rootSchemaId, isRootSchema = true) {
-        if (isRootSchema) {
-          if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
-            rootSchemaId = schema.$id;
-          } else {
-            this.#insertSchemaBySchemaId(schema, rootSchemaId);
-          }
-        }
-        const schemaId = schema.$id;
-        if (schemaId !== void 0 && typeof schemaId === "string") {
-          if (schemaId.charAt(0) === "#") {
-            this.#insertSchemaByAnchor(schema, rootSchemaId, schemaId);
-          } else {
-            this.#insertSchemaBySchemaId(schema, schemaId);
-            rootSchemaId = schemaId;
-          }
-        }
-        const ref = schema.$ref;
-        if (ref !== void 0 && typeof ref === "string") {
-          const { refSchemaId, refJsonPointer } = this.#parseSchemaRef(ref, rootSchemaId);
-          this.#schemas[rootSchemaId].refs.push({
-            schemaId: refSchemaId,
-            jsonPointer: refJsonPointer
-          });
-        }
-        for (const key in schema) {
-          if (typeof schema[key] === "object" && schema[key] !== null) {
-            this.addSchema(schema[key], rootSchemaId, false);
-          }
-        }
-      }
-      getSchema(schemaId, jsonPointer = "#") {
-        const schema = this.#schemas[schemaId];
-        if (schema === void 0) {
-          throw new Error(
-            `Cannot resolve ref "${schemaId}${jsonPointer}". Schema with id "${schemaId}" is not found.`
-          );
-        }
-        if (schema.anchors[jsonPointer] !== void 0) {
-          return schema.anchors[jsonPointer];
-        }
-        return getDataByJSONPointer(schema.schema, jsonPointer);
-      }
-      hasSchema(schemaId) {
-        return this.#schemas[schemaId] !== void 0;
-      }
-      getSchemaRefs(schemaId) {
-        const schema = this.#schemas[schemaId];
-        if (schema === void 0) {
-          throw new Error(`Schema with id "${schemaId}" is not found.`);
-        }
-        return schema.refs;
-      }
-      getSchemaDependencies(schemaId, dependencies = {}) {
-        const schema = this.#schemas[schemaId];
-        for (const ref of schema.refs) {
-          const dependencySchemaId = ref.schemaId;
-          if (dependencySchemaId === schemaId || dependencies[dependencySchemaId] !== void 0) continue;
-          dependencies[dependencySchemaId] = this.getSchema(dependencySchemaId);
-          this.getSchemaDependencies(dependencySchemaId, dependencies);
-        }
-        return dependencies;
-      }
-      derefSchema(schemaId) {
-        if (this.#derefSchemas[schemaId] !== void 0) return;
-        const schema = this.#schemas[schemaId];
-        if (schema === void 0) {
-          throw new Error(`Schema with id "${schemaId}" is not found.`);
-        }
-        if (!this.#cloneSchemaWithoutRefs && schema.refs.length === 0) {
-          this.#derefSchemas[schemaId] = {
-            schema: schema.schema,
-            anchors: schema.anchors
-          };
-        }
-        const refs = [];
-        this.#addDerefSchema(schema.schema, schemaId, true, refs);
-        const dependencies = this.getSchemaDependencies(schemaId);
-        for (const schemaId2 in dependencies) {
-          const schema2 = dependencies[schemaId2];
-          this.#addDerefSchema(schema2, schemaId2, true, refs);
-        }
-        for (const ref of refs) {
-          const {
-            refSchemaId,
-            refJsonPointer
-          } = this.#parseSchemaRef(ref.ref, ref.sourceSchemaId);
-          const targetSchema = this.getDerefSchema(refSchemaId, refJsonPointer);
-          if (targetSchema === null) {
-            throw new Error(
-              `Cannot resolve ref "${ref.ref}". Ref "${refJsonPointer}" is not found in schema "${refSchemaId}".`
-            );
-          }
-          ref.targetSchema = targetSchema;
-          ref.targetSchemaId = refSchemaId;
-        }
-        for (const ref of refs) {
-          this.#resolveRef(ref, refs);
-        }
-      }
-      getDerefSchema(schemaId, jsonPointer = "#") {
-        let derefSchema = this.#derefSchemas[schemaId];
-        if (derefSchema === void 0) {
-          this.derefSchema(schemaId);
-          derefSchema = this.#derefSchemas[schemaId];
-        }
-        if (derefSchema.anchors[jsonPointer] !== void 0) {
-          return derefSchema.anchors[jsonPointer];
-        }
-        return getDataByJSONPointer(derefSchema.schema, jsonPointer);
-      }
-      #parseSchemaRef(ref, schemaId) {
-        const sharpIndex = ref.indexOf("#");
-        if (sharpIndex === -1) {
-          return { refSchemaId: ref, refJsonPointer: "#" };
-        }
-        if (sharpIndex === 0) {
-          return { refSchemaId: schemaId, refJsonPointer: ref };
-        }
-        return {
-          refSchemaId: ref.slice(0, sharpIndex),
-          refJsonPointer: ref.slice(sharpIndex)
-        };
-      }
-      #addDerefSchema(schema, rootSchemaId, isRootSchema, refs = []) {
-        const derefSchema = Array.isArray(schema) ? [...schema] : { ...schema };
-        if (isRootSchema) {
-          if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
-            rootSchemaId = schema.$id;
-          } else {
-            this.#insertDerefSchemaBySchemaId(derefSchema, rootSchemaId);
-          }
-        }
-        const schemaId = derefSchema.$id;
-        if (schemaId !== void 0 && typeof schemaId === "string") {
-          if (schemaId.charAt(0) === "#") {
-            this.#insertDerefSchemaByAnchor(derefSchema, rootSchemaId, schemaId);
-          } else {
-            this.#insertDerefSchemaBySchemaId(derefSchema, schemaId);
-            rootSchemaId = schemaId;
-          }
-        }
-        if (derefSchema.$ref !== void 0) {
-          refs.push({
-            ref: derefSchema.$ref,
-            sourceSchemaId: rootSchemaId,
-            sourceSchema: derefSchema
-          });
-        }
-        for (const key in derefSchema) {
-          const value = derefSchema[key];
-          if (typeof value === "object" && value !== null) {
-            derefSchema[key] = this.#addDerefSchema(value, rootSchemaId, false, refs);
-          }
-        }
-        return derefSchema;
-      }
-      #resolveRef(ref, refs) {
-        const { sourceSchema, targetSchema } = ref;
-        if (!sourceSchema.$ref) return;
-        if (this.#insertRefSymbol) {
-          sourceSchema[jsonSchemaRefSymbol] = sourceSchema.$ref;
-        }
-        delete sourceSchema.$ref;
-        if (targetSchema.$ref) {
-          const targetSchemaRef = refs.find((ref2) => ref2.sourceSchema === targetSchema);
-          this.#resolveRef(targetSchemaRef, refs);
-        }
-        for (const key in targetSchema) {
-          if (key === "$id") continue;
-          if (sourceSchema[key] !== void 0) {
-            if (deepEqual(sourceSchema[key], targetSchema[key])) continue;
-            throw new Error(
-              `Cannot resolve ref "${ref.ref}". Property "${key}" already exists in schema "${ref.sourceSchemaId}".`
-            );
-          }
-          sourceSchema[key] = targetSchema[key];
-        }
-        ref.isResolved = true;
-      }
-      #insertSchemaBySchemaId(schema, schemaId) {
-        const foundSchema = this.#schemas[schemaId];
-        if (foundSchema !== void 0) {
-          if (this.#allowEqualDuplicates && deepEqual(schema, foundSchema.schema)) return;
-          throw new Error(`There is already another schema with id "${schemaId}".`);
-        }
-        this.#schemas[schemaId] = { schema, anchors: {}, refs: [] };
-      }
-      #insertSchemaByAnchor(schema, schemaId, anchor) {
-        const { anchors } = this.#schemas[schemaId];
-        if (anchors[anchor] !== void 0) {
-          throw new Error(`There is already another anchor "${anchor}" in schema "${schemaId}".`);
-        }
-        anchors[anchor] = schema;
-      }
-      #insertDerefSchemaBySchemaId(schema, schemaId) {
-        const foundSchema = this.#derefSchemas[schemaId];
-        if (foundSchema !== void 0) return;
-        this.#derefSchemas[schemaId] = { schema, anchors: {} };
-      }
-      #insertDerefSchemaByAnchor(schema, schemaId, anchor) {
-        const { anchors } = this.#derefSchemas[schemaId];
-        anchors[anchor] = schema;
-      }
-    };
-    function getDataByJSONPointer(data, jsonPointer) {
-      const parts = jsonPointer.split("/");
-      let current = data;
-      for (const part of parts) {
-        if (part === "" || part === "#") continue;
-        if (typeof current !== "object" || current === null) {
-          return null;
-        }
-        current = current[part];
-      }
-      return current ?? null;
-    }
-    module2.exports = { RefResolver };
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/serializer.js
-var require_serializer2 = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/serializer.js"(exports2, module2) {
-    "use strict";
-    var STR_ESCAPE = /[\u0000-\u001f\u0022\u005c\ud800-\udfff]/;
-    module2.exports = class Serializer {
-      constructor(options) {
-        switch (options && options.rounding) {
-          case "floor":
-            this.parseInteger = Math.floor;
-            break;
-          case "ceil":
-            this.parseInteger = Math.ceil;
-            break;
-          case "round":
-            this.parseInteger = Math.round;
-            break;
-          case "trunc":
-          default:
-            this.parseInteger = Math.trunc;
-            break;
-        }
-        this._options = options;
-      }
-      asInteger(i) {
-        if (Number.isInteger(i)) {
-          return "" + i;
-        } else if (typeof i === "bigint") {
-          return i.toString();
-        }
-        const integer = this.parseInteger(i);
-        if (integer === Infinity || integer === -Infinity || integer !== integer) {
-          throw new Error(`The value "${i}" cannot be converted to an integer.`);
-        }
-        return "" + integer;
-      }
-      asNumber(i) {
-        const num = Number(i);
-        if (num !== num) {
-          throw new Error(`The value "${i}" cannot be converted to a number.`);
-        } else if (num === Infinity || num === -Infinity) {
-          return "null";
-        } else {
-          return "" + num;
-        }
-      }
-      asBoolean(bool) {
-        return bool && "true" || "false";
-      }
-      asDateTime(date) {
-        if (date === null) return '""';
-        if (date instanceof Date) {
-          return '"' + date.toISOString() + '"';
-        }
-        if (typeof date === "string") {
-          return '"' + date + '"';
-        }
-        throw new Error(`The value "${date}" cannot be converted to a date-time.`);
-      }
-      asDate(date) {
-        if (date === null) return '""';
-        if (date instanceof Date) {
-          return '"' + new Date(date.getTime() - date.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) + '"';
-        }
-        if (typeof date === "string") {
-          return '"' + date + '"';
-        }
-        throw new Error(`The value "${date}" cannot be converted to a date.`);
-      }
-      asTime(date) {
-        if (date === null) return '""';
-        if (date instanceof Date) {
-          return '"' + new Date(date.getTime() - date.getTimezoneOffset() * 6e4).toISOString().slice(11, 19) + '"';
-        }
-        if (typeof date === "string") {
-          return '"' + date + '"';
-        }
-        throw new Error(`The value "${date}" cannot be converted to a time.`);
-      }
-      asString(str) {
-        const len = str.length;
-        if (len === 0) {
-          return '""';
-        } else if (len < 42) {
-          let result = "";
-          let last = -1;
-          let point = 255;
-          for (let i = 0; i < len; i++) {
-            point = str.charCodeAt(i);
-            if (point === 34 || // '"'
-            point === 92) {
-              last === -1 && (last = 0);
-              result += str.slice(last, i) + "\\";
-              last = i;
-            } else if (point < 32 || point >= 55296 && point <= 57343) {
-              return JSON.stringify(str);
-            }
-          }
-          return last === -1 && '"' + str + '"' || '"' + result + str.slice(last) + '"';
-        } else if (len < 5e3 && STR_ESCAPE.test(str) === false) {
-          return '"' + str + '"';
-        } else {
-          return JSON.stringify(str);
-        }
-      }
-      asUnsafeString(str) {
-        return '"' + str + '"';
-      }
-      getState() {
-        return this._options;
-      }
-      static restoreFromState(state) {
-        return new Serializer(state);
-      }
-    };
   }
 });
 
@@ -15386,15 +17151,34 @@ var require_data = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/lib/utils.js
+// node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/utils.js
 var require_utils = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
+  "node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
     "use strict";
     var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
     var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+    var isPort = RegExp.prototype.test.bind(/^\d*$/u);
     var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
     var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-    var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
+    var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
+    var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
+    var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
+    var BYTE_HEX = new Array(256);
+    {
+      const HEX_DIGITS = "0123456789ABCDEF";
+      for (let i = 0; i < 256; i++) {
+        BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
+      }
+    }
+    function percentEncodeNonAscii(cp) {
+      if (cp < 2048) {
+        return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
+      }
+      if (cp < 65536) {
+        return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+      }
+      return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+    }
     function stringArrayToHexStripped(input) {
       let acc = "";
       let code = 0;
@@ -15419,91 +17203,105 @@ var require_utils = __commonJS({
       }
       return acc;
     }
+    var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
+    var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
+    var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
     var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-    function consumeIsZone(buffer) {
-      buffer.length = 0;
-      return true;
-    }
-    function consumeHextets(buffer, address, output) {
-      if (buffer.length) {
-        const hex = stringArrayToHexStripped(buffer);
-        if (hex !== "") {
-          address.push(hex);
-        } else {
-          output.error = true;
-          return false;
+    function isZoneIdentifier(zone) {
+      if (zone.length === 0) return false;
+      for (let i = 0; i < zone.length; i++) {
+        if (isZoneCharacter(zone[i])) continue;
+        if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
+          i += 2;
+          continue;
         }
-        buffer.length = 0;
+        return false;
       }
       return true;
     }
-    function getIPV6(input) {
-      let tokenCount = 0;
-      const output = { error: false, address: "", zone: "" };
-      const address = [];
-      const buffer = [];
-      let endipv6Encountered = false;
-      let endIpv6 = false;
-      let consume = consumeHextets;
-      for (let i = 0; i < input.length; i++) {
-        const cursor = input[i];
-        if (cursor === "[" || cursor === "]") {
-          continue;
-        }
-        if (cursor === ":") {
-          if (endipv6Encountered === true) {
-            endIpv6 = true;
+    function compressIPv6ZeroRun(hextets) {
+      let bestStart = -1;
+      let bestLength = 0;
+      let runStart = -1;
+      let runLength = 0;
+      for (let i = 0; i < hextets.length; i++) {
+        if (hextets[i] === "0") {
+          if (runStart === -1) runStart = i;
+          runLength++;
+          if (runLength > bestLength) {
+            bestLength = runLength;
+            bestStart = runStart;
           }
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          if (++tokenCount > 7) {
-            output.error = true;
-            break;
-          }
-          if (i > 0 && input[i - 1] === ":") {
-            endipv6Encountered = true;
-          }
-          address.push(":");
-          continue;
-        } else if (cursor === "%") {
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          consume = consumeIsZone;
         } else {
-          buffer.push(cursor);
-          continue;
+          runStart = -1;
+          runLength = 0;
         }
       }
-      if (buffer.length) {
-        if (consume === consumeIsZone) {
-          output.zone = buffer.join("");
-        } else if (endIpv6) {
-          address.push(buffer.join(""));
-        } else {
-          address.push(stringArrayToHexStripped(buffer));
-        }
+      if (bestLength < 2) return hextets.join(":");
+      const head = hextets.slice(0, bestStart).join(":");
+      const tail = hextets.slice(bestStart + bestLength).join(":");
+      return head + "::" + tail;
+    }
+    function normalizeIPv6Address(input) {
+      const compression = input.indexOf("::");
+      if (compression !== -1 && input.indexOf("::", compression + 1) !== -1) return void 0;
+      const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
+      const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
+      if (compression !== -1) {
+        if (left.length === 1 && left[0] === "") left.length = 0;
+        if (right.length === 1 && right[0] === "") right.length = 0;
       }
-      output.address = address.join("");
-      return output;
+      const parts = left.concat(right);
+      let hextetCount = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === "") return void 0;
+        if (part.indexOf(".") !== -1) {
+          if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part)) return void 0;
+          hextetCount += 2;
+          continue;
+        }
+        if (!isHextet(part)) return void 0;
+        parts[i] = parseInt(part, 16).toString(16);
+        hextetCount++;
+      }
+      if (compression === -1) {
+        if (hextetCount !== 8) return void 0;
+        return compressIPv6ZeroRun(parts);
+      }
+      if (hextetCount >= 8) return void 0;
+      const expanded = parts.slice(0, left.length);
+      for (let i = hextetCount; i < 8; i++) expanded.push("0");
+      for (let i = left.length; i < parts.length; i++) expanded.push(parts[i]);
+      return compressIPv6ZeroRun(expanded);
     }
     function normalizeIPv6(host) {
-      if (findToken(host, ":") < 2) {
-        return { host, isIPV6: false };
+      const bracketed = host[0] === "[" && host[host.length - 1] === "]";
+      const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
+      if (hasBracket && !bracketed) return { host, isIPV6: false, error: true };
+      let input = bracketed ? host.slice(1, -1) : host;
+      if (bracketed && isIPvFuture(input)) {
+        input = input.toLowerCase();
+        return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
       }
-      const ipv6 = getIPV6(host);
-      if (!ipv6.error) {
-        let newHost = ipv6.address;
-        let escapedHost = ipv6.address;
-        if (ipv6.zone) {
-          newHost += "%" + ipv6.zone;
-          escapedHost += "%25" + ipv6.zone;
-        }
-        return { host: newHost, isIPV6: true, escapedHost };
-      } else {
-        return { host, isIPV6: false };
+      if (findToken(input, ":") < 2) {
+        return { host, isIPV6: false, error: bracketed };
       }
+      let zoneIdentifier = "";
+      const zoneSeparator = input.indexOf("%");
+      if (zoneSeparator !== -1) {
+        const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
+        zoneIdentifier = input.slice(zoneSeparator + separatorLength);
+        if (!isZoneIdentifier(zoneIdentifier)) return { host, isIPV6: false, error: true };
+        input = input.slice(0, zoneSeparator);
+      }
+      const address = normalizeIPv6Address(input);
+      if (address === void 0) return { host, isIPV6: false, error: true };
+      return {
+        host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
+        escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
+        isIPV6: true
+      };
     }
     function findToken(str, token) {
       let ind = 0;
@@ -15622,7 +17420,8 @@ var require_utils = __commonJS({
     function normalizePathEncoding(input) {
       let output = "";
       for (let i = 0; i < input.length; i++) {
-        if (input[i] === "%" && i + 2 < input.length) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
           const hex = input.slice(i + 1, i + 3);
           if (isHexPair(hex)) {
             const normalizedHex = hex.toUpperCase();
@@ -15636,10 +17435,152 @@ var require_utils = __commonJS({
             continue;
           }
         }
-        if (isPathCharacter(input[i])) {
-          output += input[i];
+        if (isPathCharacter(ch)) {
+          output += ch;
         } else {
-          output += escape(input[i]);
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function serializePathEncoding(input, pathNoScheme = false) {
+      let output = "";
+      let firstSegment = pathNoScheme && input[0] !== "/";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (ch === "/") {
+          firstSegment = false;
+        }
+        if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeComponent(input, isAllowed) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (isAllowed(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeUserinfo(input) {
+      return encodeComponent(input, isUserinfoCharacter);
+    }
+    function encodeQuery(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function encodeFragment(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function isEscapeSafe(cp) {
+      return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
+    }
+    function normalizeQueryFragmentEncoding(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        if (isQueryFragmentCharacter(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
         }
       }
       return output;
@@ -15662,14 +17603,18 @@ var require_utils = __commonJS({
     function recomposeAuthority(component) {
       const uriTokens = [];
       if (component.userinfo !== void 0) {
-        uriTokens.push(component.userinfo);
+        uriTokens.push(encodeUserinfo(component.userinfo));
         uriTokens.push("@");
       }
       if (component.host !== void 0) {
-        let host = unescape(component.host);
+        let host = component.host;
         if (!isIPv4(host)) {
-          const ipV6res = normalizeIPv6(host);
-          if (ipV6res.isIPV6 === true) {
+          let ipV6res = normalizeIPv6(host);
+          if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
+            host = normalizePercentEncoding(host, true);
+            ipV6res = normalizeIPv6(host);
+          }
+          if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
             host = `[${ipV6res.escapedHost}]`;
           } else {
             host = reescapeHostDelimiters(host, false);
@@ -15678,8 +17623,12 @@ var require_utils = __commonJS({
         uriTokens.push(host);
       }
       if (typeof component.port === "number" || typeof component.port === "string") {
+        const port = String(component.port);
+        if (!isPort(port)) {
+          throw new TypeError("URI port is malformed.");
+        }
         uriTokens.push(":");
-        uriTokens.push(String(component.port));
+        uriTokens.push(port);
       }
       return uriTokens.length ? uriTokens.join("") : void 0;
     }
@@ -15689,6 +17638,11 @@ var require_utils = __commonJS({
       reescapeHostDelimiters,
       normalizePercentEncoding,
       normalizePathEncoding,
+      serializePathEncoding,
+      normalizeQueryFragmentEncoding,
+      encodeUserinfo,
+      encodeQuery,
+      encodeFragment,
       escapePreservingEscapes,
       removeDotSegments,
       isIPv4,
@@ -15699,12 +17653,12 @@ var require_utils = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/lib/schemes.js
+// node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/schemes.js
 var require_schemes = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
+  "node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
     "use strict";
     var { isUUID } = require_utils();
-    var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
+    var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
     var supportedSchemeNames = (
       /** @type {const} */
       [
@@ -15765,9 +17719,10 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
+        const queryIndex = wsComponent.resourceName.indexOf("?");
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
         wsComponent.path = path && path !== "/" ? path : void 0;
-        wsComponent.query = query;
+        wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
       wsComponent.fragment = void 0;
@@ -15779,7 +17734,7 @@ var require_schemes = __commonJS({
         return urnComponent;
       }
       const matches = urnComponent.path.match(URN_REG);
-      if (matches) {
+      if (matches && matches[0] === urnComponent.path) {
         const scheme = options.scheme || urnComponent.scheme || "urn";
         urnComponent.nid = matches[1].toLowerCase();
         urnComponent.nss = matches[2];
@@ -15909,12 +17864,21 @@ var require_schemes = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/index.js
+// node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/index.js
 var require_fast_uri = __commonJS({
-  "node_modules/.pnpm/fast-uri@3.1.4/node_modules/fast-uri/index.js"(exports2, module2) {
+  "node_modules/.pnpm/fast-uri@3.1.8/node_modules/fast-uri/index.js"(exports2, module2) {
     "use strict";
-    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
+    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
+    var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
+    var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
+    function decodeValidScheme(scheme) {
+      const decodedScheme = unescape(String(scheme));
+      if (!VALID_SCHEME.test(decodedScheme)) {
+        throw new TypeError(MALFORMED_SCHEME_ERROR);
+      }
+      return decodedScheme;
+    }
     function normalize2(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
@@ -15927,7 +17891,34 @@ var require_fast_uri = __commonJS({
     }
     function resolve(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
+      const {
+        parsed: baseParsed,
+        malformedAuthorityOrPort: baseMalformed,
+        malformedPercentEncoding: baseMalformedPercentEncoding,
+        malformedSchemeSpecific: baseMalformedSchemeSpecific,
+        malformedHost: baseMalformedHost,
+        malformedScheme: baseMalformedScheme
+      } = parseWithStatus(baseURI, schemelessOptions);
+      const {
+        parsed: relativeParsed,
+        malformedAuthorityOrPort: relativeMalformed,
+        malformedPercentEncoding: relativeMalformedPercentEncoding,
+        malformedSchemeSpecific: relativeMalformedSchemeSpecific,
+        malformedHost: relativeMalformedHost,
+        malformedScheme: relativeMalformedScheme
+      } = parseWithStatus(relativeURI, schemelessOptions);
+      if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
+        throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
+      }
+      const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+      const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
+      const resolvedHost = resolved.host;
+      const resolvedHostIsIP = resolvedHost !== void 0 && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+      canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
+      const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !new RegExp("\\P{ASCII}", "u").test(resolvedHost);
+      if (resolved.error && !encodedASCIIHost) {
+        throw new Error(resolved.error);
+      }
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
@@ -15987,7 +17978,7 @@ var require_fast_uri = __commonJS({
     function equal(uriA, uriB, options) {
       const normalizedA = normalizeComparableURI(uriA, options);
       const normalizedB = normalizeComparableURI(uriB, options);
-      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA.toLowerCase() === normalizedB.toLowerCase();
+      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA === normalizedB;
     }
     function serialize(cmpts, opts) {
       const component = {
@@ -16008,19 +17999,22 @@ var require_fast_uri = __commonJS({
       };
       const options = Object.assign({}, opts);
       const uriTokens = [];
+      if (component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
+      }
       const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
       if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(component, options);
+      const hasAuthority = component.userinfo !== void 0 || component.host !== void 0 || component.port !== void 0;
+      const pathNoScheme = !options.skipEscape && component.scheme === void 0 && !hasAuthority;
       if (component.path !== void 0) {
         if (!options.skipEscape) {
-          component.path = escapePreservingEscapes(component.path);
-          if (component.scheme !== void 0) {
-            component.path = component.path.split("%3A").join(":");
-          }
+          component.path = serializePathEncoding(component.path, pathNoScheme);
         } else {
           component.path = normalizePercentEncoding(component.path);
         }
       }
       if (options.reference !== "suffix" && component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
         uriTokens.push(component.scheme, ":");
       }
       const authority = recomposeAuthority(component);
@@ -16038,21 +18032,25 @@ var require_fast_uri = __commonJS({
         if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
           s = removeDotSegments(s);
         }
+        if (pathNoScheme) {
+          s = serializePathEncoding(s, true);
+        }
         if (authority === void 0 && s[0] === "/" && s[1] === "/") {
           s = "/%2F" + s.slice(2);
         }
         uriTokens.push(s);
       }
       if (component.query !== void 0) {
-        uriTokens.push("?", component.query);
+        uriTokens.push("?", encodeQuery(component.query));
       }
       if (component.fragment !== void 0) {
-        uriTokens.push("#", component.fragment);
+        uriTokens.push("#", encodeFragment(component.fragment));
       }
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
     var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
+    var AUTHORITY_INTRODUCER_REGION = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
     function getParseError(parsed, matches) {
       if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
         return 'URI path must start with "/" when authority is present.';
@@ -16061,6 +18059,35 @@ var require_fast_uri = __commonJS({
         return "URI port is malformed.";
       }
       return void 0;
+    }
+    function hasMalformedPercentEncoding(component) {
+      if (component === void 0) return false;
+      let percent = component.indexOf("%");
+      while (percent !== -1) {
+        if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
+          return true;
+        }
+        percent = component.indexOf("%", percent + 3);
+      }
+      return false;
+    }
+    function isIPLiteral(host) {
+      return host[0] === "[" && host[host.length - 1] === "]";
+    }
+    function hasMalformedComponentPercentEncoding(matches) {
+      const host = matches[4];
+      return hasMalformedPercentEncoding(matches[3]) || host !== void 0 && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
+    }
+    function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
+        try {
+          parsed.host = new URL("http://" + parsed.host).hostname;
+        } catch (e) {
+          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+          return true;
+        }
+      }
+      return false;
     }
     function parseWithStatus(uri, opts) {
       const options = Object.assign({}, opts);
@@ -16074,6 +18101,11 @@ var require_fast_uri = __commonJS({
         fragment: void 0
       };
       let malformedAuthorityOrPort = false;
+      let malformedPercentEncoding = false;
+      let malformedSchemeSpecific = false;
+      let malformedHost = false;
+      let malformedIPLiteral = false;
+      let malformedScheme = false;
       let isIP = false;
       if (options.reference === "suffix") {
         if (options.scheme) {
@@ -16087,6 +18119,20 @@ var require_fast_uri = __commonJS({
         parsed.error = "URI authority must not contain a literal backslash.";
         malformedAuthorityOrPort = true;
       }
+      const introducerMatch = uri.match(AUTHORITY_INTRODUCER_REGION);
+      if (introducerMatch !== null) {
+        const region = introducerMatch[1];
+        const normalizedRegion = region.replace(/[\t\n\r]/g, "");
+        if (normalizedRegion.length >= 2) {
+          if (normalizedRegion.slice(0, 2) !== "//") {
+            parsed.error = parsed.error || "URI authority must not contain a literal backslash.";
+            malformedAuthorityOrPort = true;
+          } else if (region.length !== normalizedRegion.length) {
+            parsed.error = parsed.error || "URI authority introducer must not contain whitespace.";
+            malformedAuthorityOrPort = true;
+          }
+        }
+      }
       const matches = uri.match(URI_PARSE);
       if (matches) {
         parsed.scheme = matches[1];
@@ -16096,6 +18142,19 @@ var require_fast_uri = __commonJS({
         parsed.path = matches[6] || "";
         parsed.query = matches[7];
         parsed.fragment = matches[8];
+        if (parsed.scheme !== void 0) {
+          const decodedScheme = unescape(parsed.scheme);
+          if (VALID_SCHEME.test(decodedScheme)) {
+            parsed.scheme = decodedScheme.toLowerCase();
+          } else {
+            parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
+            malformedScheme = true;
+          }
+        }
+        malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
+        if (malformedPercentEncoding) {
+          parsed.error = parsed.error || "URI contains malformed percent-encoding.";
+        }
         if (isNaN(parsed.port)) {
           parsed.port = matches[5];
         }
@@ -16107,9 +18166,16 @@ var require_fast_uri = __commonJS({
         if (parsed.host) {
           const ipv4result = isIPv4(parsed.host);
           if (ipv4result === false) {
+            const bracketedIPLiteral = isIPLiteral(parsed.host);
+            const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
             const ipv6result = normalizeIPv6(parsed.host);
-            parsed.host = ipv6result.host.toLowerCase();
-            isIP = ipv6result.isIPV6;
+            isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
+            malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
+            parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
+            if (malformedIPLiteral) {
+              parsed.error = parsed.error || "URI host is malformed.";
+              malformedAuthorityOrPort = true;
+            }
           } else {
             isIP = true;
           }
@@ -16127,42 +18193,37 @@ var require_fast_uri = __commonJS({
           parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
         }
         const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-        if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-          if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-            try {
-              parsed.host = new URL("http://" + parsed.host).hostname;
-            } catch (e) {
-              parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-            }
+        if (!malformedIPLiteral) {
+          malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
+        }
+        if (uri.indexOf("%") !== -1 && parsed.host !== void 0 && !malformedIPLiteral) {
+          let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
+          if (!isIP) {
+            host = normalizePercentEncoding(host.toLowerCase());
           }
+          parsed.host = reescapeHostDelimiters(host, isIP);
         }
         if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
-          if (uri.indexOf("%") !== -1) {
-            if (parsed.scheme !== void 0) {
-              parsed.scheme = unescape(parsed.scheme);
-            }
-            if (parsed.host !== void 0) {
-              parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
-            }
-          }
           if (parsed.path) {
             parsed.path = normalizePathEncoding(parsed.path);
           }
+          if (parsed.query) {
+            parsed.query = normalizeQueryFragmentEncoding(parsed.query);
+          }
           if (parsed.fragment) {
-            try {
-              parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment));
-            } catch {
-              parsed.error = parsed.error || "URI malformed";
-            }
+            parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
           }
         }
         if (schemeHandler && schemeHandler.parse) {
           schemeHandler.parse(parsed, options);
+          if (schemeHandler === SCHEMES.urn && parsed.nid === void 0) {
+            malformedSchemeSpecific = true;
+          }
         }
       } else {
         parsed.error = parsed.error || "URI can not be parsed.";
       }
-      return { parsed, malformedAuthorityOrPort };
+      return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
     }
     function parse(uri, opts) {
       return parseWithStatus(uri, opts).parsed;
@@ -16171,20 +18232,28 @@ var require_fast_uri = __commonJS({
       return normalizeStringWithStatus(uri, opts).normalized;
     }
     function normalizeStringWithStatus(uri, opts) {
-      const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
+      const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
       return {
-        normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
-        malformedAuthorityOrPort
+        normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
+        malformedAuthorityOrPort,
+        malformedPercentEncoding,
+        malformedSchemeSpecific,
+        malformedHost,
+        malformedScheme
       };
     }
     function normalizeComparableURI(uri, opts) {
-      if (typeof uri === "string") {
-        const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
-        return malformedAuthorityOrPort ? void 0 : normalized;
+      if (typeof uri !== "string" && typeof uri !== "object") {
+        return void 0;
       }
-      if (typeof uri === "object") {
-        return serialize(uri, opts);
+      let value;
+      try {
+        value = typeof uri === "string" ? uri : serialize(uri, opts);
+      } catch {
+        return void 0;
       }
+      const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
+      return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? void 0 : normalized;
     }
     var fastUri = {
       SCHEMES,
@@ -18861,4061 +20930,6 @@ var require_ajv = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/lib/utils.js
-var require_utils2 = __commonJS({
-  "node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
-    "use strict";
-    var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
-    var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
-    var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
-    var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
-    var isPathCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/]$/iu);
-    var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[\da-z\-._~!$&'()*+,;=:@/?]$/iu);
-    function stringArrayToHexStripped(input) {
-      let acc = "";
-      let code = 0;
-      let i = 0;
-      for (i = 0; i < input.length; i++) {
-        code = input[i].charCodeAt(0);
-        if (code === 48) {
-          continue;
-        }
-        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
-          return "";
-        }
-        acc += input[i];
-        break;
-      }
-      for (i += 1; i < input.length; i++) {
-        code = input[i].charCodeAt(0);
-        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
-          return "";
-        }
-        acc += input[i];
-      }
-      return acc;
-    }
-    var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
-    function consumeIsZone(buffer) {
-      buffer.length = 0;
-      return true;
-    }
-    function consumeHextets(buffer, address, output) {
-      if (buffer.length) {
-        const hex = stringArrayToHexStripped(buffer);
-        if (hex !== "") {
-          address.push(hex);
-        } else {
-          output.error = true;
-          return false;
-        }
-        buffer.length = 0;
-      }
-      return true;
-    }
-    function getIPV6(input) {
-      let tokenCount = 0;
-      const output = { error: false, address: "", zone: "" };
-      const address = [];
-      const buffer = [];
-      let endipv6Encountered = false;
-      let endIpv6 = false;
-      let consume = consumeHextets;
-      for (let i = 0; i < input.length; i++) {
-        const cursor = input[i];
-        if (cursor === "[" || cursor === "]") {
-          continue;
-        }
-        if (cursor === ":") {
-          if (endipv6Encountered === true) {
-            endIpv6 = true;
-          }
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          if (++tokenCount > 7) {
-            output.error = true;
-            break;
-          }
-          if (i > 0 && input[i - 1] === ":") {
-            endipv6Encountered = true;
-          }
-          address.push(":");
-          continue;
-        } else if (cursor === "%") {
-          if (!consume(buffer, address, output)) {
-            break;
-          }
-          consume = consumeIsZone;
-        } else {
-          buffer.push(cursor);
-          continue;
-        }
-      }
-      if (buffer.length) {
-        if (consume === consumeIsZone) {
-          output.zone = buffer.join("");
-        } else if (endIpv6) {
-          address.push(buffer.join(""));
-        } else {
-          address.push(stringArrayToHexStripped(buffer));
-        }
-      }
-      output.address = address.join("");
-      return output;
-    }
-    function normalizeIPv6(host) {
-      if (findToken(host, ":") < 2) {
-        return { host, isIPV6: false };
-      }
-      const ipv6 = getIPV6(host);
-      if (!ipv6.error) {
-        let newHost = ipv6.address;
-        let escapedHost = ipv6.address;
-        if (ipv6.zone) {
-          newHost += "%" + ipv6.zone;
-          escapedHost += "%25" + ipv6.zone;
-        }
-        return { host: newHost, isIPV6: true, escapedHost };
-      } else {
-        return { host, isIPV6: false };
-      }
-    }
-    function findToken(str, token) {
-      let ind = 0;
-      for (let i = 0; i < str.length; i++) {
-        if (str[i] === token) ind++;
-      }
-      return ind;
-    }
-    function removeDotSegments(path) {
-      let input = path;
-      const output = [];
-      let nextSlash = -1;
-      let len = 0;
-      while (len = input.length) {
-        if (len === 1) {
-          if (input === ".") {
-            break;
-          } else if (input === "/") {
-            output.push("/");
-            break;
-          } else {
-            output.push(input);
-            break;
-          }
-        } else if (len === 2) {
-          if (input[0] === ".") {
-            if (input[1] === ".") {
-              break;
-            } else if (input[1] === "/") {
-              input = input.slice(2);
-              continue;
-            }
-          } else if (input[0] === "/") {
-            if (input[1] === ".") {
-              output.push("/");
-              break;
-            }
-          }
-        } else if (len === 3) {
-          if (input === "/..") {
-            if (output.length !== 0) {
-              output.pop();
-            }
-            output.push("/");
-            break;
-          }
-        }
-        if (input[0] === ".") {
-          if (input[1] === ".") {
-            if (input[2] === "/") {
-              input = input.slice(3);
-              continue;
-            }
-          } else if (input[1] === "/") {
-            input = input.slice(2);
-            continue;
-          }
-        } else if (input[0] === "/") {
-          if (input[1] === ".") {
-            if (input[2] === "/") {
-              input = input.slice(2);
-              continue;
-            } else if (input[2] === ".") {
-              if (input[3] === "/") {
-                input = input.slice(3);
-                if (output.length !== 0) {
-                  output.pop();
-                }
-                continue;
-              }
-            }
-          }
-        }
-        if ((nextSlash = input.indexOf("/", 1)) === -1) {
-          output.push(input);
-          break;
-        } else {
-          output.push(input.slice(0, nextSlash));
-          input = input.slice(nextSlash);
-        }
-      }
-      return output.join("");
-    }
-    var HOST_DELIMS = { "@": "%40", "/": "%2F", "?": "%3F", "#": "%23", ":": "%3A" };
-    var HOST_DELIM_RE = /[@/?#:]/g;
-    var HOST_DELIM_NO_COLON_RE = /[@/?#]/g;
-    function reescapeHostDelimiters(host, isIP) {
-      const re = isIP ? HOST_DELIM_NO_COLON_RE : HOST_DELIM_RE;
-      re.lastIndex = 0;
-      return host.replace(re, (ch) => HOST_DELIMS[ch]);
-    }
-    function normalizePercentEncoding(input, decodeUnreserved = false) {
-      if (input.indexOf("%") === -1) {
-        return input;
-      }
-      let output = "";
-      for (let i = 0; i < input.length; i++) {
-        if (input[i] === "%" && i + 2 < input.length) {
-          const hex = input.slice(i + 1, i + 3);
-          if (isHexPair(hex)) {
-            const normalizedHex = hex.toUpperCase();
-            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
-            if (decodeUnreserved && isUnreserved(decoded)) {
-              output += decoded;
-            } else {
-              output += "%" + normalizedHex;
-            }
-            i += 2;
-            continue;
-          }
-        }
-        output += input[i];
-      }
-      return output;
-    }
-    var BYTE_HEX = new Array(256);
-    {
-      const HEX_DIGITS = "0123456789ABCDEF";
-      for (let i = 0; i < 256; i++) {
-        BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
-      }
-    }
-    function isEscapeSafe(cp) {
-      return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
-    }
-    function percentEncodeNonAscii(cp) {
-      if (cp < 2048) {
-        return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
-      }
-      if (cp < 65536) {
-        return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
-      }
-      return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
-    }
-    function normalizePathEncoding(input) {
-      let output = "";
-      for (let i = 0; i < input.length; i++) {
-        const ch = input[i];
-        if (ch === "%" && i + 2 < input.length) {
-          const hex = input.slice(i + 1, i + 3);
-          if (isHexPair(hex)) {
-            const normalizedHex = hex.toUpperCase();
-            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
-            if (decoded !== "." && isUnreserved(decoded)) {
-              output += decoded;
-            } else {
-              output += "%" + normalizedHex;
-            }
-            i += 2;
-            continue;
-          }
-        }
-        if (isPathCharacter(ch)) {
-          output += ch;
-        } else {
-          const code = input.charCodeAt(i);
-          if (code < 128) {
-            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
-          } else if (code < 55296 || code > 57343) {
-            output += percentEncodeNonAscii(code);
-          } else if (code <= 56319 && i + 1 < input.length) {
-            const low = input.charCodeAt(i + 1);
-            if (low >= 56320 && low <= 57343) {
-              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-              i++;
-            } else {
-              output += percentEncodeNonAscii(65533);
-            }
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        }
-      }
-      return output;
-    }
-    function normalizeQueryFragmentEncoding(input) {
-      let output = "";
-      for (let i = 0; i < input.length; i++) {
-        const ch = input[i];
-        if (ch === "%" && i + 2 < input.length) {
-          const hex = input.slice(i + 1, i + 3);
-          if (isHexPair(hex)) {
-            const normalizedHex = hex.toUpperCase();
-            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
-            if (isUnreserved(decoded)) {
-              output += decoded;
-            } else {
-              output += "%" + normalizedHex;
-            }
-            i += 2;
-            continue;
-          }
-        }
-        if (isQueryFragmentCharacter(ch)) {
-          output += ch;
-        } else {
-          const code = input.charCodeAt(i);
-          if (code < 128) {
-            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
-          } else if (code < 55296 || code > 57343) {
-            output += percentEncodeNonAscii(code);
-          } else if (code <= 56319 && i + 1 < input.length) {
-            const low = input.charCodeAt(i + 1);
-            if (low >= 56320 && low <= 57343) {
-              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-              i++;
-            } else {
-              output += percentEncodeNonAscii(65533);
-            }
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        }
-      }
-      return output;
-    }
-    function escapePreservingEscapes(input) {
-      let output = "";
-      for (let i = 0; i < input.length; i++) {
-        const ch = input[i];
-        if (ch === "%" && i + 2 < input.length) {
-          const hex = input.slice(i + 1, i + 3);
-          if (isHexPair(hex)) {
-            output += "%" + hex.toUpperCase();
-            i += 2;
-            continue;
-          }
-        }
-        const code = input.charCodeAt(i);
-        if (code < 128) {
-          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
-        } else if (code < 55296 || code > 57343) {
-          output += percentEncodeNonAscii(code);
-        } else if (code <= 56319 && i + 1 < input.length) {
-          const low = input.charCodeAt(i + 1);
-          if (low >= 56320 && low <= 57343) {
-            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
-            i++;
-          } else {
-            output += percentEncodeNonAscii(65533);
-          }
-        } else {
-          output += percentEncodeNonAscii(65533);
-        }
-      }
-      return output;
-    }
-    function recomposeAuthority(component) {
-      const uriTokens = [];
-      if (component.userinfo !== void 0) {
-        uriTokens.push(component.userinfo);
-        uriTokens.push("@");
-      }
-      if (component.host !== void 0) {
-        let host = unescape(component.host);
-        if (!isIPv4(host)) {
-          const ipV6res = normalizeIPv6(host);
-          if (ipV6res.isIPV6 === true) {
-            host = `[${ipV6res.escapedHost}]`;
-          } else {
-            host = reescapeHostDelimiters(host, false);
-          }
-        }
-        uriTokens.push(host);
-      }
-      if (typeof component.port === "number" || typeof component.port === "string") {
-        uriTokens.push(":");
-        uriTokens.push(String(component.port));
-      }
-      return uriTokens.length ? uriTokens.join("") : void 0;
-    }
-    module2.exports = {
-      nonSimpleDomain,
-      recomposeAuthority,
-      reescapeHostDelimiters,
-      normalizePercentEncoding,
-      normalizePathEncoding,
-      normalizeQueryFragmentEncoding,
-      escapePreservingEscapes,
-      removeDotSegments,
-      isIPv4,
-      isUUID,
-      normalizeIPv6,
-      stringArrayToHexStripped
-    };
-  }
-});
-
-// node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/lib/schemes.js
-var require_schemes2 = __commonJS({
-  "node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
-    "use strict";
-    var { isUUID } = require_utils2();
-    var URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu;
-    var supportedSchemeNames = (
-      /** @type {const} */
-      [
-        "http",
-        "https",
-        "ws",
-        "wss",
-        "urn",
-        "urn:uuid"
-      ]
-    );
-    function isValidSchemeName(name) {
-      return supportedSchemeNames.indexOf(
-        /** @type {*} */
-        name
-      ) !== -1;
-    }
-    function wsIsSecure(wsComponent) {
-      if (wsComponent.secure === true) {
-        return true;
-      } else if (wsComponent.secure === false) {
-        return false;
-      } else if (wsComponent.scheme) {
-        return wsComponent.scheme.length === 3 && (wsComponent.scheme[0] === "w" || wsComponent.scheme[0] === "W") && (wsComponent.scheme[1] === "s" || wsComponent.scheme[1] === "S") && (wsComponent.scheme[2] === "s" || wsComponent.scheme[2] === "S");
-      } else {
-        return false;
-      }
-    }
-    function httpParse(component) {
-      if (!component.host) {
-        component.error = component.error || "HTTP URIs must have a host.";
-      }
-      return component;
-    }
-    function httpSerialize(component) {
-      const secure = String(component.scheme).toLowerCase() === "https";
-      if (component.port === (secure ? 443 : 80) || component.port === "") {
-        component.port = void 0;
-      }
-      if (!component.path) {
-        component.path = "/";
-      }
-      return component;
-    }
-    function wsParse(wsComponent) {
-      wsComponent.secure = wsIsSecure(wsComponent);
-      wsComponent.resourceName = (wsComponent.path || "/") + (wsComponent.query ? "?" + wsComponent.query : "");
-      wsComponent.path = void 0;
-      wsComponent.query = void 0;
-      return wsComponent;
-    }
-    function wsSerialize(wsComponent) {
-      if (wsComponent.port === (wsIsSecure(wsComponent) ? 443 : 80) || wsComponent.port === "") {
-        wsComponent.port = void 0;
-      }
-      if (typeof wsComponent.secure === "boolean") {
-        wsComponent.scheme = wsComponent.secure ? "wss" : "ws";
-        wsComponent.secure = void 0;
-      }
-      if (wsComponent.resourceName) {
-        const [path, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path && path !== "/" ? path : void 0;
-        wsComponent.query = query;
-        wsComponent.resourceName = void 0;
-      }
-      wsComponent.fragment = void 0;
-      return wsComponent;
-    }
-    function urnParse(urnComponent, options) {
-      if (!urnComponent.path) {
-        urnComponent.error = "URN can not be parsed";
-        return urnComponent;
-      }
-      const matches = urnComponent.path.match(URN_REG);
-      if (matches) {
-        const scheme = options.scheme || urnComponent.scheme || "urn";
-        urnComponent.nid = matches[1].toLowerCase();
-        urnComponent.nss = matches[2];
-        const urnScheme = `${scheme}:${options.nid || urnComponent.nid}`;
-        const schemeHandler = getSchemeHandler(urnScheme);
-        urnComponent.path = void 0;
-        if (schemeHandler) {
-          urnComponent = schemeHandler.parse(urnComponent, options);
-        }
-      } else {
-        urnComponent.error = urnComponent.error || "URN can not be parsed.";
-      }
-      return urnComponent;
-    }
-    function urnSerialize(urnComponent, options) {
-      if (urnComponent.nid === void 0) {
-        throw new Error("URN without nid cannot be serialized");
-      }
-      const scheme = options.scheme || urnComponent.scheme || "urn";
-      const nid = urnComponent.nid.toLowerCase();
-      const urnScheme = `${scheme}:${options.nid || nid}`;
-      const schemeHandler = getSchemeHandler(urnScheme);
-      if (schemeHandler) {
-        urnComponent = schemeHandler.serialize(urnComponent, options);
-      }
-      const uriComponent = urnComponent;
-      const nss = urnComponent.nss;
-      uriComponent.path = `${nid || options.nid}:${nss}`;
-      options.skipEscape = true;
-      return uriComponent;
-    }
-    function urnuuidParse(urnComponent, options) {
-      const uuidComponent = urnComponent;
-      uuidComponent.uuid = uuidComponent.nss;
-      uuidComponent.nss = void 0;
-      if (!options.tolerant && (!uuidComponent.uuid || !isUUID(uuidComponent.uuid))) {
-        uuidComponent.error = uuidComponent.error || "UUID is not valid.";
-      }
-      return uuidComponent;
-    }
-    function urnuuidSerialize(uuidComponent) {
-      const urnComponent = uuidComponent;
-      urnComponent.nss = (uuidComponent.uuid || "").toLowerCase();
-      return urnComponent;
-    }
-    var http = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "http",
-        domainHost: true,
-        parse: httpParse,
-        serialize: httpSerialize
-      }
-    );
-    var https = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "https",
-        domainHost: http.domainHost,
-        parse: httpParse,
-        serialize: httpSerialize
-      }
-    );
-    var ws = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "ws",
-        domainHost: true,
-        parse: wsParse,
-        serialize: wsSerialize
-      }
-    );
-    var wss = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "wss",
-        domainHost: ws.domainHost,
-        parse: ws.parse,
-        serialize: ws.serialize
-      }
-    );
-    var urn = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "urn",
-        parse: urnParse,
-        serialize: urnSerialize,
-        skipNormalize: true
-      }
-    );
-    var urnuuid = (
-      /** @type {SchemeHandler} */
-      {
-        scheme: "urn:uuid",
-        parse: urnuuidParse,
-        serialize: urnuuidSerialize,
-        skipNormalize: true
-      }
-    );
-    var SCHEMES = (
-      /** @type {Record<SchemeName, SchemeHandler>} */
-      {
-        http,
-        https,
-        ws,
-        wss,
-        urn,
-        "urn:uuid": urnuuid
-      }
-    );
-    Object.setPrototypeOf(SCHEMES, null);
-    function getSchemeHandler(scheme) {
-      return scheme && (SCHEMES[
-        /** @type {SchemeName} */
-        scheme
-      ] || SCHEMES[
-        /** @type {SchemeName} */
-        scheme.toLowerCase()
-      ]) || void 0;
-    }
-    module2.exports = {
-      wsIsSecure,
-      SCHEMES,
-      isValidSchemeName,
-      getSchemeHandler
-    };
-  }
-});
-
-// node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/index.js
-var require_fast_uri2 = __commonJS({
-  "node_modules/.pnpm/fast-uri@4.1.1/node_modules/fast-uri/index.js"(exports2, module2) {
-    "use strict";
-    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, normalizeQueryFragmentEncoding, escapePreservingEscapes, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils2();
-    var { SCHEMES, getSchemeHandler } = require_schemes2();
-    function normalize2(uri, options) {
-      if (typeof uri === "string") {
-        uri = /** @type {T} */
-        normalizeString(uri, options);
-      } else if (typeof uri === "object") {
-        uri = /** @type {T} */
-        parse(serialize(uri, options), options);
-      }
-      return uri;
-    }
-    function resolve(baseURI, relativeURI, options) {
-      const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true);
-      schemelessOptions.skipEscape = true;
-      return serialize(resolved, schemelessOptions);
-    }
-    function resolveComponent(base, relative, options, skipNormalization) {
-      const target = {};
-      if (!skipNormalization) {
-        base = parse(serialize(base, options), options);
-        relative = parse(serialize(relative, options), options);
-      }
-      options = options || {};
-      if (!options.tolerant && relative.scheme) {
-        target.scheme = relative.scheme;
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
-      } else {
-        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-          target.userinfo = relative.userinfo;
-          target.host = relative.host;
-          target.port = relative.port;
-          target.path = removeDotSegments(relative.path || "");
-          target.query = relative.query;
-        } else {
-          if (!relative.path) {
-            target.path = base.path;
-            if (relative.query !== void 0) {
-              target.query = relative.query;
-            } else {
-              target.query = base.query;
-            }
-          } else {
-            if (relative.path[0] === "/") {
-              target.path = removeDotSegments(relative.path);
-            } else {
-              if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative.path;
-              } else if (!base.path) {
-                target.path = relative.path;
-              } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
-              }
-              target.path = removeDotSegments(target.path);
-            }
-            target.query = relative.query;
-          }
-          target.userinfo = base.userinfo;
-          target.host = base.host;
-          target.port = base.port;
-        }
-        target.scheme = base.scheme;
-      }
-      target.fragment = relative.fragment;
-      return target;
-    }
-    function equal(uriA, uriB, options) {
-      const normalizedA = normalizeComparableURI(uriA, options);
-      const normalizedB = normalizeComparableURI(uriB, options);
-      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA.toLowerCase() === normalizedB.toLowerCase();
-    }
-    function serialize(cmpts, opts) {
-      const component = {
-        host: cmpts.host,
-        scheme: cmpts.scheme,
-        userinfo: cmpts.userinfo,
-        port: cmpts.port,
-        path: cmpts.path,
-        query: cmpts.query,
-        nid: cmpts.nid,
-        nss: cmpts.nss,
-        uuid: cmpts.uuid,
-        fragment: cmpts.fragment,
-        reference: cmpts.reference,
-        resourceName: cmpts.resourceName,
-        secure: cmpts.secure,
-        error: ""
-      };
-      const options = Object.assign({}, opts);
-      const uriTokens = [];
-      const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
-      if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(component, options);
-      if (component.path !== void 0) {
-        if (!options.skipEscape) {
-          component.path = escapePreservingEscapes(component.path);
-          if (component.scheme !== void 0) {
-            component.path = component.path.split("%3A").join(":");
-          }
-        } else {
-          component.path = normalizePercentEncoding(component.path);
-        }
-      }
-      if (options.reference !== "suffix" && component.scheme) {
-        uriTokens.push(component.scheme, ":");
-      }
-      const authority = recomposeAuthority(component);
-      if (authority !== void 0) {
-        if (options.reference !== "suffix") {
-          uriTokens.push("//");
-        }
-        uriTokens.push(authority);
-        if (component.path && component.path[0] !== "/") {
-          uriTokens.push("/");
-        }
-      }
-      if (component.path !== void 0) {
-        let s = component.path;
-        if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
-          s = removeDotSegments(s);
-        }
-        if (authority === void 0 && s[0] === "/" && s[1] === "/") {
-          s = "/%2F" + s.slice(2);
-        }
-        uriTokens.push(s);
-      }
-      if (component.query !== void 0) {
-        uriTokens.push("?", component.query);
-      }
-      if (component.fragment !== void 0) {
-        uriTokens.push("#", component.fragment);
-      }
-      return uriTokens.join("");
-    }
-    var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
-    var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
-    function getParseError(parsed, matches) {
-      if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
-        return 'URI path must start with "/" when authority is present.';
-      }
-      if (typeof parsed.port === "number" && (parsed.port < 0 || parsed.port > 65535)) {
-        return "URI port is malformed.";
-      }
-      return void 0;
-    }
-    function parseWithStatus(uri, opts) {
-      const options = Object.assign({}, opts);
-      const parsed = {
-        scheme: void 0,
-        userinfo: void 0,
-        host: "",
-        port: void 0,
-        path: "",
-        query: void 0,
-        fragment: void 0
-      };
-      let malformedAuthorityOrPort = false;
-      let isIP = false;
-      if (options.reference === "suffix") {
-        if (options.scheme) {
-          uri = options.scheme + ":" + uri;
-        } else {
-          uri = "//" + uri;
-        }
-      }
-      const authorityMatch = uri.match(AUTHORITY_PREFIX);
-      if (authorityMatch !== null && authorityMatch[1].indexOf("\\") !== -1) {
-        parsed.error = "URI authority must not contain a literal backslash.";
-        malformedAuthorityOrPort = true;
-      }
-      const matches = uri.match(URI_PARSE);
-      if (matches) {
-        parsed.scheme = matches[1] === void 0 ? void 0 : matches[1].toLowerCase();
-        parsed.userinfo = matches[3];
-        parsed.host = matches[4];
-        parsed.port = parseInt(matches[5], 10);
-        parsed.path = matches[6] || "";
-        parsed.query = matches[7];
-        parsed.fragment = matches[8];
-        if (isNaN(parsed.port)) {
-          parsed.port = matches[5];
-        }
-        const parseError = getParseError(parsed, matches);
-        if (parseError !== void 0) {
-          parsed.error = parsed.error || parseError;
-          malformedAuthorityOrPort = true;
-        }
-        if (parsed.host) {
-          const ipv4result = isIPv4(parsed.host);
-          if (ipv4result === false) {
-            const ipv6result = normalizeIPv6(parsed.host);
-            parsed.host = ipv6result.host.toLowerCase();
-            isIP = ipv6result.isIPV6;
-          } else {
-            isIP = true;
-          }
-        }
-        if (parsed.scheme === void 0 && parsed.userinfo === void 0 && parsed.host === void 0 && parsed.port === void 0 && parsed.query === void 0 && !parsed.path) {
-          parsed.reference = "same-document";
-        } else if (parsed.scheme === void 0) {
-          parsed.reference = "relative";
-        } else if (parsed.fragment === void 0) {
-          parsed.reference = "absolute";
-        } else {
-          parsed.reference = "uri";
-        }
-        if (options.reference && options.reference !== "suffix" && options.reference !== parsed.reference) {
-          parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
-        }
-        const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
-        if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-          if (parsed.host && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && nonSimpleDomain(parsed.host)) {
-            try {
-              parsed.host = new URL("http://" + parsed.host).hostname;
-            } catch (e) {
-              parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
-            }
-          }
-        }
-        if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
-          if (uri.indexOf("%") !== -1) {
-            if (parsed.scheme !== void 0) {
-              parsed.scheme = unescape(parsed.scheme);
-            }
-            if (parsed.host !== void 0) {
-              parsed.host = reescapeHostDelimiters(unescape(parsed.host), isIP);
-            }
-          }
-          if (parsed.path) {
-            parsed.path = normalizePathEncoding(parsed.path);
-          }
-          if (parsed.query) {
-            parsed.query = normalizeQueryFragmentEncoding(parsed.query);
-          }
-          if (parsed.fragment) {
-            parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
-          }
-        }
-        if (schemeHandler && schemeHandler.parse) {
-          schemeHandler.parse(parsed, options);
-        }
-      } else {
-        parsed.error = parsed.error || "URI can not be parsed.";
-      }
-      return { parsed, malformedAuthorityOrPort };
-    }
-    function parse(uri, opts) {
-      return parseWithStatus(uri, opts).parsed;
-    }
-    function normalizeString(uri, opts) {
-      return normalizeStringWithStatus(uri, opts).normalized;
-    }
-    function normalizeStringWithStatus(uri, opts) {
-      const { parsed, malformedAuthorityOrPort } = parseWithStatus(uri, opts);
-      return {
-        normalized: malformedAuthorityOrPort ? uri : serialize(parsed, opts),
-        malformedAuthorityOrPort
-      };
-    }
-    function normalizeComparableURI(uri, opts) {
-      if (typeof uri === "string") {
-        const { normalized, malformedAuthorityOrPort } = normalizeStringWithStatus(uri, opts);
-        return malformedAuthorityOrPort ? void 0 : normalized;
-      }
-      if (typeof uri === "object") {
-        return serialize(uri, opts);
-      }
-    }
-    var fastUri = {
-      SCHEMES,
-      normalize: normalize2,
-      resolve,
-      resolveComponent,
-      equal,
-      serialize,
-      parse
-    };
-    module2.exports = fastUri;
-    module2.exports.default = fastUri;
-    module2.exports.fastUri = fastUri;
-  }
-});
-
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/formats.js
-var require_formats = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/formats.js"(exports2) {
-    "use strict";
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.formatNames = exports2.fastFormats = exports2.fullFormats = void 0;
-    function fmtDef(validate, compare) {
-      return { validate, compare };
-    }
-    exports2.fullFormats = {
-      // date: http://tools.ietf.org/html/rfc3339#section-5.6
-      date: fmtDef(date, compareDate),
-      // date-time: http://tools.ietf.org/html/rfc3339#section-5.6
-      time: fmtDef(getTime(true), compareTime),
-      "date-time": fmtDef(getDateTime(true), compareDateTime),
-      "iso-time": fmtDef(getTime(), compareIsoTime),
-      "iso-date-time": fmtDef(getDateTime(), compareIsoDateTime),
-      // duration: https://tools.ietf.org/html/rfc3339#appendix-A
-      duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/,
-      uri,
-      "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i,
-      // uri-template: https://tools.ietf.org/html/rfc6570
-      "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i,
-      // For the source: https://gist.github.com/dperini/729294
-      // For test cases: https://mathiasbynens.be/demo/url-regex
-      url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu,
-      email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i,
-      hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i,
-      // optimized https://www.safaribooksonline.com/library/view/regular-expressions-cookbook/9780596802837/ch07s16.html
-      ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/,
-      ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i,
-      regex,
-      // uuid: http://tools.ietf.org/html/rfc4122
-      uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
-      // JSON-pointer: https://tools.ietf.org/html/rfc6901
-      // uri fragment: https://tools.ietf.org/html/rfc3986#appendix-A
-      "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/,
-      "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i,
-      // relative JSON-pointer: http://tools.ietf.org/html/draft-luff-relative-json-pointer-00
-      "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/,
-      // the following formats are used by the openapi specification: https://spec.openapis.org/oas/v3.0.0#data-types
-      // byte: https://github.com/miguelmota/is-base64
-      byte,
-      // signed 32 bit integer
-      int32: { type: "number", validate: validateInt32 },
-      // signed 64 bit integer
-      int64: { type: "number", validate: validateInt64 },
-      // C-type float
-      float: { type: "number", validate: validateNumber },
-      // C-type double
-      double: { type: "number", validate: validateNumber },
-      // hint to the UI to hide input strings
-      password: true,
-      // unchecked string payload
-      binary: true
-    };
-    exports2.fastFormats = {
-      ...exports2.fullFormats,
-      date: fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, compareDate),
-      time: fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareTime),
-      "date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareDateTime),
-      "iso-time": fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoTime),
-      "iso-date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoDateTime),
-      // uri: https://github.com/mafintosh/is-my-json-valid/blob/master/formats.js
-      uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i,
-      "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i,
-      // email (sources from jsen validator):
-      // http://stackoverflow.com/questions/201323/using-a-regular-expression-to-validate-an-email-address#answer-8829363
-      // http://www.w3.org/TR/html5/forms.html#valid-e-mail-address (search for 'wilful violation')
-      email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i
-    };
-    exports2.formatNames = Object.keys(exports2.fullFormats);
-    function isLeapYear(year) {
-      return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    }
-    var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
-    var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    function date(str) {
-      const matches = DATE.exec(str);
-      if (!matches)
-        return false;
-      const year = +matches[1];
-      const month = +matches[2];
-      const day = +matches[3];
-      return month >= 1 && month <= 12 && day >= 1 && day <= (month === 2 && isLeapYear(year) ? 29 : DAYS[month]);
-    }
-    function compareDate(d1, d2) {
-      if (!(d1 && d2))
-        return void 0;
-      if (d1 > d2)
-        return 1;
-      if (d1 < d2)
-        return -1;
-      return 0;
-    }
-    var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
-    function getTime(strictTimeZone) {
-      return function time(str) {
-        const matches = TIME.exec(str);
-        if (!matches)
-          return false;
-        const hr = +matches[1];
-        const min = +matches[2];
-        const sec = +matches[3];
-        const tz = matches[4];
-        const tzSign = matches[5] === "-" ? -1 : 1;
-        const tzH = +(matches[6] || 0);
-        const tzM = +(matches[7] || 0);
-        if (tzH > 23 || tzM > 59 || strictTimeZone && !tz)
-          return false;
-        if (hr <= 23 && min <= 59 && sec < 60)
-          return true;
-        const utcMin = min - tzM * tzSign;
-        const utcHr = hr - tzH * tzSign - (utcMin < 0 ? 1 : 0);
-        return (utcHr === 23 || utcHr === -1) && (utcMin === 59 || utcMin === -1) && sec < 61;
-      };
-    }
-    function compareTime(s1, s2) {
-      if (!(s1 && s2))
-        return void 0;
-      const t1 = (/* @__PURE__ */ new Date("2020-01-01T" + s1)).valueOf();
-      const t2 = (/* @__PURE__ */ new Date("2020-01-01T" + s2)).valueOf();
-      if (!(t1 && t2))
-        return void 0;
-      return t1 - t2;
-    }
-    function compareIsoTime(t1, t2) {
-      if (!(t1 && t2))
-        return void 0;
-      const a1 = TIME.exec(t1);
-      const a2 = TIME.exec(t2);
-      if (!(a1 && a2))
-        return void 0;
-      t1 = a1[1] + a1[2] + a1[3];
-      t2 = a2[1] + a2[2] + a2[3];
-      if (t1 > t2)
-        return 1;
-      if (t1 < t2)
-        return -1;
-      return 0;
-    }
-    var DATE_TIME_SEPARATOR = /t|\s/i;
-    function getDateTime(strictTimeZone) {
-      const time = getTime(strictTimeZone);
-      return function date_time(str) {
-        const dateTime = str.split(DATE_TIME_SEPARATOR);
-        return dateTime.length === 2 && date(dateTime[0]) && time(dateTime[1]);
-      };
-    }
-    function compareDateTime(dt1, dt2) {
-      if (!(dt1 && dt2))
-        return void 0;
-      const d1 = new Date(dt1).valueOf();
-      const d2 = new Date(dt2).valueOf();
-      if (!(d1 && d2))
-        return void 0;
-      return d1 - d2;
-    }
-    function compareIsoDateTime(dt1, dt2) {
-      if (!(dt1 && dt2))
-        return void 0;
-      const [d1, t1] = dt1.split(DATE_TIME_SEPARATOR);
-      const [d2, t2] = dt2.split(DATE_TIME_SEPARATOR);
-      const res = compareDate(d1, d2);
-      if (res === void 0)
-        return void 0;
-      return res || compareTime(t1, t2);
-    }
-    var NOT_URI_FRAGMENT = /\/|:/;
-    var URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-    function uri(str) {
-      return NOT_URI_FRAGMENT.test(str) && URI.test(str);
-    }
-    var BYTE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
-    function byte(str) {
-      BYTE.lastIndex = 0;
-      return BYTE.test(str);
-    }
-    var MIN_INT32 = -(2 ** 31);
-    var MAX_INT32 = 2 ** 31 - 1;
-    function validateInt32(value) {
-      return Number.isInteger(value) && value <= MAX_INT32 && value >= MIN_INT32;
-    }
-    function validateInt64(value) {
-      return Number.isInteger(value);
-    }
-    function validateNumber() {
-      return true;
-    }
-    var Z_ANCHOR = /[^\\]\\Z/;
-    function regex(str) {
-      if (Z_ANCHOR.test(str))
-        return false;
-      try {
-        new RegExp(str);
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-  }
-});
-
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/limit.js
-var require_limit = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/limit.js"(exports2) {
-    "use strict";
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.formatLimitDefinition = void 0;
-    var ajv_1 = require_ajv();
-    var codegen_1 = require_codegen();
-    var ops = codegen_1.operators;
-    var KWDs = {
-      formatMaximum: { okStr: "<=", ok: ops.LTE, fail: ops.GT },
-      formatMinimum: { okStr: ">=", ok: ops.GTE, fail: ops.LT },
-      formatExclusiveMaximum: { okStr: "<", ok: ops.LT, fail: ops.GTE },
-      formatExclusiveMinimum: { okStr: ">", ok: ops.GT, fail: ops.LTE }
-    };
-    var error = {
-      message: ({ keyword, schemaCode }) => (0, codegen_1.str)`should be ${KWDs[keyword].okStr} ${schemaCode}`,
-      params: ({ keyword, schemaCode }) => (0, codegen_1._)`{comparison: ${KWDs[keyword].okStr}, limit: ${schemaCode}}`
-    };
-    exports2.formatLimitDefinition = {
-      keyword: Object.keys(KWDs),
-      type: "string",
-      schemaType: "string",
-      $data: true,
-      error,
-      code(cxt) {
-        const { gen, data, schemaCode, keyword, it } = cxt;
-        const { opts, self } = it;
-        if (!opts.validateFormats)
-          return;
-        const fCxt = new ajv_1.KeywordCxt(it, self.RULES.all.format.definition, "format");
-        if (fCxt.$data)
-          validate$DataFormat();
-        else
-          validateFormat();
-        function validate$DataFormat() {
-          const fmts = gen.scopeValue("formats", {
-            ref: self.formats,
-            code: opts.code.formats
-          });
-          const fmt = gen.const("fmt", (0, codegen_1._)`${fmts}[${fCxt.schemaCode}]`);
-          cxt.fail$data((0, codegen_1.or)((0, codegen_1._)`typeof ${fmt} != "object"`, (0, codegen_1._)`${fmt} instanceof RegExp`, (0, codegen_1._)`typeof ${fmt}.compare != "function"`, compareCode(fmt)));
-        }
-        function validateFormat() {
-          const format = fCxt.schema;
-          const fmtDef = self.formats[format];
-          if (!fmtDef || fmtDef === true)
-            return;
-          if (typeof fmtDef != "object" || fmtDef instanceof RegExp || typeof fmtDef.compare != "function") {
-            throw new Error(`"${keyword}": format "${format}" does not define "compare" function`);
-          }
-          const fmt = gen.scopeValue("formats", {
-            key: format,
-            ref: fmtDef,
-            code: opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(format)}` : void 0
-          });
-          cxt.fail$data(compareCode(fmt));
-        }
-        function compareCode(fmt) {
-          return (0, codegen_1._)`${fmt}.compare(${data}, ${schemaCode}) ${KWDs[keyword].fail} 0`;
-        }
-      },
-      dependencies: ["format"]
-    };
-    var formatLimitPlugin = (ajv) => {
-      ajv.addKeyword(exports2.formatLimitDefinition);
-      return ajv;
-    };
-    exports2.default = formatLimitPlugin;
-  }
-});
-
-// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/index.js
-var require_dist2 = __commonJS({
-  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/index.js"(exports2, module2) {
-    "use strict";
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    var formats_1 = require_formats();
-    var limit_1 = require_limit();
-    var codegen_1 = require_codegen();
-    var fullName = new codegen_1.Name("fullFormats");
-    var fastName = new codegen_1.Name("fastFormats");
-    var formatsPlugin = (ajv, opts = { keywords: true }) => {
-      if (Array.isArray(opts)) {
-        addFormats(ajv, opts, formats_1.fullFormats, fullName);
-        return ajv;
-      }
-      const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
-      const list = opts.formats || formats_1.formatNames;
-      addFormats(ajv, list, formats, exportName);
-      if (opts.keywords)
-        (0, limit_1.default)(ajv);
-      return ajv;
-    };
-    formatsPlugin.get = (name, mode = "full") => {
-      const formats = mode === "fast" ? formats_1.fastFormats : formats_1.fullFormats;
-      const f = formats[name];
-      if (!f)
-        throw new Error(`Unknown format "${name}"`);
-      return f;
-    };
-    function addFormats(ajv, list, fs, exportName) {
-      var _a;
-      var _b;
-      (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
-      for (const f of list)
-        ajv.addFormat(f, fs[f]);
-    }
-    module2.exports = exports2 = formatsPlugin;
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.default = formatsPlugin;
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/validator.js
-var require_validator = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/validator.js"(exports2, module2) {
-    "use strict";
-    var Ajv = require_ajv();
-    var fastUri = require_fast_uri2();
-    var ajvFormats = require_dist2();
-    var clone = require_rfdc()({ proto: true });
-    var Validator = class _Validator {
-      constructor(ajvOptions) {
-        this.ajv = new Ajv({
-          ...ajvOptions,
-          strictSchema: false,
-          validateSchema: false,
-          allowUnionTypes: true,
-          uriResolver: fastUri
-        });
-        ajvFormats(this.ajv);
-        this.ajv.addKeyword({
-          keyword: "fjs_type",
-          type: "object",
-          errors: false,
-          validate: (_type, data) => {
-            return data && typeof data.toJSON === "function";
-          }
-        });
-        this._ajvSchemas = {};
-        this._ajvOptions = ajvOptions || {};
-      }
-      addSchema(schema, schemaName) {
-        let schemaKey = schema.$id || schemaName;
-        if (schema.$id !== void 0 && schema.$id[0] === "#") {
-          schemaKey = schemaName + schema.$id;
-        }
-        if (this.ajv.refs[schemaKey] === void 0 && this.ajv.schemas[schemaKey] === void 0) {
-          const ajvSchema = clone(schema);
-          this.convertSchemaToAjvFormat(ajvSchema);
-          this.ajv.addSchema(ajvSchema, schemaKey);
-          this._ajvSchemas[schemaKey] = schema;
-        }
-      }
-      validate(schemaRef, data) {
-        return this.ajv.validate(schemaRef, data);
-      }
-      // Ajv does not natively support JavaScript objects like Date or other types
-      // that rely on a custom .toJSON() representation. To properly validate schemas
-      // that may contain such objects (e.g. Date, ObjectId, etc.), we replace all
-      // occurrences of the string type with a custom keyword fjs_type
-      // (see https://github.com/fastify/fast-json-stringify/pull/441)
-      convertSchemaToAjvFormat(schema) {
-        if (schema === null) return;
-        if (schema.type === "string") {
-          schema.fjs_type = "string";
-          schema.type = ["string", "object"];
-        } else if (Array.isArray(schema.type) && schema.type.includes("string") && !schema.type.includes("object")) {
-          schema.fjs_type = "string";
-          schema.type.push("object");
-        }
-        for (const property in schema) {
-          if (typeof schema[property] === "object") {
-            this.convertSchemaToAjvFormat(schema[property]);
-          }
-        }
-      }
-      getState() {
-        return {
-          ajvOptions: this._ajvOptions,
-          ajvSchemas: this._ajvSchemas
-        };
-      }
-      static restoreFromState(state) {
-        const validator = new _Validator(state.ajvOptions);
-        for (const [id, ajvSchema] of Object.entries(state.ajvSchemas)) {
-          validator.ajv.addSchema(ajvSchema, id);
-        }
-        return validator;
-      }
-    };
-    module2.exports = Validator;
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/location.js
-var require_location = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/location.js"(exports2, module2) {
-    "use strict";
-    var Location = class _Location {
-      constructor(schema, schemaId, jsonPointer = "#") {
-        this.schema = schema;
-        this.schemaId = schemaId;
-        this.jsonPointer = jsonPointer;
-      }
-      getPropertyLocation(propertyName) {
-        const propertyLocation = new _Location(
-          this.schema[propertyName],
-          this.schemaId,
-          this.jsonPointer + "/" + propertyName
-        );
-        return propertyLocation;
-      }
-      getSchemaRef() {
-        return this.schemaId + this.jsonPointer;
-      }
-    };
-    module2.exports = Location;
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/schema-validator.js
-var require_schema_validator = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/schema-validator.js"(exports2, module2) {
-    "use strict";
-    module2.exports = validate10;
-    module2.exports.default = validate10;
-    var schema11 = { "$schema": "http://json-schema.org/draft-07/schema#", "$id": "http://json-schema.org/draft-07/schema#", "title": "Core schema meta-schema", "definitions": { "schemaArray": { "type": "array", "minItems": 1, "items": { "$ref": "#" } }, "nonNegativeInteger": { "type": "integer", "minimum": 0 }, "nonNegativeIntegerDefault0": { "allOf": [{ "$ref": "#/definitions/nonNegativeInteger" }, { "default": 0 }] }, "simpleTypes": { "enum": ["array", "boolean", "integer", "null", "number", "object", "string"] }, "stringArray": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] } }, "type": ["object", "boolean"], "properties": { "$id": { "type": "string", "format": "uri-reference" }, "$schema": { "type": "string", "format": "uri" }, "$ref": { "type": "string", "format": "uri-reference" }, "$comment": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "default": true, "readOnly": { "type": "boolean", "default": false }, "examples": { "type": "array", "items": true }, "multipleOf": { "type": "number", "exclusiveMinimum": 0 }, "maximum": { "type": "number" }, "exclusiveMaximum": { "type": "number" }, "minimum": { "type": "number" }, "exclusiveMinimum": { "type": "number" }, "maxLength": { "$ref": "#/definitions/nonNegativeInteger" }, "minLength": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "pattern": { "type": "string", "format": "regex" }, "additionalItems": { "$ref": "#" }, "items": { "anyOf": [{ "$ref": "#" }, { "$ref": "#/definitions/schemaArray" }], "default": true }, "maxItems": { "$ref": "#/definitions/nonNegativeInteger" }, "minItems": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "uniqueItems": { "type": "boolean", "default": false }, "contains": { "$ref": "#" }, "maxProperties": { "$ref": "#/definitions/nonNegativeInteger" }, "minProperties": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "required": { "$ref": "#/definitions/stringArray" }, "additionalProperties": { "$ref": "#" }, "definitions": { "type": "object", "additionalProperties": { "$ref": "#" }, "default": {} }, "properties": { "type": "object", "additionalProperties": { "$ref": "#" }, "default": {} }, "patternProperties": { "type": "object", "additionalProperties": { "$ref": "#" }, "propertyNames": { "format": "regex" }, "default": {} }, "dependencies": { "type": "object", "additionalProperties": { "anyOf": [{ "$ref": "#" }, { "$ref": "#/definitions/stringArray" }] } }, "propertyNames": { "$ref": "#" }, "const": true, "enum": { "type": "array", "items": true, "minItems": 1, "uniqueItems": true }, "type": { "anyOf": [{ "$ref": "#/definitions/simpleTypes" }, { "type": "array", "items": { "$ref": "#/definitions/simpleTypes" }, "minItems": 1, "uniqueItems": true }] }, "format": { "type": "string" }, "contentMediaType": { "type": "string" }, "contentEncoding": { "type": "string" }, "if": { "$ref": "#" }, "then": { "$ref": "#" }, "else": { "$ref": "#" }, "allOf": { "$ref": "#/definitions/schemaArray" }, "anyOf": { "$ref": "#/definitions/schemaArray" }, "oneOf": { "$ref": "#/definitions/schemaArray" }, "not": { "$ref": "#" } }, "default": true };
-    var schema20 = { "enum": ["array", "boolean", "integer", "null", "number", "object", "string"] };
-    var formats0 = /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-    var formats2 = require_formats().fullFormats.uri;
-    var formats6 = require_formats().fullFormats.regex;
-    function validate11(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
-      let vErrors = null;
-      let errors = 0;
-      const _errs1 = errors;
-      if (!(typeof data == "number" && (!(data % 1) && !isNaN(data)) && isFinite(data))) {
-        validate11.errors = [{ instancePath, schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-        return false;
-      }
-      if (errors === _errs1) {
-        if (typeof data == "number" && isFinite(data)) {
-          if (data < 0 || isNaN(data)) {
-            validate11.errors = [{ instancePath, schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
-            return false;
-          }
-        }
-      }
-      validate11.errors = vErrors;
-      return errors === 0;
-    }
-    var root1 = { validate: validate10 };
-    function validate13(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
-      let vErrors = null;
-      let errors = 0;
-      if (errors === 0) {
-        if (Array.isArray(data)) {
-          if (data.length < 1) {
-            validate13.errors = [{ instancePath, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" }];
-            return false;
-          } else {
-            var valid0 = true;
-            const len0 = data.length;
-            for (let i0 = 0; i0 < len0; i0++) {
-              const _errs1 = errors;
-              if (!root1.validate(data[i0], { instancePath: instancePath + "/" + i0, parentData: data, parentDataProperty: i0, rootData })) {
-                vErrors = vErrors === null ? root1.validate.errors : vErrors.concat(root1.validate.errors);
-                errors = vErrors.length;
-              }
-              var valid0 = _errs1 === errors;
-              if (!valid0) {
-                break;
-              }
-            }
-          }
-        } else {
-          validate13.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
-          return false;
-        }
-      }
-      validate13.errors = vErrors;
-      return errors === 0;
-    }
-    var func0 = require_equal().default;
-    function validate10(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
-      ;
-      let vErrors = null;
-      let errors = 0;
-      if (!(data && typeof data == "object" && !Array.isArray(data)) && typeof data !== "boolean") {
-        validate10.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: schema11.type }, message: "must be object,boolean" }];
-        return false;
-      }
-      if (errors === 0) {
-        if (data && typeof data == "object" && !Array.isArray(data)) {
-          if (data.$id !== void 0) {
-            let data0 = data.$id;
-            const _errs1 = errors;
-            if (errors === _errs1) {
-              if (errors === _errs1) {
-                if (typeof data0 === "string") {
-                  if (!formats0.test(data0)) {
-                    validate10.errors = [{ instancePath: instancePath + "/$id", schemaPath: "#/properties/%24id/format", keyword: "format", params: { format: "uri-reference" }, message: 'must match format "uri-reference"' }];
-                    return false;
-                  }
-                } else {
-                  validate10.errors = [{ instancePath: instancePath + "/$id", schemaPath: "#/properties/%24id/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                  return false;
-                }
-              }
-            }
-            var valid0 = _errs1 === errors;
-          } else {
-            var valid0 = true;
-          }
-          if (valid0) {
-            if (data.$schema !== void 0) {
-              let data1 = data.$schema;
-              const _errs3 = errors;
-              if (errors === _errs3) {
-                if (errors === _errs3) {
-                  if (typeof data1 === "string") {
-                    if (!formats2(data1)) {
-                      validate10.errors = [{ instancePath: instancePath + "/$schema", schemaPath: "#/properties/%24schema/format", keyword: "format", params: { format: "uri" }, message: 'must match format "uri"' }];
-                      return false;
-                    }
-                  } else {
-                    validate10.errors = [{ instancePath: instancePath + "/$schema", schemaPath: "#/properties/%24schema/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                    return false;
-                  }
-                }
-              }
-              var valid0 = _errs3 === errors;
-            } else {
-              var valid0 = true;
-            }
-            if (valid0) {
-              if (data.$ref !== void 0) {
-                let data2 = data.$ref;
-                const _errs5 = errors;
-                if (errors === _errs5) {
-                  if (errors === _errs5) {
-                    if (typeof data2 === "string") {
-                      if (!formats0.test(data2)) {
-                        validate10.errors = [{ instancePath: instancePath + "/$ref", schemaPath: "#/properties/%24ref/format", keyword: "format", params: { format: "uri-reference" }, message: 'must match format "uri-reference"' }];
-                        return false;
-                      }
-                    } else {
-                      validate10.errors = [{ instancePath: instancePath + "/$ref", schemaPath: "#/properties/%24ref/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                      return false;
-                    }
-                  }
-                }
-                var valid0 = _errs5 === errors;
-              } else {
-                var valid0 = true;
-              }
-              if (valid0) {
-                if (data.$comment !== void 0) {
-                  const _errs7 = errors;
-                  if (typeof data.$comment !== "string") {
-                    validate10.errors = [{ instancePath: instancePath + "/$comment", schemaPath: "#/properties/%24comment/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                    return false;
-                  }
-                  var valid0 = _errs7 === errors;
-                } else {
-                  var valid0 = true;
-                }
-                if (valid0) {
-                  if (data.title !== void 0) {
-                    const _errs9 = errors;
-                    if (typeof data.title !== "string") {
-                      validate10.errors = [{ instancePath: instancePath + "/title", schemaPath: "#/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                      return false;
-                    }
-                    var valid0 = _errs9 === errors;
-                  } else {
-                    var valid0 = true;
-                  }
-                  if (valid0) {
-                    if (data.description !== void 0) {
-                      const _errs11 = errors;
-                      if (typeof data.description !== "string") {
-                        validate10.errors = [{ instancePath: instancePath + "/description", schemaPath: "#/properties/description/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                        return false;
-                      }
-                      var valid0 = _errs11 === errors;
-                    } else {
-                      var valid0 = true;
-                    }
-                    if (valid0) {
-                      if (data.readOnly !== void 0) {
-                        const _errs13 = errors;
-                        if (typeof data.readOnly !== "boolean") {
-                          validate10.errors = [{ instancePath: instancePath + "/readOnly", schemaPath: "#/properties/readOnly/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                          return false;
-                        }
-                        var valid0 = _errs13 === errors;
-                      } else {
-                        var valid0 = true;
-                      }
-                      if (valid0) {
-                        if (data.examples !== void 0) {
-                          const _errs15 = errors;
-                          if (errors === _errs15) {
-                            if (!Array.isArray(data.examples)) {
-                              validate10.errors = [{ instancePath: instancePath + "/examples", schemaPath: "#/properties/examples/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
-                              return false;
-                            }
-                          }
-                          var valid0 = _errs15 === errors;
-                        } else {
-                          var valid0 = true;
-                        }
-                        if (valid0) {
-                          if (data.multipleOf !== void 0) {
-                            let data8 = data.multipleOf;
-                            const _errs17 = errors;
-                            if (errors === _errs17) {
-                              if (typeof data8 == "number" && isFinite(data8)) {
-                                if (data8 <= 0 || isNaN(data8)) {
-                                  validate10.errors = [{ instancePath: instancePath + "/multipleOf", schemaPath: "#/properties/multipleOf/exclusiveMinimum", keyword: "exclusiveMinimum", params: { comparison: ">", limit: 0 }, message: "must be > 0" }];
-                                  return false;
-                                }
-                              } else {
-                                validate10.errors = [{ instancePath: instancePath + "/multipleOf", schemaPath: "#/properties/multipleOf/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
-                                return false;
-                              }
-                            }
-                            var valid0 = _errs17 === errors;
-                          } else {
-                            var valid0 = true;
-                          }
-                          if (valid0) {
-                            if (data.maximum !== void 0) {
-                              let data9 = data.maximum;
-                              const _errs19 = errors;
-                              if (!(typeof data9 == "number" && isFinite(data9))) {
-                                validate10.errors = [{ instancePath: instancePath + "/maximum", schemaPath: "#/properties/maximum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
-                                return false;
-                              }
-                              var valid0 = _errs19 === errors;
-                            } else {
-                              var valid0 = true;
-                            }
-                            if (valid0) {
-                              if (data.exclusiveMaximum !== void 0) {
-                                let data10 = data.exclusiveMaximum;
-                                const _errs21 = errors;
-                                if (!(typeof data10 == "number" && isFinite(data10))) {
-                                  validate10.errors = [{ instancePath: instancePath + "/exclusiveMaximum", schemaPath: "#/properties/exclusiveMaximum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
-                                  return false;
-                                }
-                                var valid0 = _errs21 === errors;
-                              } else {
-                                var valid0 = true;
-                              }
-                              if (valid0) {
-                                if (data.minimum !== void 0) {
-                                  let data11 = data.minimum;
-                                  const _errs23 = errors;
-                                  if (!(typeof data11 == "number" && isFinite(data11))) {
-                                    validate10.errors = [{ instancePath: instancePath + "/minimum", schemaPath: "#/properties/minimum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
-                                    return false;
-                                  }
-                                  var valid0 = _errs23 === errors;
-                                } else {
-                                  var valid0 = true;
-                                }
-                                if (valid0) {
-                                  if (data.exclusiveMinimum !== void 0) {
-                                    let data12 = data.exclusiveMinimum;
-                                    const _errs25 = errors;
-                                    if (!(typeof data12 == "number" && isFinite(data12))) {
-                                      validate10.errors = [{ instancePath: instancePath + "/exclusiveMinimum", schemaPath: "#/properties/exclusiveMinimum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
-                                      return false;
-                                    }
-                                    var valid0 = _errs25 === errors;
-                                  } else {
-                                    var valid0 = true;
-                                  }
-                                  if (valid0) {
-                                    if (data.maxLength !== void 0) {
-                                      let data13 = data.maxLength;
-                                      const _errs27 = errors;
-                                      const _errs28 = errors;
-                                      if (!(typeof data13 == "number" && (!(data13 % 1) && !isNaN(data13)) && isFinite(data13))) {
-                                        validate10.errors = [{ instancePath: instancePath + "/maxLength", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                        return false;
-                                      }
-                                      if (errors === _errs28) {
-                                        if (typeof data13 == "number" && isFinite(data13)) {
-                                          if (data13 < 0 || isNaN(data13)) {
-                                            validate10.errors = [{ instancePath: instancePath + "/maxLength", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
-                                            return false;
-                                          }
-                                        }
-                                      }
-                                      var valid0 = _errs27 === errors;
-                                    } else {
-                                      var valid0 = true;
-                                    }
-                                    if (valid0) {
-                                      if (data.minLength !== void 0) {
-                                        const _errs30 = errors;
-                                        if (!validate11(data.minLength, { instancePath: instancePath + "/minLength", parentData: data, parentDataProperty: "minLength", rootData })) {
-                                          vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
-                                          errors = vErrors.length;
-                                        }
-                                        var valid0 = _errs30 === errors;
-                                      } else {
-                                        var valid0 = true;
-                                      }
-                                      if (valid0) {
-                                        if (data.pattern !== void 0) {
-                                          let data15 = data.pattern;
-                                          const _errs31 = errors;
-                                          if (errors === _errs31) {
-                                            if (errors === _errs31) {
-                                              if (typeof data15 === "string") {
-                                                if (!formats6(data15)) {
-                                                  validate10.errors = [{ instancePath: instancePath + "/pattern", schemaPath: "#/properties/pattern/format", keyword: "format", params: { format: "regex" }, message: 'must match format "regex"' }];
-                                                  return false;
-                                                }
-                                              } else {
-                                                validate10.errors = [{ instancePath: instancePath + "/pattern", schemaPath: "#/properties/pattern/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                return false;
-                                              }
-                                            }
-                                          }
-                                          var valid0 = _errs31 === errors;
-                                        } else {
-                                          var valid0 = true;
-                                        }
-                                        if (valid0) {
-                                          if (data.additionalItems !== void 0) {
-                                            const _errs33 = errors;
-                                            if (!validate10(data.additionalItems, { instancePath: instancePath + "/additionalItems", parentData: data, parentDataProperty: "additionalItems", rootData })) {
-                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                              errors = vErrors.length;
-                                            }
-                                            var valid0 = _errs33 === errors;
-                                          } else {
-                                            var valid0 = true;
-                                          }
-                                          if (valid0) {
-                                            if (data.items !== void 0) {
-                                              let data17 = data.items;
-                                              const _errs34 = errors;
-                                              const _errs35 = errors;
-                                              let valid2 = false;
-                                              const _errs36 = errors;
-                                              if (!validate10(data17, { instancePath: instancePath + "/items", parentData: data, parentDataProperty: "items", rootData })) {
-                                                vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                errors = vErrors.length;
-                                              }
-                                              var _valid0 = _errs36 === errors;
-                                              valid2 = valid2 || _valid0;
-                                              if (!valid2) {
-                                                const _errs37 = errors;
-                                                if (!validate13(data17, { instancePath: instancePath + "/items", parentData: data, parentDataProperty: "items", rootData })) {
-                                                  vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
-                                                  errors = vErrors.length;
-                                                }
-                                                var _valid0 = _errs37 === errors;
-                                                valid2 = valid2 || _valid0;
-                                              }
-                                              if (!valid2) {
-                                                const err0 = { instancePath: instancePath + "/items", schemaPath: "#/properties/items/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                                                if (vErrors === null) {
-                                                  vErrors = [err0];
-                                                } else {
-                                                  vErrors.push(err0);
-                                                }
-                                                errors++;
-                                                validate10.errors = vErrors;
-                                                return false;
-                                              } else {
-                                                errors = _errs35;
-                                                if (vErrors !== null) {
-                                                  if (_errs35) {
-                                                    vErrors.length = _errs35;
-                                                  } else {
-                                                    vErrors = null;
-                                                  }
-                                                }
-                                              }
-                                              var valid0 = _errs34 === errors;
-                                            } else {
-                                              var valid0 = true;
-                                            }
-                                            if (valid0) {
-                                              if (data.maxItems !== void 0) {
-                                                let data18 = data.maxItems;
-                                                const _errs38 = errors;
-                                                const _errs39 = errors;
-                                                if (!(typeof data18 == "number" && (!(data18 % 1) && !isNaN(data18)) && isFinite(data18))) {
-                                                  validate10.errors = [{ instancePath: instancePath + "/maxItems", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                                  return false;
-                                                }
-                                                if (errors === _errs39) {
-                                                  if (typeof data18 == "number" && isFinite(data18)) {
-                                                    if (data18 < 0 || isNaN(data18)) {
-                                                      validate10.errors = [{ instancePath: instancePath + "/maxItems", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
-                                                      return false;
-                                                    }
-                                                  }
-                                                }
-                                                var valid0 = _errs38 === errors;
-                                              } else {
-                                                var valid0 = true;
-                                              }
-                                              if (valid0) {
-                                                if (data.minItems !== void 0) {
-                                                  const _errs41 = errors;
-                                                  if (!validate11(data.minItems, { instancePath: instancePath + "/minItems", parentData: data, parentDataProperty: "minItems", rootData })) {
-                                                    vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
-                                                    errors = vErrors.length;
-                                                  }
-                                                  var valid0 = _errs41 === errors;
-                                                } else {
-                                                  var valid0 = true;
-                                                }
-                                                if (valid0) {
-                                                  if (data.uniqueItems !== void 0) {
-                                                    const _errs42 = errors;
-                                                    if (typeof data.uniqueItems !== "boolean") {
-                                                      validate10.errors = [{ instancePath: instancePath + "/uniqueItems", schemaPath: "#/properties/uniqueItems/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                      return false;
-                                                    }
-                                                    var valid0 = _errs42 === errors;
-                                                  } else {
-                                                    var valid0 = true;
-                                                  }
-                                                  if (valid0) {
-                                                    if (data.contains !== void 0) {
-                                                      const _errs44 = errors;
-                                                      if (!validate10(data.contains, { instancePath: instancePath + "/contains", parentData: data, parentDataProperty: "contains", rootData })) {
-                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                        errors = vErrors.length;
-                                                      }
-                                                      var valid0 = _errs44 === errors;
-                                                    } else {
-                                                      var valid0 = true;
-                                                    }
-                                                    if (valid0) {
-                                                      if (data.maxProperties !== void 0) {
-                                                        let data22 = data.maxProperties;
-                                                        const _errs45 = errors;
-                                                        const _errs46 = errors;
-                                                        if (!(typeof data22 == "number" && (!(data22 % 1) && !isNaN(data22)) && isFinite(data22))) {
-                                                          validate10.errors = [{ instancePath: instancePath + "/maxProperties", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                                          return false;
-                                                        }
-                                                        if (errors === _errs46) {
-                                                          if (typeof data22 == "number" && isFinite(data22)) {
-                                                            if (data22 < 0 || isNaN(data22)) {
-                                                              validate10.errors = [{ instancePath: instancePath + "/maxProperties", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
-                                                              return false;
-                                                            }
-                                                          }
-                                                        }
-                                                        var valid0 = _errs45 === errors;
-                                                      } else {
-                                                        var valid0 = true;
-                                                      }
-                                                      if (valid0) {
-                                                        if (data.minProperties !== void 0) {
-                                                          const _errs48 = errors;
-                                                          if (!validate11(data.minProperties, { instancePath: instancePath + "/minProperties", parentData: data, parentDataProperty: "minProperties", rootData })) {
-                                                            vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
-                                                            errors = vErrors.length;
-                                                          }
-                                                          var valid0 = _errs48 === errors;
-                                                        } else {
-                                                          var valid0 = true;
-                                                        }
-                                                        if (valid0) {
-                                                          if (data.required !== void 0) {
-                                                            let data24 = data.required;
-                                                            const _errs49 = errors;
-                                                            const _errs50 = errors;
-                                                            if (errors === _errs50) {
-                                                              if (Array.isArray(data24)) {
-                                                                var valid6 = true;
-                                                                const len0 = data24.length;
-                                                                for (let i0 = 0; i0 < len0; i0++) {
-                                                                  const _errs52 = errors;
-                                                                  if (typeof data24[i0] !== "string") {
-                                                                    validate10.errors = [{ instancePath: instancePath + "/required/" + i0, schemaPath: "#/definitions/stringArray/items/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                                    return false;
-                                                                  }
-                                                                  var valid6 = _errs52 === errors;
-                                                                  if (!valid6) {
-                                                                    break;
-                                                                  }
-                                                                }
-                                                                if (valid6) {
-                                                                  let i1 = data24.length;
-                                                                  let j0;
-                                                                  if (i1 > 1) {
-                                                                    const indices0 = {};
-                                                                    for (; i1--; ) {
-                                                                      let item0 = data24[i1];
-                                                                      if (typeof item0 !== "string") {
-                                                                        continue;
-                                                                      }
-                                                                      if (typeof indices0[item0] == "number") {
-                                                                        j0 = indices0[item0];
-                                                                        validate10.errors = [{ instancePath: instancePath + "/required", schemaPath: "#/definitions/stringArray/uniqueItems", keyword: "uniqueItems", params: { i: i1, j: j0 }, message: "must NOT have duplicate items (items ## " + j0 + " and " + i1 + " are identical)" }];
-                                                                        return false;
-                                                                        break;
-                                                                      }
-                                                                      indices0[item0] = i1;
-                                                                    }
-                                                                  }
-                                                                }
-                                                              } else {
-                                                                validate10.errors = [{ instancePath: instancePath + "/required", schemaPath: "#/definitions/stringArray/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
-                                                                return false;
-                                                              }
-                                                            }
-                                                            var valid0 = _errs49 === errors;
-                                                          } else {
-                                                            var valid0 = true;
-                                                          }
-                                                          if (valid0) {
-                                                            if (data.additionalProperties !== void 0) {
-                                                              const _errs54 = errors;
-                                                              if (!validate10(data.additionalProperties, { instancePath: instancePath + "/additionalProperties", parentData: data, parentDataProperty: "additionalProperties", rootData })) {
-                                                                vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                errors = vErrors.length;
-                                                              }
-                                                              var valid0 = _errs54 === errors;
-                                                            } else {
-                                                              var valid0 = true;
-                                                            }
-                                                            if (valid0) {
-                                                              if (data.definitions !== void 0) {
-                                                                let data27 = data.definitions;
-                                                                const _errs55 = errors;
-                                                                if (errors === _errs55) {
-                                                                  if (data27 && typeof data27 == "object" && !Array.isArray(data27)) {
-                                                                    for (const key0 in data27) {
-                                                                      const _errs58 = errors;
-                                                                      if (!validate10(data27[key0], { instancePath: instancePath + "/definitions/" + key0.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data27, parentDataProperty: key0, rootData })) {
-                                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                        errors = vErrors.length;
-                                                                      }
-                                                                      var valid8 = _errs58 === errors;
-                                                                      if (!valid8) {
-                                                                        break;
-                                                                      }
-                                                                    }
-                                                                  } else {
-                                                                    validate10.errors = [{ instancePath: instancePath + "/definitions", schemaPath: "#/properties/definitions/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                    return false;
-                                                                  }
-                                                                }
-                                                                var valid0 = _errs55 === errors;
-                                                              } else {
-                                                                var valid0 = true;
-                                                              }
-                                                              if (valid0) {
-                                                                if (data.properties !== void 0) {
-                                                                  let data29 = data.properties;
-                                                                  const _errs59 = errors;
-                                                                  if (errors === _errs59) {
-                                                                    if (data29 && typeof data29 == "object" && !Array.isArray(data29)) {
-                                                                      for (const key1 in data29) {
-                                                                        const _errs62 = errors;
-                                                                        if (!validate10(data29[key1], { instancePath: instancePath + "/properties/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data29, parentDataProperty: key1, rootData })) {
-                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                          errors = vErrors.length;
-                                                                        }
-                                                                        var valid9 = _errs62 === errors;
-                                                                        if (!valid9) {
-                                                                          break;
-                                                                        }
-                                                                      }
-                                                                    } else {
-                                                                      validate10.errors = [{ instancePath: instancePath + "/properties", schemaPath: "#/properties/properties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                      return false;
-                                                                    }
-                                                                  }
-                                                                  var valid0 = _errs59 === errors;
-                                                                } else {
-                                                                  var valid0 = true;
-                                                                }
-                                                                if (valid0) {
-                                                                  if (data.patternProperties !== void 0) {
-                                                                    let data31 = data.patternProperties;
-                                                                    const _errs63 = errors;
-                                                                    if (errors === _errs63) {
-                                                                      if (data31 && typeof data31 == "object" && !Array.isArray(data31)) {
-                                                                        for (const key2 in data31) {
-                                                                          const _errs65 = errors;
-                                                                          if (errors === _errs65) {
-                                                                            if (typeof key2 === "string") {
-                                                                              if (!formats6(key2)) {
-                                                                                const err1 = { instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/propertyNames/format", keyword: "format", params: { format: "regex" }, message: 'must match format "regex"', propertyName: key2 };
-                                                                                if (vErrors === null) {
-                                                                                  vErrors = [err1];
-                                                                                } else {
-                                                                                  vErrors.push(err1);
-                                                                                }
-                                                                                errors++;
-                                                                              }
-                                                                            }
-                                                                          }
-                                                                          var valid10 = _errs65 === errors;
-                                                                          if (!valid10) {
-                                                                            const err2 = { instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/propertyNames", keyword: "propertyNames", params: { propertyName: key2 }, message: "property name must be valid" };
-                                                                            if (vErrors === null) {
-                                                                              vErrors = [err2];
-                                                                            } else {
-                                                                              vErrors.push(err2);
-                                                                            }
-                                                                            errors++;
-                                                                            validate10.errors = vErrors;
-                                                                            return false;
-                                                                            break;
-                                                                          }
-                                                                        }
-                                                                        if (valid10) {
-                                                                          for (const key3 in data31) {
-                                                                            const _errs67 = errors;
-                                                                            if (!validate10(data31[key3], { instancePath: instancePath + "/patternProperties/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data31, parentDataProperty: key3, rootData })) {
-                                                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                              errors = vErrors.length;
-                                                                            }
-                                                                            var valid11 = _errs67 === errors;
-                                                                            if (!valid11) {
-                                                                              break;
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                      } else {
-                                                                        validate10.errors = [{ instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                        return false;
-                                                                      }
-                                                                    }
-                                                                    var valid0 = _errs63 === errors;
-                                                                  } else {
-                                                                    var valid0 = true;
-                                                                  }
-                                                                  if (valid0) {
-                                                                    if (data.dependencies !== void 0) {
-                                                                      let data33 = data.dependencies;
-                                                                      const _errs68 = errors;
-                                                                      if (errors === _errs68) {
-                                                                        if (data33 && typeof data33 == "object" && !Array.isArray(data33)) {
-                                                                          for (const key4 in data33) {
-                                                                            let data34 = data33[key4];
-                                                                            const _errs71 = errors;
-                                                                            const _errs72 = errors;
-                                                                            let valid13 = false;
-                                                                            const _errs73 = errors;
-                                                                            if (!validate10(data34, { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data33, parentDataProperty: key4, rootData })) {
-                                                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                              errors = vErrors.length;
-                                                                            }
-                                                                            var _valid1 = _errs73 === errors;
-                                                                            valid13 = valid13 || _valid1;
-                                                                            if (!valid13) {
-                                                                              const _errs74 = errors;
-                                                                              const _errs75 = errors;
-                                                                              if (errors === _errs75) {
-                                                                                if (Array.isArray(data34)) {
-                                                                                  var valid15 = true;
-                                                                                  const len1 = data34.length;
-                                                                                  for (let i2 = 0; i2 < len1; i2++) {
-                                                                                    const _errs77 = errors;
-                                                                                    if (typeof data34[i2] !== "string") {
-                                                                                      const err3 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1") + "/" + i2, schemaPath: "#/definitions/stringArray/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                                                                                      if (vErrors === null) {
-                                                                                        vErrors = [err3];
-                                                                                      } else {
-                                                                                        vErrors.push(err3);
-                                                                                      }
-                                                                                      errors++;
-                                                                                    }
-                                                                                    var valid15 = _errs77 === errors;
-                                                                                    if (!valid15) {
-                                                                                      break;
-                                                                                    }
-                                                                                  }
-                                                                                  if (valid15) {
-                                                                                    let i3 = data34.length;
-                                                                                    let j1;
-                                                                                    if (i3 > 1) {
-                                                                                      const indices1 = {};
-                                                                                      for (; i3--; ) {
-                                                                                        let item1 = data34[i3];
-                                                                                        if (typeof item1 !== "string") {
-                                                                                          continue;
-                                                                                        }
-                                                                                        if (typeof indices1[item1] == "number") {
-                                                                                          j1 = indices1[item1];
-                                                                                          const err4 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/stringArray/uniqueItems", keyword: "uniqueItems", params: { i: i3, j: j1 }, message: "must NOT have duplicate items (items ## " + j1 + " and " + i3 + " are identical)" };
-                                                                                          if (vErrors === null) {
-                                                                                            vErrors = [err4];
-                                                                                          } else {
-                                                                                            vErrors.push(err4);
-                                                                                          }
-                                                                                          errors++;
-                                                                                          break;
-                                                                                        }
-                                                                                        indices1[item1] = i3;
-                                                                                      }
-                                                                                    }
-                                                                                  }
-                                                                                } else {
-                                                                                  const err5 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/stringArray/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                                                                                  if (vErrors === null) {
-                                                                                    vErrors = [err5];
-                                                                                  } else {
-                                                                                    vErrors.push(err5);
-                                                                                  }
-                                                                                  errors++;
-                                                                                }
-                                                                              }
-                                                                              var _valid1 = _errs74 === errors;
-                                                                              valid13 = valid13 || _valid1;
-                                                                            }
-                                                                            if (!valid13) {
-                                                                              const err6 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/dependencies/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                                                                              if (vErrors === null) {
-                                                                                vErrors = [err6];
-                                                                              } else {
-                                                                                vErrors.push(err6);
-                                                                              }
-                                                                              errors++;
-                                                                              validate10.errors = vErrors;
-                                                                              return false;
-                                                                            } else {
-                                                                              errors = _errs72;
-                                                                              if (vErrors !== null) {
-                                                                                if (_errs72) {
-                                                                                  vErrors.length = _errs72;
-                                                                                } else {
-                                                                                  vErrors = null;
-                                                                                }
-                                                                              }
-                                                                            }
-                                                                            var valid12 = _errs71 === errors;
-                                                                            if (!valid12) {
-                                                                              break;
-                                                                            }
-                                                                          }
-                                                                        } else {
-                                                                          validate10.errors = [{ instancePath: instancePath + "/dependencies", schemaPath: "#/properties/dependencies/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                          return false;
-                                                                        }
-                                                                      }
-                                                                      var valid0 = _errs68 === errors;
-                                                                    } else {
-                                                                      var valid0 = true;
-                                                                    }
-                                                                    if (valid0) {
-                                                                      if (data.propertyNames !== void 0) {
-                                                                        const _errs79 = errors;
-                                                                        if (!validate10(data.propertyNames, { instancePath: instancePath + "/propertyNames", parentData: data, parentDataProperty: "propertyNames", rootData })) {
-                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                          errors = vErrors.length;
-                                                                        }
-                                                                        var valid0 = _errs79 === errors;
-                                                                      } else {
-                                                                        var valid0 = true;
-                                                                      }
-                                                                      if (valid0) {
-                                                                        if (data.enum !== void 0) {
-                                                                          let data37 = data.enum;
-                                                                          const _errs80 = errors;
-                                                                          if (errors === _errs80) {
-                                                                            if (Array.isArray(data37)) {
-                                                                              if (data37.length < 1) {
-                                                                                validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" }];
-                                                                                return false;
-                                                                              } else {
-                                                                                let i4 = data37.length;
-                                                                                let j2;
-                                                                                if (i4 > 1) {
-                                                                                  outer0:
-                                                                                    for (; i4--; ) {
-                                                                                      for (j2 = i4; j2--; ) {
-                                                                                        if (func0(data37[i4], data37[j2])) {
-                                                                                          validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/uniqueItems", keyword: "uniqueItems", params: { i: i4, j: j2 }, message: "must NOT have duplicate items (items ## " + j2 + " and " + i4 + " are identical)" }];
-                                                                                          return false;
-                                                                                          break outer0;
-                                                                                        }
-                                                                                      }
-                                                                                    }
-                                                                                }
-                                                                              }
-                                                                            } else {
-                                                                              validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
-                                                                              return false;
-                                                                            }
-                                                                          }
-                                                                          var valid0 = _errs80 === errors;
-                                                                        } else {
-                                                                          var valid0 = true;
-                                                                        }
-                                                                        if (valid0) {
-                                                                          if (data.type !== void 0) {
-                                                                            let data38 = data.type;
-                                                                            const _errs82 = errors;
-                                                                            const _errs83 = errors;
-                                                                            let valid18 = false;
-                                                                            const _errs84 = errors;
-                                                                            if (!(data38 === "array" || data38 === "boolean" || data38 === "integer" || data38 === "null" || data38 === "number" || data38 === "object" || data38 === "string")) {
-                                                                              const err7 = { instancePath: instancePath + "/type", schemaPath: "#/definitions/simpleTypes/enum", keyword: "enum", params: { allowedValues: schema20.enum }, message: "must be equal to one of the allowed values" };
-                                                                              if (vErrors === null) {
-                                                                                vErrors = [err7];
-                                                                              } else {
-                                                                                vErrors.push(err7);
-                                                                              }
-                                                                              errors++;
-                                                                            }
-                                                                            var _valid2 = _errs84 === errors;
-                                                                            valid18 = valid18 || _valid2;
-                                                                            if (!valid18) {
-                                                                              const _errs86 = errors;
-                                                                              if (errors === _errs86) {
-                                                                                if (Array.isArray(data38)) {
-                                                                                  if (data38.length < 1) {
-                                                                                    const err8 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
-                                                                                    if (vErrors === null) {
-                                                                                      vErrors = [err8];
-                                                                                    } else {
-                                                                                      vErrors.push(err8);
-                                                                                    }
-                                                                                    errors++;
-                                                                                  } else {
-                                                                                    var valid20 = true;
-                                                                                    const len2 = data38.length;
-                                                                                    for (let i5 = 0; i5 < len2; i5++) {
-                                                                                      let data39 = data38[i5];
-                                                                                      const _errs88 = errors;
-                                                                                      if (!(data39 === "array" || data39 === "boolean" || data39 === "integer" || data39 === "null" || data39 === "number" || data39 === "object" || data39 === "string")) {
-                                                                                        const err9 = { instancePath: instancePath + "/type/" + i5, schemaPath: "#/definitions/simpleTypes/enum", keyword: "enum", params: { allowedValues: schema20.enum }, message: "must be equal to one of the allowed values" };
-                                                                                        if (vErrors === null) {
-                                                                                          vErrors = [err9];
-                                                                                        } else {
-                                                                                          vErrors.push(err9);
-                                                                                        }
-                                                                                        errors++;
-                                                                                      }
-                                                                                      var valid20 = _errs88 === errors;
-                                                                                      if (!valid20) {
-                                                                                        break;
-                                                                                      }
-                                                                                    }
-                                                                                    if (valid20) {
-                                                                                      let i6 = data38.length;
-                                                                                      let j3;
-                                                                                      if (i6 > 1) {
-                                                                                        outer1:
-                                                                                          for (; i6--; ) {
-                                                                                            for (j3 = i6; j3--; ) {
-                                                                                              if (func0(data38[i6], data38[j3])) {
-                                                                                                const err10 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/uniqueItems", keyword: "uniqueItems", params: { i: i6, j: j3 }, message: "must NOT have duplicate items (items ## " + j3 + " and " + i6 + " are identical)" };
-                                                                                                if (vErrors === null) {
-                                                                                                  vErrors = [err10];
-                                                                                                } else {
-                                                                                                  vErrors.push(err10);
-                                                                                                }
-                                                                                                errors++;
-                                                                                                break outer1;
-                                                                                              }
-                                                                                            }
-                                                                                          }
-                                                                                      }
-                                                                                    }
-                                                                                  }
-                                                                                } else {
-                                                                                  const err11 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/type", keyword: "type", params: { type: "array" }, message: "must be array" };
-                                                                                  if (vErrors === null) {
-                                                                                    vErrors = [err11];
-                                                                                  } else {
-                                                                                    vErrors.push(err11);
-                                                                                  }
-                                                                                  errors++;
-                                                                                }
-                                                                              }
-                                                                              var _valid2 = _errs86 === errors;
-                                                                              valid18 = valid18 || _valid2;
-                                                                            }
-                                                                            if (!valid18) {
-                                                                              const err12 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                                                                              if (vErrors === null) {
-                                                                                vErrors = [err12];
-                                                                              } else {
-                                                                                vErrors.push(err12);
-                                                                              }
-                                                                              errors++;
-                                                                              validate10.errors = vErrors;
-                                                                              return false;
-                                                                            } else {
-                                                                              errors = _errs83;
-                                                                              if (vErrors !== null) {
-                                                                                if (_errs83) {
-                                                                                  vErrors.length = _errs83;
-                                                                                } else {
-                                                                                  vErrors = null;
-                                                                                }
-                                                                              }
-                                                                            }
-                                                                            var valid0 = _errs82 === errors;
-                                                                          } else {
-                                                                            var valid0 = true;
-                                                                          }
-                                                                          if (valid0) {
-                                                                            if (data.format !== void 0) {
-                                                                              const _errs90 = errors;
-                                                                              if (typeof data.format !== "string") {
-                                                                                validate10.errors = [{ instancePath: instancePath + "/format", schemaPath: "#/properties/format/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                                                return false;
-                                                                              }
-                                                                              var valid0 = _errs90 === errors;
-                                                                            } else {
-                                                                              var valid0 = true;
-                                                                            }
-                                                                            if (valid0) {
-                                                                              if (data.contentMediaType !== void 0) {
-                                                                                const _errs92 = errors;
-                                                                                if (typeof data.contentMediaType !== "string") {
-                                                                                  validate10.errors = [{ instancePath: instancePath + "/contentMediaType", schemaPath: "#/properties/contentMediaType/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                                                  return false;
-                                                                                }
-                                                                                var valid0 = _errs92 === errors;
-                                                                              } else {
-                                                                                var valid0 = true;
-                                                                              }
-                                                                              if (valid0) {
-                                                                                if (data.contentEncoding !== void 0) {
-                                                                                  const _errs94 = errors;
-                                                                                  if (typeof data.contentEncoding !== "string") {
-                                                                                    validate10.errors = [{ instancePath: instancePath + "/contentEncoding", schemaPath: "#/properties/contentEncoding/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                                                    return false;
-                                                                                  }
-                                                                                  var valid0 = _errs94 === errors;
-                                                                                } else {
-                                                                                  var valid0 = true;
-                                                                                }
-                                                                                if (valid0) {
-                                                                                  if (data.if !== void 0) {
-                                                                                    const _errs96 = errors;
-                                                                                    if (!validate10(data.if, { instancePath: instancePath + "/if", parentData: data, parentDataProperty: "if", rootData })) {
-                                                                                      vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                                      errors = vErrors.length;
-                                                                                    }
-                                                                                    var valid0 = _errs96 === errors;
-                                                                                  } else {
-                                                                                    var valid0 = true;
-                                                                                  }
-                                                                                  if (valid0) {
-                                                                                    if (data.then !== void 0) {
-                                                                                      const _errs97 = errors;
-                                                                                      if (!validate10(data.then, { instancePath: instancePath + "/then", parentData: data, parentDataProperty: "then", rootData })) {
-                                                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                                        errors = vErrors.length;
-                                                                                      }
-                                                                                      var valid0 = _errs97 === errors;
-                                                                                    } else {
-                                                                                      var valid0 = true;
-                                                                                    }
-                                                                                    if (valid0) {
-                                                                                      if (data.else !== void 0) {
-                                                                                        const _errs98 = errors;
-                                                                                        if (!validate10(data.else, { instancePath: instancePath + "/else", parentData: data, parentDataProperty: "else", rootData })) {
-                                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                                          errors = vErrors.length;
-                                                                                        }
-                                                                                        var valid0 = _errs98 === errors;
-                                                                                      } else {
-                                                                                        var valid0 = true;
-                                                                                      }
-                                                                                      if (valid0) {
-                                                                                        if (data.allOf !== void 0) {
-                                                                                          const _errs99 = errors;
-                                                                                          if (!validate13(data.allOf, { instancePath: instancePath + "/allOf", parentData: data, parentDataProperty: "allOf", rootData })) {
-                                                                                            vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
-                                                                                            errors = vErrors.length;
-                                                                                          }
-                                                                                          var valid0 = _errs99 === errors;
-                                                                                        } else {
-                                                                                          var valid0 = true;
-                                                                                        }
-                                                                                        if (valid0) {
-                                                                                          if (data.anyOf !== void 0) {
-                                                                                            const _errs100 = errors;
-                                                                                            if (!validate13(data.anyOf, { instancePath: instancePath + "/anyOf", parentData: data, parentDataProperty: "anyOf", rootData })) {
-                                                                                              vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
-                                                                                              errors = vErrors.length;
-                                                                                            }
-                                                                                            var valid0 = _errs100 === errors;
-                                                                                          } else {
-                                                                                            var valid0 = true;
-                                                                                          }
-                                                                                          if (valid0) {
-                                                                                            if (data.oneOf !== void 0) {
-                                                                                              const _errs101 = errors;
-                                                                                              if (!validate13(data.oneOf, { instancePath: instancePath + "/oneOf", parentData: data, parentDataProperty: "oneOf", rootData })) {
-                                                                                                vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
-                                                                                                errors = vErrors.length;
-                                                                                              }
-                                                                                              var valid0 = _errs101 === errors;
-                                                                                            } else {
-                                                                                              var valid0 = true;
-                                                                                            }
-                                                                                            if (valid0) {
-                                                                                              if (data.not !== void 0) {
-                                                                                                const _errs102 = errors;
-                                                                                                if (!validate10(data.not, { instancePath: instancePath + "/not", parentData: data, parentDataProperty: "not", rootData })) {
-                                                                                                  vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
-                                                                                                  errors = vErrors.length;
-                                                                                                }
-                                                                                                var valid0 = _errs102 === errors;
-                                                                                              } else {
-                                                                                                var valid0 = true;
-                                                                                              }
-                                                                                            }
-                                                                                          }
-                                                                                        }
-                                                                                      }
-                                                                                    }
-                                                                                  }
-                                                                                }
-                                                                              }
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                }
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      }
-                                                    }
-                                                  }
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-      validate10.errors = vErrors;
-      return errors === 0;
-    }
-  }
-});
-
-// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/errors.js
-var require_errors4 = __commonJS({
-  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/errors.js"(exports2, module2) {
-    "use strict";
-    var MergeError = class extends Error {
-      constructor(keyword, schemas) {
-        super();
-        this.name = "JsonSchemaMergeError";
-        this.code = "JSON_SCHEMA_MERGE_ERROR";
-        this.message = `Failed to merge "${keyword}" keyword schemas.`;
-        this.schemas = schemas;
-      }
-    };
-    var ResolverNotFoundError = class extends Error {
-      constructor(keyword, schemas) {
-        super();
-        this.name = "JsonSchemaMergeError";
-        this.code = "JSON_SCHEMA_MERGE_ERROR";
-        this.message = `Resolver for "${keyword}" keyword not found.`;
-        this.schemas = schemas;
-      }
-    };
-    var InvalidOnConflictOptionError = class extends Error {
-      constructor(onConflict) {
-        super();
-        this.name = "JsonSchemaMergeError";
-        this.code = "JSON_SCHEMA_MERGE_ERROR";
-        this.message = `Invalid "onConflict" option: "${onConflict}".`;
-      }
-    };
-    module2.exports = {
-      MergeError,
-      ResolverNotFoundError,
-      InvalidOnConflictOptionError
-    };
-  }
-});
-
-// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/resolvers.js
-var require_resolvers = __commonJS({
-  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/resolvers.js"(exports2, module2) {
-    "use strict";
-    var { dequal: deepEqual } = require_dist();
-    var { MergeError } = require_errors4();
-    function _arraysIntersection(arrays) {
-      let intersection = arrays[0];
-      for (let i = 1; i < arrays.length; i++) {
-        intersection = intersection.filter(
-          (value) => arrays[i].includes(value)
-        );
-      }
-      return intersection;
-    }
-    function arraysIntersection(keyword, values, mergedSchema) {
-      const intersection = _arraysIntersection(values);
-      if (intersection.length === 0) {
-        throw new MergeError(keyword, values);
-      }
-      mergedSchema[keyword] = intersection;
-    }
-    function hybridArraysIntersection(keyword, values, mergedSchema) {
-      for (let i = 0; i < values.length; i++) {
-        if (!Array.isArray(values[i])) {
-          values[i] = [values[i]];
-        }
-      }
-      const intersection = _arraysIntersection(values);
-      if (intersection.length === 0) {
-        throw new MergeError(keyword, values);
-      }
-      if (intersection.length === 1) {
-        mergedSchema[keyword] = intersection[0];
-      } else {
-        mergedSchema[keyword] = intersection;
-      }
-    }
-    function arraysUnion(keyword, values, mergedSchema) {
-      const union = [];
-      for (const array of values) {
-        for (const value of array) {
-          if (!union.includes(value)) {
-            union.push(value);
-          }
-        }
-      }
-      mergedSchema[keyword] = union;
-    }
-    function minNumber(keyword, values, mergedSchema) {
-      mergedSchema[keyword] = Math.min(...values);
-    }
-    function maxNumber(keyword, values, mergedSchema) {
-      mergedSchema[keyword] = Math.max(...values);
-    }
-    function commonMultiple(keyword, values, mergedSchema) {
-      const gcd = (a, b) => !b ? a : gcd(b, a % b);
-      const lcm = (a, b) => a * b / gcd(a, b);
-      let scale = 1;
-      for (const value of values) {
-        while (value * scale % 1 !== 0) {
-          scale *= 10;
-        }
-      }
-      let multiple = values[0] * scale;
-      for (const value of values) {
-        multiple = lcm(multiple, value * scale);
-      }
-      mergedSchema[keyword] = multiple / scale;
-    }
-    function allEqual(keyword, values, mergedSchema) {
-      const firstValue = values[0];
-      for (let i = 1; i < values.length; i++) {
-        if (!deepEqual(values[i], firstValue)) {
-          throw new MergeError(keyword, values);
-        }
-      }
-      mergedSchema[keyword] = firstValue;
-    }
-    function skip() {
-    }
-    function booleanAnd(keyword, values, mergedSchema) {
-      for (const value of values) {
-        if (value === false) {
-          mergedSchema[keyword] = false;
-          return;
-        }
-      }
-      mergedSchema[keyword] = true;
-    }
-    function booleanOr(keyword, values, mergedSchema) {
-      for (const value of values) {
-        if (value === true) {
-          mergedSchema[keyword] = true;
-          return;
-        }
-      }
-      mergedSchema[keyword] = false;
-    }
-    module2.exports = {
-      arraysIntersection,
-      hybridArraysIntersection,
-      arraysUnion,
-      minNumber,
-      maxNumber,
-      commonMultiple,
-      allEqual,
-      booleanAnd,
-      booleanOr,
-      skip
-    };
-  }
-});
-
-// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/index.js
-var require_merge_json_schemas = __commonJS({
-  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/index.js"(exports2, module2) {
-    "use strict";
-    var { dequal: deepEqual } = require_dist();
-    var resolvers = require_resolvers();
-    var errors = require_errors4();
-    var keywordsResolvers = {
-      $id: resolvers.skip,
-      type: resolvers.hybridArraysIntersection,
-      enum: resolvers.arraysIntersection,
-      minLength: resolvers.maxNumber,
-      maxLength: resolvers.minNumber,
-      minimum: resolvers.maxNumber,
-      maximum: resolvers.minNumber,
-      multipleOf: resolvers.commonMultiple,
-      exclusiveMinimum: resolvers.maxNumber,
-      exclusiveMaximum: resolvers.minNumber,
-      minItems: resolvers.maxNumber,
-      maxItems: resolvers.minNumber,
-      maxProperties: resolvers.minNumber,
-      minProperties: resolvers.maxNumber,
-      const: resolvers.allEqual,
-      default: resolvers.allEqual,
-      format: resolvers.allEqual,
-      required: resolvers.arraysUnion,
-      properties: mergeProperties,
-      patternProperties: mergeObjects,
-      additionalProperties: mergeSchemasResolver,
-      items: mergeItems,
-      additionalItems: mergeAdditionalItems,
-      definitions: mergeObjects,
-      $defs: mergeObjects,
-      nullable: resolvers.booleanAnd,
-      oneOf: mergeOneOf,
-      anyOf: mergeOneOf,
-      allOf: resolvers.arraysUnion,
-      not: mergeSchemasResolver,
-      if: mergeIfThenElseSchemas,
-      then: resolvers.skip,
-      else: resolvers.skip,
-      dependencies: mergeDependencies,
-      dependentRequired: mergeDependencies,
-      dependentSchemas: mergeObjects,
-      propertyNames: mergeSchemasResolver,
-      uniqueItems: resolvers.booleanOr,
-      contains: mergeSchemasResolver
-    };
-    function mergeSchemasResolver(keyword, values, mergedSchema, _schemas, options) {
-      mergedSchema[keyword] = _mergeSchemas(values, options);
-    }
-    function cartesianProduct(arrays) {
-      let result = [[]];
-      for (const array of arrays) {
-        const temp = [];
-        for (const x of result) {
-          for (const y of array) {
-            temp.push([...x, y]);
-          }
-        }
-        result = temp;
-      }
-      return result;
-    }
-    function mergeOneOf(keyword, values, mergedSchema, _schemas, options) {
-      if (values.length === 1) {
-        mergedSchema[keyword] = values[0];
-        return;
-      }
-      const product = cartesianProduct(values);
-      const mergedOneOf = [];
-      for (const combination of product) {
-        try {
-          const mergedSchema2 = _mergeSchemas(combination, options);
-          if (mergedSchema2 !== void 0) {
-            mergedOneOf.push(mergedSchema2);
-          }
-        } catch (error) {
-          if (error instanceof errors.MergeError) continue;
-          throw error;
-        }
-      }
-      mergedSchema[keyword] = mergedOneOf;
-    }
-    function getSchemaForItem(schema, index) {
-      const { items, additionalItems } = schema;
-      if (Array.isArray(items)) {
-        if (index < items.length) {
-          return items[index];
-        }
-        return additionalItems;
-      }
-      if (items !== void 0) {
-        return items;
-      }
-      return additionalItems;
-    }
-    function mergeItems(keyword, values, mergedSchema, schemas, options) {
-      let maxArrayItemsLength = 0;
-      for (const itemsSchema of values) {
-        if (Array.isArray(itemsSchema)) {
-          maxArrayItemsLength = Math.max(maxArrayItemsLength, itemsSchema.length);
-        }
-      }
-      if (maxArrayItemsLength === 0) {
-        mergedSchema[keyword] = _mergeSchemas(values, options);
-        return;
-      }
-      const mergedItemsSchemas = [];
-      for (let i = 0; i < maxArrayItemsLength; i++) {
-        const indexItemSchemas = [];
-        for (const schema of schemas) {
-          const itemSchema = getSchemaForItem(schema, i);
-          if (itemSchema !== void 0) {
-            indexItemSchemas.push(itemSchema);
-          }
-        }
-        mergedItemsSchemas[i] = _mergeSchemas(indexItemSchemas, options);
-      }
-      mergedSchema[keyword] = mergedItemsSchemas;
-    }
-    function mergeAdditionalItems(keyword, values, mergedSchema, schemas, options) {
-      let hasArrayItems = false;
-      for (const schema of schemas) {
-        if (Array.isArray(schema.items)) {
-          hasArrayItems = true;
-          break;
-        }
-      }
-      if (!hasArrayItems) {
-        mergedSchema[keyword] = _mergeSchemas(values, options);
-        return;
-      }
-      const mergedAdditionalItemsSchemas = [];
-      for (const schema of schemas) {
-        let additionalItemsSchema = schema.additionalItems;
-        if (additionalItemsSchema === void 0 && !Array.isArray(schema.items)) {
-          additionalItemsSchema = schema.items;
-        }
-        if (additionalItemsSchema !== void 0) {
-          mergedAdditionalItemsSchemas.push(additionalItemsSchema);
-        }
-      }
-      mergedSchema[keyword] = _mergeSchemas(mergedAdditionalItemsSchemas, options);
-    }
-    function getSchemaForProperty(schema, propertyName) {
-      const { properties, patternProperties, additionalProperties } = schema;
-      if (properties?.[propertyName] !== void 0) {
-        return properties[propertyName];
-      }
-      for (const pattern of Object.keys(patternProperties ?? {})) {
-        const regexp = new RegExp(pattern);
-        if (regexp.test(propertyName)) {
-          return patternProperties[pattern];
-        }
-      }
-      return additionalProperties;
-    }
-    function mergeProperties(keyword, _values, mergedSchema, schemas, options) {
-      const foundProperties = {};
-      for (const currentSchema of schemas) {
-        const properties = currentSchema.properties ?? {};
-        for (const propertyName of Object.keys(properties)) {
-          if (foundProperties[propertyName] !== void 0) continue;
-          const propertySchema = properties[propertyName];
-          foundProperties[propertyName] = [propertySchema];
-          for (const anotherSchema of schemas) {
-            if (currentSchema === anotherSchema) continue;
-            const propertySchema2 = getSchemaForProperty(anotherSchema, propertyName);
-            if (propertySchema2 !== void 0) {
-              foundProperties[propertyName].push(propertySchema2);
-            }
-          }
-        }
-      }
-      const mergedProperties = {};
-      for (const property of Object.keys(foundProperties)) {
-        const propertySchemas = foundProperties[property];
-        mergedProperties[property] = _mergeSchemas(propertySchemas, options);
-      }
-      mergedSchema[keyword] = mergedProperties;
-    }
-    function mergeObjects(keyword, values, mergedSchema, _schemas, options) {
-      const objectsProperties = {};
-      for (const properties of values) {
-        for (const propertyName of Object.keys(properties)) {
-          if (objectsProperties[propertyName] === void 0) {
-            objectsProperties[propertyName] = [];
-          }
-          objectsProperties[propertyName].push(properties[propertyName]);
-        }
-      }
-      const mergedProperties = {};
-      for (const propertyName of Object.keys(objectsProperties)) {
-        const propertySchemas = objectsProperties[propertyName];
-        const mergedPropertySchema = _mergeSchemas(propertySchemas, options);
-        mergedProperties[propertyName] = mergedPropertySchema;
-      }
-      mergedSchema[keyword] = mergedProperties;
-    }
-    function mergeIfThenElseSchemas(_keyword, _values, mergedSchema, schemas, options) {
-      for (let i = 0; i < schemas.length; i++) {
-        const subSchema = {
-          if: schemas[i].if,
-          then: schemas[i].then,
-          else: schemas[i].else
-        };
-        if (subSchema.if === void 0) continue;
-        if (mergedSchema.if === void 0) {
-          mergedSchema.if = subSchema.if;
-          if (subSchema.then !== void 0) {
-            mergedSchema.then = subSchema.then;
-          }
-          if (subSchema.else !== void 0) {
-            mergedSchema.else = subSchema.else;
-          }
-          continue;
-        }
-        if (mergedSchema.then !== void 0) {
-          mergedSchema.then = _mergeSchemas([mergedSchema.then, subSchema], options);
-        }
-        if (mergedSchema.else !== void 0) {
-          mergedSchema.else = _mergeSchemas([mergedSchema.else, subSchema], options);
-        }
-      }
-    }
-    function mergeDependencies(keyword, values, mergedSchema) {
-      const mergedDependencies = {};
-      for (const dependencies of values) {
-        for (const propertyName of Object.keys(dependencies)) {
-          if (mergedDependencies[propertyName] === void 0) {
-            mergedDependencies[propertyName] = [];
-          }
-          const mergedPropertyDependencies = mergedDependencies[propertyName];
-          for (const propertyDependency of dependencies[propertyName]) {
-            if (!mergedPropertyDependencies.includes(propertyDependency)) {
-              mergedPropertyDependencies.push(propertyDependency);
-            }
-          }
-        }
-      }
-      mergedSchema[keyword] = mergedDependencies;
-    }
-    function _mergeSchemas(schemas, options) {
-      if (schemas.length === 0) return {};
-      if (schemas.length === 1) return schemas[0];
-      const mergedSchema = {};
-      const keywords = {};
-      let allSchemasAreTrue = true;
-      for (const schema of schemas) {
-        if (schema === false) return false;
-        if (schema === true) continue;
-        allSchemasAreTrue = false;
-        for (const keyword of Object.keys(schema)) {
-          if (keywords[keyword] === void 0) {
-            keywords[keyword] = [];
-          }
-          keywords[keyword].push(schema[keyword]);
-        }
-      }
-      if (allSchemasAreTrue) return true;
-      for (const keyword of Object.keys(keywords)) {
-        const keywordValues = keywords[keyword];
-        const resolver = options.resolvers[keyword] ?? options.defaultResolver;
-        resolver(keyword, keywordValues, mergedSchema, schemas, options);
-      }
-      return mergedSchema;
-    }
-    function defaultResolver(keyword, values, mergedSchema, _schemas, options) {
-      const onConflict = options.onConflict ?? "throw";
-      if (values.length === 1 || onConflict === "first") {
-        mergedSchema[keyword] = values[0];
-        return;
-      }
-      let allValuesEqual = true;
-      for (let i = 1; i < values.length; i++) {
-        if (!deepEqual(values[i], values[0])) {
-          allValuesEqual = false;
-          break;
-        }
-      }
-      if (allValuesEqual) {
-        mergedSchema[keyword] = values[0];
-        return;
-      }
-      if (onConflict === "throw") {
-        throw new errors.ResolverNotFoundError(keyword, values);
-      }
-      if (onConflict === "skip") {
-        return;
-      }
-      throw new errors.InvalidOnConflictOptionError(onConflict);
-    }
-    function mergeSchemas(schemas, options = {}) {
-      if (options.defaultResolver === void 0) {
-        options.defaultResolver = defaultResolver;
-      }
-      options.resolvers = { ...keywordsResolvers, ...options.resolvers };
-      const mergedSchema = _mergeSchemas(schemas, options);
-      return mergedSchema;
-    }
-    module2.exports = { mergeSchemas, keywordsResolvers, defaultResolver, ...errors };
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/merge-schemas.js
-var require_merge_schemas = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/merge-schemas.js"(exports2, module2) {
-    "use strict";
-    var { mergeSchemas: _mergeSchemas } = require_merge_json_schemas();
-    function mergeSchemas(schemas) {
-      return _mergeSchemas(schemas, { onConflict: "skip" });
-    }
-    module2.exports = mergeSchemas;
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/standalone.js
-var require_standalone = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/standalone.js"(exports2, module2) {
-    "use strict";
-    function buildStandaloneCode(contextFunc, context, serializer, validator) {
-      let ajvDependencyCode = "";
-      if (context.validatorSchemasIds.size > 0) {
-        ajvDependencyCode += "const Validator = require('fast-json-stringify/lib/validator')\n";
-        ajvDependencyCode += `const validatorState = ${JSON.stringify(validator.getState())}
-`;
-        ajvDependencyCode += "const validator = Validator.restoreFromState(validatorState)\n";
-      } else {
-        ajvDependencyCode += "const validator = null\n";
-      }
-      const { schema, ...serializerState } = serializer.getState();
-      return `
-  'use strict'
-
-  const Serializer = require('fast-json-stringify/lib/serializer')
-  const serializerState = ${JSON.stringify(serializerState)}
-  const serializer = Serializer.restoreFromState(serializerState)
-
-  ${ajvDependencyCode}
-
-  module.exports = ${contextFunc.toString()}(validator, serializer)`;
-    }
-    module2.exports = buildStandaloneCode;
-    module2.exports.dependencies = {
-      Serializer: require_serializer2(),
-      Validator: require_validator()
-    };
-  }
-});
-
-// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/index.js
-var require_fast_json_stringify = __commonJS({
-  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/index.js"(exports2, module2) {
-    "use strict";
-    var { RefResolver } = require_json_schema_ref_resolver();
-    var Serializer = require_serializer2();
-    var Validator = require_validator();
-    var Location = require_location();
-    var validate = require_schema_validator();
-    var mergeSchemas = require_merge_schemas();
-    var largeArraySize = 2e4;
-    var largeArrayMechanism = "default";
-    var serializerFns = `
-const {
-  asString,
-  asNumber,
-  asBoolean,
-  asDateTime,
-  asDate,
-  asTime,
-  asUnsafeString
-} = serializer
-
-const asInteger = serializer.asInteger.bind(serializer)
-
-`;
-    var validRoundingMethods = /* @__PURE__ */ new Set([
-      "floor",
-      "ceil",
-      "round",
-      "trunc"
-    ]);
-    var validLargeArrayMechanisms = /* @__PURE__ */ new Set([
-      "default",
-      "json-stringify"
-    ]);
-    var schemaIdCounter = 0;
-    function isValidSchema(schema, name) {
-      if (!validate(schema)) {
-        if (name) {
-          name = `"${name}" `;
-        } else {
-          name = "";
-        }
-        const first = validate.errors[0];
-        const err = new Error(`${name}schema is invalid: data${first.instancePath} ${first.message}`);
-        err.errors = isValidSchema.errors;
-        throw err;
-      }
-    }
-    function resolveRef(context, location) {
-      const ref = location.schema.$ref;
-      let hashIndex = ref.indexOf("#");
-      if (hashIndex === -1) {
-        hashIndex = ref.length;
-      }
-      const schemaId = ref.slice(0, hashIndex) || location.schemaId;
-      const jsonPointer = ref.slice(hashIndex) || "#";
-      const schema = context.refResolver.getSchema(schemaId, jsonPointer);
-      if (schema === null) {
-        throw new Error(`Cannot find reference "${ref}"`);
-      }
-      const newLocation = new Location(schema, schemaId, jsonPointer);
-      if (schema.$ref !== void 0) {
-        return resolveRef(context, newLocation);
-      }
-      return newLocation;
-    }
-    function getMergedLocation(context, mergedSchemaId) {
-      const mergedSchema = context.refResolver.getSchema(mergedSchemaId, "#");
-      return new Location(mergedSchema, mergedSchemaId, "#");
-    }
-    function getSchemaId(schema, rootSchemaId) {
-      if (schema.$id && schema.$id.charAt(0) !== "#") {
-        return schema.$id;
-      }
-      return rootSchemaId;
-    }
-    function getSafeSchemaRef(context, location) {
-      let schemaRef = location.getSchemaRef() || "";
-      if (schemaRef.startsWith(context.rootSchemaId)) {
-        schemaRef = schemaRef.replace(context.rootSchemaId, "") || "#";
-      }
-      return schemaRef;
-    }
-    function build(schema, options) {
-      isValidSchema(schema);
-      options = options || {};
-      const context = {
-        functions: [],
-        functionsCounter: 0,
-        functionsNamesBySchema: /* @__PURE__ */ new Map(),
-        options,
-        refResolver: new RefResolver(),
-        rootSchemaId: schema.$id || `__fjs_root_${schemaIdCounter++}`,
-        validatorSchemasIds: /* @__PURE__ */ new Set(),
-        mergedSchemasIds: /* @__PURE__ */ new Map(),
-        recursiveSchemas: /* @__PURE__ */ new Set(),
-        recursivePaths: /* @__PURE__ */ new Set(),
-        buildingSet: /* @__PURE__ */ new Set(),
-        uid: 0
-      };
-      const schemaId = getSchemaId(schema, context.rootSchemaId);
-      if (!context.refResolver.hasSchema(schemaId)) {
-        context.refResolver.addSchema(schema, context.rootSchemaId);
-      }
-      if (options.schema) {
-        for (const key in options.schema) {
-          const schema2 = options.schema[key];
-          const schemaId2 = getSchemaId(schema2, key);
-          if (!context.refResolver.hasSchema(schemaId2)) {
-            isValidSchema(schema2, key);
-            context.refResolver.addSchema(schema2, key);
-          }
-        }
-      }
-      if (options.rounding) {
-        if (!validRoundingMethods.has(options.rounding)) {
-          throw new Error(`Unsupported integer rounding method ${options.rounding}`);
-        }
-      }
-      if (options.largeArrayMechanism) {
-        if (validLargeArrayMechanisms.has(options.largeArrayMechanism)) {
-          largeArrayMechanism = options.largeArrayMechanism;
-        } else {
-          throw new Error(`Unsupported large array mechanism ${options.largeArrayMechanism}`);
-        }
-      }
-      if (options.largeArraySize) {
-        const largeArraySizeType = typeof options.largeArraySize;
-        let parsedNumber;
-        if (largeArraySizeType === "string" && Number.isFinite(parsedNumber = Number.parseInt(options.largeArraySize, 10))) {
-          largeArraySize = parsedNumber;
-        } else if (largeArraySizeType === "number" && Number.isInteger(options.largeArraySize)) {
-          largeArraySize = options.largeArraySize;
-        } else if (largeArraySizeType === "bigint") {
-          largeArraySize = Number(options.largeArraySize);
-        } else {
-          throw new Error(`Unsupported large array size. Expected integer-like, got ${typeof options.largeArraySize} with value ${options.largeArraySize}`);
-        }
-      }
-      const location = new Location(schema, context.rootSchemaId);
-      detectRecursiveSchemas(context, location);
-      const code = buildValue(context, location, "input");
-      let contextFunctionCode = `
-    ${serializerFns}
-    const JSON_STR_BEGIN_OBJECT = '{'
-    const JSON_STR_END_OBJECT = '}'
-    const JSON_STR_BEGIN_ARRAY = '['
-    const JSON_STR_END_ARRAY = ']'
-    const JSON_STR_COMMA = ','
-    const JSON_STR_COLONS = ':'
-    const JSON_STR_QUOTE = '"'
-    const JSON_STR_EMPTY_OBJECT = JSON_STR_BEGIN_OBJECT + JSON_STR_END_OBJECT
-    const JSON_STR_EMPTY_ARRAY = JSON_STR_BEGIN_ARRAY + JSON_STR_END_ARRAY
-    const JSON_STR_EMPTY_STRING = JSON_STR_QUOTE + JSON_STR_QUOTE
-    const JSON_STR_NULL = 'null'
-  `;
-      if (code === "json += anonymous0(input)") {
-        contextFunctionCode += `
-    ${context.functions.join("\n")}
-    const main = anonymous0
-    return main
-    `;
-      } else {
-        contextFunctionCode += `
-    function main (input) {
-      let json = ''
-      ${code}
-      return json
-    }
-    ${context.functions.join("\n")}
-    return main
-    `;
-      }
-      const serializer = new Serializer(options);
-      const validator = new Validator(options.ajv);
-      for (const schemaId2 of context.validatorSchemasIds) {
-        const schema2 = context.refResolver.getSchema(schemaId2);
-        validator.addSchema(schema2, schemaId2);
-        const dependencies = context.refResolver.getSchemaDependencies(schemaId2);
-        for (const [schemaId3, schema3] of Object.entries(dependencies)) {
-          validator.addSchema(schema3, schemaId3);
-        }
-      }
-      if (options.mode === "debug") {
-        return {
-          validator,
-          serializer,
-          code: `validator
-serializer
-${contextFunctionCode}`,
-          ajv: validator.ajv
-        };
-      }
-      const contextFunc = new Function("validator", "serializer", contextFunctionCode);
-      if (options.mode === "standalone") {
-        const buildStandaloneCode = require_standalone();
-        return buildStandaloneCode(contextFunc, context, serializer, validator);
-      }
-      return contextFunc(validator, serializer);
-    }
-    var objectKeywords = [
-      "properties",
-      "required",
-      "additionalProperties",
-      "patternProperties",
-      "maxProperties",
-      "minProperties",
-      "dependencies"
-    ];
-    var arrayKeywords = [
-      "items",
-      "additionalItems",
-      "maxItems",
-      "minItems",
-      "uniqueItems",
-      "contains"
-    ];
-    var stringKeywords = [
-      "maxLength",
-      "minLength",
-      "pattern"
-    ];
-    var numberKeywords = [
-      "multipleOf",
-      "maximum",
-      "exclusiveMaximum",
-      "minimum",
-      "exclusiveMinimum"
-    ];
-    function inferTypeByKeyword(schema) {
-      for (const keyword of objectKeywords) {
-        if (keyword in schema) return "object";
-      }
-      for (const keyword of arrayKeywords) {
-        if (keyword in schema) return "array";
-      }
-      for (const keyword of stringKeywords) {
-        if (keyword in schema) return "string";
-      }
-      for (const keyword of numberKeywords) {
-        if (keyword in schema) return "number";
-      }
-      return schema.type;
-    }
-    function buildExtraObjectPropertiesSerializer(context, location, addComma, objVar) {
-      const schema = location.schema;
-      const propertiesKeys = Object.keys(schema.properties || {});
-      let code = `
-    for (const key of Object.keys(${objVar})) {
-      if (
-        ${propertiesKeys.length > 0 ? propertiesKeys.map((k) => `key === ${JSON.stringify(k)}`).join(" || ") + " ||" : ""}
-        ${objVar}[key] === undefined ||
-        typeof ${objVar}[key] === 'function' ||
-        typeof ${objVar}[key] === 'symbol'
-      ) continue
-      const value = ${objVar}[key]
-  `;
-      const patternPropertiesLocation = location.getPropertyLocation("patternProperties");
-      const patternPropertiesSchema = patternPropertiesLocation.schema;
-      if (patternPropertiesSchema !== void 0) {
-        for (const propertyKey in patternPropertiesSchema) {
-          const propertyLocation = patternPropertiesLocation.getPropertyLocation(propertyKey);
-          code += `
-        if (/${propertyKey.replace(/\\*\//g, "\\/")}/.test(key)) {
-          ${addComma}
-          json += asString(key) + JSON_STR_COLONS
-          ${buildValue(context, propertyLocation, "value")}
-          continue
-        }
-      `;
-        }
-      }
-      const additionalPropertiesLocation = location.getPropertyLocation("additionalProperties");
-      const additionalPropertiesSchema = additionalPropertiesLocation.schema;
-      if (additionalPropertiesSchema !== void 0) {
-        if (additionalPropertiesSchema === true) {
-          code += `
-        ${addComma}
-        json += asString(key) + JSON_STR_COLONS + JSON.stringify(value)
-      `;
-        } else {
-          const propertyLocation = location.getPropertyLocation("additionalProperties");
-          code += `
-        ${addComma}
-        json += asString(key) + JSON_STR_COLONS
-        ${buildValue(context, propertyLocation, "value")}
-      `;
-        }
-      }
-      code += `
-    }
-  `;
-      return code;
-    }
-    function buildInnerObject(context, location, objVar) {
-      const schema = location.schema;
-      const propertiesLocation = location.getPropertyLocation("properties");
-      const requiredProperties = schema.required || [];
-      const propertiesKeys = Object.keys(schema.properties || {}).sort(
-        (key1, key2) => {
-          const required1 = requiredProperties.includes(key1);
-          const required2 = requiredProperties.includes(key2);
-          return required1 === required2 ? 0 : required1 ? -1 : 1;
-        }
-      );
-      let code = "";
-      for (const key of requiredProperties) {
-        if (!propertiesKeys.includes(key)) {
-          const sanitizedKey = JSON.stringify(key);
-          code += `if (${objVar}[${sanitizedKey}] === undefined) throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
-`;
-        }
-      }
-      code += "json += JSON_STR_BEGIN_OBJECT\n";
-      const localUid = context.uid++;
-      let addComma = "";
-      if (propertiesKeys.length > 0 && requiredProperties.includes(propertiesKeys[0])) {
-        for (let i = 0; i < propertiesKeys.length; i++) {
-          const key = propertiesKeys[i];
-          const propertyLocation = propertiesLocation.getPropertyLocation(key);
-          let resolvedLocation = propertyLocation;
-          if (propertyLocation.schema.$ref) {
-            resolvedLocation = resolveRef(context, propertyLocation);
-          }
-          const sanitizedKey = JSON.stringify(key);
-          const value = `value_${key.replace(/[^a-zA-Z0-9]/g, "_")}_${context.uid++}`;
-          const defaultValue = resolvedLocation.schema.default;
-          const isRequired = requiredProperties.includes(key);
-          const currentAddComma = i === 0 ? "" : "json += JSON_STR_COMMA";
-          code += `
-      const ${value} = ${objVar}[${sanitizedKey}]
-      if (${value} !== undefined) {
-        ${currentAddComma}
-        json += ${JSON.stringify(sanitizedKey + ":")}
-        ${buildValue(context, resolvedLocation, `${value}`)}
-      }`;
-          if (defaultValue !== void 0) {
-            code += ` else {
-        ${currentAddComma}
-        json += ${JSON.stringify(sanitizedKey + ":" + JSON.stringify(defaultValue))}
-      }
-      `;
-          } else if (isRequired) {
-            code += ` else {
-        throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
-      }
-      `;
-          } else {
-            code += "\n";
-          }
-        }
-        addComma = "json += JSON_STR_COMMA";
-      } else {
-        const needsRuntimeComma = propertiesKeys.length > 1 || schema.patternProperties || schema.additionalProperties !== void 0 && schema.additionalProperties !== false;
-        if (needsRuntimeComma) {
-          code += `let addComma_${localUid} = false
-`;
-          addComma = `!addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)`;
-        }
-        for (const key of propertiesKeys) {
-          let propertyLocation = propertiesLocation.getPropertyLocation(key);
-          if (propertyLocation.schema.$ref) {
-            propertyLocation = resolveRef(context, propertyLocation);
-          }
-          const sanitizedKey = JSON.stringify(key);
-          const value = `value_${key.replace(/[^a-zA-Z0-9]/g, "_")}_${context.uid++}`;
-          const defaultValue = propertyLocation.schema.default;
-          const isRequired = requiredProperties.includes(key);
-          code += `
-          const ${value} = ${objVar}[${sanitizedKey}]
-          if (${value} !== undefined) {
-            ${addComma}
-            json += ${JSON.stringify(sanitizedKey + ":")}
-            ${buildValue(context, propertyLocation, `${value}`)}
-          }`;
-          if (defaultValue !== void 0) {
-            code += ` else {
-            ${addComma}
-            json += ${JSON.stringify(sanitizedKey + ":" + JSON.stringify(defaultValue))}
-          }
-          `;
-          } else if (isRequired) {
-            code += ` else {
-            throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
-          }
-          `;
-          } else {
-            code += "\n";
-          }
-        }
-      }
-      if (schema.patternProperties || schema.additionalProperties) {
-        code += buildExtraObjectPropertiesSerializer(context, location, addComma, objVar);
-      }
-      code += `
-    json += JSON_STR_END_OBJECT
-  `;
-      return code;
-    }
-    function mergeLocations(context, mergedSchemaId, mergedLocations) {
-      for (let i = 0, mergedLocationsLength = mergedLocations.length; i < mergedLocationsLength; i++) {
-        const location = mergedLocations[i];
-        const schema = location.schema;
-        if (schema.$ref) {
-          mergedLocations[i] = resolveRef(context, location);
-        }
-      }
-      const mergedSchemas = [];
-      for (const location of mergedLocations) {
-        const schema = cloneOriginSchema(context, location.schema, location.schemaId);
-        delete schema.$id;
-        mergedSchemas.push(schema);
-      }
-      const mergedSchema = mergeSchemas(mergedSchemas);
-      const mergedLocation = new Location(mergedSchema, mergedSchemaId);
-      context.refResolver.addSchema(mergedSchema, mergedSchemaId);
-      return mergedLocation;
-    }
-    function cloneOriginSchema(context, schema, schemaId) {
-      const clonedSchema = Array.isArray(schema) ? [] : {};
-      if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
-        schemaId = schema.$id;
-      }
-      const mergedSchemaRef = context.mergedSchemasIds.get(schema);
-      if (mergedSchemaRef) {
-        context.mergedSchemasIds.set(clonedSchema, mergedSchemaRef);
-      }
-      for (const key in schema) {
-        let value = schema[key];
-        if (key === "$ref" && typeof value === "string" && value.charAt(0) === "#") {
-          value = schemaId + value;
-        }
-        if (typeof value === "object" && value !== null) {
-          value = cloneOriginSchema(context, value, schemaId);
-        }
-        clonedSchema[key] = value;
-      }
-      return clonedSchema;
-    }
-    function toJSON(variableName) {
-      return `(${variableName} && typeof ${variableName}.toJSON === 'function')
-    ? ${variableName}.toJSON()
-    : ${variableName}
-  `;
-    }
-    function buildObject(context, location, input) {
-      const schema = location.schema;
-      if (context.functionsNamesBySchema.has(schema)) {
-        const funcName = context.functionsNamesBySchema.get(schema);
-        return `json += ${funcName}(${input})`;
-      }
-      const nullable = schema.nullable === true;
-      const schemaId = location.schemaId || "";
-      const jsonPointer = location.jsonPointer || "";
-      const fullPath = `${schemaId}#${jsonPointer}`;
-      if (context.recursivePaths.has(fullPath) || context.buildingSet.has(schema) || schemaId !== "") {
-        const functionName = generateFuncName(context);
-        context.functionsNamesBySchema.set(schema, functionName);
-        const schemaRef = getSafeSchemaRef(context, location);
-        const functionCode = `
-      // ${schemaRef}
-      function ${functionName} (input) {
-        const obj = ${toJSON("input")}
-        if (obj === null) return ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_OBJECT"}
-        let json = ''
-
-        ${buildInnerObject(context, location, "obj")}
-        return json
-      }
-    `;
-        context.functions.push(functionCode);
-        return `json += ${functionName}(${input})`;
-      }
-      context.buildingSet.add(schema);
-      const objVar = `obj_${context.uid++}`;
-      const code = `
-    const ${objVar} = ${toJSON(input)}
-    if (${objVar} === null) {
-      json += ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_OBJECT"}
-    } else {
-      ${buildInnerObject(context, location, objVar)}
-    }
-  `;
-      context.buildingSet.delete(schema);
-      return code;
-    }
-    function buildArray(context, location, input) {
-      const schema = location.schema;
-      let itemsLocation = location.getPropertyLocation("items");
-      itemsLocation.schema = itemsLocation.schema || {};
-      if (itemsLocation.schema.$ref) {
-        itemsLocation = resolveRef(context, itemsLocation);
-      }
-      const itemsSchema = itemsLocation.schema;
-      if (context.functionsNamesBySchema.has(schema)) {
-        const funcName = context.functionsNamesBySchema.get(schema);
-        return `json += ${funcName}(${input})`;
-      }
-      const nullable = schema.nullable === true;
-      const schemaId = location.schemaId || "";
-      const jsonPointer = location.jsonPointer || "";
-      const fullPath = `${schemaId}#${jsonPointer}`;
-      if (context.recursivePaths.has(fullPath) || context.buildingSet.has(schema) || schemaId !== "") {
-        const functionName = generateFuncName(context);
-        context.functionsNamesBySchema.set(schema, functionName);
-        const schemaRef = getSafeSchemaRef(context, location);
-        let functionCode = `
-    function ${functionName} (obj) {
-      // ${schemaRef}
-      let json = ''
-  `;
-        functionCode += `
-    if (obj === null) return ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_ARRAY"}
-    if (!Array.isArray(obj)) {
-      throw new TypeError(\`The value of '${schemaRef}' does not match schema definition.\`)
-    }
-    const arrayLength = obj.length
-  `;
-        if (!schema.additionalItems && Array.isArray(itemsSchema)) {
-          functionCode += `
-      if (arrayLength > ${itemsSchema.length}) {
-        throw new Error(\`Item at ${itemsSchema.length} does not match schema definition.\`)
-      }
-    `;
-        }
-        if (largeArrayMechanism === "json-stringify") {
-          functionCode += `if (arrayLength >= ${largeArraySize}) return JSON.stringify(obj)
-`;
-        }
-        functionCode += `
-    json += JSON_STR_BEGIN_ARRAY
-  `;
-        if (Array.isArray(itemsSchema)) {
-          for (let i = 0, itemsSchemaLength = itemsSchema.length; i < itemsSchemaLength; i++) {
-            let item = itemsSchema[i];
-            let itemLocation = itemsLocation.getPropertyLocation(i);
-            if (itemLocation.schema.$ref) {
-              itemLocation = resolveRef(context, itemLocation);
-              item = itemLocation.schema;
-            }
-            const value = `value_${i}`;
-            functionCode += `const ${value} = obj[${i}]`;
-            const tmpRes = buildValue(context, itemLocation, value);
-            functionCode += `
-        if (${i} < arrayLength) {
-          if (${buildArrayTypeCondition(item.type, value)}) {
-            if (${i}) {
-              json += JSON_STR_COMMA
-            }
-            ${tmpRes}
-          } else {
-            throw new Error(\`Item at ${i} does not match schema definition.\`)
-          }
-        }
-        `;
-          }
-          if (schema.additionalItems) {
-            functionCode += `
-        for (let i = ${itemsSchema.length}; i < arrayLength; i++) {
-          if (i) {
-            json += JSON_STR_COMMA
-          }
-          json += JSON.stringify(obj[i])
-        }`;
-          }
-        } else {
-          const code = buildValue(context, itemsLocation, "value");
-          functionCode += `
-      if (arrayLength > 0) {
-        const value = obj[0]
-        ${code}
-        for (let i = 1; i < arrayLength; i++) {
-          json += JSON_STR_COMMA
-          const value = obj[i]
-          ${code}
-        }
-      }`;
-        }
-        functionCode += `
-      return json + JSON_STR_END_ARRAY
-    }`;
-        context.functions.push(functionCode);
-        return `json += ${functionName}(${input})`;
-      }
-      context.buildingSet.add(schema);
-      const safeSchemaRef = getSafeSchemaRef(context, location);
-      const objVar = `obj_${context.uid++}`;
-      let inlinedCode = `
-    const ${objVar} = ${input}
-    if (${objVar} === null) {
-      json += ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_ARRAY"}
-    } else if (!Array.isArray(${objVar})) {
-      throw new TypeError(\`The value of '${safeSchemaRef}' does not match schema definition.\`)
-    } else {
-      const arrayLength_${objVar} = ${objVar}.length
-  `;
-      if (!schema.additionalItems && Array.isArray(itemsSchema)) {
-        inlinedCode += `
-      if (arrayLength_${objVar} > ${itemsSchema.length}) {
-        throw new Error(\`Item at ${itemsSchema.length} does not match schema definition.\`)
-      }
-    `;
-      }
-      if (largeArrayMechanism === "json-stringify") {
-        inlinedCode += `if (arrayLength_${objVar} >= ${largeArraySize}) json += JSON.stringify(${objVar})
- else {`;
-      }
-      inlinedCode += `
-    json += JSON_STR_BEGIN_ARRAY
-  `;
-      if (Array.isArray(itemsSchema)) {
-        const localUid = context.uid++;
-        inlinedCode += `let addComma_${localUid} = false
-`;
-        for (let i = 0, itemsSchemaLength = itemsSchema.length; i < itemsSchemaLength; i++) {
-          let item = itemsSchema[i];
-          let itemLocation = itemsLocation.getPropertyLocation(i);
-          if (itemLocation.schema.$ref) {
-            itemLocation = resolveRef(context, itemLocation);
-            item = itemLocation.schema;
-          }
-          const value = `value_${i}_${context.uid++}`;
-          inlinedCode += `const ${value} = ${objVar}[${i}]`;
-          const tmpRes = buildValue(context, itemLocation, value);
-          inlinedCode += `
-        if (${i} < arrayLength_${objVar}) {
-          if (${buildArrayTypeCondition(item.type, value)}) {
-            !addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)
-            ${tmpRes}
-          } else {
-            throw new Error(\`Item at ${i} does not match schema definition.\`)
-          }
-        }
-        `;
-        }
-        if (schema.additionalItems) {
-          inlinedCode += `
-        for (let i = ${itemsSchema.length}; i < arrayLength_${objVar}; i++) {
-          !addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)
-          json += JSON.stringify(${objVar}[i])
-        }`;
-        }
-      } else {
-        const code = buildValue(context, itemsLocation, "value");
-        inlinedCode += `
-      if (arrayLength_${objVar} > 0) {
-        const value = ${objVar}[0]
-        ${code}
-        for (let i = 1; i < arrayLength_${objVar}; i++) {
-          json += JSON_STR_COMMA
-          const value = ${objVar}[i]
-          ${code}
-        }
-      }`;
-      }
-      inlinedCode += `
-    json += JSON_STR_END_ARRAY
-  `;
-      if (largeArrayMechanism === "json-stringify") {
-        inlinedCode += "}";
-      }
-      inlinedCode += "}";
-      context.buildingSet.delete(schema);
-      return inlinedCode;
-    }
-    function buildArrayTypeCondition(type, accessor) {
-      let condition;
-      switch (type) {
-        case "null":
-          condition = `${accessor} === null`;
-          break;
-        case "string":
-          condition = `typeof ${accessor} === 'string' ||
-      ${accessor} === null ||
-      ${accessor} instanceof Date ||
-      ${accessor} instanceof RegExp ||
-      (
-        typeof ${accessor} === "object" &&
-        typeof ${accessor}.toString === "function" &&
-        ${accessor}.toString !== Object.prototype.toString
-      )`;
-          break;
-        case "integer":
-          condition = `Number.isInteger(${accessor})`;
-          break;
-        case "number":
-          condition = `Number.isFinite(${accessor})`;
-          break;
-        case "boolean":
-          condition = `typeof ${accessor} === 'boolean'`;
-          break;
-        case "object":
-          condition = `${accessor} && typeof ${accessor} === 'object' && ${accessor}.constructor === Object`;
-          break;
-        case "array":
-          condition = `Array.isArray(${accessor})`;
-          break;
-        default:
-          if (Array.isArray(type)) {
-            const conditions = type.map((subType) => {
-              return buildArrayTypeCondition(subType, accessor);
-            });
-            condition = `(${conditions.join(" || ")})`;
-          }
-      }
-      return condition;
-    }
-    function generateFuncName(context) {
-      return "anonymous" + context.functionsCounter++;
-    }
-    function buildMultiTypeSerializer(context, location, input) {
-      const schema = location.schema;
-      const types = schema.type.sort((t1) => t1 === "null" ? -1 : 1);
-      let code = "";
-      types.forEach((type, index) => {
-        location.schema = { ...location.schema, type };
-        const nestedResult = buildSingleTypeSerializer(context, location, input);
-        const statement = index === 0 ? "if" : "else if";
-        switch (type) {
-          case "null":
-            code += `
-          ${statement} (${input} === null) {
-            ${nestedResult}
-          }
-          `;
-            break;
-          case "string": {
-            code += `
-          ${statement}(
-            typeof ${input} === "string" ||
-            ${input} === null ||
-            ${input} instanceof Date ||
-            ${input} instanceof RegExp ||
-            (
-              typeof ${input} === "object" &&
-              typeof ${input}.toString === "function" &&
-              ${input}.toString !== Object.prototype.toString
-            )
-          ) {
-            ${nestedResult}
-          }
-        `;
-            break;
-          }
-          case "array": {
-            code += `
-          ${statement}(Array.isArray(${input})) {
-            ${nestedResult}
-          }
-        `;
-            break;
-          }
-          case "integer": {
-            code += `
-          ${statement}(Number.isInteger(${input}) || ${input} === null) {
-            ${nestedResult}
-          }
-        `;
-            break;
-          }
-          default: {
-            code += `
-          ${statement}(typeof ${input} === "${type}" || ${input} === null) {
-            ${nestedResult}
-          }
-        `;
-            break;
-          }
-        }
-      });
-      code += `
-    else throw new TypeError(\`The value of '${getSafeSchemaRef(context, location)}' does not match schema definition.\`)
-  `;
-      return code;
-    }
-    function buildSingleTypeSerializer(context, location, input) {
-      const schema = location.schema;
-      switch (schema.type) {
-        case "null":
-          return "json += JSON_STR_NULL";
-        case "string": {
-          if (schema.format === "date-time") {
-            return `json += asDateTime(${input})`;
-          } else if (schema.format === "date") {
-            return `json += asDate(${input})`;
-          } else if (schema.format === "time") {
-            return `json += asTime(${input})`;
-          } else if (schema.format === "unsafe") {
-            return `json += asUnsafeString(${input})`;
-          } else {
-            return `
-        if (typeof ${input} !== 'string') {
-          if (${input} === null) {
-            json += JSON_STR_EMPTY_STRING
-          } else if (${input} instanceof Date) {
-            json += JSON_STR_QUOTE + ${input}.toISOString() + JSON_STR_QUOTE
-          } else if (${input} instanceof RegExp) {
-            json += asString(${input}.source)
-          } else {
-            json += asString(${input}.toString())
-          }
-        } else {
-          json += asString(${input})
-        }
-        `;
-          }
-        }
-        case "integer":
-          return `json += asInteger(${input})`;
-        case "number":
-          return `json += asNumber(${input})`;
-        case "boolean":
-          return `json += asBoolean(${input})`;
-        case "object": {
-          return buildObject(context, location, input);
-        }
-        case "array": {
-          return buildArray(context, location, input);
-        }
-        case void 0:
-          return `json += JSON.stringify(${input})`;
-        default:
-          throw new Error(`${schema.type} unsupported`);
-      }
-    }
-    function detectRecursiveSchemas(context, location) {
-      const pathStack = /* @__PURE__ */ new Set();
-      function traverse(location2) {
-        const schema = location2.schema;
-        if (typeof schema !== "object" || schema === null) return;
-        const schemaId = location2.schemaId || "";
-        const jsonPointer = location2.jsonPointer || "";
-        const fullPath = `${schemaId}#${jsonPointer}`;
-        if (pathStack.has(fullPath)) {
-          let inCycle = false;
-          for (const p of pathStack) {
-            if (p === fullPath) inCycle = true;
-            if (inCycle) context.recursivePaths.add(p);
-          }
-          context.recursivePaths.add(fullPath);
-          return;
-        }
-        pathStack.add(fullPath);
-        if (schema.$ref) {
-          try {
-            const res = resolveRef(context, location2);
-            traverse(res);
-          } catch (err) {
-          }
-        }
-        if (schema.properties) {
-          const propertiesLocation = location2.getPropertyLocation("properties");
-          for (const key in schema.properties) {
-            traverse(propertiesLocation.getPropertyLocation(key));
-          }
-        }
-        if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
-          traverse(location2.getPropertyLocation("additionalProperties"));
-        }
-        if (schema.patternProperties) {
-          const patternPropertiesLocation = location2.getPropertyLocation("patternProperties");
-          for (const key in schema.patternProperties) {
-            traverse(patternPropertiesLocation.getPropertyLocation(key));
-          }
-        }
-        if (schema.items) {
-          const itemsLocation = location2.getPropertyLocation("items");
-          if (Array.isArray(schema.items)) {
-            for (let i = 0; i < schema.items.length; i++) {
-              traverse(itemsLocation.getPropertyLocation(i));
-            }
-          } else {
-            traverse(itemsLocation);
-          }
-        }
-        if (schema.additionalItems && typeof schema.additionalItems === "object") {
-          traverse(location2.getPropertyLocation("additionalItems"));
-        }
-        if (schema.oneOf) {
-          const oneOfLocation = location2.getPropertyLocation("oneOf");
-          for (let i = 0; i < schema.oneOf.length; i++) {
-            traverse(oneOfLocation.getPropertyLocation(i));
-          }
-        }
-        if (schema.anyOf) {
-          const anyOfLocation = location2.getPropertyLocation("anyOf");
-          for (let i = 0; i < schema.anyOf.length; i++) {
-            traverse(anyOfLocation.getPropertyLocation(i));
-          }
-        }
-        if (schema.allOf) {
-          const allOfLocation = location2.getPropertyLocation("allOf");
-          for (let i = 0; i < schema.allOf.length; i++) {
-            traverse(allOfLocation.getPropertyLocation(i));
-          }
-        }
-        if (schema.then) traverse(location2.getPropertyLocation("then"));
-        if (schema.else) traverse(location2.getPropertyLocation("else"));
-        pathStack.delete(fullPath);
-      }
-      traverse(location);
-    }
-    function buildConstSerializer(location, input) {
-      const schema = location.schema;
-      const type = schema.type;
-      const hasNullType = Array.isArray(type) && type.includes("null");
-      let code = "";
-      if (hasNullType) {
-        code += `
-      if (${input} === null) {
-        json += JSON_STR_NULL
-      } else {
-    `;
-      }
-      code += `json += ${JSON.stringify(JSON.stringify(schema.const))}`;
-      if (hasNullType) {
-        code += `
-      }
-    `;
-      }
-      return code;
-    }
-    function buildAllOf(context, location, input) {
-      const schema = location.schema;
-      let mergedSchemaId = context.mergedSchemasIds.get(schema);
-      if (mergedSchemaId) {
-        const mergedLocation2 = getMergedLocation(context, mergedSchemaId);
-        return buildValue(context, mergedLocation2, input);
-      }
-      mergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
-      context.mergedSchemasIds.set(schema, mergedSchemaId);
-      const { allOf, ...schemaWithoutAllOf } = location.schema;
-      const locations = [
-        new Location(
-          schemaWithoutAllOf,
-          location.schemaId,
-          location.jsonPointer
-        )
-      ];
-      const allOfsLocation = location.getPropertyLocation("allOf");
-      for (let i = 0, allOfLength = allOf.length; i < allOfLength; i++) {
-        locations.push(allOfsLocation.getPropertyLocation(i));
-      }
-      const mergedLocation = mergeLocations(context, mergedSchemaId, locations);
-      return buildValue(context, mergedLocation, input);
-    }
-    function buildOneOf(context, location, input) {
-      context.validatorSchemasIds.add(location.schemaId);
-      const schema = location.schema;
-      const type = schema.anyOf ? "anyOf" : "oneOf";
-      const { [type]: oneOfs, ...schemaWithoutAnyOf } = location.schema;
-      const locationWithoutOneOf = new Location(
-        schemaWithoutAnyOf,
-        location.schemaId,
-        location.jsonPointer
-      );
-      const oneOfsLocation = location.getPropertyLocation(type);
-      let code = "";
-      for (let index = 0, oneOfsLength = oneOfs.length; index < oneOfsLength; index++) {
-        const optionLocation = oneOfsLocation.getPropertyLocation(index);
-        const optionSchema = optionLocation.schema;
-        let mergedSchemaId = context.mergedSchemasIds.get(optionSchema);
-        let mergedLocation = null;
-        if (mergedSchemaId) {
-          mergedLocation = getMergedLocation(context, mergedSchemaId);
-        } else {
-          mergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
-          context.mergedSchemasIds.set(optionSchema, mergedSchemaId);
-          mergedLocation = mergeLocations(context, mergedSchemaId, [
-            locationWithoutOneOf,
-            optionLocation
-          ]);
-        }
-        const nestedResult = buildValue(context, mergedLocation, input);
-        const schemaRef = optionLocation.getSchemaRef();
-        code += `
-      ${index === 0 ? "if" : "else if"}(validator.validate("${schemaRef}", ${input})) {
-        ${nestedResult}
-      }
-    `;
-      }
-      code += `
-    else throw new TypeError(\`The value of '${getSafeSchemaRef(context, location)}' does not match schema definition.\`)
-  `;
-      return code;
-    }
-    function buildIfThenElse(context, location, input) {
-      context.validatorSchemasIds.add(location.schemaId);
-      const {
-        if: ifSchema,
-        then: thenSchema,
-        else: elseSchema,
-        ...schemaWithoutIfThenElse
-      } = location.schema;
-      const rootLocation = new Location(
-        schemaWithoutIfThenElse,
-        location.schemaId,
-        location.jsonPointer
-      );
-      const ifLocation = location.getPropertyLocation("if");
-      const ifSchemaRef = ifLocation.getSchemaRef();
-      const thenLocation = location.getPropertyLocation("then");
-      let thenMergedSchemaId = context.mergedSchemasIds.get(thenSchema);
-      let thenMergedLocation = null;
-      if (thenMergedSchemaId) {
-        thenMergedLocation = getMergedLocation(context, thenMergedSchemaId);
-      } else {
-        thenMergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
-        context.mergedSchemasIds.set(thenSchema, thenMergedSchemaId);
-        thenMergedLocation = mergeLocations(context, thenMergedSchemaId, [
-          rootLocation,
-          thenLocation
-        ]);
-      }
-      if (!elseSchema) {
-        return `
-      if (validator.validate("${ifSchemaRef}", ${input})) {
-        ${buildValue(context, thenMergedLocation, input)}
-      } else {
-        ${buildValue(context, rootLocation, input)}
-      }
-    `;
-      }
-      const elseLocation = location.getPropertyLocation("else");
-      let elseMergedSchemaId = context.mergedSchemasIds.get(elseSchema);
-      let elseMergedLocation = null;
-      if (elseMergedSchemaId) {
-        elseMergedLocation = getMergedLocation(context, elseMergedSchemaId);
-      } else {
-        elseMergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
-        context.mergedSchemasIds.set(elseSchema, elseMergedSchemaId);
-        elseMergedLocation = mergeLocations(context, elseMergedSchemaId, [
-          rootLocation,
-          elseLocation
-        ]);
-      }
-      return `
-    if (validator.validate("${ifSchemaRef}", ${input})) {
-      ${buildValue(context, thenMergedLocation, input)}
-    } else {
-      ${buildValue(context, elseMergedLocation, input)}
-    }
-  `;
-    }
-    function buildValue(context, location, input) {
-      let schema = location.schema;
-      if (typeof schema === "boolean") {
-        return `json += JSON.stringify(${input})`;
-      }
-      if (schema.$ref) {
-        location = resolveRef(context, location);
-        schema = location.schema;
-      }
-      if (schema.allOf) {
-        return buildAllOf(context, location, input);
-      }
-      if (schema.anyOf || schema.oneOf) {
-        return buildOneOf(context, location, input);
-      }
-      if (schema.if && schema.then) {
-        return buildIfThenElse(context, location, input);
-      }
-      if (schema.type === void 0) {
-        const inferredType = inferTypeByKeyword(schema);
-        if (inferredType) {
-          schema.type = inferredType;
-        }
-      }
-      let code = "";
-      const type = schema.type;
-      const nullable = schema.nullable === true;
-      if (nullable) {
-        code += `
-      if (${input} === null) {
-        json += JSON_STR_NULL
-      } else {
-    `;
-      }
-      if (schema.const !== void 0) {
-        code += buildConstSerializer(location, input);
-      } else if (Array.isArray(type)) {
-        code += buildMultiTypeSerializer(context, location, input);
-      } else {
-        code += buildSingleTypeSerializer(context, location, input);
-      }
-      if (nullable) {
-        code += `
-      }
-    `;
-      }
-      return code;
-    }
-    module2.exports = build;
-    module2.exports.default = build;
-    module2.exports.build = build;
-    module2.exports.validLargeArrayMechanisms = validLargeArrayMechanisms;
-    module2.exports.restore = function({ code, validator, serializer }) {
-      return Function.apply(null, ["validator", "serializer", code]).apply(null, [validator, serializer]);
-    };
-  }
-});
-
-// node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/standalone.js
-var require_standalone2 = __commonJS({
-  "node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/standalone.js"(exports2, module2) {
-    "use strict";
-    var fastJsonStringify = require_fast_json_stringify();
-    function SerializerSelector() {
-      return function buildSerializerFactory(externalSchemas, serializerOpts) {
-        const fjsOpts = Object.assign({}, serializerOpts, { schema: externalSchemas });
-        return responseSchemaCompiler.bind(null, fjsOpts);
-      };
-    }
-    function responseSchemaCompiler(fjsOpts, {
-      schema
-      /* method, url, httpStatus */
-    }) {
-      if (fjsOpts.schema && schema.$id && fjsOpts.schema[schema.$id]) {
-        fjsOpts.schema = { ...fjsOpts.schema };
-        delete fjsOpts.schema[schema.$id];
-      }
-      return fastJsonStringify(schema, fjsOpts);
-    }
-    function StandaloneSerializer(options = { readMode: true }) {
-      if (options.readMode === true && typeof options.restoreFunction !== "function") {
-        throw new Error("You must provide a function for the restoreFunction-option when readMode ON");
-      }
-      if (options.readMode !== true && typeof options.storeFunction !== "function") {
-        throw new Error("You must provide a function for the storeFunction-option when readMode OFF");
-      }
-      if (options.readMode === true) {
-        return function wrapper() {
-          return function(opts) {
-            return options.restoreFunction(opts);
-          };
-        };
-      }
-      const factory = SerializerSelector();
-      return function wrapper(externalSchemas, serializerOpts = {}) {
-        serializerOpts.mode = "standalone";
-        const compiler = factory(externalSchemas, serializerOpts);
-        return function(opts) {
-          const serializeFuncCode = compiler(opts);
-          options.storeFunction(opts, serializeFuncCode);
-          return new Function(serializeFuncCode);
-        };
-      };
-    }
-    module2.exports.SerializerSelector = SerializerSelector;
-    module2.exports.StandaloneSerializer = StandaloneSerializer;
-    module2.exports.default = StandaloneSerializer;
-  }
-});
-
-// node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/index.js
-var require_fast_json_stringify_compiler = __commonJS({
-  "node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/index.js"(exports2, module2) {
-    "use strict";
-    var { SerializerSelector, StandaloneSerializer } = require_standalone2();
-    module2.exports = SerializerSelector;
-    module2.exports.default = SerializerSelector;
-    module2.exports.SerializerSelector = SerializerSelector;
-    module2.exports.StandaloneSerializer = StandaloneSerializer;
-  }
-});
-
 // node_modules/.pnpm/ajv@8.20.0/node_modules/ajv/dist/vocabularies/jtd/metadata.js
 var require_metadata2 = __commonJS({
   "node_modules/.pnpm/ajv@8.20.0/node_modules/ajv/dist/vocabularies/jtd/metadata.js"(exports2) {
@@ -24611,11 +22625,1436 @@ var require_jtd2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/default-ajv-options.js
-var require_default_ajv_options = __commonJS({
-  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/default-ajv-options.js"(exports2, module2) {
+// node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/lib/utils.js
+var require_utils2 = __commonJS({
+  "node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/lib/utils.js"(exports2, module2) {
     "use strict";
-    var fastUri = require_fast_uri();
+    var isUUID = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu);
+    var isIPv4 = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u);
+    var isPort = RegExp.prototype.test.bind(/^\d*$/u);
+    var isHexPair = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu);
+    var isUnreserved = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu);
+    var isPathCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u);
+    var isQueryFragmentCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u);
+    var isUserinfoCharacter = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u);
+    function stringArrayToHexStripped(input) {
+      let acc = "";
+      let code = 0;
+      let i = 0;
+      for (i = 0; i < input.length; i++) {
+        code = input[i].charCodeAt(0);
+        if (code === 48) {
+          continue;
+        }
+        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
+          return "";
+        }
+        acc += input[i];
+        break;
+      }
+      for (i += 1; i < input.length; i++) {
+        code = input[i].charCodeAt(0);
+        if (!(code >= 48 && code <= 57 || code >= 65 && code <= 70 || code >= 97 && code <= 102)) {
+          return "";
+        }
+        acc += input[i];
+      }
+      return acc;
+    }
+    var isHextet = RegExp.prototype.test.bind(/^[\dA-Fa-f]{1,4}$/);
+    var isIPvFuture = RegExp.prototype.test.bind(/^[vV][\dA-Fa-f]+\.[A-Za-z\d\-._~!$&'()*+,;=:]+$/);
+    var isZoneCharacter = RegExp.prototype.test.bind(/^[A-Za-z\d\-._~]$/);
+    var nonSimpleDomain = RegExp.prototype.test.bind(/[^!"$&'()*+,\-.;=_`a-z{}~]/u);
+    var nonSimpleDomainChars = RegExp.prototype.test.bind(/[^\d!"$&'()*+,\-.;=_`a-z{}~]/u);
+    var numericLastLabel = RegExp.prototype.test.bind(/(?:^|\.)\d+$/u);
+    function nonSimpleMailtoDomain(domain) {
+      return nonSimpleDomainChars(domain) || numericLastLabel(domain);
+    }
+    function isZoneIdentifier(zone) {
+      if (zone.length === 0) return false;
+      for (let i = 0; i < zone.length; i++) {
+        if (isZoneCharacter(zone[i])) continue;
+        if (zone[i] === "%" && i + 2 < zone.length && isHexPair(zone.slice(i + 1, i + 3))) {
+          i += 2;
+          continue;
+        }
+        return false;
+      }
+      return true;
+    }
+    function compressIPv6ZeroRun(hextets) {
+      let bestStart = -1;
+      let bestLength = 0;
+      let runStart = -1;
+      let runLength = 0;
+      for (let i = 0; i < hextets.length; i++) {
+        if (hextets[i] === "0") {
+          if (runStart === -1) runStart = i;
+          runLength++;
+          if (runLength > bestLength) {
+            bestLength = runLength;
+            bestStart = runStart;
+          }
+        } else {
+          runStart = -1;
+          runLength = 0;
+        }
+      }
+      if (bestLength < 2) return hextets.join(":");
+      const head = hextets.slice(0, bestStart).join(":");
+      const tail = hextets.slice(bestStart + bestLength).join(":");
+      return head + "::" + tail;
+    }
+    function normalizeIPv6Address(input) {
+      const compression = input.indexOf("::");
+      if (compression !== -1 && input.indexOf("::", compression + 1) !== -1) return void 0;
+      const left = compression === -1 ? input.split(":") : input.slice(0, compression).split(":");
+      const right = compression === -1 ? [] : input.slice(compression + 2).split(":");
+      if (compression !== -1) {
+        if (left.length === 1 && left[0] === "") left.length = 0;
+        if (right.length === 1 && right[0] === "") right.length = 0;
+      }
+      const parts = left.concat(right);
+      let hextetCount = 0;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === "") return void 0;
+        if (part.indexOf(".") !== -1) {
+          if (i !== parts.length - 1 || compression !== -1 && right.length === 0 || !isIPv4(part)) return void 0;
+          hextetCount += 2;
+          continue;
+        }
+        if (!isHextet(part)) return void 0;
+        parts[i] = parseInt(part, 16).toString(16);
+        hextetCount++;
+      }
+      if (compression === -1) {
+        if (hextetCount !== 8) return void 0;
+        return compressIPv6ZeroRun(parts);
+      }
+      if (hextetCount >= 8) return void 0;
+      const expanded = parts.slice(0, left.length);
+      for (let i = hextetCount; i < 8; i++) expanded.push("0");
+      for (let i = left.length; i < parts.length; i++) expanded.push(parts[i]);
+      return compressIPv6ZeroRun(expanded);
+    }
+    function normalizeIPv6(host) {
+      const bracketed = host[0] === "[" && host[host.length - 1] === "]";
+      const hasBracket = host[0] === "[" || host[host.length - 1] === "]";
+      if (hasBracket && !bracketed) return { host, isIPV6: false, error: true };
+      let input = bracketed ? host.slice(1, -1) : host;
+      if (bracketed && isIPvFuture(input)) {
+        input = input.toLowerCase();
+        return { host: `[${input}]`, escapedHost: input, isIPV6: false, isIPVFuture: true };
+      }
+      if (findToken(input, ":") < 2) {
+        return { host, isIPV6: false, error: bracketed };
+      }
+      let zoneIdentifier = "";
+      const zoneSeparator = input.indexOf("%");
+      if (zoneSeparator !== -1) {
+        const separatorLength = input.slice(zoneSeparator, zoneSeparator + 3).toLowerCase() === "%25" ? 3 : 1;
+        zoneIdentifier = input.slice(zoneSeparator + separatorLength);
+        if (!isZoneIdentifier(zoneIdentifier)) return { host, isIPV6: false, error: true };
+        input = input.slice(0, zoneSeparator);
+      }
+      const address = normalizeIPv6Address(input);
+      if (address === void 0) return { host, isIPV6: false, error: true };
+      return {
+        host: address + (zoneIdentifier ? "%" + zoneIdentifier : ""),
+        escapedHost: address + (zoneIdentifier ? "%25" + zoneIdentifier : ""),
+        isIPV6: true
+      };
+    }
+    function findToken(str, token) {
+      let ind = 0;
+      for (let i = 0; i < str.length; i++) {
+        if (str[i] === token) ind++;
+      }
+      return ind;
+    }
+    function removeDotSegments(path) {
+      let input = path;
+      const output = [];
+      let nextSlash = -1;
+      let len = 0;
+      while (len = input.length) {
+        if (len === 1) {
+          if (input === ".") {
+            break;
+          } else if (input === "/") {
+            output.push("/");
+            break;
+          } else {
+            output.push(input);
+            break;
+          }
+        } else if (len === 2) {
+          if (input[0] === ".") {
+            if (input[1] === ".") {
+              break;
+            } else if (input[1] === "/") {
+              input = input.slice(2);
+              continue;
+            }
+          } else if (input[0] === "/") {
+            if (input[1] === ".") {
+              output.push("/");
+              break;
+            }
+          }
+        } else if (len === 3) {
+          if (input === "/..") {
+            if (output.length !== 0) {
+              output.pop();
+            }
+            output.push("/");
+            break;
+          }
+        }
+        if (input[0] === ".") {
+          if (input[1] === ".") {
+            if (input[2] === "/") {
+              input = input.slice(3);
+              continue;
+            }
+          } else if (input[1] === "/") {
+            input = input.slice(2);
+            continue;
+          }
+        } else if (input[0] === "/") {
+          if (input[1] === ".") {
+            if (input[2] === "/") {
+              input = input.slice(2);
+              continue;
+            } else if (input[2] === ".") {
+              if (input[3] === "/") {
+                input = input.slice(3);
+                if (output.length !== 0) {
+                  output.pop();
+                }
+                continue;
+              }
+            }
+          }
+        }
+        if ((nextSlash = input.indexOf("/", 1)) === -1) {
+          output.push(input);
+          break;
+        } else {
+          output.push(input.slice(0, nextSlash));
+          input = input.slice(nextSlash);
+        }
+      }
+      return output.join("");
+    }
+    var HOST_DELIMS = { "@": "%40", "/": "%2F", "?": "%3F", "#": "%23", ":": "%3A" };
+    var HOST_DELIM_RE = /[@/?#:]/g;
+    var HOST_DELIM_NO_COLON_RE = /[@/?#]/g;
+    function reescapeHostDelimiters(host, isIP) {
+      const re = isIP ? HOST_DELIM_NO_COLON_RE : HOST_DELIM_RE;
+      re.lastIndex = 0;
+      return host.replace(re, (ch) => HOST_DELIMS[ch]);
+    }
+    function normalizePercentEncoding(input, decodeUnreserved = false) {
+      if (input.indexOf("%") === -1) {
+        return input;
+      }
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        if (input[i] === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (decodeUnreserved && isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        output += input[i];
+      }
+      return output;
+    }
+    var BYTE_HEX = new Array(256);
+    {
+      const HEX_DIGITS = "0123456789ABCDEF";
+      for (let i = 0; i < 256; i++) {
+        BYTE_HEX[i] = "%" + HEX_DIGITS[i >> 4] + HEX_DIGITS[i & 15];
+      }
+    }
+    function isEscapeSafe(cp) {
+      return cp >= 48 && cp <= 57 || cp >= 65 && cp <= 90 || cp >= 97 && cp <= 122 || cp === 42 || cp === 43 || cp === 45 || cp === 46 || cp === 47 || cp === 64 || cp === 95;
+    }
+    function percentEncodeNonAscii(cp) {
+      if (cp < 2048) {
+        return BYTE_HEX[192 | cp >> 6] + BYTE_HEX[128 | cp & 63];
+      }
+      if (cp < 65536) {
+        return BYTE_HEX[224 | cp >> 12] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+      }
+      return BYTE_HEX[240 | cp >> 18] + BYTE_HEX[128 | cp >> 12 & 63] + BYTE_HEX[128 | cp >> 6 & 63] + BYTE_HEX[128 | cp & 63];
+    }
+    function normalizePathEncoding(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (decoded !== "." && isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        if (isPathCharacter(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function serializePathEncoding(input, pathNoScheme = false) {
+      let output = "";
+      let firstSegment = pathNoScheme && input[0] !== "/";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (ch === "/") {
+          firstSegment = false;
+        }
+        if (isPathCharacter(ch) && (ch !== ":" || !firstSegment)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function normalizeQueryFragmentEncoding(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            const normalizedHex = hex.toUpperCase();
+            const decoded = String.fromCharCode(parseInt(normalizedHex, 16));
+            if (isUnreserved(decoded)) {
+              output += decoded;
+            } else {
+              output += "%" + normalizedHex;
+            }
+            i += 2;
+            continue;
+          }
+        }
+        if (isQueryFragmentCharacter(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeComponent(input, isAllowed) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        if (isAllowed(ch)) {
+          output += ch;
+        } else {
+          const code = input.charCodeAt(i);
+          if (code < 128) {
+            output += BYTE_HEX[code];
+          } else if (code < 55296 || code > 57343) {
+            output += percentEncodeNonAscii(code);
+          } else if (code <= 56319 && i + 1 < input.length) {
+            const low = input.charCodeAt(i + 1);
+            if (low >= 56320 && low <= 57343) {
+              output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+              i++;
+            } else {
+              output += percentEncodeNonAscii(65533);
+            }
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        }
+      }
+      return output;
+    }
+    function encodeUserinfo(input) {
+      return encodeComponent(input, isUserinfoCharacter);
+    }
+    function encodeQuery(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function encodeFragment(input) {
+      return encodeComponent(input, isQueryFragmentCharacter);
+    }
+    function escapePreservingEscapes(input) {
+      let output = "";
+      for (let i = 0; i < input.length; i++) {
+        const ch = input[i];
+        if (ch === "%" && i + 2 < input.length) {
+          const hex = input.slice(i + 1, i + 3);
+          if (isHexPair(hex)) {
+            output += "%" + hex.toUpperCase();
+            i += 2;
+            continue;
+          }
+        }
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          output += isEscapeSafe(code) ? ch : BYTE_HEX[code];
+        } else if (code < 55296 || code > 57343) {
+          output += percentEncodeNonAscii(code);
+        } else if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            output += percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+          } else {
+            output += percentEncodeNonAscii(65533);
+          }
+        } else {
+          output += percentEncodeNonAscii(65533);
+        }
+      }
+      return output;
+    }
+    function recomposeZonedIPv6Host(component) {
+      const zone = component.ipv6Zone;
+      if (zone === void 0) return void 0;
+      const host = component.host;
+      const separator = host.indexOf("%");
+      if (separator === -1) return void 0;
+      const address = host.slice(0, separator);
+      const escaped = address + "%25" + zone;
+      const derived = normalizeIPv6("[" + escaped + "]");
+      if (derived.isIPV6 === true && derived.host === host) {
+        return "[" + escaped + "]";
+      }
+      return void 0;
+    }
+    function recomposeAuthority(component) {
+      const uriTokens = [];
+      if (component.userinfo !== void 0) {
+        uriTokens.push(encodeUserinfo(component.userinfo));
+        uriTokens.push("@");
+      }
+      if (component.host !== void 0) {
+        let host = component.host;
+        if (!isIPv4(host)) {
+          const zonedHost = recomposeZonedIPv6Host(component);
+          if (zonedHost !== void 0) {
+            host = zonedHost;
+          } else {
+            let ipV6res = normalizeIPv6(host);
+            if (ipV6res.isIPV6 !== true && ipV6res.isIPVFuture !== true) {
+              host = normalizePercentEncoding(host, true);
+              ipV6res = normalizeIPv6(host);
+            }
+            if (ipV6res.isIPV6 === true || ipV6res.isIPVFuture === true) {
+              host = `[${ipV6res.escapedHost}]`;
+            } else {
+              host = reescapeHostDelimiters(host, false);
+            }
+          }
+        }
+        uriTokens.push(host);
+      }
+      if (typeof component.port === "number" || typeof component.port === "string") {
+        const port = String(component.port);
+        if (!isPort(port)) {
+          throw new TypeError("URI port is malformed.");
+        }
+        uriTokens.push(":");
+        uriTokens.push(port);
+      }
+      return uriTokens.length ? uriTokens.join("") : void 0;
+    }
+    module2.exports = {
+      BYTE_HEX,
+      percentEncodeNonAscii,
+      nonSimpleDomain,
+      nonSimpleMailtoDomain,
+      recomposeAuthority,
+      reescapeHostDelimiters,
+      normalizePercentEncoding,
+      normalizePathEncoding,
+      serializePathEncoding,
+      normalizeQueryFragmentEncoding,
+      encodeUserinfo,
+      encodeQuery,
+      encodeFragment,
+      escapePreservingEscapes,
+      removeDotSegments,
+      isIPv4,
+      isUUID,
+      normalizeIPv6,
+      stringArrayToHexStripped
+    };
+  }
+});
+
+// node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/lib/schemes.js
+var require_schemes2 = __commonJS({
+  "node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/lib/schemes.js"(exports2, module2) {
+    "use strict";
+    var { isUUID, BYTE_HEX, percentEncodeNonAscii, nonSimpleMailtoDomain } = require_utils2();
+    var URN_REG = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu;
+    var supportedSchemeNames = (
+      /** @type {const} */
+      [
+        "http",
+        "https",
+        "ws",
+        "wss",
+        "urn",
+        "urn:uuid",
+        "mailto"
+      ]
+    );
+    function isValidSchemeName(name) {
+      return supportedSchemeNames.indexOf(
+        /** @type {*} */
+        name
+      ) !== -1;
+    }
+    function wsIsSecure(wsComponent) {
+      if (wsComponent.secure === true) {
+        return true;
+      } else if (wsComponent.secure === false) {
+        return false;
+      } else if (wsComponent.scheme) {
+        return wsComponent.scheme.length === 3 && (wsComponent.scheme[0] === "w" || wsComponent.scheme[0] === "W") && (wsComponent.scheme[1] === "s" || wsComponent.scheme[1] === "S") && (wsComponent.scheme[2] === "s" || wsComponent.scheme[2] === "S");
+      } else {
+        return false;
+      }
+    }
+    function httpParse(component) {
+      if (!component.host) {
+        component.error = component.error || "HTTP URIs must have a host.";
+      }
+      return component;
+    }
+    function httpSerialize(component) {
+      const secure = String(component.scheme).toLowerCase() === "https";
+      if (component.port === (secure ? 443 : 80) || component.port === "") {
+        component.port = void 0;
+      }
+      if (!component.path) {
+        component.path = "/";
+      }
+      return component;
+    }
+    function wsParse(wsComponent) {
+      wsComponent.secure = wsIsSecure(wsComponent);
+      wsComponent.resourceName = (wsComponent.path || "/") + (wsComponent.query ? "?" + wsComponent.query : "");
+      wsComponent.path = void 0;
+      wsComponent.query = void 0;
+      return wsComponent;
+    }
+    function wsSerialize(wsComponent) {
+      if (wsComponent.port === (wsIsSecure(wsComponent) ? 443 : 80) || wsComponent.port === "") {
+        wsComponent.port = void 0;
+      }
+      if (typeof wsComponent.secure === "boolean") {
+        wsComponent.scheme = wsComponent.secure ? "wss" : "ws";
+        wsComponent.secure = void 0;
+      }
+      if (wsComponent.resourceName) {
+        const queryIndex = wsComponent.resourceName.indexOf("?");
+        const path = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path && path !== "/" ? path : void 0;
+        wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
+        wsComponent.resourceName = void 0;
+      }
+      wsComponent.fragment = void 0;
+      return wsComponent;
+    }
+    function urnParse(urnComponent, options) {
+      if (!urnComponent.path) {
+        urnComponent.error = "URN can not be parsed";
+        return urnComponent;
+      }
+      const matches = urnComponent.path.match(URN_REG);
+      if (matches && matches[0] === urnComponent.path) {
+        const scheme = options.scheme || urnComponent.scheme || "urn";
+        urnComponent.nid = matches[1].toLowerCase();
+        urnComponent.nss = matches[2];
+        const urnScheme = `${scheme}:${options.nid || urnComponent.nid}`;
+        const schemeHandler = getSchemeHandler(urnScheme);
+        urnComponent.path = void 0;
+        if (schemeHandler) {
+          urnComponent = schemeHandler.parse(urnComponent, options);
+        }
+      } else {
+        urnComponent.error = urnComponent.error || "URN can not be parsed.";
+      }
+      return urnComponent;
+    }
+    function urnSerialize(urnComponent, options) {
+      if (urnComponent.nid === void 0) {
+        throw new Error("URN without nid cannot be serialized");
+      }
+      const scheme = options.scheme || urnComponent.scheme || "urn";
+      const nid = urnComponent.nid.toLowerCase();
+      const urnScheme = `${scheme}:${options.nid || nid}`;
+      const schemeHandler = getSchemeHandler(urnScheme);
+      if (schemeHandler) {
+        urnComponent = schemeHandler.serialize(urnComponent, options);
+      }
+      const uriComponent = urnComponent;
+      const nss = urnComponent.nss;
+      uriComponent.path = `${nid || options.nid}:${nss}`;
+      options.skipEscape = true;
+      return uriComponent;
+    }
+    function urnuuidParse(urnComponent, options) {
+      const uuidComponent = urnComponent;
+      uuidComponent.uuid = uuidComponent.nss;
+      uuidComponent.nss = void 0;
+      if (!options.tolerant && (!uuidComponent.uuid || !isUUID(uuidComponent.uuid))) {
+        uuidComponent.error = uuidComponent.error || "UUID is not valid.";
+      }
+      return uuidComponent;
+    }
+    function urnuuidSerialize(uuidComponent) {
+      const urnComponent = uuidComponent;
+      urnComponent.nss = (uuidComponent.uuid || "").toLowerCase();
+      return urnComponent;
+    }
+    var http = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "http",
+        domainHost: true,
+        parse: httpParse,
+        serialize: httpSerialize
+      }
+    );
+    var https = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "https",
+        domainHost: http.domainHost,
+        parse: httpParse,
+        serialize: httpSerialize
+      }
+    );
+    var ws = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "ws",
+        domainHost: true,
+        parse: wsParse,
+        serialize: wsSerialize
+      }
+    );
+    var wss = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "wss",
+        domainHost: ws.domainHost,
+        parse: ws.parse,
+        serialize: ws.serialize
+      }
+    );
+    var urn = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "urn",
+        parse: urnParse,
+        serialize: urnSerialize,
+        skipNormalize: true
+      }
+    );
+    var urnuuid = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "urn:uuid",
+        parse: urnuuidParse,
+        serialize: urnuuidSerialize,
+        skipNormalize: true
+      }
+    );
+    var LOCAL_PART_ALLOWED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$'()*+=";
+    var HFNAME_ALLOWED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$'()*+,;:@";
+    var DTEXT_ALLOWED = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$'()*+;:";
+    function allowSet(chars, allowNonAscii = false) {
+      const table = new Uint8Array(128);
+      for (let i = 0; i < chars.length; i++) {
+        table[chars.charCodeAt(i)] = 1;
+      }
+      const escaped = chars.replace(/[\\\]^-]/gu, "\\$&");
+      const cls = allowNonAscii ? `[${escaped}]|[^\\0-\\x7F\\uD800-\\uDFFF]` : `[${escaped}]`;
+      return { all: new RegExp(`^(?:${cls})*$`, "u"), table, allowNonAscii };
+    }
+    var LOCAL_PART = allowSet(LOCAL_PART_ALLOWED);
+    var HFNAME = allowSet(HFNAME_ALLOWED);
+    var DTEXT = allowSet(DTEXT_ALLOWED);
+    var DTEXT_IRI = allowSet(DTEXT_ALLOWED, true);
+    var HEX_PAIR = /^[\da-f]{2}$/iu;
+    var MAILTO_DOMAIN_LITERAL = /^\[[\x21-\x5A\x5E-\x7E]*\]$/u;
+    var MAILTO_DOMAIN_ERROR = "URI mailto has an invalid recipient domain.";
+    var MAILTO_AUTHORITY_ERROR = "URI mailto must not have an authority component.";
+    var HAS_SURROGATE = /[\uD800-\uDFFF]/u;
+    function decodeHex(str) {
+      if (typeof str !== "string" || str.indexOf("%") === -1) {
+        return str;
+      }
+      try {
+        return decodeURIComponent(str);
+      } catch {
+        return str;
+      }
+    }
+    function replaceLoneSurrogates(input) {
+      let result = "";
+      for (let i = 0; i < input.length; i++) {
+        const code = input.charCodeAt(i);
+        if (code >= 55296 && code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            result += input[i] + input[i + 1];
+            i++;
+            continue;
+          }
+        }
+        result += code >= 55296 && code <= 57343 ? "\uFFFD" : input[i];
+      }
+      return result;
+    }
+    function encodeWithAllow(input, set) {
+      if (set.all.test(input)) {
+        return input;
+      }
+      const table = set.table;
+      let result = "";
+      for (let i = 0; i < input.length; i++) {
+        const code = input.charCodeAt(i);
+        if (code < 128) {
+          if (table[code] === 1) {
+            result += input[i];
+          } else if (code === 37 && i + 2 < input.length && HEX_PAIR.test(input.slice(i + 1, i + 3))) {
+            result += "%" + input.slice(i + 1, i + 3).toUpperCase();
+            i += 2;
+          } else {
+            result += BYTE_HEX[code];
+          }
+          continue;
+        }
+        if (code < 55296 || code > 57343) {
+          result += set.allowNonAscii ? input[i] : percentEncodeNonAscii(code);
+          continue;
+        }
+        if (code <= 56319 && i + 1 < input.length) {
+          const low = input.charCodeAt(i + 1);
+          if (low >= 56320 && low <= 57343) {
+            result += set.allowNonAscii ? input[i] + input[i + 1] : percentEncodeNonAscii(65536 + (code - 55296 << 10) + (low - 56320));
+            i++;
+            continue;
+          }
+        }
+        result += set.allowNonAscii ? "\uFFFD" : percentEncodeNonAscii(65533);
+      }
+      return result;
+    }
+    function mailtoNormalizeDomain(domain, options, component) {
+      const normalizedDomain = String(domain).toLowerCase();
+      if (MAILTO_DOMAIN_LITERAL.test(normalizedDomain)) {
+        return normalizedDomain;
+      }
+      if (normalizedDomain !== "" && !nonSimpleMailtoDomain(normalizedDomain)) {
+        return normalizedDomain;
+      }
+      try {
+        const parsedDomain = new URL("http://" + normalizedDomain);
+        if (parsedDomain.username || parsedDomain.password || parsedDomain.port || parsedDomain.pathname !== "/" || parsedDomain.search || parsedDomain.hash || !parsedDomain.hostname) {
+          throw new Error(MAILTO_DOMAIN_ERROR);
+        }
+        return options && options.unicodeSupport ? normalizedDomain : parsedDomain.hostname;
+      } catch {
+        if (component) {
+          component.error = component.error || MAILTO_DOMAIN_ERROR;
+        }
+        return normalizedDomain;
+      }
+    }
+    function mailtoEncodeDomain(domain, options) {
+      const set = options && options.unicodeSupport ? DTEXT_IRI : DTEXT;
+      if (domain.length > 1 && domain[0] === "[" && domain[domain.length - 1] === "]") {
+        return "[" + encodeWithAllow(domain.slice(1, -1), set) + "]";
+      }
+      return encodeWithAllow(domain, set);
+    }
+    function mailtoParse(component, options) {
+      const mailtoComponent = component;
+      let rawPath = mailtoComponent.path;
+      let rawQuery = mailtoComponent.query;
+      if (rawPath && HAS_SURROGATE.test(rawPath)) rawPath = replaceLoneSurrogates(rawPath);
+      if (rawQuery && HAS_SURROGATE.test(rawQuery)) rawQuery = replaceLoneSurrogates(rawQuery);
+      const to = rawPath ? rawPath.indexOf(",") === -1 ? [rawPath] : rawPath.split(",") : [];
+      mailtoComponent.path = void 0;
+      if (rawQuery) {
+        let headers = null;
+        let start = 0;
+        while (start <= rawQuery.length) {
+          let end = rawQuery.indexOf("&", start);
+          if (end === -1) end = rawQuery.length;
+          const token = rawQuery.slice(start, end);
+          start = end + 1;
+          const eqIdx = token.indexOf("=");
+          if (eqIdx !== token.lastIndexOf("=")) {
+            mailtoComponent.error = mailtoComponent.error || "URI mailto has malformed header fields.";
+            continue;
+          }
+          const name = decodeHex(eqIdx === -1 ? token : token.slice(0, eqIdx));
+          const normalizedName = name.toLowerCase();
+          const value = eqIdx === -1 ? "" : token.slice(eqIdx + 1);
+          if (normalizedName === "to") {
+            const addrs = value.split(",");
+            for (let j = 0; j < addrs.length; j++) to.push(addrs[j]);
+            continue;
+          }
+          if (normalizedName === "subject") {
+            mailtoComponent.subject = decodeHex(value);
+            continue;
+          }
+          if (normalizedName === "body") {
+            mailtoComponent.body = decodeHex(value);
+            continue;
+          }
+          if (headers === null) headers = /** @type {Record<string,string>} */
+          /* @__PURE__ */ Object.create(null);
+          headers[name] = decodeHex(value);
+        }
+        if (headers !== null) mailtoComponent.headers = headers;
+      }
+      mailtoComponent.query = void 0;
+      if (to.length > 0 && (mailtoComponent.userinfo !== void 0 || mailtoComponent.host !== void 0 || mailtoComponent.port !== void 0)) {
+        mailtoComponent.userinfo = void 0;
+        mailtoComponent.host = void 0;
+        mailtoComponent.port = void 0;
+        mailtoComponent.error = mailtoComponent.error || MAILTO_AUTHORITY_ERROR;
+      }
+      for (let i = 0; i < to.length; i++) {
+        const rawAddr = to[i];
+        const atIdx = rawAddr.lastIndexOf("@");
+        if (atIdx < 0) {
+          mailtoComponent.error = mailtoComponent.error || MAILTO_DOMAIN_ERROR;
+          to[i] = decodeHex(rawAddr);
+          continue;
+        }
+        const local = decodeHex(rawAddr.slice(0, atIdx));
+        const domain = mailtoNormalizeDomain(decodeHex(rawAddr.slice(atIdx + 1)), options, mailtoComponent);
+        to[i] = local + "@" + domain;
+      }
+      if (to.length) mailtoComponent.to = to;
+      return mailtoComponent;
+    }
+    function mailtoEncodeHeaderName(name) {
+      return encodeWithAllow(name.replace(/%/gu, "%25"), HFNAME);
+    }
+    function mailtoSerialize(component, options) {
+      const mailtoComponent = component;
+      const to = Array.isArray(mailtoComponent.to) ? mailtoComponent.to.slice() : [];
+      const sourceHeaders = mailtoComponent.headers && typeof mailtoComponent.headers === "object" ? Object.assign(/* @__PURE__ */ Object.create(null), mailtoComponent.headers) : /* @__PURE__ */ Object.create(null);
+      const headers = /* @__PURE__ */ Object.create(null);
+      for (const name in sourceHeaders) {
+        const normalizedName = name.toLowerCase();
+        if (normalizedName === "to") {
+          const addrs = String(sourceHeaders[name]).split(",");
+          for (let i = 0; i < addrs.length; i++) to.push(addrs[i]);
+        } else if (normalizedName === "subject" || normalizedName === "body") {
+          headers[normalizedName] = sourceHeaders[name];
+        } else {
+          headers[name] = sourceHeaders[name];
+        }
+      }
+      if (mailtoComponent.subject !== void 0) headers.subject = mailtoComponent.subject;
+      if (mailtoComponent.body !== void 0) headers.body = mailtoComponent.body;
+      mailtoComponent.headers = headers;
+      if (to.length) {
+        mailtoComponent.userinfo = void 0;
+        mailtoComponent.host = void 0;
+        mailtoComponent.port = void 0;
+        for (let i = 0; i < to.length; i++) {
+          const addr = String(to[i]);
+          const atIdx = addr.lastIndexOf("@");
+          const rawLocal = atIdx >= 0 ? addr.slice(0, atIdx) : addr;
+          const rawDomain = atIdx >= 0 ? addr.slice(atIdx + 1) : "";
+          const local = encodeWithAllow(rawLocal, LOCAL_PART);
+          const decodedDomain = decodeHex(rawDomain);
+          const normalizedDomain = mailtoNormalizeDomain(decodedDomain, options);
+          to[i] = local + "@" + mailtoEncodeDomain(normalizedDomain, options);
+        }
+        mailtoComponent.path = to.join(",");
+        options.skipEscape = true;
+      } else {
+        mailtoComponent.path = void 0;
+      }
+      let query = "";
+      let count = 0;
+      for (const name in headers) {
+        if (count++ !== 0) query += "&";
+        query += mailtoEncodeHeaderName(name) + "=" + encodeWithAllow(String(headers[name]), HFNAME);
+      }
+      if (count !== 0) {
+        mailtoComponent.query = query;
+      } else {
+        mailtoComponent.headers = void 0;
+      }
+      return mailtoComponent;
+    }
+    var mailto = (
+      /** @type {SchemeHandler} */
+      {
+        scheme: "mailto",
+        parse: mailtoParse,
+        serialize: mailtoSerialize,
+        domainHost: false,
+        unicodeSupport: true,
+        // `mailtoParse` re-derives every component from the raw path/query via
+        // `decodeHex`, which subsumes the generic normalizers, so running them first
+        // is wasted work (~28% of parsing a URI with header fields).
+        skipNormalize: true,
+        // A recipient list has no dot segments to remove, and `removeDotSegments`
+        // would rewrite a "./"-prefixed local part.
+        absolutePath: true
+      }
+    );
+    var SCHEMES = (
+      /** @type {Record<SchemeName, SchemeHandler>} */
+      {
+        http,
+        https,
+        ws,
+        wss,
+        urn,
+        "urn:uuid": urnuuid,
+        mailto
+      }
+    );
+    Object.setPrototypeOf(SCHEMES, null);
+    function getSchemeHandler(scheme) {
+      return scheme && (SCHEMES[
+        /** @type {SchemeName} */
+        scheme
+      ] || SCHEMES[
+        /** @type {SchemeName} */
+        scheme.toLowerCase()
+      ]) || void 0;
+    }
+    module2.exports = {
+      wsIsSecure,
+      SCHEMES,
+      isValidSchemeName,
+      getSchemeHandler
+    };
+  }
+});
+
+// node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/index.js
+var require_fast_uri2 = __commonJS({
+  "node_modules/.pnpm/fast-uri@4.2.1/node_modules/fast-uri/index.js"(exports2, module2) {
+    "use strict";
+    var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizePercentEncoding, normalizePathEncoding, serializePathEncoding, normalizeQueryFragmentEncoding, encodeQuery, encodeFragment, reescapeHostDelimiters, isIPv4, nonSimpleDomain } = require_utils2();
+    var { SCHEMES, getSchemeHandler } = require_schemes2();
+    var VALID_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*$/u;
+    var MALFORMED_SCHEME_ERROR = "URI scheme is malformed.";
+    function decodeValidScheme(scheme) {
+      const decodedScheme = unescape(String(scheme));
+      if (!VALID_SCHEME.test(decodedScheme)) {
+        throw new TypeError(MALFORMED_SCHEME_ERROR);
+      }
+      return decodedScheme;
+    }
+    function normalize2(uri, options) {
+      if (typeof uri === "string") {
+        uri = /** @type {T} */
+        normalizeString(uri, options);
+      } else if (typeof uri === "object") {
+        uri = /** @type {T} */
+        parse(serialize(uri, options), options);
+      }
+      return uri;
+    }
+    function resolve(baseURI, relativeURI, options) {
+      const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
+      const {
+        parsed: baseParsed,
+        malformedAuthorityOrPort: baseMalformed,
+        malformedPercentEncoding: baseMalformedPercentEncoding,
+        malformedSchemeSpecific: baseMalformedSchemeSpecific,
+        malformedHost: baseMalformedHost,
+        malformedScheme: baseMalformedScheme
+      } = parseWithStatus(baseURI, schemelessOptions);
+      const {
+        parsed: relativeParsed,
+        malformedAuthorityOrPort: relativeMalformed,
+        malformedPercentEncoding: relativeMalformedPercentEncoding,
+        malformedSchemeSpecific: relativeMalformedSchemeSpecific,
+        malformedHost: relativeMalformedHost,
+        malformedScheme: relativeMalformedScheme
+      } = parseWithStatus(relativeURI, schemelessOptions);
+      if (baseMalformed || relativeMalformed || baseMalformedPercentEncoding || relativeMalformedPercentEncoding || baseMalformedSchemeSpecific || relativeMalformedSchemeSpecific || baseMalformedHost || relativeMalformedHost || baseMalformedScheme || relativeMalformedScheme) {
+        throw new Error(baseParsed.error || relativeParsed.error || "URI is malformed.");
+      }
+      const resolved = resolveComponent(baseParsed, relativeParsed, schemelessOptions, true);
+      const resolvedSchemeHandler = getSchemeHandler(options && options.scheme || resolved.scheme);
+      const resolvedHost = resolved.host;
+      const resolvedHostIsIP = resolvedHost !== void 0 && resolvedHost !== "" && (isIPv4(resolvedHost) || normalizeIPv6(resolvedHost).isIPV6);
+      canonicalizeHost(resolved, options || {}, resolvedSchemeHandler, resolvedHostIsIP);
+      const encodedASCIIHost = resolvedHost && resolvedHost.indexOf("%") !== -1 && !new RegExp("\\P{ASCII}", "u").test(resolvedHost);
+      if (resolved.error && !encodedASCIIHost) {
+        throw new Error(resolved.error);
+      }
+      schemelessOptions.skipEscape = true;
+      return serialize(resolved, schemelessOptions);
+    }
+    function copyHost(target, source) {
+      target.host = source.host;
+      if (source.ipv6Zone !== void 0) {
+        target.ipv6Zone = source.ipv6Zone;
+      }
+    }
+    function resolveComponent(base, relative, options, skipNormalization) {
+      const target = {};
+      if (!skipNormalization) {
+        base = parse(serialize(base, options), options);
+        relative = parse(serialize(relative, options), options);
+      }
+      options = options || {};
+      if (!options.tolerant && relative.scheme) {
+        target.scheme = relative.scheme;
+        target.userinfo = relative.userinfo;
+        copyHost(target, relative);
+        target.port = relative.port;
+        target.path = removeDotSegments(relative.path || "");
+        target.query = relative.query;
+      } else {
+        if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
+          target.userinfo = relative.userinfo;
+          copyHost(target, relative);
+          target.port = relative.port;
+          target.path = removeDotSegments(relative.path || "");
+          target.query = relative.query;
+        } else {
+          if (!relative.path) {
+            target.path = base.path;
+            if (relative.query !== void 0) {
+              target.query = relative.query;
+            } else {
+              target.query = base.query;
+            }
+          } else {
+            if (relative.path[0] === "/") {
+              target.path = removeDotSegments(relative.path);
+            } else {
+              if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
+                target.path = "/" + relative.path;
+              } else if (!base.path) {
+                target.path = relative.path;
+              } else {
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+              }
+              target.path = removeDotSegments(target.path);
+            }
+            target.query = relative.query;
+          }
+          target.userinfo = base.userinfo;
+          copyHost(target, base);
+          target.port = base.port;
+        }
+        target.scheme = base.scheme;
+      }
+      target.fragment = relative.fragment;
+      return target;
+    }
+    function equal(uriA, uriB, options) {
+      const normalizedA = normalizeComparableURI(uriA, options);
+      const normalizedB = normalizeComparableURI(uriB, options);
+      return normalizedA !== void 0 && normalizedB !== void 0 && normalizedA === normalizedB;
+    }
+    function serialize(cmpts, opts) {
+      const component = {
+        host: cmpts.host,
+        ipv6Zone: cmpts.ipv6Zone,
+        scheme: cmpts.scheme,
+        userinfo: cmpts.userinfo,
+        port: cmpts.port,
+        path: cmpts.path,
+        query: cmpts.query,
+        nid: cmpts.nid,
+        nss: cmpts.nss,
+        uuid: cmpts.uuid,
+        fragment: cmpts.fragment,
+        reference: cmpts.reference,
+        resourceName: cmpts.resourceName,
+        secure: cmpts.secure,
+        to: cmpts.to,
+        subject: cmpts.subject,
+        body: cmpts.body,
+        headers: cmpts.headers,
+        error: ""
+      };
+      const options = Object.assign({}, opts);
+      const uriTokens = [];
+      if (component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
+      }
+      const schemeHandler = getSchemeHandler(options.scheme || component.scheme);
+      if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(component, options);
+      const hasAuthority = component.userinfo !== void 0 || component.host !== void 0 || component.port !== void 0;
+      const pathNoScheme = !options.skipEscape && component.scheme === void 0 && !hasAuthority;
+      if (component.path !== void 0) {
+        if (!options.skipEscape) {
+          component.path = serializePathEncoding(component.path, pathNoScheme);
+        } else {
+          component.path = normalizePercentEncoding(component.path);
+        }
+      }
+      if (options.reference !== "suffix" && component.scheme) {
+        component.scheme = decodeValidScheme(component.scheme);
+        uriTokens.push(component.scheme, ":");
+      }
+      const authority = recomposeAuthority(component);
+      if (authority !== void 0) {
+        if (options.reference !== "suffix") {
+          uriTokens.push("//");
+        }
+        uriTokens.push(authority);
+        if (component.path && component.path[0] !== "/") {
+          uriTokens.push("/");
+        }
+      }
+      if (component.path !== void 0) {
+        let s = component.path;
+        if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
+          s = removeDotSegments(s);
+        }
+        if (pathNoScheme) {
+          s = serializePathEncoding(s, true);
+        }
+        if (authority === void 0 && s[0] === "/" && s[1] === "/") {
+          s = "/%2F" + s.slice(2);
+        }
+        uriTokens.push(s);
+      }
+      if (component.query !== void 0) {
+        uriTokens.push("?", encodeQuery(component.query));
+      }
+      if (component.fragment !== void 0) {
+        uriTokens.push("#", encodeFragment(component.fragment));
+      }
+      return uriTokens.join("");
+    }
+    var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
+    var AUTHORITY_PREFIX = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/;
+    var AUTHORITY_INTRODUCER_REGION = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
+    function getParseError(parsed, matches) {
+      if (matches[2] !== void 0 && parsed.path && parsed.path[0] !== "/") {
+        return 'URI path must start with "/" when authority is present.';
+      }
+      if (typeof parsed.port === "number" && (parsed.port < 0 || parsed.port > 65535)) {
+        return "URI port is malformed.";
+      }
+      return void 0;
+    }
+    function hasMalformedPercentEncoding(component) {
+      if (component === void 0) return false;
+      let percent = component.indexOf("%");
+      while (percent !== -1) {
+        if (percent + 2 >= component.length || !/^[\da-f]{2}$/iu.test(component.slice(percent + 1, percent + 3))) {
+          return true;
+        }
+        percent = component.indexOf("%", percent + 3);
+      }
+      return false;
+    }
+    function isIPLiteral(host) {
+      return host[0] === "[" && host[host.length - 1] === "]";
+    }
+    function hasMalformedComponentPercentEncoding(matches) {
+      const host = matches[4];
+      return hasMalformedPercentEncoding(matches[3]) || host !== void 0 && !isIPLiteral(host) && hasMalformedPercentEncoding(host) || hasMalformedPercentEncoding(matches[6]) || hasMalformedPercentEncoding(matches[7]) || hasMalformedPercentEncoding(matches[8]);
+    }
+    function canonicalizeHost(parsed, options, schemeHandler, isIP) {
+      const bracketedIPLiteral = parsed.host && parsed.host[0] === "[" && parsed.host[parsed.host.length - 1] === "]";
+      if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport) && parsed.host && !isIPLiteral(parsed.host) && (options.domainHost || schemeHandler && schemeHandler.domainHost) && isIP === false && !bracketedIPLiteral && nonSimpleDomain(parsed.host)) {
+        try {
+          parsed.host = new URL("http://" + parsed.host).hostname;
+        } catch (e) {
+          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e;
+          return true;
+        }
+      }
+      return false;
+    }
+    function parseWithStatus(uri, opts) {
+      const options = Object.assign({}, opts);
+      const parsed = {
+        scheme: void 0,
+        userinfo: void 0,
+        host: "",
+        port: void 0,
+        path: "",
+        query: void 0,
+        fragment: void 0
+      };
+      let malformedAuthorityOrPort = false;
+      let malformedPercentEncoding = false;
+      let malformedSchemeSpecific = false;
+      let malformedHost = false;
+      let malformedIPLiteral = false;
+      let malformedScheme = false;
+      let isIP = false;
+      if (options.reference === "suffix") {
+        if (options.scheme) {
+          uri = options.scheme + ":" + uri;
+        } else {
+          uri = "//" + uri;
+        }
+      }
+      const authorityMatch = uri.match(AUTHORITY_PREFIX);
+      if (authorityMatch !== null && authorityMatch[1].indexOf("\\") !== -1) {
+        parsed.error = "URI authority must not contain a literal backslash.";
+        malformedAuthorityOrPort = true;
+      }
+      const introducerMatch = uri.match(AUTHORITY_INTRODUCER_REGION);
+      if (introducerMatch !== null) {
+        const region = introducerMatch[1];
+        const normalizedRegion = region.replace(/[\t\n\r]/g, "");
+        if (normalizedRegion.length >= 2) {
+          if (normalizedRegion.slice(0, 2) !== "//") {
+            parsed.error = parsed.error || "URI authority must not contain a literal backslash.";
+            malformedAuthorityOrPort = true;
+          } else if (region.length !== normalizedRegion.length) {
+            parsed.error = parsed.error || "URI authority introducer must not contain whitespace.";
+            malformedAuthorityOrPort = true;
+          }
+        }
+      }
+      const matches = uri.match(URI_PARSE);
+      if (matches) {
+        parsed.scheme = matches[1];
+        parsed.userinfo = matches[3];
+        parsed.host = matches[4];
+        parsed.port = parseInt(matches[5], 10);
+        parsed.path = matches[6] || "";
+        parsed.query = matches[7];
+        parsed.fragment = matches[8];
+        if (parsed.scheme !== void 0) {
+          const decodedScheme = unescape(parsed.scheme);
+          if (VALID_SCHEME.test(decodedScheme)) {
+            parsed.scheme = decodedScheme.toLowerCase();
+          } else {
+            parsed.error = parsed.error || MALFORMED_SCHEME_ERROR;
+            malformedScheme = true;
+          }
+        }
+        malformedPercentEncoding = hasMalformedComponentPercentEncoding(matches);
+        if (malformedPercentEncoding) {
+          parsed.error = parsed.error || "URI contains malformed percent-encoding.";
+        }
+        if (isNaN(parsed.port)) {
+          parsed.port = matches[5];
+        }
+        const parseError = getParseError(parsed, matches);
+        if (parseError !== void 0) {
+          parsed.error = parsed.error || parseError;
+          malformedAuthorityOrPort = true;
+        }
+        if (parsed.host) {
+          const ipv4result = isIPv4(parsed.host);
+          if (ipv4result === false) {
+            const bracketedIPLiteral = isIPLiteral(parsed.host);
+            const hasIPLiteralBracket = parsed.host.indexOf("[") !== -1 || parsed.host.indexOf("]") !== -1;
+            const ipv6result = normalizeIPv6(parsed.host);
+            isIP = ipv6result.isIPV6 || ipv6result.isIPVFuture === true;
+            malformedIPLiteral = hasIPLiteralBracket && (!bracketedIPLiteral || ipv6result.error === true);
+            parsed.host = isIP ? ipv6result.host : ipv6result.host.toLowerCase();
+            if (isIP && ipv6result.isIPV6 === true && parsed.host.indexOf("%") !== -1) {
+              parsed.ipv6Zone = parsed.host.slice(parsed.host.indexOf("%") + 1);
+            }
+            if (malformedIPLiteral) {
+              parsed.error = parsed.error || "URI host is malformed.";
+              malformedAuthorityOrPort = true;
+            }
+          } else {
+            isIP = true;
+          }
+        }
+        if (parsed.scheme === void 0 && parsed.userinfo === void 0 && parsed.host === void 0 && parsed.port === void 0 && parsed.query === void 0 && !parsed.path) {
+          parsed.reference = "same-document";
+        } else if (parsed.scheme === void 0) {
+          parsed.reference = "relative";
+        } else if (parsed.fragment === void 0) {
+          parsed.reference = "absolute";
+        } else {
+          parsed.reference = "uri";
+        }
+        if (options.reference && options.reference !== "suffix" && options.reference !== parsed.reference) {
+          parsed.error = parsed.error || "URI is not a " + options.reference + " reference.";
+        }
+        const schemeHandler = getSchemeHandler(options.scheme || parsed.scheme);
+        if (!malformedIPLiteral) {
+          malformedHost = canonicalizeHost(parsed, options, schemeHandler, isIP);
+        }
+        if (uri.indexOf("%") !== -1 && parsed.host !== void 0 && !malformedIPLiteral) {
+          let host = isIP ? parsed.host : normalizePercentEncoding(parsed.host, true);
+          if (!isIP) {
+            host = normalizePercentEncoding(host.toLowerCase());
+          }
+          parsed.host = reescapeHostDelimiters(host, isIP);
+        }
+        if (!schemeHandler || schemeHandler && !schemeHandler.skipNormalize) {
+          if (parsed.path) {
+            parsed.path = normalizePathEncoding(parsed.path);
+          }
+          if (parsed.query) {
+            parsed.query = normalizeQueryFragmentEncoding(parsed.query);
+          }
+          if (parsed.fragment) {
+            parsed.fragment = normalizeQueryFragmentEncoding(parsed.fragment);
+          }
+        }
+        if (schemeHandler && schemeHandler.parse) {
+          schemeHandler.parse(parsed, options);
+          if (schemeHandler === SCHEMES.urn && parsed.nid === void 0) {
+            malformedSchemeSpecific = true;
+          }
+        }
+      } else {
+        parsed.error = parsed.error || "URI can not be parsed.";
+      }
+      return { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme };
+    }
+    function parse(uri, opts) {
+      return parseWithStatus(uri, opts).parsed;
+    }
+    function normalizeString(uri, opts) {
+      return normalizeStringWithStatus(uri, opts).normalized;
+    }
+    function normalizeStringWithStatus(uri, opts) {
+      const { parsed, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = parseWithStatus(uri, opts);
+      return {
+        normalized: malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? uri : serialize(parsed, opts),
+        malformedAuthorityOrPort,
+        malformedPercentEncoding,
+        malformedSchemeSpecific,
+        malformedHost,
+        malformedScheme
+      };
+    }
+    function normalizeComparableURI(uri, opts) {
+      if (typeof uri !== "string" && typeof uri !== "object") {
+        return void 0;
+      }
+      let value;
+      try {
+        value = typeof uri === "string" ? uri : serialize(uri, opts);
+      } catch {
+        return void 0;
+      }
+      const { normalized, malformedAuthorityOrPort, malformedPercentEncoding, malformedSchemeSpecific, malformedHost, malformedScheme } = normalizeStringWithStatus(value, opts);
+      return malformedAuthorityOrPort || malformedPercentEncoding || malformedSchemeSpecific || malformedHost || malformedScheme ? void 0 : normalized;
+    }
+    var fastUri = {
+      SCHEMES,
+      normalize: normalize2,
+      resolve,
+      resolveComponent,
+      equal,
+      serialize,
+      parse
+    };
+    module2.exports = fastUri;
+    module2.exports.default = fastUri;
+    module2.exports.fastUri = fastUri;
+  }
+});
+
+// node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/default-ajv-options.js
+var require_default_ajv_options = __commonJS({
+  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/default-ajv-options.js"(exports2, module2) {
+    "use strict";
+    var fastUri = require_fast_uri2();
     module2.exports = Object.freeze({
       coerceTypes: "array",
       useDefaults: true,
@@ -24629,9 +24068,326 @@ var require_default_ajv_options = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/validator-compiler.js
+// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/formats.js
+var require_formats = __commonJS({
+  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/formats.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.formatNames = exports2.fastFormats = exports2.fullFormats = void 0;
+    function fmtDef(validate, compare) {
+      return { validate, compare };
+    }
+    exports2.fullFormats = {
+      // date: http://tools.ietf.org/html/rfc3339#section-5.6
+      date: fmtDef(date, compareDate),
+      // date-time: http://tools.ietf.org/html/rfc3339#section-5.6
+      time: fmtDef(getTime(true), compareTime),
+      "date-time": fmtDef(getDateTime(true), compareDateTime),
+      "iso-time": fmtDef(getTime(), compareIsoTime),
+      "iso-date-time": fmtDef(getDateTime(), compareIsoDateTime),
+      // duration: https://tools.ietf.org/html/rfc3339#appendix-A
+      duration: /^P(?!$)((\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+S)?)?|(\d+W)?)$/,
+      uri,
+      "uri-reference": /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i,
+      // uri-template: https://tools.ietf.org/html/rfc6570
+      "uri-template": /^(?:(?:[^\x00-\x20"'<>%\\^`{|}]|%[0-9a-f]{2})|\{[+#./;?&=,!@|]?(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?(?:,(?:[a-z0-9_]|%[0-9a-f]{2})+(?::[1-9][0-9]{0,3}|\*)?)*\})*$/i,
+      // For the source: https://gist.github.com/dperini/729294
+      // For test cases: https://mathiasbynens.be/demo/url-regex
+      url: /^(?:https?|ftp):\/\/(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)(?:\.(?:[a-z0-9\u{00a1}-\u{ffff}]+-)*[a-z0-9\u{00a1}-\u{ffff}]+)*(?:\.(?:[a-z\u{00a1}-\u{ffff}]{2,})))(?::\d{2,5})?(?:\/[^\s]*)?$/iu,
+      email: /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i,
+      hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i,
+      // optimized https://www.safaribooksonline.com/library/view/regular-expressions-cookbook/9780596802837/ch07s16.html
+      ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/,
+      ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i,
+      regex,
+      // uuid: http://tools.ietf.org/html/rfc4122
+      uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
+      // JSON-pointer: https://tools.ietf.org/html/rfc6901
+      // uri fragment: https://tools.ietf.org/html/rfc3986#appendix-A
+      "json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/,
+      "json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i,
+      // relative JSON-pointer: http://tools.ietf.org/html/draft-luff-relative-json-pointer-00
+      "relative-json-pointer": /^(?:0|[1-9][0-9]*)(?:#|(?:\/(?:[^~/]|~0|~1)*)*)$/,
+      // the following formats are used by the openapi specification: https://spec.openapis.org/oas/v3.0.0#data-types
+      // byte: https://github.com/miguelmota/is-base64
+      byte,
+      // signed 32 bit integer
+      int32: { type: "number", validate: validateInt32 },
+      // signed 64 bit integer
+      int64: { type: "number", validate: validateInt64 },
+      // C-type float
+      float: { type: "number", validate: validateNumber },
+      // C-type double
+      double: { type: "number", validate: validateNumber },
+      // hint to the UI to hide input strings
+      password: true,
+      // unchecked string payload
+      binary: true
+    };
+    exports2.fastFormats = {
+      ...exports2.fullFormats,
+      date: fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d$/, compareDate),
+      time: fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareTime),
+      "date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\dt(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)$/i, compareDateTime),
+      "iso-time": fmtDef(/^(?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoTime),
+      "iso-date-time": fmtDef(/^\d\d\d\d-[0-1]\d-[0-3]\d[t\s](?:[0-2]\d:[0-5]\d:[0-5]\d|23:59:60)(?:\.\d+)?(?:z|[+-]\d\d(?::?\d\d)?)?$/i, compareIsoDateTime),
+      // uri: https://github.com/mafintosh/is-my-json-valid/blob/master/formats.js
+      uri: /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i,
+      "uri-reference": /^(?:(?:[a-z][a-z0-9+\-.]*:)?\/?\/)?(?:[^\\\s#][^\s#]*)?(?:#[^\\\s]*)?$/i,
+      // email (sources from jsen validator):
+      // http://stackoverflow.com/questions/201323/using-a-regular-expression-to-validate-an-email-address#answer-8829363
+      // http://www.w3.org/TR/html5/forms.html#valid-e-mail-address (search for 'wilful violation')
+      email: /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i
+    };
+    exports2.formatNames = Object.keys(exports2.fullFormats);
+    function isLeapYear(year) {
+      return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    }
+    var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
+    var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    function date(str) {
+      const matches = DATE.exec(str);
+      if (!matches)
+        return false;
+      const year = +matches[1];
+      const month = +matches[2];
+      const day = +matches[3];
+      return month >= 1 && month <= 12 && day >= 1 && day <= (month === 2 && isLeapYear(year) ? 29 : DAYS[month]);
+    }
+    function compareDate(d1, d2) {
+      if (!(d1 && d2))
+        return void 0;
+      if (d1 > d2)
+        return 1;
+      if (d1 < d2)
+        return -1;
+      return 0;
+    }
+    var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
+    function getTime(strictTimeZone) {
+      return function time(str) {
+        const matches = TIME.exec(str);
+        if (!matches)
+          return false;
+        const hr = +matches[1];
+        const min = +matches[2];
+        const sec = +matches[3];
+        const tz = matches[4];
+        const tzSign = matches[5] === "-" ? -1 : 1;
+        const tzH = +(matches[6] || 0);
+        const tzM = +(matches[7] || 0);
+        if (tzH > 23 || tzM > 59 || strictTimeZone && !tz)
+          return false;
+        if (hr <= 23 && min <= 59 && sec < 60)
+          return true;
+        const utcMin = min - tzM * tzSign;
+        const utcHr = hr - tzH * tzSign - (utcMin < 0 ? 1 : 0);
+        return (utcHr === 23 || utcHr === -1) && (utcMin === 59 || utcMin === -1) && sec < 61;
+      };
+    }
+    function compareTime(s1, s2) {
+      if (!(s1 && s2))
+        return void 0;
+      const t1 = (/* @__PURE__ */ new Date("2020-01-01T" + s1)).valueOf();
+      const t2 = (/* @__PURE__ */ new Date("2020-01-01T" + s2)).valueOf();
+      if (!(t1 && t2))
+        return void 0;
+      return t1 - t2;
+    }
+    function compareIsoTime(t1, t2) {
+      if (!(t1 && t2))
+        return void 0;
+      const a1 = TIME.exec(t1);
+      const a2 = TIME.exec(t2);
+      if (!(a1 && a2))
+        return void 0;
+      t1 = a1[1] + a1[2] + a1[3];
+      t2 = a2[1] + a2[2] + a2[3];
+      if (t1 > t2)
+        return 1;
+      if (t1 < t2)
+        return -1;
+      return 0;
+    }
+    var DATE_TIME_SEPARATOR = /t|\s/i;
+    function getDateTime(strictTimeZone) {
+      const time = getTime(strictTimeZone);
+      return function date_time(str) {
+        const dateTime = str.split(DATE_TIME_SEPARATOR);
+        return dateTime.length === 2 && date(dateTime[0]) && time(dateTime[1]);
+      };
+    }
+    function compareDateTime(dt1, dt2) {
+      if (!(dt1 && dt2))
+        return void 0;
+      const d1 = new Date(dt1).valueOf();
+      const d2 = new Date(dt2).valueOf();
+      if (!(d1 && d2))
+        return void 0;
+      return d1 - d2;
+    }
+    function compareIsoDateTime(dt1, dt2) {
+      if (!(dt1 && dt2))
+        return void 0;
+      const [d1, t1] = dt1.split(DATE_TIME_SEPARATOR);
+      const [d2, t2] = dt2.split(DATE_TIME_SEPARATOR);
+      const res = compareDate(d1, d2);
+      if (res === void 0)
+        return void 0;
+      return res || compareTime(t1, t2);
+    }
+    var NOT_URI_FRAGMENT = /\/|:/;
+    var URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
+    function uri(str) {
+      return NOT_URI_FRAGMENT.test(str) && URI.test(str);
+    }
+    var BYTE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
+    function byte(str) {
+      BYTE.lastIndex = 0;
+      return BYTE.test(str);
+    }
+    var MIN_INT32 = -(2 ** 31);
+    var MAX_INT32 = 2 ** 31 - 1;
+    function validateInt32(value) {
+      return Number.isInteger(value) && value <= MAX_INT32 && value >= MIN_INT32;
+    }
+    function validateInt64(value) {
+      return Number.isInteger(value);
+    }
+    function validateNumber() {
+      return true;
+    }
+    var Z_ANCHOR = /[^\\]\\Z/;
+    function regex(str) {
+      if (Z_ANCHOR.test(str))
+        return false;
+      try {
+        new RegExp(str);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+  }
+});
+
+// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/limit.js
+var require_limit = __commonJS({
+  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/limit.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.formatLimitDefinition = void 0;
+    var ajv_1 = require_ajv();
+    var codegen_1 = require_codegen();
+    var ops = codegen_1.operators;
+    var KWDs = {
+      formatMaximum: { okStr: "<=", ok: ops.LTE, fail: ops.GT },
+      formatMinimum: { okStr: ">=", ok: ops.GTE, fail: ops.LT },
+      formatExclusiveMaximum: { okStr: "<", ok: ops.LT, fail: ops.GTE },
+      formatExclusiveMinimum: { okStr: ">", ok: ops.GT, fail: ops.LTE }
+    };
+    var error = {
+      message: ({ keyword, schemaCode }) => (0, codegen_1.str)`should be ${KWDs[keyword].okStr} ${schemaCode}`,
+      params: ({ keyword, schemaCode }) => (0, codegen_1._)`{comparison: ${KWDs[keyword].okStr}, limit: ${schemaCode}}`
+    };
+    exports2.formatLimitDefinition = {
+      keyword: Object.keys(KWDs),
+      type: "string",
+      schemaType: "string",
+      $data: true,
+      error,
+      code(cxt) {
+        const { gen, data, schemaCode, keyword, it } = cxt;
+        const { opts, self } = it;
+        if (!opts.validateFormats)
+          return;
+        const fCxt = new ajv_1.KeywordCxt(it, self.RULES.all.format.definition, "format");
+        if (fCxt.$data)
+          validate$DataFormat();
+        else
+          validateFormat();
+        function validate$DataFormat() {
+          const fmts = gen.scopeValue("formats", {
+            ref: self.formats,
+            code: opts.code.formats
+          });
+          const fmt = gen.const("fmt", (0, codegen_1._)`${fmts}[${fCxt.schemaCode}]`);
+          cxt.fail$data((0, codegen_1.or)((0, codegen_1._)`typeof ${fmt} != "object"`, (0, codegen_1._)`${fmt} instanceof RegExp`, (0, codegen_1._)`typeof ${fmt}.compare != "function"`, compareCode(fmt)));
+        }
+        function validateFormat() {
+          const format = fCxt.schema;
+          const fmtDef = self.formats[format];
+          if (!fmtDef || fmtDef === true)
+            return;
+          if (typeof fmtDef != "object" || fmtDef instanceof RegExp || typeof fmtDef.compare != "function") {
+            throw new Error(`"${keyword}": format "${format}" does not define "compare" function`);
+          }
+          const fmt = gen.scopeValue("formats", {
+            key: format,
+            ref: fmtDef,
+            code: opts.code.formats ? (0, codegen_1._)`${opts.code.formats}${(0, codegen_1.getProperty)(format)}` : void 0
+          });
+          cxt.fail$data(compareCode(fmt));
+        }
+        function compareCode(fmt) {
+          return (0, codegen_1._)`${fmt}.compare(${data}, ${schemaCode}) ${KWDs[keyword].fail} 0`;
+        }
+      },
+      dependencies: ["format"]
+    };
+    var formatLimitPlugin = (ajv) => {
+      ajv.addKeyword(exports2.formatLimitDefinition);
+      return ajv;
+    };
+    exports2.default = formatLimitPlugin;
+  }
+});
+
+// node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/index.js
+var require_dist = __commonJS({
+  "node_modules/.pnpm/ajv-formats@3.0.1_ajv@8.20.0/node_modules/ajv-formats/dist/index.js"(exports2, module2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    var formats_1 = require_formats();
+    var limit_1 = require_limit();
+    var codegen_1 = require_codegen();
+    var fullName = new codegen_1.Name("fullFormats");
+    var fastName = new codegen_1.Name("fastFormats");
+    var formatsPlugin = (ajv, opts = { keywords: true }) => {
+      if (Array.isArray(opts)) {
+        addFormats(ajv, opts, formats_1.fullFormats, fullName);
+        return ajv;
+      }
+      const [formats, exportName] = opts.mode === "fast" ? [formats_1.fastFormats, fastName] : [formats_1.fullFormats, fullName];
+      const list = opts.formats || formats_1.formatNames;
+      addFormats(ajv, list, formats, exportName);
+      if (opts.keywords)
+        (0, limit_1.default)(ajv);
+      return ajv;
+    };
+    formatsPlugin.get = (name, mode = "full") => {
+      const formats = mode === "fast" ? formats_1.fastFormats : formats_1.fullFormats;
+      const f = formats[name];
+      if (!f)
+        throw new Error(`Unknown format "${name}"`);
+      return f;
+    };
+    function addFormats(ajv, list, fs, exportName) {
+      var _a;
+      var _b;
+      (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
+      for (const f of list)
+        ajv.addFormat(f, fs[f]);
+    }
+    module2.exports = exports2 = formatsPlugin;
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.default = formatsPlugin;
+  }
+});
+
+// node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/validator-compiler.js
 var require_validator_compiler = __commonJS({
-  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/validator-compiler.js"(exports2, module2) {
+  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/validator-compiler.js"(exports2, module2) {
     "use strict";
     var Ajv = require_ajv().default;
     var AjvJTD = require_jtd2();
@@ -24656,7 +24412,7 @@ var require_validator_compiler = __commonJS({
           }
         }
         if (addFormatPlugin) {
-          require_dist2()(this.ajv);
+          require_dist()(this.ajv);
         }
         options.onCreate?.(this.ajv);
         const sourceSchemas = Object.values(externalSchemas);
@@ -24681,9 +24437,9 @@ var require_validator_compiler = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/serializer-compiler.js
+// node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/serializer-compiler.js
 var require_serializer_compiler = __commonJS({
-  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/lib/serializer-compiler.js"(exports2, module2) {
+  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/lib/serializer-compiler.js"(exports2, module2) {
     "use strict";
     var AjvJTD = require_jtd2();
     var defaultAjvOptions = require_default_ajv_options();
@@ -24703,7 +24459,7 @@ var require_serializer_compiler = __commonJS({
 });
 
 // node_modules/.pnpm/ajv@8.20.0/node_modules/ajv/dist/standalone/index.js
-var require_standalone3 = __commonJS({
+var require_standalone = __commonJS({
   "node_modules/.pnpm/ajv@8.20.0/node_modules/ajv/dist/standalone/index.js"(exports2, module2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -24789,12 +24545,12 @@ var require_standalone3 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/standalone.js
-var require_standalone4 = __commonJS({
-  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/standalone.js"(exports2, module2) {
+// node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/standalone.js
+var require_standalone2 = __commonJS({
+  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/standalone.js"(exports2, module2) {
     "use strict";
     var ValidatorSelector = require_ajv_compiler();
-    var standaloneCode = require_standalone3().default;
+    var standaloneCode = require_standalone().default;
     function StandaloneValidator(options = { readMode: true }) {
       if (options.readMode === true && !options.restoreFunction) {
         throw new Error("You must provide a restoreFunction options when readMode ON");
@@ -24827,9 +24583,9 @@ var require_standalone4 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/index.js
+// node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/index.js
 var require_ajv_compiler = __commonJS({
-  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.5/node_modules/@fastify/ajv-compiler/index.js"(exports2, module2) {
+  "node_modules/.pnpm/@fastify+ajv-compiler@4.0.6/node_modules/@fastify/ajv-compiler/index.js"(exports2, module2) {
     "use strict";
     var AjvReference = Symbol.for("fastify.ajv-compiler.reference");
     var ValidatorCompiler = require_validator_compiler();
@@ -24872,17 +24628,3166 @@ var require_ajv_compiler = __commonJS({
     module2.exports.default = AjvCompiler;
     module2.exports.AjvCompiler = AjvCompiler;
     module2.exports.AjvReference = AjvReference;
-    module2.exports.StandaloneValidator = require_standalone4();
+    module2.exports.StandaloneValidator = require_standalone2();
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/schema-controller.js
+// node_modules/.pnpm/dequal@2.0.3/node_modules/dequal/dist/index.js
+var require_dist2 = __commonJS({
+  "node_modules/.pnpm/dequal@2.0.3/node_modules/dequal/dist/index.js"(exports2) {
+    var has = Object.prototype.hasOwnProperty;
+    function find(iter, tar, key) {
+      for (key of iter.keys()) {
+        if (dequal(key, tar)) return key;
+      }
+    }
+    function dequal(foo, bar) {
+      var ctor, len, tmp;
+      if (foo === bar) return true;
+      if (foo && bar && (ctor = foo.constructor) === bar.constructor) {
+        if (ctor === Date) return foo.getTime() === bar.getTime();
+        if (ctor === RegExp) return foo.toString() === bar.toString();
+        if (ctor === Array) {
+          if ((len = foo.length) === bar.length) {
+            while (len-- && dequal(foo[len], bar[len])) ;
+          }
+          return len === -1;
+        }
+        if (ctor === Set) {
+          if (foo.size !== bar.size) {
+            return false;
+          }
+          for (len of foo) {
+            tmp = len;
+            if (tmp && typeof tmp === "object") {
+              tmp = find(bar, tmp);
+              if (!tmp) return false;
+            }
+            if (!bar.has(tmp)) return false;
+          }
+          return true;
+        }
+        if (ctor === Map) {
+          if (foo.size !== bar.size) {
+            return false;
+          }
+          for (len of foo) {
+            tmp = len[0];
+            if (tmp && typeof tmp === "object") {
+              tmp = find(bar, tmp);
+              if (!tmp) return false;
+            }
+            if (!dequal(len[1], bar.get(tmp))) {
+              return false;
+            }
+          }
+          return true;
+        }
+        if (ctor === ArrayBuffer) {
+          foo = new Uint8Array(foo);
+          bar = new Uint8Array(bar);
+        } else if (ctor === DataView) {
+          if ((len = foo.byteLength) === bar.byteLength) {
+            while (len-- && foo.getInt8(len) === bar.getInt8(len)) ;
+          }
+          return len === -1;
+        }
+        if (ArrayBuffer.isView(foo)) {
+          if ((len = foo.byteLength) === bar.byteLength) {
+            while (len-- && foo[len] === bar[len]) ;
+          }
+          return len === -1;
+        }
+        if (!ctor || typeof foo === "object") {
+          len = 0;
+          for (ctor in foo) {
+            if (has.call(foo, ctor) && ++len && !has.call(bar, ctor)) return false;
+            if (!(ctor in bar) || !dequal(foo[ctor], bar[ctor])) return false;
+          }
+          return Object.keys(bar).length === len;
+        }
+      }
+      return foo !== foo && bar !== bar;
+    }
+    exports2.dequal = dequal;
+  }
+});
+
+// node_modules/.pnpm/json-schema-ref-resolver@3.0.0/node_modules/json-schema-ref-resolver/index.js
+var require_json_schema_ref_resolver = __commonJS({
+  "node_modules/.pnpm/json-schema-ref-resolver@3.0.0/node_modules/json-schema-ref-resolver/index.js"(exports2, module2) {
+    "use strict";
+    var { dequal: deepEqual } = require_dist2();
+    var jsonSchemaRefSymbol = Symbol.for("json-schema-ref");
+    var RefResolver = class {
+      #schemas;
+      #derefSchemas;
+      #insertRefSymbol;
+      #allowEqualDuplicates;
+      #cloneSchemaWithoutRefs;
+      constructor(opts = {}) {
+        this.#schemas = {};
+        this.#derefSchemas = {};
+        this.#insertRefSymbol = opts.insertRefSymbol ?? false;
+        this.#allowEqualDuplicates = opts.allowEqualDuplicates ?? true;
+        this.#cloneSchemaWithoutRefs = opts.cloneSchemaWithoutRefs ?? false;
+      }
+      addSchema(schema, rootSchemaId, isRootSchema = true) {
+        if (isRootSchema) {
+          if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
+            rootSchemaId = schema.$id;
+          } else {
+            this.#insertSchemaBySchemaId(schema, rootSchemaId);
+          }
+        }
+        const schemaId = schema.$id;
+        if (schemaId !== void 0 && typeof schemaId === "string") {
+          if (schemaId.charAt(0) === "#") {
+            this.#insertSchemaByAnchor(schema, rootSchemaId, schemaId);
+          } else {
+            this.#insertSchemaBySchemaId(schema, schemaId);
+            rootSchemaId = schemaId;
+          }
+        }
+        const ref = schema.$ref;
+        if (ref !== void 0 && typeof ref === "string") {
+          const { refSchemaId, refJsonPointer } = this.#parseSchemaRef(ref, rootSchemaId);
+          this.#schemas[rootSchemaId].refs.push({
+            schemaId: refSchemaId,
+            jsonPointer: refJsonPointer
+          });
+        }
+        for (const key in schema) {
+          if (typeof schema[key] === "object" && schema[key] !== null) {
+            this.addSchema(schema[key], rootSchemaId, false);
+          }
+        }
+      }
+      getSchema(schemaId, jsonPointer = "#") {
+        const schema = this.#schemas[schemaId];
+        if (schema === void 0) {
+          throw new Error(
+            `Cannot resolve ref "${schemaId}${jsonPointer}". Schema with id "${schemaId}" is not found.`
+          );
+        }
+        if (schema.anchors[jsonPointer] !== void 0) {
+          return schema.anchors[jsonPointer];
+        }
+        return getDataByJSONPointer(schema.schema, jsonPointer);
+      }
+      hasSchema(schemaId) {
+        return this.#schemas[schemaId] !== void 0;
+      }
+      getSchemaRefs(schemaId) {
+        const schema = this.#schemas[schemaId];
+        if (schema === void 0) {
+          throw new Error(`Schema with id "${schemaId}" is not found.`);
+        }
+        return schema.refs;
+      }
+      getSchemaDependencies(schemaId, dependencies = {}) {
+        const schema = this.#schemas[schemaId];
+        for (const ref of schema.refs) {
+          const dependencySchemaId = ref.schemaId;
+          if (dependencySchemaId === schemaId || dependencies[dependencySchemaId] !== void 0) continue;
+          dependencies[dependencySchemaId] = this.getSchema(dependencySchemaId);
+          this.getSchemaDependencies(dependencySchemaId, dependencies);
+        }
+        return dependencies;
+      }
+      derefSchema(schemaId) {
+        if (this.#derefSchemas[schemaId] !== void 0) return;
+        const schema = this.#schemas[schemaId];
+        if (schema === void 0) {
+          throw new Error(`Schema with id "${schemaId}" is not found.`);
+        }
+        if (!this.#cloneSchemaWithoutRefs && schema.refs.length === 0) {
+          this.#derefSchemas[schemaId] = {
+            schema: schema.schema,
+            anchors: schema.anchors
+          };
+        }
+        const refs = [];
+        this.#addDerefSchema(schema.schema, schemaId, true, refs);
+        const dependencies = this.getSchemaDependencies(schemaId);
+        for (const schemaId2 in dependencies) {
+          const schema2 = dependencies[schemaId2];
+          this.#addDerefSchema(schema2, schemaId2, true, refs);
+        }
+        for (const ref of refs) {
+          const {
+            refSchemaId,
+            refJsonPointer
+          } = this.#parseSchemaRef(ref.ref, ref.sourceSchemaId);
+          const targetSchema = this.getDerefSchema(refSchemaId, refJsonPointer);
+          if (targetSchema === null) {
+            throw new Error(
+              `Cannot resolve ref "${ref.ref}". Ref "${refJsonPointer}" is not found in schema "${refSchemaId}".`
+            );
+          }
+          ref.targetSchema = targetSchema;
+          ref.targetSchemaId = refSchemaId;
+        }
+        for (const ref of refs) {
+          this.#resolveRef(ref, refs);
+        }
+      }
+      getDerefSchema(schemaId, jsonPointer = "#") {
+        let derefSchema = this.#derefSchemas[schemaId];
+        if (derefSchema === void 0) {
+          this.derefSchema(schemaId);
+          derefSchema = this.#derefSchemas[schemaId];
+        }
+        if (derefSchema.anchors[jsonPointer] !== void 0) {
+          return derefSchema.anchors[jsonPointer];
+        }
+        return getDataByJSONPointer(derefSchema.schema, jsonPointer);
+      }
+      #parseSchemaRef(ref, schemaId) {
+        const sharpIndex = ref.indexOf("#");
+        if (sharpIndex === -1) {
+          return { refSchemaId: ref, refJsonPointer: "#" };
+        }
+        if (sharpIndex === 0) {
+          return { refSchemaId: schemaId, refJsonPointer: ref };
+        }
+        return {
+          refSchemaId: ref.slice(0, sharpIndex),
+          refJsonPointer: ref.slice(sharpIndex)
+        };
+      }
+      #addDerefSchema(schema, rootSchemaId, isRootSchema, refs = []) {
+        const derefSchema = Array.isArray(schema) ? [...schema] : { ...schema };
+        if (isRootSchema) {
+          if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
+            rootSchemaId = schema.$id;
+          } else {
+            this.#insertDerefSchemaBySchemaId(derefSchema, rootSchemaId);
+          }
+        }
+        const schemaId = derefSchema.$id;
+        if (schemaId !== void 0 && typeof schemaId === "string") {
+          if (schemaId.charAt(0) === "#") {
+            this.#insertDerefSchemaByAnchor(derefSchema, rootSchemaId, schemaId);
+          } else {
+            this.#insertDerefSchemaBySchemaId(derefSchema, schemaId);
+            rootSchemaId = schemaId;
+          }
+        }
+        if (derefSchema.$ref !== void 0) {
+          refs.push({
+            ref: derefSchema.$ref,
+            sourceSchemaId: rootSchemaId,
+            sourceSchema: derefSchema
+          });
+        }
+        for (const key in derefSchema) {
+          const value = derefSchema[key];
+          if (typeof value === "object" && value !== null) {
+            derefSchema[key] = this.#addDerefSchema(value, rootSchemaId, false, refs);
+          }
+        }
+        return derefSchema;
+      }
+      #resolveRef(ref, refs) {
+        const { sourceSchema, targetSchema } = ref;
+        if (!sourceSchema.$ref) return;
+        if (this.#insertRefSymbol) {
+          sourceSchema[jsonSchemaRefSymbol] = sourceSchema.$ref;
+        }
+        delete sourceSchema.$ref;
+        if (targetSchema.$ref) {
+          const targetSchemaRef = refs.find((ref2) => ref2.sourceSchema === targetSchema);
+          this.#resolveRef(targetSchemaRef, refs);
+        }
+        for (const key in targetSchema) {
+          if (key === "$id") continue;
+          if (sourceSchema[key] !== void 0) {
+            if (deepEqual(sourceSchema[key], targetSchema[key])) continue;
+            throw new Error(
+              `Cannot resolve ref "${ref.ref}". Property "${key}" already exists in schema "${ref.sourceSchemaId}".`
+            );
+          }
+          sourceSchema[key] = targetSchema[key];
+        }
+        ref.isResolved = true;
+      }
+      #insertSchemaBySchemaId(schema, schemaId) {
+        const foundSchema = this.#schemas[schemaId];
+        if (foundSchema !== void 0) {
+          if (this.#allowEqualDuplicates && deepEqual(schema, foundSchema.schema)) return;
+          throw new Error(`There is already another schema with id "${schemaId}".`);
+        }
+        this.#schemas[schemaId] = { schema, anchors: {}, refs: [] };
+      }
+      #insertSchemaByAnchor(schema, schemaId, anchor) {
+        const { anchors } = this.#schemas[schemaId];
+        if (anchors[anchor] !== void 0) {
+          throw new Error(`There is already another anchor "${anchor}" in schema "${schemaId}".`);
+        }
+        anchors[anchor] = schema;
+      }
+      #insertDerefSchemaBySchemaId(schema, schemaId) {
+        const foundSchema = this.#derefSchemas[schemaId];
+        if (foundSchema !== void 0) return;
+        this.#derefSchemas[schemaId] = { schema, anchors: {} };
+      }
+      #insertDerefSchemaByAnchor(schema, schemaId, anchor) {
+        const { anchors } = this.#derefSchemas[schemaId];
+        anchors[anchor] = schema;
+      }
+    };
+    function getDataByJSONPointer(data, jsonPointer) {
+      const parts = jsonPointer.split("/");
+      let current = data;
+      for (const part of parts) {
+        if (part === "" || part === "#") continue;
+        if (typeof current !== "object" || current === null) {
+          return null;
+        }
+        current = current[part];
+      }
+      return current ?? null;
+    }
+    module2.exports = { RefResolver };
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/validator.js
+var require_validator = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/validator.js"(exports2, module2) {
+    "use strict";
+    var Ajv = require_ajv();
+    var fastUri = require_fast_uri2();
+    var ajvFormats = require_dist();
+    var clone = require_rfdc()({ proto: true });
+    var Validator = class _Validator {
+      constructor(ajvOptions) {
+        this.ajv = new Ajv({
+          ...ajvOptions,
+          strictSchema: false,
+          validateSchema: false,
+          allowUnionTypes: true,
+          uriResolver: fastUri
+        });
+        ajvFormats(this.ajv);
+        this.ajv.addKeyword({
+          keyword: "fjs_type",
+          type: "object",
+          errors: false,
+          validate: (_type, data) => {
+            return data && typeof data.toJSON === "function";
+          }
+        });
+        this._ajvSchemas = {};
+        this._ajvOptions = ajvOptions || {};
+      }
+      addSchema(schema, schemaName) {
+        let schemaKey = schema.$id || schemaName;
+        if (schema.$id !== void 0 && schema.$id[0] === "#") {
+          schemaKey = schemaName + schema.$id;
+        }
+        if (this.ajv.refs[schemaKey] === void 0 && this.ajv.schemas[schemaKey] === void 0) {
+          const ajvSchema = clone(schema);
+          this.convertSchemaToAjvFormat(ajvSchema);
+          this.ajv.addSchema(ajvSchema, schemaKey);
+          this._ajvSchemas[schemaKey] = schema;
+        }
+      }
+      validate(schemaRef, data) {
+        return this.ajv.validate(schemaRef, data);
+      }
+      // Ajv does not natively support JavaScript objects like Date or other types
+      // that rely on a custom .toJSON() representation. To properly validate schemas
+      // that may contain such objects (e.g. Date, ObjectId, etc.), we replace all
+      // occurrences of the string type with a custom keyword fjs_type
+      // (see https://github.com/fastify/fast-json-stringify/pull/441)
+      convertSchemaToAjvFormat(schema) {
+        if (schema === null) return;
+        if (schema.type === "string") {
+          schema.fjs_type = "string";
+          schema.type = ["string", "object"];
+        } else if (Array.isArray(schema.type) && schema.type.includes("string") && !schema.type.includes("object")) {
+          schema.fjs_type = "string";
+          schema.type.push("object");
+        }
+        for (const property in schema) {
+          if (typeof schema[property] === "object") {
+            this.convertSchemaToAjvFormat(schema[property]);
+          }
+        }
+      }
+      getState() {
+        return {
+          ajvOptions: this._ajvOptions,
+          ajvSchemas: this._ajvSchemas
+        };
+      }
+      static restoreFromState(state) {
+        const validator = new _Validator(state.ajvOptions);
+        for (const [id, ajvSchema] of Object.entries(state.ajvSchemas)) {
+          validator.ajv.addSchema(ajvSchema, id);
+        }
+        return validator;
+      }
+    };
+    module2.exports = Validator;
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/location.js
+var require_location = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/location.js"(exports2, module2) {
+    "use strict";
+    var Location = class _Location {
+      constructor(schema, schemaId, jsonPointer = "#") {
+        this.schema = schema;
+        this.schemaId = schemaId;
+        this.jsonPointer = jsonPointer;
+      }
+      getPropertyLocation(propertyName) {
+        const propertyLocation = new _Location(
+          this.schema[propertyName],
+          this.schemaId,
+          this.jsonPointer + "/" + propertyName
+        );
+        return propertyLocation;
+      }
+      getSchemaRef() {
+        return this.schemaId + this.jsonPointer;
+      }
+    };
+    module2.exports = Location;
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/schema-validator.js
+var require_schema_validator = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/schema-validator.js"(exports2, module2) {
+    "use strict";
+    module2.exports = validate10;
+    module2.exports.default = validate10;
+    var schema11 = { "$schema": "http://json-schema.org/draft-07/schema#", "$id": "http://json-schema.org/draft-07/schema#", "title": "Core schema meta-schema", "definitions": { "schemaArray": { "type": "array", "minItems": 1, "items": { "$ref": "#" } }, "nonNegativeInteger": { "type": "integer", "minimum": 0 }, "nonNegativeIntegerDefault0": { "allOf": [{ "$ref": "#/definitions/nonNegativeInteger" }, { "default": 0 }] }, "simpleTypes": { "enum": ["array", "boolean", "integer", "null", "number", "object", "string"] }, "stringArray": { "type": "array", "items": { "type": "string" }, "uniqueItems": true, "default": [] } }, "type": ["object", "boolean"], "properties": { "$id": { "type": "string", "format": "uri-reference" }, "$schema": { "type": "string", "format": "uri" }, "$ref": { "type": "string", "format": "uri-reference" }, "$comment": { "type": "string" }, "title": { "type": "string" }, "description": { "type": "string" }, "default": true, "readOnly": { "type": "boolean", "default": false }, "examples": { "type": "array", "items": true }, "multipleOf": { "type": "number", "exclusiveMinimum": 0 }, "maximum": { "type": "number" }, "exclusiveMaximum": { "type": "number" }, "minimum": { "type": "number" }, "exclusiveMinimum": { "type": "number" }, "maxLength": { "$ref": "#/definitions/nonNegativeInteger" }, "minLength": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "pattern": { "type": "string", "format": "regex" }, "additionalItems": { "$ref": "#" }, "items": { "anyOf": [{ "$ref": "#" }, { "$ref": "#/definitions/schemaArray" }], "default": true }, "maxItems": { "$ref": "#/definitions/nonNegativeInteger" }, "minItems": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "uniqueItems": { "type": "boolean", "default": false }, "contains": { "$ref": "#" }, "maxProperties": { "$ref": "#/definitions/nonNegativeInteger" }, "minProperties": { "$ref": "#/definitions/nonNegativeIntegerDefault0" }, "required": { "$ref": "#/definitions/stringArray" }, "additionalProperties": { "$ref": "#" }, "definitions": { "type": "object", "additionalProperties": { "$ref": "#" }, "default": {} }, "properties": { "type": "object", "additionalProperties": { "$ref": "#" }, "default": {} }, "patternProperties": { "type": "object", "additionalProperties": { "$ref": "#" }, "propertyNames": { "format": "regex" }, "default": {} }, "dependencies": { "type": "object", "additionalProperties": { "anyOf": [{ "$ref": "#" }, { "$ref": "#/definitions/stringArray" }] } }, "propertyNames": { "$ref": "#" }, "const": true, "enum": { "type": "array", "items": true, "minItems": 1, "uniqueItems": true }, "type": { "anyOf": [{ "$ref": "#/definitions/simpleTypes" }, { "type": "array", "items": { "$ref": "#/definitions/simpleTypes" }, "minItems": 1, "uniqueItems": true }] }, "format": { "type": "string" }, "contentMediaType": { "type": "string" }, "contentEncoding": { "type": "string" }, "if": { "$ref": "#" }, "then": { "$ref": "#" }, "else": { "$ref": "#" }, "allOf": { "$ref": "#/definitions/schemaArray" }, "anyOf": { "$ref": "#/definitions/schemaArray" }, "oneOf": { "$ref": "#/definitions/schemaArray" }, "not": { "$ref": "#" } }, "default": true };
+    var schema20 = { "enum": ["array", "boolean", "integer", "null", "number", "object", "string"] };
+    var formats0 = /^(?:[a-z][a-z0-9+\-.]*:)?(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'"()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'"()*+,;=:@]|%[0-9a-f]{2})*)*)?(?:\?(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'"()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
+    var formats2 = require_formats().fullFormats.uri;
+    var formats6 = require_formats().fullFormats.regex;
+    function validate11(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
+      let vErrors = null;
+      let errors = 0;
+      const _errs1 = errors;
+      if (!(typeof data == "number" && (!(data % 1) && !isNaN(data)) && isFinite(data))) {
+        validate11.errors = [{ instancePath, schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+        return false;
+      }
+      if (errors === _errs1) {
+        if (typeof data == "number" && isFinite(data)) {
+          if (data < 0 || isNaN(data)) {
+            validate11.errors = [{ instancePath, schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
+            return false;
+          }
+        }
+      }
+      validate11.errors = vErrors;
+      return errors === 0;
+    }
+    var root1 = { validate: validate10 };
+    function validate13(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
+      let vErrors = null;
+      let errors = 0;
+      if (errors === 0) {
+        if (Array.isArray(data)) {
+          if (data.length < 1) {
+            validate13.errors = [{ instancePath, schemaPath: "#/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" }];
+            return false;
+          } else {
+            var valid0 = true;
+            const len0 = data.length;
+            for (let i0 = 0; i0 < len0; i0++) {
+              const _errs1 = errors;
+              if (!root1.validate(data[i0], { instancePath: instancePath + "/" + i0, parentData: data, parentDataProperty: i0, rootData })) {
+                vErrors = vErrors === null ? root1.validate.errors : vErrors.concat(root1.validate.errors);
+                errors = vErrors.length;
+              }
+              var valid0 = _errs1 === errors;
+              if (!valid0) {
+                break;
+              }
+            }
+          }
+        } else {
+          validate13.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
+          return false;
+        }
+      }
+      validate13.errors = vErrors;
+      return errors === 0;
+    }
+    var func0 = require_equal().default;
+    function validate10(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
+      ;
+      let vErrors = null;
+      let errors = 0;
+      if (!(data && typeof data == "object" && !Array.isArray(data)) && typeof data !== "boolean") {
+        validate10.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: schema11.type }, message: "must be object,boolean" }];
+        return false;
+      }
+      if (errors === 0) {
+        if (data && typeof data == "object" && !Array.isArray(data)) {
+          if (data.$id !== void 0) {
+            let data0 = data.$id;
+            const _errs1 = errors;
+            if (errors === _errs1) {
+              if (errors === _errs1) {
+                if (typeof data0 === "string") {
+                  if (!formats0.test(data0)) {
+                    validate10.errors = [{ instancePath: instancePath + "/$id", schemaPath: "#/properties/%24id/format", keyword: "format", params: { format: "uri-reference" }, message: 'must match format "uri-reference"' }];
+                    return false;
+                  }
+                } else {
+                  validate10.errors = [{ instancePath: instancePath + "/$id", schemaPath: "#/properties/%24id/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                  return false;
+                }
+              }
+            }
+            var valid0 = _errs1 === errors;
+          } else {
+            var valid0 = true;
+          }
+          if (valid0) {
+            if (data.$schema !== void 0) {
+              let data1 = data.$schema;
+              const _errs3 = errors;
+              if (errors === _errs3) {
+                if (errors === _errs3) {
+                  if (typeof data1 === "string") {
+                    if (!formats2(data1)) {
+                      validate10.errors = [{ instancePath: instancePath + "/$schema", schemaPath: "#/properties/%24schema/format", keyword: "format", params: { format: "uri" }, message: 'must match format "uri"' }];
+                      return false;
+                    }
+                  } else {
+                    validate10.errors = [{ instancePath: instancePath + "/$schema", schemaPath: "#/properties/%24schema/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                    return false;
+                  }
+                }
+              }
+              var valid0 = _errs3 === errors;
+            } else {
+              var valid0 = true;
+            }
+            if (valid0) {
+              if (data.$ref !== void 0) {
+                let data2 = data.$ref;
+                const _errs5 = errors;
+                if (errors === _errs5) {
+                  if (errors === _errs5) {
+                    if (typeof data2 === "string") {
+                      if (!formats0.test(data2)) {
+                        validate10.errors = [{ instancePath: instancePath + "/$ref", schemaPath: "#/properties/%24ref/format", keyword: "format", params: { format: "uri-reference" }, message: 'must match format "uri-reference"' }];
+                        return false;
+                      }
+                    } else {
+                      validate10.errors = [{ instancePath: instancePath + "/$ref", schemaPath: "#/properties/%24ref/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                      return false;
+                    }
+                  }
+                }
+                var valid0 = _errs5 === errors;
+              } else {
+                var valid0 = true;
+              }
+              if (valid0) {
+                if (data.$comment !== void 0) {
+                  const _errs7 = errors;
+                  if (typeof data.$comment !== "string") {
+                    validate10.errors = [{ instancePath: instancePath + "/$comment", schemaPath: "#/properties/%24comment/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                    return false;
+                  }
+                  var valid0 = _errs7 === errors;
+                } else {
+                  var valid0 = true;
+                }
+                if (valid0) {
+                  if (data.title !== void 0) {
+                    const _errs9 = errors;
+                    if (typeof data.title !== "string") {
+                      validate10.errors = [{ instancePath: instancePath + "/title", schemaPath: "#/properties/title/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                      return false;
+                    }
+                    var valid0 = _errs9 === errors;
+                  } else {
+                    var valid0 = true;
+                  }
+                  if (valid0) {
+                    if (data.description !== void 0) {
+                      const _errs11 = errors;
+                      if (typeof data.description !== "string") {
+                        validate10.errors = [{ instancePath: instancePath + "/description", schemaPath: "#/properties/description/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                        return false;
+                      }
+                      var valid0 = _errs11 === errors;
+                    } else {
+                      var valid0 = true;
+                    }
+                    if (valid0) {
+                      if (data.readOnly !== void 0) {
+                        const _errs13 = errors;
+                        if (typeof data.readOnly !== "boolean") {
+                          validate10.errors = [{ instancePath: instancePath + "/readOnly", schemaPath: "#/properties/readOnly/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                          return false;
+                        }
+                        var valid0 = _errs13 === errors;
+                      } else {
+                        var valid0 = true;
+                      }
+                      if (valid0) {
+                        if (data.examples !== void 0) {
+                          const _errs15 = errors;
+                          if (errors === _errs15) {
+                            if (!Array.isArray(data.examples)) {
+                              validate10.errors = [{ instancePath: instancePath + "/examples", schemaPath: "#/properties/examples/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
+                              return false;
+                            }
+                          }
+                          var valid0 = _errs15 === errors;
+                        } else {
+                          var valid0 = true;
+                        }
+                        if (valid0) {
+                          if (data.multipleOf !== void 0) {
+                            let data8 = data.multipleOf;
+                            const _errs17 = errors;
+                            if (errors === _errs17) {
+                              if (typeof data8 == "number" && isFinite(data8)) {
+                                if (data8 <= 0 || isNaN(data8)) {
+                                  validate10.errors = [{ instancePath: instancePath + "/multipleOf", schemaPath: "#/properties/multipleOf/exclusiveMinimum", keyword: "exclusiveMinimum", params: { comparison: ">", limit: 0 }, message: "must be > 0" }];
+                                  return false;
+                                }
+                              } else {
+                                validate10.errors = [{ instancePath: instancePath + "/multipleOf", schemaPath: "#/properties/multipleOf/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
+                                return false;
+                              }
+                            }
+                            var valid0 = _errs17 === errors;
+                          } else {
+                            var valid0 = true;
+                          }
+                          if (valid0) {
+                            if (data.maximum !== void 0) {
+                              let data9 = data.maximum;
+                              const _errs19 = errors;
+                              if (!(typeof data9 == "number" && isFinite(data9))) {
+                                validate10.errors = [{ instancePath: instancePath + "/maximum", schemaPath: "#/properties/maximum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
+                                return false;
+                              }
+                              var valid0 = _errs19 === errors;
+                            } else {
+                              var valid0 = true;
+                            }
+                            if (valid0) {
+                              if (data.exclusiveMaximum !== void 0) {
+                                let data10 = data.exclusiveMaximum;
+                                const _errs21 = errors;
+                                if (!(typeof data10 == "number" && isFinite(data10))) {
+                                  validate10.errors = [{ instancePath: instancePath + "/exclusiveMaximum", schemaPath: "#/properties/exclusiveMaximum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
+                                  return false;
+                                }
+                                var valid0 = _errs21 === errors;
+                              } else {
+                                var valid0 = true;
+                              }
+                              if (valid0) {
+                                if (data.minimum !== void 0) {
+                                  let data11 = data.minimum;
+                                  const _errs23 = errors;
+                                  if (!(typeof data11 == "number" && isFinite(data11))) {
+                                    validate10.errors = [{ instancePath: instancePath + "/minimum", schemaPath: "#/properties/minimum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
+                                    return false;
+                                  }
+                                  var valid0 = _errs23 === errors;
+                                } else {
+                                  var valid0 = true;
+                                }
+                                if (valid0) {
+                                  if (data.exclusiveMinimum !== void 0) {
+                                    let data12 = data.exclusiveMinimum;
+                                    const _errs25 = errors;
+                                    if (!(typeof data12 == "number" && isFinite(data12))) {
+                                      validate10.errors = [{ instancePath: instancePath + "/exclusiveMinimum", schemaPath: "#/properties/exclusiveMinimum/type", keyword: "type", params: { type: "number" }, message: "must be number" }];
+                                      return false;
+                                    }
+                                    var valid0 = _errs25 === errors;
+                                  } else {
+                                    var valid0 = true;
+                                  }
+                                  if (valid0) {
+                                    if (data.maxLength !== void 0) {
+                                      let data13 = data.maxLength;
+                                      const _errs27 = errors;
+                                      const _errs28 = errors;
+                                      if (!(typeof data13 == "number" && (!(data13 % 1) && !isNaN(data13)) && isFinite(data13))) {
+                                        validate10.errors = [{ instancePath: instancePath + "/maxLength", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                        return false;
+                                      }
+                                      if (errors === _errs28) {
+                                        if (typeof data13 == "number" && isFinite(data13)) {
+                                          if (data13 < 0 || isNaN(data13)) {
+                                            validate10.errors = [{ instancePath: instancePath + "/maxLength", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
+                                            return false;
+                                          }
+                                        }
+                                      }
+                                      var valid0 = _errs27 === errors;
+                                    } else {
+                                      var valid0 = true;
+                                    }
+                                    if (valid0) {
+                                      if (data.minLength !== void 0) {
+                                        const _errs30 = errors;
+                                        if (!validate11(data.minLength, { instancePath: instancePath + "/minLength", parentData: data, parentDataProperty: "minLength", rootData })) {
+                                          vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
+                                          errors = vErrors.length;
+                                        }
+                                        var valid0 = _errs30 === errors;
+                                      } else {
+                                        var valid0 = true;
+                                      }
+                                      if (valid0) {
+                                        if (data.pattern !== void 0) {
+                                          let data15 = data.pattern;
+                                          const _errs31 = errors;
+                                          if (errors === _errs31) {
+                                            if (errors === _errs31) {
+                                              if (typeof data15 === "string") {
+                                                if (!formats6(data15)) {
+                                                  validate10.errors = [{ instancePath: instancePath + "/pattern", schemaPath: "#/properties/pattern/format", keyword: "format", params: { format: "regex" }, message: 'must match format "regex"' }];
+                                                  return false;
+                                                }
+                                              } else {
+                                                validate10.errors = [{ instancePath: instancePath + "/pattern", schemaPath: "#/properties/pattern/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                return false;
+                                              }
+                                            }
+                                          }
+                                          var valid0 = _errs31 === errors;
+                                        } else {
+                                          var valid0 = true;
+                                        }
+                                        if (valid0) {
+                                          if (data.additionalItems !== void 0) {
+                                            const _errs33 = errors;
+                                            if (!validate10(data.additionalItems, { instancePath: instancePath + "/additionalItems", parentData: data, parentDataProperty: "additionalItems", rootData })) {
+                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                              errors = vErrors.length;
+                                            }
+                                            var valid0 = _errs33 === errors;
+                                          } else {
+                                            var valid0 = true;
+                                          }
+                                          if (valid0) {
+                                            if (data.items !== void 0) {
+                                              let data17 = data.items;
+                                              const _errs34 = errors;
+                                              const _errs35 = errors;
+                                              let valid2 = false;
+                                              const _errs36 = errors;
+                                              if (!validate10(data17, { instancePath: instancePath + "/items", parentData: data, parentDataProperty: "items", rootData })) {
+                                                vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                errors = vErrors.length;
+                                              }
+                                              var _valid0 = _errs36 === errors;
+                                              valid2 = valid2 || _valid0;
+                                              if (!valid2) {
+                                                const _errs37 = errors;
+                                                if (!validate13(data17, { instancePath: instancePath + "/items", parentData: data, parentDataProperty: "items", rootData })) {
+                                                  vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
+                                                  errors = vErrors.length;
+                                                }
+                                                var _valid0 = _errs37 === errors;
+                                                valid2 = valid2 || _valid0;
+                                              }
+                                              if (!valid2) {
+                                                const err0 = { instancePath: instancePath + "/items", schemaPath: "#/properties/items/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                                                if (vErrors === null) {
+                                                  vErrors = [err0];
+                                                } else {
+                                                  vErrors.push(err0);
+                                                }
+                                                errors++;
+                                                validate10.errors = vErrors;
+                                                return false;
+                                              } else {
+                                                errors = _errs35;
+                                                if (vErrors !== null) {
+                                                  if (_errs35) {
+                                                    vErrors.length = _errs35;
+                                                  } else {
+                                                    vErrors = null;
+                                                  }
+                                                }
+                                              }
+                                              var valid0 = _errs34 === errors;
+                                            } else {
+                                              var valid0 = true;
+                                            }
+                                            if (valid0) {
+                                              if (data.maxItems !== void 0) {
+                                                let data18 = data.maxItems;
+                                                const _errs38 = errors;
+                                                const _errs39 = errors;
+                                                if (!(typeof data18 == "number" && (!(data18 % 1) && !isNaN(data18)) && isFinite(data18))) {
+                                                  validate10.errors = [{ instancePath: instancePath + "/maxItems", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                                  return false;
+                                                }
+                                                if (errors === _errs39) {
+                                                  if (typeof data18 == "number" && isFinite(data18)) {
+                                                    if (data18 < 0 || isNaN(data18)) {
+                                                      validate10.errors = [{ instancePath: instancePath + "/maxItems", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
+                                                      return false;
+                                                    }
+                                                  }
+                                                }
+                                                var valid0 = _errs38 === errors;
+                                              } else {
+                                                var valid0 = true;
+                                              }
+                                              if (valid0) {
+                                                if (data.minItems !== void 0) {
+                                                  const _errs41 = errors;
+                                                  if (!validate11(data.minItems, { instancePath: instancePath + "/minItems", parentData: data, parentDataProperty: "minItems", rootData })) {
+                                                    vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
+                                                    errors = vErrors.length;
+                                                  }
+                                                  var valid0 = _errs41 === errors;
+                                                } else {
+                                                  var valid0 = true;
+                                                }
+                                                if (valid0) {
+                                                  if (data.uniqueItems !== void 0) {
+                                                    const _errs42 = errors;
+                                                    if (typeof data.uniqueItems !== "boolean") {
+                                                      validate10.errors = [{ instancePath: instancePath + "/uniqueItems", schemaPath: "#/properties/uniqueItems/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
+                                                      return false;
+                                                    }
+                                                    var valid0 = _errs42 === errors;
+                                                  } else {
+                                                    var valid0 = true;
+                                                  }
+                                                  if (valid0) {
+                                                    if (data.contains !== void 0) {
+                                                      const _errs44 = errors;
+                                                      if (!validate10(data.contains, { instancePath: instancePath + "/contains", parentData: data, parentDataProperty: "contains", rootData })) {
+                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                        errors = vErrors.length;
+                                                      }
+                                                      var valid0 = _errs44 === errors;
+                                                    } else {
+                                                      var valid0 = true;
+                                                    }
+                                                    if (valid0) {
+                                                      if (data.maxProperties !== void 0) {
+                                                        let data22 = data.maxProperties;
+                                                        const _errs45 = errors;
+                                                        const _errs46 = errors;
+                                                        if (!(typeof data22 == "number" && (!(data22 % 1) && !isNaN(data22)) && isFinite(data22))) {
+                                                          validate10.errors = [{ instancePath: instancePath + "/maxProperties", schemaPath: "#/definitions/nonNegativeInteger/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
+                                                          return false;
+                                                        }
+                                                        if (errors === _errs46) {
+                                                          if (typeof data22 == "number" && isFinite(data22)) {
+                                                            if (data22 < 0 || isNaN(data22)) {
+                                                              validate10.errors = [{ instancePath: instancePath + "/maxProperties", schemaPath: "#/definitions/nonNegativeInteger/minimum", keyword: "minimum", params: { comparison: ">=", limit: 0 }, message: "must be >= 0" }];
+                                                              return false;
+                                                            }
+                                                          }
+                                                        }
+                                                        var valid0 = _errs45 === errors;
+                                                      } else {
+                                                        var valid0 = true;
+                                                      }
+                                                      if (valid0) {
+                                                        if (data.minProperties !== void 0) {
+                                                          const _errs48 = errors;
+                                                          if (!validate11(data.minProperties, { instancePath: instancePath + "/minProperties", parentData: data, parentDataProperty: "minProperties", rootData })) {
+                                                            vErrors = vErrors === null ? validate11.errors : vErrors.concat(validate11.errors);
+                                                            errors = vErrors.length;
+                                                          }
+                                                          var valid0 = _errs48 === errors;
+                                                        } else {
+                                                          var valid0 = true;
+                                                        }
+                                                        if (valid0) {
+                                                          if (data.required !== void 0) {
+                                                            let data24 = data.required;
+                                                            const _errs49 = errors;
+                                                            const _errs50 = errors;
+                                                            if (errors === _errs50) {
+                                                              if (Array.isArray(data24)) {
+                                                                var valid6 = true;
+                                                                const len0 = data24.length;
+                                                                for (let i0 = 0; i0 < len0; i0++) {
+                                                                  const _errs52 = errors;
+                                                                  if (typeof data24[i0] !== "string") {
+                                                                    validate10.errors = [{ instancePath: instancePath + "/required/" + i0, schemaPath: "#/definitions/stringArray/items/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                                    return false;
+                                                                  }
+                                                                  var valid6 = _errs52 === errors;
+                                                                  if (!valid6) {
+                                                                    break;
+                                                                  }
+                                                                }
+                                                                if (valid6) {
+                                                                  let i1 = data24.length;
+                                                                  let j0;
+                                                                  if (i1 > 1) {
+                                                                    const indices0 = {};
+                                                                    for (; i1--; ) {
+                                                                      let item0 = data24[i1];
+                                                                      if (typeof item0 !== "string") {
+                                                                        continue;
+                                                                      }
+                                                                      if (typeof indices0[item0] == "number") {
+                                                                        j0 = indices0[item0];
+                                                                        validate10.errors = [{ instancePath: instancePath + "/required", schemaPath: "#/definitions/stringArray/uniqueItems", keyword: "uniqueItems", params: { i: i1, j: j0 }, message: "must NOT have duplicate items (items ## " + j0 + " and " + i1 + " are identical)" }];
+                                                                        return false;
+                                                                        break;
+                                                                      }
+                                                                      indices0[item0] = i1;
+                                                                    }
+                                                                  }
+                                                                }
+                                                              } else {
+                                                                validate10.errors = [{ instancePath: instancePath + "/required", schemaPath: "#/definitions/stringArray/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
+                                                                return false;
+                                                              }
+                                                            }
+                                                            var valid0 = _errs49 === errors;
+                                                          } else {
+                                                            var valid0 = true;
+                                                          }
+                                                          if (valid0) {
+                                                            if (data.additionalProperties !== void 0) {
+                                                              const _errs54 = errors;
+                                                              if (!validate10(data.additionalProperties, { instancePath: instancePath + "/additionalProperties", parentData: data, parentDataProperty: "additionalProperties", rootData })) {
+                                                                vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                errors = vErrors.length;
+                                                              }
+                                                              var valid0 = _errs54 === errors;
+                                                            } else {
+                                                              var valid0 = true;
+                                                            }
+                                                            if (valid0) {
+                                                              if (data.definitions !== void 0) {
+                                                                let data27 = data.definitions;
+                                                                const _errs55 = errors;
+                                                                if (errors === _errs55) {
+                                                                  if (data27 && typeof data27 == "object" && !Array.isArray(data27)) {
+                                                                    for (const key0 in data27) {
+                                                                      const _errs58 = errors;
+                                                                      if (!validate10(data27[key0], { instancePath: instancePath + "/definitions/" + key0.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data27, parentDataProperty: key0, rootData })) {
+                                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                        errors = vErrors.length;
+                                                                      }
+                                                                      var valid8 = _errs58 === errors;
+                                                                      if (!valid8) {
+                                                                        break;
+                                                                      }
+                                                                    }
+                                                                  } else {
+                                                                    validate10.errors = [{ instancePath: instancePath + "/definitions", schemaPath: "#/properties/definitions/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                    return false;
+                                                                  }
+                                                                }
+                                                                var valid0 = _errs55 === errors;
+                                                              } else {
+                                                                var valid0 = true;
+                                                              }
+                                                              if (valid0) {
+                                                                if (data.properties !== void 0) {
+                                                                  let data29 = data.properties;
+                                                                  const _errs59 = errors;
+                                                                  if (errors === _errs59) {
+                                                                    if (data29 && typeof data29 == "object" && !Array.isArray(data29)) {
+                                                                      for (const key1 in data29) {
+                                                                        const _errs62 = errors;
+                                                                        if (!validate10(data29[key1], { instancePath: instancePath + "/properties/" + key1.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data29, parentDataProperty: key1, rootData })) {
+                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                          errors = vErrors.length;
+                                                                        }
+                                                                        var valid9 = _errs62 === errors;
+                                                                        if (!valid9) {
+                                                                          break;
+                                                                        }
+                                                                      }
+                                                                    } else {
+                                                                      validate10.errors = [{ instancePath: instancePath + "/properties", schemaPath: "#/properties/properties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                      return false;
+                                                                    }
+                                                                  }
+                                                                  var valid0 = _errs59 === errors;
+                                                                } else {
+                                                                  var valid0 = true;
+                                                                }
+                                                                if (valid0) {
+                                                                  if (data.patternProperties !== void 0) {
+                                                                    let data31 = data.patternProperties;
+                                                                    const _errs63 = errors;
+                                                                    if (errors === _errs63) {
+                                                                      if (data31 && typeof data31 == "object" && !Array.isArray(data31)) {
+                                                                        for (const key2 in data31) {
+                                                                          const _errs65 = errors;
+                                                                          if (errors === _errs65) {
+                                                                            if (typeof key2 === "string") {
+                                                                              if (!formats6(key2)) {
+                                                                                const err1 = { instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/propertyNames/format", keyword: "format", params: { format: "regex" }, message: 'must match format "regex"', propertyName: key2 };
+                                                                                if (vErrors === null) {
+                                                                                  vErrors = [err1];
+                                                                                } else {
+                                                                                  vErrors.push(err1);
+                                                                                }
+                                                                                errors++;
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                          var valid10 = _errs65 === errors;
+                                                                          if (!valid10) {
+                                                                            const err2 = { instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/propertyNames", keyword: "propertyNames", params: { propertyName: key2 }, message: "property name must be valid" };
+                                                                            if (vErrors === null) {
+                                                                              vErrors = [err2];
+                                                                            } else {
+                                                                              vErrors.push(err2);
+                                                                            }
+                                                                            errors++;
+                                                                            validate10.errors = vErrors;
+                                                                            return false;
+                                                                            break;
+                                                                          }
+                                                                        }
+                                                                        if (valid10) {
+                                                                          for (const key3 in data31) {
+                                                                            const _errs67 = errors;
+                                                                            if (!validate10(data31[key3], { instancePath: instancePath + "/patternProperties/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data31, parentDataProperty: key3, rootData })) {
+                                                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                              errors = vErrors.length;
+                                                                            }
+                                                                            var valid11 = _errs67 === errors;
+                                                                            if (!valid11) {
+                                                                              break;
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      } else {
+                                                                        validate10.errors = [{ instancePath: instancePath + "/patternProperties", schemaPath: "#/properties/patternProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                        return false;
+                                                                      }
+                                                                    }
+                                                                    var valid0 = _errs63 === errors;
+                                                                  } else {
+                                                                    var valid0 = true;
+                                                                  }
+                                                                  if (valid0) {
+                                                                    if (data.dependencies !== void 0) {
+                                                                      let data33 = data.dependencies;
+                                                                      const _errs68 = errors;
+                                                                      if (errors === _errs68) {
+                                                                        if (data33 && typeof data33 == "object" && !Array.isArray(data33)) {
+                                                                          for (const key4 in data33) {
+                                                                            let data34 = data33[key4];
+                                                                            const _errs71 = errors;
+                                                                            const _errs72 = errors;
+                                                                            let valid13 = false;
+                                                                            const _errs73 = errors;
+                                                                            if (!validate10(data34, { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), parentData: data33, parentDataProperty: key4, rootData })) {
+                                                                              vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                              errors = vErrors.length;
+                                                                            }
+                                                                            var _valid1 = _errs73 === errors;
+                                                                            valid13 = valid13 || _valid1;
+                                                                            if (!valid13) {
+                                                                              const _errs74 = errors;
+                                                                              const _errs75 = errors;
+                                                                              if (errors === _errs75) {
+                                                                                if (Array.isArray(data34)) {
+                                                                                  var valid15 = true;
+                                                                                  const len1 = data34.length;
+                                                                                  for (let i2 = 0; i2 < len1; i2++) {
+                                                                                    const _errs77 = errors;
+                                                                                    if (typeof data34[i2] !== "string") {
+                                                                                      const err3 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1") + "/" + i2, schemaPath: "#/definitions/stringArray/items/type", keyword: "type", params: { type: "string" }, message: "must be string" };
+                                                                                      if (vErrors === null) {
+                                                                                        vErrors = [err3];
+                                                                                      } else {
+                                                                                        vErrors.push(err3);
+                                                                                      }
+                                                                                      errors++;
+                                                                                    }
+                                                                                    var valid15 = _errs77 === errors;
+                                                                                    if (!valid15) {
+                                                                                      break;
+                                                                                    }
+                                                                                  }
+                                                                                  if (valid15) {
+                                                                                    let i3 = data34.length;
+                                                                                    let j1;
+                                                                                    if (i3 > 1) {
+                                                                                      const indices1 = {};
+                                                                                      for (; i3--; ) {
+                                                                                        let item1 = data34[i3];
+                                                                                        if (typeof item1 !== "string") {
+                                                                                          continue;
+                                                                                        }
+                                                                                        if (typeof indices1[item1] == "number") {
+                                                                                          j1 = indices1[item1];
+                                                                                          const err4 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/stringArray/uniqueItems", keyword: "uniqueItems", params: { i: i3, j: j1 }, message: "must NOT have duplicate items (items ## " + j1 + " and " + i3 + " are identical)" };
+                                                                                          if (vErrors === null) {
+                                                                                            vErrors = [err4];
+                                                                                          } else {
+                                                                                            vErrors.push(err4);
+                                                                                          }
+                                                                                          errors++;
+                                                                                          break;
+                                                                                        }
+                                                                                        indices1[item1] = i3;
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                } else {
+                                                                                  const err5 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/definitions/stringArray/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                                                                                  if (vErrors === null) {
+                                                                                    vErrors = [err5];
+                                                                                  } else {
+                                                                                    vErrors.push(err5);
+                                                                                  }
+                                                                                  errors++;
+                                                                                }
+                                                                              }
+                                                                              var _valid1 = _errs74 === errors;
+                                                                              valid13 = valid13 || _valid1;
+                                                                            }
+                                                                            if (!valid13) {
+                                                                              const err6 = { instancePath: instancePath + "/dependencies/" + key4.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/dependencies/additionalProperties/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                                                                              if (vErrors === null) {
+                                                                                vErrors = [err6];
+                                                                              } else {
+                                                                                vErrors.push(err6);
+                                                                              }
+                                                                              errors++;
+                                                                              validate10.errors = vErrors;
+                                                                              return false;
+                                                                            } else {
+                                                                              errors = _errs72;
+                                                                              if (vErrors !== null) {
+                                                                                if (_errs72) {
+                                                                                  vErrors.length = _errs72;
+                                                                                } else {
+                                                                                  vErrors = null;
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                            var valid12 = _errs71 === errors;
+                                                                            if (!valid12) {
+                                                                              break;
+                                                                            }
+                                                                          }
+                                                                        } else {
+                                                                          validate10.errors = [{ instancePath: instancePath + "/dependencies", schemaPath: "#/properties/dependencies/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
+                                                                          return false;
+                                                                        }
+                                                                      }
+                                                                      var valid0 = _errs68 === errors;
+                                                                    } else {
+                                                                      var valid0 = true;
+                                                                    }
+                                                                    if (valid0) {
+                                                                      if (data.propertyNames !== void 0) {
+                                                                        const _errs79 = errors;
+                                                                        if (!validate10(data.propertyNames, { instancePath: instancePath + "/propertyNames", parentData: data, parentDataProperty: "propertyNames", rootData })) {
+                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                          errors = vErrors.length;
+                                                                        }
+                                                                        var valid0 = _errs79 === errors;
+                                                                      } else {
+                                                                        var valid0 = true;
+                                                                      }
+                                                                      if (valid0) {
+                                                                        if (data.enum !== void 0) {
+                                                                          let data37 = data.enum;
+                                                                          const _errs80 = errors;
+                                                                          if (errors === _errs80) {
+                                                                            if (Array.isArray(data37)) {
+                                                                              if (data37.length < 1) {
+                                                                                validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" }];
+                                                                                return false;
+                                                                              } else {
+                                                                                let i4 = data37.length;
+                                                                                let j2;
+                                                                                if (i4 > 1) {
+                                                                                  outer0:
+                                                                                    for (; i4--; ) {
+                                                                                      for (j2 = i4; j2--; ) {
+                                                                                        if (func0(data37[i4], data37[j2])) {
+                                                                                          validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/uniqueItems", keyword: "uniqueItems", params: { i: i4, j: j2 }, message: "must NOT have duplicate items (items ## " + j2 + " and " + i4 + " are identical)" }];
+                                                                                          return false;
+                                                                                          break outer0;
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                }
+                                                                              }
+                                                                            } else {
+                                                                              validate10.errors = [{ instancePath: instancePath + "/enum", schemaPath: "#/properties/enum/type", keyword: "type", params: { type: "array" }, message: "must be array" }];
+                                                                              return false;
+                                                                            }
+                                                                          }
+                                                                          var valid0 = _errs80 === errors;
+                                                                        } else {
+                                                                          var valid0 = true;
+                                                                        }
+                                                                        if (valid0) {
+                                                                          if (data.type !== void 0) {
+                                                                            let data38 = data.type;
+                                                                            const _errs82 = errors;
+                                                                            const _errs83 = errors;
+                                                                            let valid18 = false;
+                                                                            const _errs84 = errors;
+                                                                            if (!(data38 === "array" || data38 === "boolean" || data38 === "integer" || data38 === "null" || data38 === "number" || data38 === "object" || data38 === "string")) {
+                                                                              const err7 = { instancePath: instancePath + "/type", schemaPath: "#/definitions/simpleTypes/enum", keyword: "enum", params: { allowedValues: schema20.enum }, message: "must be equal to one of the allowed values" };
+                                                                              if (vErrors === null) {
+                                                                                vErrors = [err7];
+                                                                              } else {
+                                                                                vErrors.push(err7);
+                                                                              }
+                                                                              errors++;
+                                                                            }
+                                                                            var _valid2 = _errs84 === errors;
+                                                                            valid18 = valid18 || _valid2;
+                                                                            if (!valid18) {
+                                                                              const _errs86 = errors;
+                                                                              if (errors === _errs86) {
+                                                                                if (Array.isArray(data38)) {
+                                                                                  if (data38.length < 1) {
+                                                                                    const err8 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/minItems", keyword: "minItems", params: { limit: 1 }, message: "must NOT have fewer than 1 items" };
+                                                                                    if (vErrors === null) {
+                                                                                      vErrors = [err8];
+                                                                                    } else {
+                                                                                      vErrors.push(err8);
+                                                                                    }
+                                                                                    errors++;
+                                                                                  } else {
+                                                                                    var valid20 = true;
+                                                                                    const len2 = data38.length;
+                                                                                    for (let i5 = 0; i5 < len2; i5++) {
+                                                                                      let data39 = data38[i5];
+                                                                                      const _errs88 = errors;
+                                                                                      if (!(data39 === "array" || data39 === "boolean" || data39 === "integer" || data39 === "null" || data39 === "number" || data39 === "object" || data39 === "string")) {
+                                                                                        const err9 = { instancePath: instancePath + "/type/" + i5, schemaPath: "#/definitions/simpleTypes/enum", keyword: "enum", params: { allowedValues: schema20.enum }, message: "must be equal to one of the allowed values" };
+                                                                                        if (vErrors === null) {
+                                                                                          vErrors = [err9];
+                                                                                        } else {
+                                                                                          vErrors.push(err9);
+                                                                                        }
+                                                                                        errors++;
+                                                                                      }
+                                                                                      var valid20 = _errs88 === errors;
+                                                                                      if (!valid20) {
+                                                                                        break;
+                                                                                      }
+                                                                                    }
+                                                                                    if (valid20) {
+                                                                                      let i6 = data38.length;
+                                                                                      let j3;
+                                                                                      if (i6 > 1) {
+                                                                                        outer1:
+                                                                                          for (; i6--; ) {
+                                                                                            for (j3 = i6; j3--; ) {
+                                                                                              if (func0(data38[i6], data38[j3])) {
+                                                                                                const err10 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/uniqueItems", keyword: "uniqueItems", params: { i: i6, j: j3 }, message: "must NOT have duplicate items (items ## " + j3 + " and " + i6 + " are identical)" };
+                                                                                                if (vErrors === null) {
+                                                                                                  vErrors = [err10];
+                                                                                                } else {
+                                                                                                  vErrors.push(err10);
+                                                                                                }
+                                                                                                errors++;
+                                                                                                break outer1;
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                } else {
+                                                                                  const err11 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf/1/type", keyword: "type", params: { type: "array" }, message: "must be array" };
+                                                                                  if (vErrors === null) {
+                                                                                    vErrors = [err11];
+                                                                                  } else {
+                                                                                    vErrors.push(err11);
+                                                                                  }
+                                                                                  errors++;
+                                                                                }
+                                                                              }
+                                                                              var _valid2 = _errs86 === errors;
+                                                                              valid18 = valid18 || _valid2;
+                                                                            }
+                                                                            if (!valid18) {
+                                                                              const err12 = { instancePath: instancePath + "/type", schemaPath: "#/properties/type/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
+                                                                              if (vErrors === null) {
+                                                                                vErrors = [err12];
+                                                                              } else {
+                                                                                vErrors.push(err12);
+                                                                              }
+                                                                              errors++;
+                                                                              validate10.errors = vErrors;
+                                                                              return false;
+                                                                            } else {
+                                                                              errors = _errs83;
+                                                                              if (vErrors !== null) {
+                                                                                if (_errs83) {
+                                                                                  vErrors.length = _errs83;
+                                                                                } else {
+                                                                                  vErrors = null;
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                            var valid0 = _errs82 === errors;
+                                                                          } else {
+                                                                            var valid0 = true;
+                                                                          }
+                                                                          if (valid0) {
+                                                                            if (data.format !== void 0) {
+                                                                              const _errs90 = errors;
+                                                                              if (typeof data.format !== "string") {
+                                                                                validate10.errors = [{ instancePath: instancePath + "/format", schemaPath: "#/properties/format/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                                                return false;
+                                                                              }
+                                                                              var valid0 = _errs90 === errors;
+                                                                            } else {
+                                                                              var valid0 = true;
+                                                                            }
+                                                                            if (valid0) {
+                                                                              if (data.contentMediaType !== void 0) {
+                                                                                const _errs92 = errors;
+                                                                                if (typeof data.contentMediaType !== "string") {
+                                                                                  validate10.errors = [{ instancePath: instancePath + "/contentMediaType", schemaPath: "#/properties/contentMediaType/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                                                  return false;
+                                                                                }
+                                                                                var valid0 = _errs92 === errors;
+                                                                              } else {
+                                                                                var valid0 = true;
+                                                                              }
+                                                                              if (valid0) {
+                                                                                if (data.contentEncoding !== void 0) {
+                                                                                  const _errs94 = errors;
+                                                                                  if (typeof data.contentEncoding !== "string") {
+                                                                                    validate10.errors = [{ instancePath: instancePath + "/contentEncoding", schemaPath: "#/properties/contentEncoding/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
+                                                                                    return false;
+                                                                                  }
+                                                                                  var valid0 = _errs94 === errors;
+                                                                                } else {
+                                                                                  var valid0 = true;
+                                                                                }
+                                                                                if (valid0) {
+                                                                                  if (data.if !== void 0) {
+                                                                                    const _errs96 = errors;
+                                                                                    if (!validate10(data.if, { instancePath: instancePath + "/if", parentData: data, parentDataProperty: "if", rootData })) {
+                                                                                      vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                                      errors = vErrors.length;
+                                                                                    }
+                                                                                    var valid0 = _errs96 === errors;
+                                                                                  } else {
+                                                                                    var valid0 = true;
+                                                                                  }
+                                                                                  if (valid0) {
+                                                                                    if (data.then !== void 0) {
+                                                                                      const _errs97 = errors;
+                                                                                      if (!validate10(data.then, { instancePath: instancePath + "/then", parentData: data, parentDataProperty: "then", rootData })) {
+                                                                                        vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                                        errors = vErrors.length;
+                                                                                      }
+                                                                                      var valid0 = _errs97 === errors;
+                                                                                    } else {
+                                                                                      var valid0 = true;
+                                                                                    }
+                                                                                    if (valid0) {
+                                                                                      if (data.else !== void 0) {
+                                                                                        const _errs98 = errors;
+                                                                                        if (!validate10(data.else, { instancePath: instancePath + "/else", parentData: data, parentDataProperty: "else", rootData })) {
+                                                                                          vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                                          errors = vErrors.length;
+                                                                                        }
+                                                                                        var valid0 = _errs98 === errors;
+                                                                                      } else {
+                                                                                        var valid0 = true;
+                                                                                      }
+                                                                                      if (valid0) {
+                                                                                        if (data.allOf !== void 0) {
+                                                                                          const _errs99 = errors;
+                                                                                          if (!validate13(data.allOf, { instancePath: instancePath + "/allOf", parentData: data, parentDataProperty: "allOf", rootData })) {
+                                                                                            vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
+                                                                                            errors = vErrors.length;
+                                                                                          }
+                                                                                          var valid0 = _errs99 === errors;
+                                                                                        } else {
+                                                                                          var valid0 = true;
+                                                                                        }
+                                                                                        if (valid0) {
+                                                                                          if (data.anyOf !== void 0) {
+                                                                                            const _errs100 = errors;
+                                                                                            if (!validate13(data.anyOf, { instancePath: instancePath + "/anyOf", parentData: data, parentDataProperty: "anyOf", rootData })) {
+                                                                                              vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
+                                                                                              errors = vErrors.length;
+                                                                                            }
+                                                                                            var valid0 = _errs100 === errors;
+                                                                                          } else {
+                                                                                            var valid0 = true;
+                                                                                          }
+                                                                                          if (valid0) {
+                                                                                            if (data.oneOf !== void 0) {
+                                                                                              const _errs101 = errors;
+                                                                                              if (!validate13(data.oneOf, { instancePath: instancePath + "/oneOf", parentData: data, parentDataProperty: "oneOf", rootData })) {
+                                                                                                vErrors = vErrors === null ? validate13.errors : vErrors.concat(validate13.errors);
+                                                                                                errors = vErrors.length;
+                                                                                              }
+                                                                                              var valid0 = _errs101 === errors;
+                                                                                            } else {
+                                                                                              var valid0 = true;
+                                                                                            }
+                                                                                            if (valid0) {
+                                                                                              if (data.not !== void 0) {
+                                                                                                const _errs102 = errors;
+                                                                                                if (!validate10(data.not, { instancePath: instancePath + "/not", parentData: data, parentDataProperty: "not", rootData })) {
+                                                                                                  vErrors = vErrors === null ? validate10.errors : vErrors.concat(validate10.errors);
+                                                                                                  errors = vErrors.length;
+                                                                                                }
+                                                                                                var valid0 = _errs102 === errors;
+                                                                                              } else {
+                                                                                                var valid0 = true;
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      validate10.errors = vErrors;
+      return errors === 0;
+    }
+  }
+});
+
+// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/errors.js
+var require_errors4 = __commonJS({
+  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/errors.js"(exports2, module2) {
+    "use strict";
+    var MergeError = class extends Error {
+      constructor(keyword, schemas) {
+        super();
+        this.name = "JsonSchemaMergeError";
+        this.code = "JSON_SCHEMA_MERGE_ERROR";
+        this.message = `Failed to merge "${keyword}" keyword schemas.`;
+        this.schemas = schemas;
+      }
+    };
+    var ResolverNotFoundError = class extends Error {
+      constructor(keyword, schemas) {
+        super();
+        this.name = "JsonSchemaMergeError";
+        this.code = "JSON_SCHEMA_MERGE_ERROR";
+        this.message = `Resolver for "${keyword}" keyword not found.`;
+        this.schemas = schemas;
+      }
+    };
+    var InvalidOnConflictOptionError = class extends Error {
+      constructor(onConflict) {
+        super();
+        this.name = "JsonSchemaMergeError";
+        this.code = "JSON_SCHEMA_MERGE_ERROR";
+        this.message = `Invalid "onConflict" option: "${onConflict}".`;
+      }
+    };
+    module2.exports = {
+      MergeError,
+      ResolverNotFoundError,
+      InvalidOnConflictOptionError
+    };
+  }
+});
+
+// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/resolvers.js
+var require_resolvers = __commonJS({
+  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/lib/resolvers.js"(exports2, module2) {
+    "use strict";
+    var { dequal: deepEqual } = require_dist2();
+    var { MergeError } = require_errors4();
+    function _arraysIntersection(arrays) {
+      let intersection = arrays[0];
+      for (let i = 1; i < arrays.length; i++) {
+        intersection = intersection.filter(
+          (value) => arrays[i].includes(value)
+        );
+      }
+      return intersection;
+    }
+    function arraysIntersection(keyword, values, mergedSchema) {
+      const intersection = _arraysIntersection(values);
+      if (intersection.length === 0) {
+        throw new MergeError(keyword, values);
+      }
+      mergedSchema[keyword] = intersection;
+    }
+    function hybridArraysIntersection(keyword, values, mergedSchema) {
+      for (let i = 0; i < values.length; i++) {
+        if (!Array.isArray(values[i])) {
+          values[i] = [values[i]];
+        }
+      }
+      const intersection = _arraysIntersection(values);
+      if (intersection.length === 0) {
+        throw new MergeError(keyword, values);
+      }
+      if (intersection.length === 1) {
+        mergedSchema[keyword] = intersection[0];
+      } else {
+        mergedSchema[keyword] = intersection;
+      }
+    }
+    function arraysUnion(keyword, values, mergedSchema) {
+      const union = [];
+      for (const array of values) {
+        for (const value of array) {
+          if (!union.includes(value)) {
+            union.push(value);
+          }
+        }
+      }
+      mergedSchema[keyword] = union;
+    }
+    function minNumber(keyword, values, mergedSchema) {
+      mergedSchema[keyword] = Math.min(...values);
+    }
+    function maxNumber(keyword, values, mergedSchema) {
+      mergedSchema[keyword] = Math.max(...values);
+    }
+    function commonMultiple(keyword, values, mergedSchema) {
+      const gcd = (a, b) => !b ? a : gcd(b, a % b);
+      const lcm = (a, b) => a * b / gcd(a, b);
+      let scale = 1;
+      for (const value of values) {
+        while (value * scale % 1 !== 0) {
+          scale *= 10;
+        }
+      }
+      let multiple = values[0] * scale;
+      for (const value of values) {
+        multiple = lcm(multiple, value * scale);
+      }
+      mergedSchema[keyword] = multiple / scale;
+    }
+    function allEqual(keyword, values, mergedSchema) {
+      const firstValue = values[0];
+      for (let i = 1; i < values.length; i++) {
+        if (!deepEqual(values[i], firstValue)) {
+          throw new MergeError(keyword, values);
+        }
+      }
+      mergedSchema[keyword] = firstValue;
+    }
+    function skip() {
+    }
+    function booleanAnd(keyword, values, mergedSchema) {
+      for (const value of values) {
+        if (value === false) {
+          mergedSchema[keyword] = false;
+          return;
+        }
+      }
+      mergedSchema[keyword] = true;
+    }
+    function booleanOr(keyword, values, mergedSchema) {
+      for (const value of values) {
+        if (value === true) {
+          mergedSchema[keyword] = true;
+          return;
+        }
+      }
+      mergedSchema[keyword] = false;
+    }
+    module2.exports = {
+      arraysIntersection,
+      hybridArraysIntersection,
+      arraysUnion,
+      minNumber,
+      maxNumber,
+      commonMultiple,
+      allEqual,
+      booleanAnd,
+      booleanOr,
+      skip
+    };
+  }
+});
+
+// node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/index.js
+var require_merge_json_schemas = __commonJS({
+  "node_modules/.pnpm/@fastify+merge-json-schemas@0.2.1/node_modules/@fastify/merge-json-schemas/index.js"(exports2, module2) {
+    "use strict";
+    var { dequal: deepEqual } = require_dist2();
+    var resolvers = require_resolvers();
+    var errors = require_errors4();
+    var keywordsResolvers = {
+      $id: resolvers.skip,
+      type: resolvers.hybridArraysIntersection,
+      enum: resolvers.arraysIntersection,
+      minLength: resolvers.maxNumber,
+      maxLength: resolvers.minNumber,
+      minimum: resolvers.maxNumber,
+      maximum: resolvers.minNumber,
+      multipleOf: resolvers.commonMultiple,
+      exclusiveMinimum: resolvers.maxNumber,
+      exclusiveMaximum: resolvers.minNumber,
+      minItems: resolvers.maxNumber,
+      maxItems: resolvers.minNumber,
+      maxProperties: resolvers.minNumber,
+      minProperties: resolvers.maxNumber,
+      const: resolvers.allEqual,
+      default: resolvers.allEqual,
+      format: resolvers.allEqual,
+      required: resolvers.arraysUnion,
+      properties: mergeProperties,
+      patternProperties: mergeObjects,
+      additionalProperties: mergeSchemasResolver,
+      items: mergeItems,
+      additionalItems: mergeAdditionalItems,
+      definitions: mergeObjects,
+      $defs: mergeObjects,
+      nullable: resolvers.booleanAnd,
+      oneOf: mergeOneOf,
+      anyOf: mergeOneOf,
+      allOf: resolvers.arraysUnion,
+      not: mergeSchemasResolver,
+      if: mergeIfThenElseSchemas,
+      then: resolvers.skip,
+      else: resolvers.skip,
+      dependencies: mergeDependencies,
+      dependentRequired: mergeDependencies,
+      dependentSchemas: mergeObjects,
+      propertyNames: mergeSchemasResolver,
+      uniqueItems: resolvers.booleanOr,
+      contains: mergeSchemasResolver
+    };
+    function mergeSchemasResolver(keyword, values, mergedSchema, _schemas, options) {
+      mergedSchema[keyword] = _mergeSchemas(values, options);
+    }
+    function cartesianProduct(arrays) {
+      let result = [[]];
+      for (const array of arrays) {
+        const temp = [];
+        for (const x of result) {
+          for (const y of array) {
+            temp.push([...x, y]);
+          }
+        }
+        result = temp;
+      }
+      return result;
+    }
+    function mergeOneOf(keyword, values, mergedSchema, _schemas, options) {
+      if (values.length === 1) {
+        mergedSchema[keyword] = values[0];
+        return;
+      }
+      const product = cartesianProduct(values);
+      const mergedOneOf = [];
+      for (const combination of product) {
+        try {
+          const mergedSchema2 = _mergeSchemas(combination, options);
+          if (mergedSchema2 !== void 0) {
+            mergedOneOf.push(mergedSchema2);
+          }
+        } catch (error) {
+          if (error instanceof errors.MergeError) continue;
+          throw error;
+        }
+      }
+      mergedSchema[keyword] = mergedOneOf;
+    }
+    function getSchemaForItem(schema, index) {
+      const { items, additionalItems } = schema;
+      if (Array.isArray(items)) {
+        if (index < items.length) {
+          return items[index];
+        }
+        return additionalItems;
+      }
+      if (items !== void 0) {
+        return items;
+      }
+      return additionalItems;
+    }
+    function mergeItems(keyword, values, mergedSchema, schemas, options) {
+      let maxArrayItemsLength = 0;
+      for (const itemsSchema of values) {
+        if (Array.isArray(itemsSchema)) {
+          maxArrayItemsLength = Math.max(maxArrayItemsLength, itemsSchema.length);
+        }
+      }
+      if (maxArrayItemsLength === 0) {
+        mergedSchema[keyword] = _mergeSchemas(values, options);
+        return;
+      }
+      const mergedItemsSchemas = [];
+      for (let i = 0; i < maxArrayItemsLength; i++) {
+        const indexItemSchemas = [];
+        for (const schema of schemas) {
+          const itemSchema = getSchemaForItem(schema, i);
+          if (itemSchema !== void 0) {
+            indexItemSchemas.push(itemSchema);
+          }
+        }
+        mergedItemsSchemas[i] = _mergeSchemas(indexItemSchemas, options);
+      }
+      mergedSchema[keyword] = mergedItemsSchemas;
+    }
+    function mergeAdditionalItems(keyword, values, mergedSchema, schemas, options) {
+      let hasArrayItems = false;
+      for (const schema of schemas) {
+        if (Array.isArray(schema.items)) {
+          hasArrayItems = true;
+          break;
+        }
+      }
+      if (!hasArrayItems) {
+        mergedSchema[keyword] = _mergeSchemas(values, options);
+        return;
+      }
+      const mergedAdditionalItemsSchemas = [];
+      for (const schema of schemas) {
+        let additionalItemsSchema = schema.additionalItems;
+        if (additionalItemsSchema === void 0 && !Array.isArray(schema.items)) {
+          additionalItemsSchema = schema.items;
+        }
+        if (additionalItemsSchema !== void 0) {
+          mergedAdditionalItemsSchemas.push(additionalItemsSchema);
+        }
+      }
+      mergedSchema[keyword] = _mergeSchemas(mergedAdditionalItemsSchemas, options);
+    }
+    function getSchemaForProperty(schema, propertyName) {
+      const { properties, patternProperties, additionalProperties } = schema;
+      if (properties?.[propertyName] !== void 0) {
+        return properties[propertyName];
+      }
+      for (const pattern of Object.keys(patternProperties ?? {})) {
+        const regexp = new RegExp(pattern);
+        if (regexp.test(propertyName)) {
+          return patternProperties[pattern];
+        }
+      }
+      return additionalProperties;
+    }
+    function mergeProperties(keyword, _values, mergedSchema, schemas, options) {
+      const foundProperties = {};
+      for (const currentSchema of schemas) {
+        const properties = currentSchema.properties ?? {};
+        for (const propertyName of Object.keys(properties)) {
+          if (foundProperties[propertyName] !== void 0) continue;
+          const propertySchema = properties[propertyName];
+          foundProperties[propertyName] = [propertySchema];
+          for (const anotherSchema of schemas) {
+            if (currentSchema === anotherSchema) continue;
+            const propertySchema2 = getSchemaForProperty(anotherSchema, propertyName);
+            if (propertySchema2 !== void 0) {
+              foundProperties[propertyName].push(propertySchema2);
+            }
+          }
+        }
+      }
+      const mergedProperties = {};
+      for (const property of Object.keys(foundProperties)) {
+        const propertySchemas = foundProperties[property];
+        mergedProperties[property] = _mergeSchemas(propertySchemas, options);
+      }
+      mergedSchema[keyword] = mergedProperties;
+    }
+    function mergeObjects(keyword, values, mergedSchema, _schemas, options) {
+      const objectsProperties = {};
+      for (const properties of values) {
+        for (const propertyName of Object.keys(properties)) {
+          if (objectsProperties[propertyName] === void 0) {
+            objectsProperties[propertyName] = [];
+          }
+          objectsProperties[propertyName].push(properties[propertyName]);
+        }
+      }
+      const mergedProperties = {};
+      for (const propertyName of Object.keys(objectsProperties)) {
+        const propertySchemas = objectsProperties[propertyName];
+        const mergedPropertySchema = _mergeSchemas(propertySchemas, options);
+        mergedProperties[propertyName] = mergedPropertySchema;
+      }
+      mergedSchema[keyword] = mergedProperties;
+    }
+    function mergeIfThenElseSchemas(_keyword, _values, mergedSchema, schemas, options) {
+      for (let i = 0; i < schemas.length; i++) {
+        const subSchema = {
+          if: schemas[i].if,
+          then: schemas[i].then,
+          else: schemas[i].else
+        };
+        if (subSchema.if === void 0) continue;
+        if (mergedSchema.if === void 0) {
+          mergedSchema.if = subSchema.if;
+          if (subSchema.then !== void 0) {
+            mergedSchema.then = subSchema.then;
+          }
+          if (subSchema.else !== void 0) {
+            mergedSchema.else = subSchema.else;
+          }
+          continue;
+        }
+        if (mergedSchema.then !== void 0) {
+          mergedSchema.then = _mergeSchemas([mergedSchema.then, subSchema], options);
+        }
+        if (mergedSchema.else !== void 0) {
+          mergedSchema.else = _mergeSchemas([mergedSchema.else, subSchema], options);
+        }
+      }
+    }
+    function mergeDependencies(keyword, values, mergedSchema) {
+      const mergedDependencies = {};
+      for (const dependencies of values) {
+        for (const propertyName of Object.keys(dependencies)) {
+          if (mergedDependencies[propertyName] === void 0) {
+            mergedDependencies[propertyName] = [];
+          }
+          const mergedPropertyDependencies = mergedDependencies[propertyName];
+          for (const propertyDependency of dependencies[propertyName]) {
+            if (!mergedPropertyDependencies.includes(propertyDependency)) {
+              mergedPropertyDependencies.push(propertyDependency);
+            }
+          }
+        }
+      }
+      mergedSchema[keyword] = mergedDependencies;
+    }
+    function _mergeSchemas(schemas, options) {
+      if (schemas.length === 0) return {};
+      if (schemas.length === 1) return schemas[0];
+      const mergedSchema = {};
+      const keywords = {};
+      let allSchemasAreTrue = true;
+      for (const schema of schemas) {
+        if (schema === false) return false;
+        if (schema === true) continue;
+        allSchemasAreTrue = false;
+        for (const keyword of Object.keys(schema)) {
+          if (keywords[keyword] === void 0) {
+            keywords[keyword] = [];
+          }
+          keywords[keyword].push(schema[keyword]);
+        }
+      }
+      if (allSchemasAreTrue) return true;
+      for (const keyword of Object.keys(keywords)) {
+        const keywordValues = keywords[keyword];
+        const resolver = options.resolvers[keyword] ?? options.defaultResolver;
+        resolver(keyword, keywordValues, mergedSchema, schemas, options);
+      }
+      return mergedSchema;
+    }
+    function defaultResolver(keyword, values, mergedSchema, _schemas, options) {
+      const onConflict = options.onConflict ?? "throw";
+      if (values.length === 1 || onConflict === "first") {
+        mergedSchema[keyword] = values[0];
+        return;
+      }
+      let allValuesEqual = true;
+      for (let i = 1; i < values.length; i++) {
+        if (!deepEqual(values[i], values[0])) {
+          allValuesEqual = false;
+          break;
+        }
+      }
+      if (allValuesEqual) {
+        mergedSchema[keyword] = values[0];
+        return;
+      }
+      if (onConflict === "throw") {
+        throw new errors.ResolverNotFoundError(keyword, values);
+      }
+      if (onConflict === "skip") {
+        return;
+      }
+      throw new errors.InvalidOnConflictOptionError(onConflict);
+    }
+    function mergeSchemas(schemas, options = {}) {
+      if (options.defaultResolver === void 0) {
+        options.defaultResolver = defaultResolver;
+      }
+      options.resolvers = { ...keywordsResolvers, ...options.resolvers };
+      const mergedSchema = _mergeSchemas(schemas, options);
+      return mergedSchema;
+    }
+    module2.exports = { mergeSchemas, keywordsResolvers, defaultResolver, ...errors };
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/merge-schemas.js
+var require_merge_schemas = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/merge-schemas.js"(exports2, module2) {
+    "use strict";
+    var { mergeSchemas: _mergeSchemas } = require_merge_json_schemas();
+    function mergeSchemas(schemas) {
+      return _mergeSchemas(schemas, { onConflict: "skip" });
+    }
+    module2.exports = mergeSchemas;
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/standalone.js
+var require_standalone3 = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/lib/standalone.js"(exports2, module2) {
+    "use strict";
+    function buildStandaloneCode(contextFunc, context, serializer, validator) {
+      let ajvDependencyCode = "";
+      if (context.validatorSchemasIds.size > 0) {
+        ajvDependencyCode += "const Validator = require('fast-json-stringify/lib/validator')\n";
+        ajvDependencyCode += `const validatorState = ${JSON.stringify(validator.getState())}
+`;
+        ajvDependencyCode += "const validator = Validator.restoreFromState(validatorState)\n";
+      } else {
+        ajvDependencyCode += "const validator = null\n";
+      }
+      const { schema, ...serializerState } = serializer.getState();
+      return `
+  'use strict'
+
+  const Serializer = require('fast-json-stringify/lib/serializer')
+  const serializerState = ${JSON.stringify(serializerState)}
+  const serializer = Serializer.restoreFromState(serializerState)
+
+  ${ajvDependencyCode}
+
+  module.exports = ${contextFunc.toString()}(validator, serializer)`;
+    }
+    module2.exports = buildStandaloneCode;
+    module2.exports.dependencies = {
+      Serializer: require_serializer(),
+      Validator: require_validator()
+    };
+  }
+});
+
+// node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/index.js
+var require_fast_json_stringify = __commonJS({
+  "node_modules/.pnpm/fast-json-stringify@7.0.1/node_modules/fast-json-stringify/index.js"(exports2, module2) {
+    "use strict";
+    var { RefResolver } = require_json_schema_ref_resolver();
+    var Serializer = require_serializer();
+    var Validator = require_validator();
+    var Location = require_location();
+    var validate = require_schema_validator();
+    var mergeSchemas = require_merge_schemas();
+    var largeArraySize = 2e4;
+    var largeArrayMechanism = "default";
+    var serializerFns = `
+const {
+  asString,
+  asNumber,
+  asBoolean,
+  asDateTime,
+  asDate,
+  asTime,
+  asUnsafeString
+} = serializer
+
+const asInteger = serializer.asInteger.bind(serializer)
+
+`;
+    var validRoundingMethods = /* @__PURE__ */ new Set([
+      "floor",
+      "ceil",
+      "round",
+      "trunc"
+    ]);
+    var validLargeArrayMechanisms = /* @__PURE__ */ new Set([
+      "default",
+      "json-stringify"
+    ]);
+    var schemaIdCounter = 0;
+    function isValidSchema(schema, name) {
+      if (!validate(schema)) {
+        if (name) {
+          name = `"${name}" `;
+        } else {
+          name = "";
+        }
+        const first = validate.errors[0];
+        const err = new Error(`${name}schema is invalid: data${first.instancePath} ${first.message}`);
+        err.errors = isValidSchema.errors;
+        throw err;
+      }
+    }
+    function resolveRef(context, location) {
+      const ref = location.schema.$ref;
+      let hashIndex = ref.indexOf("#");
+      if (hashIndex === -1) {
+        hashIndex = ref.length;
+      }
+      const schemaId = ref.slice(0, hashIndex) || location.schemaId;
+      const jsonPointer = ref.slice(hashIndex) || "#";
+      const schema = context.refResolver.getSchema(schemaId, jsonPointer);
+      if (schema === null) {
+        throw new Error(`Cannot find reference "${ref}"`);
+      }
+      const newLocation = new Location(schema, schemaId, jsonPointer);
+      if (schema.$ref !== void 0) {
+        return resolveRef(context, newLocation);
+      }
+      return newLocation;
+    }
+    function getMergedLocation(context, mergedSchemaId) {
+      const mergedSchema = context.refResolver.getSchema(mergedSchemaId, "#");
+      return new Location(mergedSchema, mergedSchemaId, "#");
+    }
+    function getSchemaId(schema, rootSchemaId) {
+      if (schema.$id && schema.$id.charAt(0) !== "#") {
+        return schema.$id;
+      }
+      return rootSchemaId;
+    }
+    function getSafeSchemaRef(context, location) {
+      let schemaRef = location.getSchemaRef() || "";
+      if (schemaRef.startsWith(context.rootSchemaId)) {
+        schemaRef = schemaRef.replace(context.rootSchemaId, "") || "#";
+      }
+      return schemaRef;
+    }
+    function build(schema, options) {
+      isValidSchema(schema);
+      options = options || {};
+      const context = {
+        functions: [],
+        functionsCounter: 0,
+        functionsNamesBySchema: /* @__PURE__ */ new Map(),
+        options,
+        refResolver: new RefResolver(),
+        rootSchemaId: schema.$id || `__fjs_root_${schemaIdCounter++}`,
+        validatorSchemasIds: /* @__PURE__ */ new Set(),
+        mergedSchemasIds: /* @__PURE__ */ new Map(),
+        recursiveSchemas: /* @__PURE__ */ new Set(),
+        recursivePaths: /* @__PURE__ */ new Set(),
+        buildingSet: /* @__PURE__ */ new Set(),
+        uid: 0
+      };
+      const schemaId = getSchemaId(schema, context.rootSchemaId);
+      if (!context.refResolver.hasSchema(schemaId)) {
+        context.refResolver.addSchema(schema, context.rootSchemaId);
+      }
+      if (options.schema) {
+        for (const key in options.schema) {
+          const schema2 = options.schema[key];
+          const schemaId2 = getSchemaId(schema2, key);
+          if (!context.refResolver.hasSchema(schemaId2)) {
+            isValidSchema(schema2, key);
+            context.refResolver.addSchema(schema2, key);
+          }
+        }
+      }
+      if (options.rounding) {
+        if (!validRoundingMethods.has(options.rounding)) {
+          throw new Error(`Unsupported integer rounding method ${options.rounding}`);
+        }
+      }
+      if (options.largeArrayMechanism) {
+        if (validLargeArrayMechanisms.has(options.largeArrayMechanism)) {
+          largeArrayMechanism = options.largeArrayMechanism;
+        } else {
+          throw new Error(`Unsupported large array mechanism ${options.largeArrayMechanism}`);
+        }
+      }
+      if (options.largeArraySize) {
+        const largeArraySizeType = typeof options.largeArraySize;
+        let parsedNumber;
+        if (largeArraySizeType === "string" && Number.isFinite(parsedNumber = Number.parseInt(options.largeArraySize, 10))) {
+          largeArraySize = parsedNumber;
+        } else if (largeArraySizeType === "number" && Number.isInteger(options.largeArraySize)) {
+          largeArraySize = options.largeArraySize;
+        } else if (largeArraySizeType === "bigint") {
+          largeArraySize = Number(options.largeArraySize);
+        } else {
+          throw new Error(`Unsupported large array size. Expected integer-like, got ${typeof options.largeArraySize} with value ${options.largeArraySize}`);
+        }
+      }
+      const location = new Location(schema, context.rootSchemaId);
+      detectRecursiveSchemas(context, location);
+      const code = buildValue(context, location, "input");
+      let contextFunctionCode = `
+    ${serializerFns}
+    const JSON_STR_BEGIN_OBJECT = '{'
+    const JSON_STR_END_OBJECT = '}'
+    const JSON_STR_BEGIN_ARRAY = '['
+    const JSON_STR_END_ARRAY = ']'
+    const JSON_STR_COMMA = ','
+    const JSON_STR_COLONS = ':'
+    const JSON_STR_QUOTE = '"'
+    const JSON_STR_EMPTY_OBJECT = JSON_STR_BEGIN_OBJECT + JSON_STR_END_OBJECT
+    const JSON_STR_EMPTY_ARRAY = JSON_STR_BEGIN_ARRAY + JSON_STR_END_ARRAY
+    const JSON_STR_EMPTY_STRING = JSON_STR_QUOTE + JSON_STR_QUOTE
+    const JSON_STR_NULL = 'null'
+  `;
+      if (code === "json += anonymous0(input)") {
+        contextFunctionCode += `
+    ${context.functions.join("\n")}
+    const main = anonymous0
+    return main
+    `;
+      } else {
+        contextFunctionCode += `
+    function main (input) {
+      let json = ''
+      ${code}
+      return json
+    }
+    ${context.functions.join("\n")}
+    return main
+    `;
+      }
+      const serializer = new Serializer(options);
+      const validator = new Validator(options.ajv);
+      for (const schemaId2 of context.validatorSchemasIds) {
+        const schema2 = context.refResolver.getSchema(schemaId2);
+        validator.addSchema(schema2, schemaId2);
+        const dependencies = context.refResolver.getSchemaDependencies(schemaId2);
+        for (const [schemaId3, schema3] of Object.entries(dependencies)) {
+          validator.addSchema(schema3, schemaId3);
+        }
+      }
+      if (options.mode === "debug") {
+        return {
+          validator,
+          serializer,
+          code: `validator
+serializer
+${contextFunctionCode}`,
+          ajv: validator.ajv
+        };
+      }
+      const contextFunc = new Function("validator", "serializer", contextFunctionCode);
+      if (options.mode === "standalone") {
+        const buildStandaloneCode = require_standalone3();
+        return buildStandaloneCode(contextFunc, context, serializer, validator);
+      }
+      return contextFunc(validator, serializer);
+    }
+    var objectKeywords = [
+      "properties",
+      "required",
+      "additionalProperties",
+      "patternProperties",
+      "maxProperties",
+      "minProperties",
+      "dependencies"
+    ];
+    var arrayKeywords = [
+      "items",
+      "additionalItems",
+      "maxItems",
+      "minItems",
+      "uniqueItems",
+      "contains"
+    ];
+    var stringKeywords = [
+      "maxLength",
+      "minLength",
+      "pattern"
+    ];
+    var numberKeywords = [
+      "multipleOf",
+      "maximum",
+      "exclusiveMaximum",
+      "minimum",
+      "exclusiveMinimum"
+    ];
+    function inferTypeByKeyword(schema) {
+      for (const keyword of objectKeywords) {
+        if (keyword in schema) return "object";
+      }
+      for (const keyword of arrayKeywords) {
+        if (keyword in schema) return "array";
+      }
+      for (const keyword of stringKeywords) {
+        if (keyword in schema) return "string";
+      }
+      for (const keyword of numberKeywords) {
+        if (keyword in schema) return "number";
+      }
+      return schema.type;
+    }
+    function buildExtraObjectPropertiesSerializer(context, location, addComma, objVar) {
+      const schema = location.schema;
+      const propertiesKeys = Object.keys(schema.properties || {});
+      let code = `
+    for (const key of Object.keys(${objVar})) {
+      if (
+        ${propertiesKeys.length > 0 ? propertiesKeys.map((k) => `key === ${JSON.stringify(k)}`).join(" || ") + " ||" : ""}
+        ${objVar}[key] === undefined ||
+        typeof ${objVar}[key] === 'function' ||
+        typeof ${objVar}[key] === 'symbol'
+      ) continue
+      const value = ${objVar}[key]
+  `;
+      const patternPropertiesLocation = location.getPropertyLocation("patternProperties");
+      const patternPropertiesSchema = patternPropertiesLocation.schema;
+      if (patternPropertiesSchema !== void 0) {
+        for (const propertyKey in patternPropertiesSchema) {
+          const propertyLocation = patternPropertiesLocation.getPropertyLocation(propertyKey);
+          code += `
+        if (/${propertyKey.replace(/\\*\//g, "\\/")}/.test(key)) {
+          ${addComma}
+          json += asString(key) + JSON_STR_COLONS
+          ${buildValue(context, propertyLocation, "value")}
+          continue
+        }
+      `;
+        }
+      }
+      const additionalPropertiesLocation = location.getPropertyLocation("additionalProperties");
+      const additionalPropertiesSchema = additionalPropertiesLocation.schema;
+      if (additionalPropertiesSchema !== void 0) {
+        if (additionalPropertiesSchema === true) {
+          code += `
+        ${addComma}
+        json += asString(key) + JSON_STR_COLONS + JSON.stringify(value)
+      `;
+        } else {
+          const propertyLocation = location.getPropertyLocation("additionalProperties");
+          code += `
+        ${addComma}
+        json += asString(key) + JSON_STR_COLONS
+        ${buildValue(context, propertyLocation, "value")}
+      `;
+        }
+      }
+      code += `
+    }
+  `;
+      return code;
+    }
+    function buildInnerObject(context, location, objVar) {
+      const schema = location.schema;
+      const propertiesLocation = location.getPropertyLocation("properties");
+      const requiredProperties = schema.required || [];
+      const propertiesKeys = Object.keys(schema.properties || {}).sort(
+        (key1, key2) => {
+          const required1 = requiredProperties.includes(key1);
+          const required2 = requiredProperties.includes(key2);
+          return required1 === required2 ? 0 : required1 ? -1 : 1;
+        }
+      );
+      let code = "";
+      for (const key of requiredProperties) {
+        if (!propertiesKeys.includes(key)) {
+          const sanitizedKey = JSON.stringify(key);
+          code += `if (${objVar}[${sanitizedKey}] === undefined) throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
+`;
+        }
+      }
+      code += "json += JSON_STR_BEGIN_OBJECT\n";
+      const localUid = context.uid++;
+      let addComma = "";
+      if (propertiesKeys.length > 0 && requiredProperties.includes(propertiesKeys[0])) {
+        for (let i = 0; i < propertiesKeys.length; i++) {
+          const key = propertiesKeys[i];
+          const propertyLocation = propertiesLocation.getPropertyLocation(key);
+          let resolvedLocation = propertyLocation;
+          if (propertyLocation.schema.$ref) {
+            resolvedLocation = resolveRef(context, propertyLocation);
+          }
+          const sanitizedKey = JSON.stringify(key);
+          const value = `value_${key.replace(/[^a-zA-Z0-9]/g, "_")}_${context.uid++}`;
+          const defaultValue = resolvedLocation.schema.default;
+          const isRequired = requiredProperties.includes(key);
+          const currentAddComma = i === 0 ? "" : "json += JSON_STR_COMMA";
+          code += `
+      const ${value} = ${objVar}[${sanitizedKey}]
+      if (${value} !== undefined) {
+        ${currentAddComma}
+        json += ${JSON.stringify(sanitizedKey + ":")}
+        ${buildValue(context, resolvedLocation, `${value}`)}
+      }`;
+          if (defaultValue !== void 0) {
+            code += ` else {
+        ${currentAddComma}
+        json += ${JSON.stringify(sanitizedKey + ":" + JSON.stringify(defaultValue))}
+      }
+      `;
+          } else if (isRequired) {
+            code += ` else {
+        throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
+      }
+      `;
+          } else {
+            code += "\n";
+          }
+        }
+        addComma = "json += JSON_STR_COMMA";
+      } else {
+        const needsRuntimeComma = propertiesKeys.length > 1 || schema.patternProperties || schema.additionalProperties !== void 0 && schema.additionalProperties !== false;
+        if (needsRuntimeComma) {
+          code += `let addComma_${localUid} = false
+`;
+          addComma = `!addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)`;
+        }
+        for (const key of propertiesKeys) {
+          let propertyLocation = propertiesLocation.getPropertyLocation(key);
+          if (propertyLocation.schema.$ref) {
+            propertyLocation = resolveRef(context, propertyLocation);
+          }
+          const sanitizedKey = JSON.stringify(key);
+          const value = `value_${key.replace(/[^a-zA-Z0-9]/g, "_")}_${context.uid++}`;
+          const defaultValue = propertyLocation.schema.default;
+          const isRequired = requiredProperties.includes(key);
+          code += `
+          const ${value} = ${objVar}[${sanitizedKey}]
+          if (${value} !== undefined) {
+            ${addComma}
+            json += ${JSON.stringify(sanitizedKey + ":")}
+            ${buildValue(context, propertyLocation, `${value}`)}
+          }`;
+          if (defaultValue !== void 0) {
+            code += ` else {
+            ${addComma}
+            json += ${JSON.stringify(sanitizedKey + ":" + JSON.stringify(defaultValue))}
+          }
+          `;
+          } else if (isRequired) {
+            code += ` else {
+            throw new Error('${sanitizedKey.replace(/'/g, "\\'")} is required!')
+          }
+          `;
+          } else {
+            code += "\n";
+          }
+        }
+      }
+      if (schema.patternProperties || schema.additionalProperties) {
+        code += buildExtraObjectPropertiesSerializer(context, location, addComma, objVar);
+      }
+      code += `
+    json += JSON_STR_END_OBJECT
+  `;
+      return code;
+    }
+    function mergeLocations(context, mergedSchemaId, mergedLocations) {
+      for (let i = 0, mergedLocationsLength = mergedLocations.length; i < mergedLocationsLength; i++) {
+        const location = mergedLocations[i];
+        const schema = location.schema;
+        if (schema.$ref) {
+          mergedLocations[i] = resolveRef(context, location);
+        }
+      }
+      const mergedSchemas = [];
+      for (const location of mergedLocations) {
+        const schema = cloneOriginSchema(context, location.schema, location.schemaId);
+        delete schema.$id;
+        mergedSchemas.push(schema);
+      }
+      const mergedSchema = mergeSchemas(mergedSchemas);
+      const mergedLocation = new Location(mergedSchema, mergedSchemaId);
+      context.refResolver.addSchema(mergedSchema, mergedSchemaId);
+      return mergedLocation;
+    }
+    function cloneOriginSchema(context, schema, schemaId) {
+      const clonedSchema = Array.isArray(schema) ? [] : {};
+      if (schema.$id !== void 0 && schema.$id.charAt(0) !== "#") {
+        schemaId = schema.$id;
+      }
+      const mergedSchemaRef = context.mergedSchemasIds.get(schema);
+      if (mergedSchemaRef) {
+        context.mergedSchemasIds.set(clonedSchema, mergedSchemaRef);
+      }
+      for (const key in schema) {
+        let value = schema[key];
+        if (key === "$ref" && typeof value === "string" && value.charAt(0) === "#") {
+          value = schemaId + value;
+        }
+        if (typeof value === "object" && value !== null) {
+          value = cloneOriginSchema(context, value, schemaId);
+        }
+        clonedSchema[key] = value;
+      }
+      return clonedSchema;
+    }
+    function toJSON(variableName) {
+      return `(${variableName} && typeof ${variableName}.toJSON === 'function')
+    ? ${variableName}.toJSON()
+    : ${variableName}
+  `;
+    }
+    function buildObject(context, location, input) {
+      const schema = location.schema;
+      if (context.functionsNamesBySchema.has(schema)) {
+        const funcName = context.functionsNamesBySchema.get(schema);
+        return `json += ${funcName}(${input})`;
+      }
+      const nullable = schema.nullable === true;
+      const schemaId = location.schemaId || "";
+      const jsonPointer = location.jsonPointer || "";
+      const fullPath = `${schemaId}#${jsonPointer}`;
+      if (context.recursivePaths.has(fullPath) || context.buildingSet.has(schema) || schemaId !== "") {
+        const functionName = generateFuncName(context);
+        context.functionsNamesBySchema.set(schema, functionName);
+        const schemaRef = getSafeSchemaRef(context, location);
+        const functionCode = `
+      // ${schemaRef}
+      function ${functionName} (input) {
+        const obj = ${toJSON("input")}
+        if (obj === null) return ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_OBJECT"}
+        let json = ''
+
+        ${buildInnerObject(context, location, "obj")}
+        return json
+      }
+    `;
+        context.functions.push(functionCode);
+        return `json += ${functionName}(${input})`;
+      }
+      context.buildingSet.add(schema);
+      const objVar = `obj_${context.uid++}`;
+      const code = `
+    const ${objVar} = ${toJSON(input)}
+    if (${objVar} === null) {
+      json += ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_OBJECT"}
+    } else {
+      ${buildInnerObject(context, location, objVar)}
+    }
+  `;
+      context.buildingSet.delete(schema);
+      return code;
+    }
+    function buildArray(context, location, input) {
+      const schema = location.schema;
+      let itemsLocation = location.getPropertyLocation("items");
+      itemsLocation.schema = itemsLocation.schema || {};
+      if (itemsLocation.schema.$ref) {
+        itemsLocation = resolveRef(context, itemsLocation);
+      }
+      const itemsSchema = itemsLocation.schema;
+      if (context.functionsNamesBySchema.has(schema)) {
+        const funcName = context.functionsNamesBySchema.get(schema);
+        return `json += ${funcName}(${input})`;
+      }
+      const nullable = schema.nullable === true;
+      const schemaId = location.schemaId || "";
+      const jsonPointer = location.jsonPointer || "";
+      const fullPath = `${schemaId}#${jsonPointer}`;
+      if (context.recursivePaths.has(fullPath) || context.buildingSet.has(schema) || schemaId !== "") {
+        const functionName = generateFuncName(context);
+        context.functionsNamesBySchema.set(schema, functionName);
+        const schemaRef = getSafeSchemaRef(context, location);
+        let functionCode = `
+    function ${functionName} (obj) {
+      // ${schemaRef}
+      let json = ''
+  `;
+        functionCode += `
+    if (obj === null) return ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_ARRAY"}
+    if (!Array.isArray(obj)) {
+      throw new TypeError(\`The value of '${schemaRef}' does not match schema definition.\`)
+    }
+    const arrayLength = obj.length
+  `;
+        if (!schema.additionalItems && Array.isArray(itemsSchema)) {
+          functionCode += `
+      if (arrayLength > ${itemsSchema.length}) {
+        throw new Error(\`Item at ${itemsSchema.length} does not match schema definition.\`)
+      }
+    `;
+        }
+        if (largeArrayMechanism === "json-stringify") {
+          functionCode += `if (arrayLength >= ${largeArraySize}) return JSON.stringify(obj)
+`;
+        }
+        functionCode += `
+    json += JSON_STR_BEGIN_ARRAY
+  `;
+        if (Array.isArray(itemsSchema)) {
+          for (let i = 0, itemsSchemaLength = itemsSchema.length; i < itemsSchemaLength; i++) {
+            let item = itemsSchema[i];
+            let itemLocation = itemsLocation.getPropertyLocation(i);
+            if (itemLocation.schema.$ref) {
+              itemLocation = resolveRef(context, itemLocation);
+              item = itemLocation.schema;
+            }
+            const value = `value_${i}`;
+            functionCode += `const ${value} = obj[${i}]`;
+            const tmpRes = buildValue(context, itemLocation, value);
+            functionCode += `
+        if (${i} < arrayLength) {
+          if (${buildArrayTypeCondition(item.type, value)}) {
+            if (${i}) {
+              json += JSON_STR_COMMA
+            }
+            ${tmpRes}
+          } else {
+            throw new Error(\`Item at ${i} does not match schema definition.\`)
+          }
+        }
+        `;
+          }
+          if (schema.additionalItems) {
+            functionCode += `
+        for (let i = ${itemsSchema.length}; i < arrayLength; i++) {
+          if (i) {
+            json += JSON_STR_COMMA
+          }
+          json += JSON.stringify(obj[i])
+        }`;
+          }
+        } else {
+          const code = buildValue(context, itemsLocation, "value");
+          functionCode += `
+      if (arrayLength > 0) {
+        const value = obj[0]
+        ${code}
+        for (let i = 1; i < arrayLength; i++) {
+          json += JSON_STR_COMMA
+          const value = obj[i]
+          ${code}
+        }
+      }`;
+        }
+        functionCode += `
+      return json + JSON_STR_END_ARRAY
+    }`;
+        context.functions.push(functionCode);
+        return `json += ${functionName}(${input})`;
+      }
+      context.buildingSet.add(schema);
+      const safeSchemaRef = getSafeSchemaRef(context, location);
+      const objVar = `obj_${context.uid++}`;
+      let inlinedCode = `
+    const ${objVar} = ${input}
+    if (${objVar} === null) {
+      json += ${nullable ? "JSON_STR_NULL" : "JSON_STR_EMPTY_ARRAY"}
+    } else if (!Array.isArray(${objVar})) {
+      throw new TypeError(\`The value of '${safeSchemaRef}' does not match schema definition.\`)
+    } else {
+      const arrayLength_${objVar} = ${objVar}.length
+  `;
+      if (!schema.additionalItems && Array.isArray(itemsSchema)) {
+        inlinedCode += `
+      if (arrayLength_${objVar} > ${itemsSchema.length}) {
+        throw new Error(\`Item at ${itemsSchema.length} does not match schema definition.\`)
+      }
+    `;
+      }
+      if (largeArrayMechanism === "json-stringify") {
+        inlinedCode += `if (arrayLength_${objVar} >= ${largeArraySize}) json += JSON.stringify(${objVar})
+ else {`;
+      }
+      inlinedCode += `
+    json += JSON_STR_BEGIN_ARRAY
+  `;
+      if (Array.isArray(itemsSchema)) {
+        const localUid = context.uid++;
+        inlinedCode += `let addComma_${localUid} = false
+`;
+        for (let i = 0, itemsSchemaLength = itemsSchema.length; i < itemsSchemaLength; i++) {
+          let item = itemsSchema[i];
+          let itemLocation = itemsLocation.getPropertyLocation(i);
+          if (itemLocation.schema.$ref) {
+            itemLocation = resolveRef(context, itemLocation);
+            item = itemLocation.schema;
+          }
+          const value = `value_${i}_${context.uid++}`;
+          inlinedCode += `const ${value} = ${objVar}[${i}]`;
+          const tmpRes = buildValue(context, itemLocation, value);
+          inlinedCode += `
+        if (${i} < arrayLength_${objVar}) {
+          if (${buildArrayTypeCondition(item.type, value)}) {
+            !addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)
+            ${tmpRes}
+          } else {
+            throw new Error(\`Item at ${i} does not match schema definition.\`)
+          }
+        }
+        `;
+        }
+        if (schema.additionalItems) {
+          inlinedCode += `
+        for (let i = ${itemsSchema.length}; i < arrayLength_${objVar}; i++) {
+          !addComma_${localUid} && (addComma_${localUid} = true) || (json += JSON_STR_COMMA)
+          json += JSON.stringify(${objVar}[i])
+        }`;
+        }
+      } else {
+        const code = buildValue(context, itemsLocation, "value");
+        inlinedCode += `
+      if (arrayLength_${objVar} > 0) {
+        const value = ${objVar}[0]
+        ${code}
+        for (let i = 1; i < arrayLength_${objVar}; i++) {
+          json += JSON_STR_COMMA
+          const value = ${objVar}[i]
+          ${code}
+        }
+      }`;
+      }
+      inlinedCode += `
+    json += JSON_STR_END_ARRAY
+  `;
+      if (largeArrayMechanism === "json-stringify") {
+        inlinedCode += "}";
+      }
+      inlinedCode += "}";
+      context.buildingSet.delete(schema);
+      return inlinedCode;
+    }
+    function buildArrayTypeCondition(type, accessor) {
+      let condition;
+      switch (type) {
+        case "null":
+          condition = `${accessor} === null`;
+          break;
+        case "string":
+          condition = `typeof ${accessor} === 'string' ||
+      ${accessor} === null ||
+      ${accessor} instanceof Date ||
+      ${accessor} instanceof RegExp ||
+      (
+        typeof ${accessor} === "object" &&
+        typeof ${accessor}.toString === "function" &&
+        ${accessor}.toString !== Object.prototype.toString
+      )`;
+          break;
+        case "integer":
+          condition = `Number.isInteger(${accessor})`;
+          break;
+        case "number":
+          condition = `Number.isFinite(${accessor})`;
+          break;
+        case "boolean":
+          condition = `typeof ${accessor} === 'boolean'`;
+          break;
+        case "object":
+          condition = `${accessor} && typeof ${accessor} === 'object' && ${accessor}.constructor === Object`;
+          break;
+        case "array":
+          condition = `Array.isArray(${accessor})`;
+          break;
+        default:
+          if (Array.isArray(type)) {
+            const conditions = type.map((subType) => {
+              return buildArrayTypeCondition(subType, accessor);
+            });
+            condition = `(${conditions.join(" || ")})`;
+          }
+      }
+      return condition;
+    }
+    function generateFuncName(context) {
+      return "anonymous" + context.functionsCounter++;
+    }
+    function buildMultiTypeSerializer(context, location, input) {
+      const schema = location.schema;
+      const types = schema.type.sort((t1) => t1 === "null" ? -1 : 1);
+      let code = "";
+      types.forEach((type, index) => {
+        location.schema = { ...location.schema, type };
+        const nestedResult = buildSingleTypeSerializer(context, location, input);
+        const statement = index === 0 ? "if" : "else if";
+        switch (type) {
+          case "null":
+            code += `
+          ${statement} (${input} === null) {
+            ${nestedResult}
+          }
+          `;
+            break;
+          case "string": {
+            code += `
+          ${statement}(
+            typeof ${input} === "string" ||
+            ${input} === null ||
+            ${input} instanceof Date ||
+            ${input} instanceof RegExp ||
+            (
+              typeof ${input} === "object" &&
+              typeof ${input}.toString === "function" &&
+              ${input}.toString !== Object.prototype.toString
+            )
+          ) {
+            ${nestedResult}
+          }
+        `;
+            break;
+          }
+          case "array": {
+            code += `
+          ${statement}(Array.isArray(${input})) {
+            ${nestedResult}
+          }
+        `;
+            break;
+          }
+          case "integer": {
+            code += `
+          ${statement}(Number.isInteger(${input}) || ${input} === null) {
+            ${nestedResult}
+          }
+        `;
+            break;
+          }
+          default: {
+            code += `
+          ${statement}(typeof ${input} === "${type}" || ${input} === null) {
+            ${nestedResult}
+          }
+        `;
+            break;
+          }
+        }
+      });
+      code += `
+    else throw new TypeError(\`The value of '${getSafeSchemaRef(context, location)}' does not match schema definition.\`)
+  `;
+      return code;
+    }
+    function buildSingleTypeSerializer(context, location, input) {
+      const schema = location.schema;
+      switch (schema.type) {
+        case "null":
+          return "json += JSON_STR_NULL";
+        case "string": {
+          if (schema.format === "date-time") {
+            return `json += asDateTime(${input})`;
+          } else if (schema.format === "date") {
+            return `json += asDate(${input})`;
+          } else if (schema.format === "time") {
+            return `json += asTime(${input})`;
+          } else if (schema.format === "unsafe") {
+            return `json += asUnsafeString(${input})`;
+          } else {
+            return `
+        if (typeof ${input} !== 'string') {
+          if (${input} === null) {
+            json += JSON_STR_EMPTY_STRING
+          } else if (${input} instanceof Date) {
+            json += JSON_STR_QUOTE + ${input}.toISOString() + JSON_STR_QUOTE
+          } else if (${input} instanceof RegExp) {
+            json += asString(${input}.source)
+          } else {
+            json += asString(${input}.toString())
+          }
+        } else {
+          json += asString(${input})
+        }
+        `;
+          }
+        }
+        case "integer":
+          return `json += asInteger(${input})`;
+        case "number":
+          return `json += asNumber(${input})`;
+        case "boolean":
+          return `json += asBoolean(${input})`;
+        case "object": {
+          return buildObject(context, location, input);
+        }
+        case "array": {
+          return buildArray(context, location, input);
+        }
+        case void 0:
+          return `json += JSON.stringify(${input})`;
+        default:
+          throw new Error(`${schema.type} unsupported`);
+      }
+    }
+    function detectRecursiveSchemas(context, location) {
+      const pathStack = /* @__PURE__ */ new Set();
+      function traverse(location2) {
+        const schema = location2.schema;
+        if (typeof schema !== "object" || schema === null) return;
+        const schemaId = location2.schemaId || "";
+        const jsonPointer = location2.jsonPointer || "";
+        const fullPath = `${schemaId}#${jsonPointer}`;
+        if (pathStack.has(fullPath)) {
+          let inCycle = false;
+          for (const p of pathStack) {
+            if (p === fullPath) inCycle = true;
+            if (inCycle) context.recursivePaths.add(p);
+          }
+          context.recursivePaths.add(fullPath);
+          return;
+        }
+        pathStack.add(fullPath);
+        if (schema.$ref) {
+          try {
+            const res = resolveRef(context, location2);
+            traverse(res);
+          } catch (err) {
+          }
+        }
+        if (schema.properties) {
+          const propertiesLocation = location2.getPropertyLocation("properties");
+          for (const key in schema.properties) {
+            traverse(propertiesLocation.getPropertyLocation(key));
+          }
+        }
+        if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+          traverse(location2.getPropertyLocation("additionalProperties"));
+        }
+        if (schema.patternProperties) {
+          const patternPropertiesLocation = location2.getPropertyLocation("patternProperties");
+          for (const key in schema.patternProperties) {
+            traverse(patternPropertiesLocation.getPropertyLocation(key));
+          }
+        }
+        if (schema.items) {
+          const itemsLocation = location2.getPropertyLocation("items");
+          if (Array.isArray(schema.items)) {
+            for (let i = 0; i < schema.items.length; i++) {
+              traverse(itemsLocation.getPropertyLocation(i));
+            }
+          } else {
+            traverse(itemsLocation);
+          }
+        }
+        if (schema.additionalItems && typeof schema.additionalItems === "object") {
+          traverse(location2.getPropertyLocation("additionalItems"));
+        }
+        if (schema.oneOf) {
+          const oneOfLocation = location2.getPropertyLocation("oneOf");
+          for (let i = 0; i < schema.oneOf.length; i++) {
+            traverse(oneOfLocation.getPropertyLocation(i));
+          }
+        }
+        if (schema.anyOf) {
+          const anyOfLocation = location2.getPropertyLocation("anyOf");
+          for (let i = 0; i < schema.anyOf.length; i++) {
+            traverse(anyOfLocation.getPropertyLocation(i));
+          }
+        }
+        if (schema.allOf) {
+          const allOfLocation = location2.getPropertyLocation("allOf");
+          for (let i = 0; i < schema.allOf.length; i++) {
+            traverse(allOfLocation.getPropertyLocation(i));
+          }
+        }
+        if (schema.then) traverse(location2.getPropertyLocation("then"));
+        if (schema.else) traverse(location2.getPropertyLocation("else"));
+        pathStack.delete(fullPath);
+      }
+      traverse(location);
+    }
+    function buildConstSerializer(location, input) {
+      const schema = location.schema;
+      const type = schema.type;
+      const hasNullType = Array.isArray(type) && type.includes("null");
+      let code = "";
+      if (hasNullType) {
+        code += `
+      if (${input} === null) {
+        json += JSON_STR_NULL
+      } else {
+    `;
+      }
+      code += `json += ${JSON.stringify(JSON.stringify(schema.const))}`;
+      if (hasNullType) {
+        code += `
+      }
+    `;
+      }
+      return code;
+    }
+    function buildAllOf(context, location, input) {
+      const schema = location.schema;
+      let mergedSchemaId = context.mergedSchemasIds.get(schema);
+      if (mergedSchemaId) {
+        const mergedLocation2 = getMergedLocation(context, mergedSchemaId);
+        return buildValue(context, mergedLocation2, input);
+      }
+      mergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
+      context.mergedSchemasIds.set(schema, mergedSchemaId);
+      const { allOf, ...schemaWithoutAllOf } = location.schema;
+      const locations = [
+        new Location(
+          schemaWithoutAllOf,
+          location.schemaId,
+          location.jsonPointer
+        )
+      ];
+      const allOfsLocation = location.getPropertyLocation("allOf");
+      for (let i = 0, allOfLength = allOf.length; i < allOfLength; i++) {
+        locations.push(allOfsLocation.getPropertyLocation(i));
+      }
+      const mergedLocation = mergeLocations(context, mergedSchemaId, locations);
+      return buildValue(context, mergedLocation, input);
+    }
+    function buildOneOf(context, location, input) {
+      context.validatorSchemasIds.add(location.schemaId);
+      const schema = location.schema;
+      const type = schema.anyOf ? "anyOf" : "oneOf";
+      const { [type]: oneOfs, ...schemaWithoutAnyOf } = location.schema;
+      const locationWithoutOneOf = new Location(
+        schemaWithoutAnyOf,
+        location.schemaId,
+        location.jsonPointer
+      );
+      const oneOfsLocation = location.getPropertyLocation(type);
+      let code = "";
+      for (let index = 0, oneOfsLength = oneOfs.length; index < oneOfsLength; index++) {
+        const optionLocation = oneOfsLocation.getPropertyLocation(index);
+        const optionSchema = optionLocation.schema;
+        let mergedSchemaId = context.mergedSchemasIds.get(optionSchema);
+        let mergedLocation = null;
+        if (mergedSchemaId) {
+          mergedLocation = getMergedLocation(context, mergedSchemaId);
+        } else {
+          mergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
+          context.mergedSchemasIds.set(optionSchema, mergedSchemaId);
+          mergedLocation = mergeLocations(context, mergedSchemaId, [
+            locationWithoutOneOf,
+            optionLocation
+          ]);
+        }
+        const nestedResult = buildValue(context, mergedLocation, input);
+        const schemaRef = optionLocation.getSchemaRef();
+        code += `
+      ${index === 0 ? "if" : "else if"}(validator.validate("${schemaRef}", ${input})) {
+        ${nestedResult}
+      }
+    `;
+      }
+      code += `
+    else throw new TypeError(\`The value of '${getSafeSchemaRef(context, location)}' does not match schema definition.\`)
+  `;
+      return code;
+    }
+    function buildIfThenElse(context, location, input) {
+      context.validatorSchemasIds.add(location.schemaId);
+      const {
+        if: ifSchema,
+        then: thenSchema,
+        else: elseSchema,
+        ...schemaWithoutIfThenElse
+      } = location.schema;
+      const rootLocation = new Location(
+        schemaWithoutIfThenElse,
+        location.schemaId,
+        location.jsonPointer
+      );
+      const ifLocation = location.getPropertyLocation("if");
+      const ifSchemaRef = ifLocation.getSchemaRef();
+      const thenLocation = location.getPropertyLocation("then");
+      let thenMergedSchemaId = context.mergedSchemasIds.get(thenSchema);
+      let thenMergedLocation = null;
+      if (thenMergedSchemaId) {
+        thenMergedLocation = getMergedLocation(context, thenMergedSchemaId);
+      } else {
+        thenMergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
+        context.mergedSchemasIds.set(thenSchema, thenMergedSchemaId);
+        thenMergedLocation = mergeLocations(context, thenMergedSchemaId, [
+          rootLocation,
+          thenLocation
+        ]);
+      }
+      if (!elseSchema) {
+        return `
+      if (validator.validate("${ifSchemaRef}", ${input})) {
+        ${buildValue(context, thenMergedLocation, input)}
+      } else {
+        ${buildValue(context, rootLocation, input)}
+      }
+    `;
+      }
+      const elseLocation = location.getPropertyLocation("else");
+      let elseMergedSchemaId = context.mergedSchemasIds.get(elseSchema);
+      let elseMergedLocation = null;
+      if (elseMergedSchemaId) {
+        elseMergedLocation = getMergedLocation(context, elseMergedSchemaId);
+      } else {
+        elseMergedSchemaId = `__fjs_merged_${schemaIdCounter++}`;
+        context.mergedSchemasIds.set(elseSchema, elseMergedSchemaId);
+        elseMergedLocation = mergeLocations(context, elseMergedSchemaId, [
+          rootLocation,
+          elseLocation
+        ]);
+      }
+      return `
+    if (validator.validate("${ifSchemaRef}", ${input})) {
+      ${buildValue(context, thenMergedLocation, input)}
+    } else {
+      ${buildValue(context, elseMergedLocation, input)}
+    }
+  `;
+    }
+    function buildValue(context, location, input) {
+      let schema = location.schema;
+      if (typeof schema === "boolean") {
+        return `json += JSON.stringify(${input})`;
+      }
+      if (schema.$ref) {
+        location = resolveRef(context, location);
+        schema = location.schema;
+      }
+      if (schema.allOf) {
+        return buildAllOf(context, location, input);
+      }
+      if (schema.anyOf || schema.oneOf) {
+        return buildOneOf(context, location, input);
+      }
+      if (schema.if && schema.then) {
+        return buildIfThenElse(context, location, input);
+      }
+      if (schema.type === void 0) {
+        const inferredType = inferTypeByKeyword(schema);
+        if (inferredType) {
+          schema.type = inferredType;
+        }
+      }
+      let code = "";
+      const type = schema.type;
+      const nullable = schema.nullable === true;
+      if (nullable) {
+        code += `
+      if (${input} === null) {
+        json += JSON_STR_NULL
+      } else {
+    `;
+      }
+      if (schema.const !== void 0) {
+        code += buildConstSerializer(location, input);
+      } else if (Array.isArray(type)) {
+        code += buildMultiTypeSerializer(context, location, input);
+      } else {
+        code += buildSingleTypeSerializer(context, location, input);
+      }
+      if (nullable) {
+        code += `
+      }
+    `;
+      }
+      return code;
+    }
+    module2.exports = build;
+    module2.exports.default = build;
+    module2.exports.build = build;
+    module2.exports.validLargeArrayMechanisms = validLargeArrayMechanisms;
+    module2.exports.restore = function({ code, validator, serializer }) {
+      return Function.apply(null, ["validator", "serializer", code]).apply(null, [validator, serializer]);
+    };
+  }
+});
+
+// node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/standalone.js
+var require_standalone4 = __commonJS({
+  "node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/standalone.js"(exports2, module2) {
+    "use strict";
+    var fastJsonStringify = require_fast_json_stringify();
+    function SerializerSelector() {
+      return function buildSerializerFactory(externalSchemas, serializerOpts) {
+        const fjsOpts = Object.assign({}, serializerOpts, { schema: externalSchemas });
+        return responseSchemaCompiler.bind(null, fjsOpts);
+      };
+    }
+    function responseSchemaCompiler(fjsOpts, {
+      schema
+      /* method, url, httpStatus */
+    }) {
+      if (fjsOpts.schema && schema.$id && fjsOpts.schema[schema.$id]) {
+        fjsOpts.schema = { ...fjsOpts.schema };
+        delete fjsOpts.schema[schema.$id];
+      }
+      return fastJsonStringify(schema, fjsOpts);
+    }
+    function StandaloneSerializer(options = { readMode: true }) {
+      if (options.readMode === true && typeof options.restoreFunction !== "function") {
+        throw new Error("You must provide a function for the restoreFunction-option when readMode ON");
+      }
+      if (options.readMode !== true && typeof options.storeFunction !== "function") {
+        throw new Error("You must provide a function for the storeFunction-option when readMode OFF");
+      }
+      if (options.readMode === true) {
+        return function wrapper() {
+          return function(opts) {
+            return options.restoreFunction(opts);
+          };
+        };
+      }
+      const factory = SerializerSelector();
+      return function wrapper(externalSchemas, serializerOpts = {}) {
+        serializerOpts.mode = "standalone";
+        const compiler = factory(externalSchemas, serializerOpts);
+        return function(opts) {
+          const serializeFuncCode = compiler(opts);
+          options.storeFunction(opts, serializeFuncCode);
+          return new Function(serializeFuncCode);
+        };
+      };
+    }
+    module2.exports.SerializerSelector = SerializerSelector;
+    module2.exports.StandaloneSerializer = StandaloneSerializer;
+    module2.exports.default = StandaloneSerializer;
+  }
+});
+
+// node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/index.js
+var require_fast_json_stringify_compiler = __commonJS({
+  "node_modules/.pnpm/@fastify+fast-json-stringify-compiler@5.1.0/node_modules/@fastify/fast-json-stringify-compiler/index.js"(exports2, module2) {
+    "use strict";
+    var { SerializerSelector, StandaloneSerializer } = require_standalone4();
+    module2.exports = SerializerSelector;
+    module2.exports.default = SerializerSelector;
+    module2.exports.SerializerSelector = SerializerSelector;
+    module2.exports.StandaloneSerializer = StandaloneSerializer;
+  }
+});
+
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/schema-controller.js
 var require_schema_controller = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/schema-controller.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/schema-controller.js"(exports2, module2) {
     "use strict";
     var { buildSchemas } = require_schemas();
-    var SerializerSelector = require_fast_json_stringify_compiler();
-    var ValidatorSelector = require_ajv_compiler();
     function buildSchemaController(parentSchemaCtrl, opts) {
       if (parentSchemaCtrl) {
         return new SchemaController(parentSchemaCtrl, opts);
@@ -24892,16 +27797,18 @@ var require_schema_controller = __commonJS({
         buildSerializer: null
       }, opts?.compilersFactory);
       if (!compilersFactory.buildValidator) {
+        const ValidatorSelector = require_ajv_compiler();
         compilersFactory.buildValidator = ValidatorSelector();
       }
       if (!compilersFactory.buildSerializer) {
+        const SerializerSelector = require_fast_json_stringify_compiler();
         compilersFactory.buildSerializer = SerializerSelector();
       }
       const option = {
         bucket: opts && opts.bucket || buildSchemas,
         compilersFactory,
         isCustomValidatorCompiler: typeof opts?.compilersFactory?.buildValidator === "function",
-        isCustomSerializerCompiler: typeof opts?.compilersFactory?.buildValidator === "function"
+        isCustomSerializerCompiler: typeof opts?.compilersFactory?.buildSerializer === "function"
       };
       return new SchemaController(void 0, option);
     }
@@ -26988,9 +29895,9 @@ var require_semver2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/pluginUtils.js
-var require_pluginUtils = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/pluginUtils.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/plugin-utils.js
+var require_plugin_utils = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/plugin-utils.js"(exports2, module2) {
     "use strict";
     var semver = require_semver2();
     var assert = require("node:assert");
@@ -27002,7 +29909,8 @@ var require_pluginUtils = __commonJS({
     var {
       FST_ERR_PLUGIN_VERSION_MISMATCH,
       FST_ERR_PLUGIN_NOT_PRESENT_IN_INSTANCE,
-      FST_ERR_PLUGIN_INVALID_ASYNC_HANDLER
+      FST_ERR_PLUGIN_INVALID_ASYNC_HANDLER,
+      FST_ERR_PLUGIN_DEPENDENCY_NOT_REGISTERED
     } = require_errors2();
     var rcRegex = /-(?:rc|pre|alpha).+$/u;
     function getMeta(fn) {
@@ -27044,10 +29952,9 @@ var require_pluginUtils = __commonJS({
       if (!dependencies) return;
       assert(Array.isArray(dependencies), "The dependencies should be an array of strings");
       dependencies.forEach((dependency) => {
-        assert(
-          this[kRegisteredPlugins].indexOf(dependency) > -1,
-          `The dependency '${dependency}' of plugin '${meta.name}' is not registered`
-        );
+        if (!this[kRegisteredPlugins].includes(dependency)) {
+          throw new FST_ERR_PLUGIN_DEPENDENCY_NOT_REGISTERED(dependency, meta.name);
+        }
       });
     }
     function checkDecorators(fn) {
@@ -27122,10 +30029,11 @@ var require_pluginUtils = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/reqIdGenFactory.js
-var require_reqIdGenFactory = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/reqIdGenFactory.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/req-id-gen-factory.js
+var require_req_id_gen_factory = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/req-id-gen-factory.js"(exports2, module2) {
     "use strict";
+    var { kGenReqId } = require_symbols2();
     function reqIdGenFactory(requestIdHeader, optGenReqId) {
       const genReqId = optGenReqId || buildDefaultGenReqId();
       if (requestIdHeader) {
@@ -27134,7 +30042,7 @@ var require_reqIdGenFactory = __commonJS({
       return genReqId;
     }
     function getGenReqId(contextServer, req) {
-      return contextServer.genReqId(req);
+      return contextServer[kGenReqId](req);
     }
     function buildDefaultGenReqId() {
       const maxInt = 2147483647;
@@ -28739,9 +31647,9 @@ var require_safe_regex2 = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/http-method.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/http-method.js
 var require_http_method = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/http-method.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/http-method.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       name: "__fmw_internal_strategy_merged_tree_http_method__",
@@ -28763,9 +31671,9 @@ var require_http_method = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/pretty-print.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/pretty-print.js
 var require_pretty_print = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/pretty-print.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/pretty-print.js"(exports2, module2) {
     "use strict";
     var deepEqual = require_fast_deep_equal();
     var httpMethodStrategy = require_http_method();
@@ -28796,6 +31704,7 @@ var require_pretty_print = __commonJS({
       if (Array.isArray(meta)) return meta.map((m) => parseMeta(m));
       if (typeof meta === "symbol") return meta.toString();
       if (typeof meta === "function") return parseFunctionName(meta);
+      if (meta instanceof RegExp) return meta.toString();
       return meta;
     }
     function getRouteMetaData(route, options) {
@@ -28831,11 +31740,17 @@ var require_pretty_print = __commonJS({
       delete constraints[httpMethodStrategy.name];
       return { ...route, method, opts: { constraints } };
     }
+    function serializeConstraints(constraints) {
+      return JSON.stringify(constraints, (_key, value) => {
+        if (value instanceof RegExp) return value.toString();
+        return value;
+      });
+    }
     function serializeRoute(route) {
       let serializedRoute = ` (${route.method})`;
       const constraints = route.opts.constraints || {};
       if (Object.keys(constraints).length !== 0) {
-        serializedRoute += " " + JSON.stringify(constraints);
+        serializedRoute += " " + serializeConstraints(constraints);
       }
       serializedRoute += serializeMetaData(route.metaData);
       return serializedRoute;
@@ -28876,8 +31791,8 @@ ${prefix}`);
         }
         prefix = "";
       }
-      if (node.staticChildren) {
-        for (const child of Object.values(node.staticChildren)) {
+      if (node.staticChildrenNodes) {
+        for (const child of node.staticChildrenNodes) {
           buildObjectTree(child, tree, prefix + child.prefix, options);
         }
       }
@@ -28900,9 +31815,9 @@ ${prefix}`);
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/null-object.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/null-object.js
 var require_null_object = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/null-object.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/null-object.js"(exports2, module2) {
     "use strict";
     var NullObject = function() {
     };
@@ -28913,9 +31828,9 @@ var require_null_object = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/handler-storage.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/handler-storage.js
 var require_handler_storage = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/handler-storage.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/handler-storage.js"(exports2, module2) {
     "use strict";
     var { NullObject } = require_null_object();
     var httpMethodStrategy = require_http_method();
@@ -29057,9 +31972,9 @@ var require_handler_storage = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/node.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/node.js
 var require_node = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/node.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/node.js"(exports2, module2) {
     "use strict";
     var HandlerStorage = require_handler_storage();
     var NODE_TYPES = {
@@ -29088,14 +32003,32 @@ var require_node = __commonJS({
     var ParentNode = class extends Node {
       constructor() {
         super();
-        this.staticChildren = {};
+        this.staticChildrenCharCodes = [];
+        this.staticChildrenNodes = [];
+      }
+      setStaticChild(label, node) {
+        const charCode = label.charCodeAt(0);
+        const index = this.staticChildrenCharCodes.indexOf(charCode);
+        if (index === -1) {
+          this.staticChildrenCharCodes.push(charCode);
+          this.staticChildrenNodes.push(node);
+        } else {
+          this.staticChildrenNodes[index] = node;
+        }
       }
       findStaticMatchingChild(path, pathIndex) {
-        const staticChild = this.staticChildren[path.charAt(pathIndex)];
-        if (staticChild === void 0 || !staticChild.matchPrefix(path, pathIndex)) {
-          return null;
+        const charCode = path.charCodeAt(pathIndex);
+        const charCodes = this.staticChildrenCharCodes;
+        for (let i = 0; i < charCodes.length; i++) {
+          if (charCodes[i] === charCode) {
+            const staticChild = this.staticChildrenNodes[i];
+            if (staticChild.matchPrefix(path, pathIndex)) {
+              return staticChild;
+            }
+            return null;
+          }
         }
-        return staticChild;
+        return null;
       }
       getStaticChild(path, pathIndex = 0) {
         if (path.length === pathIndex) {
@@ -29111,7 +32044,8 @@ var require_node = __commonJS({
         if (path.length === 0) {
           return this;
         }
-        let staticChild = this.staticChildren[path.charAt(0)];
+        const childIndex = this.staticChildrenCharCodes.indexOf(path.charCodeAt(0));
+        let staticChild = childIndex === -1 ? void 0 : this.staticChildrenNodes[childIndex];
         if (staticChild) {
           let i = 1;
           for (; i < staticChild.prefix.length; i++) {
@@ -29122,9 +32056,9 @@ var require_node = __commonJS({
           }
           return staticChild.createStaticChild(path.slice(i));
         }
-        const label = path.charAt(0);
-        this.staticChildren[label] = new StaticNode(path);
-        return this.staticChildren[label];
+        const node = new StaticNode(path);
+        this.setStaticChild(path.charAt(0), node);
+        return node;
       }
     };
     var StaticNode = class _StaticNode extends ParentNode {
@@ -29179,8 +32113,8 @@ var require_node = __commonJS({
         this.prefix = childPrefix;
         this._compilePrefixMatch();
         const staticNode = new _StaticNode(parentPrefix);
-        staticNode.staticChildren[childPrefix.charAt(0)] = this;
-        parentNode.staticChildren[parentPrefix.charAt(0)] = staticNode;
+        staticNode.setStaticChild(childPrefix.charAt(0), this);
+        parentNode.setStaticChild(parentPrefix.charAt(0), staticNode);
         return staticNode;
       }
       getNextNode(path, pathIndex, nodeStack, paramsCount) {
@@ -29248,9 +32182,9 @@ var require_node = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/accept-version.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/accept-version.js
 var require_accept_version = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/accept-version.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/accept-version.js"(exports2, module2) {
     "use strict";
     var assert = require("node:assert");
     function SemVerStore() {
@@ -29306,9 +32240,9 @@ var require_accept_version = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/accept-host.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/accept-host.js
 var require_accept_host = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/strategies/accept-host.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/strategies/accept-host.js"(exports2, module2) {
     "use strict";
     var assert = require("node:assert");
     function HostStorage() {
@@ -29353,9 +32287,9 @@ var require_accept_host = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/constrainer.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/constrainer.js
 var require_constrainer = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/constrainer.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/constrainer.js"(exports2, module2) {
     "use strict";
     var acceptVersionStrategy = require_accept_version();
     var acceptHostStrategy = require_accept_host();
@@ -29501,9 +32435,9 @@ var require_constrainer = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/http-methods.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/http-methods.js
 var require_http_methods = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/http-methods.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/http-methods.js"(exports2, module2) {
     "use strict";
     var httpMethods = [
       "ACL",
@@ -29546,56 +32480,112 @@ var require_http_methods = __commonJS({
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/url-sanitizer.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/url-sanitizer.js
 var require_url_sanitizer = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/lib/url-sanitizer.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/lib/url-sanitizer.js"(exports2, module2) {
     "use strict";
-    function decodeComponentChar(highCharCode, lowCharCode) {
-      if (highCharCode === 50) {
-        if (lowCharCode === 53) return "%";
-        if (lowCharCode === 51) return "#";
-        if (lowCharCode === 52) return "$";
-        if (lowCharCode === 54) return "&";
-        if (lowCharCode === 66) return "+";
-        if (lowCharCode === 98) return "+";
-        if (lowCharCode === 67) return ",";
-        if (lowCharCode === 99) return ",";
-        if (lowCharCode === 70) return "/";
-        if (lowCharCode === 102) return "/";
-        return null;
-      }
-      if (highCharCode === 51) {
-        if (lowCharCode === 65) return ":";
-        if (lowCharCode === 97) return ":";
-        if (lowCharCode === 66) return ";";
-        if (lowCharCode === 98) return ";";
-        if (lowCharCode === 68) return "=";
-        if (lowCharCode === 100) return "=";
-        if (lowCharCode === 70) return "?";
-        if (lowCharCode === 102) return "?";
-        return null;
-      }
-      if (highCharCode === 52 && lowCharCode === 48) {
-        return "@";
-      }
-      return null;
+    var DECODE_COMPONENT_TABLE = new Uint8Array(768);
+    for (const [encoded, char] of [
+      ["%23", "#"],
+      ["%24", "$"],
+      ["%25", "%"],
+      ["%26", "&"],
+      ["%2B", "+"],
+      ["%2b", "+"],
+      ["%2C", ","],
+      ["%2c", ","],
+      ["%2F", "/"],
+      ["%2f", "/"],
+      ["%3A", ":"],
+      ["%3a", ":"],
+      ["%3B", ";"],
+      ["%3b", ";"],
+      ["%3D", "="],
+      ["%3d", "="],
+      ["%3F", "?"],
+      ["%3f", "?"],
+      ["%40", "@"]
+    ]) {
+      DECODE_COMPONENT_TABLE[encoded.charCodeAt(1) - 50 << 8 | encoded.charCodeAt(2)] = char.charCodeAt(0);
     }
+    function decodeComponentCharCode(highCharCode, lowCharCode) {
+      if (highCharCode < 50 || highCharCode > 52 || lowCharCode > 255) {
+        return 0;
+      }
+      return DECODE_COMPONENT_TABLE[highCharCode - 50 << 8 | lowCharCode];
+    }
+    function decodeComponentChar(highCharCode, lowCharCode) {
+      const charCode = decodeComponentCharCode(highCharCode, lowCharCode);
+      if (charCode === 0) {
+        return null;
+      }
+      return String.fromCharCode(charCode);
+    }
+    var MIN_NATIVE_SCAN_LENGTH = 12;
     function safeDecodeURI(path, useSemicolonDelimiter) {
+      if (path.length >= MIN_NATIVE_SCAN_LENGTH) {
+        return safeDecodeURINativeScan(path, useSemicolonDelimiter);
+      }
+      return safeDecodeURICharScan(path, useSemicolonDelimiter, 1);
+    }
+    function safeDecodeURINativeScan(path, useSemicolonDelimiter) {
+      const percentIndex = path.indexOf("%", 1);
+      let delimIndex = path.indexOf("?", 1);
+      const hashIndex = path.indexOf("#", 1);
+      if (hashIndex !== -1 && (delimIndex === -1 || hashIndex < delimIndex)) {
+        delimIndex = hashIndex;
+      }
+      if (useSemicolonDelimiter) {
+        const semicolonIndex = path.indexOf(";", 1);
+        if (semicolonIndex !== -1 && (delimIndex === -1 || semicolonIndex < delimIndex)) {
+          delimIndex = semicolonIndex;
+        }
+      }
+      if (percentIndex === -1 || delimIndex !== -1 && percentIndex > delimIndex) {
+        if (delimIndex === -1) {
+          return { path, querystring: "", shouldDecodeParam: false };
+        }
+        return {
+          path: path.slice(0, delimIndex),
+          querystring: path.slice(delimIndex + 1),
+          shouldDecodeParam: false
+        };
+      }
+      return safeDecodeURIPercentScan(path, useSemicolonDelimiter, percentIndex);
+    }
+    function safeDecodeURICharScan(path, useSemicolonDelimiter, startIndex) {
+      for (let i = startIndex; i < path.length; i++) {
+        const charCode = path.charCodeAt(i);
+        if (charCode === 37) {
+          return safeDecodeURIPercentScan(path, useSemicolonDelimiter, i);
+        } else if (charCode === 63 || charCode === 35 || charCode === 59 && useSemicolonDelimiter) {
+          return {
+            path: path.slice(0, i),
+            querystring: path.slice(i + 1),
+            shouldDecodeParam: false
+          };
+        }
+      }
+      return { path, querystring: "", shouldDecodeParam: false };
+    }
+    function reencodePercentChar(path, index) {
+      return path.slice(0, index + 1) + "25" + path.slice(index + 1);
+    }
+    function safeDecodeURIPercentScan(path, useSemicolonDelimiter, startIndex) {
       let shouldDecode = false;
       let shouldDecodeParam = false;
       let querystring = "";
-      for (let i = 1; i < path.length; i++) {
+      for (let i = startIndex; i < path.length; i++) {
         const charCode = path.charCodeAt(i);
         if (charCode === 37) {
-          const highCharCode = path.charCodeAt(i + 1);
-          const lowCharCode = path.charCodeAt(i + 2);
-          if (decodeComponentChar(highCharCode, lowCharCode) === null) {
+          const componentCharCode = decodeComponentCharCode(path.charCodeAt(i + 1), path.charCodeAt(i + 2));
+          if (componentCharCode === 0) {
             shouldDecode = true;
           } else {
             shouldDecodeParam = true;
-            if (highCharCode === 50 && lowCharCode === 53) {
+            if (componentCharCode === 37) {
               shouldDecode = true;
-              path = path.slice(0, i + 1) + "25" + path.slice(i + 1);
+              path = reencodePercentChar(path, i);
               i += 2;
             }
             i += 2;
@@ -29625,13 +32615,13 @@ var require_url_sanitizer = __commonJS({
       }
       return uriComponent.slice(0, startIndex) + decoded + uriComponent.slice(lastIndex);
     }
-    module2.exports = { safeDecodeURI, safeDecodeURIComponent };
+    module2.exports = { safeDecodeURI, safeDecodeURIComponent, safeDecodeURINativeScan, safeDecodeURICharScan, MIN_NATIVE_SCAN_LENGTH };
   }
 });
 
-// node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/index.js
+// node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/index.js
 var require_find_my_way = __commonJS({
-  "node_modules/.pnpm/find-my-way@9.7.0/node_modules/find-my-way/index.js"(exports2, module2) {
+  "node_modules/.pnpm/find-my-way@9.9.0/node_modules/find-my-way/index.js"(exports2, module2) {
     "use strict";
     var assert = require("node:assert");
     var querystring = require_lib();
@@ -29642,14 +32632,10 @@ var require_find_my_way = __commonJS({
     var Constrainer = require_constrainer();
     var httpMethods = require_http_methods();
     var httpMethodStrategy = require_http_method();
-    var { safeDecodeURI, safeDecodeURIComponent } = require_url_sanitizer();
-    var FULL_PATH_REGEXP = /^https?:\/\/.*?\//;
+    var { safeDecodeURI, safeDecodeURIComponent, safeDecodeURINativeScan, safeDecodeURICharScan, MIN_NATIVE_SCAN_LENGTH } = require_url_sanitizer();
     var OPTIONAL_PARAM_REGEXP = /(\/:[^/()]*?)\?(\/?)/;
     var ESCAPE_REGEXP = /[.*+?^${}()|[\]\\]/g;
     var REMOVE_DUPLICATE_SLASHES_REGEXP = /\/\/+/g;
-    if (!isRegexSafe(FULL_PATH_REGEXP)) {
-      throw new Error("the FULL_PATH_REGEXP is not safe, update this module");
-    }
     if (!isRegexSafe(OPTIONAL_PARAM_REGEXP)) {
       throw new Error("the OPTIONAL_PARAM_REGEXP is not safe, update this module");
     }
@@ -29699,6 +32685,7 @@ var require_find_my_way = __commonJS({
       this.useSemicolonDelimiter = opts.useSemicolonDelimiter || false;
       this.routes = [];
       this.trees = /* @__PURE__ */ Object.create(null);
+      this._treeGET = null;
     }
     Router.prototype.on = function on(method, path, opts, handler, store) {
       if (typeof opts === "function") {
@@ -29752,9 +32739,12 @@ var require_find_my_way = __commonJS({
       if (pattern === "*" && this.trees[method].prefix.length !== 0) {
         const currentRoot = this.trees[method];
         this.trees[method] = new StaticNode("");
-        this.trees[method].staticChildren["/"] = currentRoot;
+        this.trees[method].setStaticChild("/", currentRoot);
       }
       let currentNode = this.trees[method];
+      if (method === "GET") {
+        this._treeGET = currentNode;
+      }
       let parentNodePathIndex = currentNode.prefix.length;
       const params = [];
       for (let i = 0; i <= pattern.length; i++) {
@@ -29778,6 +32768,7 @@ var require_find_my_way = __commonJS({
           let isParamSafe = true;
           let backtrack = "";
           const regexps = [];
+          let nodePatternParts = "";
           let lastParamStartIndex = i + 1;
           for (let j = lastParamStartIndex; ; j++) {
             const charCode = pattern.charCodeAt(j);
@@ -29818,8 +32809,9 @@ var require_find_my_way = __commonJS({
                 regexps.push(backtrack = escapeRegExp(staticPart));
               }
               lastParamStartIndex = j + 1;
+              nodePatternParts += "()" + staticPart;
               if (isEndOfNode || pattern.charCodeAt(j) === 47 || j === pattern.length) {
-                const nodePattern = isRegexNode ? "()" + staticPart : staticPart;
+                const nodePattern = isRegexNode ? nodePatternParts : staticPart;
                 const nodePath = pattern.slice(i, j);
                 pattern = pattern.slice(0, i + 1) + nodePattern + pattern.slice(j);
                 i += nodePattern.length;
@@ -29891,6 +32883,7 @@ var require_find_my_way = __commonJS({
           let isParamSafe = true;
           let backtrack = "";
           const regexps = [];
+          let nodePatternParts = "";
           let lastParamStartIndex = i + 1;
           for (let j = lastParamStartIndex; ; j++) {
             const charCode = pattern.charCodeAt(j);
@@ -29931,8 +32924,9 @@ var require_find_my_way = __commonJS({
                 regexps.push(backtrack = escapeRegExp(staticPart));
               }
               lastParamStartIndex = j + 1;
+              nodePatternParts += "()" + staticPart;
               if (isEndOfNode || pattern.charCodeAt(j) === 47 || j === pattern.length) {
-                const nodePattern = isRegexNode ? "()" + staticPart : staticPart;
+                const nodePattern = isRegexNode ? nodePatternParts : staticPart;
                 const nodePath = pattern.slice(i, j);
                 pattern = pattern.slice(0, i + 1) + nodePattern + pattern.slice(j);
                 i += nodePattern.length;
@@ -29979,6 +32973,7 @@ var require_find_my_way = __commonJS({
     };
     Router.prototype.reset = function reset() {
       this.trees = /* @__PURE__ */ Object.create(null);
+      this._treeGET = null;
       this.routes = [];
     };
     Router.prototype.off = function off(method, path, constraints) {
@@ -30051,10 +33046,14 @@ var require_find_my_way = __commonJS({
       return ctx === void 0 ? handle.handler(req, res, handle.params, handle.store, handle.searchParams) : handle.handler.call(ctx, req, res, handle.params, handle.store, handle.searchParams);
     };
     Router.prototype.find = function find(method, path, derivedConstraints) {
-      let currentNode = this.trees[method];
-      if (currentNode === void 0) return null;
+      let currentNode = method === "GET" ? this._treeGET : this.trees[method];
+      if (currentNode == null) return null;
       if (path.charCodeAt(0) !== 47) {
-        path = path.replace(FULL_PATH_REGEXP, "/");
+        const absolutePath = getPathFromAbsoluteUrl(path);
+        if (absolutePath === null) {
+          return this._onBadUrl(path);
+        }
+        path = absolutePath;
       }
       if (this.ignoreDuplicateSlashes) {
         path = removeDuplicateSlashes(path);
@@ -30063,7 +33062,7 @@ var require_find_my_way = __commonJS({
       let querystring2;
       let shouldDecodeParam;
       try {
-        sanitizedUrl = safeDecodeURI(path, this.useSemicolonDelimiter);
+        sanitizedUrl = path.length >= MIN_NATIVE_SCAN_LENGTH ? safeDecodeURINativeScan(path, this.useSemicolonDelimiter) : safeDecodeURICharScan(path, this.useSemicolonDelimiter, 1);
         path = sanitizedUrl.path;
         querystring2 = sanitizedUrl.querystring;
         shouldDecodeParam = sanitizedUrl.shouldDecodeParam;
@@ -30277,6 +33276,44 @@ var require_find_my_way = __commonJS({
     function escapeRegExp(string) {
       return string.replace(ESCAPE_REGEXP, "\\$&");
     }
+    function getPathFromAbsoluteUrl(url) {
+      const schemeEnd = url.indexOf("://");
+      if (schemeEnd === -1) {
+        return url;
+      }
+      const scheme = url.slice(0, schemeEnd).toLowerCase();
+      if (scheme !== "http" && scheme !== "https") {
+        return url;
+      }
+      const authorityStart = schemeEnd + 3;
+      let authorityEnd = url.length;
+      const pathStart = url.indexOf("/", authorityStart);
+      if (pathStart !== -1) {
+        authorityEnd = pathStart;
+      }
+      const queryStart = url.indexOf("?", authorityStart);
+      if (queryStart !== -1 && queryStart < authorityEnd) {
+        authorityEnd = queryStart;
+      }
+      if (url.indexOf("#", authorityStart) !== -1 || authorityEnd === authorityStart) {
+        return null;
+      }
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== `${scheme}:` || parsed.host.length === 0) {
+          return null;
+        }
+      } catch (error) {
+        return null;
+      }
+      if (authorityEnd === url.length) {
+        return "/";
+      }
+      if (authorityEnd === queryStart) {
+        return "/" + url.slice(queryStart);
+      }
+      return url.slice(pathStart);
+    }
     function removeDuplicateSlashes(path) {
       return path.indexOf("//") !== -1 ? path.replace(REMOVE_DUPLICATE_SLASHES_REGEXP, "/") : path;
     }
@@ -30320,9 +33357,9 @@ var require_find_my_way = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/headRoute.js
-var require_headRoute = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/headRoute.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/head-route.js
+var require_head_route = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/head-route.js"(exports2, module2) {
     "use strict";
     function headRouteOnSendHandler(req, reply, payload, done) {
       if (payload === void 0) {
@@ -30335,6 +33372,13 @@ var require_headRoute = __commonJS({
           reply.log.error({ err }, "Error on Stream found for HEAD route");
         });
         payload.resume();
+        done(null, null);
+        return;
+      }
+      if (typeof payload.getReader === "function") {
+        payload.cancel("Stream cancelled by HEAD route").catch((err) => {
+          reply.log.error({ err }, "Error on Stream found for HEAD route");
+        });
         done(null, null);
         return;
       }
@@ -30352,16 +33396,16 @@ var require_headRoute = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/route.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/route.js
 var require_route = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/route.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/route.js"(exports2, module2) {
     "use strict";
     var FindMyWay = require_find_my_way();
     var Context = require_context();
-    var handleRequest = require_handleRequest();
+    var handleRequest = require_handle_request();
     var { onRequestAbortHookRunner, lifecycleHooks, preParsingHookRunner, onTimeoutHookRunner, onRequestHookRunner } = require_hooks();
     var { normalizeSchema } = require_schemas();
-    var { parseHeadOnSendHandlers } = require_headRoute();
+    var { parseHeadOnSendHandlers } = require_head_route();
     var {
       compileSchemasForValidation,
       compileSchemasForSerialization
@@ -30378,11 +33422,13 @@ var require_route = __commonJS({
       FST_ERR_ROUTE_MISSING_HANDLER,
       FST_ERR_ROUTE_METHOD_NOT_SUPPORTED,
       FST_ERR_ROUTE_METHOD_INVALID,
+      FST_ERR_ROUTE_LOG_LEVEL_INVALID,
       FST_ERR_ROUTE_BODY_VALIDATION_SCHEMA_NOT_SUPPORTED,
       FST_ERR_ROUTE_BODY_LIMIT_OPTION_NOT_INT,
+      FST_ERR_ROUTE_HANDLER_TIMEOUT_OPTION_NOT_INT,
+      FST_ERR_HANDLER_TIMEOUT,
       FST_ERR_HOOK_INVALID_ASYNC_HANDLER
     } = require_errors2();
-    var { FSTDEP022 } = require_warnings();
     var {
       kRoutePrefix,
       kSupportedHTTPMethods,
@@ -30394,17 +33440,21 @@ var require_route = __commonJS({
       kReplySerializerDefault,
       kReplyIsError,
       kRequestPayloadStream,
-      kDisableRequestLogging,
       kSchemaErrorFormatter,
       kErrorHandler,
       kHasBeenDecorated,
       kRequestAcceptVersion,
       kRouteByFastify,
-      kRouteContext
+      kRouteContext,
+      kRequestSignal,
+      kTimeoutTimer,
+      kOnAbort,
+      kLogController
     } = require_symbols2();
     var { buildErrorHandler } = require_error_handler();
-    var { createChildLogger } = require_logger_factory();
-    var { getGenReqId } = require_reqIdGenFactory();
+    var { createChildLogger, defaultChildLoggerFactory } = require_logger_factory();
+    var { getGenReqId } = require_req_id_gen_factory();
+    var { FSTDEP022 } = require_warnings();
     var routerKeys = [
       "allowUnsafeRegex",
       "buildPrettyMeta",
@@ -30415,18 +33465,18 @@ var require_route = __commonJS({
       "ignoreTrailingSlash",
       "maxParamLength",
       "onBadUrl",
+      "onMaxParamLength",
       "querystringParser",
       "useSemicolonDelimiter"
     ];
     function buildRouting(options) {
-      const router = FindMyWay(options.config);
+      const router = FindMyWay(options);
       let avvio;
       let fourOhFour;
       let logger;
       let hasLogger;
       let setupResponseListeners;
       let throwIfAlreadyStarted;
-      let disableRequestLogging;
       let ignoreTrailingSlash;
       let ignoreDuplicateSlashes;
       let return503OnClosing;
@@ -30441,12 +33491,11 @@ var require_route = __commonJS({
         setup(options2, fastifyArgs) {
           avvio = fastifyArgs.avvio;
           fourOhFour = fastifyArgs.fourOhFour;
-          logger = fastifyArgs.logger;
+          logger = options2.logger;
           hasLogger = fastifyArgs.hasLogger;
           setupResponseListeners = fastifyArgs.setupResponseListeners;
           throwIfAlreadyStarted = fastifyArgs.throwIfAlreadyStarted;
           globalExposeHeadRoutes = options2.exposeHeadRoutes;
-          disableRequestLogging = options2.disableRequestLogging;
           ignoreTrailingSlash = options2.routerOptions.ignoreTrailingSlash;
           ignoreDuplicateSlashes = options2.routerOptions.ignoreDuplicateSlashes;
           return503OnClosing = Object.hasOwn(options2, "return503OnClosing") ? options2.return503OnClosing : true;
@@ -30514,7 +33563,7 @@ var require_route = __commonJS({
       }
       function findRoute(options2) {
         const route2 = router.find(
-          options2.method,
+          options2.method?.toUpperCase() ?? "",
           options2.url || "",
           options2.constraints
         );
@@ -30539,6 +33588,7 @@ var require_route = __commonJS({
           throw new FST_ERR_ROUTE_HANDLER_NOT_FN(opts.method, path);
         }
         validateBodyLimitOption(opts.bodyLimit);
+        validateHandlerTimeoutOption(opts.handlerTimeout);
         const shouldExposeHead = opts.exposeHeadRoute ?? globalExposeHeadRoutes;
         let isGetRoute = false;
         let isHeadRoute = false;
@@ -30585,12 +33635,14 @@ var require_route = __commonJS({
           opts.routePath = path2;
           opts.prefix = prefix;
           opts.logLevel = opts.logLevel || this[kLogLevel];
+          validateLogLevelOption(opts.logLevel, opts.method, opts.url, logger);
           if (this[kLogSerializers] || opts.logSerializers) {
             opts.logSerializers = Object.assign(Object.create(this[kLogSerializers]), opts.logSerializers);
           }
           if (opts.attachValidation == null) {
             opts.attachValidation = false;
           }
+          const routeConfigUrl = prefixing ? prefix : url;
           if (prefixing === false) {
             for (const hook of this[kHooks].onRoute) {
               hook.call(this, opts);
@@ -30625,7 +33677,7 @@ var require_route = __commonJS({
           const constraints = opts.constraints || {};
           const config = {
             ...opts.config,
-            url,
+            url: routeConfigUrl,
             method: opts.method
           };
           const context = new Context({
@@ -30645,7 +33697,8 @@ var require_route = __commonJS({
             exposeHeadRoute: shouldExposeHead,
             prefixTrailingSlash: opts.prefixTrailingSlash || "both",
             server: this,
-            isFastify: isFastify2
+            isFastify: isFastify2,
+            handlerTimeout: opts.handlerTimeout
           });
           const headHandler = router.findRoute("HEAD", opts.url, constraints);
           const hasHEADHandler = headHandler !== null;
@@ -30653,7 +33706,8 @@ var require_route = __commonJS({
             router.on(opts.method, opts.url, { constraints }, routeHandler, context);
           } catch (error) {
             if (!context[kRouteByFastify]) {
-              const isDuplicatedRoute = error.message.includes(`Method '${opts.method}' already declared for route`);
+              const methods = Array.isArray(opts.method) ? opts.method : [opts.method];
+              const isDuplicatedRoute = methods.some((method) => error.message.includes(`Method '${method}' already declared for route`));
               if (isDuplicatedRoute) {
                 throw new FST_ERR_DUPLICATED_ROUTE(opts.method, opts.url);
               }
@@ -30683,12 +33737,17 @@ var require_route = __commonJS({
               if (opts.schema) {
                 context.schema = normalizeSchema(context.schema, this.initialConfig);
                 const schemaController = this[kSchemaController];
-                if (!opts.validatorCompiler && (opts.schema.body || opts.schema.headers || opts.schema.querystring || opts.schema.params)) {
+                const hasValidationSchema = opts.schema.body !== void 0 || opts.schema.headers !== void 0 || opts.schema.querystring !== void 0 || opts.schema.params !== void 0;
+                if (!opts.validatorCompiler && hasValidationSchema) {
                   schemaController.setupValidator(this[kOptions]);
                 }
                 try {
                   const isCustom = typeof opts?.validatorCompiler === "function" || schemaController.isCustomValidatorCompiler;
-                  compileSchemasForValidation(context, opts.validatorCompiler || schemaController.validatorCompiler, isCustom);
+                  compileSchemasForValidation(
+                    context,
+                    opts.validatorCompiler || schemaController.validatorCompiler,
+                    isCustom
+                  );
                 } catch (error) {
                   throw new FST_ERR_SCH_VALIDATION_BUILD(opts.method, url, error.message);
                 }
@@ -30712,14 +33771,18 @@ var require_route = __commonJS({
       }
       function routeHandler(req, res, params, context, query) {
         const id = getGenReqId(context.server, req);
-        const loggerOpts = {
-          level: context.logLevel
-        };
-        if (context.logSerializers) {
-          loggerOpts.serializers = context.logSerializers;
+        let childLogger;
+        if (hasLogger === false && context.childLoggerFactory === defaultChildLoggerFactory) {
+          childLogger = logger;
+        } else {
+          const loggerOpts = {
+            level: context.logLevel
+          };
+          if (context.logSerializers) {
+            loggerOpts.serializers = context.logSerializers;
+          }
+          childLogger = createChildLogger(context, logger, req, id, loggerOpts);
         }
-        const childLogger = createChildLogger(context, logger, req, id, loggerOpts);
-        childLogger[kDisableRequestLogging] = disableRequestLogging;
         if (closing === true) {
           if (req.httpVersionMajor !== 2) {
             res.setHeader("Connection", "close");
@@ -30731,7 +33794,7 @@ var require_route = __commonJS({
             };
             res.writeHead(503, headers);
             res.end('{"error":"Service Unavailable","message":"Service Unavailable","statusCode":503}');
-            childLogger.info({ res: { statusCode: 503 } }, "request aborted - refusing to accept new requests as server is closing");
+            context.server[kLogController].serviceUnavailable(childLogger, context.server);
             return;
           }
         }
@@ -30748,11 +33811,36 @@ var require_route = __commonJS({
         }
         const request = new context.Request(id, params, req, query, childLogger, context);
         const reply = new context.Reply(res, request, childLogger);
-        if (disableRequestLogging === false) {
-          childLogger.info({ req: request }, "incoming request");
+        context.server[kLogController].incomingRequest(request, reply);
+        const handlerTimeout = context.handlerTimeout;
+        if (handlerTimeout > 0) {
+          const ac = new AbortController();
+          request[kRequestSignal] = ac;
+          request[kTimeoutTimer] = setTimeout(() => {
+            if (!reply.sent) {
+              const err = new FST_ERR_HANDLER_TIMEOUT(handlerTimeout, context.config?.url);
+              ac.abort(err);
+              reply[kReplyIsError] = true;
+              reply.send(err);
+            }
+          }, handlerTimeout);
+          const onAbort = () => {
+            if (!ac.signal.aborted) {
+              ac.abort();
+            }
+            clearTimeout(request[kTimeoutTimer]);
+          };
+          req.on("close", onAbort);
+          request[kOnAbort] = onAbort;
         }
-        if (hasLogger === true || context.onResponse !== null) {
+        if (hasLogger === true || context.onResponse !== null || handlerTimeout > 0) {
           setupResponseListeners(reply);
+        }
+        if (context.onTimeout !== null) {
+          if (!request.raw.socket._meta) {
+            request.raw.socket.on("timeout", handleTimeout);
+          }
+          request.raw.socket._meta = { context, request, reply, onTimeout: handleTimeout };
         }
         if (context.onRequest !== null) {
           onRequestHookRunner(
@@ -30774,12 +33862,6 @@ var require_route = __commonJS({
               );
             }
           });
-        }
-        if (context.onTimeout !== null) {
-          if (!request.raw.socket._meta) {
-            request.raw.socket.on("timeout", handleTimeout);
-          }
-          request.raw.socket._meta = { context, request, reply };
         }
       }
     }
@@ -30818,6 +33900,19 @@ var require_route = __commonJS({
         throw new FST_ERR_ROUTE_BODY_LIMIT_OPTION_NOT_INT(bodyLimit);
       }
     }
+    function validateHandlerTimeoutOption(handlerTimeout) {
+      if (handlerTimeout === void 0) return;
+      if (!Number.isInteger(handlerTimeout) || handlerTimeout <= 0) {
+        throw new FST_ERR_ROUTE_HANDLER_TIMEOUT_OPTION_NOT_INT(handlerTimeout);
+      }
+    }
+    function validateLogLevelOption(logLevel, method, path, logger) {
+      if (logLevel == null || logLevel === "") return;
+      if (logger?.levels?.values == null) return;
+      if (typeof logLevel !== "string" || logger.levels.values[logLevel] === void 0) {
+        throw new FST_ERR_ROUTE_LOG_LEVEL_INVALID(method, path, logLevel);
+      }
+    }
     function runPreParsing(err, request, reply) {
       if (reply.sent === true) return;
       if (err != null) {
@@ -30833,7 +33928,7 @@ var require_route = __commonJS({
       }
     }
     function buildRouterOptions(options, defaultOptions) {
-      const routerOptions = options.routerOptions || /* @__PURE__ */ Object.create(null);
+      const routerOptions = options.routerOptions == null ? /* @__PURE__ */ Object.create(null) : Object.assign(/* @__PURE__ */ Object.create(null), options.routerOptions);
       const usedDeprecatedOptions = routerKeys.filter((key) => Object.hasOwn(options, key));
       if (usedDeprecatedOptions.length > 0) {
         FSTDEP022(usedDeprecatedOptions.join(", "));
@@ -30854,9 +33949,9 @@ var require_route = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/fourOhFour.js
-var require_fourOhFour = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/fourOhFour.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/four-oh-four.js
+var require_four_oh_four = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/four-oh-four.js"(exports2, module2) {
     "use strict";
     var FindMyWay = require_find_my_way();
     var Reply = require_reply();
@@ -30868,7 +33963,8 @@ var require_fourOhFour = __commonJS({
       kFourOhFourLevelInstance,
       kFourOhFourContext,
       kHooks,
-      kErrorHandler
+      kErrorHandler,
+      kLogController
     } = require_symbols2();
     var { lifecycleHooks } = require_hooks();
     var { buildErrorHandler } = require_error_handler();
@@ -30876,42 +33972,31 @@ var require_fourOhFour = __commonJS({
       FST_ERR_NOT_FOUND
     } = require_errors2();
     var { createChildLogger } = require_logger_factory();
-    var { getGenReqId } = require_reqIdGenFactory();
+    var { getGenReqId } = require_req_id_gen_factory();
     function fourOhFour(options) {
-      const { logger, disableRequestLogging } = options;
-      const router = FindMyWay({ onBadUrl: createOnBadUrl(), defaultRoute: fourOhFourFallBack });
-      let _onBadUrlHandler = null;
+      const { logger } = options;
+      const router = FindMyWay({
+        onBadUrl: options.routerOptions.onBadUrl,
+        onMaxParamLength: options.routerOptions.onMaxParamLength,
+        defaultRoute: fourOhFourFallBack
+      });
       return { router, setNotFoundHandler, setContext, arrange404 };
       function arrange404(instance) {
         instance[kFourOhFourLevelInstance] = instance;
         instance[kCanSetNotFoundHandler] = true;
-        router.onBadUrl = router.onBadUrl.bind(instance);
         router.defaultRoute = router.defaultRoute.bind(instance);
       }
       function basic404(request, reply) {
+        request.server[kLogController].routeNotFound(request, reply);
         const { url, method } = request.raw;
-        const message = `Route ${method}:${url} not found`;
-        if (!disableRequestLogging) {
-          request.log.info(message);
-        }
         reply.code(404).send({
-          message,
+          message: `Route ${method}:${url} not found`,
           error: "Not Found",
           statusCode: 404
         });
       }
-      function createOnBadUrl() {
-        return function onBadUrl(path, req, res) {
-          const fourOhFourContext = this[kFourOhFourLevelInstance][kFourOhFourContext];
-          const id = getGenReqId(fourOhFourContext.server, req);
-          const childLogger = createChildLogger(fourOhFourContext, logger, req, id);
-          const request = new Request(id, null, req, null, childLogger, fourOhFourContext);
-          const reply = new Reply(res, request, childLogger);
-          _onBadUrlHandler(request, reply);
-        };
-      }
       function setContext(instance, context) {
-        const _404Context = Object.assign({}, instance[kFourOhFourContext]);
+        const _404Context = Object.create(instance[kFourOhFourContext]);
         _404Context.onSend = context.onSend;
         context[kFourOhFourContext] = _404Context;
       }
@@ -30951,10 +34036,8 @@ var require_fourOhFour = __commonJS({
         if (handler) {
           this[kFourOhFourLevelInstance][kCanSetNotFoundHandler] = false;
           handler = handler.bind(this);
-          _onBadUrlHandler = handler;
         } else {
           handler = basic404;
-          _onBadUrlHandler = basic404;
         }
         this.after((notHandledErr, done) => {
           _setNotFoundHandler.call(this, prefix, opts, handler, avvio, routeHandler);
@@ -30988,9 +34071,9 @@ var require_fourOhFour = __commonJS({
         const fourOhFourContext = this[kFourOhFourLevelInstance][kFourOhFourContext];
         const id = getGenReqId(fourOhFourContext.server, req);
         const childLogger = createChildLogger(fourOhFourContext, logger, req, id);
-        childLogger.info({ req }, "incoming request");
         const request = new Request(id, null, req, null, childLogger, fourOhFourContext);
         const reply = new Reply(res, request, childLogger);
+        fourOhFourContext.server[kLogController].incomingRequest(request, reply);
         request.log.warn("the default handler for 404 did not catch this, this is likely a fastify bug, please report it");
         request.log.warn(router.prettyPrint());
         reply.code(404).send(new FST_ERR_NOT_FOUND());
@@ -31000,1211 +34083,9 @@ var require_fourOhFour = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/configValidator.js
-var require_configValidator = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/configValidator.js"(exports2, module2) {
-    "use strict";
-    module2.exports = validate10;
-    module2.exports.default = validate10;
-    var schema11 = { "type": "object", "additionalProperties": false, "properties": { "connectionTimeout": { "type": "integer", "default": 0 }, "keepAliveTimeout": { "type": "integer", "default": 72e3 }, "forceCloseConnections": { "oneOf": [{ "type": "string", "pattern": "idle" }, { "type": "boolean" }] }, "maxRequestsPerSocket": { "type": "integer", "default": 0, "nullable": true }, "requestTimeout": { "type": "integer", "default": 0 }, "bodyLimit": { "type": "integer", "default": 1048576 }, "caseSensitive": { "type": "boolean", "default": true }, "allowUnsafeRegex": { "type": "boolean", "default": false }, "http2": { "type": "boolean" }, "https": { "if": { "not": { "oneOf": [{ "type": "boolean" }, { "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["allowHTTP1"], "properties": { "allowHTTP1": { "type": "boolean" } } }] } }, "then": { "setDefaultValue": true } }, "ignoreTrailingSlash": { "type": "boolean", "default": false }, "ignoreDuplicateSlashes": { "type": "boolean", "default": false }, "disableRequestLogging": { "type": "boolean", "default": false }, "maxParamLength": { "type": "integer", "default": 100 }, "onProtoPoisoning": { "type": "string", "default": "error" }, "onConstructorPoisoning": { "type": "string", "default": "error" }, "pluginTimeout": { "type": "integer", "default": 1e4 }, "requestIdHeader": { "anyOf": [{ "type": "boolean" }, { "type": "string" }], "default": false }, "requestIdLogLabel": { "type": "string", "default": "reqId" }, "http2SessionTimeout": { "type": "integer", "default": 72e3 }, "exposeHeadRoutes": { "type": "boolean", "default": true }, "useSemicolonDelimiter": { "type": "boolean", "default": false }, "routerOptions": { "type": "object", "additionalProperties": false, "properties": { "ignoreTrailingSlash": { "type": "boolean", "default": false }, "ignoreDuplicateSlashes": { "type": "boolean", "default": false }, "maxParamLength": { "type": "integer", "default": 100 }, "allowUnsafeRegex": { "type": "boolean", "default": false }, "useSemicolonDelimiter": { "type": "boolean", "default": false } } }, "constraints": { "type": "object", "additionalProperties": { "type": "object", "required": ["name", "storage", "validate", "deriveConstraint"], "additionalProperties": true, "properties": { "name": { "type": "string" }, "storage": {}, "validate": {}, "deriveConstraint": {} } } } } };
-    var func2 = Object.prototype.hasOwnProperty;
-    var pattern0 = new RegExp("idle", "u");
-    function validate10(data, { instancePath = "", parentData, parentDataProperty, rootData = data } = {}) {
-      let vErrors = null;
-      let errors = 0;
-      if (errors === 0) {
-        if (data && typeof data == "object" && !Array.isArray(data)) {
-          if (data.connectionTimeout === void 0) {
-            data.connectionTimeout = 0;
-          }
-          if (data.keepAliveTimeout === void 0) {
-            data.keepAliveTimeout = 72e3;
-          }
-          if (data.maxRequestsPerSocket === void 0) {
-            data.maxRequestsPerSocket = 0;
-          }
-          if (data.requestTimeout === void 0) {
-            data.requestTimeout = 0;
-          }
-          if (data.bodyLimit === void 0) {
-            data.bodyLimit = 1048576;
-          }
-          if (data.caseSensitive === void 0) {
-            data.caseSensitive = true;
-          }
-          if (data.allowUnsafeRegex === void 0) {
-            data.allowUnsafeRegex = false;
-          }
-          if (data.ignoreTrailingSlash === void 0) {
-            data.ignoreTrailingSlash = false;
-          }
-          if (data.ignoreDuplicateSlashes === void 0) {
-            data.ignoreDuplicateSlashes = false;
-          }
-          if (data.disableRequestLogging === void 0) {
-            data.disableRequestLogging = false;
-          }
-          if (data.maxParamLength === void 0) {
-            data.maxParamLength = 100;
-          }
-          if (data.onProtoPoisoning === void 0) {
-            data.onProtoPoisoning = "error";
-          }
-          if (data.onConstructorPoisoning === void 0) {
-            data.onConstructorPoisoning = "error";
-          }
-          if (data.pluginTimeout === void 0) {
-            data.pluginTimeout = 1e4;
-          }
-          if (data.requestIdHeader === void 0) {
-            data.requestIdHeader = false;
-          }
-          if (data.requestIdLogLabel === void 0) {
-            data.requestIdLogLabel = "reqId";
-          }
-          if (data.http2SessionTimeout === void 0) {
-            data.http2SessionTimeout = 72e3;
-          }
-          if (data.exposeHeadRoutes === void 0) {
-            data.exposeHeadRoutes = true;
-          }
-          if (data.useSemicolonDelimiter === void 0) {
-            data.useSemicolonDelimiter = false;
-          }
-          const _errs1 = errors;
-          for (const key0 in data) {
-            if (!func2.call(schema11.properties, key0)) {
-              delete data[key0];
-            }
-          }
-          if (_errs1 === errors) {
-            let data0 = data.connectionTimeout;
-            const _errs2 = errors;
-            if (!(typeof data0 == "number" && (!(data0 % 1) && !isNaN(data0)) && isFinite(data0))) {
-              let dataType0 = typeof data0;
-              let coerced0 = void 0;
-              if (!(coerced0 !== void 0)) {
-                if (dataType0 === "boolean" || data0 === null || dataType0 === "string" && data0 && data0 == +data0 && !(data0 % 1)) {
-                  coerced0 = +data0;
-                } else {
-                  validate10.errors = [{ instancePath: instancePath + "/connectionTimeout", schemaPath: "#/properties/connectionTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                  return false;
-                }
-              }
-              if (coerced0 !== void 0) {
-                data0 = coerced0;
-                if (data !== void 0) {
-                  data["connectionTimeout"] = coerced0;
-                }
-              }
-            }
-            var valid0 = _errs2 === errors;
-            if (valid0) {
-              let data1 = data.keepAliveTimeout;
-              const _errs4 = errors;
-              if (!(typeof data1 == "number" && (!(data1 % 1) && !isNaN(data1)) && isFinite(data1))) {
-                let dataType1 = typeof data1;
-                let coerced1 = void 0;
-                if (!(coerced1 !== void 0)) {
-                  if (dataType1 === "boolean" || data1 === null || dataType1 === "string" && data1 && data1 == +data1 && !(data1 % 1)) {
-                    coerced1 = +data1;
-                  } else {
-                    validate10.errors = [{ instancePath: instancePath + "/keepAliveTimeout", schemaPath: "#/properties/keepAliveTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                    return false;
-                  }
-                }
-                if (coerced1 !== void 0) {
-                  data1 = coerced1;
-                  if (data !== void 0) {
-                    data["keepAliveTimeout"] = coerced1;
-                  }
-                }
-              }
-              var valid0 = _errs4 === errors;
-              if (valid0) {
-                if (data.forceCloseConnections !== void 0) {
-                  let data2 = data.forceCloseConnections;
-                  const _errs6 = errors;
-                  const _errs7 = errors;
-                  let valid1 = false;
-                  let passing0 = null;
-                  const _errs8 = errors;
-                  if (typeof data2 !== "string") {
-                    let dataType2 = typeof data2;
-                    let coerced2 = void 0;
-                    if (!(coerced2 !== void 0)) {
-                      if (dataType2 == "number" || dataType2 == "boolean") {
-                        coerced2 = "" + data2;
-                      } else if (data2 === null) {
-                        coerced2 = "";
-                      } else {
-                        const err0 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/0/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                        if (vErrors === null) {
-                          vErrors = [err0];
-                        } else {
-                          vErrors.push(err0);
-                        }
-                        errors++;
-                      }
-                    }
-                    if (coerced2 !== void 0) {
-                      data2 = coerced2;
-                      if (data !== void 0) {
-                        data["forceCloseConnections"] = coerced2;
-                      }
-                    }
-                  }
-                  if (errors === _errs8) {
-                    if (typeof data2 === "string") {
-                      if (!pattern0.test(data2)) {
-                        const err1 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/0/pattern", keyword: "pattern", params: { pattern: "idle" }, message: 'must match pattern "idle"' };
-                        if (vErrors === null) {
-                          vErrors = [err1];
-                        } else {
-                          vErrors.push(err1);
-                        }
-                        errors++;
-                      }
-                    }
-                  }
-                  var _valid0 = _errs8 === errors;
-                  if (_valid0) {
-                    valid1 = true;
-                    passing0 = 0;
-                  }
-                  const _errs10 = errors;
-                  if (typeof data2 !== "boolean") {
-                    let coerced3 = void 0;
-                    if (!(coerced3 !== void 0)) {
-                      if (data2 === "false" || data2 === 0 || data2 === null) {
-                        coerced3 = false;
-                      } else if (data2 === "true" || data2 === 1) {
-                        coerced3 = true;
-                      } else {
-                        const err2 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf/1/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
-                        if (vErrors === null) {
-                          vErrors = [err2];
-                        } else {
-                          vErrors.push(err2);
-                        }
-                        errors++;
-                      }
-                    }
-                    if (coerced3 !== void 0) {
-                      data2 = coerced3;
-                      if (data !== void 0) {
-                        data["forceCloseConnections"] = coerced3;
-                      }
-                    }
-                  }
-                  var _valid0 = _errs10 === errors;
-                  if (_valid0 && valid1) {
-                    valid1 = false;
-                    passing0 = [passing0, 1];
-                  } else {
-                    if (_valid0) {
-                      valid1 = true;
-                      passing0 = 1;
-                    }
-                  }
-                  if (!valid1) {
-                    const err3 = { instancePath: instancePath + "/forceCloseConnections", schemaPath: "#/properties/forceCloseConnections/oneOf", keyword: "oneOf", params: { passingSchemas: passing0 }, message: "must match exactly one schema in oneOf" };
-                    if (vErrors === null) {
-                      vErrors = [err3];
-                    } else {
-                      vErrors.push(err3);
-                    }
-                    errors++;
-                    validate10.errors = vErrors;
-                    return false;
-                  } else {
-                    errors = _errs7;
-                    if (vErrors !== null) {
-                      if (_errs7) {
-                        vErrors.length = _errs7;
-                      } else {
-                        vErrors = null;
-                      }
-                    }
-                  }
-                  var valid0 = _errs6 === errors;
-                } else {
-                  var valid0 = true;
-                }
-                if (valid0) {
-                  let data3 = data.maxRequestsPerSocket;
-                  const _errs12 = errors;
-                  if (!(typeof data3 == "number" && (!(data3 % 1) && !isNaN(data3)) && isFinite(data3)) && data3 !== null) {
-                    let dataType4 = typeof data3;
-                    let coerced4 = void 0;
-                    if (!(coerced4 !== void 0)) {
-                      if (dataType4 === "boolean" || data3 === null || dataType4 === "string" && data3 && data3 == +data3 && !(data3 % 1)) {
-                        coerced4 = +data3;
-                      } else if (data3 === "" || data3 === 0 || data3 === false) {
-                        coerced4 = null;
-                      } else {
-                        validate10.errors = [{ instancePath: instancePath + "/maxRequestsPerSocket", schemaPath: "#/properties/maxRequestsPerSocket/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                        return false;
-                      }
-                    }
-                    if (coerced4 !== void 0) {
-                      data3 = coerced4;
-                      if (data !== void 0) {
-                        data["maxRequestsPerSocket"] = coerced4;
-                      }
-                    }
-                  }
-                  var valid0 = _errs12 === errors;
-                  if (valid0) {
-                    let data4 = data.requestTimeout;
-                    const _errs15 = errors;
-                    if (!(typeof data4 == "number" && (!(data4 % 1) && !isNaN(data4)) && isFinite(data4))) {
-                      let dataType5 = typeof data4;
-                      let coerced5 = void 0;
-                      if (!(coerced5 !== void 0)) {
-                        if (dataType5 === "boolean" || data4 === null || dataType5 === "string" && data4 && data4 == +data4 && !(data4 % 1)) {
-                          coerced5 = +data4;
-                        } else {
-                          validate10.errors = [{ instancePath: instancePath + "/requestTimeout", schemaPath: "#/properties/requestTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                          return false;
-                        }
-                      }
-                      if (coerced5 !== void 0) {
-                        data4 = coerced5;
-                        if (data !== void 0) {
-                          data["requestTimeout"] = coerced5;
-                        }
-                      }
-                    }
-                    var valid0 = _errs15 === errors;
-                    if (valid0) {
-                      let data5 = data.bodyLimit;
-                      const _errs17 = errors;
-                      if (!(typeof data5 == "number" && (!(data5 % 1) && !isNaN(data5)) && isFinite(data5))) {
-                        let dataType6 = typeof data5;
-                        let coerced6 = void 0;
-                        if (!(coerced6 !== void 0)) {
-                          if (dataType6 === "boolean" || data5 === null || dataType6 === "string" && data5 && data5 == +data5 && !(data5 % 1)) {
-                            coerced6 = +data5;
-                          } else {
-                            validate10.errors = [{ instancePath: instancePath + "/bodyLimit", schemaPath: "#/properties/bodyLimit/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                            return false;
-                          }
-                        }
-                        if (coerced6 !== void 0) {
-                          data5 = coerced6;
-                          if (data !== void 0) {
-                            data["bodyLimit"] = coerced6;
-                          }
-                        }
-                      }
-                      var valid0 = _errs17 === errors;
-                      if (valid0) {
-                        let data6 = data.caseSensitive;
-                        const _errs19 = errors;
-                        if (typeof data6 !== "boolean") {
-                          let coerced7 = void 0;
-                          if (!(coerced7 !== void 0)) {
-                            if (data6 === "false" || data6 === 0 || data6 === null) {
-                              coerced7 = false;
-                            } else if (data6 === "true" || data6 === 1) {
-                              coerced7 = true;
-                            } else {
-                              validate10.errors = [{ instancePath: instancePath + "/caseSensitive", schemaPath: "#/properties/caseSensitive/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                              return false;
-                            }
-                          }
-                          if (coerced7 !== void 0) {
-                            data6 = coerced7;
-                            if (data !== void 0) {
-                              data["caseSensitive"] = coerced7;
-                            }
-                          }
-                        }
-                        var valid0 = _errs19 === errors;
-                        if (valid0) {
-                          let data7 = data.allowUnsafeRegex;
-                          const _errs21 = errors;
-                          if (typeof data7 !== "boolean") {
-                            let coerced8 = void 0;
-                            if (!(coerced8 !== void 0)) {
-                              if (data7 === "false" || data7 === 0 || data7 === null) {
-                                coerced8 = false;
-                              } else if (data7 === "true" || data7 === 1) {
-                                coerced8 = true;
-                              } else {
-                                validate10.errors = [{ instancePath: instancePath + "/allowUnsafeRegex", schemaPath: "#/properties/allowUnsafeRegex/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                return false;
-                              }
-                            }
-                            if (coerced8 !== void 0) {
-                              data7 = coerced8;
-                              if (data !== void 0) {
-                                data["allowUnsafeRegex"] = coerced8;
-                              }
-                            }
-                          }
-                          var valid0 = _errs21 === errors;
-                          if (valid0) {
-                            if (data.http2 !== void 0) {
-                              let data8 = data.http2;
-                              const _errs23 = errors;
-                              if (typeof data8 !== "boolean") {
-                                let coerced9 = void 0;
-                                if (!(coerced9 !== void 0)) {
-                                  if (data8 === "false" || data8 === 0 || data8 === null) {
-                                    coerced9 = false;
-                                  } else if (data8 === "true" || data8 === 1) {
-                                    coerced9 = true;
-                                  } else {
-                                    validate10.errors = [{ instancePath: instancePath + "/http2", schemaPath: "#/properties/http2/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                    return false;
-                                  }
-                                }
-                                if (coerced9 !== void 0) {
-                                  data8 = coerced9;
-                                  if (data !== void 0) {
-                                    data["http2"] = coerced9;
-                                  }
-                                }
-                              }
-                              var valid0 = _errs23 === errors;
-                            } else {
-                              var valid0 = true;
-                            }
-                            if (valid0) {
-                              if (data.https !== void 0) {
-                                let data9 = data.https;
-                                const _errs25 = errors;
-                                const _errs26 = errors;
-                                let valid2 = true;
-                                const _errs27 = errors;
-                                const _errs28 = errors;
-                                const _errs29 = errors;
-                                const _errs30 = errors;
-                                let valid4 = false;
-                                let passing1 = null;
-                                const _errs31 = errors;
-                                if (typeof data9 !== "boolean") {
-                                  let coerced10 = void 0;
-                                  if (!(coerced10 !== void 0)) {
-                                    if (data9 === "false" || data9 === 0 || data9 === null) {
-                                      coerced10 = false;
-                                    } else if (data9 === "true" || data9 === 1) {
-                                      coerced10 = true;
-                                    } else {
-                                      const err4 = {};
-                                      if (vErrors === null) {
-                                        vErrors = [err4];
-                                      } else {
-                                        vErrors.push(err4);
-                                      }
-                                      errors++;
-                                    }
-                                  }
-                                  if (coerced10 !== void 0) {
-                                    data9 = coerced10;
-                                    if (data !== void 0) {
-                                      data["https"] = coerced10;
-                                    }
-                                  }
-                                }
-                                var _valid2 = _errs31 === errors;
-                                if (_valid2) {
-                                  valid4 = true;
-                                  passing1 = 0;
-                                }
-                                const _errs33 = errors;
-                                if (data9 !== null) {
-                                  let coerced11 = void 0;
-                                  if (!(coerced11 !== void 0)) {
-                                    if (data9 === "" || data9 === 0 || data9 === false) {
-                                      coerced11 = null;
-                                    } else {
-                                      const err5 = {};
-                                      if (vErrors === null) {
-                                        vErrors = [err5];
-                                      } else {
-                                        vErrors.push(err5);
-                                      }
-                                      errors++;
-                                    }
-                                  }
-                                  if (coerced11 !== void 0) {
-                                    data9 = coerced11;
-                                    if (data !== void 0) {
-                                      data["https"] = coerced11;
-                                    }
-                                  }
-                                }
-                                var _valid2 = _errs33 === errors;
-                                if (_valid2 && valid4) {
-                                  valid4 = false;
-                                  passing1 = [passing1, 1];
-                                } else {
-                                  if (_valid2) {
-                                    valid4 = true;
-                                    passing1 = 1;
-                                  }
-                                  const _errs35 = errors;
-                                  if (errors === _errs35) {
-                                    if (data9 && typeof data9 == "object" && !Array.isArray(data9)) {
-                                      let missing0;
-                                      if (data9.allowHTTP1 === void 0 && (missing0 = "allowHTTP1")) {
-                                        const err6 = {};
-                                        if (vErrors === null) {
-                                          vErrors = [err6];
-                                        } else {
-                                          vErrors.push(err6);
-                                        }
-                                        errors++;
-                                      } else {
-                                        const _errs37 = errors;
-                                        for (const key1 in data9) {
-                                          if (!(key1 === "allowHTTP1")) {
-                                            delete data9[key1];
-                                          }
-                                        }
-                                        if (_errs37 === errors) {
-                                          if (data9.allowHTTP1 !== void 0) {
-                                            let data10 = data9.allowHTTP1;
-                                            if (typeof data10 !== "boolean") {
-                                              let coerced12 = void 0;
-                                              if (!(coerced12 !== void 0)) {
-                                                if (data10 === "false" || data10 === 0 || data10 === null) {
-                                                  coerced12 = false;
-                                                } else if (data10 === "true" || data10 === 1) {
-                                                  coerced12 = true;
-                                                } else {
-                                                  const err7 = {};
-                                                  if (vErrors === null) {
-                                                    vErrors = [err7];
-                                                  } else {
-                                                    vErrors.push(err7);
-                                                  }
-                                                  errors++;
-                                                }
-                                              }
-                                              if (coerced12 !== void 0) {
-                                                data10 = coerced12;
-                                                if (data9 !== void 0) {
-                                                  data9["allowHTTP1"] = coerced12;
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
-                                      }
-                                    } else {
-                                      const err8 = {};
-                                      if (vErrors === null) {
-                                        vErrors = [err8];
-                                      } else {
-                                        vErrors.push(err8);
-                                      }
-                                      errors++;
-                                    }
-                                  }
-                                  var _valid2 = _errs35 === errors;
-                                  if (_valid2 && valid4) {
-                                    valid4 = false;
-                                    passing1 = [passing1, 2];
-                                  } else {
-                                    if (_valid2) {
-                                      valid4 = true;
-                                      passing1 = 2;
-                                    }
-                                  }
-                                }
-                                if (!valid4) {
-                                  const err9 = {};
-                                  if (vErrors === null) {
-                                    vErrors = [err9];
-                                  } else {
-                                    vErrors.push(err9);
-                                  }
-                                  errors++;
-                                } else {
-                                  errors = _errs30;
-                                  if (vErrors !== null) {
-                                    if (_errs30) {
-                                      vErrors.length = _errs30;
-                                    } else {
-                                      vErrors = null;
-                                    }
-                                  }
-                                }
-                                var valid3 = _errs29 === errors;
-                                if (valid3) {
-                                  const err10 = {};
-                                  if (vErrors === null) {
-                                    vErrors = [err10];
-                                  } else {
-                                    vErrors.push(err10);
-                                  }
-                                  errors++;
-                                } else {
-                                  errors = _errs28;
-                                  if (vErrors !== null) {
-                                    if (_errs28) {
-                                      vErrors.length = _errs28;
-                                    } else {
-                                      vErrors = null;
-                                    }
-                                  }
-                                }
-                                var _valid1 = _errs27 === errors;
-                                errors = _errs26;
-                                if (vErrors !== null) {
-                                  if (_errs26) {
-                                    vErrors.length = _errs26;
-                                  } else {
-                                    vErrors = null;
-                                  }
-                                }
-                                if (_valid1) {
-                                  const _errs40 = errors;
-                                  data["https"] = true;
-                                  var _valid1 = _errs40 === errors;
-                                  valid2 = _valid1;
-                                }
-                                if (!valid2) {
-                                  const err11 = { instancePath: instancePath + "/https", schemaPath: "#/properties/https/if", keyword: "if", params: { failingKeyword: "then" }, message: 'must match "then" schema' };
-                                  if (vErrors === null) {
-                                    vErrors = [err11];
-                                  } else {
-                                    vErrors.push(err11);
-                                  }
-                                  errors++;
-                                  validate10.errors = vErrors;
-                                  return false;
-                                }
-                                var valid0 = _errs25 === errors;
-                              } else {
-                                var valid0 = true;
-                              }
-                              if (valid0) {
-                                let data11 = data.ignoreTrailingSlash;
-                                const _errs41 = errors;
-                                if (typeof data11 !== "boolean") {
-                                  let coerced13 = void 0;
-                                  if (!(coerced13 !== void 0)) {
-                                    if (data11 === "false" || data11 === 0 || data11 === null) {
-                                      coerced13 = false;
-                                    } else if (data11 === "true" || data11 === 1) {
-                                      coerced13 = true;
-                                    } else {
-                                      validate10.errors = [{ instancePath: instancePath + "/ignoreTrailingSlash", schemaPath: "#/properties/ignoreTrailingSlash/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                      return false;
-                                    }
-                                  }
-                                  if (coerced13 !== void 0) {
-                                    data11 = coerced13;
-                                    if (data !== void 0) {
-                                      data["ignoreTrailingSlash"] = coerced13;
-                                    }
-                                  }
-                                }
-                                var valid0 = _errs41 === errors;
-                                if (valid0) {
-                                  let data12 = data.ignoreDuplicateSlashes;
-                                  const _errs43 = errors;
-                                  if (typeof data12 !== "boolean") {
-                                    let coerced14 = void 0;
-                                    if (!(coerced14 !== void 0)) {
-                                      if (data12 === "false" || data12 === 0 || data12 === null) {
-                                        coerced14 = false;
-                                      } else if (data12 === "true" || data12 === 1) {
-                                        coerced14 = true;
-                                      } else {
-                                        validate10.errors = [{ instancePath: instancePath + "/ignoreDuplicateSlashes", schemaPath: "#/properties/ignoreDuplicateSlashes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                        return false;
-                                      }
-                                    }
-                                    if (coerced14 !== void 0) {
-                                      data12 = coerced14;
-                                      if (data !== void 0) {
-                                        data["ignoreDuplicateSlashes"] = coerced14;
-                                      }
-                                    }
-                                  }
-                                  var valid0 = _errs43 === errors;
-                                  if (valid0) {
-                                    let data13 = data.disableRequestLogging;
-                                    const _errs45 = errors;
-                                    if (typeof data13 !== "boolean") {
-                                      let coerced15 = void 0;
-                                      if (!(coerced15 !== void 0)) {
-                                        if (data13 === "false" || data13 === 0 || data13 === null) {
-                                          coerced15 = false;
-                                        } else if (data13 === "true" || data13 === 1) {
-                                          coerced15 = true;
-                                        } else {
-                                          validate10.errors = [{ instancePath: instancePath + "/disableRequestLogging", schemaPath: "#/properties/disableRequestLogging/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                          return false;
-                                        }
-                                      }
-                                      if (coerced15 !== void 0) {
-                                        data13 = coerced15;
-                                        if (data !== void 0) {
-                                          data["disableRequestLogging"] = coerced15;
-                                        }
-                                      }
-                                    }
-                                    var valid0 = _errs45 === errors;
-                                    if (valid0) {
-                                      let data14 = data.maxParamLength;
-                                      const _errs47 = errors;
-                                      if (!(typeof data14 == "number" && (!(data14 % 1) && !isNaN(data14)) && isFinite(data14))) {
-                                        let dataType16 = typeof data14;
-                                        let coerced16 = void 0;
-                                        if (!(coerced16 !== void 0)) {
-                                          if (dataType16 === "boolean" || data14 === null || dataType16 === "string" && data14 && data14 == +data14 && !(data14 % 1)) {
-                                            coerced16 = +data14;
-                                          } else {
-                                            validate10.errors = [{ instancePath: instancePath + "/maxParamLength", schemaPath: "#/properties/maxParamLength/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                            return false;
-                                          }
-                                        }
-                                        if (coerced16 !== void 0) {
-                                          data14 = coerced16;
-                                          if (data !== void 0) {
-                                            data["maxParamLength"] = coerced16;
-                                          }
-                                        }
-                                      }
-                                      var valid0 = _errs47 === errors;
-                                      if (valid0) {
-                                        let data15 = data.onProtoPoisoning;
-                                        const _errs49 = errors;
-                                        if (typeof data15 !== "string") {
-                                          let dataType17 = typeof data15;
-                                          let coerced17 = void 0;
-                                          if (!(coerced17 !== void 0)) {
-                                            if (dataType17 == "number" || dataType17 == "boolean") {
-                                              coerced17 = "" + data15;
-                                            } else if (data15 === null) {
-                                              coerced17 = "";
-                                            } else {
-                                              validate10.errors = [{ instancePath: instancePath + "/onProtoPoisoning", schemaPath: "#/properties/onProtoPoisoning/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                              return false;
-                                            }
-                                          }
-                                          if (coerced17 !== void 0) {
-                                            data15 = coerced17;
-                                            if (data !== void 0) {
-                                              data["onProtoPoisoning"] = coerced17;
-                                            }
-                                          }
-                                        }
-                                        var valid0 = _errs49 === errors;
-                                        if (valid0) {
-                                          let data16 = data.onConstructorPoisoning;
-                                          const _errs51 = errors;
-                                          if (typeof data16 !== "string") {
-                                            let dataType18 = typeof data16;
-                                            let coerced18 = void 0;
-                                            if (!(coerced18 !== void 0)) {
-                                              if (dataType18 == "number" || dataType18 == "boolean") {
-                                                coerced18 = "" + data16;
-                                              } else if (data16 === null) {
-                                                coerced18 = "";
-                                              } else {
-                                                validate10.errors = [{ instancePath: instancePath + "/onConstructorPoisoning", schemaPath: "#/properties/onConstructorPoisoning/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                return false;
-                                              }
-                                            }
-                                            if (coerced18 !== void 0) {
-                                              data16 = coerced18;
-                                              if (data !== void 0) {
-                                                data["onConstructorPoisoning"] = coerced18;
-                                              }
-                                            }
-                                          }
-                                          var valid0 = _errs51 === errors;
-                                          if (valid0) {
-                                            let data17 = data.pluginTimeout;
-                                            const _errs53 = errors;
-                                            if (!(typeof data17 == "number" && (!(data17 % 1) && !isNaN(data17)) && isFinite(data17))) {
-                                              let dataType19 = typeof data17;
-                                              let coerced19 = void 0;
-                                              if (!(coerced19 !== void 0)) {
-                                                if (dataType19 === "boolean" || data17 === null || dataType19 === "string" && data17 && data17 == +data17 && !(data17 % 1)) {
-                                                  coerced19 = +data17;
-                                                } else {
-                                                  validate10.errors = [{ instancePath: instancePath + "/pluginTimeout", schemaPath: "#/properties/pluginTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                                  return false;
-                                                }
-                                              }
-                                              if (coerced19 !== void 0) {
-                                                data17 = coerced19;
-                                                if (data !== void 0) {
-                                                  data["pluginTimeout"] = coerced19;
-                                                }
-                                              }
-                                            }
-                                            var valid0 = _errs53 === errors;
-                                            if (valid0) {
-                                              let data18 = data.requestIdHeader;
-                                              const _errs55 = errors;
-                                              const _errs56 = errors;
-                                              let valid6 = false;
-                                              const _errs57 = errors;
-                                              if (typeof data18 !== "boolean") {
-                                                let coerced20 = void 0;
-                                                if (!(coerced20 !== void 0)) {
-                                                  if (data18 === "false" || data18 === 0 || data18 === null) {
-                                                    coerced20 = false;
-                                                  } else if (data18 === "true" || data18 === 1) {
-                                                    coerced20 = true;
-                                                  } else {
-                                                    const err12 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf/0/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" };
-                                                    if (vErrors === null) {
-                                                      vErrors = [err12];
-                                                    } else {
-                                                      vErrors.push(err12);
-                                                    }
-                                                    errors++;
-                                                  }
-                                                }
-                                                if (coerced20 !== void 0) {
-                                                  data18 = coerced20;
-                                                  if (data !== void 0) {
-                                                    data["requestIdHeader"] = coerced20;
-                                                  }
-                                                }
-                                              }
-                                              var _valid3 = _errs57 === errors;
-                                              valid6 = valid6 || _valid3;
-                                              if (!valid6) {
-                                                const _errs59 = errors;
-                                                if (typeof data18 !== "string") {
-                                                  let dataType21 = typeof data18;
-                                                  let coerced21 = void 0;
-                                                  if (!(coerced21 !== void 0)) {
-                                                    if (dataType21 == "number" || dataType21 == "boolean") {
-                                                      coerced21 = "" + data18;
-                                                    } else if (data18 === null) {
-                                                      coerced21 = "";
-                                                    } else {
-                                                      const err13 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf/1/type", keyword: "type", params: { type: "string" }, message: "must be string" };
-                                                      if (vErrors === null) {
-                                                        vErrors = [err13];
-                                                      } else {
-                                                        vErrors.push(err13);
-                                                      }
-                                                      errors++;
-                                                    }
-                                                  }
-                                                  if (coerced21 !== void 0) {
-                                                    data18 = coerced21;
-                                                    if (data !== void 0) {
-                                                      data["requestIdHeader"] = coerced21;
-                                                    }
-                                                  }
-                                                }
-                                                var _valid3 = _errs59 === errors;
-                                                valid6 = valid6 || _valid3;
-                                              }
-                                              if (!valid6) {
-                                                const err14 = { instancePath: instancePath + "/requestIdHeader", schemaPath: "#/properties/requestIdHeader/anyOf", keyword: "anyOf", params: {}, message: "must match a schema in anyOf" };
-                                                if (vErrors === null) {
-                                                  vErrors = [err14];
-                                                } else {
-                                                  vErrors.push(err14);
-                                                }
-                                                errors++;
-                                                validate10.errors = vErrors;
-                                                return false;
-                                              } else {
-                                                errors = _errs56;
-                                                if (vErrors !== null) {
-                                                  if (_errs56) {
-                                                    vErrors.length = _errs56;
-                                                  } else {
-                                                    vErrors = null;
-                                                  }
-                                                }
-                                              }
-                                              var valid0 = _errs55 === errors;
-                                              if (valid0) {
-                                                let data19 = data.requestIdLogLabel;
-                                                const _errs61 = errors;
-                                                if (typeof data19 !== "string") {
-                                                  let dataType22 = typeof data19;
-                                                  let coerced22 = void 0;
-                                                  if (!(coerced22 !== void 0)) {
-                                                    if (dataType22 == "number" || dataType22 == "boolean") {
-                                                      coerced22 = "" + data19;
-                                                    } else if (data19 === null) {
-                                                      coerced22 = "";
-                                                    } else {
-                                                      validate10.errors = [{ instancePath: instancePath + "/requestIdLogLabel", schemaPath: "#/properties/requestIdLogLabel/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                      return false;
-                                                    }
-                                                  }
-                                                  if (coerced22 !== void 0) {
-                                                    data19 = coerced22;
-                                                    if (data !== void 0) {
-                                                      data["requestIdLogLabel"] = coerced22;
-                                                    }
-                                                  }
-                                                }
-                                                var valid0 = _errs61 === errors;
-                                                if (valid0) {
-                                                  let data20 = data.http2SessionTimeout;
-                                                  const _errs63 = errors;
-                                                  if (!(typeof data20 == "number" && (!(data20 % 1) && !isNaN(data20)) && isFinite(data20))) {
-                                                    let dataType23 = typeof data20;
-                                                    let coerced23 = void 0;
-                                                    if (!(coerced23 !== void 0)) {
-                                                      if (dataType23 === "boolean" || data20 === null || dataType23 === "string" && data20 && data20 == +data20 && !(data20 % 1)) {
-                                                        coerced23 = +data20;
-                                                      } else {
-                                                        validate10.errors = [{ instancePath: instancePath + "/http2SessionTimeout", schemaPath: "#/properties/http2SessionTimeout/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                                        return false;
-                                                      }
-                                                    }
-                                                    if (coerced23 !== void 0) {
-                                                      data20 = coerced23;
-                                                      if (data !== void 0) {
-                                                        data["http2SessionTimeout"] = coerced23;
-                                                      }
-                                                    }
-                                                  }
-                                                  var valid0 = _errs63 === errors;
-                                                  if (valid0) {
-                                                    let data21 = data.exposeHeadRoutes;
-                                                    const _errs65 = errors;
-                                                    if (typeof data21 !== "boolean") {
-                                                      let coerced24 = void 0;
-                                                      if (!(coerced24 !== void 0)) {
-                                                        if (data21 === "false" || data21 === 0 || data21 === null) {
-                                                          coerced24 = false;
-                                                        } else if (data21 === "true" || data21 === 1) {
-                                                          coerced24 = true;
-                                                        } else {
-                                                          validate10.errors = [{ instancePath: instancePath + "/exposeHeadRoutes", schemaPath: "#/properties/exposeHeadRoutes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                          return false;
-                                                        }
-                                                      }
-                                                      if (coerced24 !== void 0) {
-                                                        data21 = coerced24;
-                                                        if (data !== void 0) {
-                                                          data["exposeHeadRoutes"] = coerced24;
-                                                        }
-                                                      }
-                                                    }
-                                                    var valid0 = _errs65 === errors;
-                                                    if (valid0) {
-                                                      let data22 = data.useSemicolonDelimiter;
-                                                      const _errs67 = errors;
-                                                      if (typeof data22 !== "boolean") {
-                                                        let coerced25 = void 0;
-                                                        if (!(coerced25 !== void 0)) {
-                                                          if (data22 === "false" || data22 === 0 || data22 === null) {
-                                                            coerced25 = false;
-                                                          } else if (data22 === "true" || data22 === 1) {
-                                                            coerced25 = true;
-                                                          } else {
-                                                            validate10.errors = [{ instancePath: instancePath + "/useSemicolonDelimiter", schemaPath: "#/properties/useSemicolonDelimiter/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                            return false;
-                                                          }
-                                                        }
-                                                        if (coerced25 !== void 0) {
-                                                          data22 = coerced25;
-                                                          if (data !== void 0) {
-                                                            data["useSemicolonDelimiter"] = coerced25;
-                                                          }
-                                                        }
-                                                      }
-                                                      var valid0 = _errs67 === errors;
-                                                      if (valid0) {
-                                                        if (data.routerOptions !== void 0) {
-                                                          let data23 = data.routerOptions;
-                                                          const _errs69 = errors;
-                                                          if (errors === _errs69) {
-                                                            if (data23 && typeof data23 == "object" && !Array.isArray(data23)) {
-                                                              if (data23.ignoreTrailingSlash === void 0) {
-                                                                data23.ignoreTrailingSlash = false;
-                                                              }
-                                                              if (data23.ignoreDuplicateSlashes === void 0) {
-                                                                data23.ignoreDuplicateSlashes = false;
-                                                              }
-                                                              if (data23.maxParamLength === void 0) {
-                                                                data23.maxParamLength = 100;
-                                                              }
-                                                              if (data23.allowUnsafeRegex === void 0) {
-                                                                data23.allowUnsafeRegex = false;
-                                                              }
-                                                              if (data23.useSemicolonDelimiter === void 0) {
-                                                                data23.useSemicolonDelimiter = false;
-                                                              }
-                                                              const _errs71 = errors;
-                                                              for (const key2 in data23) {
-                                                                if (!(key2 === "ignoreTrailingSlash" || key2 === "ignoreDuplicateSlashes" || key2 === "maxParamLength" || key2 === "allowUnsafeRegex" || key2 === "useSemicolonDelimiter")) {
-                                                                  delete data23[key2];
-                                                                }
-                                                              }
-                                                              if (_errs71 === errors) {
-                                                                let data24 = data23.ignoreTrailingSlash;
-                                                                const _errs72 = errors;
-                                                                if (typeof data24 !== "boolean") {
-                                                                  let coerced26 = void 0;
-                                                                  if (!(coerced26 !== void 0)) {
-                                                                    if (data24 === "false" || data24 === 0 || data24 === null) {
-                                                                      coerced26 = false;
-                                                                    } else if (data24 === "true" || data24 === 1) {
-                                                                      coerced26 = true;
-                                                                    } else {
-                                                                      validate10.errors = [{ instancePath: instancePath + "/routerOptions/ignoreTrailingSlash", schemaPath: "#/properties/routerOptions/properties/ignoreTrailingSlash/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                                      return false;
-                                                                    }
-                                                                  }
-                                                                  if (coerced26 !== void 0) {
-                                                                    data24 = coerced26;
-                                                                    if (data23 !== void 0) {
-                                                                      data23["ignoreTrailingSlash"] = coerced26;
-                                                                    }
-                                                                  }
-                                                                }
-                                                                var valid7 = _errs72 === errors;
-                                                                if (valid7) {
-                                                                  let data25 = data23.ignoreDuplicateSlashes;
-                                                                  const _errs74 = errors;
-                                                                  if (typeof data25 !== "boolean") {
-                                                                    let coerced27 = void 0;
-                                                                    if (!(coerced27 !== void 0)) {
-                                                                      if (data25 === "false" || data25 === 0 || data25 === null) {
-                                                                        coerced27 = false;
-                                                                      } else if (data25 === "true" || data25 === 1) {
-                                                                        coerced27 = true;
-                                                                      } else {
-                                                                        validate10.errors = [{ instancePath: instancePath + "/routerOptions/ignoreDuplicateSlashes", schemaPath: "#/properties/routerOptions/properties/ignoreDuplicateSlashes/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                                        return false;
-                                                                      }
-                                                                    }
-                                                                    if (coerced27 !== void 0) {
-                                                                      data25 = coerced27;
-                                                                      if (data23 !== void 0) {
-                                                                        data23["ignoreDuplicateSlashes"] = coerced27;
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                  var valid7 = _errs74 === errors;
-                                                                  if (valid7) {
-                                                                    let data26 = data23.maxParamLength;
-                                                                    const _errs76 = errors;
-                                                                    if (!(typeof data26 == "number" && (!(data26 % 1) && !isNaN(data26)) && isFinite(data26))) {
-                                                                      let dataType28 = typeof data26;
-                                                                      let coerced28 = void 0;
-                                                                      if (!(coerced28 !== void 0)) {
-                                                                        if (dataType28 === "boolean" || data26 === null || dataType28 === "string" && data26 && data26 == +data26 && !(data26 % 1)) {
-                                                                          coerced28 = +data26;
-                                                                        } else {
-                                                                          validate10.errors = [{ instancePath: instancePath + "/routerOptions/maxParamLength", schemaPath: "#/properties/routerOptions/properties/maxParamLength/type", keyword: "type", params: { type: "integer" }, message: "must be integer" }];
-                                                                          return false;
-                                                                        }
-                                                                      }
-                                                                      if (coerced28 !== void 0) {
-                                                                        data26 = coerced28;
-                                                                        if (data23 !== void 0) {
-                                                                          data23["maxParamLength"] = coerced28;
-                                                                        }
-                                                                      }
-                                                                    }
-                                                                    var valid7 = _errs76 === errors;
-                                                                    if (valid7) {
-                                                                      let data27 = data23.allowUnsafeRegex;
-                                                                      const _errs78 = errors;
-                                                                      if (typeof data27 !== "boolean") {
-                                                                        let coerced29 = void 0;
-                                                                        if (!(coerced29 !== void 0)) {
-                                                                          if (data27 === "false" || data27 === 0 || data27 === null) {
-                                                                            coerced29 = false;
-                                                                          } else if (data27 === "true" || data27 === 1) {
-                                                                            coerced29 = true;
-                                                                          } else {
-                                                                            validate10.errors = [{ instancePath: instancePath + "/routerOptions/allowUnsafeRegex", schemaPath: "#/properties/routerOptions/properties/allowUnsafeRegex/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                                            return false;
-                                                                          }
-                                                                        }
-                                                                        if (coerced29 !== void 0) {
-                                                                          data27 = coerced29;
-                                                                          if (data23 !== void 0) {
-                                                                            data23["allowUnsafeRegex"] = coerced29;
-                                                                          }
-                                                                        }
-                                                                      }
-                                                                      var valid7 = _errs78 === errors;
-                                                                      if (valid7) {
-                                                                        let data28 = data23.useSemicolonDelimiter;
-                                                                        const _errs80 = errors;
-                                                                        if (typeof data28 !== "boolean") {
-                                                                          let coerced30 = void 0;
-                                                                          if (!(coerced30 !== void 0)) {
-                                                                            if (data28 === "false" || data28 === 0 || data28 === null) {
-                                                                              coerced30 = false;
-                                                                            } else if (data28 === "true" || data28 === 1) {
-                                                                              coerced30 = true;
-                                                                            } else {
-                                                                              validate10.errors = [{ instancePath: instancePath + "/routerOptions/useSemicolonDelimiter", schemaPath: "#/properties/routerOptions/properties/useSemicolonDelimiter/type", keyword: "type", params: { type: "boolean" }, message: "must be boolean" }];
-                                                                              return false;
-                                                                            }
-                                                                          }
-                                                                          if (coerced30 !== void 0) {
-                                                                            data28 = coerced30;
-                                                                            if (data23 !== void 0) {
-                                                                              data23["useSemicolonDelimiter"] = coerced30;
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                        var valid7 = _errs80 === errors;
-                                                                      }
-                                                                    }
-                                                                  }
-                                                                }
-                                                              }
-                                                            } else {
-                                                              validate10.errors = [{ instancePath: instancePath + "/routerOptions", schemaPath: "#/properties/routerOptions/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                              return false;
-                                                            }
-                                                          }
-                                                          var valid0 = _errs69 === errors;
-                                                        } else {
-                                                          var valid0 = true;
-                                                        }
-                                                        if (valid0) {
-                                                          if (data.constraints !== void 0) {
-                                                            let data29 = data.constraints;
-                                                            const _errs82 = errors;
-                                                            if (errors === _errs82) {
-                                                              if (data29 && typeof data29 == "object" && !Array.isArray(data29)) {
-                                                                for (const key3 in data29) {
-                                                                  let data30 = data29[key3];
-                                                                  const _errs85 = errors;
-                                                                  if (errors === _errs85) {
-                                                                    if (data30 && typeof data30 == "object" && !Array.isArray(data30)) {
-                                                                      let missing1;
-                                                                      if (data30.name === void 0 && (missing1 = "name") || data30.storage === void 0 && (missing1 = "storage") || data30.validate === void 0 && (missing1 = "validate") || data30.deriveConstraint === void 0 && (missing1 = "deriveConstraint")) {
-                                                                        validate10.errors = [{ instancePath: instancePath + "/constraints/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/constraints/additionalProperties/required", keyword: "required", params: { missingProperty: missing1 }, message: "must have required property '" + missing1 + "'" }];
-                                                                        return false;
-                                                                      } else {
-                                                                        if (data30.name !== void 0) {
-                                                                          let data31 = data30.name;
-                                                                          if (typeof data31 !== "string") {
-                                                                            let dataType31 = typeof data31;
-                                                                            let coerced31 = void 0;
-                                                                            if (!(coerced31 !== void 0)) {
-                                                                              if (dataType31 == "number" || dataType31 == "boolean") {
-                                                                                coerced31 = "" + data31;
-                                                                              } else if (data31 === null) {
-                                                                                coerced31 = "";
-                                                                              } else {
-                                                                                validate10.errors = [{ instancePath: instancePath + "/constraints/" + key3.replace(/~/g, "~0").replace(/\//g, "~1") + "/name", schemaPath: "#/properties/constraints/additionalProperties/properties/name/type", keyword: "type", params: { type: "string" }, message: "must be string" }];
-                                                                                return false;
-                                                                              }
-                                                                            }
-                                                                            if (coerced31 !== void 0) {
-                                                                              data31 = coerced31;
-                                                                              if (data30 !== void 0) {
-                                                                                data30["name"] = coerced31;
-                                                                              }
-                                                                            }
-                                                                          }
-                                                                        }
-                                                                      }
-                                                                    } else {
-                                                                      validate10.errors = [{ instancePath: instancePath + "/constraints/" + key3.replace(/~/g, "~0").replace(/\//g, "~1"), schemaPath: "#/properties/constraints/additionalProperties/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                      return false;
-                                                                    }
-                                                                  }
-                                                                  var valid8 = _errs85 === errors;
-                                                                  if (!valid8) {
-                                                                    break;
-                                                                  }
-                                                                }
-                                                              } else {
-                                                                validate10.errors = [{ instancePath: instancePath + "/constraints", schemaPath: "#/properties/constraints/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-                                                                return false;
-                                                              }
-                                                            }
-                                                            var valid0 = _errs82 === errors;
-                                                          } else {
-                                                            var valid0 = true;
-                                                          }
-                                                        }
-                                                      }
-                                                    }
-                                                  }
-                                                }
-                                              }
-                                            }
-                                          }
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        } else {
-          validate10.errors = [{ instancePath, schemaPath: "#/type", keyword: "type", params: { type: "object" }, message: "must be object" }];
-          return false;
-        }
-      }
-      validate10.errors = vErrors;
-      return errors === 0;
-    }
-    module2.exports.defaultInitOptions = { "connectionTimeout": 0, "keepAliveTimeout": 72e3, "maxRequestsPerSocket": 0, "requestTimeout": 0, "bodyLimit": 1048576, "caseSensitive": true, "allowUnsafeRegex": false, "disableRequestLogging": false, "ignoreTrailingSlash": false, "ignoreDuplicateSlashes": false, "maxParamLength": 100, "onProtoPoisoning": "error", "onConstructorPoisoning": "error", "pluginTimeout": 1e4, "requestIdHeader": false, "requestIdLogLabel": "reqId", "http2SessionTimeout": 72e3, "exposeHeadRoutes": true, "useSemicolonDelimiter": false, "allowErrorHandlerOverride": true, "routerOptions": { "ignoreTrailingSlash": false, "ignoreDuplicateSlashes": false, "maxParamLength": 100, "allowUnsafeRegex": false, "useSemicolonDelimiter": false } };
-  }
-});
-
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/initialConfigValidation.js
-var require_initialConfigValidation = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/initialConfigValidation.js"(exports2, module2) {
-    "use strict";
-    var validate = require_configValidator();
-    var deepClone = require_rfdc()({ circles: true, proto: false });
-    var { FST_ERR_INIT_OPTS_INVALID } = require_errors2();
-    function validateInitialConfig(options) {
-      const opts = deepClone(options);
-      if (!validate(opts)) {
-        const error = new FST_ERR_INIT_OPTS_INVALID(JSON.stringify(validate.errors.map((e) => e.message)));
-        error.errors = validate.errors;
-        throw error;
-      }
-      return deepFreezeObject(opts);
-    }
-    function deepFreezeObject(object) {
-      const properties = Object.getOwnPropertyNames(object);
-      for (const name of properties) {
-        const value = object[name];
-        if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
-          continue;
-        }
-        object[name] = value && typeof value === "object" ? deepFreezeObject(value) : value;
-      }
-      return Object.freeze(object);
-    }
-    module2.exports = validateInitialConfig;
-    module2.exports.defaultInitOptions = validate.defaultInitOptions;
-    module2.exports.utils = { deepFreezeObject };
-  }
-});
-
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/pluginOverride.js
-var require_pluginOverride = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/pluginOverride.js"(exports2, module2) {
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/plugin-override.js
+var require_plugin_override = __commonJS({
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/lib/plugin-override.js"(exports2, module2) {
     "use strict";
     var {
       kAvvioBoot,
@@ -32224,9 +34105,9 @@ var require_pluginOverride = __commonJS({
     var Reply = require_reply();
     var Request = require_request();
     var SchemaController = require_schema_controller();
-    var ContentTypeParser = require_contentTypeParser();
+    var ContentTypeParser = require_content_type_parser();
     var { buildHooks } = require_hooks();
-    var pluginUtils = require_pluginUtils();
+    var pluginUtils = require_plugin_utils();
     module2.exports = function override(old, fn, opts) {
       const shouldSkipOverride = pluginUtils.registerPlugin.call(old, fn);
       const fnName = pluginUtils.getPluginName(fn) || pluginUtils.getFuncPreview(fn);
@@ -32265,31 +34146,11 @@ var require_pluginOverride = __commonJS({
       }
       if (instancePrefix.endsWith("/") && pluginPrefix[0] === "/") {
         pluginPrefix = pluginPrefix.slice(1);
-      } else if (pluginPrefix[0] !== "/") {
+      } else if (pluginPrefix[0] !== "/" && !instancePrefix.endsWith("/")) {
         pluginPrefix = "/" + pluginPrefix;
       }
       return instancePrefix + pluginPrefix;
     }
-  }
-});
-
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/noop-set.js
-var require_noop_set = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/lib/noop-set.js"(exports2, module2) {
-    "use strict";
-    module2.exports = function noopSet() {
-      return {
-        [Symbol.iterator]: function* () {
-        },
-        add() {
-        },
-        delete() {
-        },
-        has() {
-          return true;
-        }
-      };
-    };
   }
 });
 
@@ -33262,7 +35123,7 @@ var require_response = __commonJS({
 });
 
 // node_modules/.pnpm/light-my-request@6.6.0/node_modules/light-my-request/lib/config-validator.js
-var require_config_validator = __commonJS({
+var require_config_validator2 = __commonJS({
   "node_modules/.pnpm/light-my-request@6.6.0/node_modules/light-my-request/lib/config-validator.js"(exports2, module2) {
     "use strict";
     module2.exports = validate10;
@@ -34098,7 +35959,7 @@ var require_light_my_request = __commonJS({
     var Request = require_request2();
     var Response = require_response();
     var errorMessage = "The dispatch function has already been invoked";
-    var optsValidator = require_config_validator();
+    var optsValidator = require_config_validator2();
     function inject(dispatchFunc, options, callback) {
       if (callback === void 0) {
         return new Chain(dispatchFunc, options);
@@ -34248,11 +36109,11 @@ var require_light_my_request = __commonJS({
   }
 });
 
-// node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/fastify.js
+// node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/fastify.js
 var require_fastify = __commonJS({
-  "node_modules/.pnpm/fastify@5.6.1/node_modules/fastify/fastify.js"(exports2, module2) {
+  "node_modules/.pnpm/fastify@5.12.5/node_modules/fastify/fastify.js"(exports2, module2) {
     "use strict";
-    var VERSION = "5.6.1";
+    var VERSION = "5.12.5";
     var Avvio = require_avvio();
     var http = require("node:http");
     var diagnostics = require("node:diagnostics_channel");
@@ -34282,24 +36143,25 @@ var require_fastify = __commonJS({
       kKeepAliveConnections,
       kChildLoggerFactory,
       kGenReqId,
-      kErrorHandlerAlreadySet
+      kErrorHandlerAlreadySet,
+      kHandlerTimeout,
+      kLogController
     } = require_symbols2();
     var { createServer } = require_server();
     var Reply = require_reply();
     var Request = require_request();
     var Context = require_context();
     var decorator = require_decorate();
-    var ContentTypeParser = require_contentTypeParser();
+    var ContentTypeParser = require_content_type_parser();
     var SchemaController = require_schema_controller();
     var { Hooks, hookRunnerApplication, supportedHooks } = require_hooks();
-    var { createChildLogger, defaultChildLoggerFactory, createLogger } = require_logger_factory();
-    var pluginUtils = require_pluginUtils();
-    var { getGenReqId, reqIdGenFactory } = require_reqIdGenFactory();
+    var { createChildLogger, defaultChildLoggerFactory, createLogger, createLogController, LogController } = require_logger_factory();
+    var pluginUtils = require_plugin_utils();
+    var { getGenReqId, reqIdGenFactory } = require_req_id_gen_factory();
     var { buildRouting, validateBodyLimitOption, buildRouterOptions } = require_route();
-    var build404 = require_fourOhFour();
-    var getSecuredInitialConfig = require_initialConfigValidation();
-    var override = require_pluginOverride();
-    var noopSet = require_noop_set();
+    var build404 = require_four_oh_four();
+    var getSecuredInitialConfig = require_initial_config_validation();
+    var override = require_plugin_override();
     var {
       appendStackTrace,
       AVVIO_ERRORS_MAP,
@@ -34310,7 +36172,7 @@ var require_fastify = __commonJS({
     var {
       FST_ERR_ASYNC_CONSTRAINT,
       FST_ERR_BAD_URL,
-      FST_ERR_FORCE_CLOSE_CONNECTIONS_IDLE_NOT_AVAILABLE,
+      FST_ERR_MAX_PARAM_LENGTH,
       FST_ERR_OPTIONS_NOT_OBJ,
       FST_ERR_QSP_NOT_FN,
       FST_ERR_SCHEMA_CONTROLLER_BUCKET_OPT_NOT_FN,
@@ -34325,86 +36187,27 @@ var require_fastify = __commonJS({
       FST_ERR_ROUTE_METHOD_INVALID
     } = errorCodes;
     var { buildErrorHandler } = require_error_handler();
-    var { FSTWRN004 } = require_warnings();
+    var { FSTWRN004, FSTDEP023, FSTDEP024, FSTDEP025 } = require_warnings();
     var initChannel = diagnostics.channel("fastify.initialization");
-    function defaultBuildPrettyMeta(route) {
-      const cleanKeys = {};
-      const allowedProps = ["errorHandler", "logLevel", "logSerializers"];
-      allowedProps.concat(supportedHooks).forEach((k) => {
-        cleanKeys[k] = route.store[k];
-      });
-      return Object.assign({}, cleanKeys);
-    }
-    function fastify(options) {
-      if (options && typeof options !== "object") {
-        throw new FST_ERR_OPTIONS_NOT_OBJ();
-      } else {
-        options = Object.assign({}, options);
-      }
-      if (options.querystringParser && typeof options.querystringParser !== "function" || options.routerOptions?.querystringParser && typeof options.routerOptions.querystringParser !== "function") {
-        throw new FST_ERR_QSP_NOT_FN(typeof (options.querystringParser ?? options.routerOptions.querystringParser));
-      }
-      if (options.schemaController && options.schemaController.bucket && typeof options.schemaController.bucket !== "function") {
-        throw new FST_ERR_SCHEMA_CONTROLLER_BUCKET_OPT_NOT_FN(typeof options.schemaController.bucket);
-      }
-      validateBodyLimitOption(options.bodyLimit);
-      const requestIdHeader = typeof options.requestIdHeader === "string" && options.requestIdHeader.length !== 0 ? options.requestIdHeader.toLowerCase() : options.requestIdHeader === true && "request-id";
-      const genReqId = reqIdGenFactory(requestIdHeader, options.genReqId);
-      const requestIdLogLabel = options.requestIdLogLabel || "reqId";
-      const bodyLimit = options.bodyLimit || defaultInitOptions.bodyLimit;
-      const disableRequestLogging = options.disableRequestLogging || false;
-      const ajvOptions = Object.assign({
-        customOptions: {},
-        plugins: []
-      }, options.ajv);
-      const frameworkErrors = options.frameworkErrors;
-      if (!ajvOptions.customOptions || Object.prototype.toString.call(ajvOptions.customOptions) !== "[object Object]") {
-        throw new FST_ERR_AJV_CUSTOM_OPTIONS_OPT_NOT_OBJ(typeof ajvOptions.customOptions);
-      }
-      if (!ajvOptions.plugins || !Array.isArray(ajvOptions.plugins)) {
-        throw new FST_ERR_AJV_CUSTOM_OPTIONS_OPT_NOT_ARR(typeof ajvOptions.plugins);
-      }
-      const { logger, hasLogger } = createLogger(options);
-      options.connectionTimeout = options.connectionTimeout || defaultInitOptions.connectionTimeout;
-      options.keepAliveTimeout = options.keepAliveTimeout || defaultInitOptions.keepAliveTimeout;
-      options.maxRequestsPerSocket = options.maxRequestsPerSocket || defaultInitOptions.maxRequestsPerSocket;
-      options.requestTimeout = options.requestTimeout || defaultInitOptions.requestTimeout;
-      options.logger = logger;
-      options.requestIdHeader = requestIdHeader;
-      options.requestIdLogLabel = requestIdLogLabel;
-      options.disableRequestLogging = disableRequestLogging;
-      options.ajv = ajvOptions;
-      options.clientErrorHandler = options.clientErrorHandler || defaultClientErrorHandler;
-      options.allowErrorHandlerOverride = options.allowErrorHandlerOverride ?? defaultInitOptions.allowErrorHandlerOverride;
-      const initialConfig = getSecuredInitialConfig(options);
-      options.exposeHeadRoutes = initialConfig.exposeHeadRoutes;
-      options.routerOptions = buildRouterOptions(options, {
-        defaultRoute,
-        onBadUrl,
-        ignoreTrailingSlash: defaultInitOptions.ignoreTrailingSlash,
-        ignoreDuplicateSlashes: defaultInitOptions.ignoreDuplicateSlashes,
-        maxParamLength: defaultInitOptions.maxParamLength,
-        allowUnsafeRegex: defaultInitOptions.allowUnsafeRegex,
-        buildPrettyMeta: defaultBuildPrettyMeta,
-        useSemicolonDelimiter: defaultInitOptions.useSemicolonDelimiter
-      });
-      const router = buildRouting({
-        config: options.routerOptions
-      });
+    function fastify(serverOptions) {
+      const {
+        options,
+        genReqId,
+        logController,
+        hasLogger,
+        initialConfig
+      } = processOptions(serverOptions, defaultRoute, onBadUrl, onMaxParamLength);
+      const router = buildRouting(options.routerOptions);
       const fourOhFour = build404(options);
       const httpHandler = wrapRouting(router, options);
-      options.http2SessionTimeout = initialConfig.http2SessionTimeout;
-      const { server, listen } = createServer(options, httpHandler);
-      const serverHasCloseAllConnections = typeof server.closeAllConnections === "function";
-      const serverHasCloseIdleConnections = typeof server.closeIdleConnections === "function";
-      const serverHasCloseHttp2Sessions = typeof server.closeHttp2Sessions === "function";
-      let forceCloseConnections = options.forceCloseConnections;
-      if (forceCloseConnections === "idle" && !serverHasCloseIdleConnections) {
-        throw new FST_ERR_FORCE_CLOSE_CONNECTIONS_IDLE_NOT_AVAILABLE();
-      } else if (typeof forceCloseConnections !== "boolean") {
-        forceCloseConnections = serverHasCloseIdleConnections ? "idle" : false;
-      }
-      const keepAliveConnections = !serverHasCloseAllConnections && forceCloseConnections === true ? /* @__PURE__ */ new Set() : noopSet();
+      const {
+        server,
+        listen,
+        forceCloseConnections,
+        serverHasCloseAllConnections,
+        serverHasCloseHttp2Sessions,
+        keepAliveConnections
+      } = createServer(options, httpHandler);
       const setupResponseListeners = Reply.setupResponseListeners;
       const schemaController = SchemaController.buildSchemaController(null, options.schemaController);
       const fastify2 = {
@@ -34432,13 +36235,16 @@ var require_fastify = __commonJS({
             "OPTIONS",
             "PATCH",
             "PUT",
-            "POST"
+            "POST",
+            // RFC 10008
+            "QUERY"
           ])
         },
         [kOptions]: options,
         [kChildren]: [],
         [kServerBindings]: [],
-        [kBodyLimit]: bodyLimit,
+        [kBodyLimit]: options.bodyLimit,
+        [kHandlerTimeout]: options.handlerTimeout,
         [kRoutePrefix]: "",
         [kLogLevel]: "",
         [kLogSerializers]: null,
@@ -34447,10 +36253,10 @@ var require_fastify = __commonJS({
         [kSchemaErrorFormatter]: null,
         [kErrorHandler]: buildErrorHandler(),
         [kErrorHandlerAlreadySet]: false,
-        [kChildLoggerFactory]: defaultChildLoggerFactory,
+        [kChildLoggerFactory]: options.childLoggerFactory || defaultChildLoggerFactory,
         [kReplySerializerDefault]: null,
         [kContentTypeParser]: new ContentTypeParser(
-          bodyLimit,
+          options.bodyLimit,
           options.onProtoPoisoning || defaultInitOptions.onProtoPoisoning,
           options.onConstructorPoisoning || defaultInitOptions.onConstructorPoisoning
         ),
@@ -34488,6 +36294,9 @@ var require_fastify = __commonJS({
         options: function _options(url, options2, handler) {
           return router.prepareRoute.call(this, { method: "OPTIONS", url, options: options2, handler });
         },
+        query: function _query(url, options2, handler) {
+          return router.prepareRoute.call(this, { method: "QUERY", url, options: options2, handler });
+        },
         all: function _all(url, options2, handler) {
           return router.prepareRoute.call(this, { method: this.supportedMethods, url, options: options2, handler });
         },
@@ -34502,7 +36311,8 @@ var require_fastify = __commonJS({
           return router.findRoute(options2);
         },
         // expose logger instance
-        log: logger,
+        log: options.logger,
+        [kLogController]: logController,
         // type provider
         withTypeProvider,
         // hooks
@@ -34662,9 +36472,9 @@ var require_fastify = __commonJS({
           router.closeRoutes();
           hookRunnerApplication("preClose", fastify2[kAvvioBoot], fastify2, function() {
             if (fastify2[kState].listening) {
-              if (forceCloseConnections === "idle") {
+              if (forceCloseConnections === "idle" && options.serverFactory) {
                 instance.server.closeIdleConnections();
-              } else if (serverHasCloseAllConnections && forceCloseConnections) {
+              } else if (serverHasCloseAllConnections && forceCloseConnections === true) {
                 instance.server.closeAllConnections();
               } else if (forceCloseConnections === true) {
                 for (const conn of fastify2[kKeepAliveConnections]) {
@@ -34690,7 +36500,7 @@ var require_fastify = __commonJS({
           });
         });
       });
-      const onBadUrlContext = new Context({
+      const routeEventContext = new Context({
         server: fastify2,
         config: {}
       });
@@ -34699,7 +36509,6 @@ var require_fastify = __commonJS({
       router.setup(options, {
         avvio,
         fourOhFour,
-        logger,
         hasLogger,
         setupResponseListeners,
         throwIfAlreadyStarted,
@@ -34815,7 +36624,7 @@ var require_fastify = __commonJS({
         }
         if (name === "onClose") {
           this.onClose(fn.bind(this));
-        } else if (name === "onReady" || name === "onListen" || name === "onRoute") {
+        } else if (name === "onReady" || name === "onListen" || name === "onRoute" || name === "preClose") {
           this[kHooks].add(name, fn);
         } else {
           this.after((err, done) => {
@@ -34839,37 +36648,6 @@ var require_fastify = __commonJS({
         this[kChildren].forEach((child) => child.addSchema(schema));
         return this;
       }
-      function defaultClientErrorHandler(err, socket) {
-        if (err.code === "ECONNRESET" || socket.destroyed) {
-          return;
-        }
-        let body, errorCode, errorStatus, errorLabel;
-        if (err.code === "ERR_HTTP_REQUEST_TIMEOUT") {
-          errorCode = "408";
-          errorStatus = http.STATUS_CODES[errorCode];
-          body = `{"error":"${errorStatus}","message":"Client Timeout","statusCode":408}`;
-          errorLabel = "timeout";
-        } else if (err.code === "HPE_HEADER_OVERFLOW") {
-          errorCode = "431";
-          errorStatus = http.STATUS_CODES[errorCode];
-          body = `{"error":"${errorStatus}","message":"Exceeded maximum allowed HTTP header size","statusCode":431}`;
-          errorLabel = "header_overflow";
-        } else {
-          errorCode = "400";
-          errorStatus = http.STATUS_CODES[errorCode];
-          body = `{"error":"${errorStatus}","message":"Client Error","statusCode":400}`;
-          errorLabel = "error";
-        }
-        this.log.trace({ err }, `client ${errorLabel}`);
-        if (socket.writable) {
-          socket.write(`HTTP/1.1 ${errorCode} ${errorStatus}\r
-Content-Length: ${body.length}\r
-Content-Type: application/json\r
-\r
-${body}`);
-        }
-        socket.destroy(err);
-      }
       function defaultRoute(req, res) {
         if (req.headers["accept-version"] !== void 0) {
           req.headers[kRequestAcceptVersion] = req.headers["accept-version"];
@@ -34878,20 +36656,44 @@ ${body}`);
         fourOhFour.router.lookup(req, res);
       }
       function onBadUrl(path, req, res) {
-        if (frameworkErrors) {
-          const id = getGenReqId(onBadUrlContext.server, req);
-          const childLogger = createChildLogger(onBadUrlContext, logger, req, id);
-          const request = new Request(id, null, req, null, childLogger, onBadUrlContext);
+        if (options.frameworkErrors) {
+          const id = getGenReqId(routeEventContext.server, req);
+          const childLogger = createChildLogger(routeEventContext, options.logger, req, id);
+          const request = new Request(id, null, req, null, childLogger, routeEventContext);
           const reply = new Reply(res, request, childLogger);
-          if (disableRequestLogging === false) {
-            childLogger.info({ req: request }, "incoming request");
-          }
-          return frameworkErrors(new FST_ERR_BAD_URL(path), request, reply);
+          routeEventContext.server[kLogController].incomingRequest(request, reply);
+          return options.frameworkErrors(new FST_ERR_BAD_URL(path), request, reply);
         }
-        const body = `{"error":"Bad Request","code":"FST_ERR_BAD_URL","message":"'${path}' is not a valid url component","statusCode":400}`;
+        const body = JSON.stringify({
+          error: "Bad Request",
+          code: "FST_ERR_BAD_URL",
+          message: `'${path}' is not a valid url component`,
+          statusCode: 400
+        });
         res.writeHead(400, {
           "Content-Type": "application/json",
-          "Content-Length": body.length
+          "Content-Length": Buffer.byteLength(body)
+        });
+        res.end(body);
+      }
+      function onMaxParamLength(path, req, res) {
+        if (options.frameworkErrors) {
+          const id = getGenReqId(routeEventContext.server, req);
+          const childLogger = createChildLogger(routeEventContext, options.logger, req, id);
+          const request = new Request(id, null, req, null, childLogger, routeEventContext);
+          const reply = new Reply(res, request, childLogger);
+          routeEventContext.server[kLogController].incomingRequest(request, reply);
+          return options.frameworkErrors(new FST_ERR_MAX_PARAM_LENGTH(path), request, reply);
+        }
+        const body = JSON.stringify({
+          error: "Bad Request",
+          code: "FST_ERR_MAX_PARAM_LENGTH",
+          message: `'${path}' is exceeding the max param length`,
+          statusCode: 414
+        });
+        res.writeHead(414, {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body)
         });
         res.end(body);
       }
@@ -34899,15 +36701,13 @@ ${body}`);
         if (isAsync === false) return void 0;
         return function onAsyncConstraintError(err) {
           if (err) {
-            if (frameworkErrors) {
-              const id = getGenReqId(onBadUrlContext.server, req);
-              const childLogger = createChildLogger(onBadUrlContext, logger, req, id);
-              const request = new Request(id, null, req, null, childLogger, onBadUrlContext);
+            if (options.frameworkErrors) {
+              const id = getGenReqId(routeEventContext.server, req);
+              const childLogger = createChildLogger(routeEventContext, options.logger, req, id);
+              const request = new Request(id, null, req, null, childLogger, routeEventContext);
               const reply = new Reply(res, request, childLogger);
-              if (disableRequestLogging === false) {
-                childLogger.info({ req: request }, "incoming request");
-              }
-              return frameworkErrors(new FST_ERR_ASYNC_CONSTRAINT(), request, reply);
+              routeEventContext.server[kLogController].incomingRequest(request, reply);
+              return options.frameworkErrors(new FST_ERR_ASYNC_CONSTRAINT(), request, reply);
             }
             const body = '{"error":"Internal Server Error","message":"Unexpected error from async constraint","statusCode":500}';
             res.writeHead(500, {
@@ -34942,7 +36742,10 @@ ${body}`);
       function setSchemaController(schemaControllerOpts) {
         throwIfAlreadyStarted('Cannot call "setSchemaController"!');
         const old = this[kSchemaController];
-        const schemaController2 = SchemaController.buildSchemaController(old, Object.assign({}, old.opts, schemaControllerOpts));
+        const schemaController2 = SchemaController.buildSchemaController(
+          old,
+          Object.assign({}, old.opts, schemaControllerOpts)
+        );
         this[kSchemaController] = schemaController2;
         this.getSchema = schemaController2.getSchema.bind(schemaController2);
         this.getSchemas = schemaController2.getSchemas.bind(schemaController2);
@@ -34961,7 +36764,7 @@ ${body}`);
         if (!options.allowErrorHandlerOverride && this[kErrorHandlerAlreadySet]) {
           throw new FST_ERR_ERROR_HANDLER_ALREADY_SET();
         } else if (this[kErrorHandlerAlreadySet]) {
-          FSTWRN004("To disable this behavior, set 'allowErrorHandlerOverride' to false or ignore this message. For more information, visit: https://fastify.dev/docs/latest/Reference/Server/#allowerrorhandleroverride");
+          FSTWRN004();
         }
         this[kErrorHandlerAlreadySet] = true;
         this[kErrorHandler] = buildErrorHandler(this[kErrorHandler], func.bind(this));
@@ -34976,7 +36779,7 @@ ${body}`);
         opts.includeMeta = opts.includeHooks ? opts.includeMeta ? supportedHooks.concat(opts.includeMeta) : supportedHooks : opts.includeMeta;
         return router.printRoutes(opts);
       }
-      function wrapRouting(router2, { rewriteUrl, logger: logger2 }) {
+      function wrapRouting(router2, { rewriteUrl, logger }) {
         let isAsync;
         return function preRouting(req, res) {
           if (isAsync === void 0) isAsync = router2.isAsyncConstraint();
@@ -34998,9 +36801,13 @@ ${body}`);
         this[kGenReqId] = reqIdGenFactory(this[kOptions].requestIdHeader, func);
         return this;
       }
-      function addHttpMethod(method, { hasBody = false } = {}) {
+      function addHttpMethod(method, { hasBody = false, overrideExisting = false } = {}) {
         if (typeof method !== "string" || http.METHODS.indexOf(method) === -1) {
           throw new FST_ERR_ROUTE_METHOD_INVALID();
+        }
+        const alreadyExists = this[kSupportedHTTPMethods].bodyless.has(method) || this[kSupportedHTTPMethods].bodywith.has(method);
+        if (alreadyExists && !overrideExisting) {
+          FSTDEP025(method);
         }
         if (hasBody === true) {
           this[kSupportedHTTPMethods].bodywith.add(method);
@@ -35018,6 +36825,110 @@ ${body}`);
         return this;
       }
     }
+    function processOptions(options, defaultRoute, onBadUrl, onMaxParamLength) {
+      if (options && typeof options !== "object") {
+        throw new FST_ERR_OPTIONS_NOT_OBJ();
+      } else {
+        options = Object.assign({}, options);
+      }
+      if (options.querystringParser && typeof options.querystringParser !== "function" || options.routerOptions?.querystringParser && typeof options.routerOptions.querystringParser !== "function") {
+        throw new FST_ERR_QSP_NOT_FN(typeof (options.querystringParser ?? options.routerOptions.querystringParser));
+      }
+      if (options.schemaController && options.schemaController.bucket && typeof options.schemaController.bucket !== "function") {
+        throw new FST_ERR_SCHEMA_CONTROLLER_BUCKET_OPT_NOT_FN(typeof options.schemaController.bucket);
+      }
+      validateBodyLimitOption(options.bodyLimit);
+      const requestIdHeader = typeof options.requestIdHeader === "string" && options.requestIdHeader.length !== 0 ? options.requestIdHeader.toLowerCase() : options.requestIdHeader === true && "request-id";
+      const genReqId = reqIdGenFactory(requestIdHeader, options.genReqId);
+      if (options.requestIdLogLabel !== void 0) {
+        FSTDEP024();
+      }
+      options.bodyLimit = options.bodyLimit || defaultInitOptions.bodyLimit;
+      if (options.disableRequestLogging !== void 0) {
+        FSTDEP023();
+      }
+      const ajvOptions = Object.assign({
+        customOptions: {},
+        plugins: []
+      }, options.ajv);
+      if (!ajvOptions.customOptions || Object.prototype.toString.call(ajvOptions.customOptions) !== "[object Object]") {
+        throw new FST_ERR_AJV_CUSTOM_OPTIONS_OPT_NOT_OBJ(typeof ajvOptions.customOptions);
+      }
+      if (!ajvOptions.plugins || !Array.isArray(ajvOptions.plugins)) {
+        throw new FST_ERR_AJV_CUSTOM_OPTIONS_OPT_NOT_ARR(typeof ajvOptions.plugins);
+      }
+      const { logger, hasLogger } = createLogger(options);
+      const logController = createLogController(options);
+      options.connectionTimeout = options.connectionTimeout || defaultInitOptions.connectionTimeout;
+      options.keepAliveTimeout = options.keepAliveTimeout || defaultInitOptions.keepAliveTimeout;
+      options.maxRequestsPerSocket = options.maxRequestsPerSocket || defaultInitOptions.maxRequestsPerSocket;
+      options.requestTimeout = options.requestTimeout || defaultInitOptions.requestTimeout;
+      options.logger = logger;
+      options.requestIdHeader = requestIdHeader;
+      options.ajv = ajvOptions;
+      options.clientErrorHandler = options.clientErrorHandler || defaultClientErrorHandler;
+      options.allowErrorHandlerOverride = options.allowErrorHandlerOverride ?? defaultInitOptions.allowErrorHandlerOverride;
+      const initialConfig = getSecuredInitialConfig(options);
+      options.exposeHeadRoutes = initialConfig.exposeHeadRoutes;
+      options.http2SessionTimeout = initialConfig.http2SessionTimeout;
+      options.routerOptions = buildRouterOptions(options, {
+        defaultRoute,
+        onBadUrl,
+        onMaxParamLength,
+        ignoreTrailingSlash: defaultInitOptions.ignoreTrailingSlash,
+        ignoreDuplicateSlashes: defaultInitOptions.ignoreDuplicateSlashes,
+        maxParamLength: defaultInitOptions.maxParamLength,
+        allowUnsafeRegex: defaultInitOptions.allowUnsafeRegex,
+        buildPrettyMeta: defaultBuildPrettyMeta,
+        useSemicolonDelimiter: defaultInitOptions.useSemicolonDelimiter
+      });
+      return {
+        options,
+        genReqId,
+        logController,
+        hasLogger,
+        initialConfig
+      };
+    }
+    function defaultBuildPrettyMeta(route) {
+      const cleanKeys = {};
+      const allowedProps = ["errorHandler", "logLevel", "logSerializers"];
+      allowedProps.concat(supportedHooks).forEach((k) => {
+        cleanKeys[k] = route.store[k];
+      });
+      return Object.assign({}, cleanKeys);
+    }
+    function defaultClientErrorHandler(err, socket) {
+      if (err.code === "ECONNRESET" || socket.destroyed) {
+        return;
+      }
+      let body, errorCode, errorStatus, errorLabel;
+      if (err.code === "ERR_HTTP_REQUEST_TIMEOUT") {
+        errorCode = "408";
+        errorStatus = http.STATUS_CODES[errorCode];
+        body = `{"error":"${errorStatus}","message":"Client Timeout","statusCode":408}`;
+        errorLabel = "timeout";
+      } else if (err.code === "HPE_HEADER_OVERFLOW") {
+        errorCode = "431";
+        errorStatus = http.STATUS_CODES[errorCode];
+        body = `{"error":"${errorStatus}","message":"Exceeded maximum allowed HTTP header size","statusCode":431}`;
+        errorLabel = "header_overflow";
+      } else {
+        errorCode = "400";
+        errorStatus = http.STATUS_CODES[errorCode];
+        body = `{"error":"${errorStatus}","message":"Client Error","statusCode":400}`;
+        errorLabel = "error";
+      }
+      this.log.trace({ err }, `client ${errorLabel}`);
+      if (socket.writable) {
+        socket.write(`HTTP/1.1 ${errorCode} ${errorStatus}\r
+Content-Length: ${body.length}\r
+Content-Type: application/json\r
+\r
+${body}`);
+      }
+      socket.destroy(err);
+    }
     function validateSchemaErrorFormatter(schemaErrorFormatter) {
       if (typeof schemaErrorFormatter !== "function") {
         throw new FST_ERR_SCHEMA_ERROR_FORMATTER_NOT_FN(typeof schemaErrorFormatter);
@@ -35027,6 +36938,7 @@ ${body}`);
     }
     module2.exports = fastify;
     module2.exports.errorCodes = errorCodes;
+    module2.exports.LogController = LogController;
     module2.exports.fastify = fastify;
     module2.exports.default = fastify;
   }
@@ -35145,14 +37057,6 @@ if (process.env.TCW_SERVE_ASSET_DIR) {
 });
 /*! Bundled license information:
 
-@fastify/proxy-addr/index.js:
-  (*!
-   * proxy-addr
-   * Copyright(c) 2021 Fastify collaborators
-   * Copyright(c) 2014-2016 Douglas Christopher Wilson
-   * MIT Licensed
-   *)
-
 toad-cache/dist/toad-cache.cjs:
   (**
    * toad-cache
@@ -35160,6 +37064,14 @@ toad-cache/dist/toad-cache.cjs:
    * @copyright 2026 Igor Savin <kibertoad@gmail.com>
    * @license MIT
    * @version 3.7.3
+   *)
+
+@fastify/proxy-addr/index.js:
+  (*!
+   * proxy-addr
+   * Copyright(c) 2021 Fastify collaborators
+   * Copyright(c) 2014-2016 Douglas Christopher Wilson
+   * MIT Licensed
    *)
 
 light-my-request/lib/form-data.js:
