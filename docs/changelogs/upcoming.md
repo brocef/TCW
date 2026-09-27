@@ -10,9 +10,11 @@ category.
   current node's main-checkout path, so from a package node the repository's root
   and sibling packages loaded a second time from the primary checkout — duplicate
   project ids and reciprocity failures (GitHub #39). It now aliases any path
-  under the main worktree whose counterpart under this worktree holds a config,
-  leaving paths already inside the worktree alone; ids repeated across different
-  repositories are still duplicates. `_counterpart_path` is gone.
+  under the main worktree whose counterpart under this worktree holds a config
+  in the same repository (`_worktree_copy`), for a locator and a `repository:`
+  declaration alike, leaving paths already inside the worktree and nested
+  repositories alone; ids repeated across different repositories are still
+  duplicates. `_counterpart_path` is gone.
 
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,

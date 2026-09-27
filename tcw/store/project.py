@@ -508,9 +508,9 @@ class FsProjectRegistry(ProjectRegistry):
             candidates.append(self._locator_path(source_config, entry.locator))
         if entry.repository is not None:
             try:
-                candidates.append(
+                candidates.append(self._worktree_copy(
                     (provisioned_root(source_config.parent, entry.repository)
-                     / SENTINEL).resolve())
+                     / SENTINEL).resolve()))
             except StoreDeclarationError as error:
                 # A declaration this machine cannot turn into a path — a `~name`
                 # naming no user. Recorded against the config that carried it,
@@ -610,23 +610,38 @@ class FsProjectRegistry(ProjectRegistry):
         ):
             counterpart = main / source_dir.relative_to(top)
             resolved = (counterpart / target / SENTINEL).resolve()
-        # Rule 2 — collapse the checked-out repository's nodes onto their
-        # worktree copies. Once Rule 1 reaches outside the worktree, the nodes
-        # there point back into this repository as the *main* worktree spells
-        # it — the current node, and every sibling in the same repository — so
-        # the graph would load each twice under one ID and fail reciprocity.
-        # A path under the main worktree whose counterpart under this worktree
-        # holds a config is the same node on the checked-out branch, so it
-        # resolves there (GitHub #39). Anything else keeps its path, so an ID
-        # repeated across *different* repositories is still a duplicate. A path
-        # already inside this worktree is left alone: TCW's own worktrees live
-        # under the primary checkout (`.worktrees/<slug>`), where every worktree
-        # path is also "under main". Applies to absolute locators too.
-        if resolved.is_relative_to(main) and not resolved.is_relative_to(top):
-            copy = top / resolved.relative_to(main)
-            if copy.is_file():
-                return copy.resolve()
-        return resolved
+        return self._worktree_copy(resolved)
+
+    def _worktree_copy(self, resolved: Path) -> Path:
+        """Rule 2 — a config path under the main worktree, as this worktree's copy.
+
+        Nodes outside this worktree point back into its repository as the *main*
+        worktree spells it — the current node, and every sibling in the same
+        repository — so the graph would load each twice under one ID and fail
+        reciprocity. A path under the main worktree whose counterpart under this
+        worktree holds a config, in this same repository, is the same node on the
+        checked-out branch, so it resolves there (GitHub #39). Anything else keeps
+        its path, so an ID repeated across *different* repositories is still a
+        duplicate — including a repository nested inside this one, which the
+        branch does not hold even when a copy sits at the same place. A path
+        already inside this worktree is left alone: TCW's own worktrees live under
+        the primary checkout (`.worktrees/<slug>`), where every worktree path is
+        also "under main". Applied to every way a node is declared — a locator,
+        absolute or relative, and a `repository:` checkout."""
+        if self._anchors is None:
+            return resolved
+        top, main = self._anchors
+        if not resolved.is_relative_to(main) or resolved.is_relative_to(top):
+            return resolved
+        copy = top / resolved.relative_to(main)
+        if not copy.is_file():
+            return resolved
+        between = copy.parent
+        while between != top and between.is_relative_to(top):
+            if (between / ".git").exists():
+                return resolved                  # another repository's node
+            between = between.parent
+        return copy.resolve()
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():

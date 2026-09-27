@@ -78,7 +78,39 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     wt_cfg.write_text(wt_cfg.read_text().replace(
         "    pkg-b: pkg-b\n", "    pkg-b: pkg-b\n    pkg-c: ../app/pkg-c\n"))
     done = validate(workspace / "app-wt" / "pkg-a")
-    assert "duplicate project id" not in done.stdout + done.stderr, done.stdout
+    assert done.returncode == 0, done.stdout + done.stderr
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(workspace / "app-wt" / "pkg-a")
+    where = {p.id: Path(p.locator).resolve() for p in registry.projects()}
+    assert where["pkg-c"] == (app / "pkg-c").resolve()          # only main has it
+    assert where["pkg-b"] == (workspace / "app-wt" / "pkg-b").resolve()
+    assert registry.unreachable() == []
+
+
+def test_a_child_declared_only_by_repository_resolves_to_the_worktree(workspace):
+    ws_cfg = workspace / "tcw-config.yaml"
+    ws_cfg.write_text("id: workspace\nconnected-projects:\n  children:\n    app-repo:\n"
+                      "      repository:\n        url: https://example.com/app.git\n"
+                      "        checkout: app\n")
+    git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
+    done = validate(workspace / "app-wt" / "pkg-a")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
+    """A separate clone at the same place in the worktree is another repository,
+    not this node on the checked-out branch."""
+    app = workspace / "app"
+    (app / ".gitignore").write_text("vendor/\n")
+    git(app, "add", ".gitignore")
+    git(app, "commit", "-qm", "ignore vendor")
+    config(repo(app / "vendor"), "vendor", parent={"workspace": "../.."})
+    ws_cfg = workspace / "tcw-config.yaml"
+    ws_cfg.write_text(ws_cfg.read_text() + "    vendor: app/vendor\n")
+    git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
+    config(repo(workspace / "app-wt" / "vendor"), "vendor-fork", parent={"workspace": "../.."})
+    done = validate(workspace / "app-wt" / "pkg-a")
+    assert "vendor-fork" not in done.stdout + done.stderr, done.stdout + done.stderr
 
 
 def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):

@@ -162,8 +162,9 @@ in the main worktree — but only when the target leaves the worktree. A target
 that stays inside is a sibling on the same branch and stays with the worktree, so
 several projects in one repo behave the same inside a worktree as outside it.
 And when a project outside the worktree points back into this repository — a
-parent naming its child — any project the worktree also holds resolves to the
-worktree's copy, so running from any of the repository's projects sees one
+parent naming its child, by locator or by `repository:` — any project this
+repository's worktree also holds resolves to the worktree's copy (a separate
+repository nested inside it is not taken for one), so running from any of the repository's projects sees one
 graph, not the primary checkout's copies as duplicates.
 This is the one place git metadata is consulted, and it only re-points a locator:
 it never discovers a project or infers a relation. Projects outside a worktree,
