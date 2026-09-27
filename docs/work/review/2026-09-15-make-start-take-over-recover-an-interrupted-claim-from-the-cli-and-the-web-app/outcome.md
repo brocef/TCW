@@ -81,3 +81,8 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   the Recover button without an in-flight state (a second click is refused
   harmlessly) and moving `_local_owner` out of the CLI module, both judged not
   worth their own change now.
+- **Verify** (tcw:verifier): accept; all seven criteria met on its own runs
+  (16 item tests, vitest 69, tsc, eslint; hands-on CLI take-over, a tag-matched
+  refusing `pre` hook, and the web endpoints by curl against `tcw serve`). Its
+  gaps — Playwright not re-run by it, no vitest for the POST body — are covered
+  by the re-runs after merging main (below). Decision: accept.
