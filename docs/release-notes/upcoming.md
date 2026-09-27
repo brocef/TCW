@@ -5,7 +5,7 @@ internal module names.
 
 ## Fixes
 
-- **The web app shows why a save was refused.** It used to say "Stale write
-  detected" for any refused save, even when the reason was something else, such
-  as a file that only a `tcw` command may write. It now shows the actual reason,
-  which names the command to run instead.
+- **The web app tells a save that lost a race apart from any other refused
+  save.** Only a save made against an out-of-date copy now shows "Stale write
+  detected"; any other refusal shows the server's own reason, which names the
+  command to run instead.
