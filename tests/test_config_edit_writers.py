@@ -303,6 +303,43 @@ def test_init_replacing_a_path_keeps_the_comment_after_it(tmp_path):
     assert config(root) == b"id: node\ntaxonomy:\n    path: docs/new   # moved in 2.3\n"
 
 
+def test_init_rerun_without_a_path_keeps_a_relative_work_path_as_written(tmp_path):
+    root = repository(tmp_path / "node")
+    init(["work"], root, "node", work_path=Path("store"))
+    before = b"id: node\nwork:\n    path: ./store\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    init(["work"], root)
+    assert config(root) == before
+
+
+def test_init_rerun_without_a_path_does_not_expand_a_tilde(tmp_path, monkeypatch):
+    home = repository(tmp_path / "home")
+    monkeypatch.setenv("HOME", str(home))
+    root = repository(tmp_path / "node")
+    init(["work"], root, "node", work_path=home / "store")
+    before = b"id: node\nwork:\n    path: ~/store\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    init(["work"], root)
+    assert config(root) == before
+
+
+def test_init_with_an_explicit_path_still_writes_it(tmp_path):
+    root = repository(tmp_path / "node")
+    init(["work"], root, "node", work_path=Path("store"))
+    (root / "tcw-config.yaml").write_bytes(b"id: node\nwork:\n    path: ./store\n")
+    init(["work"], root, work_path=Path("other"))
+    assert config(root) == b"id: node\nwork:\n    path: other\n"
+
+
+def test_init_reports_a_work_path_naming_no_user(tmp_path, monkeypatch, capsys):
+    root = repository(tmp_path / "node")
+    before = b"id: node\nwork:\n    path: ~no-such-user-tcw/store\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    assert run(root, monkeypatch, "work", "init") == 1
+    assert "tcw init:" in capsys.readouterr().err
+    assert config(root) == before
+
+
 def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     init(["work"], root, "node")                      # a pristine default store

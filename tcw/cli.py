@@ -71,7 +71,9 @@ def run_init(components: list[str], project_id: str | None = None,
             components, root, project_id,
             Path(work_path).expanduser() if work_path is not None else None,
             {c: Path(p).expanduser() for c, p in (paths or {}).items()})
-    except (ValueError, OSError) as error:
+    # `RuntimeError` too: `Path.expanduser()` raises it for a `~name` naming no
+    # user, whether that came from `--path` or from `work.path` in the config.
+    except (ValueError, OSError, RuntimeError) as error:
         print(f"tcw init: {error}", file=sys.stderr)
         return 1
     print(f"Scaffolded {len(created)} dir(s):")
