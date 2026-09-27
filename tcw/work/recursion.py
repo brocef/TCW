@@ -15,6 +15,7 @@ import yaml
 
 from tcw.store.base import (
     RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
+    resolution_status,
     topo_order,
 )
 from tcw.store.fs import (
@@ -340,10 +341,30 @@ def _ready(tasks: list[tuple[str, WorkItem]],
     return ready
 
 
+def _gone(epic_slug: str, stores: dict[str, FsWorkStore]) -> list[tuple[str, str, str]]:
+    """(node, slug, status) for children known only from the record they left:
+    resolved under this epic, their folder absent from this checkout. Without
+    them an epic whose children were all resolved elsewhere reads as having
+    none, and the rollup could never say it is ready to close."""
+    out = []
+    for rel, slug in stores["."].resolved_initiative_children(epic_slug):
+        store = stores.get(rel)
+        grave = store.tombstone(slug) if store is not None else None
+        status = "resolved"
+        if grave is not None and grave.resolution:
+            try:
+                status = resolution_status(grave.resolution)
+            except ValueError:
+                pass
+        out.append((rel, slug, status))
+    return out
+
+
 def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
             stores: dict[str, FsWorkStore], completable: bool = False) -> str:
     lines = ["<!-- tcw:rollup -->", f"### Rollup: {epic_slug}", ""]
-    if not tasks:
+    gone = _gone(epic_slug, stores)
+    if not tasks and not gone:
         lines.append("_No tasks reference this initiative yet._")
     else:
         lines += ["| node | slug | status | blocked-by |", "|---|---|---|---|"]
@@ -354,11 +375,13 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
             for item in topo_order(by_node[rel]):
                 lines.append(f"| {rel} | {item.slug} | {item.status} | "
                              f"{_blocker_labels(item)} |")
+        for rel, slug, status in sorted(gone):
+            lines.append(f"| {rel} | {slug} | {status} | - |")
         deltas = _capability_deltas(tasks)
         if deltas:
             lines += ["", "**Capability deltas:**", *deltas]
         if completable:
-            lines += ["", f"**Ready to close:** all {len(tasks)} children resolved — "
+            lines += ["", f"**Ready to close:** all {len(tasks) + len(gone)} children resolved — "
                       f"run `tcw work complete {epic_slug} --resolution done --confirm`"]
         else:
             ready = _ready(tasks, stores)

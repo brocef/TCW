@@ -220,3 +220,26 @@ def test_an_old_tombstone_without_an_epic_changes_nothing(solo):
     grave.write_text(yaml.safe_dump(doc))
     elsewhere(solo, child)
     assert not solo.epic_completable(solo.get(e))
+
+
+# ── criterion 7: reconcile shows children known only from their record ──────
+
+def test_reconcile_lists_a_gone_child_and_says_ready_to_close(solo):
+    from tcw.work.recursion import reconcile
+    e = epic(solo)
+    child = new(solo, "Child", initiative=e)
+    finish(solo, child)
+    elsewhere(solo, child)
+    block = reconcile(solo.node_root, e)
+    assert f"| . | {child} | completed | - |" in block, block
+    assert "**Ready to close:** all 1 children resolved" in block, block
+
+
+def test_reconcile_counts_a_present_child_once(solo):
+    from tcw.work.recursion import reconcile
+    e = epic(solo)
+    child = new(solo, "Child", initiative=e)
+    finish(solo, child)
+    block = reconcile(solo.node_root, e)
+    assert block.count(child) == 1 + 0, block      # one table row, no duplicate
+    assert "all 1 children resolved" in block, block
