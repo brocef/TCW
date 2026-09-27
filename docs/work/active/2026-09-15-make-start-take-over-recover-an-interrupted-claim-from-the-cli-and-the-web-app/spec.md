@@ -51,14 +51,16 @@ then raises "`<slug>` has an interrupted claim; use --take-over --owner
   no error text is matched), use the interrupted claim for `run_pre`, `before`
   and `previous`. `item_path` is None for the hook (the item has no settled
   folder); `source` keeps using `_tracked_source`.
-- **Strict tracker mode.** Recovery does not claim the ticket again: under strict
-  mode the ticket is claimed before `start` moves the item, so an interrupted
-  start already holds it; `_deliver_after` then syncs the move as usual. The
-  binding read that `_strict_claim` needs cannot see an item mid-claim, so the
-  claim step is skipped for recovery rather than made to read a private folder.
-- **Web.** `GET /api/work/interrupted-claims` → `[{slug, title}]`. The start action
-  accepts `recover: true`: refused (409) unless the slug is an interrupted claim;
-  otherwise `work.start(slug, owner=<server identity>, take_over=True)`.
+- **Strict tracker mode.** *(Revised after code review.)* Recovery claims the
+  ticket exactly as a strict start does: the interrupted start may have run
+  before strict mode was on, or the ticket may have changed hands. The binding
+  comes from the claimed item's `tracker` field, since no store read reaches a
+  claim.
+- **Web.** `GET /api/work/interrupted-claims` → `[{slug, title}]` for every node
+  the board shows. The start action accepts `recover: true` and calls
+  `work.start(slug, owner=<server identity>, recover=True)` — *(revised after code
+  review)* a store-level recover-only take-over that refuses a settled item
+  against the same read it acts on, so the check cannot race the claim.
   `_strict_refuses` no longer calls a read that raises on such a slug.
   Client: a notice above the work list naming each interrupted claim, with a
   Recover button that posts `recover: true`.
@@ -75,13 +77,14 @@ then raises "`<slug>` has an interrupted claim; use --take-over --owner
 5. `GET /api/work/interrupted-claims` lists the item; `POST
    /api/work/<slug>/actions/start {"recover": true}` makes it active with the
    server's identity as owner; the same call on a backlog or active item is
-   refused with 409 and changes nothing.
+   refused (422, "not an interrupted claim") and changes nothing.
 6. The board shows the notice and the Recover button (vitest), and clicking it
    posts `recover: true`.
 7. Full Python suite, vitest, typecheck, lint, and Playwright pass.
 
 ## Risks
 
-- A claim still genuinely in flight (another process mid-start) appears as
-  interrupted for up to 500 ms; the store's own take-over already carries this
-  race, and recovery of a claim that then lands fails as `AlreadyClaimed`.
+- A claim still genuinely in flight (another process mid-start) is listed as
+  interrupted at once, without `get`'s 500 ms wait. Recovering it then races the
+  claimant's own rename; one of the two fails. That race is the store's existing
+  take-over race, shared with the CLI, and is not widened here.
