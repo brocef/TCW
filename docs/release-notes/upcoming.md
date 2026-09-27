@@ -87,6 +87,14 @@ internal module names.
   never matched. If you used a differently spelled tag under `not_tags`, those
   items are now excluded as you intended. `tcw validate` reports a condition tag
   that is not registered, or several tags written as one (`"cli,docs"`).
+- **A tag written by hand in any spelling counts as the tag.** An item whose
+  `state.yaml` says `CLI` is treated as tagged `cli` everywhere: by tag
+  conditions, `tcw work list --tag cli`, `--untag cli`, `tcw validate`, and the
+  Jira issue type for a bug. `tcw work show` no longer fails on a tag that is a
+  bare number.
+- **`tcw work tags add` and `rm` no longer quietly delete a registry entry that
+  is not a tag**, such as a bare number or `"cli,docs"`. They refuse and name
+  it, so you can fix it by hand; `tcw validate` reports it too.
 - **`tcw validate` names a bad key instead of crashing** when a settings key is
   an unquoted number.
 - **`tcw work list --tags` says when the tag you asked for is not registered**,

@@ -191,17 +191,27 @@ category.
   at parse time, so `CLI` matches items tagged `cli`. **Behavior change:** a
   condition written in a non-canonical form now fires, and for `not_tags` now
   excludes; in a first-match artifact list, such a condition can now match
-  before a later canonical one; and an item whose tags were hand-edited into a
-  non-canonical form (`CLI`) no longer matches a condition written the same
-  way. An element holding a comma (`"cli,docs"`) or normalizing to nothing is
+  before a later canonical one. An element holding a comma (`"cli,docs"`) or normalizing to nothing is
   a parse problem. `tcw validate` reports condition tags that are not
   registered (`FsWorkStore._condition_tag_problems`), in stages, transitions,
   artifacts and procedures, naming the entry by its `kind: value`; the policy
   still loads.
 - `registered_tags` returns normalized, de-duplicated tags; an entry that is not
-  a tag is reported by `check` instead of breaking tag reads. Plan-stage tags are
+  a tag — a non-string, or a string holding a comma, which was registered as
+  `cli-docs` — is reported by `check` instead of breaking tag reads. Plan-stage tags are
   normalized before the registry check. `_validate_tags` refuses a non-string tag
   with `ValueError` (was `AttributeError`, a 500 from the web API).
+- An item's tags are read through the new `read_tags` (`tcw/store/base.py`):
+  normalized, de-duplicated, in first-seen order, so a tag hand-edited into
+  `state.yaml` as `CLI` is `cli` for conditions, `list --tag`, `edit --untag`,
+  `check`, and the tracker's bug issue type (`TrackerCreate.type_for`), and is
+  displayed as `cli` by `list`, `show` and the web app. An entry that cannot be
+  a tag (a non-string, a comma, nothing left after normalizing) is kept as its
+  text, so `check` reports it and `show` no longer raises on a bare `7`; a bare
+  string rather than a list is one tag, not one per character.
+- `_write_tags` (`tcw work tags add` / `rm`) refuses, naming the entry, while
+  `work.tags` holds an entry that is not a tag. It used to rewrite the list
+  without it, and raised `TypeError` on a mapping entry.
 - Six "unknown key" messages in `tcw/store/base.py` sort `map(str, keys)`, so an
   unquoted number key is named instead of raising `TypeError`.
 - `tcw work list --tags X` with X registered in no listed node prints a note to

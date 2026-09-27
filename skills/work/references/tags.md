@@ -40,5 +40,10 @@ During request intake, inspect the registry and choose every materially
 applicable tag. Register a new one only when it will be useful beyond the item in
 front of you.
 
+A tag written by hand into an item's `state.yaml` is read in its canonical
+form, so `CLI` is the tag `cli`. `tags add` and `tags rm` refuse, naming the
+entry, while `work.tags` holds something that is not a tag (a bare number,
+`"cli,docs"`); fix that entry by hand first.
+
 A tag left on an item after being unregistered is flagged by `tcw validate`,
 which stays red until the item is retagged or the tag restored.
