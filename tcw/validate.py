@@ -251,6 +251,44 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
     return [f"{comp} check: {p}" for p in problems]
 
 
+def _open_sidecar_problems(node_root: Path, st: FsWorkStore,
+                           slug: str | None = None) -> list[str]:
+    """`capabilities.yaml` problems of items in backlog, active or review, each
+    as `<file>:<line>: <problem>` — the completion gate's checks, less the ones
+    that are only true at completion."""
+    from tcw.work.recursion import capability_gate
+    items = [st.get(slug)] if slug is not None else st.query()
+    out: list[str] = []
+    for item in items:
+        if item is None or item.status not in ("backlog", "active", "review"):
+            continue
+        folder = st.path(item.slug)
+        sidecar = folder / "capabilities.yaml" if folder is not None else None
+        text = (sidecar.read_text(encoding="utf-8", errors="replace")
+                if sidecar is not None and sidecar.is_file() else "")
+        for problem in capability_gate(st, item, in_progress=True):
+            declared = problem.partition(": ")[0]
+            line = next((n for n, row in enumerate(text.splitlines(), 1)
+                         if declared in _listed_paths(row)), None)
+            where = _rel(sidecar, node_root) if sidecar is not None else item.slug
+            out.append(f"{where}{f':{line}' if line else ''}: {problem}")
+    return out
+
+
+def _listed_paths(row: str) -> list[str]:
+    """The paths a `capabilities.yaml` line lists — a `- path` item or a
+    `key: [a, b]` flow list — so a line number points at the path itself, never
+    at a comment or a longer path that contains it."""
+    row = row.split(" #", 1)[0].strip()
+    if row.startswith("- "):
+        items = [row[2:]]
+    elif "[" in row and row.endswith("]"):
+        items = row[row.index("[") + 1:-1].split(",")
+    else:
+        return []
+    return [i.strip().strip("'\"") for i in items]
+
+
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
     """Resolve an abstract target through the filesystem adapter's private view."""
     if target.axis == "taxonomy":
@@ -377,6 +415,15 @@ def validate(node_root: Path, path: Path | None = None, *,
             if configured is not None:
                 problems.append(f"{comp} path: {configured}")
             problems += _run_check(node_root, comp, target.ref if target else None)
+
+    # (c2) Capability paths declared by work still in hand. Checked now, while a
+    # bad path can still be fixed before it is copied into sibling slices; never
+    # on resolved work, which records what was true when it shipped.
+    # Not after a YAML problem: a broken sidecar is already reported above.
+    if (work_store is not None and path is None and not yaml_syntax_error
+            and (target is None or target.axis == "work")):
+        problems += _open_sidecar_problems(node_root, work_store,
+                                           target.ref if target is not None else None)
 
     # (d) With the component checks skipped by a YAML problem, each tree store
     # still says whether it can open and whether a pre-2.5.0 store config is
