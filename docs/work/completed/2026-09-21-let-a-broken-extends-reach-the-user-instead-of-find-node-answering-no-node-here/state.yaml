@@ -2,7 +2,7 @@ slug: 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answer
 title: Let a broken extends reach the user instead of find_node answering no node
   here
 created: '2026-09-21'
-resolution: null
+resolution: done
 tags:
 - bug
 - store
