@@ -28,7 +28,7 @@
 - Hands-on against `tcw serve` from the worktree in a scratch node: a PUT to
   `rollup.md` returned 409 with only its `error` text; a PATCH with a stale
   revision returned 409 with `"code": "stale-revision"`.
-- Full Python suite on the final code: see the verify commit.
+- Full Python suite: 4475 passed, 3 skipped (before the review fold-in, which changed one test assertion and a release note; that test file re-run green).
 
 ## What the plan or spec got wrong
 
@@ -77,3 +77,8 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   refusals lacked a no-marker assertion (added). Recorded rather than changed:
   the untested `app.tsx` switch (above); the "Validation errors" heading shown
   above a non-validation message (cosmetic, pre-existing).
+- **Verify** (tcw:verifier): accept; criteria 1, 2, 4 met on its own runs,
+  3 on the implementer's Playwright run. Noted, not changed: the strict-refusal
+  test asserts the marker's text is absent rather than a `code` key; the
+  `app.tsx` switch is covered only through the helper and the end-to-end stale
+  test. Decision: accept.
