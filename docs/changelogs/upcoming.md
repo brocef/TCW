@@ -26,3 +26,23 @@ category.
   added self-block or blocking cycle, through the same `_check_new_blocker`
   rule `add_blocker` uses. Entries the item already has are not re-checked, so
   an item already in a cycle stays saveable.
+
+### Fixed
+
+- Lifecycle `when.tags` / `when.not_tags` are normalized with `normalize_tag`
+  at parse time, so `CLI` matches items tagged `cli`. **Behavior change:** a
+  condition written in a non-canonical form now fires, and for `not_tags` now
+  excludes. An element holding a comma (`"cli,docs"`) or normalizing to nothing
+  is a parse problem. `tcw validate` reports condition tags that are not
+  registered (`FsWorkStore._condition_tag_problems`), in stages, transitions,
+  artifacts and procedures; the policy still loads.
+- `registered_tags` returns normalized, de-duplicated tags; an entry that is not
+  a tag is reported by `check` instead of breaking tag reads. Plan-stage tags are
+  normalized before the registry check. `_validate_tags` refuses a non-string tag
+  with `ValueError` (was `AttributeError`, a 500 from the web API).
+- Six "unknown key" messages in `tcw/store/base.py` sort `map(str, keys)`, so an
+  unquoted number key is named instead of raising `TypeError`.
+- `tcw work list --tags X` with X registered in no listed node prints a note to
+  stderr and still lists.
+- A `skill:` binding whose value holds whitespace or a path separator is a parse
+  problem; existence is deliberately not checked.

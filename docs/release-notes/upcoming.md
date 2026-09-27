@@ -18,3 +18,17 @@ internal module names.
   only then was the command refused.
 - **The web app no longer lets you save an item as blocking itself**, or a
   blocker that would make items wait on each other in a loop.
+
+## Fixes
+
+- **Tag conditions in lifecycle settings work the way tags do everywhere else.**
+  `when: { tags: [CLI] }` now matches items tagged `cli`; before, it silently
+  never matched. If you used a differently spelled tag under `not_tags`, those
+  items are now excluded as you intended. `tcw validate` reports a condition tag
+  that is not registered, or several tags written as one (`"cli,docs"`).
+- **`tcw validate` names a bad key instead of crashing** when a settings key is
+  an unquoted number.
+- **`tcw work list --tags` says when the tag you asked for is not registered**,
+  so an empty list is not mistaken for "nothing has that tag".
+- **`tcw validate` reports a `skill:` setting that cannot be a skill name**, such
+  as one with spaces in it.
