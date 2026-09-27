@@ -109,7 +109,12 @@ def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | Non
     The revision is `None` when there is no file, which the caller turns into
     `""` — "must not exist yet" — for `write_sidecar`.
     """
-    resource = store.read_sidecar(slug, BINDING_SIDECAR)
+    try:
+        resource = store.read_sidecar(slug, BINDING_SIDECAR)
+    except (OSError, UnicodeDecodeError) as error:
+        # Every caller already refuses a malformed binding, so an unreadable one
+        # is refused the same way rather than read as unbound.
+        return unreadable_binding(error), None
     if resource is None:
         return Unbound(), None
     return read_binding(resource.content), resource.revision
@@ -172,7 +177,7 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
             raise BindingProblem(
                 f"{item.slug} has a {BINDING_SIDECAR} that cannot be read "
                 f"({binding.reason}), so it cannot be told whether this ticket is "
-                f"already bound. Repair or unlink that binding first.")
+                f"already bound. Repair or remove that file first.")
         if (base_url is not None and isinstance(binding, Bound)
                 and binding.key()[:3] == wanted[:3]
                 and not same_site(binding.ticket_url, base_url)):
@@ -438,8 +443,6 @@ class ClaimOutcome:
     url: str = ""
     summary: str = ""
     status: str = ""
-    account_id: str = ""
-    account_name: str = ""
     transitioned: bool = False
     # The `pre-backlog` status the ticket was taken out of before the claim, or ""
     # when no such step ran. Set on success and on a refusal alike: either way the
@@ -662,7 +665,6 @@ def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
         return ClaimOutcome(row=row, claimed=True, message=message,
                             issue_id=ticket.issue_id, key=key, url=ticket.url,
                             summary=ticket.summary, status=now_status,
-                            account_id=ticket.me_id, account_name=ticket.me_name,
                             transitioned=transitioned)
 
     # ── step 1 ──

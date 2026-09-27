@@ -5,6 +5,10 @@ internal module names.
 
 ## Fixes
 
+- **Tracker commands no longer mistake an unreadable ticket binding for none.**
+  `link`, `unlink`, `sync` and a strict `drop` now refuse and say the file cannot
+  be read, and an unexpected answer from Jira is reported instead of crashing.
+- **`tcw work complete` names every staged file that stops its merge.**
 - **Strict mode no longer lets through a move the ticket cannot follow.** If your
   workflow has no transition to where the item is going, `submit`, `rework` and
   `complete` now refuse up front instead of moving the item and leaving it stuck.

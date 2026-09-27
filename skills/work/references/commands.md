@@ -106,7 +106,7 @@ web app does not talk to the tracker. Nothing else here gains a dependency.
 | say an item and its ticket are yours | `tcw work tracker claim <slug> [--take-over]` — sets the item's owner and assigns the ticket; applies no transition and moves neither status |
 | let go of an item and its ticket | `tcw work tracker release <slug> [--force]` — clears the owner and unassigns the ticket; status and binding untouched |
 | make a ticket for an item that has none, and bind it | `tcw work tracker create <slug> [--part <id>] [--dry-run]` · `tcw work tracker create --all` — needs `work.tracker.create` and `statuses.backlog`; refuses a closed item, and reports rather than duplicates one already bound |
-| record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` |
+| record that an existing item and a ticket are the same work | `tcw work tracker link <slug> <ticket> [--part <id>]` — refuses an item waiting for deletion (`work.retain` false) and one whose `tracker.yaml` cannot be read |
 | remove a binding, keeping a record and the reason | `tcw work tracker unlink <slug> --reason <text>` |
 | retry tickets that did not follow their items | `tcw work tracker sync <slug>` · `tcw work tracker sync --all` |
 

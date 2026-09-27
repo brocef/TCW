@@ -16,7 +16,7 @@ import subprocess
 import pytest
 import yaml
 
-from tcw.store.fs import init
+from tcw.store.fs import FsWorkStore, init
 from tcw.tracker import jira
 
 SENTINEL = "sentinel-token-do-not-print"
@@ -1681,3 +1681,34 @@ def test_strict_mode_still_refuses_new_with_its_own_wording(node, monkeypatch):
     for added in ("owed", "no ticket was created", "made, not bound",
                   "tracker create"):
         assert added not in err, (added, err)
+
+
+def test_single_create_refuses_before_creating_when_another_binding_is_unreadable(
+        node, monkeypatch):
+    """Binding scans every item, so another item's unreadable `tracker.yaml` let
+    `create` make a ticket and then refuse to bind it
+    (spec: 2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing)."""
+    root, slug = _created_node(node, monkeypatch, status="backlog")
+    st = FsWorkStore.open(root)
+    other = st.create("Broken").slug
+    (st.path(other) / "tracker.yaml").mkdir()
+    posted = _create_responses(monkeypatch)
+    code, _out, err = _run(["work", "tracker", "create", slug])
+    assert code == 1 and other in err and "not creating" in err, err
+    assert not [p for p in posted if p[0] == "POST" and p[1].endswith("/issue")]
+
+
+def test_filing_records_an_owed_ticket_instead_of_one_it_cannot_bind(node, monkeypatch):
+    """The filing hook reaches `_create_one` directly, so the board check lives
+    there, not only in `tracker create`."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    broken = FsWorkStore.open(root).create("Broken").slug
+    (FsWorkStore.open(root).path(broken) / "tracker.yaml").mkdir()
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Filed"])
+    assert code == 0, err
+    assert not [p for p in posted if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    slug = out.strip().splitlines()[0]
+    owed = FsWorkStore.open(root).get(slug).tracker
+    assert owed and "owed" in owed and broken in str(owed["owed"]), owed

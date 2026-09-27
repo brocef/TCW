@@ -11,6 +11,27 @@ category.
 
 ### Fixed
 
+- Tracker commands refuse what they cannot read. `FsWorkStore.read_sidecar`
+  raises `OSError` when something other than a regular file sits at the
+  sidecar's name (it returned `None`, so a folder named `tracker.yaml` read as
+  unbound: `link`/`unlink` went ahead and strict `drop` let the item go), and
+  `binding_of` turns read errors into `unreadable_binding`. `tracker sync <slug>`
+  names an unusable binding instead of calling it unbound. The web sidecar route
+  answers such a file with 400.
+- `JiraClient` raises `TrackerError` ("a response of an unexpected shape for
+  <path>") for a response that is not a mapping, or whose `issues`,
+  `transitions`, `comments`, `fields`, `status`, `statusCategory`, `assignee` or
+  `to` is not the list or mapping read downstream (`_mapping`, `_entries`,
+  `_check_issue`), instead of an `AttributeError` traceback. Null stays absent;
+  `_document_text` ignores a `content` that is not a list.
+- `tracker link` refuses an item waiting for deletion (`pending_deletion`),
+  before any tracker call. Single-item `tracker create` runs the sweep's board
+  check first (`_unreadable_sidecars`, which now counts any unusable binding):
+  another item's unreadable `tracker.yaml` would let it make a ticket it then
+  could not bind.
+- When `complete`'s merge-back is refused, it lists every staged file in the
+  merged repository's index (git refuses the merge over any of them), not only
+  the item's own tracker record.
 - Strict mode refuses a move its ticket cannot follow. `authorize`
   (`tcw/tracker/sync.py`) takes `move` and `resolution` and asks `assess_move`
   with the configured transition name, as `deliver` does, so a `submit`,
@@ -22,8 +43,8 @@ category.
 
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
-  `ls-files`, `ls-tree`), and `tcw work complete`'s staged-binding check, pass
-  each path as `:(literal)<path>` (`_literal`), so writing the capability `a*`
+  `ls-files`, `ls-tree`), pass each path as `:(literal)<path>` (`_literal`),
+  so writing the capability `a*`
   no longer stages or commits `abc`. Per path, not `--literal-pathspecs`, which
   exports `GIT_LITERAL_PATHSPECS` to the hooks `git commit` runs; `git_rm`'s flag
   is replaced the same way. `git mv` takes plain paths and is unchanged.
@@ -161,3 +182,7 @@ category.
   shares the completion gate's routine without its completion-only checks
   (`new` still `Missing`, `removed` still resolving). Resolved items are never
   checked (GitHub #27).
+
+### Removed
+
+- `ClaimOutcome.account_id` and `account_name`, which nothing read.
