@@ -123,6 +123,78 @@ def test_an_unknown_parent_is_refused_before_the_ticket_is_touched(strict, uncla
     assert unclaimed.writes() == []
 
 
+
+# ── an already-bound ticket: the placement asked for is checked, never applied
+# (spec: 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here)
+
+def epic(root, title: str = "Parent") -> str:
+    return FsWorkStore.open(root).create_work(title, type="epic").item.slug
+
+
+def reimport(root, *options: str):
+    """`tcw work tracker import` of the fake's ticket, with `options`."""
+    return cli(root, "work", "tracker", "import", TICKET_ID, *options)
+
+
+def bound_state(root, slug: str) -> bytes:
+    return next(root.rglob(f"{slug}/state.yaml")).read_bytes()
+
+
+def test_a_reimport_asking_for_another_parent_is_refused(strict, unclaimed):  # noqa: F811
+    parent = epic(strict)
+    code, out, err = reimport(strict)
+    assert code == 0, err
+    slug = out.split()[0]
+    writes, before = len(unclaimed.writes()), bound_state(strict, slug)
+    code, out, err = reimport(strict, "--parent", parent)
+    assert code == 1 and out.split() == [slug], (out, err)
+    assert parent in err and slug in err and "was not moved" in err, err
+    assert "tcw serve" in err, err
+    assert "→ already bound" not in err, err
+    assert FsWorkStore.open(strict).get(slug).parent == ""
+    assert len(unclaimed.writes()) == writes
+    assert bound_state(strict, slug) == before
+
+
+def test_a_reimport_asking_for_another_initiative_is_refused(strict, unclaimed):  # noqa: F811
+    initiative = epic(strict, "Initiative")
+    slug = reimport(strict)[1].split()[0]
+    writes, before = len(unclaimed.writes()), bound_state(strict, slug)
+    code, out, err = reimport(strict, "--initiative", initiative)
+    assert code == 1 and out.split() == [slug], (out, err)
+    assert f"tcw work edit {slug} --initiative {initiative}" in err, err
+    assert FsWorkStore.open(strict).get(slug).initiative == ""
+    assert len(unclaimed.writes()) == writes
+    assert bound_state(strict, slug) == before
+
+
+@pytest.mark.parametrize("option", ["--parent", "--initiative"])
+def test_the_same_placement_again_is_a_plain_rerun(strict, unclaimed, option):  # noqa: F811
+    target = epic(strict)
+    code, out, err = reimport(strict, option, target)
+    assert code == 0, err
+    slug = out.split()[0]
+    code, out, err = reimport(strict, option, target)
+    assert code == 0 and out.split() == [slug] and "→ already bound" in err, err
+
+
+def test_a_reimport_without_a_parent_leaves_a_nested_item_alone(strict, unclaimed):  # noqa: F811
+    parent = epic(strict)
+    slug = reimport(strict, "--parent", parent)[1].split()[0]
+    code, out, err = reimport(strict)
+    assert code == 0 and out.split() == [slug] and "→ already bound" in err, err
+
+
+def test_both_placements_mismatched_say_so_once_each(strict, unclaimed):  # noqa: F811
+    parent, initiative = epic(strict), epic(strict, "Initiative")
+    reimport(strict)
+    code, _out, err = reimport(strict, "--parent", parent,
+                               "--initiative", initiative)
+    lines = [ln for ln in err.splitlines() if ln.startswith("tcw work tracker import:")]
+    assert code == 1 and len(lines) == 2, err
+    assert parent in lines[0] and initiative in lines[1], err
+    assert "→ already bound" not in err, err
+
 # ── review fold-in: the other gated moves, and a legacy catch-up binding ────
 
 def test_rework_is_refused_when_the_workflow_cannot_follow(strict, fake):  # noqa: F811
