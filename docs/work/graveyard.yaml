@@ -804,6 +804,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app:
+  location: f27f479f985d943eaa0f3547b375fb7337a6d7e9
   resolution: done
   resolved: '2026-09-26'
 2026-09-15-make-tcw-taxonomy-rm-refuse-nested-terms-and-live-references:
