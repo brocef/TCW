@@ -800,6 +800,9 @@
   location: 7a0c2f3bf6d5b48161b384b05c59ea27072f84c6
   resolution: done
   resolved: '2026-09-15'
+2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing:
+  resolution: done
+  resolved: '2026-09-27'
 2026-09-15-let-a-project-override-the-tools-and-procedures-tcw-s-own-skills-mandate:
   resolution: superseded
   resolved: '2026-09-16'
