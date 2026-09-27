@@ -7,7 +7,7 @@ tags:
 - bug
 - store
 - cli
-owner: brocef@users.noreply.github.com
-started: '2026-09-27T00:51:03.229030Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here
 branch: work/2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here

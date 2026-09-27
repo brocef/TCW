@@ -787,7 +787,8 @@ def test_unblocked_by_unmatched_ref_fails_closed(tmp_path, monkeypatch, capsys):
 
 
 def test_bad_unblock_aborts_before_any_blocker_write(tmp_path, monkeypatch):
-    """Removals run first, so one bad ref leaves the whole edit unapplied."""
+    """Every blocker edit is checked before any is written, so one bad ref
+    leaves the whole edit unapplied."""
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)

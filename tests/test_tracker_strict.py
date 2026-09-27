@@ -1019,6 +1019,7 @@ def test_serve_refuses_what_it_cannot_check_and_changes_nothing(strict, fake):
         ]
         for code, text in refused:
             assert code == 409 and "strict tracker mode" in text and SENTINEL not in text
+            assert "stale-revision" not in text     # the web app shows this message
         # Refused in every mode, as a generated sidecar, not only under strict mode.
         code, text = send("PUT", f"/api/work/{slug}/sidecars/tracker.yaml",
                           {"content": document(ticket_key="SYNC-9")})

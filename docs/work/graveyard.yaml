@@ -920,6 +920,10 @@
   location: a7ba9a40e179d841a5c506e24c958ebd7061347a
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-keep-work-path-as-written-when-tcw-work-init-is-re-run-without-path:
+  location: 7bf7a52d5d603d5b826fa53057e2ebe84b9e131f
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
   location: fd372a04d9ddeb3d63937cc2a3c9847fa1027401
   resolution: done
@@ -965,6 +969,14 @@
   location: cd3c7ad406f803334cbe28f9721950b14328fd3c
   resolution: done
   resolved: '2026-09-24'
+2026-09-24-make-a-refused-tcw-work-edit-change-nothing:
+  location: f386e6bc2a3db14fdba48db98964002ad6773fb4
+  resolution: done
+  resolved: '2026-09-26'
+2026-09-24-show-the-server-s-message-for-a-web-save-refused-for-a-reason-other-than-a-stale-revision:
+  location: 6ffd79279b303298f9150551a13b22f1de280bb0
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-24-update-the-web-app-s-npm-dependencies-to-clear-the-open-dependabot-alerts:
   location: 03fc07288340a36105f9a0f79ec80890886cb8b1
   resolution: done

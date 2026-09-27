@@ -964,6 +964,10 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     if work_path is not None:
         paths["work"] = work_path
     work_path = paths.get("work")
+    # A location read back from the file is used, never written: writing it
+    # would replace what the user typed (`./store`, `~/store`) with its
+    # normalized, home-expanded form.
+    read_from_config: set[str] = set()
     if work_path is None and "work" in components:
         configured_work = existing_config.get("work") or {}
         # `in`, not truthiness: `work.path: []` and `work.path: false` used to
@@ -974,6 +978,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             if not isinstance(configured_path, str) or not configured_path:
                 raise ValueError(f"{root / SENTINEL}: work.path must be a string")
             work_path = paths["work"] = Path(configured_path).expanduser()
+            read_from_config.add("work")
     # Everything `init` can refuse over, decided before it writes anything at
     # all — the sentinel included. It writes two locations, and each of these
     # checks used to sit next to the write it protects rather than ahead of all
@@ -1108,7 +1113,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         config_path, config_edit.read_text(config_path),
         _sentinel_edits(config_path, existing_config, project_id)
         + [config_edit.SetScalar(c, "path", str(location))
-           for c, location in configured.items()])
+           for c, location in configured.items() if c not in read_from_config])
     if config_text is not None:
         _atomic_write_all([(config_path, config_text)])
     if replacing_default_store:
@@ -6897,6 +6902,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         raise ValueError(
                             "blocker refs must be strings")
                 new_blocked_by = [self._entry_for(ref) for ref in blockers]
+                # Only entries the item does not already have: an item already in
+                # a cycle must stay saveable, including by the edit that breaks it.
+                current = self._require(slug).blocked_by
+                for ref, entry in zip(blockers, new_blocked_by):
+                    if not any(self._same_entry(entry, e) for e in current):
+                        self._check_new_blocker(slug, entry, ref)
             else:
                 raise ValueError("blockers must be a list or None")
 
