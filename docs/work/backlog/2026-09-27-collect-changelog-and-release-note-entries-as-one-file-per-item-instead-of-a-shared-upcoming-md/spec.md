@@ -161,15 +161,23 @@ the place of "`upcoming.md` has content".
 - `tests/test_repo_lifecycle.py:101-109`, `tests/test_documentation_prompt.py`
   and `tests/test_documentation_config.py` fixtures (only if their wording is
   asserted against shipped text; they parse arbitrary paths otherwise)
-- `evals/seed_fixture.py:254,430`, `tests/test_eval_fixture.py:170-176` — the
-  fixture follows this repo's own convention, so it moves too
+- `README.md:887-891` (Releasing paragraph) and `docs/guide/configuration.md:212`
+  (example entry)
+- `evals/seed_fixture.py:425-431` — **only its comment changes.** The fixture
+  deliberately stays on a single `upcoming.md`: eval case B10
+  (`evals/evals.json:796-803`) asserts the exact list of changed paths,
+  `README.md` and `docs/changelogs/upcoming.md`, and a file named by the agent
+  could not be listed in advance. Keeping it also makes the fixture exercise
+  the older layout that Design §4 still supports.
 - `tests/cli/scenarios/13-release-integrity.md` row 8
 - the capability `skills/documentation-sync`
 
-**Sibling sweep:** `grep -rn upcoming` over the tracked tree, excluding
-`docs/work/`, released `v*.md`, and the migration guides, found exactly the
-files above (plus `.prettierignore:27-28`, which ignores only `v*.md` and needs
-no change).
+**Sibling sweep:** `git grep -ln upcoming`, excluding `docs/work/`, released
+`v*.md` and the migration guides, found the files above plus four that stay as
+they are: `docs/plan/phase-5-work.md` and two `docs/superpowers/` documents
+(historical plans), and `docs/guide/web-viewer.md:30` ("upcoming notes", which
+stays true of the folders). `.prettierignore:27-28` ignores only `v*.md`, so the
+new entry files are formatted like `upcoming.md` was.
 
 ## Acceptance criteria
 
@@ -195,14 +203,15 @@ no change).
 6. A `###` heading inside a `##` section stays under that section in the
    combined output (covered by a test).
 7. `grep -rn 'upcoming\.md'` over `skills/`, `tcw/`, `scripts/`, `CLAUDE.md`,
-   `AGENTS.md` and `tcw-config.yaml` finds only the text that tells an agent
+   `AGENTS.md`, `README.md`, `docs/guide/` and `tcw-config.yaml` finds only the text that tells an agent
    what to do in a project still on a single `upcoming.md`
    (§4 of Design) — no instruction to write to or rotate one.
 8. `references/cut-version.md` describes combining folders, including the fold
    into an unpushed version, and `references/release-notes-and-changelogs.md`
    contains the migration row and the folder cross-check.
-9. The eval fixture declares the folder entries and creates the folders;
-   `tests/test_eval_fixture.py` asserts the folder, not `upcoming.md`.
+9. `README.md`'s Releasing paragraph and `docs/guide/configuration.md`'s example
+   entry describe the folders. The eval fixture still declares and creates
+   `docs/changelogs/upcoming.md`, and its comment says why.
 10. The full test suite passes with `pytest` run bare, as CI runs it.
 11. The capability `skills/documentation-sync` says entries are one file per
     change in an `upcoming/` folder, combined at cut.
