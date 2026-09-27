@@ -1400,11 +1400,19 @@ def _start(args: argparse.Namespace) -> int:
     if args.worktree and git_root(st.node_root) is None:
         print(f"tcw work start: {NOT_A_REPOSITORY}", file=sys.stderr)
         return 1
+    # The item as it is now, read once. Under `--take-over` an interrupted claim
+    # — a start whose claimant died mid-move — is the item: it is in no status,
+    # so an ordinary read refuses it, and that refusal is what used to make the
+    # documented remedy unreachable. Asked before `get`, so no error text is
+    # matched, and only under `--take-over`, so every other start still refuses.
+    recovering = next((c for c in st.interrupted_claims() if c.slug == bare),
+                      None) if args.take_over else None
+    before = recovering or st.get(bare)
     # `pre` hooks run before the store is touched at all — not merely before the
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
     if (err := run_pre(st.lifecycle_policy(), "start", st.node_root, bare, "backlog",
-                       st.get(bare), item_path=st.path(bare))):
+                       before, item_path=st.path(bare))):
         print(f"tcw work start: {err}; {bare} not started", file=sys.stderr)
         return 1
     owner = _local_owner(st, args.owner)
@@ -1412,14 +1420,18 @@ def _start(args: argparse.Namespace) -> int:
         print("tcw work start: claimant identity required; pass --owner or set TCW_WORK_OWNER",
               file=sys.stderr)
         return 1
-    before = st.get(bare)
+    before = recovering or st.get(bare)      # again: a `pre` hook may have edited it
     previous = before.status if before is not None else "backlog"
     # Where the item is before it moves, for the `--worktree` commit below. A
     # child made by an earlier version is nested in its parent's folder, so this
     # is not always `backlog/<slug>`; recovering an interrupted claim finds no
     # folder at all, and git says where it was.
     source = st.path(bare) or st._tracked_source(bare)
-    strict = (before is not None and before.type != "epic" and st.tracker_strict())
+    # Not when recovering: strict mode claims the ticket before `start` moves
+    # the item, so an interrupted start already holds it — and the binding it
+    # would read is inside the claim, where no ordinary read reaches.
+    strict = (before is not None and recovering is None and before.type != "epic"
+              and st.tracker_strict())
     if (before is not None and before.type == "epic" and args.worktree
             and st.tracker_strict()):
         # Epics are not gated so they can hold children; code written on an epic's

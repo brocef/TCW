@@ -4179,6 +4179,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return sorted((self.root / ".claiming").glob(
             glob.escape(slug) + "-" + "[0-9a-f]" * 32))
 
+    def interrupted_claims(self) -> list[WorkItem]:
+        """One item per `.claiming/<slug>-<32 hex>` folder whose slug has not
+        been published, read from that folder and reported under its own slug
+        and the status it left (a claim is only ever taken from `backlog`)."""
+        claiming = self.root / ".claiming"
+        if not claiming.is_dir():
+            return []
+        found: list[WorkItem] = []
+        for d in sorted(claiming.iterdir()):
+            slug, dash, suffix = d.name[:-33], d.name[-33:-32], d.name[-32:]
+            if (dash != "-" or not re.fullmatch(r"[0-9a-f]{32}", suffix)
+                    or not (d / "state.yaml").is_file()
+                    or self._get_now(slug) is not None):     # published meanwhile
+                continue
+            item = self._item_from_dir(d)
+            if item is not None:
+                found.append(replace(item, slug=slug, status="backlog"))
+        return found
+
     def _lost_the_claim(self, slug: str) -> NoReturn:
         """Report a lost race once the winner publishes, or an abandoned claim.
 

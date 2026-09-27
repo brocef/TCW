@@ -3340,6 +3340,19 @@ class WorkStore(ABC):
     @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...
 
+    def interrupted_claims(self) -> list[WorkItem]:
+        """Items whose `start` began and never finished — the claimant died
+        mid-transition — each as it was before the claim (status `backlog`).
+
+        They are in no status, so `query` and `get` cannot answer for them, and
+        `start(slug, take_over=True)` is how one is finished. Listed so the
+        remedy is reachable: a caller has to know the item exists, and has to
+        see its tags and type to run the hooks that gate `start`. A
+        transactional store answers this by listing uncommitted claims; one that
+        publishes atomically never has any, which is this default.
+        """
+        return []
+
     @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
