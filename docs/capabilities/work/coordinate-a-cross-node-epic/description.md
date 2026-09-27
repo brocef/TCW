@@ -9,9 +9,10 @@ so a slice can be added, moved, or dropped without editing the epic.
 An item that grows into an initiative becomes an epic with
 `tcw work edit <slug> --type epic`, keeping its slug and history; `--type ""` makes
 an epic an ordinary item again. That is refused while any item — open or resolved —
-still names it as its initiative, and while this checkout cannot reach every project
-its slices might live in, so no slice is left pointing at something that is no
-longer an epic.
+still names it as its initiative, and while this checkout cannot reach every child
+project its slices might live in, so no slice is left pointing at something that is
+no longer an epic. A missing *parent* project does not refuse it: it cannot hold a
+slice of an epic here.
 
 Slices may live in child projects, and TCW finds them through the registered
 graph rather than the filesystem — see
@@ -38,6 +39,12 @@ not need a throwaway `start` to close it. The Definition-of-Done and capability
 gates still apply on that route — the shortcut is to the status path, not past the
 checks. An epic with *no* slices at all is never ready to close: nothing resolved
 is not the same as everything resolved.
+
+This reads the same in every checkout. A resolved slice's folder is often absent —
+another clone, or a board that deletes resolved work — but the record TCW keeps of
+it names the epic, so the epic still counts it. Slices resolved before that record
+existed do not count; such an epic closes by starting it and completing it with
+`--force`.
 
 To refresh the epic's own summary of its slices, see
 [Reconcile an epic rollup](tcw://C/work/reconcile-an-epic-rollup).
