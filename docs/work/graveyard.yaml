@@ -981,6 +981,9 @@
   location: 405571b0bf3f25c87a9da96f1cec71a546e793b4
   resolution: done
   resolved: '2026-09-24'
+2026-09-24-close-the-remaining-gaps-in-tcw-taxonomy-rm:
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-24-leave-an-accepted-or-imported-ticket-in-the-backlog-status-matching-its-item:
   location: cd3c7ad406f803334cbe28f9721950b14328fd3c
   resolution: done
