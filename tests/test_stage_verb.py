@@ -79,8 +79,10 @@ def test_each_row_is_what_the_lifecycle_contract_says():
         # emptiness as a rejection.
         "inbox": (),
         "request": ("backlog",),
-        "spec": ("backlog",),
-        "plan": ("backlog",),
+        # `active` too: nothing moves an item back to `backlog`, so an item
+        # started before it was specified or planned would otherwise be stuck.
+        "spec": ("backlog", "active"),
+        "plan": ("backlog", "active"),
         "implement": ("active",),
         # `complete` moves from `review | active`, so an item can be verified
         # without ever having been submitted.
@@ -205,8 +207,15 @@ def test_a_next_step_names_a_transition_only_where_one_is_needed():
         here, there = set(STAGE_STATUSES[stage_id]), set(STAGE_STATUSES[nxt])
         if not here:                  # `inbox` runs before an item has a status
             continue
-        names_transition = "tcw work " in text.split("`tcw work stage gate")[0]
-        if names_transition:
+        before = text.split("`tcw work stage gate")[0]
+        names_transition = "tcw work " in before
+        if names_transition and " if " in before:
+            # `plan` is legal in `active` too, so its transition is conditional:
+            # needed from some statuses, wrong from the others.
+            assert here - there and here & there, (
+                f"{stage_id} names a conditional transition before {nxt}, which "
+                f"is only right when some of {sorted(here)} need it and some do not")
+        elif names_transition:
             assert not (here & there), (
                 f"{stage_id} names a transition before {nxt}, but {nxt} is "
                 f"already legal in {sorted(here & there)}")

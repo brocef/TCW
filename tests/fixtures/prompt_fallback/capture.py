@@ -45,6 +45,12 @@ Twice so far it has been touched, and the two are opposites worth telling apart:
   Check `python -c "import tcw; print(tcw.__file__)"` immediately before
   capturing, not once at setup.
 
+- `2026-09-16-stop-an-item-reaching-implement-without-a-spec-and-plan-...`
+  made `plan` legal in `active` too, so its step 7 and its footer now name the
+  already-started case. Only the `plan` entry moved; the other five were
+  checked byte-identical before the new bytes were written, through that
+  item's own venv.
+
 Every stage is exercised at a status where it is **legal**. Not because
 `prompt` would refuse otherwise — it refuses nothing, which is the whole point of
 the reading verb — but because an illegal stage adds a `note —` line on stderr

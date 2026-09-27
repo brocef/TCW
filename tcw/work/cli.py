@@ -1409,6 +1409,20 @@ def _sentence(text: str) -> str:
     return text + ("" if text.endswith((".", "!", "?")) else ".")
 
 
+def _unwritten_plan(st, bare: str) -> str:
+    """The sentence naming whichever of spec.md and plan.md is not written, or
+    "" when both are. A warning, never a refusal: a project that skips planning
+    small items is entitled to, and one that is not binds a `pre` check."""
+    present = {a.name for a in st.artifacts(bare) if a.present}
+    missing = [n for n in ("spec", "plan") if n not in present]
+    if not missing:
+        return ""
+    gates = " and ".join(f"`tcw work stage gate {n} {bare}`" for n in missing)
+    return (f"{bare} has no {' or '.join(f'{n}.md' for n in missing)}; "
+            f"{'they' if len(missing) > 1 else 'it'} can still be written while "
+            f"the item is active: {gates}")
+
+
 def _start(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "start")
     if resolved is None:
@@ -1491,6 +1505,8 @@ def _start(args: argparse.Namespace) -> int:
     # Before any worktree setup, so a failure there cannot skip the claim.
     delivered = _deliver_after(st, bare, "start", "start", previous,
                                say_claim=not claimed)
+    if missing := _unwritten_plan(st, bare):
+        print(f"tcw work start: warning: {missing}", file=sys.stderr)
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
@@ -2168,6 +2184,8 @@ def _stage(args: argparse.Namespace) -> int:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
+    if step.id == "implement" and (missing := _unwritten_plan(st, bare)):
+        print(f"tcw work stage gate implement: warning: {missing}", file=sys.stderr)
 
     return _stage_gate(args, step, st, item, bare, item.status, args.slug)
 

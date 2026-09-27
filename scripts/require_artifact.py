@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Stage `pre` check: refuse a stage until a named lifecycle artifact exists.
 
-Bound to the `plan` stage in `tcw-config.yaml`, so
+Bound to the `plan` and `implement` stages in `tcw-config.yaml`, so
 `tcw work stage gate plan <slug>` refuses on an item whose spec has not been
 written.
 
