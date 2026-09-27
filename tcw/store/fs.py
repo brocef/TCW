@@ -6053,12 +6053,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
         places += [(f"work.lifecycle.artifacts.{n}", b) for n, b in policy.artifacts.items()]
         places += [(f"work.procedures.{n}", b) for n, b in policy.procedures.items()]
         for where, bindings in places:
-            for index, binding in enumerate(bindings):
+            # Named by content, not position: the parser has already dropped any
+            # malformed entry, so a position here would count only the survivors.
+            for binding in bindings:
                 if binding.when is None:
                     continue
+                entry = f"{where} entry '{binding.kind}: {binding.ref}'"
                 for key, tags in (("tags", binding.when.tags),
                                   ("not_tags", binding.when.not_tags)):
-                    found += [f"{where}[{index}]: 'when.{key}' names '{tag}', which is not a "
+                    found += [f"{entry}: 'when.{key}' names '{tag}', which is not a "
                               f"registered tag, so it never matches; register it "
                               f"with `tcw work tags add {tag}` or fix the name"
                               for tag in tags if tag not in registered]

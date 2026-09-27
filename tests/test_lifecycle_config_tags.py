@@ -56,11 +56,11 @@ def test_a_condition_tag_that_cannot_be_a_tag_is_a_problem(element, expected):
 
 @pytest.mark.parametrize("lifecycle, procedures, where", [
     ({"transitions": {"start": {"pre": [{"command": "true", "when": {"tags": ["clii"]}}]}}},
-     None, "work.lifecycle.transitions.start.pre[0]"),
+     None, "work.lifecycle.transitions.start.pre entry 'command: true'"),
     ({"artifacts": {"spec": [{"blob": "x", "when": {"tags": ["clii"]}}]}},
-     None, "work.lifecycle.artifacts.spec[0]"),
+     None, "work.lifecycle.artifacts.spec entry 'blob: x'"),
     (None, {"unattended-work": [{"blob": "x", "when": {"tags": ["clii"]}}]},
-     "work.procedures.unattended-work[0]"),
+     "work.procedures.unattended-work entry 'blob: x'"),
 ])
 def test_an_unregistered_condition_tag_is_reported_wherever_it_is(tmp_path, lifecycle,
                                                                     procedures, where):
@@ -176,3 +176,13 @@ def test_an_empty_skill_name_is_reported():
     _policy, problems = parse_lifecycle_policy(
         {"stages": {"verify": {"prompt": [{"skill": ""}]}}})
     assert [p for p in problems if "skill" in p], problems
+
+
+def test_an_unregistered_tag_is_located_past_a_dropped_entry(tmp_path):
+    """A malformed entry is dropped before this check; the report must still
+    name the entry that holds the tag, not whichever one took its place."""
+    root = node(tmp_path, {"tags": ["bug"], "lifecycle": {"stages": {"spec": {"prompt": [
+        {"blob": "first", "when": {"tags": ["cli,docs"]}},
+        {"blob": "second", "when": {"tags": ["clii"]}}]}}}})
+    problems = FsWorkStore.open(root).lifecycle_problems()
+    assert [p for p in problems if "'blob: second'" in p and "clii" in p], problems

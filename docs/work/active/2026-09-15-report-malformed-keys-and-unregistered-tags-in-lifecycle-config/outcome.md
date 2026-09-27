@@ -14,7 +14,7 @@
 - **Docs** — `2fbde1cc`, `8e2541e7`: changelog, release notes,
   `docs/guide/configuration.md`, `skills/configure/references/work.md`,
   `skills/work/references/hooks.md`.
-- **Review fold-in** — condition-tag problems carry the binding index; plan-stage
+- **Review fold-in** — condition-tag problems name their binding (by `kind: value` since verify — a position counted only the entries that survived parsing); plan-stage
   tags refuse commas; tests for transitions, artifacts and procedures; the
   behavior change worded exactly; the release note says a malformed `skill:`
   binding is ignored.
@@ -76,3 +76,8 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
 - **Code review** (adversarial-code-reviewer): DONE, merge with notes. Accepted
   all five "belongs to this change" notes. Filed the two "separate change" notes
   as `2026-09-26-read-item-tags-normalized-and-keep-non-tag-work-tags-entries-visible`.
+- **Verify** (tcw:verifier): accept; all nine criteria met by hand and in tests
+  (the new file: 27 of 30 failed on the pre-branch code). It found condition-tag
+  problems located by a position that skipped dropped entries; fixed at verify
+  by naming the entry by content, with a test that failed before. Decision:
+  accept.

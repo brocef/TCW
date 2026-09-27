@@ -34,10 +34,12 @@ category.
   condition written in a non-canonical form now fires, and for `not_tags` now
   excludes; in a first-match artifact list, such a condition can now match
   before a later canonical one; and an item whose tags were hand-edited into a
-  non-canonical form (`CLI`) no longer matches a condition written the same way. An element holding a comma (`"cli,docs"`) or normalizing to nothing
-  is a parse problem. `tcw validate` reports condition tags that are not
+  non-canonical form (`CLI`) no longer matches a condition written the same
+  way. An element holding a comma (`"cli,docs"`) or normalizing to nothing is
+  a parse problem. `tcw validate` reports condition tags that are not
   registered (`FsWorkStore._condition_tag_problems`), in stages, transitions,
-  artifacts and procedures; the policy still loads.
+  artifacts and procedures, naming the entry by its `kind: value`; the policy
+  still loads.
 - `registered_tags` returns normalized, de-duplicated tags; an entry that is not
   a tag is reported by `check` instead of breaking tag reads. Plan-stage tags are
   normalized before the registry check. `_validate_tags` refuses a non-string tag
