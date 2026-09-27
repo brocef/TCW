@@ -296,7 +296,10 @@ import takes; anyone later is refused, because the ticket is assigned to you.
 you already have. If the first run took the ticket but stopped before creating the
 item, the ticket is already yours and no longer offers the claim, so the second
 run binds it without a transition ("not claimed by this run") and finishes the
-job.
+job. `--parent` and `--initiative` apply only to the item an import creates: a
+second import that names a parent or initiative the existing item lacks changes
+nothing and fails, telling you to set the parent in the web app (`tcw serve`) or
+the initiative with `tcw work edit <slug> --initiative <epic>`.
 
 **One ticket can become several items on purpose**, with `--part api`,
 `--part web` and so on. A part name is lowercase letters, digits and hyphens; the

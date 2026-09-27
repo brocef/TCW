@@ -111,3 +111,6 @@ internal module names.
 
 - **Nest an imported item:** `tcw work tracker import <ticket> --parent <slug>`
   (or `--initiative <epic>`) — the way to build a hierarchy under strict mode.
+  These set up a new item only. Importing a ticket you already imported, with a
+  parent or initiative its item does not have, changes nothing and says so; set
+  the parent in the web app, or the initiative with `tcw work edit`.

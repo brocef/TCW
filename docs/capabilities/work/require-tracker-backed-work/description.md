@@ -59,7 +59,8 @@ the key; a child node that inherits a strict parent's tracker block can set
 
 A child is nested by importing its ticket under the parent: `tracker import
 --parent <slug>` and `--initiative <epic>`, with the parent checked before the
-ticket is claimed. `new --parent` and `new --initiative` stay refused, since strict
+ticket is claimed. They place only the item the import creates; a re-import of a
+ticket already bound here does not move its item. `new --parent` and `new --initiative` stay refused, since strict
 mode creates work only from a ticket.
 
 Limits I accept: one claimed ticket can authorize several items, through `tracker

@@ -7,7 +7,10 @@ category.
 
 - `tcw work tracker import --parent <slug> --initiative <epic>`: nest the
   imported item, checked before the ticket is claimed — the way to nest a child
-  under strict mode, where `new --parent` stays refused.
+  under strict mode, where `new --parent` stays refused. Both apply only to an
+  item the import creates: a re-run for a ticket already bound here, whose item
+  lacks the parent or initiative given, prints the slug, changes nothing and
+  exits 1 with one line per mismatch (`_tracker_import`).
 
 ### Fixed
 

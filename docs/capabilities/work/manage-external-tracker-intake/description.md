@@ -27,6 +27,9 @@ claim: where `work.tracker.inbox-query` is declared, it runs this import, with t
 same checks, binding and messages, for a ticket I am triaging from the inbox.
 
 Running the same import again in the same node gives me the item I already have.
+`--parent` and `--initiative` place only an item the import creates: if I run it
+again naming a parent or initiative that item lacks, nothing changes and the
+command fails, saying where to change the placement instead.
 If a run took the ticket but stopped before the item existed, the next run finishes
 it without moving the ticket again. `--part` lets one ticket become several items on purpose.
 `tcw work tracker link <slug> <key>` records that an item I already have and a
