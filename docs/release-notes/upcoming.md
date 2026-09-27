@@ -5,6 +5,10 @@ internal module names.
 
 ## Fixes
 
+- **`tcw` works from any project inside a linked git worktree.** In a repository
+  holding several projects, running from one of its packages in a worktree used
+  to report every other project as a duplicate.
+
 - **A name containing `*`, `?` or `[` means only itself.** Saving a capability
   named `a*` used to stage your unsaved changes to a capability named `abc` as
   well, so the next commit took them along.

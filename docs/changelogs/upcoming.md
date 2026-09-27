@@ -5,6 +5,15 @@ category.
 
 ### Fixed
 
+- Inside a linked worktree, every node of the checked-out repository resolves to
+  its worktree copy. `ProjectRegistry._locator_path`'s Rule 2 aliased only the
+  current node's main-checkout path, so from a package node the repository's root
+  and sibling packages loaded a second time from the primary checkout — duplicate
+  project ids and reciprocity failures (GitHub #39). It now aliases any path
+  under the main worktree whose counterpart under this worktree holds a config,
+  leaving paths already inside the worktree alone; ids repeated across different
+  repositories are still duplicates. `_counterpart_path` is gone.
+
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
   `ls-files`, `ls-tree`), and `tcw work complete`'s staged-binding check, pass

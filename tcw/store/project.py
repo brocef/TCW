@@ -152,13 +152,6 @@ class FsProjectRegistry(ProjectRegistry):
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
         self._anchors = worktree_anchors(self.node_root)
-        # The current node's config as the *main* worktree spells it — the one
-        # path Rule 2 aliases onto the worktree copy. None outside a worktree.
-        self._counterpart_path = (
-            None if self._anchors is None
-            else (self._anchors[1] / self.node_root.relative_to(self._anchors[0])
-                  / SENTINEL).resolve()
-        )
 
     @classmethod
     def open(cls, node_root: Path) -> "FsProjectRegistry":
@@ -617,17 +610,22 @@ class FsProjectRegistry(ProjectRegistry):
         ):
             counterpart = main / source_dir.relative_to(top)
             resolved = (counterpart / target / SENTINEL).resolve()
-        # Rule 2 — collapse the worktree's own identity. Once the parent is
-        # reachable it points back at the current node as the *main* worktree
-        # spells it, so the graph would hold two configs under one ID and fail
-        # reciprocity. Alias that one path onto the worktree copy, so the graph
-        # holds exactly one node for the current project — the checked-out one.
-        # Exactly one pair, only under a linked worktree: a wider alias would
-        # mask genuine duplicate-ID errors, which is a real validation here.
-        # Applies to absolute locators too — the parent may name the current node
-        # by absolute path, and that path is the counterpart just the same.
-        if resolved == self._counterpart_path:
-            return self._current_path.resolve()
+        # Rule 2 — collapse the checked-out repository's nodes onto their
+        # worktree copies. Once Rule 1 reaches outside the worktree, the nodes
+        # there point back into this repository as the *main* worktree spells
+        # it — the current node, and every sibling in the same repository — so
+        # the graph would load each twice under one ID and fail reciprocity.
+        # A path under the main worktree whose counterpart under this worktree
+        # holds a config is the same node on the checked-out branch, so it
+        # resolves there (GitHub #39). Anything else keeps its path, so an ID
+        # repeated across *different* repositories is still a duplicate. A path
+        # already inside this worktree is left alone: TCW's own worktrees live
+        # under the primary checkout (`.worktrees/<slug>`), where every worktree
+        # path is also "under main". Applies to absolute locators too.
+        if resolved.is_relative_to(main) and not resolved.is_relative_to(top):
+            copy = top / resolved.relative_to(main)
+            if copy.is_file():
+                return copy.resolve()
         return resolved
 
     def _validate_reciprocity(self) -> None:
