@@ -822,6 +822,7 @@
   resolution: done
   resolved: '2026-09-17'
 2026-09-15-report-malformed-keys-and-unregistered-tags-in-lifecycle-config:
+  location: 7a35223d3ca366bd0e682c8aa148532999320189
   resolution: done
   resolved: '2026-09-26'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
