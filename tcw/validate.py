@@ -62,6 +62,20 @@ def _rel(f: Path, node_root: Path) -> str:
         return str(f)
 
 
+def _read_text(f: Path) -> tuple[str | None, str | None]:
+    """`(text, None)`, or `(None, problem)` for a file that cannot be read.
+    Never opens anything but a regular file: a named pipe would block the read,
+    and no exception rescues that."""
+    if not f.is_file():
+        return None, "not a regular file"
+    try:
+        return f.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, "not valid UTF-8"
+    except OSError as e:
+        return None, f"cannot be read ({e.strerror or e.__class__.__name__})"
+
+
 def _iter(root: Path, pattern: str):
     if root.is_file():
         return [root] if root.match(pattern) else []
@@ -378,8 +392,14 @@ def validate(node_root: Path, path: Path | None = None, *,
     # as healthy everywhere.
     for root in roots:
         for f in _iter(root, "*.yaml"):
+            text, unreadable = _read_text(f)
+            if unreadable is not None:
+                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                # The component checks would re-read it and fail the same way.
+                yaml_syntax_error = True
+                continue
             try:
-                data = yaml.load(f.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+                data = yaml.load(text, Loader=_UniqueKeyLoader)
             except yaml.YAMLError as e:
                 problems.append(f"{_rel(f, node_root)}: {e}")
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
@@ -395,7 +415,11 @@ def validate(node_root: Path, path: Path | None = None, *,
     # (b) tcw:// link resolution
     for root in roots:
         for f in _iter(root, "*.md"):
-            text = _strip_code(f.read_text(encoding="utf-8"))
+            raw, unreadable = _read_text(f)
+            if unreadable is not None:
+                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                continue
+            text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):
                 uri = m.group(1)
                 r = resolve_tcw_ref(node_root, uri)

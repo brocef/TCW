@@ -177,3 +177,25 @@ def test_the_web_detail_of_an_item_with_a_bad_sidecar_loads(node):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+# ── found by the combined review with the validate sidecar check ────────────
+
+@pytest.mark.parametrize("make", [_not_utf8, _folder, _pipe], ids=["not-utf8", "folder", "pipe"])
+def test_validate_reports_an_unreadable_file_instead_of_crashing(node, make):
+    """`tcw validate` scans every `.yaml` and `.md` in the store, and is a `pre`
+    hook on `complete` in some projects: one bad file must be a problem line."""
+    root, sidecar, _slug = node
+    make(sidecar)
+    done = subprocess.run([sys.executable, "-m", "tcw.cli", "validate", "--no-recurse"],
+                          cwd=root, capture_output=True, text=True, timeout=20)
+    assert done.returncode == 1 and "Traceback" not in done.stderr, done.stderr
+    assert "capabilities.yaml: not " in done.stdout + done.stderr, done.stdout
+
+
+def test_validate_reports_an_unreadable_markdown_file(node):
+    root, sidecar, _slug = node
+    (sidecar.parent / "notes.md").write_bytes(b"\xff\xfe\n")
+    done = subprocess.run([sys.executable, "-m", "tcw.cli", "validate", "--no-recurse"],
+                          cwd=root, capture_output=True, text=True, timeout=20)
+    assert "notes.md: not valid UTF-8" in done.stdout + done.stderr, done.stderr

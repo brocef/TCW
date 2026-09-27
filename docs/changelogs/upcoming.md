@@ -29,6 +29,9 @@ category.
   sidecar's revision from a tolerant read, and the sidecar route answers a
   non-UTF-8 file with a 400 naming it instead of the decoder's message
   (`read_sidecar` still raises `UnicodeDecodeError`, which tracker callers rely on).
+  `tcw validate`'s scan of every `.yaml` and `.md` file (`_read_text` in
+  `tcw/validate.py`) reports a file that is not regular, not UTF-8 or not
+  readable as a problem line instead of crashing or blocking on a named pipe.
 
 - `init` (`tcw work init`, `tcw init`) no longer writes back a `work.path` it read
   from `tcw-config.yaml` when no path was given: `./store` now stays `./store`
