@@ -692,6 +692,13 @@ class TcwHandler(BaseHTTPRequestHandler):
                 return
             try:
                 resource = work.read_sidecar(slug, name)
+            except OSError as e:
+                # Something is at the name but it is not a readable file. Only a
+                # message TCW wrote (no errno) is shown: the system's own names
+                # an absolute path on the server.
+                reason = str(e) if e.errno is None else f"{name} cannot be read"
+                self._send(HTTPStatus.BAD_REQUEST, reason.encode("utf-8"))
+                return
             except UnicodeDecodeError:
                 # Before ValueError, which it is: the decoder's own message names
                 # a byte offset, not the file.

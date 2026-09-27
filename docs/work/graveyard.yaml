@@ -800,6 +800,10 @@
   location: 7a0c2f3bf6d5b48161b384b05c59ea27072f84c6
   resolution: done
   resolved: '2026-09-15'
+2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing:
+  location: 32b3b5f99f5421687572248cc869ecfb8a222a71
+  resolution: done
+  resolved: '2026-09-27'
 2026-09-15-let-a-project-override-the-tools-and-procedures-tcw-s-own-skills-mandate:
   resolution: superseded
   resolved: '2026-09-16'
@@ -819,6 +823,10 @@
   location: 9773e069199d7c83c2cf6cf80363b7593b3315c0
   resolution: done
   resolved: '2026-09-26'
+2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items:
+  location: 12f31be683523ce05471f6c35af25c580c5120f2
+  resolution: done
+  resolved: '2026-09-27'
 2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes:
   resolution: wontfix
   resolved: '2026-09-24'

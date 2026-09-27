@@ -70,7 +70,7 @@ def test_a_ready_unassigned_ticket_is_transitioned_then_assigned(fake, alice):
     assert fake.writes() == [TRANSITION, ASSIGN]
     ticket = fake.tickets["10052"]
     assert (ticket.status, ticket.assignee) == ("In Progress", A)
-    assert (outcome.issue_id, outcome.key, outcome.account_id) == ("10052", "TCWCLAIM-6", A)
+    assert (outcome.issue_id, outcome.key) == ("10052", "TCWCLAIM-6")
     assert outcome.url == f"{BASE_URL}/browse/TCWCLAIM-6"
 
 

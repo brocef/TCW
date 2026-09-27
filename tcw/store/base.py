@@ -560,6 +560,10 @@ def unreadable_binding(error: Exception) -> Malformed:
     worded once, for every reader of one."""
     what = ("not a readable text file" if isinstance(error, (OSError, UnicodeDecodeError))
             else "not valid YAML")
+    # An OSError TCW raised itself carries no errno and says why in words ("is
+    # not a regular file"); the operating system's own carry a path, not shown.
+    if isinstance(error, OSError) and error.errno is None and str(error):
+        return Malformed(f"{what}: {error}")
     return Malformed(f"{what} ({error.__class__.__name__})")
 
 
@@ -3713,7 +3717,10 @@ class WorkStore(ABC):
 
         Returns ``None`` when no resource exists at that name — the same
         resource rule as `read_artifact`, blank-but-present included.
-        Raises ``ValueError`` for unknown sidecar names.
+        Raises ``ValueError`` for unknown sidecar names, and ``OSError`` when
+        something exists at the name but cannot be read as the resource: a
+        caller must not read that as "absent", since a binding it cannot read
+        may still hold a ticket.
         """
 
     @abstractmethod
