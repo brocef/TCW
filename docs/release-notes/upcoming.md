@@ -23,3 +23,10 @@ internal module names.
   reach used to say there was no project here and suggest `tcw init`, which
   would have created a second, empty store. They now say what is wrong with
   `extends`.
+
+## Fixes
+
+- **`tcw validate` catches a wrong path in a work item's `capabilities.yaml`
+  while the item is still being worked**, naming the file and line, instead of
+  leaving it to `tcw work complete`. Finished items are never checked, so old
+  records do not make validation noisy.

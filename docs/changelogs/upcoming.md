@@ -35,3 +35,14 @@ category.
   store beside the real one. One exit code changes with it: `tcw work procedure
   prompt` in a node whose `work.path` is empty or not a string now fails with
   that error (exit 1) instead of printing TCW's built-in text.
+
+### Fixed
+
+- `tcw validate` checks the `capabilities.yaml` of every item in backlog, active
+  or review (`_open_sidecar_problems`), reporting `<file>:<line>: <problem>` for
+  an unroutable or ambiguous path, a `changed:` path that does not resolve, a
+  `new:` path that does not resolve once the item is active, and a `removed:`
+  path naming an inherited capability. `capability_gate(..., in_progress=True)`
+  shares the completion gate's routine without its completion-only checks
+  (`new` still `Missing`, `removed` still resolving). Resolved items are never
+  checked (GitHub #27).

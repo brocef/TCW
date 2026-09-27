@@ -42,6 +42,12 @@ tcw validate --no-recurse       # active project only
 tcw validate docs/capabilities  # one active-project tree only
 ```
 
+It also checks each unfinished work item's `capabilities.yaml` — items in
+backlog, active or review, never completed ones — and reports a path that cannot
+be right, with its file and line: one that cannot be routed, a `changed:` path
+that does not resolve, and, once work has started, a `new:` path that does not
+resolve (a new capability is added, as `Missing`, when the item is planned).
+
 For each selected project it reports malformed YAML (including duplicate keys),
 a file TCW writes as a record that is not a mapping, a `tcw://` link that doesn't
 resolve, and problems surfaced by each component's own `check` (taxonomy +
