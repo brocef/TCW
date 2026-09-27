@@ -209,16 +209,19 @@ work:
           description: >-
               Public-facing overview and CLI usage. Update when the public
               surface or user-facing behavior changes.
-        - path: docs/changelogs/upcoming.md
+        - path: docs/changelogs/upcoming/<slug>.md
           trigger: Any-Code-Change
-          description: Developer changelog; technical, grouped by category.
+          description: >-
+              Developer changelog; technical, grouped by category. One file
+              per work item, named by its slug.
 ```
 
 Three keys per entry, all required. `tcw validate` checks their shape — a blank
 field, an absolute path, a path escaping the node, whitespace inside a trigger,
 and the same path declared twice under the _same_ trigger. It deliberately does
 **not** check that `path` exists (an entry routinely names a file you intend to
-create) or that `trigger` is one of the common names (the vocabulary is yours to
+create, or a pattern such as `docs/changelogs/upcoming/<slug>.md`, where each
+change adds its own file named after its work item) or that `trigger` is one of the common names (the vocabulary is yours to
 extend).
 
 One file may appear in several entries as long as their triggers differ, which

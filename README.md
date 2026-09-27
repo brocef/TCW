@@ -886,8 +886,11 @@ that an agent read them. Running it starts real agent sessions and costs money;
 ### Releasing
 
 `python scripts/cut_version.py <patch|minor|major|X.Y.Z>` bumps the version in all
-five files that carry it, turns the `upcoming.md` changelog and release notes into
-that version's files, commits and tags. Pushing the tag publishes the release to
+five files that carry it, combines the waiting changelog and release-note entries
+into that version's files, commits and tags. Each change adds its entries as its
+own file in `docs/changelogs/upcoming/` and `docs/release-notes/upcoming/`, named
+after its work item, so changes finished on separate branches never edit the same
+file. Pushing the tag publishes the release to
 PyPI. Details, including the one-time PyPI setup, are in
 [`docs/releasing.md`](docs/releasing.md).
 
