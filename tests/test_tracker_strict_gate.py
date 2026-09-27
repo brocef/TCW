@@ -172,3 +172,20 @@ def test_a_catch_up_binding_is_walked_not_refused(strict, fake):  # noqa: F811
                           "--confirm", "--force")
     assert code == 0, err
     assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_catch_up_binding_one_step_away_is_still_refused(strict, fake):  # noqa: F811
+    """Only a walk of more than one rung is `deliver`'s to finish."""
+    import yaml
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", A)
+    started(strict, slug)
+    content = yaml.safe_load(binding_text(strict, slug))
+    content["catch-up"] = True
+    content.pop("sync", None)
+    (FsWorkStore.open(strict).path(slug) / "tracker.yaml").write_text(
+        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+    no_route_to_review(fake)
+    code, _out, err = cli(strict, "work", "submit", slug)
+    assert code == 1 and "no transition to 'In Review'" in err, err
+    assert status(strict, slug) == "active"
