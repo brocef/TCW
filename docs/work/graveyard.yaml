@@ -824,6 +824,7 @@
   resolution: done
   resolved: '2026-09-26'
 2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items:
+  location: 12f31be683523ce05471f6c35af25c580c5120f2
   resolution: done
   resolved: '2026-09-27'
 2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes:
