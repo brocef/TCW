@@ -53,4 +53,5 @@ is unchanged; `tcw validate` reports the entry.
   falsy-scalar case, the comma refusal in `_validate_tags`, the release-note
   sentence. Not done here: an item holding a kept-as-text tag (`'cli,docs'`,
   `'!!!'`) cannot be removed with `--untag`, because the argument is split and
-  normalized; it predates this change and is filed as a follow-up.
+  normalized; it predates this change and is filed as
+  `2026-09-27-let-untag-remove-a-tag-an-item-holds-that-is-not-a-valid-tag`.
