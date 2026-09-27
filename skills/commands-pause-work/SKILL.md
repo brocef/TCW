@@ -72,9 +72,20 @@ narrowly, with `git -C <store folder> … -- <absolute path>`.
 
 ## 6. Report, then stop
 
-One short message: the item(s), the branch, whether the work reached the remote,
-and what to type to resume. If the user declined the commit, say plainly that the
-handoff exists only in this checkout.
+One short message: the item(s), the branch, and whether the work reached the
+remote. If the user declined the commit, say plainly that the handoff exists only
+in this checkout.
+
+End it with the exact words the user can give a new session to pick the work
+back up, filled in with the real slug and file name, one line per paused item:
+
+```
+To resume in a new session, tell the agent: "Resume work on <slug> by reading
+<handoff file name> in its work item folder."
+```
+
+With no handoff written, name what the new session should start from instead —
+the slug, or the branch when there was no work item.
 
 Then **fall silent**. No further tool calls, no scheduled check-in, no background
 task left running that would wake you. Waiting is the deliverable.
