@@ -130,8 +130,9 @@ conclusion.
 **A node need not keep a work store.** A repository root that only groups the
 packages owning the boards is a registered project like any other, and relations
 pass straight through it: an epic two levels up resolves, its slices below one
-are found, and `tcw work escalate` reaches the nearest ancestor that does keep a
-board. `tcw work nodes` says `parent: <id>  (no work store)` for such a parent
+are found — `tcw work reconcile` lists them, however deep — `tcw work delegate`
+reaches the packages behind it (the nearest node keeping a board on each branch),
+and `tcw work escalate` reaches the nearest ancestor that does keep a board. `tcw work nodes` says `parent: <id>  (no work store)` for such a parent
 rather than calling this node the root, and `(work store not provisioned here)`
 for one whose declared board this machine has not obtained — the same two markers
 it puts on the children lines.
