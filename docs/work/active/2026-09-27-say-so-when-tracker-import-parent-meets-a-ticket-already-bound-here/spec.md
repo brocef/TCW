@@ -57,23 +57,31 @@ mislead; they are unchanged.
 In the `ticket.assignee_id == ticket.me_id` branch of `_tracker_import`, before
 returning 0, read the bound item (`st.get(existing)`) and compare:
 
-- `--parent`: the given reference resolved through `st.get(parent)` (already
-  known to exist, checked at `tcw/work/cli.py:2697`) against the bound item's
-  `parent`. Comparing slugs, not the text given, so a reference that `get`
-  accepts in another spelling is not a mismatch.
+- `--parent`: the given slug against the bound item's `parent`. `get` accepts
+  only an exact slug (`tcw/store/fs.py:4591`), and the pre-check at
+  `tcw/work/cli.py:2697` has already found it, so the text given is the slug.
+  `WorkItem.parent` is always a bare slug (`_parent_slug`,
+  `tcw/store/fs.py:4437-4450`).
 - `--initiative`: the given text against the bound item's `initiative`, as
   stored.
 
-Each mismatch prints one line to stderr, for example:
+On a mismatch the slug is still printed to stdout first, as today, so a script
+that reads it keeps working; the `→ already bound` line is not printed, since the
+run did not end as a plain re-run. Each mismatched option then prints one line
+to stderr — two lines when both mismatch — and the command exits 1:
 
 ```
 tcw work tracker import: EX-1 (part default) is already bound to <slug>, which
-is not under <parent>; import sets --parent only on an item it creates, so
-<slug> was not moved.
+is not under <parent>. Import sets --parent only on the item it creates, so
+<slug> was not moved; change its parent in the web app (`tcw serve`).
+tcw work tracker import: EX-1 (part default) is already bound to <slug>, whose
+initiative is not <epic>. Import sets --initiative only on the item it creates;
+run `tcw work edit <slug> --initiative <epic>`.
 ```
 
-and the command exits 1. The slug is still printed to stdout first, as today,
-so a script that reads it keeps working. The `label` argument keeps the message
+The web app's item editor has a parent field (`tcw/serve/__init__.py:1216-1233`
+accepts it), and it is the only way to change a parent today: `tcw work edit`
+has no `--parent`. The `label` argument keeps the message
 right for `inbox accept`, although that path never passes these options.
 
 Storage: this is CLI logic over `get`, which every store has.
@@ -88,11 +96,19 @@ Storage: this is CLI logic over `get`, which every store has.
    initiative is still empty.
 3. A ticket imported with `--parent P`, then imported again with `--parent P`:
    exit 0, stdout is the slug, stderr contains `already bound` — the same as
-   today.
+   today. Likewise for `--initiative E` imported twice.
 4. A ticket imported with `--parent P`, then imported again with no `--parent`:
    exit 0, as today.
-5. In criteria 1 and 2 the fake tracker records no write, and the item's
+5. In criteria 1 and 2 the fake tracker records no new write (its write count
+   before the second import equals the count after), and the item's
    `state.yaml` is byte-for-byte unchanged.
+6. Given both `--parent P` and `--initiative E`, both mismatched: exit 1, two
+   stderr lines, one naming `P`, one naming `E`; no `already bound` line.
+
+The tests run in strict mode, with the fixtures of
+`tests/test_tracker_strict_gate.py` (the `unclaimed` ticket and a parent made
+with `create_work`), since that is where `--parent` is the only way to nest a
+child. Nothing in the new branch depends on strict mode.
 
 ## Risks
 
@@ -102,3 +118,14 @@ Storage: this is CLI logic over `get`, which every store has.
   `tcw work new` (creates, so always applies them) and `tcw work edit
   --initiative` (applies it). `tracker link` and `tracker create` take neither.
   No other command accepts these options and then skips them.
+
+## Notes
+
+- Spec review (adversarial-spec-reviewer, 2026-09-27) found no design defect.
+  Adopted: criterion 5 reworded to "no new write"; the mode and fixtures named;
+  an initiative re-run added to criterion 3; the stderr lines settled
+  (criterion 6); the parent message points to the web app; the claim that `get`
+  accepts other spellings of a slug removed (it does not).
+- Not adopted here: a re-run with `--parent P` after `P` was discarded is refused
+  by the existing pre-check before the binding lookup. That predates this change
+  and needs `P` gone while its child stays open.
