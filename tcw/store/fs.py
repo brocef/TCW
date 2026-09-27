@@ -7181,10 +7181,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         p = d / name
         if not p.is_file():
             return None
-        try:
-            text = p.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            raise ValueError(f"{name} is not valid UTF-8; fix or replace the file") from None
+        text = p.read_text(encoding="utf-8")
         sc_info = WORK_SIDECARS[name]
         return SidecarResource(
             name=name,

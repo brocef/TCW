@@ -14,8 +14,9 @@ category.
   regular file, not UTF-8, over `SIDECAR_MAX_BYTES` (1 MB), any read error, or
   more than `SIDECAR_MAX_VALUES` (10,000) values counted through aliases
   (`sidecar_value_problem` in `tcw/store/base.py`). The web detail computes the
-  sidecar's revision from a tolerant read, and `read_sidecar` refuses a non-UTF-8
-  file by name (400) instead of the decoder's message.
+  sidecar's revision from a tolerant read, and the sidecar route answers a
+  non-UTF-8 file with a 400 naming it instead of the decoder's message
+  (`read_sidecar` still raises `UnicodeDecodeError`, which tracker callers rely on).
 
 - `init` (`tcw work init`, `tcw init`) no longer writes back a `work.path` it read
   from `tcw-config.yaml` when no path was given: `./store` now stays `./store`
