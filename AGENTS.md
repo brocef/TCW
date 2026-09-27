@@ -22,7 +22,7 @@ identically under Claude and Codex.
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md)     |
 | `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and refuses until the spec is written                        |
-| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) |
+| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and refuses until the spec and plan are written |
 
 The bindings are in `tcw-config.yaml`; `tcw work lifecycle` lists them.
 

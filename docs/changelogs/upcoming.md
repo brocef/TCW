@@ -19,7 +19,14 @@ category.
   table (`_tasks_for`) rolls up from every descendant with a board, the set
   `initiative_children` already gives the completion gate, so the table and the
   gate no longer disagree. `child_nodes` still backs `tcw work nodes`.
-
+- An item started before its spec and plan is no longer stuck. `STAGE_STATUSES`
+  makes `spec` and `plan` legal in `active` as well as `backlog` (nothing moves
+  an item back), so their gates and `scaffold spec|plan` work on it.
+  `tcw work start` and the `implement` gate print a warning naming whichever of
+  `spec.md`/`plan.md` is missing and the gate command to write it; neither
+  refuses. The `plan` next step names both branches. This repository binds
+  `require_artifact.py spec` and `plan` as `pre` on `implement`, so here it
+  refuses. `tests/fixtures/prompt_fallback` re-captured for the `plan` entry.
 - Tracker commands refuse what they cannot read. `FsWorkStore.read_sidecar`
   raises `OSError` when something other than a regular file sits at the
   sidecar's name (it returned `None`, so a folder named `tracker.yaml` read as
