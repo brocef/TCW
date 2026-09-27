@@ -2891,17 +2891,6 @@ def _tracker_create(args: argparse.Namespace) -> int:
     if not args.all:
         if _item_or_reason(st, args.slug, "create") is None:
             return 1
-        # The sweep's board check, for one item: binding scans every item, so
-        # another item's unusable binding would let the ticket be made and then
-        # refuse to bind it. This item's own is refused by name in `_create_one`.
-        if blocked := [s for s in _unreadable_sidecars(st) if s != args.slug]:
-            listed = ", ".join(blocked[:5]) + ("…" if len(blocked) > 5 else "")
-            print(f"tcw work tracker create: not creating. {listed} "
-                  f"{'has' if len(blocked) == 1 else 'have'} a {BINDING_SIDECAR} "
-                  f"that cannot be read, and binding checks every item, so the new "
-                  f"ticket could not be bound. Repair or remove the file, then run "
-                  f"this again.", file=sys.stderr)
-            return 1
         result = _create_one(st, client, args.slug, args.part, args.dry_run)
         # `_CANNOT_RECORD` only tells the sweep to stop. One named item has
         # already been refused in words; its exit code is an ordinary 1.
@@ -2974,8 +2963,9 @@ def _sweep_order(st) -> list:
     wrongly for *every* bound item, and the sweep would then duplicate a ticket
     for the whole board.
 
-    `Malformed` lands in the list on purpose, as an unreadable sidecar does:
-    `_create_one` refuses it by name, which is louder than being skipped.
+    `Malformed` lands in the list on purpose, as an unreadable sidecar does —
+    though a sweep now refuses the whole board up front for any such item
+    (`_unreadable_sidecars`), since binding would fail for every item.
     """
     from tcw.tracker.intake import Bound, binding_of
 
@@ -3093,6 +3083,18 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
                 return 0
             return refuse(f"{slug} was not given a ticket: creating one claims "
                           f"it as you, and it was {someone_else}")
+
+    # The sweep's board check, for one item — a single `create` and the filing
+    # hook alike: binding scans every item, so another item's unusable binding
+    # would let the ticket be made and then refuse to bind it. A sweep checked
+    # the whole board before its first item; this item's own was refused above.
+    if not sweep and (blocked := [s for s in _unreadable_sidecars(st) if s != slug]):
+        listed = ", ".join(blocked[:5]) + ("…" if len(blocked) > 5 else "")
+        return refuse(f"not creating a ticket for {slug}. {listed} "
+                      f"{'has' if len(blocked) == 1 else 'have'} a {BINDING_SIDECAR} "
+                      f"that cannot be read, and binding checks every item, so the "
+                      f"new ticket could not be bound. Repair or remove the file, "
+                      f"then run this again.")
 
     if dry_run:
         if resume:

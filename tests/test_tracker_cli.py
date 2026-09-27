@@ -1696,3 +1696,19 @@ def test_single_create_refuses_before_creating_when_another_binding_is_unreadabl
     code, _out, err = _run(["work", "tracker", "create", slug])
     assert code == 1 and other in err and "not creating" in err, err
     assert not [p for p in posted if p[0] == "POST" and p[1].endswith("/issue")]
+
+
+def test_filing_records_an_owed_ticket_instead_of_one_it_cannot_bind(node, monkeypatch):
+    """The filing hook reaches `_create_one` directly, so the board check lives
+    there, not only in `tracker create`."""
+    root, configure = node
+    configure(ON_NEW_TRACKER)
+    broken = FsWorkStore.open(root).create("Broken").slug
+    (FsWorkStore.open(root).path(broken) / "tracker.yaml").mkdir()
+    posted = _create_responses(monkeypatch)
+    code, out, err = _run(["work", "new", "Filed"])
+    assert code == 0, err
+    assert not [p for p in posted if p[0] == "POST" and p[1].rstrip("/").endswith("/issue")]
+    slug = out.strip().splitlines()[0]
+    owed = FsWorkStore.open(root).get(slug).tracker
+    assert owed and "owed" in owed and broken in str(owed["owed"]), owed
