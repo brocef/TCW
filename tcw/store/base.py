@@ -316,8 +316,7 @@ def sidecar_value_problem(value: Any) -> str | None:
         if id(current) in above:
             continue
         if len(above) > SIDECAR_MAX_DEPTH:
-            return (f"nests deeper than {SIDECAR_MAX_DEPTH} levels "
-                    "(YAML aliases count each time they are used)")
+            return f"nests deeper than {SIDECAR_MAX_DEPTH} levels"
         if isinstance(current, dict):
             children = [*current.keys(), *current.values()]
         elif isinstance(current, (list, tuple, set, frozenset)):
