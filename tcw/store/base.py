@@ -545,6 +545,21 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
     return None
 
 
+def bound_from_value(value) -> "Bound | Unbound":
+    """The inverse of `binding_value` for a binding that names a ticket, else
+    `Unbound()` — for a reader that has only the item's `tracker` field, such as
+    the recovery of an interrupted claim, which no sidecar read reaches. Kept
+    beside `binding_value` so a field added to `Bound` is added to both."""
+    value = bound_value(value)
+    if value is None:
+        return Unbound()
+    ticket = value["ticket"]
+    return Bound(provider=value["provider"], project=value["project"],
+                 part=value["part"], ticket_id=ticket["id"], ticket_key=ticket["key"],
+                 ticket_url=ticket["url"], bound=value.get("bound") or "",
+                 sync=value.get("sync"), comment=value.get("comment"))
+
+
 def bound_value(value) -> dict | None:
     """`value` when it is a binding that names a ticket, otherwise `None`.
 
@@ -2240,7 +2255,7 @@ def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | 
         return None
     unknown = set(raw) - {"tags", "not_tags", "type"}
     if unknown:
-        problems.append(f"{where}: unknown 'when' key(s) {', '.join(sorted(unknown))}; "
+        problems.append(f"{where}: unknown 'when' key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected 'tags', 'not_tags', or 'type'")
         return None
     lists: dict[str, tuple[str, ...]] = {}
@@ -2262,7 +2277,19 @@ def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | 
                 problems.append(f"{where}: 'when.{key}' element {element!r} must be "
                                 f"a non-blank string")
                 return None
-            items.append(element.strip())
+            # Before normalizing, which would quietly read "cli,docs" as the one
+            # tag `cli-docs`.
+            if "," in element:
+                parts = ", ".join(p.strip() for p in element.split(",") if p.strip())
+                problems.append(f"{where}: 'when.{key}' element {element!r} holds "
+                                f"several tags; write [{parts}]")
+                return None
+            # Normalized as an item's tags always are, so `CLI` matches `cli`.
+            try:
+                items.append(normalize_tag(element))
+            except ValueError as e:
+                problems.append(f"{where}: 'when.{key}' element: {e}")
+                return None
         lists[key] = tuple(items)
     kind = None
     if "type" in raw:
@@ -2295,7 +2322,7 @@ def _parse_binding(raw: Any, where: str, legal: "frozenset[str] | set[str]",
         return None
     unknown = set(raw) - set(BINDING_KINDS) - {"when"}
     if unknown:
-        problems.append(f"{where}: unknown binding key(s) {', '.join(sorted(unknown))}; "
+        problems.append(f"{where}: unknown binding key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected one of {', '.join(BINDING_KINDS)}")
         return None
     declared = [k for k in BINDING_KINDS if k in raw]
@@ -2343,6 +2370,14 @@ def _parse_binding(raw: Any, where: str, legal: "frozenset[str] | set[str]",
             return None
         # `blob` is literal text: stripping it would silently edit a prompt.
         text = value if kind == "blob" else value.strip()
+        # Only the name's shape: whether the skill exists depends on what the
+        # reading harness has installed, which `tcw` cannot see. A `plugin:skill`
+        # colon is a name; whitespace or a path separator never is.
+        if kind == "skill" and re.search(r"[\s/\\]", text):
+            problems.append(f"{where}: 'skill' {text!r} is not a skill name "
+                            f"(no spaces or path separators; `plugin:skill` is "
+                            f"allowed)")
+            return None
 
     when = None
     if "when" in raw:
@@ -2452,7 +2487,7 @@ def _parse_stage(raw: Any, where: str, problems: list[str]) -> "StageBindings":
         return StageBindings()
     extra = set(raw) - {"pre", "prompt"}
     if extra:
-        problems.append(f"{where}: unknown key(s) {', '.join(sorted(extra))}; "
+        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, extra)))}; "
                         f"expected 'pre' or 'prompt', or a bare list of bindings")
     sb = StageBindings()
     if raw.get("pre") is not None:
@@ -2668,7 +2703,7 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
 
         unknown = set(item) - {"path", "trigger", "description"}
         if unknown:
-            problems.append(f"{where}: unknown key(s) {', '.join(sorted(unknown))}; "
+            problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                             f"expected 'path', 'trigger', 'description'")
 
         values: dict[str, str] = {}
@@ -2732,7 +2767,7 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
     top = {"stages", "transitions", "timeout", "artifacts", "output-cap"}
     unknown = set(raw) - top
     if unknown:
-        problems.append(f"work.lifecycle: unknown key(s) {', '.join(sorted(unknown))}; "
+        problems.append(f"work.lifecycle: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected {', '.join(repr(k) for k in sorted(top))}")
 
     timeout = raw.get("timeout", DEFAULT_HOOK_TIMEOUT)
@@ -2799,7 +2834,7 @@ def parse_lifecycle_policy(raw: Any) -> tuple[LifecyclePolicy, list[str]]:
                 extra = set(value) - {"pre", "post"}
                 if extra:
                     problems.append(f"{where}: unknown key(s) "
-                                    f"{', '.join(sorted(extra))}; expected 'pre' or 'post'")
+                                    f"{', '.join(sorted(map(str, extra)))}; expected 'pre' or 'post'")
                 bindings = TransitionBindings()
                 for phase in ("pre", "post"):
                     if value.get(phase) is not None:
@@ -3342,6 +3377,19 @@ class WorkStore(ABC):
 
     @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...
+
+    def interrupted_claims(self) -> list[WorkItem]:
+        """Items whose `start` began and never finished — the claimant died
+        mid-transition — each as it was before the claim (status `backlog`).
+
+        They are in no status, so `query` and `get` cannot answer for them, and
+        `start(slug, take_over=True)` is how one is finished. Listed so the
+        remedy is reachable: a caller has to know the item exists, and has to
+        see its tags and type to run the hooks that gate `start`. A
+        transactional store answers this by listing uncommitted claims; one that
+        publishes atomically never has any, which is this default.
+        """
+        return []
 
     @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
@@ -3954,7 +4002,13 @@ class WorkStore(ABC):
         return out
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
+        """`recover` is `take_over` for an interrupted claim only: it refuses an
+        item that is settled in any status, so it can never take an active item
+        from its owner. A store that publishes atomically has no interrupted
+        claims, so for it every recover is refused."""
+        if recover:
+            raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
         item = self._require(slug)
         if item.status == "active":
             # Active with nobody holding it — what `tcw work tracker release` leaves —

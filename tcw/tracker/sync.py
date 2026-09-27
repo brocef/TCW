@@ -971,7 +971,8 @@ def record_unsent(store, slug: str, *, move: str, reason: str) -> Outcome:
 # is nothing for a `sync` record to say.
 
 
-def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None, str | None]:
+def binding_refusal(store, slug: str, config, *, own=None,
+                    binding=None) -> tuple[Bound | None, str | None]:
     """The checks strict mode makes on `slug`'s binding before reading its ticket:
     `(bound, None)`, or `(None, why not)`. Nothing here asks the tracker.
 
@@ -979,12 +980,18 @@ def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None
     `complete` passes the branch copy of a `--worktree` item: the moves made during
     the work are committed on the branch, so the primary checkout's binding and
     owner are as stale as its status until the merge-back.
+
+    `binding`, when given, is the binding already read — for an interrupted claim,
+    which no store read reaches, from the item the claim holds.
     """
     own = own or store
-    try:
-        bound, _revision = binding_of(own, slug)
-    except (OSError, UnicodeDecodeError):
-        bound = None
+    if binding is not None:
+        bound = binding
+    else:
+        try:
+            bound, _revision = binding_of(own, slug)
+        except (OSError, UnicodeDecodeError):
+            bound = None
     if not isinstance(bound, Bound):
         return None, (f"{slug} is not bound to a readable ticket. Link it with "
                       f"`tcw work tracker link {slug} <ticket>` first.")
@@ -998,7 +1005,10 @@ def binding_refusal(store, slug: str, config, *, own=None) -> tuple[Bound | None
         # pointing at it without naming the owner sends the caller into a loop: the
         # refusal says run sync, and sync says skipped. `owner` is a field on the item,
         # not an identity this layer resolves — that stays in the CLI.
-        item = own.get(slug)
+        try:
+            item = own.get(slug)
+        except ValueError:              # an interrupted claim: no ordinary read
+            item = None
         owner = item.owner if item is not None else ""
         whose = (f" It is held by {owner}, so run it as them: "
                  f"`TCW_WORK_OWNER={owner} tcw work tracker sync {slug}`." if owner else "")

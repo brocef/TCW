@@ -1,7 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
 import type { CapabilityItem, TaxonomyItem, WorkItem } from "../model/types"
-import { ItemMeta, Markdown, Tree } from "./shared-components"
+import {
+    InterruptedClaims,
+    ItemMeta,
+    Markdown,
+    Tree,
+} from "./shared-components"
 
 const modified = "2026-07-22T18:30:00Z"
 
@@ -239,7 +244,13 @@ test("a superseded response never touches the document that replaced it", async 
             ok: true,
             json: async () =>
                 forA
-                    ? { [URI_A]: { ok: true, axis: "work", key: "2026-01-01-a" } }
+                    ? {
+                          [URI_A]: {
+                              ok: true,
+                              axis: "work",
+                              key: "2026-01-01-a",
+                          },
+                      }
                     : {
                           [URI]: {
                               ok: false,
@@ -255,12 +266,38 @@ test("a superseded response never touches the document that replaced it", async 
     rerender(<Markdown source={`See [the epic](${URI}).`} resolveLinks />)
     const anchor = await screen.findByText("the epic")
 
-    gate.a()                                   // the stale answer lands first
+    gate.a() // the stale answer lands first
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(anchor).not.toHaveClass("tcw-inert")
     expect(anchor).toHaveAttribute("href", URI)
 
-    gate.b()                                   // the current answer still applies
+    gate.b() // the current answer still applies
     await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
     expect(anchor).toHaveAttribute("data-tcw-ref", URI)
+})
+
+describe("InterruptedClaims", () => {
+    test("lists each interrupted start with a Recover control", () => {
+        const onRecover = vi.fn()
+        render(
+            <ThemeProvider>
+                <InterruptedClaims
+                    claims={[{ slug: "2026-01-01-x", title: "X" }]}
+                    onRecover={onRecover}
+                />
+            </ThemeProvider>
+        )
+        expect(screen.getByText(/Interrupted start/)).toBeInTheDocument()
+        fireEvent.click(screen.getByRole("button", { name: "Recover" }))
+        expect(onRecover).toHaveBeenCalledWith("2026-01-01-x")
+    })
+
+    test("renders nothing when there are none", () => {
+        render(
+            <ThemeProvider>
+                <InterruptedClaims claims={[]} onRecover={() => {}} />
+            </ThemeProvider>
+        )
+        expect(screen.queryByText(/Interrupted start/)).toBeNull()
+    })
 })

@@ -16,7 +16,12 @@ work:
 A binding declares one **kind** explicitly — a bare string is rejected, never
 guessed at. Declaration order is significant. `tcw validate` rejects unknown ids,
 malformed shapes, blank or duplicated references, a kind used in a position that
-does not allow it, and a malformed `when:`.
+does not allow it, and a malformed `when:`. Tags in `when:` are read the way an
+item's tags are (`CLI` means `cli`); one that is not a registered tag, or that
+packs several into one string (`"cli,docs"`), is reported because it could never
+match. A `skill:` value is checked only for its shape — no spaces or path
+separators; `plugin:skill` is fine — never for whether the skill is installed,
+which depends on the harness reading it.
 
 Which kinds each position allows, how several bindings combine, and what `when:`
 can test are in the table under "Roles, kinds, and conditions" in the `work`

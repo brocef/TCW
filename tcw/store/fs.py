@@ -270,6 +270,31 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return nr if component == "work" or store.root.is_dir() else None
 
 
+def tree_store_present(node_root: Path, component: str) -> bool:
+    """Whether this node has a `component` tree store to check: its default
+    folder is there, or its config says where the store is (`<c>.path` or
+    `<c>.repository`, any value but null — a malformed one is present and must
+    be reported, not skipped). FS-adapter-local, like `find_node`.
+
+    Asked by `FsCapabilitiesStore._taxonomy` instead of
+    `(node_root / "docs" / component).is_dir()`, which is true of neither a moved
+    store nor one kept in another repository — so capabilities never checked
+    Subject or Feature against a moved taxonomy. Deliberately not "open it and
+    see", which `tcw validate` uses: `extends` alone is not a location, and a
+    node that only inherits a taxonomy should not have its capability checks
+    fail on that inheritance.
+    """
+    if (node_root / "docs" / component).is_dir():
+        return True
+    try:
+        config = load_config(node_root / SENTINEL)
+    except ValueError:
+        return False            # a broken config is reported where it is read
+    section = config.get(component) if isinstance(config, dict) else None
+    return isinstance(section, dict) and (
+        section.get("path") is not None or section.get("repository") is not None)
+
+
 # The three helpers below enumerate the graph, and a graph may now be partial —
 # a connected project whose repository is not in this checkout is absent from it
 # rather than fatal to it. Each therefore answers for what is here, deliberately:
@@ -3129,8 +3154,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         than in the call is what makes it impossible to forget: `set`,
         `update_capability` and `check` all reach the same handle.
         """
+        # A taxonomy that is present and cannot open raises: that is a broken
+        # configuration, not "this node has no taxonomy".
         return (FsTaxonomyStore.open(self.node_root)
-                if (self.node_root / "docs" / "taxonomy").is_dir() else None)
+                if tree_store_present(self.node_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
         # `is not None`, not `or`: an explicitly injected store must win even
@@ -3138,8 +3165,18 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # Subject/Feature entirely, so the write path and `check` could disagree
         # about *whether* a ref is checked even once they agree about what a
         # problem is.
-        taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
         problems: list[str] = []
+        unchecked = ""
+        if taxonomy is None:
+            try:
+                taxonomy = self._taxonomy()
+            except ValueError as e:
+                # A taxonomy that is configured and will not open — declared and
+                # not yet provisioned, say — costs the Subject/Feature checks, not
+                # every other problem this ledger has. Said once, and only if a
+                # capability checked here names a Subject or Feature: otherwise
+                # nothing went unchecked, and every save would carry the line.
+                unchecked = f"Subject and Feature not checked: {e}"
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in capability federation")
@@ -3195,6 +3232,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if status == "Blocked" and "Blocked by" not in f:
                 problems.append(f"{where}: Blocked requires Blocked by")
             problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
+            if unchecked and (f.get("Subject") or f.get("Feature")):
+                problems.append(unchecked)
+                unchecked = ""
 
         # Override + attachment validation (every meta dir, incl. override folders).
         meta_dirs = self._all_meta_dirs()
@@ -4095,7 +4135,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         raise AssertionError("unreachable")                # for the type checker
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
         # The literal first statement, not merely an early one: both the
         # take-over branch and the main claim call `git_stage` directly rather
@@ -4109,6 +4149,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `--take-over` — the documented remedy for an interrupted claim —
         # unreachable the moment there was something to recover.
         item = self._get_now(slug)
+        if recover:
+            # Decided here, against the same read the take-over branch acts on,
+            # so a claim published since a caller looked cannot be taken from
+            # its new owner.
+            if item is not None:
+                raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
+            take_over = True
         if item is None and take_over:
             interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:
@@ -4273,6 +4320,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         return sorted((self.root / ".claiming").glob(
             glob.escape(slug) + "-" + "[0-9a-f]" * 32))
+
+    def interrupted_claims(self) -> list[WorkItem]:
+        """One item per `.claiming/<slug>-<32 hex>` folder whose slug has not
+        been published, read from that folder and reported under its own slug
+        and the status it left (a claim is only ever taken from `backlog`)."""
+        claiming = self.root / ".claiming"
+        if not claiming.is_dir():
+            return []
+        found: list[WorkItem] = []
+        for d in sorted(claiming.iterdir()):
+            slug, dash, suffix = d.name[:-33], d.name[-33:-32], d.name[-32:]
+            if (dash != "-" or not re.fullmatch(r"[0-9a-f]{32}", suffix)
+                    or not (d / "state.yaml").is_file()
+                    or self._get_now(slug) is not None):     # published meanwhile
+                continue
+            item = self._item_from_dir(d)
+            if item is not None:
+                found.append(replace(item, slug=slug, status="backlog"))
+        return found
 
     def _lost_the_claim(self, slug: str) -> NoReturn:
         """Report a lost race once the winner publishes, or an abandoned claim.
@@ -4613,6 +4679,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             tags = value.get("tags", [])
             if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                 raise ValueError(f"{prefix} tags must be a list")
+            # As in a lifecycle condition: a comma is several tags written as
+            # one, which normalizing would quietly turn into `cli-docs`.
+            if joined := [tag for tag in tags if "," in tag]:
+                raise ValueError(f"{prefix} tag {joined[0]!r} holds several tags; "
+                                 f"list them separately")
+            try:
+                tags = [normalize_tag(tag) for tag in tags]
+            except ValueError as e:
+                raise ValueError(f"{prefix}: {e}") from None
             stale = [tag for tag in tags if tag not in registered]
             if stale:
                 raise ValueError(f"{prefix} has unregistered tag '{stale[0]}'")
@@ -5751,7 +5826,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         work = self._config().get("work")
         if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
             return []
-        return sorted(str(t) for t in (work.get("tags") or []))
+        return sorted(self._registered_tag_entries()[0])
+
+    def _registered_tag_entries(self) -> tuple[set[str], list[str]]:
+        """The registered tags, normalized as every applied tag is — so `Bug`
+        registered by hand means `bug` — and the entries that are not tags at
+        all, which `check` reports rather than letting one break every tag read."""
+        work = self._config().get("work")
+        raw = work.get("tags") if isinstance(work, dict) else None
+        tags: set[str] = set()
+        bad: list[str] = []
+        for entry in raw if isinstance(raw, list) else []:
+            try:
+                if not isinstance(entry, str):
+                    raise ValueError(entry)
+                tags.add(normalize_tag(entry))
+            except ValueError:
+                bad.append(repr(entry))
+        return tags, bad
 
     # -- transition-commit policy (node-root `tcw-config.yaml` → `work.*`) --
 
@@ -6099,7 +6191,42 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self._work_config().get("procedures"))
         problems += procedure_problems
         problems += self._file_binding_problems(policy)
+        problems += self._condition_tag_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
+
+    def _condition_tag_problems(self, policy: LifecyclePolicy) -> list[str]:
+        """Condition tags that are not registered tags, so can never match.
+
+        Beside the parser rather than in it, as `_file_binding_problems` is: the
+        registry is this node's configuration, and a condition naming a tag that
+        was unregistered must still load — reported here, fixed afterwards —
+        rather than stop the whole policy from reading.
+        """
+        registered = set(self.registered_tags())
+        found: list[str] = []
+        places: list[tuple[str, list]] = []
+        for name, sb in policy.stages.items():
+            places += [(f"work.lifecycle.stages.{name}.pre", sb.pre),
+                       (f"work.lifecycle.stages.{name}.prompt", sb.prompt)]
+        for name, tb in policy.transitions.items():
+            places += [(f"work.lifecycle.transitions.{name}.pre", tb.pre),
+                       (f"work.lifecycle.transitions.{name}.post", tb.post)]
+        places += [(f"work.lifecycle.artifacts.{n}", b) for n, b in policy.artifacts.items()]
+        places += [(f"work.procedures.{n}", b) for n, b in policy.procedures.items()]
+        for where, bindings in places:
+            # Named by content, not position: the parser has already dropped any
+            # malformed entry, so a position here would count only the survivors.
+            for binding in bindings:
+                if binding.when is None:
+                    continue
+                entry = f"{where} entry '{binding.kind}: {binding.ref}'"
+                for key, tags in (("tags", binding.when.tags),
+                                  ("not_tags", binding.when.not_tags)):
+                    found += [f"{entry}: 'when.{key}' names '{tag}', which is not a "
+                              f"registered tag, so it never matches; register it "
+                              f"with `tcw work tags add {tag}` or fix the name"
+                              for tag in tags if tag not in registered]
+        return found
 
     def _file_binding_problems(self, policy: LifecyclePolicy) -> list[str]:
         """`file:` bindings that do not exist or leave the node.
@@ -6202,6 +6329,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         out: list[str] = []
         for t in tags:
+            if not isinstance(t, str):
+                raise ValueError(f"tag {t!r} must be a string")
             norm = normalize_tag(t)
             if norm not in registered:
                 raise ValueError(
@@ -6215,6 +6344,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         problems: list[str] = []
         if identifier is None:                         # node-wide config, not per-item
+            problems.extend(f"{SENTINEL}: work.tags entry {entry} is not a tag"
+                            for entry in self._registered_tag_entries()[1])
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())

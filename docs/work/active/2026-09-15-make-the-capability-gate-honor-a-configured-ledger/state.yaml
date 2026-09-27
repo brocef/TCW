@@ -9,3 +9,7 @@ tags:
 - bug
 priority: 45
 effort: medium
+owner: brocef@users.noreply.github.com
+started: '2026-09-27T02:08:45.784756Z'
+worktree: .worktrees/2026-09-15-make-the-capability-gate-honor-a-configured-ledger
+branch: work/2026-09-15-make-the-capability-gate-honor-a-configured-ledger
