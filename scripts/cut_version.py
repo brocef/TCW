@@ -3,10 +3,10 @@
 
     python scripts/cut_version.py <patch|minor|major|X.Y.Z>
 
-Bumps the version in all 5 version-bearing files in lockstep, rotates the
-release-notes + changelog `upcoming.md` working files to `v{version}.md`,
-recreates fresh `upcoming.md` files, then commits and tags. Does NOT push —
-publishing stays a human step.
+Bumps the version in all 5 version-bearing files in lockstep, combines the
+entry files in `docs/{changelogs,release-notes}/upcoming/` into each folder's
+`v{version}.md` (deleting them, keeping the folder's README.md), then commits
+and tags. Does NOT push — publishing stays a human step.
 
 The version string lives in 5 files (see CLAUDE.md "Versioning");
 `.agents/plugins/marketplace.json` deliberately carries none and is untouched.
@@ -27,19 +27,15 @@ VERSION_FILES = {
     ".codex-plugin/plugin.json":       r'"version": "([0-9]+\.[0-9]+\.[0-9]+)"',
 }
 
-# upcoming working file → its fresh header template (recreated after rotation)
+# upcoming entry folder → the section headings that lead its combined document,
+# in this order; every other heading follows in the order it first appears.
 UPCOMING = {
-    "docs/changelogs/upcoming.md": (
-        "# Upcoming\n\n"
-        "Developer changelog for the next version. Technical and precise; grouped by\n"
-        "category.\n"
-    ),
-    "docs/release-notes/upcoming.md": (
-        "# Upcoming\n\n"
-        "User-facing release notes for the next version. Plain language — no jargon or\n"
-        "internal module names.\n"
-    ),
+    "docs/changelogs/upcoming": ("Added", "Changed", "Fixed", "Removed", "Internal"),
+    "docs/release-notes/upcoming": (),
 }
+# Drafting guidance for whoever writes an entry; never combined, and it keeps the
+# folder in git when there are no entries.
+GUIDANCE = "README.md"
 
 
 def repo_root() -> Path:
@@ -99,29 +95,53 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(root), *args], check=True)
 
 
-def rotate_upcoming(root: Path, version: str) -> None:
-    """`git mv` each upcoming.md → v{version}.md, then recreate a fresh upcoming.md.
+def combine(texts: list[str], order: tuple[str, ...] = ()) -> str:
+    """Combine entry files into one body, merging `## ` sections by heading.
 
-    The rotated file is retitled `# v{version}` and **the working-file preamble is
-    dropped**. Without the retitle every released document keeps the `# Upcoming`
-    placeholder it was drafted under, which is how 84 of the first 92 shipped
-    files came to be titled "Upcoming". Without dropping the preamble the shipped
-    file still says it is "for the next version" and still carries the
-    drafting instructions ("Plain language — no jargon"), which are addressed to
-    whoever writes the notes, not to whoever reads the release."""
-    for rel, header in UPCOMING.items():
-        src = root / rel
-        dst = src.with_name(f"v{version}.md")
-        _git(root, "mv", str(src), str(dst))
-        text = dst.read_text(encoding="utf-8")
-        if text.startswith(header):
-            # The whole working-file header goes, preamble included.
-            text = f"# v{version}\n" + text[len(header):]
-        elif text.startswith("# Upcoming\n"):
-            # Preamble edited or absent — retitle only, never guess at prose.
-            text = f"# v{version}\n" + text[len("# Upcoming\n"):]
-        dst.write_text(text, encoding="utf-8")
-        src.write_text(header, encoding="utf-8")
+    Each text splits into a leading block (anything before its first `## ` line)
+    and `## ` sections, each running to the next `## ` line, so a `###` heading
+    stays with the section above it. Sections with the same heading merge, their
+    bodies joined in the order given. Headings in `order` lead, in that order;
+    the rest follow in the order they first appear. Leading blocks come first."""
+    leading: list[str] = []
+    sections: dict[str, list[str]] = {}
+    for text in texts:
+        heading, lines = None, []
+        for line in text.splitlines() + ["## "]:          # sentinel flushes the last part
+            if line.startswith("## "):
+                part = "\n".join(lines).strip()
+                if heading is None:
+                    if part:
+                        leading.append(part)
+                elif part:
+                    sections.setdefault(heading, []).append(part)
+                else:
+                    sections.setdefault(heading, [])
+                heading, lines = line[3:].strip(), []
+            else:
+                lines.append(line)
+    ordered = [h for h in order if h in sections] + [h for h in sections if h not in order]
+    blocks = leading + ["\n\n".join([f"## {h}", *sections[h]]) for h in ordered]
+    return "\n\n".join(blocks)
+
+
+def combine_upcoming(root: Path, version: str) -> list[str]:
+    """Write each folder's entries to `v{version}.md` beside it and `git rm` them.
+
+    Returns the written paths, to stage. The shipped file is titled `# v{version}`
+    and carries none of the folder's README.md, which is addressed to whoever
+    writes an entry rather than to whoever reads the release."""
+    written = []
+    for rel, order in UPCOMING.items():
+        folder = root / rel
+        entries = sorted(p for p in folder.glob("*.md") if p.name != GUIDANCE)
+        body = combine([p.read_text(encoding="utf-8") for p in entries], order)
+        dst = folder.parent / f"v{version}.md"
+        dst.write_text(f"# v{version}\n" + (f"\n{body}\n" if body else ""), encoding="utf-8")
+        written.append(str(dst.relative_to(root)))
+        if entries:
+            _git(root, "rm", "-q", "--", *(str(p) for p in entries))
+    return written
 
 
 def main(argv: list[str] | None = None, root: Path | None = None) -> int:
@@ -135,13 +155,16 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     if new == old:
         sys.exit(f"cut_version: {new} is already the current version")
 
+    missing = [rel for rel in UPCOMING if not (root / rel).is_dir()]
+    if missing:
+        # Checked before anything is touched: a cut without its entries would
+        # ship empty notes under a real version number.
+        sys.exit(f"cut_version: no entry folder at {', '.join(missing)}")
+
     bump_files(root, old, new)
-    rotate_upcoming(root, new)
-    rotated = [str(Path(rel).with_name(f"v{new}.md")) for rel in UPCOMING]
-    _git(root, "add", "--",
-         *VERSION_FILES.keys(), *UPCOMING.keys(),          # version edits + fresh upcoming
-         *rotated)                                          # …and the retitled rotated files
-    _git(root, "commit", "-qm", f"chore(release): cut v{new}")  # picks up the staged renames too
+    combined = combine_upcoming(root, new)
+    _git(root, "add", "--", *VERSION_FILES.keys(), *combined)
+    _git(root, "commit", "-qm", f"chore(release): cut v{new}")  # picks up the staged removals too
     _git(root, "tag", f"v{new}")
     print(f"cut v{new} (was v{old}). Push with: git push origin main --tags")
     return 0
