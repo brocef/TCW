@@ -66,9 +66,9 @@ def _read_text(f: Path) -> tuple[str | None, str | None]:
     """`(text, None)`, or `(None, problem)` for a file that cannot be read.
     Never opens anything but a regular file: a named pipe would block the read,
     and no exception rescues that."""
-    if not f.is_file():
-        return None, "not a regular file"
     try:
+        if not f.is_file():
+            return None, "not a regular file"
         return f.read_text(encoding="utf-8"), None
     except UnicodeDecodeError:
         return None, "not valid UTF-8"
@@ -278,8 +278,9 @@ def _open_sidecar_problems(node_root: Path, st: FsWorkStore,
             continue
         folder = st.path(item.slug)
         sidecar = folder / "capabilities.yaml" if folder is not None else None
-        text = (sidecar.read_text(encoding="utf-8", errors="replace")
-                if sidecar is not None and sidecar.is_file() else "")
+        # Only for line numbers: a sidecar that cannot be read is reported by
+        # the gate below, so an unreadable one just gets no line.
+        text = (_read_text(sidecar)[0] or "") if sidecar is not None else ""
         for problem in capability_gate(st, item, in_progress=True):
             declared = problem.partition(": ")[0]
             line = next((n for n, row in enumerate(text.splitlines(), 1)
