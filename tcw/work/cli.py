@@ -2714,6 +2714,25 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         if existing is not None:
             print(existing)
             if ticket.assignee_id == ticket.me_id:
+                # --parent and --initiative place the item this command creates.
+                # A re-run asking for a placement the bound item lacks must not
+                # read as success, and must not move an item a re-run only reports.
+                item = st.get(existing)
+                bound = f"{ticket.key} (part {part}) is already bound to {existing}"
+                wrong = []
+                if parent and item.parent != parent:
+                    wrong.append(f"{bound}, which is not under {parent}. Import sets "
+                                 f"--parent only on the item it creates, so {existing} "
+                                 f"was not moved; change its parent in the web app "
+                                 f"(`tcw serve`).")
+                if initiative and item.initiative != initiative:
+                    wrong.append(f"{bound}, whose initiative is not {initiative}. Import "
+                                 f"sets --initiative only on the item it creates; run "
+                                 f"`tcw work edit {existing} --initiative {initiative}`.")
+                for line in wrong:
+                    print(f"tcw work {label}: {line}", file=sys.stderr)
+                if wrong:
+                    return 1
                 print(f"→ already bound: {ticket.key} (part {part}) is {existing}",
                       file=sys.stderr)
                 return 0
@@ -4369,14 +4388,19 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         epilog="Use --part when one ticket is split across several items; each part\n"
                "is bound separately and the name is yours to choose.\n\n"
                "Running it again for a ticket and part already bound here, while the\n"
-               "ticket is assigned to you, prints that item rather than a second.\n\n"
+               "ticket is assigned to you, prints that item rather than a second.\n"
+               "--parent and --initiative apply only to an item this command creates:\n"
+               "a re-run naming a parent or initiative that item lacks changes\n"
+               "nothing and exits 1.\n\n"
                "Refuses when: no tracker is configured; --part or --title is invalid;\n"
                "the key does not exist; the ticket is resolved or assigned to somebody\n"
                "else; the claim transition name matches more than one transition; the\n"
                "claim transition is not offered and the ticket is not already yours;\n"
                "the ticket is bound here but not assigned to you (a linked ticket is\n"
-               "never claimed by import); a tracker.yaml on an open item cannot be\n"
-               "read; or the tracker does not show the claim afterwards.\n\n"
+               "never claimed by import); the ticket is bound here and --parent or\n"
+               "--initiative names a placement the bound item lacks; a tracker.yaml\n"
+               "on an open item cannot be read; or the tracker does not show the\n"
+               "claim afterwards.\n\n"
                "  tcw work tracker import EX-123\n"
                "  tcw work tracker import EX-123 --part api --title 'The API half'\n"
                "  tcw work tracker import EX-124 --parent <epic-slug>\n",
