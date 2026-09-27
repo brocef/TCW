@@ -60,3 +60,10 @@ Run unattended on 2026-09-27 (`extras-autonomous-work`).
   the primary checkout; whether a `TCW_PROJECT_<ID>` override naming the main
   checkout's copy should be redirected.
 - **The request** was overwritten by the run and restored from git (`ebf452be`).
+- **Verify** (tcw:verifier): all five criteria met, each compared with main's
+  build (4/4/8 problems on main from `pkg-a`/`pkg-b`/root; none on the branch),
+  in both the sibling and the `.worktrees/<name>` layouts, and for
+  `repository:`, a nested clone and a submodule. It found two submodule layouts
+  still uncovered (running from inside a submodule's own checkout; a repository
+  that is itself a submodule) — both predate this item; the guide now says so,
+  and they are on the project-graph follow-up. Decision: accept.
