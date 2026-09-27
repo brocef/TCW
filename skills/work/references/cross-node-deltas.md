@@ -8,8 +8,9 @@ Use `--parent` children only when the slices are work items in the same project.
 
 A node in the chain need not keep a board of its own. A repository root that
 groups the packages owning the boards is a routing node: an epic resolves through
-it, its slices below it are found, and `tcw work escalate` reaches the nearest
-ancestor that does keep one. `tcw work nodes` marks such a parent
+it, its slices below it are found, `tcw work delegate` reaches the packages behind
+it (the nearest node that keeps a board on each branch), and `tcw work escalate`
+reaches the nearest ancestor that does keep one. `tcw work nodes` marks such a parent
 `(no work store)`.
 
 Reciprocity is checked between the nodes this checkout can actually open. A
@@ -56,7 +57,8 @@ as "not registered" and add a second declaration.
 4. **A sub-project escalates up** when it needs the orchestrator:
    `tcw work escalate "<title>"` writes into the parent node's `inbox/`.
 5. **Roll up progress** from the orchestrator:
-   `tcw work reconcile <epic-slug>` follows registered descendants for
+   `tcw work reconcile <epic-slug>` follows every registered descendant that keeps
+   a board — through routing nodes, and below a child with a board of its own — for
    `initiative == <epic-slug>` and writes a consolidated table (node, slug,
    status, blockers, next-ready) to the epic's own `rollup.md` sidecar — the
    rollup is generated, so it never touches prose anyone is credited with.

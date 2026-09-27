@@ -11,6 +11,14 @@ category.
 
 ### Fixed
 
+- `delegate` and `reconcile` pass through a routing node — a registered child
+  that keeps no board (GitHub #30). `delegate` resolves its target among
+  `routed_children` (the nearest node with a work store on each branch; new in
+  `tcw/store/fs.py`) and reports a target declared behind a routing node but
+  absent from this checkout as such (`routed_unreachable_children`). `reconcile`'s
+  table (`_tasks_for`) rolls up from every descendant with a board, the set
+  `initiative_children` already gives the completion gate, so the table and the
+  gate no longer disagree. `child_nodes` still backs `tcw work nodes`.
 - An item started before its spec and plan is no longer stuck. `STAGE_STATUSES`
   makes `spec` and `plan` legal in `active` as well as `backlog` (nothing moves
   an item back), so their gates and `scaffold spec|plan` work on it.

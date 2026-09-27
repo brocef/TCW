@@ -332,6 +332,51 @@ def child_nodes(root: Path) -> list[Path]:
     ]
 
 
+def _routed(root: Path) -> "tuple[list[Path], list[UnreachableProject]]":
+    """One walk down `root`'s own registry: the nearest node with a work store on
+    each branch, and every declared child found absent on the way.
+
+    **One registry, opened at `root`.** Opening another at each routing node
+    looks equivalent and is not: worktree aliasing depends on where a registry
+    was opened, so from a linked worktree a routing node's own registry can see
+    the primary checkout's copy of `root` and refuse a graph `root`'s registry
+    accepts — which broke `delegate` even to a direct child."""
+    registry = FsProjectRegistry.open(root).require_valid()
+    found: list[Path] = []
+    absent: list = []
+
+    def walk(project_id: str | None) -> None:
+        for child_id in registry.declared_child_ids(project_id):
+            project = registry.get(child_id)
+            if project is None:
+                if (entry := registry.unreachable_project(child_id)) is not None:
+                    absent.append(entry)
+                continue
+            child = Path(project.locator)
+            if _has_work_store(child):
+                found.append(child)
+            else:
+                walk(child_id)      # a routing node; `require_valid` ruled out cycles
+    walk(None)
+    return found, absent
+
+
+def routed_children(root: Path) -> list[Path]:
+    """The nearest node with a work store on each branch below `root`: a
+    registered child that keeps a board, or — for one that does not, a routing
+    node — its own routed children. The downward mirror of
+    `nearest_work_ancestor`, for `delegate`: coordination passes through a node
+    that only groups others, and stops at the first one that keeps a board.
+    A declared but unprovisioned store counts as none, as it does going up."""
+    return _routed(root)[0]
+
+
+def routed_unreachable_children(root: Path) -> "list[UnreachableProject]":
+    """`unreachable_children` of `root` and of every routing node on the way
+    down, so a target declared behind one is reported as absent, not unknown."""
+    return _routed(root)[1]
+
+
 def parent_node(root: Path) -> Path | None:
     """Direct registered parent that contains a work store.
 

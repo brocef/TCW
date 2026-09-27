@@ -5,6 +5,9 @@ internal module names.
 
 ## Fixes
 
+- **An epic can span packages behind a folder that has no board of its own.**
+  `tcw work delegate` reaches them, and `tcw work reconcile` lists every slice,
+  however deep — as the guide already said.
 - **An item started before it was specified or planned can still be.** The
   `spec` and `plan` stages now run for an active item, and `tcw work start` and
   the `implement` gate warn when either document is missing, naming the command
