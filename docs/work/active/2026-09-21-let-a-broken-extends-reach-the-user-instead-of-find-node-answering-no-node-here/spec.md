@@ -15,7 +15,7 @@ other `ValueError` into `None` (`:238-239`). Its callers print "no tcw
 Opening a tree store raises a plain `ValueError` for a federation error:
 an unreachable project in `extends` (`fs.py:1382-1386`) and a store extending
 itself (`fs.py:1391`). Also plain: `<component>.path must be a non-empty path
-string` (`fs.py:3473`) and a malformed config file. All of these currently read
+string` (`fs.py:3473`) and a malformed `extends` list. All of these currently read
 as "no node here".
 
 `resolve_store` (`fs.py:3430-3470`) defines `StoreLocationUnusable` (a
