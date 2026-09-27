@@ -5,6 +5,18 @@ category.
 
 ### Fixed
 
+- One item's unreadable `capabilities.yaml` no longer breaks the board.
+  `FsWorkStore._read_item` caught only `yaml.YAMLError`, so a file that was not
+  UTF-8 or a folder of that name made `tcw work list` exit 1 for every item, a
+  named pipe blocked the read, and ten lines of nested YAML anchors made
+  `show --json` walk 10⁹ values. Every such file now reads as the
+  `_tcw_parse_error` value, which the completion gate already refuses: not a
+  regular file, not UTF-8, over `SIDECAR_MAX_BYTES` (1 MB), any read error, or
+  more than `SIDECAR_MAX_VALUES` (10,000) values counted through aliases
+  (`sidecar_value_problem` in `tcw/store/base.py`). The web detail computes the
+  sidecar's revision from a tolerant read, and `read_sidecar` refuses a non-UTF-8
+  file by name (400) instead of the decoder's message.
+
 - `init` (`tcw work init`, `tcw init`) no longer writes back a `work.path` it read
   from `tcw-config.yaml` when no path was given: `./store` now stays `./store`
   instead of becoming `store`, and `~/store` is no longer expanded into an

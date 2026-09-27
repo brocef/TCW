@@ -288,6 +288,40 @@ class ProjectRegistry(ABC):
         """
 
 
+SIDECAR_MAX_BYTES = 1_000_000
+SIDECAR_MAX_VALUES = 10_000
+
+
+def sidecar_value_problem(value: Any) -> str | None:
+    """Why a parsed sidecar is too large to walk, or `None`.
+
+    YAML aliases let a ten-line file stand for a billion values, which every
+    later walk (the JSON projection above all) would expand. This counts each
+    value as often as it is reached, aliases included, and stops at the limit;
+    a container that holds itself is counted once rather than followed. A store
+    turns a problem into the `_tcw_parse_error` value `declared_capabilities`
+    refuses."""
+    count = 0
+    stack: list[tuple[Any, frozenset[int]]] = [(value, frozenset())]
+    while stack:
+        current, above = stack.pop()
+        count += 1
+        if count > SIDECAR_MAX_VALUES:
+            return (f"expands to more than {SIDECAR_MAX_VALUES} values "
+                    "(YAML aliases count each time they are used)")
+        if id(current) in above:
+            continue
+        if isinstance(current, dict):
+            children = [*current.keys(), *current.values()]
+        elif isinstance(current, (list, tuple, set, frozenset)):
+            children = list(current)
+        else:
+            continue
+        inner = above | {id(current)}
+        stack.extend((child, inner) for child in children)
+    return None
+
+
 def declared_capabilities(capabilities: Any) -> dict[str, list[str]]:
     """Canonical read of a work item's ``capabilities.yaml`` into
     ``{"new": [...], "changed": [...], "removed": [...]}`` — the work→capability

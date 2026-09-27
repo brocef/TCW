@@ -5,6 +5,12 @@ internal module names.
 
 ## Fixes
 
+- **One damaged `capabilities.yaml` no longer hides the whole board.** A file
+  that is not plain text, a folder with that name, or a small file of nested
+  YAML references used to stop `tcw work list` or leave `show --json` running
+  forever. The item now lists normally, and completing it is refused with the
+  reason until the file is fixed.
+
 - **Re-running `tcw work init` or `tcw init` leaves your `work.path` exactly as you wrote it.**
   It used to rewrite `~/store` as the full path to your own home folder, which
   broke the setting for everyone else sharing the file.

@@ -41,6 +41,7 @@ from tcw.store.base import (
     DEFAULT_DOD, InboxEntryNotFound,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     binding_value, classify_binding, unreadable_binding,
+    SIDECAR_MAX_BYTES, sidecar_value_problem,
     WORK_STATUSES, WORK_TYPES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
@@ -4723,22 +4724,42 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None
         return item if (d / "state.yaml").exists() else None
 
+    @staticmethod
+    def _read_capabilities_sidecar(caps: Path) -> object:
+        """The parsed sidecar, `None` if it went away, or the `_tcw_parse_error`
+        value for anything that cannot be read: one item's bad file must list as
+        that item's problem, never take down the board or hang a projection.
+        `is_file()` comes first because no exception rescues a read that blocks
+        on a named pipe."""
+        problem = None
+        try:
+            if not caps.is_file():
+                return ({"_tcw_parse_error": f"{caps.name} is not a regular file"}
+                        if caps.exists() else None)
+            if caps.stat().st_size > SIDECAR_MAX_BYTES:
+                problem = f"{caps.name} is larger than {SIDECAR_MAX_BYTES} bytes"
+            else:
+                parsed = yaml.safe_load(caps.read_text(encoding="utf-8"))
+                problem = sidecar_value_problem(parsed)
+        except FileNotFoundError:
+            return None
+        except UnicodeDecodeError:
+            problem = f"{caps.name} is not valid UTF-8"
+        except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
+            problem = str(e)
+        if problem is not None:
+            return {"_tcw_parse_error": problem}
+        return {} if parsed is None else parsed
+
     def _read_item(self, d: Path) -> WorkItem:
         state = self._safe_yaml(d / "state.yaml")
         _, body_text = self._resolve_body(d)
-        caps = d / "capabilities.yaml"
-        capabilities = None
-        if caps.exists():
-            # Parsed directly, not through `load_yaml`: a sidecar is a mapping
-            # *or* the list form `reconcile` writes, and both have to survive
-            # the read. `declared_capabilities` is what decides which shape it
-            # is looking at; turning one of them into a parse error here would
-            # fail the Definition-of-Done gate closed on a sound file.
-            try:
-                parsed = yaml.safe_load(caps.read_text(encoding="utf-8"))
-                capabilities = {} if parsed is None else parsed
-            except yaml.YAMLError as e:
-                capabilities = {"_tcw_parse_error": str(e)}
+        # Parsed directly, not through `load_yaml`: a sidecar is a mapping
+        # *or* the list form `reconcile` writes, and both have to survive
+        # the read. `declared_capabilities` is what decides which shape it
+        # is looking at; turning one of them into a parse error here would
+        # fail the Definition-of-Done gate closed on a sound file.
+        capabilities = self._read_capabilities_sidecar(d / "capabilities.yaml")
         tracker = None
         binding = d / "tracker.yaml"
         if binding.exists():
@@ -6791,7 +6812,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for sc_name, sc_info in WORK_SIDECARS.items():
             p = d / sc_name
             if p.is_file():
-                sc_revs[sc_name] = _revision(p.read_text(encoding="utf-8"))
+                # Tolerant: a sidecar that is not UTF-8 must not stop the whole
+                # detail loading; `read_sidecar` refuses it by name instead.
+                sc_revs[sc_name] = _revision(
+                    p.read_text(encoding="utf-8", errors="replace"))
 
         return WorkDetail(
             item=item,
@@ -7157,7 +7181,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         p = d / name
         if not p.is_file():
             return None
-        text = p.read_text(encoding="utf-8")
+        try:
+            text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            raise ValueError(f"{name} is not valid UTF-8; fix or replace the file") from None
         sc_info = WORK_SIDECARS[name]
         return SidecarResource(
             name=name,
