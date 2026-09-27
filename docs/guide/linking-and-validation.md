@@ -45,7 +45,10 @@ tcw validate docs/capabilities  # one active-project tree only
 For each selected project it reports malformed YAML (including duplicate keys),
 a file TCW writes as a record that is not a mapping, a `tcw://` link that doesn't
 resolve, and problems surfaced by each component's own `check` (taxonomy +
-capabilities + work). Recursive diagnostics include the
+capabilities + work). Each tree is checked wherever it lives: a taxonomy or
+capabilities ledger moved with `taxonomy.path` / `capabilities.path`, or kept in
+another repository with `<component>.repository`, is scanned and checked just
+like one in `docs/`. Recursive diagnostics include the
 project ID so matching relative paths remain distinguishable. It exits `0` with
 `validate OK` only when every selected project is clean; otherwise it prints the
 problems and exits `1`. `tcw://` examples inside Markdown code spans are ignored,
