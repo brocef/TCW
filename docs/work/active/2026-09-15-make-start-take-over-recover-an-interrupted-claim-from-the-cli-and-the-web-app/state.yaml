@@ -12,3 +12,5 @@ priority: 50
 effort: medium
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T01:05:56.194169Z'
+worktree: .worktrees/2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app
+branch: work/2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app
