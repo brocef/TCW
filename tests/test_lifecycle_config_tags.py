@@ -54,6 +54,35 @@ def test_a_condition_tag_that_cannot_be_a_tag_is_a_problem(element, expected):
 
 # ── criterion 3: an unregistered condition tag is reported, policy still loads ──
 
+@pytest.mark.parametrize("lifecycle, procedures, where", [
+    ({"transitions": {"start": {"pre": [{"command": "true", "when": {"tags": ["clii"]}}]}}},
+     None, "work.lifecycle.transitions.start.pre[0]"),
+    ({"artifacts": {"spec": [{"blob": "x", "when": {"tags": ["clii"]}}]}},
+     None, "work.lifecycle.artifacts.spec[0]"),
+    (None, {"unattended-work": [{"blob": "x", "when": {"tags": ["clii"]}}]},
+     "work.procedures.unattended-work[0]"),
+])
+def test_an_unregistered_condition_tag_is_reported_wherever_it_is(tmp_path, lifecycle,
+                                                                    procedures, where):
+    work = {"tags": ["bug"]}
+    if lifecycle:
+        work["lifecycle"] = lifecycle
+    if procedures:
+        work["procedures"] = procedures
+    problems = FsWorkStore.open(node(tmp_path, work)).lifecycle_problems()
+    assert [p for p in problems if where in p and "clii" in p], problems
+
+
+def test_a_plan_stage_tag_holding_a_comma_is_refused(tmp_path):
+    root = node(tmp_path, {"tags": ["cli-docs"]})
+    st = FsWorkStore.open(root)
+    slug = st.create("Planned", created="2026-01-01").slug
+    st.write_artifact(slug, "plan", "---\nstages:\n  - id: api\n    title: API\n"
+                      "    depends_on: []\n    tags: ['cli,docs']\n---\n\nPlan.\n")
+    with pytest.raises(ValueError, match="holds several tags"):
+        st.plan_stages(slug)
+
+
 def test_an_unregistered_condition_tag_is_reported_but_the_policy_loads(tmp_path, monkeypatch, capsys):
     root = node(tmp_path, {"tags": ["bug"], "lifecycle": {"stages": {"spec": {"prompt": [
         {"blob": "for bugs", "when": {"tags": ["bug"]}},

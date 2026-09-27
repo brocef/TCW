@@ -63,8 +63,12 @@ None. Configuration mistakes are reported instead of ignored or crashing.
 ## Behavior change, stated
 
 A binding whose condition was written in a non-canonical form (`CLI`) now fires
-for items tagged `cli`; for `not_tags` it now **excludes** them. A binding that
-fires today keeps firing. Changelog and release notes say so.
+for items tagged `cli`; for `not_tags` it now **excludes** them. A binding
+written in canonical form keeps firing, with two narrow exceptions found in
+review: in a first-match artifact list a newly matching earlier condition can
+shadow a later one, and an item whose tags were hand-edited into a
+non-canonical form no longer matches a condition spelled the same way. The
+changelog says so.
 
 ## Acceptance criteria
 

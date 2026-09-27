@@ -32,7 +32,9 @@ category.
 - Lifecycle `when.tags` / `when.not_tags` are normalized with `normalize_tag`
   at parse time, so `CLI` matches items tagged `cli`. **Behavior change:** a
   condition written in a non-canonical form now fires, and for `not_tags` now
-  excludes. An element holding a comma (`"cli,docs"`) or normalizing to nothing
+  excludes; in a first-match artifact list, such a condition can now match
+  before a later canonical one; and an item whose tags were hand-edited into a
+  non-canonical form (`CLI`) no longer matches a condition written the same way. An element holding a comma (`"cli,docs"`) or normalizing to nothing
   is a parse problem. `tcw validate` reports condition tags that are not
   registered (`FsWorkStore._condition_tag_problems`), in stages, transitions,
   artifacts and procedures; the policy still loads.

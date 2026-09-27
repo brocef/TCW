@@ -4518,6 +4518,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             tags = value.get("tags", [])
             if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                 raise ValueError(f"{prefix} tags must be a list")
+            # As in a lifecycle condition: a comma is several tags written as
+            # one, which normalizing would quietly turn into `cli-docs`.
+            if joined := [tag for tag in tags if "," in tag]:
+                raise ValueError(f"{prefix} tag {joined[0]!r} holds several tags; "
+                                 f"list them separately")
             try:
                 tags = [normalize_tag(tag) for tag in tags]
             except ValueError as e:
@@ -6048,12 +6053,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         places += [(f"work.lifecycle.artifacts.{n}", b) for n, b in policy.artifacts.items()]
         places += [(f"work.procedures.{n}", b) for n, b in policy.procedures.items()]
         for where, bindings in places:
-            for binding in bindings:
+            for index, binding in enumerate(bindings):
                 if binding.when is None:
                     continue
                 for key, tags in (("tags", binding.when.tags),
                                   ("not_tags", binding.when.not_tags)):
-                    found += [f"{where}: 'when.{key}' names '{tag}', which is not a "
+                    found += [f"{where}[{index}]: 'when.{key}' names '{tag}', which is not a "
                               f"registered tag, so it never matches; register it "
                               f"with `tcw work tags add {tag}` or fix the name"
                               for tag in tags if tag not in registered]

@@ -30,5 +30,6 @@ internal module names.
   an unquoted number.
 - **`tcw work list --tags` says when the tag you asked for is not registered**,
   so an empty list is not mistaken for "nothing has that tag".
-- **`tcw validate` reports a `skill:` setting that cannot be a skill name**, such
-  as one with spaces in it.
+- **A `skill:` setting that cannot be a skill name, such as one with spaces in
+  it, is reported by `tcw validate` and ignored** until it is fixed, like any
+  other malformed setting.
