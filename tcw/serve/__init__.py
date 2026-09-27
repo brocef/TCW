@@ -692,6 +692,10 @@ class TcwHandler(BaseHTTPRequestHandler):
                 return
             try:
                 resource = work.read_sidecar(slug, name)
+            except OSError as e:
+                # Something is at the name but it is not a readable file.
+                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
+                return
             except ValueError as e:
                 self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
                 return

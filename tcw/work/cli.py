@@ -19,7 +19,7 @@ from tcw.store.base import (
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, _literal, add_worktree,
+    COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
     declared_repository, git_commit_result, git_root, merge_worktree,
     nearest_work_ancestor,
@@ -2780,6 +2780,18 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     return 0
 
 
+def _pending_deletion_refusal(st, slug: str, verb: str) -> bool:
+    """Refuse, in words, to bind an item that `work.retain: false` is about to
+    delete: the binding would be staged, and `delete` then refuses over content
+    no commit holds. True when refused."""
+    if not st.pending_deletion(slug):
+        return False
+    print(f"tcw work {verb}: {slug} is resolved and waiting for deletion "
+          f"(work.retain is false); run `tcw work delete {slug}`, or set "
+          f"work.retain to keep it, before binding it.", file=sys.stderr)
+    return True
+
+
 def _item_or_reason(st, slug: str, label: str):
     """The item `slug` names in this node, or None after saying it is not there. A
     bare slug only: a tracker configuration and a project id belong to one node.
@@ -2878,6 +2890,8 @@ def _tracker_create(args: argparse.Namespace) -> int:
     st = _store()
     if not args.all:
         if _item_or_reason(st, args.slug, "create") is None:
+            return 1
+        if _pending_deletion_refusal(st, args.slug, "tracker create"):
             return 1
         result = _create_one(st, client, args.slug, args.part, args.dry_run)
         # `_CANNOT_RECORD` only tells the sweep to stop. One named item has
@@ -3252,6 +3266,8 @@ def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> in
     st = _store()
     if _item_or_reason(st, args.slug, verb.split()[-1]) is None:
         return 1
+    if _pending_deletion_refusal(st, args.slug, verb):
+        return 1
     current, revision = binding_of(st, args.slug)
     if isinstance(current, Malformed):
         print(f"tcw work {verb}: {args.slug} has a {BINDING_SIDECAR} that cannot "
@@ -3625,7 +3641,7 @@ def _tracker_sync(args: argparse.Namespace) -> int:
     client = _tracker_client("tracker sync")
     if client is None:
         return 1
-    from tcw.tracker.intake import Bound, binding_of
+    from tcw.tracker.intake import Bound, Malformed, binding_of
     from tcw.tracker.progress import CLEARED, SKIPPED, hold, retry
     from tcw.tracker.sync import CURRENT, HELD, NONE, deliver
     st = _store()
@@ -3637,6 +3653,10 @@ def _tracker_sync(args: argparse.Namespace) -> int:
         if _item_or_reason(st, args.slug, "sync") is None:
             return 1
         binding = binding_of(st, args.slug)[0]
+        if isinstance(binding, Malformed):
+            print(f"tcw work tracker sync: {args.slug}'s tracker.yaml cannot be used: "
+                  f"{binding.reason}. Fix or replace the file.", file=sys.stderr)
+            return 1
         if not isinstance(binding, Bound):
             # A ticket that is owed or already made is a different kind of
             # unfinished business from the one `sync` settles, and `sync` does
@@ -3998,19 +4018,29 @@ def _complete(args: argparse.Namespace) -> int:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
+            # Git refuses the merge while *any* file in this repository's index is
+            # staged — another item's record as much as this one's — so every
+            # staged path is named, from the repository actually being merged.
             staged = subprocess.run(
-                ["git", "-C", str(st.store_git_root), "diff", "--cached", "--name-only",
-                 "--", _literal(st.path(bare) / "tracker.yaml")],
-                stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
-            if staged and isinstance(item.tracker, dict) and (
-                    item.tracker.get("sync") or item.tracker.get("comment")):
-                # A delivery record is staged, never committed, and git will not
-                # merge over a staged file the branch also carries.
+                ["git", "-C", str(st.node_root), "diff", "--cached", "--name-only"],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.split("\n")
+            staged = [path for path in staged if path]
+            if staged:
+                print("tcw work complete: git will not merge while files are staged "
+                      "but not committed; commit or unstage (`git restore --staged "
+                      "<path>`) each, then complete again:", file=sys.stderr)
+                for path in staged:
+                    print(f"  {path}", file=sys.stderr)
+            own, top = st.path(bare), git_root(st.node_root)
+            if own is not None and top is not None and isinstance(item.tracker, dict) and (
+                    item.tracker.get("sync") or item.tracker.get("comment")) and any(
+                    (top / path).resolve() == (own / "tracker.yaml").resolve()
+                    for path in staged):
+                # A delivery record is staged, never committed: `sync` clears it.
                 print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "
                       f"ticket move or progress comment that did not reach the "
-                      f"tracker, staged but not committed. Run `tcw work tracker sync {bare}` to clear it once "
-                      f"the ticket follows, or commit it, then complete again.",
-                      file=sys.stderr)
+                      f"tracker. Run `tcw work tracker sync {bare}` to clear it once "
+                      f"the ticket follows, or commit it.", file=sys.stderr)
             return 1
         item = st.get(bare)                           # re-read: the sidecar's declared
                                                       # list may have changed on the branch

@@ -7337,6 +7337,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         d = self._require_dir(slug)
         p = d / name
         if not p.is_file():
+            # A folder, a named pipe or a dangling link at the name is not
+            # absence; `is_file()` first, so a pipe is never opened.
+            if p.exists() or p.is_symlink():
+                raise OSError(f"{name} is not a regular file")
             return None
         text = p.read_text(encoding="utf-8")
         sc_info = WORK_SIDECARS[name]

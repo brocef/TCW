@@ -5,6 +5,29 @@ category.
 
 ### Fixed
 
+- Tracker commands refuse what they cannot read. `FsWorkStore.read_sidecar`
+  raises `OSError` when something other than a regular file sits at the
+  sidecar's name (it returned `None`, so a folder named `tracker.yaml` read as
+  unbound: `link`/`unlink` went ahead and strict `drop` let the item go), and
+  `binding_of` turns read errors into `unreadable_binding`. `tracker sync <slug>`
+  names an unusable binding instead of calling it unbound. The web sidecar route
+  answers such a file with 400.
+- `JiraClient` raises `TrackerError` ("a response of an unexpected shape for
+  <path>") for a response that is not a mapping, or whose `issues`,
+  `transitions`, `comments`, `fields`, `status`, `statusCategory`, `assignee` or
+  `to` is not the list or mapping read downstream (`_mapping`, `_entries`,
+  `_check_issue`), instead of an `AttributeError` traceback. Null stays absent;
+  `_document_text` ignores a `content` that is not a list.
+- `tracker link` and `tracker create` refuse an item waiting for deletion
+  (`pending_deletion`), before any tracker call.
+- When `complete`'s merge-back is refused, it lists every staged file in the
+  merged repository's index (git refuses the merge over any of them), not only
+  the item's own tracker record.
+
+### Removed
+
+- `ClaimOutcome.account_id` and `account_name`, which nothing read.
+
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
   `ls-files`, `ls-tree`), and `tcw work complete`'s staged-binding check, pass

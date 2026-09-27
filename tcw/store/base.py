@@ -3673,7 +3673,10 @@ class WorkStore(ABC):
 
         Returns ``None`` when no resource exists at that name — the same
         resource rule as `read_artifact`, blank-but-present included.
-        Raises ``ValueError`` for unknown sidecar names.
+        Raises ``ValueError`` for unknown sidecar names, and ``OSError`` when
+        something exists at the name but cannot be read as the resource: a
+        caller must not read that as "absent", since a binding it cannot read
+        may still hold a ticket.
         """
 
     @abstractmethod

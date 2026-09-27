@@ -190,10 +190,11 @@ class JiraClient:
         if not raw:
             return {}
         try:
-            return json.loads(raw)
+            payload = json.loads(raw)
         except ValueError as error:
             raise TrackerError(
                 f"the tracker returned a response that is not JSON for {path}") from error
+        return _mapping(payload, path)
 
     # -- operations --
 
@@ -214,12 +215,15 @@ class JiraClient:
         item lists what a developer should look at next, and walking every page of a
         badly-scoped query is not that.
         """
-        payload = self._json("POST", "/rest/api/3/search/jql", {
+        path = "/rest/api/3/search/jql"
+        payload = self._json("POST", path, {
             "jql": jql,
             "maxResults": limit,
             "fields": ["summary", "status", "assignee"],
         })
-        issues = payload.get("issues") or []
+        issues = _entries(payload.get("issues"), path)
+        for found in issues:
+            _check_issue(found, path)
         # `isLast` absent is treated as "this is the last page": a response that
         # does not say there is more must not be reported as truncated.
         return SearchResult(issues=issues, truncated=payload.get("isLast") is False)
@@ -231,8 +235,8 @@ class JiraClient:
         address a different resource. Jira accepts a numeric issue id here too.
         """
         quoted = urllib.parse.quote(key, safe="")
-        return self._json(
-            "GET", f"/rest/api/3/issue/{quoted}?fields=summary,status,assignee,description")
+        path = f"/rest/api/3/issue/{quoted}?fields=summary,status,assignee,description"
+        return _check_issue(self._json("GET", path), path)
 
     def transitions(self, key: str) -> list[Transition]:
         """The transitions this issue offers **right now**, from its current status.
@@ -242,10 +246,11 @@ class JiraClient:
         company-managed projects, which is why it was chosen over reading a
         project's workflow definition.
         """
-        payload = self._json("GET", f"/rest/api/3/issue/{key}/transitions")
+        path = f"/rest/api/3/issue/{key}/transitions"
+        payload = self._json("GET", path)
         out: list[Transition] = []
-        for raw in payload.get("transitions") or []:
-            to = raw.get("to") or {}
+        for raw in _entries(payload.get("transitions"), path):
+            to = _mapping(raw.get("to"), path)
             out.append(Transition(
                 id=str(raw.get("id", "")),
                 name=str(raw.get("name", "")),
@@ -308,8 +313,8 @@ class JiraClient:
         converting, and a converter that silently drops parts of a description is
         worse than markup a person can read.
         """
-        payload = self._json("GET", f"/rest/api/2/issue/{issue_id}?fields=description")
-        value = (payload.get("fields") or {}).get("description")
+        path = f"/rest/api/2/issue/{issue_id}?fields=description"
+        value = _mapping(self._json("GET", path).get("fields"), path).get("description")
         return value if isinstance(value, str) else ""
 
     def add_comment(self, issue_id: str, document: dict) -> None:
@@ -321,26 +326,66 @@ class JiraClient:
     def recent_comments(self, issue_id: str) -> list[tuple[str, str]]:
         """The newest page of comments, newest first, as `(author account id, text)`.
         The text is the document's text nodes joined, a line per block."""
-        payload = self._json(
-            "GET", f"/rest/api/3/issue/{issue_id}/comment?orderBy=-created&maxResults=100")
+        path = f"/rest/api/3/issue/{issue_id}/comment?orderBy=-created&maxResults=100"
+        payload = self._json("GET", path)
         out = []
-        for raw in payload.get("comments") or []:
+        for raw in _entries(payload.get("comments"), path):
             author = raw.get("author") if isinstance(raw.get("author"), dict) else {}
             out.append((str(author.get("accountId", "")), _document_text(raw.get("body"))))
         return out
 
 
 def _document_text(node) -> str:
-    """The text of a Jira document: text nodes joined, one line per top-level block."""
+    """The text of a Jira document: text nodes joined, one line per top-level block.
+    Anything not in a document's shape reads as no text."""
+    def children(value) -> list:
+        content = value.get("content")
+        return content if isinstance(content, list) else []
+
     def walk(value) -> str:
         if not isinstance(value, dict):
             return ""
         if value.get("type") == "text":
             return str(value.get("text", ""))
-        return "".join(walk(child) for child in value.get("content") or [])
+        return "".join(walk(child) for child in children(value))
     if not isinstance(node, dict):
         return ""
-    return "\n".join(walk(block) for block in node.get("content") or [])
+    return "\n".join(walk(block) for block in children(node))
+
+
+def _shape_error(path: str) -> "TrackerError":
+    return TrackerError(f"the tracker returned a response of an unexpected shape for {path}")
+
+
+def _mapping(value, path: str) -> dict:
+    """`value` if it is a mapping, `{}` for null (which the readers already treat as
+    absent), otherwise a `TrackerError` — never an `AttributeError` further on,
+    which no command handles."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    raise _shape_error(path)
+
+
+def _entries(value, path: str) -> list:
+    """A list of mappings, `[]` for null, otherwise a `TrackerError`."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise _shape_error(path)
+    return value
+
+
+def _check_issue(issue, path: str) -> dict:
+    """An issue whose `fields`, `status`, `statusCategory` and `assignee` are each a
+    mapping or null — every level the claim and create paths read with `.get`."""
+    issue = _mapping(issue, path)
+    fields = _mapping(issue.get("fields"), path)
+    status = _mapping(fields.get("status"), path)
+    _mapping(status.get("statusCategory"), path)
+    _mapping(fields.get("assignee"), path)
+    return issue
 
 
 def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerError:

@@ -5,6 +5,11 @@ internal module names.
 
 ## Fixes
 
+- **Tracker commands no longer mistake an unreadable ticket binding for none.**
+  `link`, `unlink`, `sync` and a strict `drop` now refuse and say the file cannot
+  be read, and an unexpected answer from Jira is reported instead of crashing.
+- **`tcw work complete` names every staged file that stops its merge.**
+
 - **A name containing `*`, `?` or `[` means only itself.** Saving a capability
   named `a*` used to stage your unsaved changes to a capability named `abc` as
   well, so the next commit took them along.
