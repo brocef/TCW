@@ -945,6 +945,7 @@
   resolution: done
   resolved: '2026-09-21'
 2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting:
+  location: 80aefb2de4df2f8e04ccfb46adfd3510fe18a0f2
   resolution: done
   resolved: '2026-09-26'
 2026-09-21-one-definition-of-a-valid-created-record:
