@@ -152,7 +152,7 @@ def _literal(path: "str | Path") -> str:
     and aliases run under `git --literal-pathspecs` — because git then reads the
     prefix as part of a file name, and every path is literal anyway."""
     setting = os.environ.get("GIT_LITERAL_PATHSPECS", "").strip().lower()
-    if setting in ("true", "yes", "on") or (setting.isdigit() and int(setting)):
+    if setting in ("true", "yes", "on") or (setting.isdecimal() and int(setting)):
         return str(path)
     return f":(literal){path}"
 
