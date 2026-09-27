@@ -29,7 +29,7 @@
   the fix was reverted.
 - `tests/test_edit_refusal.py`, `tests/test_edit_type.py`,
   `tests/test_store_editor.py`, `tests/test_work.py`: green.
-- Full suite on the final code: see the verify commit.
+- Full suite on the final code: 4494 passed, 3 skipped.
 - Hands-on in a scratch repository with the worktree's `tcw`:
   `edit X --blocked-by Y --tag nope` → exit 1, `git status --porcelain` empty;
   `edit X --blocked-by Y --blocks Y` → exit 1 with the cycle message, status
@@ -80,3 +80,8 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   error-text assertion; a stale docstring. Noted, not changed: a second storage
   adapter's `update_work` would have to call `_check_new_blocker` itself — true
   of every rule `FsWorkStore.update_work` enforces today.
+- **Verify** (tcw:verifier): accept; all seven criteria met on its own runs
+  (607 targeted tests; hands-on in a scratch repository, with the bug reproduced
+  on the old install), criterion 4's replacement judged justified. Noted, not
+  changed: `check_blocker_edits` defaults its list arguments to `()` (cosmetic).
+  Decision: accept.
