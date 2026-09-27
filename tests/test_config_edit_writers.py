@@ -331,6 +331,15 @@ def test_init_with_an_explicit_path_still_writes_it(tmp_path):
     assert config(root) == b"id: node\nwork:\n    path: other\n"
 
 
+def test_init_reports_a_work_path_naming_no_user(tmp_path, monkeypatch, capsys):
+    root = repository(tmp_path / "node")
+    before = b"id: node\nwork:\n    path: ~no-such-user-tcw/store\n"
+    (root / "tcw-config.yaml").write_bytes(before)
+    assert run(root, monkeypatch, "work", "init") == 1
+    assert "tcw init:" in capsys.readouterr().err
+    assert config(root) == before
+
+
 def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     init(["work"], root, "node")                      # a pristine default store

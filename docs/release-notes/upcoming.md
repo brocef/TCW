@@ -5,6 +5,6 @@ internal module names.
 
 ## Fixes
 
-- **Re-running `tcw work init` leaves your `work.path` exactly as you wrote it.**
+- **Re-running `tcw work init` or `tcw init` leaves your `work.path` exactly as you wrote it.**
   It used to rewrite `~/store` as the full path to your own home folder, which
   broke the setting for everyone else sharing the file.
