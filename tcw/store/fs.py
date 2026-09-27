@@ -244,6 +244,29 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return nr if component == "work" or store.root.is_dir() else None
 
 
+def tree_store_present(node_root: Path, component: str) -> bool:
+    """Whether this node has a `component` tree store to check: its default
+    folder is there, or its config says where the store is (`<c>.path` or
+    `<c>.repository`, any value but null — a malformed one is present and must
+    be reported, not skipped). FS-adapter-local, like `find_node`.
+
+    Asked instead of `(node_root / "docs" / component).is_dir()`, which is true
+    of neither a moved store nor one kept in another repository — so those were
+    never validated, and capabilities never checked Subject or Feature against a
+    moved taxonomy. `extends` alone is not a location: a node that only inherits
+    has no tree of its own.
+    """
+    if (node_root / "docs" / component).is_dir():
+        return True
+    try:
+        config = load_config(node_root / SENTINEL)
+    except ValueError:
+        return False            # a broken config is reported where it is read
+    section = config.get(component) if isinstance(config, dict) else None
+    return isinstance(section, dict) and (
+        section.get("path") is not None or section.get("repository") is not None)
+
+
 # The three helpers below enumerate the graph, and a graph may now be partial —
 # a connected project whose repository is not in this checkout is absent from it
 # rather than fatal to it. Each therefore answers for what is here, deliberately:
@@ -3045,8 +3068,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         than in the call is what makes it impossible to forget: `set`,
         `update_capability` and `check` all reach the same handle.
         """
+        # A taxonomy that is present and cannot open raises: that is a broken
+        # configuration, not "this node has no taxonomy".
         return (FsTaxonomyStore.open(self.node_root)
-                if (self.node_root / "docs" / "taxonomy").is_dir() else None)
+                if tree_store_present(self.node_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
         # `is not None`, not `or`: an explicitly injected store must win even
