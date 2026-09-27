@@ -230,7 +230,10 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     if not work.tracker_strict():
         return None
     body = body or {}
-    item = work.get(slug) if slug else None
+    # An interrupted claim is read as the item it was: an ordinary read of one
+    # raises, and this runs before any route's error handling.
+    item = (next((c for c in work.interrupted_claims() if c.slug == slug), None)
+            or work.get(slug)) if slug else None
     epic = (body.get("type") == "epic") if action == "create" else (
         item is not None and item.type == "epic")
     from tcw.tracker.intake import ever_bound
@@ -238,7 +241,8 @@ def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None)
     if action == "create" and not epic:
         return lead + "create work from a ticket with `tcw work tracker import <ticket>`."
     if action == "start" and not epic:
-        return lead + f"use `tcw work start {slug}`, which claims the ticket."
+        take_over = " --take-over" if body.get("recover") else ""
+        return lead + f"use `tcw work start {slug}{take_over}`, which claims the ticket."
     if action == "complete" and not epic and body.get("resolution") == "done":
         return lead + f"use `tcw work complete {slug}`, which checks the ticket."
     if action == "drop" and ever_bound(work, slug):
@@ -528,18 +532,31 @@ class TcwHandler(BaseHTTPRequestHandler):
         items are shaped differently from the items every other route returns,
         which is the drift the projection exists to prevent.
         """
-        anchor = self.server.node_root.resolve()
-        roots = [anchor]
-        if self.server.include_descendants:
-            roots += descendant_nodes(anchor)
         items = []
-        for root in roots:
-            prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
+        for root, prefix in self._board_roots():
             work = FsWorkStore.open(root)
             for it in work.board():
                 items.append(_item_payload(work, it.slug, it,
                                            f"{prefix}{it.slug}" if prefix else None))
         return items
+
+    def _board_roots(self) -> list[tuple[Path, str]]:
+        """The nodes the board shows, each with the prefix its slugs carry."""
+        anchor = self.server.node_root.resolve()
+        roots = [anchor]
+        if self.server.include_descendants:
+            roots += descendant_nodes(anchor)
+        return [(root, "" if root == anchor
+                 else f"{registered_project_id(anchor, root)}/") for root in roots]
+
+    def _interrupted_claims(self) -> list[dict]:
+        """Interrupted starts on every node the board shows, slugs qualified as
+        the board's are, so Recover addresses the node that holds the claim."""
+        claims = []
+        for root, prefix in self._board_roots():
+            claims += [{"slug": f"{prefix}{c.slug}", "title": c.title}
+                       for c in FsWorkStore.open(root).interrupted_claims()]
+        return claims
 
     # ── HTTP method dispatchers ───────────────────────────────────────────
 
@@ -725,6 +742,13 @@ class TcwHandler(BaseHTTPRequestHandler):
         # Placed before the catch-all so "tags" isn't parsed as a slug.
         if path == "/api/work/tags":
             self._send_json(HTTPStatus.OK, {"tags": work.registered_tags()})
+            return
+
+        # GET /api/work/interrupted-claims — starts whose claimant died mid-move.
+        # They are on no board (they are in no status), so without this the web
+        # app could neither show one nor offer to recover it.
+        if path == "/api/work/interrupted-claims":
+            self._send_json(HTTPStatus.OK, self._interrupted_claims())
             return
 
         # Catch-all work detail: /api/work/<slug>
@@ -952,8 +976,23 @@ class TcwHandler(BaseHTTPRequestHandler):
                 return
             if action == "start":
                 force = bool(body.get("force", False))
+                start = lambda: work.start(slug, force=force)  # noqa: E731
+                if body.get("recover"):
+                    # Recovery only. `take_over` also takes an *active* item from
+                    # its owner, which a browser must not do without the CLI's
+                    # explicit `--take-over`; so the slug has to be an
+                    # interrupted claim, and the claim goes to this server's own
+                    # identity, found the way the CLI finds one.
+                    from tcw.work.cli import _local_owner
+                    owner = _local_owner(work)
+                    if not owner:
+                        self._send_err(HTTPStatus.CONFLICT,
+                                       "no claimant identity for this server; set "
+                                       "TCW_WORK_OWNER or git user.email and restart it")
+                        return
+                    start = lambda: work.start(slug, owner=owner, recover=True)  # noqa: E731
                 try:
-                    item = _transition_ok(work, slug, lambda: work.start(slug, force=force))
+                    item = _transition_ok(work, slug, start)
                     # Payload built from the bare slug the store knows, then
                     # relabelled with the qualified one the UI addresses by.
                     self._send_json(HTTPStatus.OK,

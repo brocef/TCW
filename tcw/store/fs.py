@@ -235,13 +235,42 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         # the actionable message is "fix this line" rather than "run this
         # command", so it travels the same way.
         raise
-    except ValueError:
+    except StoreLocationUnusable:
+        # The one failure that means "there is no store at this location" — the
+        # ladder's own definition (see `resolve_store`). Anything else, a broken
+        # `extends` or a malformed `<component>.path`, is a node that is here and
+        # wrong, and "run `tcw init`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
     # nothing when nothing is configured (rule 4), so the "is this component
     # here at all?" question is still this function's to ask. Asked of the
     # resolved root rather than the default one, which is the whole point.
     return nr if component == "work" or store.root.is_dir() else None
+
+
+def tree_store_present(node_root: Path, component: str) -> bool:
+    """Whether this node has a `component` tree store to check: its default
+    folder is there, or its config says where the store is (`<c>.path` or
+    `<c>.repository`, any value but null — a malformed one is present and must
+    be reported, not skipped). FS-adapter-local, like `find_node`.
+
+    Asked by `FsCapabilitiesStore._taxonomy` instead of
+    `(node_root / "docs" / component).is_dir()`, which is true of neither a moved
+    store nor one kept in another repository — so capabilities never checked
+    Subject or Feature against a moved taxonomy. Deliberately not "open it and
+    see", which `tcw validate` uses: `extends` alone is not a location, and a
+    node that only inherits a taxonomy should not have its capability checks
+    fail on that inheritance.
+    """
+    if (node_root / "docs" / component).is_dir():
+        return True
+    try:
+        config = load_config(node_root / SENTINEL)
+    except ValueError:
+        return False            # a broken config is reported where it is read
+    section = config.get(component) if isinstance(config, dict) else None
+    return isinstance(section, dict) and (
+        section.get("path") is not None or section.get("repository") is not None)
 
 
 # The three helpers below enumerate the graph, and a graph may now be partial —
@@ -3045,8 +3074,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         than in the call is what makes it impossible to forget: `set`,
         `update_capability` and `check` all reach the same handle.
         """
+        # A taxonomy that is present and cannot open raises: that is a broken
+        # configuration, not "this node has no taxonomy".
         return (FsTaxonomyStore.open(self.node_root)
-                if (self.node_root / "docs" / "taxonomy").is_dir() else None)
+                if tree_store_present(self.node_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
         # `is not None`, not `or`: an explicitly injected store must win even
@@ -3054,8 +3085,18 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # Subject/Feature entirely, so the write path and `check` could disagree
         # about *whether* a ref is checked even once they agree about what a
         # problem is.
-        taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
         problems: list[str] = []
+        unchecked = ""
+        if taxonomy is None:
+            try:
+                taxonomy = self._taxonomy()
+            except ValueError as e:
+                # A taxonomy that is configured and will not open — declared and
+                # not yet provisioned, say — costs the Subject/Feature checks, not
+                # every other problem this ledger has. Said once, and only if a
+                # capability checked here names a Subject or Feature: otherwise
+                # nothing went unchecked, and every save would carry the line.
+                unchecked = f"Subject and Feature not checked: {e}"
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in capability federation")
@@ -3111,6 +3152,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if status == "Blocked" and "Blocked by" not in f:
                 problems.append(f"{where}: Blocked requires Blocked by")
             problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
+            if unchecked and (f.get("Subject") or f.get("Feature")):
+                problems.append(unchecked)
+                unchecked = ""
 
         # Override + attachment validation (every meta dir, incl. override folders).
         meta_dirs = self._all_meta_dirs()
@@ -4000,7 +4044,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         raise AssertionError("unreachable")                # for the type checker
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
         # The literal first statement, not merely an early one: both the
         # take-over branch and the main claim call `git_stage` directly rather
@@ -4014,6 +4058,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `--take-over` — the documented remedy for an interrupted claim —
         # unreachable the moment there was something to recover.
         item = self._get_now(slug)
+        if recover:
+            # Decided here, against the same read the take-over branch acts on,
+            # so a claim published since a caller looked cannot be taken from
+            # its new owner.
+            if item is not None:
+                raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
+            take_over = True
         if item is None and take_over:
             interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:
@@ -4178,6 +4229,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """
         return sorted((self.root / ".claiming").glob(
             glob.escape(slug) + "-" + "[0-9a-f]" * 32))
+
+    def interrupted_claims(self) -> list[WorkItem]:
+        """One item per `.claiming/<slug>-<32 hex>` folder whose slug has not
+        been published, read from that folder and reported under its own slug
+        and the status it left (a claim is only ever taken from `backlog`)."""
+        claiming = self.root / ".claiming"
+        if not claiming.is_dir():
+            return []
+        found: list[WorkItem] = []
+        for d in sorted(claiming.iterdir()):
+            slug, dash, suffix = d.name[:-33], d.name[-33:-32], d.name[-32:]
+            if (dash != "-" or not re.fullmatch(r"[0-9a-f]{32}", suffix)
+                    or not (d / "state.yaml").is_file()
+                    or self._get_now(slug) is not None):     # published meanwhile
+                continue
+            item = self._item_from_dir(d)
+            if item is not None:
+                found.append(replace(item, slug=slug, status="backlog"))
+        return found
 
     def _lost_the_claim(self, slug: str) -> NoReturn:
         """Report a lost race once the winner publishes, or an abandoned claim.

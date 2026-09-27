@@ -803,6 +803,10 @@
   location: 0c7562b61c361762767d75b5684a174f1040558d
   resolution: done
   resolved: '2026-09-17'
+2026-09-15-make-start-take-over-recover-an-interrupted-claim-from-the-cli-and-the-web-app:
+  location: f27f479f985d943eaa0f3547b375fb7337a6d7e9
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-15-make-tcw-taxonomy-rm-refuse-nested-terms-and-live-references:
   location: b0e8dc6c290348e1ff4a75a4dc6df4dda9e94ac5
   resolution: done
@@ -924,6 +928,10 @@
   location: 7bf7a52d5d603d5b826fa53057e2ebe84b9e131f
   resolution: done
   resolved: '2026-09-26'
+2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here:
+  location: 031afe5d248d845039ddbe3f7d696ebf55d37bbd
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
   location: fd372a04d9ddeb3d63937cc2a3c9847fa1027401
   resolution: done
@@ -940,6 +948,10 @@
   location: 9f1af885349bb55b93b63c74e532b78fc0d82f99
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting:
+  location: 80aefb2de4df2f8e04ccfb46adfd3510fe18a0f2
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-21-one-definition-of-a-valid-created-record:
   resolution: wontfix
   resolved: '2026-09-24'

@@ -1,0 +1,15 @@
+slug: 2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked
+title: Resolve capabilities.yaml sidecar paths while an item is still being worked
+created: '2026-09-09'
+resolution: null
+priority: 40
+effort: medium
+tags:
+- cli
+- capabilities
+- work
+- bug
+owner: brocef@users.noreply.github.com
+started: '2026-09-27T01:48:02.022778Z'
+worktree: .worktrees/2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked
+branch: work/2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked

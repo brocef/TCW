@@ -545,6 +545,21 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
     return None
 
 
+def bound_from_value(value) -> "Bound | Unbound":
+    """The inverse of `binding_value` for a binding that names a ticket, else
+    `Unbound()` — for a reader that has only the item's `tracker` field, such as
+    the recovery of an interrupted claim, which no sidecar read reaches. Kept
+    beside `binding_value` so a field added to `Bound` is added to both."""
+    value = bound_value(value)
+    if value is None:
+        return Unbound()
+    ticket = value["ticket"]
+    return Bound(provider=value["provider"], project=value["project"],
+                 part=value["part"], ticket_id=ticket["id"], ticket_key=ticket["key"],
+                 ticket_url=ticket["url"], bound=value.get("bound") or "",
+                 sync=value.get("sync"), comment=value.get("comment"))
+
+
 def bound_value(value) -> dict | None:
     """`value` when it is a binding that names a ticket, otherwise `None`.
 
@@ -3360,6 +3375,19 @@ class WorkStore(ABC):
     @abstractmethod
     def query(self, status: str | None = None) -> list[WorkItem]: ...
 
+    def interrupted_claims(self) -> list[WorkItem]:
+        """Items whose `start` began and never finished — the claimant died
+        mid-transition — each as it was before the claim (status `backlog`).
+
+        They are in no status, so `query` and `get` cannot answer for them, and
+        `start(slug, take_over=True)` is how one is finished. Listed so the
+        remedy is reachable: a caller has to know the item exists, and has to
+        see its tags and type to run the hooks that gate `start`. A
+        transactional store answers this by listing uncommitted claims; one that
+        publishes atomically never has any, which is this default.
+        """
+        return []
+
     @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
@@ -3971,7 +3999,13 @@ class WorkStore(ABC):
         return out
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
+        """`recover` is `take_over` for an interrupted claim only: it refuses an
+        item that is settled in any status, so it can never take an active item
+        from its owner. A store that publishes atomically has no interrupted
+        claims, so for it every recover is refused."""
+        if recover:
+            raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
         item = self._require(slug)
         if item.status == "active":
             # Active with nobody holding it — what `tcw work tracker release` leaves —
