@@ -11,3 +11,5 @@ priority: 40
 effort: medium
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T03:12:52.610708Z'
+worktree: .worktrees/2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing
+branch: work/2026-09-15-harden-tracker-binding-reads-and-writes-and-jira-response-parsing
