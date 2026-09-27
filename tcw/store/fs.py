@@ -5274,7 +5274,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"and leaves the item resolved with no tombstone.")
 
     def _write_tombstone(self, slug: str, resolution: str,
-                         resolved: str = "", location: str = "") -> None:
+                         resolved: str = "", location: str = "",
+                         initiative: str = "") -> None:
         """Record `slug` in the graveyard, preserving every entry already there.
 
         Read-modify-write rather than append: one file serves the whole store, so
@@ -5298,23 +5299,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
         resolution to a single added block and makes a merge conflict between two
         concurrent resolutions a plain, settleable one.
         """
-        self._write_tombstones([(slug, resolution, resolved, location)])
+        self._write_tombstones([(slug, resolution, resolved, location, initiative)])
 
-    def _write_tombstones(self, records: list[tuple[str, str, str, str]]) -> None:
-        """`_write_tombstone` for several `(slug, resolution, resolved, location)`
-        records in one read-modify-write, so a removed item and the children
-        nested in it are recorded together or not at all."""
+    def _write_tombstones(self, records: list[tuple[str, str, str, str, str]]) -> None:
+        """`_write_tombstone` for several `(slug, resolution, resolved, location,
+        initiative)` records in one read-modify-write, so a removed item and the
+        children nested in it are recorded together or not at all."""
         path = self._graveyard_path()
         doc: dict = {}
         if path.exists():
             loaded = load_yaml(path)
             if isinstance(loaded, dict):
                 doc = loaded
-        for slug, resolution, resolved, location in records:
+        for slug, resolution, resolved, location, initiative in records:
             record = {"resolution": resolution or "",
                       "resolved": resolved or date.today().isoformat()}
             if location:
                 record["location"] = location
+            if initiative:
+                record["initiative"] = initiative
             doc[slug] = record
         self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
                                                   allow_unicode=True))])
@@ -5394,7 +5397,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # that neither of them had to have.
             self._refresh_before_transition()
             self._require_writable_graveyard(slug)
-            self._write_tombstone(slug, resolution, resolved)
+            known = self.tombstone(slug)
+            self._write_tombstone(slug, resolution, resolved,
+                                  initiative=known.initiative if known else "")
             if self.auto_commit_transitions():
                 path = self._graveyard_path()
                 err = git_commit_result(
@@ -5568,8 +5573,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 return rel
         return None if status else self._nested_tree_path("HEAD", slug)
 
-    def _nested_in_commit(self, committed: Path) -> list[tuple[str, str]]:
-        """`(slug, resolution)` for every item HEAD holds nested inside the folder
+    def _nested_in_commit(self, committed: Path) -> list[tuple[str, str, str]]:
+        """`(slug, resolution, initiative)` for every item HEAD holds nested inside the folder
         at `committed` — children made by earlier versions, which a removal of
         that folder takes with it. Read from git, not from disk, so a removal
         rerun after the folder is already gone still finds them."""
@@ -5589,8 +5594,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 state = yaml.safe_load(shown.stdout) if shown.returncode == 0 else {}
             except yaml.YAMLError:
                 state = {}
-            resolution = state.get("resolution") if isinstance(state, dict) else None
-            found.append((folder.name, resolution or ""))
+            if not isinstance(state, dict):
+                state = {}
+            found.append((folder.name, state.get("resolution") or "",
+                          str(state.get("initiative") or "")))
         return found
 
     def _require_retrievable(self, slug: str, folder: Path,
@@ -5725,7 +5732,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # binding relocated the item, where the graveyard is clean and any
             # dirt found is somebody else's.
             self._require_writable_graveyard(slug, only_own_entry=resuming,
-                                             also=tuple(s for s, _ in nested))
+                                             also=tuple(s for s, *_ in nested))
             if folder is not None and folder.exists():
                 shutil.rmtree(folder)
             existing = self.tombstone(slug)
@@ -5740,14 +5747,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # today" the backfill command already uses.
             resolution = ((existing.resolution if existing else "")
                           or (item.resolution if item is not None else "") or "")
-            records = [(slug, resolution, existing.resolved if existing else "", location)]
+            # The epic too, or removing the folder would erase the only record
+            # of which epic the item closed under.
+            initiative = ((existing.initiative if existing else "")
+                          or (item.initiative if item is not None else "") or "")
+            records = [(slug, resolution, existing.resolved if existing else "",
+                        location, initiative)]
             # Children nested in the folder went with it. Each keeps its own
             # resolution if it had one; otherwise it followed its parent's.
-            for child, own in nested:
+            for child, own, own_initiative in nested:
                 known = self.tombstone(child)
                 records.append((child,
                                 (known.resolution if known else "") or own or resolution,
-                                known.resolved if known else "", location))
+                                known.resolved if known else "", location,
+                                (known.initiative if known else "") or own_initiative))
             self._write_tombstones(records)
             if self.auto_commit_transitions():
                 paths = [self._graveyard_path()]
@@ -5814,6 +5827,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             resolution=str(entry.get("resolution") or ""),
             resolved=str(entry.get("resolved") or ""),
             location=str(entry.get("location") or ""),
+            initiative=str(entry.get("initiative") or ""),
         )
 
     def get(self, slug: str) -> WorkItem | None:
@@ -5846,7 +5860,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return [i for i in items
                 if i is not None and (status is None or i.status == status)]
 
-    def incomplete_graph_note(self) -> str:
+    def incomplete_graph_note(self, below: bool = False) -> str:
         """This adapter's answer to the base store's question: the missing nodes.
 
         A relation that spans a node this checkout does not have resolves to
@@ -5856,7 +5870,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
         completion gate in `WorkStore`, which is why the name is not private.
         """
         try:
-            absent = FsProjectRegistry.open(self.node_root).unreachable()
+            registry = FsProjectRegistry.open(self.node_root)
+            absent = registry.unreachable()
+            if below:
+                # Declared as a child here or by a node below — the only places
+                # an epic here can have slices. A missing parent, or a sibling
+                # reached through it, cannot.
+                declared = set(registry.declared_child_ids())
+                for project in registry.descendants():
+                    declared.update(registry.declared_child_ids(project.id))
+                absent = [u for u in absent if u.id in declared]
         except Exception as error:
             # Not `""`. Every caller reads an empty note as "the graph is
             # complete", and a registry that cannot be opened is the one state
@@ -5886,6 +5909,33 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if got is not None:
                 return got
         return None
+
+    def resolved_initiative_children(self, epic_slug: str) -> list[tuple[str, str]]:
+        """Tombstones naming `epic_slug`, here and in every node below — the same
+        nodes `initiative_children` reads — whose items are no longer present in
+        that node. Keyed by node, because a slug is unique only within one."""
+        out: list[tuple[str, str]] = []
+        for label, store in [(".", self), *(
+                (registered_project_id(self.node_root, n), FsWorkStore.open(n))
+                for n in descendant_nodes(self.node_root))]:
+            for slug in store._graveyard_initiative(epic_slug):
+                if store.get(slug) is None:            # a present item wins
+                    out.append((label, slug))
+        return out
+
+    def _graveyard_initiative(self, epic_slug: str) -> list[str]:
+        """Slugs this store's graveyard records as resolved under `epic_slug`.
+        Tolerant of every degraded shape, as `tombstone` is."""
+        path = self.root / self.GRAVEYARD_NAME
+        try:
+            doc = self._safe_yaml(path) if path.exists() else None
+        except (OSError, UnicodeDecodeError):
+            return []
+        if not isinstance(doc, dict):
+            return []
+        return sorted(str(slug) for slug, entry in doc.items()
+                      if isinstance(entry, dict)
+                      and entry.get("initiative") == epic_slug)
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Slices of `epic_slug`, here and below.
@@ -6912,7 +6962,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # before it would record a resolution that another process's move
             # actually performed.
             try:
-                self._write_tombstone(slug, (fields or {}).get("resolution") or "")
+                self._write_tombstone(slug, (fields or {}).get("resolution") or "",
+                                      initiative=item.initiative or "")
             except subprocess.CalledProcessError as e:
                 raise TransitionCommitError(
                     f"{slug} moved to {to_status}, but recording it in the "
@@ -7196,6 +7247,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
         if type is not _UNSET:
             self.check_type_change(self._require(slug), type)
+
+        # A resolved item's epic is part of its record in the graveyard, and
+        # other clones count it from there; changing it here would make the two
+        # disagree, and rewriting the record would leave the graveyard with an
+        # uncommitted change the next resolution refuses over.
+        if initiative is not _UNSET:
+            current = self._require(slug)
+            if (current.status in RESOLVED_STATUSES
+                    and (initiative or "") != (current.initiative or "")):
+                raise ValueError(
+                    f"cannot change the initiative of {slug}: it is resolved, and "
+                    f"its record keeps the epic it closed under")
 
         # Validate tags before applying (fail closed on unregistered)
         new_tags = None

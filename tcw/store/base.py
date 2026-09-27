@@ -3119,6 +3119,13 @@ class Tombstone:
     resolution: str = ""
     resolved: str = ""
     location: str = ""
+    # The epic the item belonged to when it was resolved. The one field that is
+    # about *what* the item was rather than whether it existed, and it is here
+    # because nothing else survives into a clone that lacks the folder: without
+    # it an epic whose children were all resolved has no visible children
+    # anywhere but the resolving checkout, and cannot close. Empty on records
+    # written before it existed, which keep their old behaviour.
+    initiative: str = ""
 
 
 @dataclass
@@ -3753,7 +3760,7 @@ class WorkStore(ABC):
         """
         return self.get(item.initiative) if item.initiative else None
 
-    def incomplete_graph_note(self) -> str:
+    def incomplete_graph_note(self, below: bool = False) -> str:
         """" (this checkout is missing …)" when this store can see only part of
         the project graph, else "".
 
@@ -3763,6 +3770,10 @@ class WorkStore(ABC):
         so. Any adapter with a partial view — a tracker without access to a
         project, a checkout without a repository — owes its callers this
         sentence. The default is "" for an adapter that always sees everything.
+
+        `below=True` limits it to projects that could hold this node's epic
+        children — those declared as children here or further down. The epic
+        gates ask that: a missing parent can hold no slice of an epic here.
         """
         return ""
 
@@ -3784,10 +3795,28 @@ class WorkStore(ABC):
                 f"Cannot make epic {item.slug} a plain item; these items name it as "
                 f"their initiative: {', '.join(c.slug for c in children)}. Complete "
                 f"the epic, or clear their --initiative first.")
-        if (note := self.incomplete_graph_note()):
+        if gone := self.resolved_initiative_children(item.slug):
+            names = ", ".join(slug if node == "." else f"{node}/{slug}"
+                              for node, slug in gone)
+            raise ValueError(
+                f"Cannot make epic {item.slug} a plain item; resolved items that "
+                f"belonged to it are recorded as its children: {names}. Complete "
+                f"the epic instead.")
+        if (note := self.incomplete_graph_note(below=True)):
             raise ValueError(
                 f"Cannot make epic {item.slug} a plain item without seeing its "
                 f"initiative children{note}. Run from a checkout that has them.")
+
+    def resolved_initiative_children(self, epic_slug: str) -> list[tuple[str, str]]:
+        """`(node, slug)` for items that were resolved as children of
+        `epic_slug` and are no longer present as items — known only from the
+        record they left. `node` is "." for this store. A child still present is
+        `initiative_children`'s, never this one's, so nothing is counted twice.
+
+        Storage-neutral: any store that remembers resolved items and the epic
+        they belonged to can answer it. The default — a store that cannot —
+        answers [], which is today's behaviour."""
+        return []
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Items related to `epic_slug` by `initiative:`.
@@ -3979,7 +4008,7 @@ class WorkStore(ABC):
         # and `reconcile --complete-when-ready` would fail acting on the promise.
         if self.open_descendants(item.slug):
             return False
-        if self.incomplete_graph_note():
+        if self.incomplete_graph_note(below=True):
             return False        # not "no", but "not knowable from this checkout"
         return True
 
@@ -4001,7 +4030,12 @@ class WorkStore(ABC):
         if item.type != "epic" or item.status in RESOLVED_STATUSES:
             return False
         children = self.initiative_children(item.slug)
-        return bool(children) and all(c.status in RESOLVED_STATUSES for c in children)
+        if not all(c.status in RESOLVED_STATUSES for c in children):
+            return False
+        # Resolved children whose items are gone from this checkout still count:
+        # "no children visible" and "every child resolved and removed" look the
+        # same to a query, and only the second may close.
+        return bool(children) or bool(self.resolved_initiative_children(item.slug))
 
     def transition(self, slug: str, to_status: str,
                    fields: dict | None = None) -> WorkItem:
@@ -4167,7 +4201,7 @@ class WorkStore(ABC):
                 # Failing open here strands work silently; the `start` gate
                 # already refuses on the same reasoning, and it is the one
                 # without a destructive consequence.
-                if (note := self.incomplete_graph_note()):
+                if (note := self.incomplete_graph_note(below=True)):
                     raise ValueError(
                         f"Cannot verify the initiative children of epic {slug}"
                         f"{note}. Its slices may live in a project this checkout "
