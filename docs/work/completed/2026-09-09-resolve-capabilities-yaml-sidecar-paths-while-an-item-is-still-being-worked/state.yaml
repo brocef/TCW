@@ -1,7 +1,7 @@
 slug: 2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked
 title: Resolve capabilities.yaml sidecar paths while an item is still being worked
 created: '2026-09-09'
-resolution: null
+resolution: done
 priority: 40
 effort: medium
 tags:
