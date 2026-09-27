@@ -52,3 +52,6 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   `init` ignores configured tree paths. Chose both; filed the follow-up.
 - **Code review** (adversarial-code-reviewer): DONE, merge with notes. Accepted
   both documentation notes and the optional test. Nothing rejected.
+- **Verify** (tcw:verifier): accept; all five criteria met on its own runs
+  (217 targeted tests; hands-on with the worktree's `tcw` for each message,
+  including the `work.path: ''` exit-code change). Decision: accept.
