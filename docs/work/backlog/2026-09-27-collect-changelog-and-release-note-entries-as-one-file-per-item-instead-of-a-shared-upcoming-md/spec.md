@@ -19,8 +19,8 @@ finish a change both edit the end of the same file, so merging the second one
 conflicts — and the conflict is in prose, which an agent resolves by hand.
 
 The shipped `documentation-sync` skill teaches the same single-file layout to
-every TCW project: `skills/documentation-sync/references/release-notes-and-changelogs.md:10-21`
-(directory layout), `:47-53` (recommended entries), `:57-70` (cross-check and
+every TCW project: `skills/documentation-sync/references/release-notes-and-changelogs.md:9-21`
+(directory layout), `:46-55` (recommended entries), `:57-70` (cross-check and
 rotation); `references/cut-version.md:52-66` (rotation step) and `:125-134`
 (folding into an unpushed version); `skills/configure/references/docs-sync.md:18`
 and `:43` (setup creates `upcoming.md`). So every TCW project running agents in
@@ -51,7 +51,7 @@ drops the working-file preamble, and recreates a fresh `upcoming.md`.
 - Rewriting already-released `v{version}.md` files or the historical migration
   guides (`docs/migration-guide-*.md`), which describe past versions.
 - Automatically migrating another project's `upcoming.md`. Migration stays an
-  offer, as the skill already requires (`release-notes-and-changelogs.md:74`).
+  offer, as the skill already requires (`release-notes-and-changelogs.md:77`).
 - Detecting two branches that write the same slug's file (same item on two
   branches is already one piece of work; see Risks).
 
