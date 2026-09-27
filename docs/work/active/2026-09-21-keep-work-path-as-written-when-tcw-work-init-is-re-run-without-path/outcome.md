@@ -48,3 +48,12 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
 - **Planning depth.** A one-function fix; request, spec and plan were written
   compactly rather than skipped. No open question arose, so no advisors were
   consulted at spec or plan.
+- **Code review** (adversarial-code-reviewer): DONE, merge with notes; it also
+  ran the full suite on a copy (4478 passed, 3 skipped). Accepted and folded in
+  (`1d2cb192`): changelog tense; the release note now names `tcw init` too; a
+  pre-existing traceback for `work.path: ~no-such-user/…` (and `--path`), fixed
+  by catching `RuntimeError` in `run_init`, with a test that went red first.
+  Nothing rejected.
+- **Verify** (tcw:verifier): accept; criteria 1-3 met with tests and its own
+  hands-on runs, criterion 4 on the implementer's and reviewer's full-suite runs.
+  Decision: accept.
