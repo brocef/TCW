@@ -10,3 +10,5 @@ priority: 35
 effort: medium
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T01:20:41.714828Z'
+worktree: .worktrees/2026-09-15-report-malformed-keys-and-unregistered-tags-in-lifecycle-config
+branch: work/2026-09-15-report-malformed-keys-and-unregistered-tags-in-lifecycle-config
