@@ -173,3 +173,11 @@ A slug the store has resolved and recorded in `graveyard.yaml`
 
 Found by the coordinating session while implementing the epic above;
 the requester asked for it to be filed as a work item on 2026-09-16.
+
+## Notes from the unattended run (2026-09-27)
+
+- Correction to "What is true today": `resolve_qualified_work_ref` in
+  `tcw/store/fs.py` already resolves `<project-id>/<slug>` against the whole
+  registered graph (used by `tcw://` references), and
+  `qualified_work_ref_problem` explains a reference that cannot be resolved
+  here. The fix reuses both.

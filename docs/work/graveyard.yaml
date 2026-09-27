@@ -823,6 +823,10 @@
   location: 9773e069199d7c83c2cf6cf80363b7593b3315c0
   resolution: done
   resolved: '2026-09-26'
+2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items:
+  location: 12f31be683523ce05471f6c35af25c580c5120f2
+  resolution: done
+  resolved: '2026-09-27'
 2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes:
   resolution: wontfix
   resolved: '2026-09-24'
@@ -841,6 +845,10 @@
   location: 7a35223d3ca366bd0e682c8aa148532999320189
   resolution: done
   resolved: '2026-09-26'
+2026-09-15-resolve-sibling-nodes-to-their-worktree-copies:
+  location: 8a69cd18affb25fc577b96676dc8679addc4b8b7
+  resolution: done
+  resolved: '2026-09-27'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
   location: 8bac10d8aed8b383368e47f37caf7a50efd5d1ab
   resolution: done

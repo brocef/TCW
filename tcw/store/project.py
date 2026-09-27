@@ -129,6 +129,26 @@ class _Config:
     raw: dict[str, Any]
 
 
+def _same_repository(marker: Path, main: Path) -> bool:
+    """Whether a directory holding `marker` (its `.git`) is still the repository
+    whose main worktree is `main`: no marker, or a submodule of it — a `.git`
+    file whose `gitdir:` lies inside `main/.git`, which is the commit this
+    branch pins. A `.git` directory, or a file pointing anywhere else, is a
+    separate repository nested here."""
+    if not marker.exists():
+        return True
+    if not marker.is_file():
+        return False
+    try:
+        first = marker.read_text(encoding="utf-8").splitlines()[0]
+    except (OSError, UnicodeDecodeError, IndexError):
+        return False
+    if not first.startswith("gitdir:"):
+        return False
+    gitdir = (marker.parent / first[len("gitdir:"):].strip()).resolve()
+    return gitdir.is_relative_to((main / ".git").resolve())
+
+
 class FsProjectRegistry(ProjectRegistry):
     """A project graph loaded solely by following declared config locators."""
 
@@ -152,13 +172,6 @@ class FsProjectRegistry(ProjectRegistry):
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
         self._anchors = worktree_anchors(self.node_root)
-        # The current node's config as the *main* worktree spells it — the one
-        # path Rule 2 aliases onto the worktree copy. None outside a worktree.
-        self._counterpart_path = (
-            None if self._anchors is None
-            else (self._anchors[1] / self.node_root.relative_to(self._anchors[0])
-                  / SENTINEL).resolve()
-        )
 
     @classmethod
     def open(cls, node_root: Path) -> "FsProjectRegistry":
@@ -515,9 +528,9 @@ class FsProjectRegistry(ProjectRegistry):
             candidates.append(self._locator_path(source_config, entry.locator))
         if entry.repository is not None:
             try:
-                candidates.append(
+                candidates.append(self._worktree_copy(
                     (provisioned_root(source_config.parent, entry.repository)
-                     / SENTINEL).resolve())
+                     / SENTINEL).resolve()))
             except StoreDeclarationError as error:
                 # A declaration this machine cannot turn into a path — a `~name`
                 # naming no user. Recorded against the config that carried it,
@@ -617,18 +630,38 @@ class FsProjectRegistry(ProjectRegistry):
         ):
             counterpart = main / source_dir.relative_to(top)
             resolved = (counterpart / target / SENTINEL).resolve()
-        # Rule 2 — collapse the worktree's own identity. Once the parent is
-        # reachable it points back at the current node as the *main* worktree
-        # spells it, so the graph would hold two configs under one ID and fail
-        # reciprocity. Alias that one path onto the worktree copy, so the graph
-        # holds exactly one node for the current project — the checked-out one.
-        # Exactly one pair, only under a linked worktree: a wider alias would
-        # mask genuine duplicate-ID errors, which is a real validation here.
-        # Applies to absolute locators too — the parent may name the current node
-        # by absolute path, and that path is the counterpart just the same.
-        if resolved == self._counterpart_path:
-            return self._current_path.resolve()
-        return resolved
+        return self._worktree_copy(resolved)
+
+    def _worktree_copy(self, resolved: Path) -> Path:
+        """Rule 2 — a config path under the main worktree, as this worktree's copy.
+
+        Nodes outside this worktree point back into its repository as the *main*
+        worktree spells it — the current node, and every sibling in the same
+        repository — so the graph would load each twice under one ID and fail
+        reciprocity. A path under the main worktree whose counterpart under this
+        worktree holds a config, in this same repository, is the same node on the
+        checked-out branch, so it resolves there (GitHub #39). Anything else keeps
+        its path, so an ID repeated across *different* repositories is still a
+        duplicate — including a repository nested inside this one, which the
+        branch does not hold even when a copy sits at the same place. A path
+        already inside this worktree is left alone: TCW's own worktrees live under
+        the primary checkout (`.worktrees/<slug>`), where every worktree path is
+        also "under main". Applied to every way a node is declared — a locator,
+        absolute or relative, and a `repository:` checkout."""
+        if self._anchors is None:
+            return resolved
+        top, main = self._anchors
+        if not resolved.is_relative_to(main) or resolved.is_relative_to(top):
+            return resolved
+        copy = top / resolved.relative_to(main)
+        if not copy.is_file():
+            return resolved
+        between = copy.parent
+        while between != top and between.is_relative_to(top):
+            if not _same_repository(between / ".git", main):
+                return resolved                  # another repository's node
+            between = between.parent
+        return copy.resolve()
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():

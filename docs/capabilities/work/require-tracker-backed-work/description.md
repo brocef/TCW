@@ -10,8 +10,12 @@ strict: it is that same import, and refuses exactly where the import would.
 `tcw work start` of an item with no ticket refuses; of a bound item, it claims the
 ticket first and starts the item only when the claim succeeded. `submit` and `rework`
 first read the ticket and refuse unless it is assigned to me and sits where the
-item's lifecycle left it. Completing an item as `done` refuses only when the ticket
-is not where the lifecycle left it — for a `worktree` item, before anything is
+item's lifecycle left it, and unless its workflow offers exactly one way — the
+transition I named for the move, or else the only one — to where the move leads,
+so a change the ticket could not follow is refused rather than made. That last
+check is skipped while another part of the ticket holds its moves, and for a move
+whose status is not mapped. Completing an item as `done` refuses only when the ticket
+is not where the lifecycle left it, or cannot follow it to the completion status — for a `worktree` item, before anything is
 merged — and not for who holds it: a claim gates work, not finishing it. A refusal says what did not happen and what to fix, and
 changes no file; a `start` refused after its claim leaves the ticket claimed.
 Discarding an item is always allowed, so no item is trapped; `drop` refuses an item
@@ -53,9 +57,14 @@ switching themselves off. Turning strict mode off is `strict: false`, or removin
 the key; a child node that inherits a strict parent's tracker block can set
 `strict: false` in its own.
 
+A child is nested by importing its ticket under the parent: `tracker import
+--parent <slug>` and `--initiative <epic>`, with the parent checked before the
+ticket is claimed. `new --parent` and `new --initiative` stay refused, since strict
+mode creates work only from a ticket.
+
 Limits I accept: one claimed ticket can authorize several items, through `tracker
-link` and `import --part`; `new --parent` and `new --initiative` are refused, so a
-child is imported and linked rather than nested; and a workflow that offers
+link` and `import --part`; an epic started in a worktree before strict mode was
+turned on still merges its branch when it completes, since epics are not gated; and a workflow that offers
 `exclusive-claim-transition` again from where it leads excludes nobody, and TCW can
 tell only from a ticket in that status — so a strict `start` of a ticket I already
 hold in the backlog status is accepted without that check. A ticket held back for another

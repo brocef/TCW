@@ -3,6 +3,12 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+### Added
+
+- `tcw work tracker import --parent <slug> --initiative <epic>`: nest the
+  imported item, checked before the ticket is claimed — the way to nest a child
+  under strict mode, where `new --parent` stays refused.
+
 ### Fixed
 
 - `delegate` and `reconcile` pass through a routing node — a registered child
@@ -35,6 +41,25 @@ category.
 - When `complete`'s merge-back is refused, it lists every staged file in the
   merged repository's index (git refuses the merge over any of them), not only
   the item's own tracker record.
+- Strict mode refuses a move its ticket cannot follow. `authorize`
+  (`tcw/tracker/sync.py`) takes `move` and `resolution` and asks `assess_move`
+  with the configured transition name, as `deliver` does, so a `submit`,
+  `rework` or `complete` whose workflow offers no transition — or several and no
+  name — is refused before the item moves, instead of leaving a conflicting
+  record that refused the next move. Skipped for an unmapped target and while
+  another open part holds the ticket. Not asked of a legacy `catch-up` binding, which
+  `deliver` walks rung by rung.
+- Inside a linked worktree, every node of the checked-out repository resolves to
+  its worktree copy. `ProjectRegistry._locator_path`'s Rule 2 aliased only the
+  current node's main-checkout path, so from a package node the repository's root
+  and sibling packages loaded a second time from the primary checkout — duplicate
+  project ids and reciprocity failures (GitHub #39). It now aliases any path
+  under the main worktree whose counterpart under this worktree holds a config
+  in the same repository (`_worktree_copy`), for a locator and a `repository:`
+  declaration alike, leaving paths already inside the worktree and separate
+  repositories nested in it alone (a submodule of this repository is followed); ids repeated across different repositories are still
+  duplicates. `_counterpart_path` is gone.
+
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
   `ls-files`, `ls-tree`), pass each path as `:(literal)<path>` (`_literal`),

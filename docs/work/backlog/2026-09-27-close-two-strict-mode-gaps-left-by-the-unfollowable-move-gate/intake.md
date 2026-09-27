@@ -9,3 +9,8 @@ From the review of `2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-
 2. `tracker import <ticket> --parent <slug>` on a ticket already bound here
    answers "already bound" and exits 0 without nesting the item, with no hint to
    use `tcw work edit --parent`.
+3. From verify of the same item: on a legacy `catch-up` binding more than one
+   rung away, the gate does not ask; on a workflow whose rung-by-rung path is
+   broken part-way (`STRICT_LADDER` with no way out of In Review), `complete`
+   exits 1 but leaves the item completed, the ticket in In Review and a
+   `conflicting` record — the pattern the gate otherwise now prevents.
