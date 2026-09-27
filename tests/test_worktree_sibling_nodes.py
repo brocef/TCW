@@ -110,7 +110,35 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     config(repo(workspace / "app-wt" / "vendor"), "vendor-fork", parent={"workspace": "../.."})
     done = validate(workspace / "app-wt" / "pkg-a")
-    assert "vendor-fork" not in done.stdout + done.stderr, done.stdout + done.stderr
+    assert done.returncode == 0, done.stdout + done.stderr
+    from tcw.store.project import FsProjectRegistry
+    where = {p.id: Path(p.locator).resolve()
+             for p in FsProjectRegistry.open(workspace / "app-wt" / "pkg-a").projects()}
+    assert where["vendor"] == (app / "vendor").resolve()
+
+
+def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path):
+    """A submodule's checkout in the worktree is the commit this branch pins: the
+    same node. Named both by the repository's root (inside the worktree) and by
+    the workspace (through the primary checkout), it must load once."""
+    lib = repo(tmp_path / "lib-origin")
+    config(lib, "lib", parent={"app-repo": ".."})
+    git(lib, "add", "-A")
+    git(lib, "commit", "-qm", "lib")
+    app = workspace / "app"
+    git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
+    app_cfg = app / "tcw-config.yaml"
+    app_cfg.write_text(app_cfg.read_text() + "    lib: lib\n")
+    git(app, "add", "-A")
+    git(app, "commit", "-qm", "lib submodule")
+    ws_cfg = workspace / "tcw-config.yaml"
+    ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
+    git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
+    git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
+        "--init", "-q")
+    done = validate(workspace / "app-wt" / "pkg-a")
+    assert "duplicate project id 'lib'" not in done.stdout + done.stderr, \
+        done.stdout + done.stderr
 
 
 def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):

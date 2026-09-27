@@ -129,6 +129,26 @@ class _Config:
     raw: dict[str, Any]
 
 
+def _same_repository(marker: Path, main: Path) -> bool:
+    """Whether a directory holding `marker` (its `.git`) is still the repository
+    whose main worktree is `main`: no marker, or a submodule of it — a `.git`
+    file whose `gitdir:` lies inside `main/.git`, which is the commit this
+    branch pins. A `.git` directory, or a file pointing anywhere else, is a
+    separate repository nested here."""
+    if not marker.exists():
+        return True
+    if not marker.is_file():
+        return False
+    try:
+        first = marker.read_text(encoding="utf-8").splitlines()[0]
+    except (OSError, UnicodeDecodeError, IndexError):
+        return False
+    if not first.startswith("gitdir:"):
+        return False
+    gitdir = (marker.parent / first[len("gitdir:"):].strip()).resolve()
+    return gitdir.is_relative_to((main / ".git").resolve())
+
+
 class FsProjectRegistry(ProjectRegistry):
     """A project graph loaded solely by following declared config locators."""
 
@@ -638,7 +658,7 @@ class FsProjectRegistry(ProjectRegistry):
             return resolved
         between = copy.parent
         while between != top and between.is_relative_to(top):
-            if (between / ".git").exists():
+            if not _same_repository(between / ".git", main):
                 return resolved                  # another repository's node
             between = between.parent
         return copy.resolve()
