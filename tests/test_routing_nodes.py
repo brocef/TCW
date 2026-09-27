@@ -87,9 +87,10 @@ def test_reconcile_looks_below_a_child_with_a_board(stacked):
 
 
 def test_delegate_stops_at_the_nearest_board(stacked):
-    with pytest.raises(ValueError, match="x") as refused:
+    with pytest.raises(ValueError) as refused:
         delegate(stacked, "y", "Too deep")
     assert "no child node 'y'" in str(refused.value)
+    assert "children: x" in str(refused.value)
 
 
 # ── criterion 3: declared behind a routing node, absent here ────────────────
@@ -109,3 +110,36 @@ def test_nodes_still_prints_the_direct_topology(routed, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert [ln.split()[0] for ln in out.split("children:", 1)[1].splitlines() if ln.strip()] \
         == ["mid"], out                    # the direct topology, as before
+
+
+# ── review finding: one registry, opened at the root ───────────────────────
+
+def _git(path: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
+
+
+def test_a_routing_node_outside_a_worktree_does_not_break_delegate(tmp_path):
+    """From a linked worktree of the root, a routing node in another repository
+    opens a registry that sees the *primary* checkout's root, which does not
+    declare it. Walking that registry made `delegate` refuse even a direct
+    child; the walk now uses the root's own registry throughout."""
+    import yaml
+    main_root = node(tmp_path / "R", "root", board=True, children={"x": "x"})
+    node(main_root / "x", "x", board=True, parent="root")
+    _git(main_root, "add", "-A")
+    _git(main_root, "commit", "-qm", "base")
+    mid = node(tmp_path / "mid", "mid", board=False, children={"pa": "pa"})
+    cfg = yaml.safe_load((mid / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["parent"] = {"root": "../R"}
+    (mid / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    node(mid / "pa", "pa", board=True, parent="mid")
+    _git(mid, "add", "-A")
+    _git(mid, "commit", "-qm", "m")
+    wt = tmp_path / "W"
+    _git(main_root, "worktree", "add", "-q", str(wt), "-b", "feat")
+    cfg = yaml.safe_load((wt / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["children"] = {"x": "x", "mid": "../mid"}
+    (wt / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+    assert delegate(wt, "x", "Direct").resolve().is_relative_to((wt / "x").resolve())
+    assert delegate(wt, "pa", "Routed").resolve().is_relative_to((mid / "pa").resolve())

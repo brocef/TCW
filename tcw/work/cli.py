@@ -4248,7 +4248,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
-    pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
+    pr = g.add_parser("reconcile", help="scan this node and every node below it with a board → write the epic rollup")
     pr.add_argument("slug", help="the epic's slug, in this node")
     pr.add_argument("--commit", action="store_true", help="also commit the rollup")
     pr.add_argument("--complete-when-ready", action="store_true",

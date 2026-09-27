@@ -379,7 +379,8 @@ def _evict_legacy_rollup(store: FsWorkStore, slug: str) -> None:
 
 def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
               complete_when_ready: bool = False) -> str:
-    """Scan children for `initiative == epic_slug`; write a consolidated rollup
+    """Scan this node and every descendant with a board for
+    `initiative == epic_slug`; write a consolidated rollup
     to the epic's `rollup.md` sidecar. Read-only on capabilities.
 
     When the epic's children are all resolved the rollup flags it "Ready to close";
