@@ -9,7 +9,7 @@ tags:
 - capabilities
 - taxonomy
 - bug
-owner: brocef@users.noreply.github.com
-started: '2026-09-27T00:59:18.907050Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting
 branch: work/2026-09-21-make-tcw-validate-check-taxonomy-and-capabilities-stores-moved-by-their-path-setting
