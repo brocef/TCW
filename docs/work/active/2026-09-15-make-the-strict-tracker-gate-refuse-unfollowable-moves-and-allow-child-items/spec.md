@@ -30,7 +30,9 @@ started before strict mode was enabled still merges.
    configured transition name; `statuses.completed` is never per-resolution).
    Not asked of a legacy `catch-up` binding, which `deliver` walks.
 3. `tcw work tracker import` accepts `--parent <slug>` and `--initiative <epic>`,
-   validated before anything is claimed, with the same meaning as on `new`.
+   with the same meaning as on `new`: the parent is validated before anything is
+   claimed; the initiative, as on `new`, is not validated (corrected at verify —
+   the first wording claimed both were).
 4. A regression test for the held item: strict, held, owed start record →
    `sync` → `submit` passes.
 5. Capability text updated as above.
