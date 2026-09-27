@@ -55,5 +55,5 @@ guidance) · 8 ✔ · 9 ✔ · 10 ✔ · 11 ✔.
 
 - Nothing in `tcw/` Python changed; the entry format and its validation are
   untouched, as the spec intended.
-- The next version cut in this repo will ship three entries per folder: the
+- The next version cut in this repo will ship two entries per folder: the
   carried-over one and this item's, merged under shared headings.
