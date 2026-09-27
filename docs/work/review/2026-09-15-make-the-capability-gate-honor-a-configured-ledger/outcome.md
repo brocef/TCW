@@ -74,3 +74,18 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   crash, quadratic memory, test gaps. All fixed. Round 2: DONE; its two wording
   notes taken. Its question — a web save guarded by the tolerant revision fails
   on a non-UTF-8 sidecar — added to the follow-up above rather than decided here.
+- **Verify** (tcw:verifier): accept; all criteria met by hand for the
+  non-UTF-8, folder, pipe, alias and self-referencing files, through `list`,
+  `show --json`, `complete` and `tcw serve`; part 1 confirmed fixed on main.
+  Its note that the depth limit covers any nesting, not only through aliases,
+  was a spec-wording mismatch; the spec now says so. Decision: accept.
+- **Combined check after merging main** (the `tcw validate` sidecar check
+  merged earlier today): `validate` crashed on a non-UTF-8 or folder
+  `capabilities.yaml` and hung on a named pipe — true on main too, in its scan of
+  every `.yaml` and `.md` file. Folded in (`3b32a52f`, `bce573f8`): `_read_text`
+  reports such a file as a problem line, with tests that failed before. Codex
+  checked the fold-in: took its two guard gaps; rejected its point that an
+  unreadable work-item `capabilities.yaml` should not skip the component checks
+  — reporting it once, as every YAML problem is, is the rule the sidecar check's
+  review settled on. Unreadable `.md` files the work store re-reads strictly are
+  the filed `state.yaml`/artifact follow-up.
