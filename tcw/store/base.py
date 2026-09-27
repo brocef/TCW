@@ -1033,6 +1033,25 @@ def normalize_tag(value: str) -> str:
     return tag
 
 
+def read_tags(raw) -> list[str]:
+    """An item's stored tags as every comparison expects them: normalized, each
+    once, in first-seen order. What cannot be a tag — a non-string, a comma
+    (several tags written as one), nothing left after normalizing — is kept as
+    its text, so `check` still reports it and nothing that prints tags breaks
+    on it. A bare value, not in a list, is one tag."""
+    out: list[str] = []
+    for entry in raw if isinstance(raw, list) else [] if raw in (None, "") else [raw]:
+        tag = str(entry)
+        if isinstance(entry, str) and "," not in entry:
+            try:
+                tag = normalize_tag(entry)
+            except ValueError:
+                pass
+        if tag not in out:
+            out.append(tag)
+    return out
+
+
 def frontmatter_end(content: str) -> int:
     """Offset just past a leading ``---`` YAML block, or 0 when there is none.
 

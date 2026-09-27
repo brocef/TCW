@@ -355,7 +355,11 @@ Every place a tag is named accepts a comma-separated list, and `--tags` / `--unt
 are accepted wherever the singular spellings are — `tcw work tags add cli,docs`
 registers two tags. A comma is always a separator, never part of a tag.
 Applying an unregistered tag is refused, and `tcw validate` flags any item still
-carrying a tag that was later unregistered. Tags don't affect board ordering.
+carrying a tag that was later unregistered. A tag typed by hand into an item's
+`state.yaml` counts in its canonical spelling (`CLI` is `cli`). While
+`work.tags` holds an entry that is not a tag, such as a bare number or
+`"cli,docs"`, `tcw work tags add` and `rm` refuse and name it rather than
+dropping it. Tags don't affect board ordering.
 
 ## What the commands print
 
