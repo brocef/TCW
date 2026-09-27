@@ -189,12 +189,13 @@ def test_a_hook_exceeding_the_timeout_is_a_failure(tmp_path, monkeypatch, capsys
 
 def test_a_skill_binding_is_reported_and_never_executed(tmp_path, monkeypatch, capsys):
     """The CLI cannot invoke a skill; only the agent can. The ref here would be a
-    perfectly good shell command if anything tried to run it."""
+    perfectly good shell command if anything tried to run it — and has no space
+    or path separator, so it passes the skill-name check and the binding loads."""
     root = node(tmp_path)
     slug = make_item(root)
     marker = root / "should-not-exist.txt"
     configure(root, {"transitions": {"start": {"pre": [
-        {"skill": f"touch {marker}"},
+        {"skill": f"echo>{marker.name}"},
     ]}}})
     monkeypatch.chdir(root)
 

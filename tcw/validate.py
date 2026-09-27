@@ -1,7 +1,8 @@
 """`tcw validate [path]` — one aggregate soundness pass over a TCW node.
 
-Passes over the scan roots (the whole node's `docs/{taxonomy,capabilities,
-work}` trees, or a single `[path]`):
+Passes over the scan roots (the node's taxonomy, capabilities and work stores
+wherever each resolves — moved by `<c>.path` or kept in another repository —
+or a single `[path]`):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
       (duplicate keys included); a parse error is a problem. Any shape is
@@ -11,8 +12,8 @@ work}` trees, or a single `[path]`):
       (code spans stripped first, so examples that teach the scheme don't fail).
   (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a syntax
       error or a record of the wrong shape (they re-load the file and raise).
-  (d) a leftover pre-2.5.0 store config file, reported directly for any tree
-      store (c) did not check — or, if that store will not open, why not.
+  (d) when (a) skipped (c): each tree store's open failure or leftover pre-2.5.0
+      store config file, so malformed YAML cannot hide either.
 """
 
 from __future__ import annotations
@@ -67,10 +68,45 @@ def _iter(root: Path, pattern: str):
     return sorted(root.rglob(pattern))
 
 
-def _scan_roots(node_root: Path, path) -> list[Path]:
+def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
+    """Each tree store this node has, at its resolved root — or why it could
+    not be opened. Resolved once, so scanning and checking cannot disagree about
+    where a store is. A store moved by `<c>.path` or kept in another repository
+    is found here; testing for `docs/<c>` found neither.
+
+    The rule `find_node` uses: a store that opens is here when its root is a
+    directory, and one that will not open is reported — which includes a broken
+    `extends` in a node with no tree of its own.
+    """
+    roots: dict[str, Path | ValueError] = {}
+    for comp in ("taxonomy", "capabilities"):
+        try:
+            root = STORE_CLASSES[comp].open(node_root).root
+        except ValueError as e:
+            roots[comp] = e
+            continue
+        if root.is_dir():
+            roots[comp] = root
+    return roots
+
+
+def _intended_root(node_root: Path, comp: str) -> Path:
+    """Where `comp`'s store is configured to be, whether or not it opens."""
+    try:
+        config = load_yaml(node_root / "tcw-config.yaml", unique=True)
+    except Exception:
+        config = {}
+    section = config.get(comp) if isinstance(config, dict) else None
+    configured = section.get("path") if isinstance(section, dict) else None
+    return STORE_CLASSES[comp]._local_root(
+        node_root, configured if isinstance(configured, str) and configured.strip()
+        else None)
+
+
+def _scan_roots(node_root: Path, path, trees: dict) -> list[Path]:
     if path is not None:
         return [Path(path)]
-    roots = [node_root / "docs" / c for c in ("taxonomy", "capabilities")]
+    roots = [r for r in trees.values() if isinstance(r, Path)]
     try:
         roots.append(FsWorkStore.open(node_root).root)
     except ValueError:
@@ -101,13 +137,13 @@ def _claims_work(node_root: Path) -> bool:
     return section.get("path") is not None or section.get("repository") is not None
 
 
-def _components_to_check(node_root: Path, path) -> list[str]:
-    """Which component check()s to run: both when scanning the whole node, else
-    the one whose tree the path falls under (a path under docs/work — or spanning
-    several trees — runs none)."""
+def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
+    """Which component check()s to run: every store the node has when scanning
+    the whole node — one that cannot open included, so `_run_check` says why —
+    else the one whose tree the path falls under (a path under the work store —
+    or spanning several trees — runs none)."""
     if path is None:
-        present = [c for c in ("taxonomy", "capabilities")
-                   if (node_root / "docs" / c).is_dir()]
+        present = list(trees)
         try:
             FsWorkStore.open(node_root)
             present.append("work")
@@ -123,8 +159,13 @@ def _components_to_check(node_root: Path, path) -> list[str]:
                 present.append("work")
         return present
     p = Path(path).resolve()
-    for c in ("taxonomy", "capabilities"):
-        if _under(p, (node_root / "docs" / c).resolve()):
+    for c, root in trees.items():
+        # A store that will not open is still matched where it was meant to be
+        # — its configured path, or its default folder — so the reason it will
+        # not open is reported rather than nothing.
+        where = ([root] if isinstance(root, Path)
+                 else [_intended_root(node_root, c), node_root / "docs" / c])
+        if any(_under(p, w.resolve()) for w in where):
             return [c]
     try:
         if _under(p, FsWorkStore.open(node_root).root):
@@ -199,12 +240,14 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
                  "capabilities": FsCapabilitiesStore}[comp]
     try:
         store = store_cls.open(node_root)
+        # Inside the guard too: a check can open another store on the way — the
+        # capabilities check opens the taxonomy — and that one can fail as well.
+        if comp == "capabilities":
+            problems = store.check(identifier=identifier)
+        else:
+            problems = store.check(identifier)
     except ValueError as e:
         return [f"{comp} check: {e}"]
-    if comp == "capabilities":
-        problems = store.check(identifier=identifier)
-    else:
-        problems = store.check(identifier)
     return [f"{comp} check: {p}" for p in problems]
 
 
@@ -286,12 +329,13 @@ def validate(node_root: Path, path: Path | None = None, *,
         if previous is not None and previous != project.id:
             return [f"project graph: projects '{previous}' and '{project.id}' resolve to the same work.path: {root}"]
         work_roots[root] = project.id
+    trees = _tree_roots(node_root) if target is None else {}
     if target is not None:
         roots = _target_roots(node_root, target)
         if not roots:
             return [f"{target.axis} target: no such object '{target.ref}'"]
     else:
-        roots = [r for r in _scan_roots(node_root, path) if r.exists()]
+        roots = [r for r in _scan_roots(node_root, path, trees) if r.exists()]
     problems: list[str] = []
     yaml_syntax_error = False
 
@@ -359,13 +403,12 @@ def validate(node_root: Path, path: Path | None = None, *,
                     problems.append(f"{_rel(f, node_root)}: tcw:// {uri} → {r.reason}")
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
-    checked: set[str] = set()
     if yaml_syntax_error:
         problems.append("(component checks skipped: YAML problem above)")
     else:
-        components = [target.axis] if target is not None else _components_to_check(node_root, path)
+        components = ([target.axis] if target is not None
+                      else _components_to_check(node_root, path, trees))
         for comp in components:
-            checked.add(comp)
             # Before the component's own check, so a node reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
             configured = _configured_path_problem(node_root, comp)
@@ -382,22 +425,16 @@ def validate(node_root: Path, path: Path | None = None, *,
         problems += _open_sidecar_problems(node_root, work_store,
                                            target.ref if target is not None else None)
 
-    # (d) a leftover pre-2.5.0 store config, for each tree store whose check()
-    # did not run above. Temporary: it exists only because `validate` does not
-    # follow a store moved out of `docs/<component>` and skips every component
-    # check after a YAML problem. Once `validate` covers relocated stores, delete
-    # this block and `checked`, and leave the leftover to `check()` alone.
-    if path is None and target is None:
-        for comp in ("taxonomy", "capabilities"):
-            if comp in checked:
+    # (d) With the component checks skipped by a YAML problem, each tree store
+    # still says whether it can open and whether a pre-2.5.0 store config is
+    # left in it. Only that much: a migration message that malformed YAML
+    # elsewhere could hide would be found only after fixing something unrelated.
+    if yaml_syntax_error and path is None and target is None:
+        for comp, root in trees.items():
+            if isinstance(root, ValueError):
+                problems.append(f"{comp} check: {root}")
                 continue
-            try:
-                store = STORE_CLASSES[comp].open(node_root)
-            except ValueError as e:
-                # Nothing else reports it: the component and configured-path
-                # checks both sit in the block this store was left out of.
-                problems.append(f"{comp} check: {e}")
-                continue
+            store = STORE_CLASSES[comp].open(node_root)
             problems += [f"{comp} check: {p}" for p in store._legacy_config_problems()]
 
     return problems

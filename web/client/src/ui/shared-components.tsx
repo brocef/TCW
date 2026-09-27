@@ -249,6 +249,46 @@ export function Errors({ errors }: { errors: string[] }) {
     ) : null
 }
 
+/** Starts whose claimant stopped mid-move. They are on no board, so this is the
+ * only place the web app can show them — and offer the recovery the command
+ * line offers as `tcw work start <slug> --take-over`. */
+export function InterruptedClaims({
+    claims,
+    onRecover,
+}: {
+    claims: { slug: string; title: string }[]
+    onRecover: (slug: string) => void
+}) {
+    return claims.length ? (
+        <Callout.Root
+            className="interrupted-claims"
+            color="amber"
+            role="status"
+        >
+            <Callout.Text>
+                <strong>Interrupted start</strong> — these items were being
+                started when the process stopped, and are on no board until
+                recovered:
+            </Callout.Text>
+            <ul>
+                {claims.map((claim) => (
+                    <li key={claim.slug}>
+                        {claim.title || claim.slug}{" "}
+                        <Button
+                            size="1"
+                            variant="soft"
+                            type="button"
+                            onClick={() => onRecover(claim.slug)}
+                        >
+                            Recover
+                        </Button>
+                    </li>
+                ))}
+            </ul>
+        </Callout.Root>
+    ) : null
+}
+
 export function Modal({
     title,
     children,

@@ -44,7 +44,8 @@ TCW's own default for that stage or artifact — TCW ships instructions for each
 the six lifecycle stages (`inbox` runs before an item exists, so it has none) and
 a template for each lifecycle document, and **a stage you have configured nothing
 for resolves to them**. `skill:` names an agent skill, which is a name rather than
-instructions and is the weakest option. `command:` is for checks.
+instructions and is the weakest option; `tcw validate` checks the name's shape but
+cannot tell whether the skill is installed. `command:` is for checks.
 
 ```yaml
 work:
@@ -66,7 +67,9 @@ work:
 
 **Conditions.** Any binding may carry `when:` with `tags:` (any of), `not_tags:`
 (none of), and `type:` — so a bug gets different instructions and a different
-template than a feature. Three keys, deliberately; anything harder belongs in a
+template than a feature. Tags there are read the way an item's tags are, so `Bug`
+means `bug`, and `tcw validate` reports a condition tag that is not registered,
+since it could never match. Three keys, deliberately; anything harder belongs in a
 `generate:` script, which decides in real code.
 
 **The `generate:` contract**, enforced rather than hoped for: stdin is
