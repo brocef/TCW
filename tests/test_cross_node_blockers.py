@@ -171,3 +171,41 @@ def test_list_stops_showing_a_resolved_cross_node_blocker(graph):
     finish(b, dep)
     out = tcw(graph / "pa", "list")
     assert "blocked-by" not in out.stdout, out.stdout
+
+
+# ── review findings ─────────────────────────────────────────────────────────
+
+def test_an_old_external_entry_resolves_where_the_folder_is_still_present(graph):
+    """The machine that completed the item still has its folder; it must read
+    the entry the way every other clone does."""
+    a = FsWorkStore.open(graph / "pa")
+    dep = new(a, "Dep")
+    finish(a, dep)
+    assert a.get(dep) is not None
+    slug = new(a, "Thing")
+    a.set_field(slug, "blocked_by", [{"external": dep}])
+    assert a.unresolved_blockers(a.get(slug)) == []
+
+
+@pytest.mark.parametrize("text", ["vendor/legal review",
+                                  "https://github.com/x/y/issues/1",
+                                  "vendor/legal/review", "pb/foo/"])
+def test_prose_with_a_slash_is_labelled_as_written(graph, text):
+    a = FsWorkStore.open(graph / "pa")
+    slug = new(a, "Thing")
+    a.add_blocker(slug, text)
+    assert a.unresolved_blockers(a.get(slug)) == [f"external: {text}"]
+
+
+def test_a_label_copied_from_list_removes_the_blocker(graph):
+    cfg_path = graph / "tcw-config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text())
+    cfg["connected-projects"]["children"]["gone"] = "gone"
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    a = FsWorkStore.open(graph / "pa")
+    slug = new(a, "Thing")
+    a.add_blocker(slug, "gone/some-item")
+    [label] = a.unresolved_blockers(a.get(slug))
+    assert label != "external: gone/some-item"     # it carries a reason
+    a.remove_blocker(slug, label)
+    assert a.get(slug).blocked_by == []

@@ -341,8 +341,7 @@ def _ready(tasks: list[tuple[str, WorkItem]],
 
 
 def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
-            completable: bool = False,
-            stores: dict[str, FsWorkStore] | None = None) -> str:
+            stores: dict[str, FsWorkStore], completable: bool = False) -> str:
     lines = ["<!-- tcw:rollup -->", f"### Rollup: {epic_slug}", ""]
     if not tasks:
         lines.append("_No tasks reference this initiative yet._")
@@ -362,7 +361,7 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
             lines += ["", f"**Ready to close:** all {len(tasks)} children resolved — "
                       f"run `tcw work complete {epic_slug} --resolution done --confirm`"]
         else:
-            ready = _ready(tasks, stores or {})
+            ready = _ready(tasks, stores)
             lines += ["", "**Next:** " + (", ".join(ready) if ready else "all blocked or complete")]
     lines.append("<!-- /tcw:rollup -->")
     return "\n".join(lines)
@@ -419,8 +418,8 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
 
     completable = store.epic_completable(store.get(epic_slug))     # False once completed
     stores = _node_stores(node_root)
-    block = _render(epic_slug, _tasks_for(node_root, epic_slug, stores),
-                    completable=completable, stores=stores)
+    block = _render(epic_slug, _tasks_for(node_root, epic_slug, stores), stores,
+                    completable=completable)
     _evict_legacy_rollup(store, epic_slug)
     current = store.read_sidecar(epic_slug, ROLLUP_SIDECAR)
     text = f"{block}\n"

@@ -3953,6 +3953,13 @@ class WorkStore(ABC):
         norm = self._normalize_ref(ref)
         kept = [e for e in entries
                 if e.get("slug") != norm and e.get("external") != norm]
+        if len(kept) == len(entries) and norm.endswith(")"):
+            # A label copied from `list` may carry the reason it still blocks,
+            # "external: <text> (<why>)"; the stored text has no reason, and the
+            # reason may hold brackets of its own, so match the stored text.
+            kept = [e for e in entries
+                    if not ("external" in e
+                            and norm.startswith(f"{e['external']} ("))]
         if len(kept) == len(entries):
             raise ValueError(f"no such blocker on {slug}: {ref}")
         return kept
@@ -4030,10 +4037,23 @@ class WorkStore(ABC):
         """Whether an `external:` blocker's text names work that is resolved, and
         if it still blocks, why (or "").
 
-        Storage-neutral: any store that can address another project's items can
-        answer it. The default — a store that cannot — keeps every external
-        blocker blocking, which is what they did before any store could."""
-        return False, ""
+        Here, the case every store can answer from its own interface: a bare
+        slug naming an item this store holds or once held — an older entry
+        written before a tombstoned local item was recorded as `slug:`. The live
+        item wins when there is one, so the machine that still has the resolved
+        folder answers as every other clone does. Anything else keeps blocking; a
+        store that can address other projects overrides this for
+        `<project-id>/<slug>`."""
+        text = text.strip()
+        if not text or "/" in text:
+            return False, ""
+        try:
+            live = self.get(text)
+            if live is not None:
+                return live.status in RESOLVED_STATUSES, ""
+            return self.tombstone(text) is not None, ""
+        except Exception:                          # a blocker never fails its reader
+            return False, ""
 
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if

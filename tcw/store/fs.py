@@ -5770,35 +5770,35 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return location
 
     def external_blocker_state(self, text: str) -> tuple[bool, str]:
-        """Settle an `external:` blocker naming work this graph holds.
+        """Also settle `<project-id>/<slug>` — exactly that shape, through
+        `resolve_qualified_work_ref`, the addressing `tcw://` references already
+        use in any direction across the registered graph; the live item wins,
+        then the tombstone. Bare slugs are the base store's answer.
 
-        Exactly `<project-id>/<slug>`, through `resolve_qualified_work_ref` — the
-        addressing `tcw://` references already use, in any direction across the
-        registered graph. A bare slug is an older entry written before a
-        tombstoned local item was recorded as `slug:`, and resolves against this
-        store's graveyard. Anything else is free text and keeps blocking.
-
-        Never raises: a blocker that cannot be settled keeps blocking, and the
-        reason goes into its label only when the qualifier is a project this
-        graph knows — `vendor/legal review` is text, not a missing project."""
+        Never raises: a blocker that cannot be settled keeps blocking. A reason
+        goes into its label only when the qualifier is a project this graph
+        declares — `vendor/legal review` or a URL is text, not a missing
+        project."""
         text = text.strip()
+        if "/" not in text:
+            return super().external_blocker_state(text)
+        qualifier, _, bare = text.partition("/")
+        if (not qualifier or not bare or "/" in bare or " " in bare
+                or qualifier in WORK_STATUSES):
+            return False, ""
         try:
-            if "/" not in text:
-                return (self.get(text) is None
-                        and self.tombstone(text) is not None), ""
-            qualifier = text.partition("/")[0]
-            if qualifier in WORK_STATUSES:
-                return False, ""
+            registry = FsProjectRegistry.open(self.node_root)
+            if (registry.get(qualifier) is None
+                    and registry.unreachable_project(qualifier) is None):
+                return False, ""                   # not a project: prose
             found = resolve_qualified_work_ref(self.node_root, text)
             if found is None:
-                why = qualified_work_ref_problem(self.node_root, text)
-                unknown = why == f"no such project in this graph: {qualifier}"
-                return False, "" if unknown else why
-            store, bare = found
-            target = store.get(bare)
+                return False, qualified_work_ref_problem(self.node_root, text)
+            store, slug = found
+            target = store.get(slug)
             if target is not None:
                 return target.status in RESOLVED_STATUSES, ""
-            if store.tombstone(bare) is not None:
+            if store.tombstone(slug) is not None:
                 return True, ""
             return False, f"no such work item: {text}"
         except Exception:                          # a blocker never fails its reader
