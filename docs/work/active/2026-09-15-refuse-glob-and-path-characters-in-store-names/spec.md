@@ -15,8 +15,8 @@ None to the ledger.
 - The store's git calls pass paths as pathspecs. Only `git_rm` and one
   `ls-files` use `--literal-pathspecs`. `git add` (`git_stage`, `git_mv`),
   `git rm --cached`, `git status`, `git commit -- <paths>`, `git ls-files`,
-  `git log` / `git ls-tree` / `git diff` over an item's path — each matches other
-  folders when a name holds `*`, `?` or `[`. Reproduced: `tcw capabilities set
+  `git ls-tree` over an item's path, `git diff --cached` in `cli.py` — each can
+  match other folders when a name holds `*`, `?` or `[`. Reproduced: `tcw capabilities set
   'a*' …` staged `abc/meta.yaml`. Two calls bypass `_git`: the graveyard
   `git status` in `fs.py` and `git diff --cached` in `tcw/work/cli.py`.
 
@@ -29,7 +29,10 @@ None to the ledger.
 2. Every store git argument that git reads as a pathspec is passed as
    `:(literal)<path>`, per path, through one helper. `git mv`, which reads plain
    paths and rejects the prefix, is unchanged. Nothing is set in the
-   environment, so no git hook TCW's commits run sees a changed setting.
+   environment, so no git hook TCW's commits run sees a changed setting. When
+   `GIT_LITERAL_PATHSPECS` is already on (git exports it to hooks and aliases
+   run under `git --literal-pathspecs`), the prefix is left off: git would read
+   it as part of the file name, and paths are literal anyway.
 3. The two direct git calls get the same treatment.
 4. Names with `*`, `?`, `[` stay legal (no model change).
 
@@ -46,7 +49,10 @@ None to the ledger.
    `GET /api/work/%2Fetc%2Fpasswd` → 404, not 500. Same for `""` and `a/b`.
 2. With capabilities `a*` and `abc`, and an uncommitted edit in `abc`: writing
    `a*` stages and commits only `a*`; `abc`'s edit stays unstaged.
-3. The same for a work item slug holding `[` and `?` through a transition commit.
+3. The same for paths holding `[` and `?` through the store's stage and scoped
+   commit helpers (`git_stage`, `git_commit_result`), which a transition commit
+   calls; work slugs themselves cannot hold these characters. With
+   `GIT_LITERAL_PATHSPECS=1` inherited, writes still succeed.
 4. A taxonomy or capabilities move (`git_mv`) of a glob-named folder moves only
    it.
 5. Existing tests pass; full suite passes.
