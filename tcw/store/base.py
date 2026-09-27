@@ -3859,9 +3859,13 @@ class WorkStore(ABC):
         return ref
 
     def _entry_for(self, ref: str) -> dict:
-        """A blocker entry: a resolvable ref → {slug}, else {external}."""
+        """A blocker entry: a ref to an item this store holds or once held →
+        {slug}, else {external}. A resolved item already reduced to its
+        tombstone is still this store's item; recording it as external text
+        would make it block forever."""
         ref = self._normalize_ref(ref)
-        return {"slug": ref} if self.get(ref) is not None else {"external": ref}
+        known = self.get(ref) is not None or self.tombstone(ref) is not None
+        return {"slug": ref} if known else {"external": ref}
 
     @staticmethod
     def _same_entry(a: dict, b: dict) -> bool:
@@ -3955,6 +3959,13 @@ class WorkStore(ABC):
         norm = self._normalize_ref(ref)
         kept = [e for e in entries
                 if e.get("slug") != norm and e.get("external") != norm]
+        if len(kept) == len(entries) and norm.endswith(")"):
+            # A label copied from `list` may carry the reason it still blocks,
+            # "external: <text> (<why>)"; the stored text has no reason, and the
+            # reason may hold brackets of its own, so match the stored text.
+            kept = [e for e in entries
+                    if not ("external" in e
+                            and norm.startswith(f"{e['external']} ("))]
         if len(kept) == len(entries):
             raise ValueError(f"no such blocker on {slug}: {ref}")
         return kept
@@ -4028,15 +4039,41 @@ class WorkStore(ABC):
         # cleared, which is the one thing a caller must not be handed.
         return self._require(slug)
 
+    def external_blocker_state(self, text: str) -> tuple[bool, str]:
+        """Whether an `external:` blocker's text names work that is resolved, and
+        if it still blocks, why (or "").
+
+        Here, the case every store can answer from its own interface: a bare
+        slug naming an item this store holds or once held — an older entry
+        written before a tombstoned local item was recorded as `slug:`. The live
+        item wins when there is one, so the machine that still has the resolved
+        folder answers as every other clone does. Anything else keeps blocking; a
+        store that can address other projects overrides this for
+        `<project-id>/<slug>`."""
+        text = text.strip()
+        if not text or "/" in text:
+            return False, ""
+        try:
+            live = self.get(text)
+            if live is not None:
+                return live.status in RESOLVED_STATUSES, ""
+            return self.tombstone(text) is not None, ""
+        except Exception:                          # a blocker never fails its reader
+            return False, ""
+
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if
-        it is external, or a slug whose item is not resolved — a *discarded*
+        it is external text `external_blocker_state` cannot settle as resolved
+        work, or a slug whose item is not resolved — a *discarded*
         blocker no longer blocks, since a decision not to do it is as final as
         doing it. A slug that no longer resolves counts as resolved (silently)."""
         out: list[str] = []
         for b in item.blocked_by:
             if "external" in b:
-                out.append(f"external: {b['external']}")
+                resolved, why = self.external_blocker_state(str(b["external"]))
+                if not resolved:
+                    out.append(f"external: {b['external']}"
+                               + (f" ({why})" if why else ""))
             elif "slug" in b:
                 try:
                     blocker = self.get(b["slug"])

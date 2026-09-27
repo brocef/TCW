@@ -5,6 +5,11 @@ internal module names.
 
 ## Fixes
 
+- **A blocker on another project's item clears when that item is done.** Record
+  it as `--blocked-by <project-id>/<slug>`; `start`, `list` and `reconcile` now
+  see it resolve, including in checkouts where the finished item's folder is
+  gone. A blocker on a finished item in your own project no longer blocks
+  forever either.
 - **An epic can span packages behind a folder that has no board of its own.**
   `tcw work delegate` reaches them, and `tcw work reconcile` lists every slice,
   however deep — as the guide already said.

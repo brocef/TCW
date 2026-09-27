@@ -5769,6 +5769,41 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 self._publish_after_transition(slug, status or "removed")
             return location
 
+    def external_blocker_state(self, text: str) -> tuple[bool, str]:
+        """Also settle `<project-id>/<slug>` — exactly that shape, through
+        `resolve_qualified_work_ref`, the addressing `tcw://` references already
+        use in any direction across the registered graph; the live item wins,
+        then the tombstone. Bare slugs are the base store's answer.
+
+        Never raises: a blocker that cannot be settled keeps blocking. A reason
+        goes into its label only when the qualifier is a project this graph
+        declares — `vendor/legal review` or a URL is text, not a missing
+        project."""
+        text = text.strip()
+        if "/" not in text:
+            return super().external_blocker_state(text)
+        qualifier, _, bare = text.partition("/")
+        if (not qualifier or not bare or "/" in bare or " " in bare
+                or qualifier in WORK_STATUSES):
+            return False, ""
+        try:
+            registry = FsProjectRegistry.open(self.node_root)
+            if (registry.get(qualifier) is None
+                    and registry.unreachable_project(qualifier) is None):
+                return False, ""                   # not a project: prose
+            found = resolve_qualified_work_ref(self.node_root, text)
+            if found is None:
+                return False, qualified_work_ref_problem(self.node_root, text)
+            store, slug = found
+            target = store.get(slug)
+            if target is not None:
+                return target.status in RESOLVED_STATUSES, ""
+            if store.tombstone(slug) is not None:
+                return True, ""
+            return False, f"no such work item: {text}"
+        except Exception:                          # a blocker never fails its reader
+            return False, ""
+
     def tombstone(self, slug: str) -> Tombstone | None:
         """Read `slug`'s record out of the store's `graveyard.yaml`.
 
