@@ -157,3 +157,38 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     with pytest.raises(ValueError, match="capability login"):
         FsTaxonomyStore.open(root).remove("zed")
     assert lists(root, "zed")
+
+
+# ── review fold-in: symlinks and a malformed capability ──────────────────────
+
+def test_an_untracked_symlink_to_a_tracked_file_refuses_before_removing(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    term(root, "zed")
+    folder = root / "docs" / "taxonomy" / "zed"
+    (folder / "alias.yaml").symlink_to("meta.yaml")
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 1 and "zed/alias.yaml" in err, err
+    assert (folder / "meta.yaml").exists() and lists(root, "zed")
+
+
+def test_a_tracked_symlink_does_not_vouch_for_its_untracked_target(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    term(root, "zed")
+    folder = root / "docs" / "taxonomy" / "zed"
+    (folder / "mine.md").write_text("mine")
+    (folder / "link.md").symlink_to("mine.md")
+    git(root, "add", str(folder / "link.md"))
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 1 and "zed/mine.md" in err, err
+    assert (folder / "meta.yaml").exists() and lists(root, "zed")
+
+
+def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    term(root, "zed")
+    bad = root / "docs" / "capabilities" / "broken"
+    bad.mkdir()
+    (bad / "meta.yaml").write_text("Subject: [unclosed\n")
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 1 and "capabilities that might name it cannot be read" in err, err
+    assert lists(root, "zed")

@@ -215,16 +215,16 @@ OS_METADATA_FILES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
 
 def _untracked_under(folder: Path, tracked: set[Path]) -> list[Path]:
     """Files (and symlinks) under `folder` that are not in `tracked`, skipping
-    operating-system metadata files. Symlinks are listed, never followed."""
+    operating-system metadata files. Symlinks are listed, never followed, and
+    compared as themselves: `tracked` holds paths with their folders resolved
+    and their last component as git lists it."""
     found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(folder, followlinks=False):
         base = Path(dirpath)
         links = [n for n in dirnames if (base / n).is_symlink()]
         for name in [*filenames, *links]:
-            path = (base / name)
-            if name in OS_METADATA_FILES:
-                continue
-            if path.resolve() not in tracked and path not in tracked:
+            path = base / name              # `base` is under the resolved folder
+            if name not in OS_METADATA_FILES and path not in tracked:
                 found.append(path)
     return sorted(found)
 
@@ -2279,7 +2279,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                        "ls-files", "-z", "--", str(d)],
                       capture_output=True, text=True, check=True).stdout
         here, top = d.resolve(), self.root.resolve()
-        tracked = [(self.store_git_root / f).resolve() for f in listed.split("\0") if f]
+        # The folder resolved, the name kept: resolving the last component would
+        # let a symlink stand in for its target, or the target for the link.
+        tracked = [(self.store_git_root / f).parent.resolve() / Path(f).name
+                   for f in listed.split("\0") if f]
         if not any(f.parent == here for f in tracked):
             # `git rm` would fail with git's own words; say it in ours.
             raise ValueError(f"cannot remove '{term.slug}': its files are not tracked "
@@ -2310,9 +2313,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if d.exists() and not _untracked_under(d.resolve(), set()):
             shutil.rmtree(d)                    # only OS metadata files are left
         if term.slug in self._local_slugs():
-            # A safety net for a race: the check above found nothing to leave.
+            # A safety net: the check above found nothing to leave, so only a
+            # file written meanwhile gets here.
             raise ValueError(f"removed the tracked files of '{term.slug}', but it "
-                             f"still lists: files git does not track appeared in {d}")
+                             f"still lists: files git does not track remain in {d}")
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
         """`capability <path> (Subject|Feature)` for every local capability whose
@@ -2328,26 +2332,22 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             if not caps.root.is_dir():
                 return []
             local = caps.list_all(local_only=True)
-        except ValueError as e:
+        except (ValueError, yaml.YAMLError) as e:
             raise ValueError(f"cannot remove '{slug}': the capabilities that might "
                              f"name it cannot be read: {e}") from None
         out = []
         for cap in local:
-            subject = cap.fields.get("Subject")
-            feature = cap.fields.get("Feature")
-            for field, refs in (
-                    ("Subject", subject if isinstance(subject, list) else
-                     [subject] if subject else []),
-                    ("Feature", [feature] if feature else [])):
-                hits = []
-                for ref in refs:
-                    try:
-                        hits.append(self.get(str(ref)))
-                    except AmbiguousRef:
-                        continue
-                if any(hit is not None and hit.origin == "local"
-                       and _same_folder(self.root / hit.slug, target) for hit in hits):
-                    out.append(f"capability {cap.path} ({field})")
+            named = set()
+            for field, ref in FsCapabilitiesStore._term_refs(cap.fields):
+                try:
+                    hit = self.get(ref)
+                except AmbiguousRef:
+                    continue
+                if (hit is not None and hit.origin == "local"
+                        and _same_folder(self.root / hit.slug, target)):
+                    named.add(field)
+            out += [f"capability {cap.path} ({field})"
+                    for field in ("Subject", "Feature") if field in named]
         return out
 
     def _referrers(self, target: Path) -> list[str]:
@@ -3305,11 +3305,22 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                     out.append(f"{field} → {e}")
         return out
 
+    @staticmethod
+    def _term_refs(f) -> list[tuple[str, str]]:
+        """`(field, ref)` for every taxonomy reference a capability makes — the
+        one definition of which references count, read by `check` and by the
+        taxonomy's refusal to remove a term a capability names.
+
+        `str(...)`, as the other four ref fields already do: a ref resolver
+        takes a string, and a non-string here used to escape as AttributeError
+        out of `taxonomy.get` rather than as a refusal the caller can read."""
+        refs = [("Subject", str(s)) for s in _as_list(f.get("Subject"))]
+        if f.get("Feature"):
+            refs.append(("Feature", str(f["Feature"])))
+        return refs
+
     def _check_subject(self, f, taxonomy) -> list[str]:
-        # `str(...)`, as the other four ref fields already do: a ref resolver
-        # takes a string, and a non-string here used to escape as AttributeError
-        # out of `taxonomy.get` rather than as a refusal the caller can read.
-        subjects = [str(s) for s in _as_list(f.get("Subject"))]
+        subjects = [ref for field, ref in self._term_refs(f) if field == "Subject"]
         if not subjects or taxonomy is None:
             return []
         out = []
@@ -3322,10 +3333,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return out
 
     def _check_feature(self, f, taxonomy) -> list[str]:
-        feature = f.get("Feature")
+        feature = next((ref for field, ref in self._term_refs(f)
+                        if field == "Feature"), None)
         if not feature or taxonomy is None:
             return []
-        feature = str(feature)          # see `_check_subject`
         try:
             target = taxonomy.get(feature)
         except AmbiguousRef:

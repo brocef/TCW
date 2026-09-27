@@ -60,7 +60,7 @@ folder.
    succeeds and neither `zed` nor `zed/kid` lists (keeping
    `tests/test_taxonomy.py`'s leftover-folder test passing).
 5. `zed/meta.yaml` never staged → exit 1, a TCW message, not git's.
-6. The web app's term DELETE refuses case 1 too.
+6. *(Revised: the web app has no term-removal route.)* The guard is in the store, so any caller gets it: `FsTaxonomyStore.remove` refuses case 1 directly.
 7. Full suite passes.
 
 ## Risks
