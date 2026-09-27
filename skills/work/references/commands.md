@@ -384,8 +384,9 @@ release`) is simply taken by `start`.
 A claim is briefly in flight, and reads settle across that window rather than
 reporting the item missing — a blocker being started elsewhere still blocks. If a
 claimant died mid-claim, reads report an **interrupted claim** instead of guessing;
-`tcw work start <slug> --take-over --owner <identity>` is the documented recovery,
-and it still works while that state persists. A configured `work.path` changes only the
+`tcw work start <slug> --take-over --owner <identity>` is the documented recovery:
+it runs the `start` hooks against the item as it was, and (under strict tracker
+mode) does not claim the ticket again. The web app offers the same as **Recover**. A configured `work.path` changes only the
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
 

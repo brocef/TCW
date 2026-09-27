@@ -583,7 +583,14 @@ Claiming an item is atomic, and concurrent commands read across it safely: an
 item mid-claim is never mistaken for a missing one, so a blocker being started
 elsewhere still blocks. If a process dies holding a claim, reads report an
 interrupted claim and point at `tcw work start <slug> --take-over --owner <id>`
-rather than pretending the item is gone.
+rather than pretending the item is gone. That command finishes the claim for
+the owner you name, running the `start` hooks against the item as it was. The
+web app lists interrupted starts above the work list with a **Recover** button,
+which finishes the claim for the identity `tcw serve` runs as (`TCW_WORK_OWNER`,
+else your Git email or name); it recovers only an interrupted start, never an
+item someone else has already started. Under strict tracker mode recovery does
+not claim the ticket again: the interrupted start claimed it before moving the
+item.
 
 ## Rolling up an epic, and delegating across nodes
 

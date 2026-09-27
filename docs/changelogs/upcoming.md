@@ -10,3 +10,19 @@ category.
   instead of becoming `store`, and `~/store` is no longer expanded into an
   absolute home-directory path in a committed file. A `~name` naming no user (in
   `work.path` or `--path`) is reported as `tcw init: …` instead of a traceback.
+
+### Fixed
+
+- `tcw work start <slug> --take-over` recovers an interrupted claim again. `_start`
+  read the item with `get` for the `pre` hook before reaching the store, and
+  `get` raises for an item left in `.claiming/`, so the documented remedy
+  printed the same error. New `WorkStore.interrupted_claims()` (default `[]`;
+  `FsWorkStore` reads `.claiming/<slug>-<hex>`, reporting each item as it was,
+  status `backlog`) supplies the item for the hook, `before` and `previous`.
+  Under strict tracker mode a recovery skips the ticket claim, which the
+  interrupted start already made.
+- The web app can recover one: `GET /api/work/interrupted-claims`, and the start
+  action's `recover: true`, which refuses (409) anything but an interrupted claim
+  and claims for the server's identity (`_local_owner`). The board shows a
+  notice with a Recover button. `_strict_refuses` reads an interrupted claim
+  instead of raising on it.
