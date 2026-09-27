@@ -235,7 +235,11 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         # the actionable message is "fix this line" rather than "run this
         # command", so it travels the same way.
         raise
-    except ValueError:
+    except StoreLocationUnusable:
+        # The one failure that means "there is no store at this location" — the
+        # ladder's own definition (see `resolve_store`). Anything else, a broken
+        # `extends` or a malformed `<component>.path`, is a node that is here and
+        # wrong, and "run `tcw init`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
     # nothing when nothing is configured (rule 4), so the "is this component

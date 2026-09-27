@@ -2239,3 +2239,53 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
     problems = [p for p in validate(code) if p.startswith("taxonomy check: ")]
     assert len(problems) == 1, problems
     assert "tcw provision" in problems[0], problems
+
+
+# ── A store that fails to open is not "no node here" ─────────────────────────
+# spec: 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here
+
+def _broken_extends(tmp_path: Path, component: str, extends: str) -> Path:
+    node = _repo(tmp_path / "node")
+    init([component], node, "node")
+    config = node / "tcw-config.yaml"
+    config.write_text(config.read_text() + f"{component}:\n  extends: [{extends}]\n")
+    return node
+
+
+def _assert_reports_not_no_node(err: str, component: str, *expected: str) -> None:
+    assert f"no tcw {component} node here" not in err, err
+    assert "tcw init" not in err, err
+    for text in expected:
+        assert text in err, err
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_an_unreachable_extends_reaches_the_user(tmp_path, monkeypatch, capsys, component):
+    node = _broken_extends(tmp_path, component, "ghost")
+    monkeypatch.chdir(node)
+    assert main([component, "list"]) == 1
+    _assert_reports_not_no_node(capsys.readouterr().err, component, "ghost")
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_a_store_extending_itself_reaches_the_user(tmp_path, monkeypatch, capsys, component):
+    node = _broken_extends(tmp_path, component, "node")
+    monkeypatch.chdir(node)
+    assert main([component, "list"]) == 1
+    _assert_reports_not_no_node(capsys.readouterr().err, component, "cannot extend itself")
+
+
+def test_a_node_without_a_work_store_still_says_so(tmp_path, monkeypatch, capsys):
+    node = _repo(tmp_path / "node")
+    init(["taxonomy"], node, "node")
+    monkeypatch.chdir(node)
+    assert main(["work", "list"]) == 1
+    assert "no tcw work node here" in capsys.readouterr().err
+
+
+def test_procedure_prompt_without_a_work_store_still_prints_the_builtin(tmp_path, monkeypatch, capsys):
+    node = _repo(tmp_path / "node")
+    init(["taxonomy"], node, "node")
+    monkeypatch.chdir(node)
+    assert main(["work", "procedure", "prompt", "unattended-work"]) == 0
+    assert "## The advisors" in capsys.readouterr().out
