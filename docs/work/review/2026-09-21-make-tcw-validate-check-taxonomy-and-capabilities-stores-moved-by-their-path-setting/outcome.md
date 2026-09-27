@@ -74,3 +74,7 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   (path mode, configured path) though the reviewer placed it in a separate
   change: two lines in code this item wrote. Not changed: stores reopened
   several times per run (cost only).
+- **Verify** (tcw:verifier): accept; all nine criteria met (147 targeted tests;
+  hands-on for each, before and after, against main's build). It raised that
+  `tcw capabilities check` now fails when a configured taxonomy will not open —
+  the review decision recorded above; kept. Decision: accept.
