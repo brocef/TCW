@@ -77,3 +77,9 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   `2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilities-check-and-taxonomy-rm`.
   Not filed: a possible false refusal on a case-insensitive disk when git's and
   the disk's spelling differ (unverified, errs toward refusing).
+- **Code re-review**: DONE, merge; each round-1 fix confirmed with new probes
+  (symlinks to folders, tracked links, a node reached through a symlink).
+- **Verify** (tcw:verifier): accept; all criteria met as revised (135 targeted
+  tests; hands-on for each, symlink cases included). It asked that the rewritten
+  criteria 3, 4 and 6 be approved: they were decided with both advisors, above,
+  and are kept. Decision: accept.
