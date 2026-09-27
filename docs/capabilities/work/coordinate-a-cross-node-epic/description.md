@@ -43,8 +43,7 @@ is not the same as everything resolved.
 This reads the same in every checkout. A resolved slice's folder is often absent —
 another clone, or a board that deletes resolved work — but the record TCW keeps of
 it names the epic, so the epic still counts it. Slices resolved before that record
-existed do not count; such an epic closes by starting it and completing it with
-`--force`.
+existed do not count; such an epic closes by starting it and then completing it.
 
 To refresh the epic's own summary of its slices, see
 [Reconcile an epic rollup](tcw://C/work/reconcile-an-epic-rollup).

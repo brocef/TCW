@@ -5397,9 +5397,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # that neither of them had to have.
             self._refresh_before_transition()
             self._require_writable_graveyard(slug)
-            known = self.tombstone(slug)
+            # The adopter backfills where the resolved folder is still on disk,
+            # so the item can say which epic it closed under.
             self._write_tombstone(slug, resolution, resolved,
-                                  initiative=known.initiative if known else "")
+                                  initiative=(item.initiative or "") if item is not None else "")
             if self.auto_commit_transitions():
                 path = self._graveyard_path()
                 err = git_commit_result(

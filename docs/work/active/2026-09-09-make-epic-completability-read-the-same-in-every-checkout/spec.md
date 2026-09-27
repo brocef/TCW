@@ -33,8 +33,8 @@ complete an epic ("Cannot verify the initiative children…") or run
 1. **The tombstone records `initiative`** — the child's `initiative` at the
    moment it is resolved; omitted when empty. Every path that writes or
    rewrites a record carries it: resolution, `retain: false` deletion and its
-   retry, nested items. Editing `initiative` on a retained resolved item keeps
-   its tombstone in step.
+   retry, nested items, `tombstone add` (from the item, where it is present).
+   Editing `initiative` on a resolved item is refused (see Notes).
 2. **Store operation** `resolved_initiative_children(epic_slug) -> list[tuple[str, str]]`
    — `(node_id, slug)` pairs of tombstoned children. Base default `[]`;
    `FsWorkStore` reads the graveyard of this node and of `descendant_nodes`.
@@ -48,10 +48,11 @@ complete an epic ("Cannot verify the initiative children…") or run
 5. `reconcile`'s table lists tombstoned children as `node | slug | <resolution>`
    rows (no capability details), so "Ready to close" can appear when every child
    is absent.
-6. **Descendant-only graph note.** `UnreachableProject` gains `relation`
-   (`"child"` / `"parent"`); the registry offers the unreachable entries on child
-   edges declared by this node or its descendants; the store offers
-   `incomplete_graph_note(below=True)` (base default ""). The epic gate in
+6. **Descendant-only graph note.** The store offers
+   `incomplete_graph_note(below=True)` (base default ""): unreachable projects
+   declared as children by this node or by a present descendant. (The first
+   draft added a `relation` field to `UnreachableProject`; the registry
+   already answers "declared as a child by whom", so no field was needed.) The epic gate in
    `complete`, `epic_completable` and `check_type_change` use it. `start`'s
    upward epic resolution and CLI graph reporting keep the full note.
 
@@ -83,8 +84,8 @@ complete an epic ("Cannot verify the initiative children…") or run
    changed before resolution counts only for its new epic.
 4. In the resolving checkout (folder and tombstone both present) the child is
    counted once.
-5. `retain: false` deletion keeps `initiative` in the record; editing a
-   retained resolved child's `initiative` updates its record.
+5. `retain: false` deletion and `tombstone add` keep `initiative` in the
+   record; editing a resolved child's `initiative` is refused.
 6. `edit --type ""` on an epic whose only child is tombstoned is refused.
 7. `reconcile` on E with every child absent shows the children and
    "Ready to close".
@@ -95,7 +96,6 @@ complete an epic ("Cannot verify the initiative children…") or run
 
 ## Risks
 
-- `UnreachableProject` gains a field; every constructor must pass it.
 - Graveyard rewrites are concurrency-sensitive (`_graveyard_lock`).
 
 ## Notes
@@ -106,5 +106,9 @@ not bare slugs; live wins; carry the field through the deletion rewrite; a
 `relation` field for the descendant note. Codex: counting in
 `check_type_change` and `reconcile`; `--force` does not reach backlog legality,
 so legacy recovery must be documented; keep the full note for `start`.
-Keeping the tombstone in step on an `initiative` edit (rather than refusing the
-edit) was my choice: it changes no existing edit behaviour.
+**Changed at implement:** the first draft kept the tombstone in step on an
+`initiative` edit. That write would leave `graveyard.yaml` with an uncommitted
+change (an edit commits nothing), and the next resolving transition refuses a
+dirty graveyard; so the edit is refused instead. That removes one route that
+worked before — demoting an epic by clearing a resolved child's initiative —
+and `check_type_change` now advises completing the epic in that case.

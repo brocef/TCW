@@ -3794,10 +3794,14 @@ class WorkStore(ABC):
             return
         children = self.initiative_children(item.slug)
         if children:
+            # A resolved child's initiative cannot be cleared — its record keeps
+            # the epic — so only an open child can be moved away.
+            advice = ("Complete the epic, or clear the open ones' --initiative first."
+                      if any(c.status not in RESOLVED_STATUSES for c in children)
+                      else "Complete the epic instead.")
             raise ValueError(
                 f"Cannot make epic {item.slug} a plain item; these items name it as "
-                f"their initiative: {', '.join(c.slug for c in children)}. Complete "
-                f"the epic, or clear their --initiative first.")
+                f"their initiative: {', '.join(c.slug for c in children)}. {advice}")
         if gone := self.resolved_initiative_children(item.slug):
             names = ", ".join(slug if node == "." else f"{node}/{slug}"
                               for node, slug in gone)

@@ -243,3 +243,30 @@ def test_reconcile_counts_a_present_child_once(solo):
     block = reconcile(solo.node_root, e)
     assert block.count(child) == 1 + 0, block      # one table row, no duplicate
     assert "all 1 children resolved" in block, block
+
+
+# ── review findings ─────────────────────────────────────────────────────────
+
+def test_a_backfilled_record_names_the_epic(solo):
+    e = epic(solo)
+    child = new(solo, "Child", initiative=e)
+    finish(solo, child)
+    grave = solo.root / "graveyard.yaml"
+    doc = yaml.safe_load(grave.read_text())
+    doc.pop(child)
+    grave.write_text(yaml.safe_dump(doc))
+    subprocess.run(["git", "-C", str(solo.node_root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(solo.node_root), "commit", "-qm", "drop"],
+                   check=True)
+    solo.record_tombstone(child, "done")
+    assert solo.tombstone(child).initiative == e
+
+
+def test_demoting_over_resolved_children_advises_only_completing(solo):
+    e = epic(solo)
+    child = new(solo, "Child", initiative=e)
+    finish(solo, child)
+    with pytest.raises(ValueError) as refused:
+        solo.update_work(e, type="")
+    assert "Complete the epic instead" in str(refused.value)
+    assert "--initiative" not in str(refused.value)

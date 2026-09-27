@@ -12,9 +12,9 @@ merges (it changes `reconcile`'s `_tasks_for`).
 3. **Store operation** — `resolved_initiative_children` (base default, Fs
    override over this node and `descendant_nodes`); use it in
    `epic_children_all_resolved` and `check_type_change`.
-4. **Graph note** — `relation` on `UnreachableProject` (base.py) set in
-   `tcw/store/project.py`; registry method for unreachable entries below;
-   `incomplete_graph_note(below=True)`; switch the three callers.
+4. **Graph note** — `incomplete_graph_note(below=True)` in `tcw/store/fs.py`,
+   filtering unreachable entries by the child ids declared here and below;
+   switch the three callers.
 5. **Reconcile** — tombstone rows in `tcw/work/recursion.py`.
 6. **Docs** — the `Tombstone` docstring (why the record grew), the epic
    section of `skills/work/references/epic-deltas.md` (legacy recovery),

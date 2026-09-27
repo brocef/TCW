@@ -67,8 +67,10 @@ a coordinator epic never needed its own `start`. `tcw work reconcile <epic>
 --complete-when-ready` auto-closes a ready epic; all gates still run.
 A resolved child still counts where its folder is gone — another clone, or after
 auto-delete — because its record in `graveyard.yaml` names the epic. A child
-resolved before that field existed does not; if the epic then reads as having
-no children, `tcw work start <epic>` and `tcw work complete <epic> --resolution
-done --force --confirm` (from `backlog`, `--force` does not reach it). Only a
+resolved before that field existed does not. If the epic then reads as having no
+children, run `tcw work start <epic>`, then `tcw work complete <epic>
+--resolution done --confirm`: `--force` cannot lift the rule that an epic with no
+children may not close from `backlog`, and once it is active it is not needed.
+Only a
 missing *child* project blocks closing or demoting an epic; a missing parent
 does not.
