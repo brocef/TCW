@@ -145,7 +145,7 @@ that drift from each other if nobody is told to look.
 
 The version string is **duplicated across 5 files** — a release bumps _all_ of them in lockstep, not just `pyproject.toml`. Keep them identical. `tests/test_plugin_manifests.py` guards that they agree.
 
-**Cut a release with `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`** — it bumps all 5 files, rotates `docs/{changelogs,release-notes}/upcoming.md` → `v{version}.md` (recreating fresh `upcoming.md`), commits, and tags. It aborts on version drift; it does **not** push (publishing stays a human step). Write the changelog/release-note entries into `upcoming.md` _before_ running it. The 5 files:
+**Cut a release with `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`** — it bumps all 5 files, combines the entry files in `docs/{changelogs,release-notes}/upcoming/` into each folder's `v{version}.md` (merging sections by heading, deleting the entry files, keeping each folder's `README.md`), commits, and tags. It aborts on version drift or a missing `upcoming/` folder; it does **not** push (publishing stays a human step). Each change adds its own `upcoming/<work-item-slug>.md` entry files _before_ the cut — never edit another change's file. The 5 files:
 
 1. `pyproject.toml` — `project.version`
 2. `tcw/__init__.py` — `__version__`

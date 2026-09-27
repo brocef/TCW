@@ -24,7 +24,7 @@ that every in-process test misses.
 | 5 | `tcw --version` in the clean venv matches the version in `pyproject.toml`. |
 | 6 | All **five** version-bearing files agree: `pyproject.toml`, `tcw/__init__.py`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`. |
 | 7 | `.agents/plugins/marketplace.json` carries **no** version key — deliberately, and a well-meaning addition would be a regression. |
-| 8 | `scripts/cut_version.py` run against a **copy** of the repo in the temp dir bumps all five, rotates `docs/changelogs/upcoming.md` and `docs/release-notes/upcoming.md` into `v<version>.md`, recreates fresh `upcoming.md` files, commits, and tags. |
+| 8 | `scripts/cut_version.py` run against a **copy** of the repo in the temp dir bumps all five, combines the entry files in `docs/changelogs/upcoming/` and `docs/release-notes/upcoming/` into each folder's `v<version>.md` (one `# v<version>` title, each section heading once), deletes those entry files while keeping each folder's `README.md`, commits, and tags. |
 | 9 | `cut_version.py` **aborts** when the five files disagree, and changes nothing — verified with a manifest hash, and with the git tag list unchanged. |
 | 10 | `cut_version.py` does **not** push. Assert against a local bare remote: after the cut, the remote has neither the commit nor the tag. |
 | 11 | `patch`, `minor`, `major` and an explicit `X.Y.Z` all produce the expected version. |

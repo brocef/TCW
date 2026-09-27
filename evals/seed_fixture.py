@@ -425,8 +425,12 @@ def seed(dest: Path, variant: str = "control") -> dict:
     # 6. Documentation entries, and the files they name. Case B10 asks an agent
     #    to close out a code change against a node that declares them, so a node
     #    declaring none gives it nothing to act on — `tcw work docs` says exactly
-    #    that. The trigger vocabulary is open and shape-validated only, so these
-    #    follow the convention TCW's own node uses.
+    #    that. The trigger vocabulary is open and shape-validated only.
+    #    The changelog deliberately stays one shared `upcoming.md` rather than the
+    #    `upcoming/<slug>.md` folder TCW's own node now uses: case B10 asserts the
+    #    exact list of changed paths, which a file named by the agent would break,
+    #    and it keeps the older layout the documentation-sync skill still supports
+    #    under test.
     _write(dest, "docs/changelogs/upcoming.md",
            "# Unreleased\n\n## Added\n\n## Changed\n\n## Fixed\n")
     _declare_documentation(dest)
