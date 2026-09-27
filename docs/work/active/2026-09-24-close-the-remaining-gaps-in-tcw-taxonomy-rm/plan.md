@@ -4,7 +4,7 @@
 
 1. **Tests first** in `tests/test_taxonomy_rm_gaps.py`: criteria 1-5 through
    `main(["taxonomy", "rm", ...])`, each asserting the term still lists after a
-   refusal; criterion 6 through the serve test helpers.
+   refusal; criterion 6 directly on `FsTaxonomyStore.remove` (there is no web-app term-removal route; see outcome).
 2. **Capability guard** in `FsTaxonomyStore.remove` (`tcw/store/fs.py`), with the
    abstract contract in `tcw/store/base.py` updated.
 3. **Children and own files**: compare the listing's folders under the term with
