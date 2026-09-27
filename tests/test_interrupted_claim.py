@@ -94,3 +94,50 @@ def test_take_over_of_an_active_item_still_works(tmp_path, monkeypatch, capsys):
     assert main(["work", "start", slug, "--owner", "first"]) == 0
     assert main(["work", "start", slug, "--take-over", "--owner", "second"]) == 0
     assert FsWorkStore.open(root).get(slug).owner == "second"
+
+
+# ── the web app lists and recovers an interrupted claim ──────────────────────
+
+@pytest.fixture
+def served(tmp_path, monkeypatch):
+    from test_serve_write import _start_server
+    monkeypatch.setenv("TCW_WORK_OWNER", "server@example.com")
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    httpd, base = _start_server(root)
+    yield root, base, slug
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_the_web_lists_an_interrupted_claim(served):
+    from test_serve_write import _get_json
+    root, base, slug = served
+    assert _get_json(base, "/api/work/interrupted-claims") == []
+    interrupt(root, slug)
+    assert _get_json(base, "/api/work/interrupted-claims") == [
+        {"slug": slug, "title": "Interrupted"}]
+
+
+def test_the_web_recovers_an_interrupted_claim_for_its_own_identity(served):
+    from test_serve_write import _req
+    root, base, slug = served
+    interrupt(root, slug)
+    status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {"recover": True})
+    assert status == 200, body
+    item = FsWorkStore.open(root).get(slug)
+    assert (item.status, item.owner) == ("active", "server@example.com")
+
+
+@pytest.mark.parametrize("state", ["backlog", "active"])
+def test_web_recover_refuses_an_item_that_is_not_an_interrupted_claim(served, state):
+    from test_serve_write import _req
+    root, base, slug = served
+    st = FsWorkStore.open(root)
+    if state == "active":
+        st.start(slug, owner="someone-else")
+    before = (st.get(slug).status, st.get(slug).owner)
+    status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {"recover": True})
+    assert status == 409 and "interrupted claim" in body["error"], body
+    after = FsWorkStore.open(root).get(slug)
+    assert (after.status, after.owner) == before

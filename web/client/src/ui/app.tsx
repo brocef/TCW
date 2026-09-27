@@ -37,7 +37,7 @@ import {
     FilterControls,
     StartModal,
 } from "./content-views"
-import { SettingsControl, Tree } from "./shared-components"
+import { InterruptedClaims, SettingsControl, Tree } from "./shared-components"
 import { beginResize, loadExpanded } from "./ui-state"
 import { AXES, LABELS, itemKey, parsePath, pathFor } from "./route-utils"
 import { openWorkResource } from "./work-resource"
@@ -76,6 +76,9 @@ export function App() {
         capabilities: [],
     })
     const [registeredTags, setRegisteredTags] = useState<string[]>([])
+    const [interruptedClaims, setInterruptedClaims] = useState<
+        { slug: string; title: string }[]
+    >([])
     const [filter, setFilter] = useState("")
     const [statusFilter, setStatusFilter] = useState<Record<string, boolean>>({
         backlog: true,
@@ -150,15 +153,22 @@ export function App() {
 
     const load = useCallback(async (preserveSelection = true) => {
         try {
-            const [work, taxonomy, capabilities, tags] = await Promise.all([
-                fetchJson<WorkItem[]>("/api/work"),
-                fetchJson<TaxonomyItem[]>("/api/taxonomy"),
-                fetchJson<CapabilityItem[]>("/api/capabilities"),
-                fetchJson<{ tags: string[] }>("/api/work/tags").catch(() => ({
-                    tags: [],
-                })),
-            ])
+            const [work, taxonomy, capabilities, tags, claims] =
+                await Promise.all([
+                    fetchJson<WorkItem[]>("/api/work"),
+                    fetchJson<TaxonomyItem[]>("/api/taxonomy"),
+                    fetchJson<CapabilityItem[]>("/api/capabilities"),
+                    fetchJson<{ tags: string[] }>("/api/work/tags").catch(
+                        () => ({
+                            tags: [],
+                        })
+                    ),
+                    fetchJson<{ slug: string; title: string }[]>(
+                        "/api/work/interrupted-claims"
+                    ).catch(() => []),
+                ])
             setData({ work, taxonomy, capabilities })
+            setInterruptedClaims(claims)
             setRegisteredTags(tags.tags ?? [])
             if (!preserveSelection) setSelected(null)
             setLoadError("")
@@ -728,6 +738,21 @@ export function App() {
         return true
     }
 
+    const recoverClaim = async (slug: string) => {
+        const result = await requestJson<JsonRecord>(
+            `/api/work/${encodeRef(slug)}/actions/start`,
+            "POST",
+            { recover: true }
+        )
+        if (!result.ok) {
+            setErrors([result.error || "recover failed"])
+            return
+        }
+        showToast("Work item recovered")
+        await load()
+        navigateTo("work", slug)
+    }
+
     const deletePlanStage = async (
         slug: string,
         name: string,
@@ -829,6 +854,12 @@ export function App() {
                         workSortDirection={workSortDirection}
                         setWorkSortDirection={setWorkSortDirection}
                     />
+                    {axis === "work" && (
+                        <InterruptedClaims
+                            claims={interruptedClaims}
+                            onRecover={(slug) => void recoverClaim(slug)}
+                        />
+                    )}
                     <div className="create-row">
                         <Button
                             className="create-btn"
