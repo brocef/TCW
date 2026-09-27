@@ -11,3 +11,5 @@ priority: 45
 effort: medium
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T03:58:09.833181Z'
+worktree: .worktrees/2026-09-15-resolve-sibling-nodes-to-their-worktree-copies
+branch: work/2026-09-15-resolve-sibling-nodes-to-their-worktree-copies
