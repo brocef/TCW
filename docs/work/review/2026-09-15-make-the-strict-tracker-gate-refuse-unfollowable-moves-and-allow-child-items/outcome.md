@@ -72,3 +72,9 @@ Run unattended on 2026-09-26/27 (`extras-autonomous-work`).
   ticket not nesting it silently.
 - **The request** was overwritten by the run early on and restored from git
   (`cfab9429`).
+- **Verify** (tcw:verifier): all criteria met, with 13 probes of its own
+  (rework, complete with and without a configured name, a resolved sibling, a
+  resolved parent, non-strict import). It found the spec claiming `--initiative`
+  is validated before the claim while the code — like `new` — does not
+  validate it; the spec is corrected. The catch-up walk broken part-way added to
+  the follow-up. Decision: accept.
