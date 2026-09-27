@@ -14,3 +14,12 @@ each judged to need a separate change:
 3. The filing hook prints the placeholder "(creating it did not succeed)" when
    creation succeeded and only the binding failed (`_ticket_on_filing` in
    `tcw/work/cli.py`): `_tracker_link` never appends to `reasons`.
+
+Added at verify of the same item:
+
+4. Values inside a Jira response are not type-checked: `{"status": {"name": 5}}`
+   makes `tcw work tracker show` crash with `AttributeError: 'int' object has no
+   attribute 'strip'` (`_print_ticket` → `assess`). The shape checks cover lists
+   and objects only.
+5. Strict `drop` refuses an item whose `tracker.yaml` cannot be read with "is, or
+   was, bound to a ticket", which overstates it; say the binding cannot be read.
