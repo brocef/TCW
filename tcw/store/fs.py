@@ -57,7 +57,7 @@ from tcw.store.base import (
     PublicationError, StoreDeclarationError, StoreLocationUnusable,
     StoreNotProvisioned, StoreProvisioner, UnreachableProject,
     TaxonomyStore, Term, TermDetail, Tombstone,
-    WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level,
+    WorkDetail, WorkItem, WorkStore, normalize_tag, normalize_work_level, read_tags,
 )
 from tcw.store import config_edit
 from tcw.store.checkouts import (
@@ -4969,7 +4969,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             priority=state.get("priority"),
             effort=state.get("effort") or "",        # `or ""`: bare YAML `effort:` (null) → ""
             complexity=state.get("complexity") or "",
-            tags=list(state.get("tags") or []),
+            tags=read_tags(state.get("tags")),
             body=body_text,
             blocked_by=list(state.get("blocked_by") or []),
             capabilities=capabilities,
@@ -6015,7 +6015,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         bad: list[str] = []
         for entry in raw if isinstance(raw, list) else []:
             try:
-                if not isinstance(entry, str):
+                # A comma is several tags written as one, which normalizing
+                # would quietly register as `cli-docs`.
+                if not isinstance(entry, str) or "," in entry:
                     raise ValueError(entry)
                 tags.add(normalize_tag(entry))
             except ValueError:
@@ -6483,6 +6485,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if current is not None and not isinstance(current, list):
             raise ValueError(f"{self._config_path()}: work.tags must be a list, "
                              f"found {type(current).__name__}")
+        if bad := self._registered_tag_entries()[1]:
+            # Rewriting the list from the tags would drop it without a word.
+            raise ValueError(f"{self._config_path()}: work.tags entry {bad[0]} is "
+                             f"not a tag; fix or remove it by hand, then run this again")
         result = sorted(tags)
         if current is not None and set(current) == set(tags):
             # Adding a tag already registered, or removing one that is not,
