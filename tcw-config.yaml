@@ -52,13 +52,16 @@ work:
       writes to disk, and which files TCW treats as its own records, because a guide
       that names a file or a key goes stale silently when that moves. docs/guide/jira.md
       has its own entry and is covered by Tracker-Change instead.
-  - path: docs/release-notes/upcoming.md
+  - path: docs/release-notes/upcoming/<slug>.md
     trigger: Public-API
     description: User-facing release notes for the next version; plain language, no
-      jargon or internal module names.
-  - path: docs/changelogs/upcoming.md
+      jargon or internal module names. One file per work item, named by its slug;
+      never edit another item's file. The folder's README.md says how to write one.
+  - path: docs/changelogs/upcoming/<slug>.md
     trigger: Any-Code-Change
-    description: Developer changelog for the next version; technical, grouped (Added/Changed/Fixed/Removed/Internal).
+    description: Developer changelog for the next version; technical, grouped under
+      `##` Added/Changed/Fixed/Removed/Internal headings. One file per work item,
+      named by its slug; never edit another item's file.
   - path: skills/<component>/SKILL.md
     trigger: Skill-Driven-Component
     description: The driving skills (`work`, `capabilities`, …) that teach

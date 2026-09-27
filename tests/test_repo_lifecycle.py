@@ -102,8 +102,8 @@ def test_this_repos_documentation_entries_parse():
         "README.md",
         "docs/guide/jira.md",
         "docs/guide/<topic>.md",
-        "docs/release-notes/upcoming.md",
-        "docs/changelogs/upcoming.md",
+        "docs/release-notes/upcoming/<slug>.md",
+        "docs/changelogs/upcoming/<slug>.md",
         "skills/<component>/SKILL.md",
         "skills/configure/references/<document>.md",
     ]
