@@ -89,8 +89,7 @@ def test_reconcile_looks_below_a_child_with_a_board(stacked):
 def test_delegate_stops_at_the_nearest_board(stacked):
     with pytest.raises(ValueError) as refused:
         delegate(stacked, "y", "Too deep")
-    assert "no child node 'y'" in str(refused.value)
-    assert "children: x" in str(refused.value)
+    assert "delegate to 'x'" in str(refused.value), refused.value
 
 
 # ── criterion 3: declared behind a routing node, absent here ────────────────

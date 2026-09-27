@@ -486,6 +486,15 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
                 f"cannot delegate to '{child_ref}': "
                 + (unreachable_project_note(registry, child_ref) or
                    f"project '{child_ref}' is declared but not reachable here"))
+        # Below a node that keeps a board: that node is the target, and it
+        # delegates further itself.
+        if registry.get(child_ref) is not None:
+            above = [a.id for a in registry.ancestors(child_ref) if a.id in children]
+            if above:
+                raise ValueError(
+                    f"'{child_ref}' is below '{above[0]}', the nearest node with "
+                    f"a board; delegate to '{above[0]}' and let it pass the "
+                    f"request on")
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)

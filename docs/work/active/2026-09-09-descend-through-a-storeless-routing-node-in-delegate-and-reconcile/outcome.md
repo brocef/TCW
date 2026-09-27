@@ -45,4 +45,8 @@
   predates this change). Slug-only matching in `_ready` belongs to
   `2026-09-09-resolve-a-cross-node-external-blocker-against-the-node-that-owns-it`,
   whose plan already rewrites `_ready`.
+- **Verifier, criterion 2 wording (accepted)** — the refusal for `delegate y`
+  only listed `x` among the children; the spec says it names `x` as the
+  target. It now says "'y' is below 'x', the nearest node with a board; delegate
+  to 'x'…", for any registered node below a board child.
 - **Rejected**: none.
