@@ -123,7 +123,6 @@ def test_an_unknown_parent_is_refused_before_the_ticket_is_touched(strict, uncla
     assert unclaimed.writes() == []
 
 
-
 # ── an already-bound ticket: the placement asked for is checked, never applied
 # (spec: 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here)
 
@@ -194,6 +193,19 @@ def test_both_placements_mismatched_say_so_once_each(strict, unclaimed):  # noqa
     assert code == 1 and len(lines) == 2, err
     assert parent in lines[0] and initiative in lines[1], err
     assert "→ already bound" not in err, err
+
+
+def test_a_bound_item_gone_before_it_is_read_is_reported(strict, unclaimed,  # noqa: F811
+                                                         monkeypatch):
+    parent = epic(strict)
+    slug = reimport(strict)[1].split()[0]
+    real_get = FsWorkStore.get
+    monkeypatch.setattr(FsWorkStore, "get",
+                        lambda self, ref: None if ref == slug else real_get(self, ref))
+    code, out, err = reimport(strict, "--parent", parent)
+    assert code == 1 and out.split() == [slug], (out, err)
+    assert "could not be read again" in err and "Traceback" not in err, err
+
 
 # ── review fold-in: the other gated moves, and a legacy catch-up binding ────
 

@@ -23,6 +23,11 @@
    `work/manage-external-tracker-intake` and `work/require-tracker-backed-work`,
    declared in `capabilities.yaml`.
 
+5. **Verify fold-in** — a test for the item-gone branch
+   (`test_a_bound_item_gone_before_it_is_read_is_reported`), which the verifier
+   found untested; mutation-checked by removing the guard (it fails with the
+   `AttributeError` the guard prevents). Blank lines in the test file tidied.
+
 ## Test result
 
 Full suite in the worktree, at `9816bba1`: 4733 passed, 3 skipped in 1308.15s (0:21:48) (main before this item: 4727 passed).
