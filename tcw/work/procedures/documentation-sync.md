@@ -43,7 +43,7 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 
 | Reference                                    | Load when                                                                                                                                                                                                        |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're writing entries, rotating `upcoming.md`, running the version cross-check, or migrating an existing `CHANGELOG.md`.   |
+| `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're adding an entry file to `upcoming/`, combining entries at a cut, running the version cross-check, or migrating an existing `CHANGELOG.md`. |
 | the `configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
 | `references/cut-version.md`                  | The user asked to cut a version and you're running it — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. See "When the user asks to cut a version" below. |
 
@@ -84,8 +84,8 @@ ritual only when the project has none.
 Updating the changelog files is **not** part of a version cut and does not wait
 for one. The release-note and developer-changelog working files among the
 project's documentation entries (`tcw work docs`, or its `## Documentation Sync`
-section when `source` is `agent-guide`) — such as `docs/release-notes/upcoming.md`
-and `docs/changelogs/upcoming.md` — are answered by the documentation gate at
+section when `source` is `agent-guide`) — such as `docs/release-notes/upcoming/<slug>.md`
+and `docs/changelogs/upcoming/<slug>.md`, one file per change — are answered by the documentation gate at
 the end of `implement`, like any other entry whose trigger fired. Work
 accumulates there until a cut is asked for.
 

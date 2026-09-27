@@ -38,7 +38,7 @@ Use the section below when the project is **not** a TCW node, or when the user p
 Before reporting any code change complete, invoke the `documentation-sync` skill to evaluate the entries below. When writing an implementation plan, include explicit documentation-update tasks for every entry whose trigger is expected to fire.
 
 - `README.md` [Public-API] — Public consumption, high-level, written for maximum human readability
-- `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog; technical, grouped by category
+- `docs/changelogs/upcoming/<slug>.md` [Any-Code-Change] — Developer changelog; technical, grouped by category; one file per work item
 - `CLI_GUIDE.md` [Public-CLI-API] — Updated when CLI behavior changes
 - `docs/api.md` [Only-Breaking] — Only updated for breaking changes
 ```

@@ -6,9 +6,9 @@ cut a version"). It covers choosing the bump size and running the version-cut
 ritual.
 
 Nothing asks for a cut on the user's behalf. If they have not asked for one,
-**stop** — leave version-bearing metadata, tags, and `upcoming.md` file names
-alone. The release-note and developer-changelog working files are kept current
-by the documentation gate at the end of `implement`, not by a version cut.
+**stop** — leave version-bearing metadata, tags, and the waiting `upcoming/`
+entries alone. The release-note and developer-changelog entries are written by
+the documentation gate at the end of `implement`, not by a version cut.
 
 ## Step 0: Does the project already have a version-cut process?
 
@@ -18,7 +18,7 @@ carry the version and how they must move together. Only fall through to the
 manual steps below when the project has no such process.
 
 > TCW's own repo is the example: `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`
-> bumps all five version-bearing files, rotates the `upcoming.md` working files,
+> bumps all five version-bearing files, combines the `upcoming/` entry files,
 > commits, and tags. Doing those steps by hand there would drift.
 
 ## Choosing the Bump
@@ -49,25 +49,44 @@ the tag in Step 4 _is_ the version).
 Grep for the current version string before you start; projects routinely carry it
 in more places than their docs admit.
 
-## Step 2: Rotate `upcoming.md` files
+## Step 2: Combine the `upcoming/` entries
 
-Write the release-note and changelog entries into the `upcoming.md` files first. The cut rotates them.
+Every change adds its entries first, as its own file in `docs/release-notes/upcoming/`
+and `docs/changelogs/upcoming/` (see `release-notes-and-changelogs.md`, "One
+file per change"). The cut combines each folder into one `v{version}.md` beside
+it. For each folder:
 
-Rename both working files to versioned files, then create fresh empty
-`upcoming.md` files for subsequent work:
+1. Take every `*.md` file in it **except `README.md`**, in file-name order.
+2. Split each file into a leading block — any text before its first line that
+   starts with `## ` — and its `## ` sections. A section is its `## ` heading
+   line plus everything up to the next `## ` line, so a `###` heading stays in
+   the section above it.
+3. Merge sections whose heading text is the same: one heading, with the bodies
+   underneath in file-name order, separated by a blank line.
+4. Order the merged sections. For the changelog: `Added`, `Changed`, `Fixed`,
+   `Removed`, `Internal` first, in that order, when present; then any other
+   heading in the order it first appeared. For release notes: the order each
+   heading first appeared.
+5. Write `v{version}.md`: the line `# v{version}`, a blank line, the leading
+   blocks in file-name order, then the sections. A folder with no entries gives
+   a file holding only the title line.
+6. Delete the combined entry files (`git rm`). Keep `README.md`.
 
-```bash
-git mv docs/release-notes/upcoming.md docs/release-notes/v{version}.md
-git mv docs/changelogs/upcoming.md docs/changelogs/v{version}.md
-```
+Never lose content — every entry waiting in `upcoming/` belongs to the version
+being cut. Do not fix a heading that looks mistyped (`## Fixes` beside
+`## Fixed`); it lands as its own section, where the release commit's reviewer
+will see it.
 
-If the project uses a different layout, adapt: rotate whatever per-release working
-file it keeps, then start a new one. Never lose content — every entry that was in
-`upcoming.md` belongs to the version being cut.
+**A project still on a single `upcoming.md`** rotates it instead: rename each
+`upcoming.md` to `v{version}.md` (`git mv`), change its `# Upcoming` title to
+`# v{version}`, drop the drafting preamble under it, and start a fresh
+`upcoming.md`. If the project uses a different layout altogether, adapt: turn
+whatever per-release working files it keeps into the version's document, then
+leave room for the next.
 
 ## Step 3: Commit
 
-Stage the version bump and the rotated docs **together**, so the versioned
+Stage the version bump and the combined docs **together**, so the versioned
 notes/changelog ship with the version — and keep that release commit free of
 functional code changes, which belong to the commits being released. Match the
 project's commit-message style if it has one; otherwise:
@@ -122,17 +141,20 @@ touched. What changes is the tag's position and the release documents' contents.
     git tag -d v{version}
     ```
 
-2. **Merge the newer content into the versioned files.** Anything written into
-   `docs/release-notes/upcoming.md` and `docs/changelogs/upcoming.md` since the
-   cut belongs to `v{version}.md` now — move it in, merging into the existing
-   sections rather than appending a second `## Added` beside the first.
+2. **Merge the newer entries into the versioned files.** Every entry file added
+   to `docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` since the
+   cut belongs to `v{version}.md` now. Merge them in by the Step 2 rules,
+   extending a section whose heading `v{version}.md` already has rather than
+   adding a second `## Added` beside the first, then delete them (keep
+   `README.md`). In a project still on a single `upcoming.md`, move its new
+   content in the same way.
 
 3. **Answer any still-unevaluated triggers** for the commits since the tag, into
    the same `v{version}.md` files. The fold is a documentation gate like any
    other; commits arriving after a cut are not exempt.
 
-4. **Reset the `upcoming.md` files** to their empty-header state — their content
-   just moved.
+4. **Check `upcoming/` holds only `README.md`** — its entries just moved. (A
+   project on a single `upcoming.md` resets it to its empty-header state.)
 
 5. **Commit**, matching the project's style:
 

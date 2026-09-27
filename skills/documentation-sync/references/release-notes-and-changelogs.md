@@ -1,8 +1,8 @@
 # Release Notes & Changelogs
 
-Load this reference when the project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure **and** you're writing into those files (appending entries, rotating `upcoming.md`, migrating an existing `CHANGELOG.md`, or evaluating version drift before an append).
+Load this reference when the project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure **and** you're writing into those files (adding an entry file, combining entries at a version cut, migrating an existing `CHANGELOG.md`, or evaluating version drift before adding an entry).
 
-**This structure is opt-in.** The `docs/release-notes/` and `docs/changelogs/` layout described below applies only when the project's documentation entries explicitly list `upcoming.md` files — from `tcw work docs`, or from a `## Documentation Sync` section when `source` is `agent-guide` (or when the user asks you to set the structure up — read the `configure` skill's `docs-sync.md`). Don't create `docs/release-notes/upcoming.md` or `docs/changelogs/upcoming.md` in a project that hasn't adopted them. Some projects use only GitHub Releases, only a root `CHANGELOG.md`, or have no version-history files at all — that's a valid choice.
+**This structure is opt-in.** The `docs/release-notes/` and `docs/changelogs/` layout described below applies only when the project's documentation entries explicitly list `upcoming/` entry files (or, in a project set up before folders, a single `upcoming.md`) — from `tcw work docs`, or from a `## Documentation Sync` section when `source` is `agent-guide` (or when the user asks you to set the structure up — read the `configure` skill's `docs-sync.md`). Don't create `docs/release-notes/upcoming/` or `docs/changelogs/upcoming/` in a project that hasn't adopted them. Some projects use only GitHub Releases, only a root `CHANGELOG.md`, or have no version-history files at all — that's a valid choice.
 
 For monorepos, each package may carry its own `docs/release-notes/` and `docs/changelogs/` directories, or the repo may share a single set at the root. Follow whatever the project's documentation entries point to; don't infer a structure that isn't listed.
 
@@ -11,14 +11,29 @@ For monorepos, each package may carry its own `docs/release-notes/` and `docs/ch
 ```
 docs/
   release-notes/
-    upcoming.md        # Working file for the next unreleased version
-    v1.2.3.md          # Finalized release notes for v1.2.3
+    upcoming/
+      README.md              # How to write an entry; never combined
+      <work-item-slug>.md    # One file per change, for the next version
+    v1.2.3.md                # Finalized release notes for v1.2.3
   changelogs/
-    upcoming.md        # Working file for the next unreleased version
-    v1.2.3.md          # Finalized changelog for v1.2.3
+    upcoming/
+      README.md
+      <work-item-slug>.md
+    v1.2.3.md                # Finalized changelog for v1.2.3
 ```
 
-File names follow the pattern `v{version}.md`. The `upcoming.md` files hold content for the next version, whose number is not yet known (could be a patch, minor, or major bump).
+Released files follow the pattern `v{version}.md`. The `upcoming/` folders hold entries for the next version, whose number is not yet known (could be a patch, minor, or major bump).
+
+### One file per change
+
+Every change adds **its own file** to each `upcoming/` folder whose entry fires, rather than editing a shared file. Two branches that each finish a change then write different files, so merging them cannot conflict over the notes.
+
+- **Name it after the work item:** `<work-item-slug>.md`. Work done outside any item uses `<YYYY-MM-DD>-<short-description>.md`, the same shape. Because slugs start with a date, file-name order is roughly the order the work happened.
+- **Edit only your own file.** A second pass on the same item (rework) edits that item's file. Never edit another change's file, even to fix a typo in passing.
+- **No `#` title.** Put entries under `##` headings. The changelog uses `## Added`, `## Changed`, `## Fixed`, `## Removed`, `## Internal`. Release notes use whatever headings the project uses; reuse one another entry already has when yours belongs with it. A `###` heading belongs to the `##` section above it.
+- **Keep `README.md`.** It carries the drafting guidance, it is never combined into a release, and it keeps the folder in git when no entries are waiting.
+
+At a version cut, the files are combined into `v{version}.md` — see `cut-version.md`, Step 2.
 
 ## Release Notes vs. Changelogs
 
@@ -48,29 +63,36 @@ File names follow the pattern `v{version}.md`. The `upcoming.md` files hold cont
 Projects using this structure should include these entries in their CLAUDE.md `## Documentation Sync` section:
 
 ```markdown
-- `docs/release-notes/upcoming.md` [Public-API] — User-facing release notes; plain language, no jargon
-- `docs/changelogs/upcoming.md` [Any-Code-Change] — Developer changelog; technical, grouped by category
+- `docs/release-notes/upcoming/<slug>.md` [Public-API] — User-facing release notes; plain language, no jargon; one file per work item
+- `docs/changelogs/upcoming/<slug>.md` [Any-Code-Change] — Developer changelog; technical, grouped under `##` category headings; one file per work item
 ```
 
 The trigger system determines when these files get updated — release notes fire on public-facing changes, changelogs fire on any code change.
 
 ## Version Cross-Check
 
-Before writing to `upcoming.md`, cross-check the project's current version (from `package.json`, `pyproject.toml`, `Cargo.toml`, `version.txt`, or whatever the project uses) against existing versioned files in `docs/release-notes/` and `docs/changelogs/`.
+Before adding an entry file, cross-check the project's current version (from `package.json`, `pyproject.toml`, `Cargo.toml`, `version.txt`, or whatever the project uses) against existing versioned files in `docs/release-notes/` and `docs/changelogs/`.
 
 Two scenarios surface drift:
 
-- **Version bumped, no `v{version}.md` exists yet:** the content currently in `upcoming.md` likely belongs to that version. **Tell the user what you found and confirm before renaming.** Do not silently rotate files.
-- **`v{version}.md` exists but `upcoming.md` has older content that predates the bump:** the `upcoming.md` content needs to be merged into the versioned file. Again, confirm with the user before merging — losing or relocating an entry without acknowledgment is worse than asking.
+- **Version bumped, no `v{version}.md` exists yet:** the entries waiting in `upcoming/` likely belong to that version. **Tell the user what you found and confirm before combining them.** Do not silently combine files.
+- **`v{version}.md` exists but `upcoming/` holds entries that predate the bump:** those entries need to be merged into the versioned file. Again, confirm with the user before merging — losing or relocating an entry without acknowledgment is worse than asking.
 
-After confirmation, the rotation is:
+After confirmation, combine the waiting entries into `v{version}.md` by the rules in `cut-version.md`, Step 2, and delete them.
 
-1. Rename `upcoming.md` to `v{version}.md` in both directories
-2. Start a fresh `upcoming.md` for subsequent work
+Always run the cross-check before adding an entry — never silently lose content that should be attributed to a released version, and never silently combine or delete files the user didn't ask you to touch.
 
-Always run the cross-check before appending — never silently lose content that should be attributed to a released version, and never silently rename files the user didn't ask you to rename.
+**Combining is part of the project's version-cut process.** Many projects automate the bump + combine + commit + tag steps behind a single command or script — follow whatever the project's `CLAUDE.md` / Versioning section documents rather than combining by hand when such a process exists.
 
-**The rotation itself is part of the project's version-cut process.** Many projects automate the bump + rotate + commit + tag steps behind a single command or script — follow whatever the project's `CLAUDE.md` / Versioning section documents rather than rotating by hand when such a process exists.
+## A project still on a single `upcoming.md`
+
+Projects set up before the folder layout declare `docs/changelogs/upcoming.md` and `docs/release-notes/upcoming.md` — one shared file each. The project's documentation entries are authoritative, so **keep writing where they point**: append to `upcoming.md` under its existing headings, and at a cut rename it to `v{version}.md` and start a fresh one, as the project always has.
+
+Then offer the folder layout — once in a session, not at every entry, and if the user declines, do not raise it again. It is a migration like any other below, never done unasked:
+
+> "Every change here edits the same `upcoming.md`, so work finished on separate branches conflicts when it merges. Want me to switch to one file per change in `upcoming/` folders?"
+
+If the user agrees: create each `upcoming/` folder with a `README.md` (the guidance above); move the current `upcoming.md` content, minus its title and preamble, into `upcoming/<YYYY-MM-DD>-carried-over.md`; change the documentation entries' paths to `upcoming/<slug>.md`; and update the project's version-cut script or instructions to combine the folder.
 
 ## Existing Project Migration
 
@@ -86,19 +108,21 @@ Only after the user agrees, follow the suggestion below. Always preserve the ori
 
 **Suggested migrations to offer:**
 
-| What you find                                                                        | Migration to propose                                                                                      |
-| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| Single root `CHANGELOG.md`                                                           | Split into `docs/changelogs/` per-version files; extract user-facing entries into `docs/release-notes/`   |
-| Release notes in `README.md`                                                         | Extract into `docs/release-notes/` per-version files; remove or replace the README section with a pointer |
-| Flat `docs/changelog.md` or similar                                                  | Restructure into per-version files under `docs/changelogs/` and `docs/release-notes/`                     |
-| Per-version files with different naming (e.g., `1.2.3.md` without `v` prefix)        | Rename to `v{version}.md`                                                                                 |
-| Only GitHub Releases (no files in repo)                                              | Pull release content into `docs/release-notes/` and `docs/changelogs/` per-version files                  |
-| Correct structure but missing one side (e.g., changelogs exist but no release notes) | Generate the missing side from the existing content                                                       |
+| What you find                                                                          | Migration to propose                                                                                      |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Single root `CHANGELOG.md`                                                             | Split into `docs/changelogs/` per-version files; extract user-facing entries into `docs/release-notes/`   |
+| Release notes in `README.md`                                                           | Extract into `docs/release-notes/` per-version files; remove or replace the README section with a pointer |
+| Flat `docs/changelog.md` or similar                                                    | Restructure into per-version files under `docs/changelogs/` and `docs/release-notes/`                     |
+| Per-version files with different naming (e.g., `1.2.3.md` without `v` prefix)          | Rename to `v{version}.md`                                                                                 |
+| A single `docs/changelogs/upcoming.md` / `docs/release-notes/upcoming.md` working file | Switch to `upcoming/` folders with one file per change — see "A project still on a single `upcoming.md`"  |
+| Only GitHub Releases (no files in repo)                                                | Pull release content into `docs/release-notes/` and `docs/changelogs/` per-version files                  |
+| Correct structure but missing one side (e.g., changelogs exist but no release notes)   | Generate the missing side from the existing content                                                       |
 
 ## Common Mistakes
 
-| Mistake                                                           | Fix                                                                              |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Silently rotating `upcoming.md` during version cross-check        | Tell the user what you found and confirm before renaming                         |
-| Acting on a migration without explicit user agreement             | The migration table lists _offers_ — never execute one unilaterally              |
-| Rotating files by hand when the project has a version-cut process | Use the project's documented version-cut process; it rotates as part of the bump |
+| Mistake                                                            | Fix                                                                               |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Silently combining `upcoming/` entries during version cross-check  | Tell the user what you found and confirm before combining                         |
+| Editing another change's entry file in `upcoming/`                 | Touch only your own `<work-item-slug>.md`; that is what keeps branches apart      |
+| Acting on a migration without explicit user agreement              | The migration table lists _offers_ — never execute one unilaterally               |
+| Combining files by hand when the project has a version-cut process | Use the project's documented version-cut process; it combines as part of the bump |

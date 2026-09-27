@@ -15,9 +15,11 @@ work:
           description: >-
               Public-facing overview and CLI usage. Update when the public
               surface or user-facing behavior changes.
-        - path: docs/changelogs/upcoming.md
+        - path: docs/changelogs/upcoming/<slug>.md
           trigger: Any-Code-Change
-          description: Developer changelog; technical, grouped by category.
+          description: >-
+              Developer changelog; technical, grouped by category. One file
+              per work item, named by its slug.
 ```
 
 Three required keys per entry, all non-empty strings. `path` need not exist yet — an entry naming a file the project intends to create is correct, and a placeholder like `skills/<component>/SKILL.md` is legal. `trigger` may be any project-defined name; only whitespace in it is rejected.
@@ -40,7 +42,7 @@ Then write the entries in the chosen form. For the config form, add the `work.do
 
 After adding the section, create any tracked files — **and their parent directories** — that don't already exist so the agent has somewhere to write on the first trigger fire. Use the conventional initial content for each:
 
-- **`docs/release-notes/` and `docs/changelogs/` directories**, each containing an `upcoming.md` file — create the directories if they don't exist; both `upcoming.md` files start with just a `# Upcoming` heading. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
+- **`docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` folders**, each holding a `README.md` — create them if they don't exist. The `README.md` says who the document is for and how to add an entry: one file per change named `<work-item-slug>.md`, `##` headings, no `#` title, never edit another change's file (the `documentation-sync` skill's `release-notes-and-changelogs.md` has the full convention). Entry files are added later, one per change; the version cut combines them into `v{version}.md`. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
 - **Other listed files** (e.g., guides, CLI docs) — only create stubs if the user explicitly asks; otherwise leave them for the user to author.
 
 ## Deferred follow-up work → track it as work items, not a doc
