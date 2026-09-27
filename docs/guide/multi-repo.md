@@ -166,7 +166,9 @@ parent naming its child, by locator or by `repository:` — any project this
 repository's worktree also holds resolves to the worktree's copy — a submodule's
 checkout included, since it is the commit the branch pins, but not a separate
 repository cloned inside it — so running from any of the repository's projects sees one
-graph, not the primary checkout's copies as duplicates.
+graph, not the primary checkout's copies as duplicates. (Running from inside a
+submodule's own checkout, or in a repository that is itself a submodule of
+another, is not covered yet.)
 This is the one place git metadata is consulted, and it only re-points a locator:
 it never discovers a project or infers a relation. Projects outside a worktree,
 and projects not in a git repository at all, are unaffected.
