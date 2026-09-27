@@ -260,7 +260,11 @@ export function InterruptedClaims({
     onRecover: (slug: string) => void
 }) {
     return claims.length ? (
-        <Callout.Root color="amber" role="status">
+        <Callout.Root
+            className="interrupted-claims"
+            color="amber"
+            role="status"
+        >
             <Callout.Text>
                 <strong>Interrupted start</strong> — these items were being
                 started when the process stopped, and are on no board until

@@ -103,6 +103,9 @@ p {
 .create-row {
     padding: var(--space-3) var(--space-3) 0;
 }
+.interrupted-claims {
+    margin: var(--space-3) var(--space-3) 0;
+}
 .create-btn {
     width: 100%;
 }
