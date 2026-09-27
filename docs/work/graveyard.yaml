@@ -697,6 +697,7 @@
   resolution: done
   resolved: '2026-09-10'
 2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked:
+  location: a60feec65774bfa4b712d2c6940c33896c82dcc5
   resolution: done
   resolved: '2026-09-26'
 2026-09-09-validate-a-slug-before-the-claiming-lookup-globs-with-it:
