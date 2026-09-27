@@ -35,3 +35,16 @@ category.
   store beside the real one. One exit code changes with it: `tcw work procedure
   prompt` in a node whose `work.path` is empty or not a string now fails with
   that error (exit 1) instead of printing TCW's built-in text.
+
+### Fixed
+
+- `FsTaxonomyStore.remove` refuses a term a local capability names in `Subject`
+  or `Feature` (`_capability_referrers`, compared by folder identity), and
+  refuses — failing closed — when the node's capabilities store cannot be opened
+  or read. The abstract `TaxonomyStore.remove` contract says so.
+- It also refuses, before anything is removed, when any file under the term is
+  not tracked by git (`_untracked_under`), and a term whose own files are not
+  tracked gets a TCW message instead of git's. `.DS_Store`, `Thumbs.db` and
+  `desktop.ini` do not block: they are deleted with the term, so the term (and a
+  folder holding only them) stops listing. `rm` no longer reports removing a term
+  that still lists.

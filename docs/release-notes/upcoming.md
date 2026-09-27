@@ -23,3 +23,14 @@ internal module names.
   reach used to say there was no project here and suggest `tcw init`, which
   would have created a second, empty store. They now say what is wrong with
   `extends`.
+
+## Fixes
+
+- **`tcw taxonomy rm` will not remove a term a capability still uses.** It lists
+  the capabilities that name the term, the same way it already lists other terms
+  that do.
+- **`tcw taxonomy rm` no longer says "Removed" for a term that is still there.**
+  A file under the term that Git does not track — a child term you never added,
+  say — is named and the removal refused before anything changes. Files your
+  operating system leaves in folders, such as `.DS_Store`, are cleaned up with
+  the term.
