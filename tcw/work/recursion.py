@@ -18,10 +18,10 @@ from tcw.store.base import (
     topo_order,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsProjectRegistry, FsWorkStore, child_nodes,
+    FsCapabilitiesStore, FsProjectRegistry, FsWorkStore, descendant_nodes,
     nearest_work_ancestor, parent_node, registered_parent,
-    registered_project_id, slugify, unreachable_children, unreachable_parent,
-    unreachable_project_note,
+    registered_project_id, routed_children, routed_unreachable_children,
+    slugify, unreachable_parent, unreachable_project_note,
 )
 
 ROLLUP_RE = re.compile(r"<!-- tcw:rollup -->.*?<!-- /tcw:rollup -->", re.DOTALL)
@@ -255,11 +255,14 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
 
 def _tasks_for(node_root: Path, epic_slug: str) -> list[tuple[str, WorkItem]]:
     """(node-relative-path, item) for every item with initiative == epic_slug,
-    across this node + its child nodes. Slugs collide across nodes, so the node
-    path keys the rows."""
+    across this node and every descendant that keeps a board — through a routing
+    node, and below a child with a board of its own. The same set
+    `initiative_children` gives the completion gate, so the table and the gate
+    never disagree about an epic's slices. Slugs collide across nodes, so the
+    node path keys the rows."""
     node_root = node_root.resolve()
     out: list[tuple[str, WorkItem]] = []
-    for r in [node_root, *child_nodes(node_root)]:
+    for r in [node_root, *descendant_nodes(node_root)]:
         rel = "." if r.resolve() == node_root else registered_project_id(node_root, r)
         for item in FsWorkStore.open(r).query():
             if item.initiative == epic_slug:
@@ -376,7 +379,8 @@ def _evict_legacy_rollup(store: FsWorkStore, slug: str) -> None:
 
 def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
               complete_when_ready: bool = False) -> str:
-    """Scan children for `initiative == epic_slug`; write a consolidated rollup
+    """Scan this node and every descendant with a board for
+    `initiative == epic_slug`; write a consolidated rollup
     to the epic's `rollup.md` sidecar. Read-only on capabilities.
 
     When the epic's children are all resolved the rollup flags it "Ready to close";
@@ -472,16 +476,25 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
              initiative: str | None = None) -> Path:
     """Write a request DOWN into a child node's inbox/ (boundary: inbox only)."""
     node_root = node_root.resolve()
-    children = {registered_project_id(node_root, c): c for c in child_nodes(node_root)}
+    children = {registered_project_id(node_root, c): c for c in routed_children(node_root)}
     if child_ref not in children:
         # A child declared here and not present is not "no such child". Saying so
         # sends the reader to add a declaration that is already in their config.
         registry = FsProjectRegistry.open(node_root).require_valid()
-        if any(entry.id == child_ref for entry in unreachable_children(node_root)):
+        if any(entry.id == child_ref for entry in routed_unreachable_children(node_root)):
             raise ValueError(
                 f"cannot delegate to '{child_ref}': "
                 + (unreachable_project_note(registry, child_ref) or
                    f"project '{child_ref}' is declared but not reachable here"))
+        # Below a node that keeps a board: that node is the target, and it
+        # delegates further itself.
+        if registry.get(child_ref) is not None:
+            above = [a.id for a in registry.ancestors(child_ref) if a.id in children]
+            if above:
+                raise ValueError(
+                    f"'{child_ref}' is below '{above[0]}', the nearest node with "
+                    f"a board; delegate to '{above[0]}' and let it pass the "
+                    f"request on")
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)

@@ -4261,7 +4261,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     g.add_parser("nodes", help="list this node's parent + child nodes").set_defaults(func=_nodes)
 
-    pr = g.add_parser("reconcile", help="scan child nodes → write the epic rollup")
+    pr = g.add_parser("reconcile", help="scan this node and every node below it with a board → write the epic rollup")
     pr.add_argument("slug", help="the epic's slug, in this node")
     pr.add_argument("--commit", action="store_true", help="also commit the rollup")
     pr.add_argument("--complete-when-ready", action="store_true",
@@ -4269,7 +4269,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pr.set_defaults(func=_reconcile)
 
     pdg = g.add_parser("delegate", help="write a request into a child node's inbox/")
-    pdg.add_argument("child", help="child node's canonical project id (`tcw work nodes` lists them)")
+    pdg.add_argument("child", help="the target node's canonical project id: a child that "
+                                   "keeps a board, or one behind a child that keeps none "
+                                   "(the nearest board on each branch)")
     pdg.add_argument("title", help="the request's title, as the child node will see it")
     pdg.add_argument("--initiative", help="stamp the request with an initiative slug")
     pdg.set_defaults(func=_delegate)

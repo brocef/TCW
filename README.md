@@ -692,9 +692,9 @@ driving it to completion, verifying it, processing the inbox) described in
 | -------------------- | ----------------------------------------------------------------- |
 | `tcw work inbox`     | `inbox list`, `inbox show` and `inbox accept` raw requests, and Jira tickets awaiting triage |
 | `tcw work nodes`     | lists this project's parent and child projects                    |
-| `tcw work delegate`  | writes a request into a child project's inbox                     |
+| `tcw work delegate`  | writes a request into the nearest child project with a board      |
 | `tcw work escalate`  | writes a request into the parent project's inbox                  |
-| `tcw work reconcile` | reads child projects' items and writes an epic's rolled-up status |
+| `tcw work reconcile` | reads every project below with a board; writes the epic's roll-up |
 
 **Jira and housekeeping**
 
