@@ -17,9 +17,8 @@ category.
   `rework` or `complete` whose workflow offers no transition — or several and no
   name — is refused before the item moves, instead of leaving a conflicting
   record that refused the next move. Skipped for an unmapped target and while
-  another open part holds the ticket. `_strict_refusal` passes the item's real
-  resolution, so a per-resolution `statuses.completed` is no longer read as
-  unmapped.
+  another open part holds the ticket. Not asked of a legacy `catch-up` binding, which
+  `deliver` walks rung by rung.
 
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,

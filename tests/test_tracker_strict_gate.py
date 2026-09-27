@@ -8,8 +8,9 @@ import pytest
 from tcw.store.fs import FsWorkStore
 from test_tracker_strict import (REFUSED, set_tracker_key, started,  # noqa: F401
                                  strict)
-from test_tracker_sync import (A, TICKET_ID, bound_item, claimed_ticket, cli,  # noqa: F401
-                               fake, record, status)
+from test_tracker_sync import (A, TICKET_ID, binding_text, bound_item,  # noqa: F401
+                               claimed_ticket, cli, fake, record, status)
+from tracker_fake import STRICT_LADDER
 
 
 def no_route_to_review(fake):
@@ -120,3 +121,54 @@ def test_an_unknown_parent_is_refused_before_the_ticket_is_touched(strict, uncla
                           "--parent", "2026-01-01-nothing")
     assert code == 1 and "2026-01-01-nothing" in err, err
     assert unclaimed.writes() == []
+
+
+# ── review fold-in: the other gated moves, and a legacy catch-up binding ────
+
+def test_rework_is_refused_when_the_workflow_cannot_follow(strict, fake):  # noqa: F811
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Review", A)
+    started(strict, slug, submitted=True)
+    fake.workflow = {**fake.workflow, "In Review": [
+        t for t in fake.workflow["In Review"] if t[2] != "In Progress"]}
+    code, _out, err = cli(strict, "work", "rework", slug)
+    assert code == 1 and "no transition to 'In Progress'" in err, err
+    assert status(strict, slug) == "review"
+
+
+def test_complete_is_refused_when_the_workflow_cannot_reach_done(strict, fake):  # noqa: F811
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", A)
+    started(strict, slug)
+    fake.workflow = STRICT_LADDER                   # In Progress → In Review → Done
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 1 and "no transition to 'Done'" in err, err
+    assert status(strict, slug) == "active"
+
+
+def test_a_ticket_already_at_the_target_passes(strict, fake):  # noqa: F811
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Review", A)
+    started(strict, slug)
+    fake.workflow = {**fake.workflow, "In Review": []}
+    assert cli(strict, "work", "submit", slug)[0] == 0
+
+
+def test_a_catch_up_binding_is_walked_not_refused(strict, fake):  # noqa: F811
+    """A binding the retired `link --sync-status` wrote: `deliver` walks it rung
+    by rung, so a missing shortcut is not a move it cannot follow."""
+    import yaml
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", A)
+    started(strict, slug)
+    content = yaml.safe_load(binding_text(strict, slug))
+    content["catch-up"] = True
+    content.pop("sync", None)
+    (FsWorkStore.open(strict).path(slug) / "tracker.yaml").write_text(
+        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+    fake.workflow = STRICT_LADDER
+    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
+                          "--confirm", "--force")
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status == "Done"

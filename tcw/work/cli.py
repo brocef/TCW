@@ -393,8 +393,7 @@ def _strict_refusal(st, bare: str, change: str, own=None, *,
     from tcw.store.base import target_status
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
-    # The real resolution: a per-resolution `statuses.completed` mapping read with
-    # none looks unmapped, and the gate would ask nothing of a completion.
+    # The item's resolution, as `deliver` uses it to pick a configured transition.
     target = target_status(config.statuses, MOVE_STATUS[change], resolution)
     return authorize(st, bare, JiraClient(config), config, target=target, own=own,
                      ownership=ownership, move=change, resolution=resolution)
@@ -2673,7 +2672,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     if parent:
         try:
             st._require_live_parent(parent)
-        except ValueError as e:
+        except _ERRORS as e:
             print(f"tcw work {label}: {e}", file=sys.stderr)
             return 1
     today = date.today().isoformat()

@@ -1074,7 +1074,10 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
                 f"tracker, or TCW held it there for another part of the ticket whose item "
                 f"is not in this checkout. Put it in {where}, then run this again; "
                 f"discarding the item is always allowed.{unsynced}")
-    if move and target and not held:
+    # Not for a `catch-up` binding (written by the retired `link --sync-status`):
+    # `deliver` walks such a ticket rung by rung, so one missing shortcut is not
+    # a move it cannot follow.
+    if move and target and not held and not bound.catch_up:
         verdict, detail = assess_move(
             ticket, target=target, expected=allowed,
             move=move,

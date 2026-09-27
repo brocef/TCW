@@ -14,8 +14,6 @@ started before strict mode was enabled still merges.
   refuses when the workflow offers no transition to the target, or several and
   no configured name picks one. The gate never asks, so a gated move can pass
   and then leave a conflicting record that refuses the next move.
-- `_strict_refusal` (`tcw/work/cli.py`) computes the target with resolution
-  `None`, so a per-resolution `statuses.completed` mapping reads as unmapped.
 - Strict mode refuses `new` except for epics; `tracker import` has no
   `--parent`/`--initiative`, so a child cannot be nested at all.
 
@@ -28,7 +26,9 @@ started before strict mode was enabled still merges.
    follow. Skipped when the target is unmapped, and when another open part of
    the ticket holds it (`deliver` returns HELD there without moving anything).
    Already at the target is `assess_move`'s own "current" answer.
-2. `_strict_refusal` passes the move and the item's real resolution.
+2. `_strict_refusal` passes the move and the item's resolution (used for the
+   configured transition name; `statuses.completed` is never per-resolution).
+   Not asked of a legacy `catch-up` binding, which `deliver` walks.
 3. `tcw work tracker import` accepts `--parent <slug>` and `--initiative <epic>`,
    validated before anything is claimed, with the same meaning as on `new`.
 4. A regression test for the held item: strict, held, owed start record →
