@@ -5,6 +5,11 @@ internal module names.
 
 ## Fixes
 
+- **A blocker on another project's item clears when that item is done.** Record
+  it as `--blocked-by <project-id>/<slug>`; `start`, `list` and `reconcile` now
+  see it resolve, including in checkouts where the finished item's folder is
+  gone. A blocker on a finished item in your own project no longer blocks
+  forever either.
 - **An epic whose children are all finished can be closed in every checkout,**
   not only the one where the children were finished, and a missing parent
   project no longer stops you closing or demoting an epic. Children finished
