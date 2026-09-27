@@ -846,6 +846,7 @@
   resolution: done
   resolved: '2026-09-26'
 2026-09-15-resolve-sibling-nodes-to-their-worktree-copies:
+  location: 8a69cd18affb25fc577b96676dc8679addc4b8b7
   resolution: done
   resolved: '2026-09-27'
 2026-09-15-rewrite-the-readme-to-a-new-outline:
