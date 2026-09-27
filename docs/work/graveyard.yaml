@@ -822,6 +822,7 @@
   resolution: wontfix
   resolved: '2026-09-24'
 2026-09-15-refuse-glob-and-path-characters-in-store-names:
+  location: a84759dd3fe3da706f11c5d6f8843c35acf64c11
   resolution: done
   resolved: '2026-09-26'
 2026-09-15-refuse-web-writes-to-sidecars-a-command-generates:
