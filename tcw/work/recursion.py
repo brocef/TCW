@@ -62,7 +62,13 @@ def capability_gate(st: FsWorkStore, item: WorkItem, *,
     the store's own reason, as a problem line rather than an exception. Lives
     here (not in the abstract `WorkStore`) because it reaches into
     `FsCapabilitiesStore`; shared by the CLI `complete` path and
-    `reconcile --complete-when-ready` so both enforce it."""
+    `reconcile --complete-when-ready` so both enforce it.
+
+    `in_progress=True` is `tcw validate`'s view of unfinished work: it drops the
+    checks only true at completion (a `new:` path still `Missing`, a `removed:`
+    path still resolving), skips an unresolved `new:` path while the item is in
+    backlog, and returns nothing when the ledger or registry cannot be opened,
+    since validate reports that once on its own."""
     try:
         deltas = declared_capabilities(item.capabilities)
     except SidecarError as e:

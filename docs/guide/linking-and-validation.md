@@ -47,6 +47,8 @@ backlog, active or review, never completed ones — and reports a path that cann
 be right, with its file and line: one that cannot be routed, a `changed:` path
 that does not resolve, and, once work has started, a `new:` path that does not
 resolve (a new capability is added, as `Missing`, when the item is planned).
+A `removed:` path naming a capability the ledger inherits is reported too, since
+`rm` only deletes local ones.
 
 For each selected project it reports malformed YAML (including duplicate keys),
 a file TCW writes as a record that is not a mapping, a `tcw://` link that doesn't

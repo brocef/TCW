@@ -75,8 +75,38 @@ def test_a_completed_item_is_never_checked(root):
     assert sidecar_problems(root) == []
 
 
-def test_an_unreadable_sidecar_is_reported(root):
+def test_a_sidecar_of_the_wrong_shape_is_reported(root):
+    """Parses as YAML, so only this pass can catch it."""
+    item(root, "active", "new: auth/login\n")
+    assert any("must be a list of paths" in p for p in sidecar_problems(root)), \
+        sidecar_problems(root)
+
+
+def test_a_syntax_broken_sidecar_is_reported_once(root):
     slug, _ = item(root, "active", "new:\n  - auth/login\n")
     st = FsWorkStore.open(root)
     (st.path(slug) / "capabilities.yaml").write_text("new: [unclosed\n")
-    assert any("capabilities.yaml" in p for p in validate(root)), validate(root)
+    assert len(sidecar_problems(root)) == 1, sidecar_problems(root)
+
+
+def test_new_is_checked_in_review(root):
+    _, where = item(root, "review", "new:\n  - shared/x\n")
+    assert sidecar_problems(root) == [
+        f"{where}:2: shared/x: declared (new) but does not resolve"]
+
+
+def test_the_line_is_the_listed_path_not_a_comment_or_longer_path(root):
+    _, where = item(root, "active", "# shared/x/y was renamed\nnew:\n  - shared/x/y\n"
+                                    "changed: [shared/x]  # flow list\n")
+    assert sidecar_problems(root) == [
+        f"{where}:3: shared/x/y: declared (new) but does not resolve",
+        f"{where}:4: shared/x: declared (changed) but does not resolve"]
+
+
+def test_a_work_target_checks_only_that_item(root):
+    from tcw.validate import ValidationTarget
+    slug, where = item(root, "active", "changed:\n  - shared/x\n")
+    item(root, "active", "changed:\n  - shared/z\n")
+    found = [p for p in validate(root, target=ValidationTarget("work", slug))
+             if "capabilities.yaml" in p]
+    assert found == [f"{where}:2: shared/x: declared (changed) but does not resolve"]
