@@ -969,6 +969,9 @@
   location: cd3c7ad406f803334cbe28f9721950b14328fd3c
   resolution: done
   resolved: '2026-09-24'
+2026-09-24-show-the-server-s-message-for-a-web-save-refused-for-a-reason-other-than-a-stale-revision:
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-24-update-the-web-app-s-npm-dependencies-to-clear-the-open-dependabot-alerts:
   location: 03fc07288340a36105f9a0f79ec80890886cb8b1
   resolution: done
