@@ -3785,17 +3785,56 @@ class WorkStore(ABC):
             stack += [b["slug"] for b in item.blocked_by if "slug" in b]
         return False
 
-    def add_blocker(self, slug: str, ref: str) -> None:
-        item = self._require(slug)
-        entry = self._entry_for(ref)
+    def _check_new_blocker(self, slug: str, entry: dict, ref: str) -> None:
+        """Refuse `entry` as a new blocker of `slug`: a self-block, or a cycle
+        through the blockers as stored. The one rule every blocker write uses."""
         if "slug" in entry:
             if entry["slug"] == slug:
                 raise ValueError("an item cannot block itself")
             if self._reaches(entry["slug"], slug):
                 raise ValueError(f"{ref} → {slug} would create a blocking cycle")
+
+    def add_blocker(self, slug: str, ref: str) -> None:
+        item = self._require(slug)
+        entry = self._entry_for(ref)
+        self._check_new_blocker(slug, entry, ref)
         if any(self._same_entry(entry, e) for e in item.blocked_by):
             return                                       # idempotent
         self.set_field(slug, "blocked_by", item.blocked_by + [entry])
+
+    def check_blocker_edits(self, slug: str, *, add: list[str] = (),
+                            remove: list[str] = (), blocks: list[str] = ()) -> None:
+        """Refuse, writing nothing, what these edits would refuse taken together:
+        `remove_blocker(slug, r)` for each of `remove`, then `add_blocker(slug, a)`
+        for each of `add`, then `add_blocker(b, slug)` for each of `blocks`.
+
+        Together is the point. Each call checks the graph as stored, so a
+        reverse link is checked here against `slug`'s *proposed* blockers — `add
+        [A]` with `blocks [A]` is a cycle that neither call alone would see.
+        Every new reverse link points into `slug`, so checking them one at a time
+        is enough: a cycle through two of them would still have to leave `slug`.
+        """
+        item = self._require(slug)
+        proposed = list(item.blocked_by)
+        for ref in remove:
+            norm = self._normalize_ref(ref)
+            kept = [e for e in proposed
+                    if e.get("slug") != norm and e.get("external") != norm]
+            if len(kept) == len(proposed):
+                raise ValueError(f"no such blocker on {slug}: {ref}")
+            proposed = kept
+        for ref in add:
+            entry = self._entry_for(ref)
+            self._check_new_blocker(slug, entry, ref)
+            if not any(self._same_entry(entry, e) for e in proposed):
+                proposed.append(entry)
+        for ref in blocks:
+            target = self._require(ref).slug
+            if target == slug:
+                raise ValueError("an item cannot block itself")
+            if any(e.get("slug") == target or self._reaches(e["slug"], target)
+                   for e in proposed if "slug" in e):
+                raise ValueError(f"{slug} → {ref} would create a blocking cycle")
 
     def remove_blocker(self, slug: str, ref: str) -> None:
         """Remove one blocker. Fails closed on a ref that matches nothing.

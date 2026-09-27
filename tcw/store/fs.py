@@ -6893,6 +6893,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         raise ValueError(
                             "blocker refs must be strings")
                 new_blocked_by = [self._entry_for(ref) for ref in blockers]
+                # Only entries the item does not already have: an item already in
+                # a cycle must stay saveable, including by the edit that breaks it.
+                current = self._require(slug).blocked_by
+                for ref, entry in zip(blockers, new_blocked_by):
+                    if not any(self._same_entry(entry, e) for e in current):
+                        self._check_new_blocker(slug, entry, ref)
             else:
                 raise ValueError("blockers must be a list or None")
 
