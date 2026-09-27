@@ -12,7 +12,8 @@ category.
   `show --json` walk 10⁹ values. Every such file now reads as the
   `_tcw_parse_error` value, which the completion gate already refuses: not a
   regular file, not UTF-8, over `SIDECAR_MAX_BYTES` (1 MB), any read error, or
-  more than `SIDECAR_MAX_VALUES` (10,000) values counted through aliases
+  more than `SIDECAR_MAX_VALUES` (10,000) values counted through aliases, or
+  nested deeper than `SIDECAR_MAX_DEPTH` (100) through them
   (`sidecar_value_problem` in `tcw/store/base.py`). The web detail computes the
   sidecar's revision from a tolerant read, and the sidecar route answers a
   non-UTF-8 file with a 400 naming it instead of the decoder's message

@@ -42,11 +42,13 @@ def node(tmp_path, monkeypatch, capsys):
     return root, st.path(bad) / "capabilities.yaml", bad
 
 
-def board(capsys) -> str:
-    code = main(["work", "list"])
-    out = capsys.readouterr().out
-    assert code == 0, out
-    return out
+def board(root: Path) -> str:
+    """In a child process, so a read that blocks fails the test instead of
+    stalling the suite."""
+    done = subprocess.run([sys.executable, "-m", "tcw.cli", "work", "list"],
+                          cwd=root, capture_output=True, text=True, timeout=20)
+    assert done.returncode == 0, done.stderr
+    return done.stdout
 
 
 def projected(root: Path, slug: str):
@@ -74,10 +76,10 @@ def _pipe(p: Path):
 
 
 @pytest.mark.parametrize("make", [_not_utf8, _folder, _pipe], ids=["not-utf8", "folder", "pipe"])
-def test_an_unreadable_sidecar_leaves_the_board_whole(node, capsys, make):
+def test_an_unreadable_sidecar_leaves_the_board_whole(node, make):
     root, sidecar, slug = node
     make(sidecar)
-    out = board(capsys)
+    out = board(root)
     assert "Bad" in out and "Good" in out
     value, _ = projected(root, slug)
     assert "_tcw_parse_error" in value
@@ -90,6 +92,23 @@ def test_an_alias_bomb_is_refused_quickly(node):
     sidecar.write_text(ANCHORS)
     value, took = projected(root, slug)
     assert "10000" in value["_tcw_parse_error"] and took < 10
+
+
+def test_aliases_nested_past_the_depth_limit_are_refused(node):
+    """Each line nests 40 deep, which loads; through the aliases the value is
+    120 deep with a few hundred values, which the count alone would pass and a
+    recursive walk would later crash on."""
+    root, sidecar, slug = node
+    lines = ["a0: &a0 " + "[" * 40 + "x" + "]" * 40]
+    lines += [f"a{i}: &a{i} " + "[" * 40 + f"*a{i - 1}" + "]" * 40 for i in (1, 2)]
+    sidecar.write_text("\n".join(lines) + "\nnew: []\n")
+    value, _ = projected(root, slug)
+    assert "deeper than 100" in value["_tcw_parse_error"]
+
+
+def test_a_missing_sidecar_is_no_sidecar(node):
+    root, _sidecar, slug = node
+    assert FsWorkStore.open(root).get(slug).capabilities is None
 
 
 def test_a_self_referencing_sidecar_is_counted_without_hanging():
@@ -129,11 +148,15 @@ def test_a_sidecar_over_the_byte_limit_is_refused(node):
 # ── criterion 5: the gate still refuses ──────────────────────────────────────
 
 def test_an_unreadable_sidecar_still_refuses_completion(node):
+    from tcw.work.recursion import capability_gate
     root, sidecar, slug = node
     _not_utf8(sidecar)
-    item = FsWorkStore.open(root).get(slug)
+    st = FsWorkStore.open(root)
+    item = st.get(slug)
     with pytest.raises(SidecarError):
         declared_capabilities(item.capabilities)
+    assert capability_gate(st, item) == [
+        "capabilities.yaml is unreadable: capabilities.yaml is not valid UTF-8"]
 
 
 # ── criterion 6: the web detail ──────────────────────────────────────────────

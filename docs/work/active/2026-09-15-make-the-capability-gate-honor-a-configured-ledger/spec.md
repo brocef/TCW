@@ -30,7 +30,8 @@ read, so the same file breaks that item's detail view.
 
 1. A `capabilities.yaml` that cannot be read — not a regular file, not UTF-8,
    unreadable, larger than 1 MB, a YAML error, nesting deep enough for
-   `RecursionError`, or more than 10,000 values once aliases are expanded —
+   `RecursionError`, more than 10,000 values once aliases are expanded, or
+   nesting deeper than 100 through aliases —
    becomes the existing parse-error value `{"_tcw_parse_error": <reason>}`.
    The board and `show` still list the item; `declared_capabilities` turns the
    value into `SidecarError`, so the completion gate refuses the item (fails
