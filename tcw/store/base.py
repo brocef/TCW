@@ -3091,10 +3091,13 @@ class Tombstone:
     """The record that `slug` named an item this store once held and has since
     resolved.
 
-    Answers exactly one question — *did this slug ever exist here?* — so that a
-    reference to finished work is distinguishable from a reference to a slug
-    nobody created. `resolution` and `resolved` are context for the reader; both
-    may be empty on a degraded record, and neither changes the answer.
+    Answers *did this slug ever exist here?* — so that a reference to finished
+    work is distinguishable from a reference to a slug nobody created.
+    `resolution` and `resolved` are context for the reader; both may be empty on
+    a degraded record, and neither changes the answer. `initiative` answers one
+    more, and it is the only field that says what the item *was*: which epic it
+    closed under, so the epic can count it as a resolved child in a clone that
+    never had the folder.
 
     **`location` is opaque and may be empty, and it never promises retrieval.**
     The original rule here was that there must be no locator at all, because

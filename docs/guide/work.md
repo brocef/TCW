@@ -76,7 +76,9 @@ about it, and `tcw serve` shows it inert rather than broken. A reference to a
 slug the project never held is still an error, in the same words as before —
 that distinction is the whole point of the record.
 
-The record says the slug existed and how it was resolved. It deliberately does
+The record says the slug existed and how it was resolved, and for a child of
+an epic, which epic — so an epic whose children are all resolved can close in
+every clone, not only the one that resolved them. It deliberately does
 **not** say where the documents went: any such pointer stops working the moment
 history is squashed, rebased, or shallowly cloned, and a pointer that quietly
 breaks is worse than none. How long resolved documents are kept stays your

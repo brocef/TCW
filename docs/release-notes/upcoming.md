@@ -5,6 +5,11 @@ internal module names.
 
 ## Fixes
 
+- **An epic whose children are all finished can be closed in every checkout,**
+  not only the one where the children were finished, and a missing parent
+  project no longer stops you closing or demoting an epic. Children finished
+  before this release are not counted; the epic guide says how to close such an
+  epic.
 - **An epic can span packages behind a folder that has no board of its own.**
   `tcw work delegate` reaches them, and `tcw work reconcile` lists every slice,
   however deep — as the guide already said.

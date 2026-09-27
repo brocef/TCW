@@ -11,6 +11,16 @@ category.
 
 ### Fixed
 
+- Epic completability reads the same in every checkout. `Tombstone` gains
+  `initiative`, written on resolution and carried through retention deletion,
+  nested items and `tombstone add`. `WorkStore.resolved_initiative_children`
+  (default `[]`; FS: this node and every node below, a present item winning)
+  feeds `epic_children_all_resolved` and `check_type_change`, so an epic whose
+  children are resolved and absent can close from `backlog` and cannot be
+  demoted. `incomplete_graph_note(below=True)` limits the epic gates to missing
+  child projects. `update_work` refuses to change a resolved item's
+  `initiative`. Tombstones written before this carry no epic and behave as
+  before.
 - `delegate` and `reconcile` pass through a routing node — a registered child
   that keeps no board (GitHub #30). `delegate` resolves its target among
   `routed_children` (the nearest node with a work store on each branch; new in
