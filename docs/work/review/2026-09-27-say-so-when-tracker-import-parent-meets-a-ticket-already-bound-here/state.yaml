@@ -5,7 +5,7 @@ resolution: null
 tags:
 - bug
 - work
-owner: brocef@users.noreply.github.com
-started: '2026-09-27T16:18:32.801644Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here
 branch: work/2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here
