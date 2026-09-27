@@ -13,7 +13,11 @@ internal module names.
 - **An epic can span packages behind a folder that has no board of its own.**
   `tcw work delegate` reaches them, and `tcw work reconcile` lists every slice,
   however deep — as the guide already said.
-
+- **An item started before it was specified or planned can still be.** The
+  `spec` and `plan` stages now run for an active item, and `tcw work start` and
+  the `implement` gate warn when either document is missing, naming the command
+  to write it. To make `implement` refuse instead, bind a check to it in
+  `tcw-config.yaml`.
 - **Tracker commands no longer mistake an unreadable ticket binding for none.**
   `link`, `unlink`, `sync` and a strict `drop` now refuse and say the file cannot
   be read, and an unexpected answer from Jira is reported instead of crashing.

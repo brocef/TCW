@@ -2237,14 +2237,18 @@ LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
 #   terminal statuses are deliberately distinct: `completed` means shipped,
 #   `discarded` means closed without shipping. A post-mortem on work nobody did
 #   is not the out-of-band review this stage is.
+# * `spec` and `plan` include `active` because nothing moves an item back to
+#   `backlog`: an item started before it was specified or planned would
+#   otherwise never pass either gate again. `backlog` stays first — it is where
+#   they normally run.
 #
 # `inbox` is empty: it runs before an item exists, so there is no status to be
 # legal in and no item to resolve a stage against.
 STAGE_STATUSES: dict[str, tuple[str, ...]] = {
     "inbox": (),
     "request": ("backlog",),
-    "spec": ("backlog",),
-    "plan": ("backlog",),
+    "spec": ("backlog", "active"),
+    "plan": ("backlog", "active"),
     "implement": ("active",),
     "verify": ("active", "review"),
     "postmortem": ("review", "completed"),
@@ -2268,8 +2272,10 @@ STAGE_NEXT_STEPS: dict[str, str] = {
     "inbox": "run `tcw work stage gate request <slug>` on the item you accepted",
     "request": "run `tcw work stage gate spec <slug>`",
     "spec": "run `tcw work stage gate plan <slug>`",
-    "plan": ("run `tcw work start <slug>`, then "
-             "`tcw work stage gate implement <slug>`"),
+    # Two branches, because `plan` is legal in `active` too: an item planned
+    # after it was started must not be told to start again.
+    "plan": ("run `tcw work start <slug>` if the item is still in backlog, "
+             "then `tcw work stage gate implement <slug>`"),
     # No `tcw work submit` first: `verify` is legal from `active` as well as
     # `review`, and the `verify` instructions own that decision — naming it here
     # would assert a transition this stage does not require.

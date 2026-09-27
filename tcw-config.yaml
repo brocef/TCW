@@ -87,6 +87,9 @@ work:
         - builtin: true
         - file: docs/lifecycle/abstraction.md
       implement:
+        pre:
+        - command: python scripts/require_artifact.py spec
+        - command: python scripts/require_artifact.py plan
         prompt:
         - builtin: true
         - file: docs/lifecycle/implementation.md

@@ -30,7 +30,8 @@ the suite cannot check. Optional `## Notes`.
 6. **Self-review.** Re-read the finished plan against the spec: every
    acceptance criterion is covered by at least one task and every task traces
    back to one; inconsistent names; tasks that appear twice.
-7. Commit `plan.md` on its own, before `tcw work start`.
+7. Commit `plan.md` on its own, before `tcw work start` — or, for an item
+   already started, before any more implementation.
 
 ## Exit badly
 

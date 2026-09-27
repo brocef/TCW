@@ -58,7 +58,13 @@ those are evaluated once, by the session holding the user relationship.
   creates no worktree, so re-run `start` after fixing that repository. The work
   branch carries the code side only; the item lives where `tcw work path` says.
 
-`plan.md` being present is a **check**, not a gate: the tool does not refuse.
+`spec.md` and `plan.md` being present is a **check**, not a gate: the tool does
+not refuse, but it prints a warning naming whichever is missing. An item started
+too early is not stuck — `spec` and `plan` are legal in `active` as well as
+`backlog`, so run `tcw work stage gate spec <slug>` and `... plan <slug>` and
+write them where `tcw work path <slug>` says. The
+`implement` gate prints the same warning; a project that wants it to refuse binds
+a `pre` check there.
 
 ## submit — `active → review`
 
