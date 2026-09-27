@@ -37,6 +37,22 @@ category.
   plain path segment, so `get`, `start` and `submit("/etc/passwd")` answer
   "no such work item" instead of `NotImplementedError` from `Path.glob`, and
   `GET /api/work/%2Fetc%2Fpasswd` is a 404.
+- One item's unreadable `capabilities.yaml` no longer breaks the board.
+  `FsWorkStore._read_item` caught only `yaml.YAMLError`, so a file that was not
+  UTF-8 or a folder of that name made `tcw work list` exit 1 for every item, a
+  named pipe blocked the read, and ten lines of nested YAML anchors made
+  `show --json` walk 10⁹ values. Every such file now reads as the
+  `_tcw_parse_error` value, which the completion gate already refuses: not a
+  regular file, not UTF-8, over `SIDECAR_MAX_BYTES` (1 MB), any read error, or
+  more than `SIDECAR_MAX_VALUES` (10,000) values counted through aliases, or
+  nested deeper than `SIDECAR_MAX_DEPTH` (100) through them
+  (`sidecar_value_problem` in `tcw/store/base.py`). The web detail computes the
+  sidecar's revision from a tolerant read, and the sidecar route answers a
+  non-UTF-8 file with a 400 naming it instead of the decoder's message
+  (`read_sidecar` still raises `UnicodeDecodeError`, which tracker callers rely on).
+  `tcw validate`'s scan of every `.yaml` and `.md` file (`_read_text` in
+  `tcw/validate.py`) reports a file that is not regular, not UTF-8 or not
+  readable as a problem line instead of crashing or blocking on a named pipe.
 
 - `init` (`tcw work init`, `tcw init`) no longer writes back a `work.path` it read
   from `tcw-config.yaml` when no path was given: `./store` now stays `./store`

@@ -815,6 +815,10 @@
   location: b0e8dc6c290348e1ff4a75a4dc6df4dda9e94ac5
   resolution: done
   resolved: '2026-09-17'
+2026-09-15-make-the-capability-gate-honor-a-configured-ledger:
+  location: 9773e069199d7c83c2cf6cf80363b7593b3315c0
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-15-record-a-time-of-day-and-timezone-offset-in-every-timestamp-tcw-writes:
   resolution: wontfix
   resolved: '2026-09-24'

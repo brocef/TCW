@@ -62,6 +62,20 @@ def _rel(f: Path, node_root: Path) -> str:
         return str(f)
 
 
+def _read_text(f: Path) -> tuple[str | None, str | None]:
+    """`(text, None)`, or `(None, problem)` for a file that cannot be read.
+    Never opens anything but a regular file: a named pipe would block the read,
+    and no exception rescues that."""
+    try:
+        if not f.is_file():
+            return None, "not a regular file"
+        return f.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, "not valid UTF-8"
+    except OSError as e:
+        return None, f"cannot be read ({e.strerror or e.__class__.__name__})"
+
+
 def _iter(root: Path, pattern: str):
     if root.is_file():
         return [root] if root.match(pattern) else []
@@ -264,8 +278,9 @@ def _open_sidecar_problems(node_root: Path, st: FsWorkStore,
             continue
         folder = st.path(item.slug)
         sidecar = folder / "capabilities.yaml" if folder is not None else None
-        text = (sidecar.read_text(encoding="utf-8", errors="replace")
-                if sidecar is not None and sidecar.is_file() else "")
+        # Only for line numbers: a sidecar that cannot be read is reported by
+        # the gate below, so an unreadable one just gets no line.
+        text = (_read_text(sidecar)[0] or "") if sidecar is not None else ""
         for problem in capability_gate(st, item, in_progress=True):
             declared = problem.partition(": ")[0]
             line = next((n for n, row in enumerate(text.splitlines(), 1)
@@ -378,8 +393,14 @@ def validate(node_root: Path, path: Path | None = None, *,
     # as healthy everywhere.
     for root in roots:
         for f in _iter(root, "*.yaml"):
+            text, unreadable = _read_text(f)
+            if unreadable is not None:
+                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                # The component checks would re-read it and fail the same way.
+                yaml_syntax_error = True
+                continue
             try:
-                data = yaml.load(f.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
+                data = yaml.load(text, Loader=_UniqueKeyLoader)
             except yaml.YAMLError as e:
                 problems.append(f"{_rel(f, node_root)}: {e}")
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
@@ -395,7 +416,11 @@ def validate(node_root: Path, path: Path | None = None, *,
     # (b) tcw:// link resolution
     for root in roots:
         for f in _iter(root, "*.md"):
-            text = _strip_code(f.read_text(encoding="utf-8"))
+            raw, unreadable = _read_text(f)
+            if unreadable is not None:
+                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                continue
+            text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):
                 uri = m.group(1)
                 r = resolve_tcw_ref(node_root, uri)
