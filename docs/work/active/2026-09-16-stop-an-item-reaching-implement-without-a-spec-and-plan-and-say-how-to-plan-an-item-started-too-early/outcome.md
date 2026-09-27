@@ -55,4 +55,11 @@
 - **Review, separate change**: `FsWorkStore._present` raising on an unreadable
   artifact for every caller is already filed as
   `2026-09-26-keep-one-unreadable-state-yaml-or-artifact-from-breaking-the-board-or-an-item-s-detail`.
+- **Verifier, accepted**: the scaffold test now checks the draft exists; a test
+  that `plan` is refused once completed.
+- **Verifier, not done — goal 5's work skill**: `skills/work/SKILL.md` is left
+  unchanged. Its "Finding your place" routing already sends an active item with
+  no spec to `spec`, which now works; a sentence saying so exceeded the
+  router's enforced line budget (`test_the_router_stays_within_its_line_budget`),
+  and `transitions.md` carries the explanation.
 - **Rejected**: none.

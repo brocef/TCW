@@ -87,6 +87,7 @@ def test_scaffold_writes_a_spec_draft_for_an_active_item(tmp_path):
     slug, _ = _started(root)
     out = _tcw(root, "scaffold", "spec", slug)
     assert out.returncode == 0, out.stderr
+    assert Path(out.stdout.strip()).is_file(), out.stdout
 
 
 # ── criterion 4: the implement gate warns; a project can make it refuse ──────
@@ -151,3 +152,12 @@ def test_a_qualified_reference_is_advised_as_typed(tmp_path):
     out = _tcw(root, "start", f"kid/{slug}")
     assert out.returncode == 0, out.stderr
     assert f"`tcw work stage gate spec kid/{slug}`" in out.stderr, out.stderr
+
+
+def test_plan_is_still_refused_once_completed(tmp_path):
+    root = _node(tmp_path)
+    slug, _ = _started(root, spec=True, plan=True)
+    assert _tcw(root, "complete", slug, "--resolution", "done",
+                "--confirm").returncode == 0
+    out = _tcw(root, "stage", "gate", "plan", slug)
+    assert out.returncode == 1 and "not legal" in out.stderr, out.stderr
