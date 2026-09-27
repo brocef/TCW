@@ -119,3 +119,12 @@ sends the user to fetch a repository that cannot hold any children.
 
 - Fix both gates together; they share the note on purpose.
 - `edit --type ""` has no `--force`, so it is the harder of the two to get past.
+
+## Notes from the unattended run (2026-09-27)
+
+- The rollup alternative was checked first, as asked, and fails: `reconcile`
+  rebuilds `rollup.md` from a live `query()`, so the first reconcile in a clone
+  without the child folders overwrites it with "No tasks reference this
+  initiative yet" — it erases its own evidence. It is also written only on
+  demand and committed only with `--commit`. The spec therefore grows the
+  record.
