@@ -697,6 +697,7 @@
   resolution: wontfix
   resolved: '2026-09-24'
 2026-09-09-make-epic-completability-read-the-same-in-every-checkout:
+  location: ba2318857e238d342d745ce657ccf26df642825f
   resolution: done
   resolved: '2026-09-27'
 2026-09-09-make-stage-begin-the-gate-alone-and-bookend-the-prompt-with-its-lifecycle-position:
