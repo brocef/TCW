@@ -6,8 +6,8 @@ internal module names.
 ## Fixes
 
 - **A name containing `*`, `?` or `[` means only itself.** Saving a capability
-  named `a*` used to stage — and commit — your unsaved changes to a capability
-  named `abc` as well.
+  named `a*` used to stage your unsaved changes to a capability named `abc` as
+  well, so the next commit took them along.
 
 - **Re-running `tcw work init` or `tcw init` leaves your `work.path` exactly as you wrote it.**
   It used to rewrite `~/store` as the full path to your own home folder, which
