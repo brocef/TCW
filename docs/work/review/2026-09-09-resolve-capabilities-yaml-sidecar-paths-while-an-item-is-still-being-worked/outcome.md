@@ -84,3 +84,10 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   `complete` — until merged. The reviewer marked it suspected and dependent on
   seeding a capability inside a worktree rather than at planning; the message
   names the file, and the same risk already applies to every validate problem.
+- **Verify** (tcw:verifier): accept in substance; all seven criteria met on the
+  branch by hand and in tests (line numbers, each status, routing and
+  inherited-removal messages). It asked for the `tcw/validate.py` conflict with
+  main to be resolved and the suite re-run: resolved (this pass, then main's
+  rewritten step (d)), full suite re-run on the merged code. It also noted that
+  one YAML syntax error anywhere hides every sidecar problem until fixed — the
+  same rule as the component checks, kept. Decision: accept.
