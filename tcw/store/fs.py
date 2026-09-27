@@ -332,6 +332,41 @@ def child_nodes(root: Path) -> list[Path]:
     ]
 
 
+def routed_children(root: Path) -> list[Path]:
+    """The nearest node with a work store on each branch below `root`: a
+    registered child that keeps a board, or — for one that does not, a routing
+    node — its own routed children. The downward mirror of
+    `nearest_work_ancestor`, for `delegate`: coordination passes through a node
+    that only groups others, and stops at the first one that keeps a board.
+    A declared but unprovisioned store counts as none, as it does going up."""
+    out: list[Path] = []
+    seen: set[Path] = set()
+
+    def walk(node: Path) -> None:
+        for project in FsProjectRegistry.open(node).require_valid().children():
+            child = Path(project.locator)
+            if child.resolve() in seen:
+                continue
+            seen.add(child.resolve())
+            if _has_work_store(child):
+                out.append(child)
+            else:
+                walk(child)
+    walk(root)
+    return out
+
+
+def routed_unreachable_children(root: Path) -> "list[UnreachableProject]":
+    """`unreachable_children` of `root` and of every routing node on the way
+    down, so a target declared behind one is reported as absent, not unknown."""
+    absent = list(unreachable_children(root))
+    for project in FsProjectRegistry.open(root).require_valid().children():
+        child = Path(project.locator)
+        if not _has_work_store(child):
+            absent += routed_unreachable_children(child)
+    return absent
+
+
 def parent_node(root: Path) -> Path | None:
     """Direct registered parent that contains a work store.
 

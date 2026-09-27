@@ -5,6 +5,15 @@ category.
 
 ### Fixed
 
+- `delegate` and `reconcile` pass through a routing node — a registered child
+  that keeps no board (GitHub #30). `delegate` resolves its target among
+  `routed_children` (the nearest node with a work store on each branch; new in
+  `tcw/store/fs.py`) and reports a target declared behind a routing node but
+  absent from this checkout as such (`routed_unreachable_children`). `reconcile`'s
+  table (`_tasks_for`) rolls up from every descendant with a board, the set
+  `initiative_children` already gives the completion gate, so the table and the
+  gate no longer disagree. `child_nodes` still backs `tcw work nodes`.
+
 - Tracker commands refuse what they cannot read. `FsWorkStore.read_sidecar`
   raises `OSError` when something other than a regular file sits at the
   sidecar's name (it returned `None`, so a folder named `tracker.yaml` read as
