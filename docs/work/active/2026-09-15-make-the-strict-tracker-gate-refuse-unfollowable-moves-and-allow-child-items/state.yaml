@@ -11,3 +11,5 @@ priority: 40
 effort: medium
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T03:50:33.537584Z'
+worktree: .worktrees/2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items
+branch: work/2026-09-15-make-the-strict-tracker-gate-refuse-unfollowable-moves-and-allow-child-items
