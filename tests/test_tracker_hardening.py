@@ -177,3 +177,11 @@ def test_the_web_sidecar_route_names_a_folder_it_cannot_read(node):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_a_dangling_link_at_the_sidecar_name_is_not_absence(node):
+    st = FsWorkStore.open(node)
+    slug = st.create("Linked").slug
+    (st.path(slug) / "tracker.yaml").symlink_to("nowhere.yaml")
+    with pytest.raises(OSError, match="not a regular file"):
+        st.read_sidecar(slug, "tracker.yaml")

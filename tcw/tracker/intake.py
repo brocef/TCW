@@ -177,7 +177,7 @@ def find_binding(store, *, project: str, provider: str, ticket_id: str,
             raise BindingProblem(
                 f"{item.slug} has a {BINDING_SIDECAR} that cannot be read "
                 f"({binding.reason}), so it cannot be told whether this ticket is "
-                f"already bound. Repair or unlink that binding first.")
+                f"already bound. Repair or remove that file first.")
         if (base_url is not None and isinstance(binding, Bound)
                 and binding.key()[:3] == wanted[:3]
                 and not same_site(binding.ticket_url, base_url)):

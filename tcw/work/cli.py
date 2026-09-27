@@ -2891,7 +2891,16 @@ def _tracker_create(args: argparse.Namespace) -> int:
     if not args.all:
         if _item_or_reason(st, args.slug, "create") is None:
             return 1
-        if _pending_deletion_refusal(st, args.slug, "tracker create"):
+        # The sweep's board check, for one item: binding scans every item, so
+        # another item's unusable binding would let the ticket be made and then
+        # refuse to bind it. This item's own is refused by name in `_create_one`.
+        if blocked := [s for s in _unreadable_sidecars(st) if s != args.slug]:
+            listed = ", ".join(blocked[:5]) + ("…" if len(blocked) > 5 else "")
+            print(f"tcw work tracker create: not creating. {listed} "
+                  f"{'has' if len(blocked) == 1 else 'have'} a {BINDING_SIDECAR} "
+                  f"that cannot be read, and binding checks every item, so the new "
+                  f"ticket could not be bound. Repair or remove the file, then run "
+                  f"this again.", file=sys.stderr)
             return 1
         result = _create_one(st, client, args.slug, args.part, args.dry_run)
         # `_CANNOT_RECORD` only tells the sweep to stop. One named item has
@@ -2933,23 +2942,18 @@ def _tracker_create(args: argparse.Namespace) -> int:
 
 
 def _unreadable_sidecars(st) -> list:
-    """Open items whose `tracker.yaml` this process cannot read, in board order.
+    """Open items whose `tracker.yaml` cannot be read or used, in board order.
 
     Separate from `_sweep_order`, which keeps such an item so `_create_one`
     refuses it by name. This asks a different question: is the board in a state
-    where *binding* can work at all.
+    where *binding* can work at all — `find_binding` refuses on any of these,
+    malformed included, whichever item is being bound.
     """
-    from tcw.tracker.intake import BINDING_SIDECAR
+    from tcw.tracker.intake import Malformed, binding_of
 
-    blocked = []
-    for item in st.query():
-        if item.status in RESOLVED_STATUSES:
-            continue
-        try:
-            st.read_sidecar(item.slug, BINDING_SIDECAR)
-        except (OSError, UnicodeDecodeError):
-            blocked.append(item.slug)
-    return blocked
+    return [item.slug for item in st.query()
+            if item.status not in RESOLVED_STATUSES
+            and isinstance(binding_of(st, item.slug)[0], Malformed)]
 
 
 def _sweep_order(st) -> list:
@@ -3304,8 +3308,8 @@ def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> in
     from tcw.tracker.intake import with_sync_record
     from tcw.tracker.sync import _normalize, _now, unsynced_hint
     item = st.get(args.slug)
-    under_way = (item is not None and item.status != "backlog"
-                 and not st.pending_deletion(args.slug))
+    under_way = item is not None and item.status != "backlog"   # pending
+    # deletion was refused above
     sync_status = under_way and getattr(args, "deliver_start", False)
     if sync_status and (someone_else := _held_by_someone_else(
             item, _local_owner(st), f"tcw work {verb} {args.slug}"
@@ -4026,9 +4030,11 @@ def _complete(args: argparse.Namespace) -> int:
                 stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.split("\n")
             staged = [path for path in staged if path]
             if staged:
-                print("tcw work complete: git will not merge while files are staged "
-                      "but not committed; commit or unstage (`git restore --staged "
-                      "<path>`) each, then complete again:", file=sys.stderr)
+                print("tcw work complete: git may refuse the merge while files are "
+                      "staged but not committed; if the message above names none of "
+                      "these, fix what it names instead. Otherwise commit or unstage "
+                      "(`git restore --staged <path>`) each, then complete again:",
+                      file=sys.stderr)
                 for path in staged:
                     print(f"  {path}", file=sys.stderr)
             own, top = st.path(bare), git_root(st.node_root)

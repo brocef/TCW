@@ -520,6 +520,10 @@ def unreadable_binding(error: Exception) -> Malformed:
     worded once, for every reader of one."""
     what = ("not a readable text file" if isinstance(error, (OSError, UnicodeDecodeError))
             else "not valid YAML")
+    # An OSError TCW raised itself carries no errno and says why in words ("is
+    # not a regular file"); the operating system's own carry a path, not shown.
+    if isinstance(error, OSError) and error.errno is None and str(error):
+        return Malformed(f"{what}: {error}")
     return Malformed(f"{what} ({error.__class__.__name__})")
 
 
