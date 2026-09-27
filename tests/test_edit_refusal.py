@@ -67,8 +67,9 @@ def test_a_refused_tag_leaves_a_reverse_link_unwritten(board, monkeypatch, capsy
     (A bad `--effort` never gets this far: argument parsing refuses it.)"""
     st, x, a, y = board
     before = states(st, x, y)
-    code, _, _ = run(st.node_root, monkeypatch, capsys,
-                     "edit", x, "--blocks", y, "--tag", "not-registered")
+    code, _, err = run(st.node_root, monkeypatch, capsys,
+                       "edit", x, "--blocks", y, "--tag", "not-registered")
+    assert "not-registered" in err
     assert_refused_leaving_unchanged(st, before, code)
 
 
@@ -136,3 +137,40 @@ def test_update_work_keeps_an_existing_cycle_saveable(board):
     st.set_field(a, "blocked_by", [{"slug": x}])     # a cycle made by hand
     assert st.update_work(a, blockers=[x], title="Kept").item.title == "Kept"
     assert st.update_work(a, blockers=[]).item.blocked_by == []
+
+
+# ── check_blocker_edits — the store operation, directly ──────────────────────
+
+def test_check_blocker_edits_writes_nothing_and_accepts_a_valid_set(board):
+    st, x, a, y = board
+    before = states(st, x, a, y)
+    st.check_blocker_edits(x, add=[y], remove=[a], blocks=[a])
+    assert states(st, x, a, y) == before
+
+
+@pytest.mark.parametrize("edits, message", [
+    ({"remove": ["not-a-blocker"]}, "no such blocker"),
+    ({"remove": ["A", "A"]}, "no such blocker"),         # the second finds nothing
+    ({"add": ["X"]}, "cannot block itself"),
+    ({"blocks": ["X"]}, "cannot block itself"),
+    ({"blocks": ["A"]}, "cycle"),                       # A already blocks X
+    ({"add": ["Y"], "blocks": ["Y"]}, "cycle"),         # only together
+])
+def test_check_blocker_edits_refuses(board, edits, message):
+    st, x, a, y = board
+    names = {"X": x, "A": a, "Y": y}
+    edits = {k: [names.get(r, r) for r in v] for k, v in edits.items()}
+    with pytest.raises(ValueError, match=message):
+        st.check_blocker_edits(x, **edits)
+
+
+def test_blocks_is_not_refused_through_a_blocker_the_edit_removes(board):
+    """X sits in a cycle with E and is also blocked by R, which waits on T.
+    Removing R and making X block T is valid: only the stored edge X → R led to
+    T, and the edit removes it."""
+    st, x, a, y = board
+    e, r, t = (st.create(n, created="2026-01-01").slug for n in ("E", "R", "T"))
+    st.set_field(x, "blocked_by", [{"slug": e}, {"slug": r}])
+    st.set_field(e, "blocked_by", [{"slug": x}])       # a cycle made by hand
+    st.set_field(r, "blocked_by", [{"slug": t}])
+    st.check_blocker_edits(x, remove=[r], blocks=[t])
