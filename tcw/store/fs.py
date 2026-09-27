@@ -207,6 +207,28 @@ def find_node_root(start: Path | None = None) -> Path | None:
         d = d.parent
 
 
+# Files an operating system writes into any folder a file browser opens. Named
+# exactly, never by pattern: removing a term deletes these if nothing else is
+# left, and a pattern would reach files a person made.
+OS_METADATA_FILES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
+
+
+def _untracked_under(folder: Path, tracked: set[Path]) -> list[Path]:
+    """Files (and symlinks) under `folder` that are not in `tracked`, skipping
+    operating-system metadata files. Symlinks are listed, never followed."""
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(folder, followlinks=False):
+        base = Path(dirpath)
+        links = [n for n in dirnames if (base / n).is_symlink()]
+        for name in [*filenames, *links]:
+            path = (base / name)
+            if name in OS_METADATA_FILES:
+                continue
+            if path.resolve() not in tracked and path not in tracked:
+                found.append(path)
+    return sorted(found)
+
+
 def find_node(component: str, start: Path | None = None) -> Path | None:
     """The node owning `component`'s store, or None. A node is the nearest
     ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
@@ -2257,18 +2279,76 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                        "ls-files", "-z", "--", str(d)],
                       capture_output=True, text=True, check=True).stdout
         here, top = d.resolve(), self.root.resolve()
-        nested = sorted({str(parent.relative_to(top))
-                         for f in listed.split("\0") if f
-                         for parent in [(self.store_git_root / f).resolve().parent]
-                         if here in parent.parents})
+        tracked = [(self.store_git_root / f).resolve() for f in listed.split("\0") if f]
+        if not any(f.parent == here for f in tracked):
+            # `git rm` would fail with git's own words; say it in ours.
+            raise ValueError(f"cannot remove '{term.slug}': its files are not tracked "
+                             f"by git; `git add` them first, or delete the folder")
+        nested = sorted({str(f.parent.relative_to(top)) for f in tracked
+                         if here in f.parent.parents})
         if nested:
             raise ValueError(f"cannot remove '{term.slug}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
-        referrers = self._referrers(d)
+        # What `git rm` would leave behind: untracked files anywhere under the
+        # term. The listing counts any folder as a term, so a leftover would keep
+        # the term listed after "Removed". Refused here, before anything is
+        # touched, except for files an operating system writes into folders on
+        # its own, which are deleted with the term (below) — refusing over those
+        # would make every folder a file browser has opened unremovable.
+        untracked = _untracked_under(here, set(tracked))
+        if untracked:
+            names = ", ".join(str(p.relative_to(top)) for p in untracked)
+            raise ValueError(
+                f"cannot remove '{term.slug}': {names} under it is not tracked by "
+                f"git; `git add` it (`git add -f` if ignored) and remove it first, "
+                f"or delete it")
+        referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
         if referrers:
             raise ValueError(f"cannot remove '{term.slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
         self._rm(d)
+        if d.exists() and not _untracked_under(d.resolve(), set()):
+            shutil.rmtree(d)                    # only OS metadata files are left
+        if term.slug in self._local_slugs():
+            # A safety net for a race: the check above found nothing to leave.
+            raise ValueError(f"removed the tracked files of '{term.slug}', but it "
+                             f"still lists: files git does not track appeared in {d}")
+
+    def _capability_referrers(self, target: Path, slug: str) -> list[str]:
+        """`capability <path> (Subject|Feature)` for every local capability whose
+        reference resolves to the term folder `target` — what `tcw capabilities
+        check` would report dangling once it is gone.
+
+        The node's capabilities store is found by the normal resolution. None
+        here: nothing to ask. One that cannot be opened or read refuses the
+        removal, because whether it names the term cannot then be known.
+        """
+        try:
+            caps = FsCapabilitiesStore.open(self.node_root)
+            if not caps.root.is_dir():
+                return []
+            local = caps.list_all(local_only=True)
+        except ValueError as e:
+            raise ValueError(f"cannot remove '{slug}': the capabilities that might "
+                             f"name it cannot be read: {e}") from None
+        out = []
+        for cap in local:
+            subject = cap.fields.get("Subject")
+            feature = cap.fields.get("Feature")
+            for field, refs in (
+                    ("Subject", subject if isinstance(subject, list) else
+                     [subject] if subject else []),
+                    ("Feature", [feature] if feature else [])):
+                hits = []
+                for ref in refs:
+                    try:
+                        hits.append(self.get(str(ref)))
+                    except AmbiguousRef:
+                        continue
+                if any(hit is not None and hit.origin == "local"
+                       and _same_folder(self.root / hit.slug, target) for hit in hits):
+                    out.append(f"capability {cap.path} ({field})")
+        return out
 
     def _referrers(self, target: Path) -> list[str]:
         """`<term> (<field>)` for every other local term whose `relatesTo` or

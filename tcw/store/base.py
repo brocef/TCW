@@ -618,8 +618,11 @@ class TaxonomyStore(ABC):
     def remove(self, ref: str) -> None:
         """Remove a local term, writing nothing when refused. Raise `ValueError`
         when nothing resolves, the term is inherited, another term is nested under
-        it, or another local term's `relatesTo` or `vocabulary` still resolves to
-        it. Refusing rather than cascading is the contract, as for capabilities."""
+        it, another local term's `relatesTo` or `vocabulary` still resolves to it,
+        or a local capability's `Subject` or `Feature` does — including when the
+        node's capabilities cannot be read, since that cannot then be known.
+        Refusing rather than cascading is the contract, as for capabilities.
+        Never reports success for a term that still exists afterwards."""
 
     @abstractmethod
     def search(self, query: str) -> list[Term]:

@@ -32,9 +32,12 @@ folder.
    open, or unreadable while listing: the removal is refused with that reason
    (fail closed — the check cannot be made). A broken capabilities `extends` is
    such a reason.
-3. `remove` refuses when a folder the listing counts as a term under the term is
-   not tracked by git, naming it and the way out: "`git add` it (or `git add -f`
-   if ignored) and remove it first, or delete the folder".
+3. *(Revised during implementation — see `outcome.md`.)* Before anything is
+   removed, `remove` refuses when any file under the term is not tracked by git,
+   naming it and the way out: "`git add` it (`git add -f` if ignored) and remove
+   it first, or delete it". Operating-system metadata files (`.DS_Store`,
+   `Thumbs.db`, `desktop.ini`, named exactly) do not block: they are deleted
+   with the term, so a folder holding only them stops listing too.
 4. A term whose own files are not tracked is refused with a clear message.
 5. After `git rm`, the term must no longer list; if it still does, `remove`
    raises rather than reporting success.
@@ -51,18 +54,21 @@ folder.
 2. A capability naming another term, or none → `rm zed` succeeds.
 3. `capabilities.path` pointing nowhere → `rm zed` exits 1 with that reason, and
    nothing is removed. A node with no capabilities tree → `rm` works as before.
-4. An unstaged `zed/kid/meta.yaml` → `rm zed` exits 1 naming `zed/kid` and the
-   way out; nothing removed. Same for `zed/kid/` holding only an untracked
-   `.DS_Store`.
+4. An unstaged `zed/kid/meta.yaml`, or a stray `zed/notes.md` or
+   `zed/kid/notes.md` → `rm zed` exits 1 naming it and the way out; nothing
+   removed. `zed/.DS_Store` and a `zed/kid/` holding only `Thumbs.db` → `rm zed`
+   succeeds and neither `zed` nor `zed/kid` lists (keeping
+   `tests/test_taxonomy.py`'s leftover-folder test passing).
 5. `zed/meta.yaml` never staged → exit 1, a TCW message, not git's.
 6. The web app's term DELETE refuses case 1 too.
 7. Full suite passes.
 
 ## Risks
 
-- A leftover junk folder under a term now blocks its removal where it used to
-  be silently left behind (and keep the term listed). The message says to
-  delete it.
+- A stray untracked file under a term now blocks its removal where it used to
+  be silently left behind (keeping the term listed). The message names it.
+- Deleting the three named OS metadata files is the one place `rm` deletes
+  something git does not track; they are recreated by the OS on demand.
 
 ## Notes
 
