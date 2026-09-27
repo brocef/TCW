@@ -920,6 +920,10 @@
   location: a7ba9a40e179d841a5c506e24c958ebd7061347a
   resolution: done
   resolved: '2026-09-21'
+2026-09-21-keep-work-path-as-written-when-tcw-work-init-is-re-run-without-path:
+  location: 7bf7a52d5d603d5b826fa53057e2ebe84b9e131f
+  resolution: done
+  resolved: '2026-09-26'
 2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
   location: fd372a04d9ddeb3d63937cc2a3c9847fa1027401
   resolution: done
