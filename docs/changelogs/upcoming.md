@@ -5,6 +5,18 @@ category.
 
 ### Fixed
 
+- Store names are never read as patterns. Every git call in `tcw/store/fs.py`
+  that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
+  `ls-files`, `ls-tree`), and `tcw work complete`'s staged-binding check, pass
+  each path as `:(literal)<path>` (`_literal`), so writing the capability `a*`
+  no longer stages or commits `abc`. Per path, not `--literal-pathspecs`, which
+  exports `GIT_LITERAL_PATHSPECS` to the hooks `git commit` runs; `git_rm`'s flag
+  is replaced the same way. `git mv` takes plain paths and is unchanged.
+- `FsWorkStore._claiming_dirs` returns no claims for a slug that is not one
+  plain path segment, so `get`, `start` and `submit("/etc/passwd")` answer
+  "no such work item" instead of `NotImplementedError` from `Path.glob`, and
+  `GET /api/work/%2Fetc%2Fpasswd` is a 404.
+
 - `init` (`tcw work init`, `tcw init`) no longer writes back a `work.path` it read
   from `tcw-config.yaml` when no path was given: `./store` now stays `./store`
   instead of becoming `store`, and `~/store` is no longer expanded into an

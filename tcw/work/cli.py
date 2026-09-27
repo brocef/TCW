@@ -4000,7 +4000,7 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: {err}", file=sys.stderr)
             staged = subprocess.run(
                 ["git", "-C", str(st.store_git_root), "diff", "--cached", "--name-only",
-                 "--", str(st.path(bare) / "tracker.yaml")],
+                 "--", f":(literal){st.path(bare) / 'tracker.yaml'}"],
                 stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
             if staged and isinstance(item.tracker, dict) and (
                     item.tracker.get("sync") or item.tracker.get("comment")):
