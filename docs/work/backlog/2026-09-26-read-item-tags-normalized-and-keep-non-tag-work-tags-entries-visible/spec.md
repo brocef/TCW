@@ -66,7 +66,11 @@
    that normalizes to nothing — is still read, as its text, so `check` keeps
    reporting it as an unregistered tag and no command raises on it. A
    non-list `tags:` value is read as one entry, not split into characters.
-3. `tcw work tags add` and `tcw work tags rm` refuse while `work.tags` holds an
+3. A `work.tags` entry holding a comma is not a tag, as a comma already is in a
+   condition (`tcw/store/base.py:2330-2335`) and a plan stage
+   (`tcw/store/fs.py:4754-4757`). Today `_registered_tag_entries` normalizes
+   `"cli,docs"` into the one tag `cli-docs` without a word.
+4. `tcw work tags add` and `tcw work tags rm` refuse while `work.tags` holds an
    entry that is not a tag. The refusal names the entry and says to fix or
    remove it in `tcw-config.yaml`; the file is left unchanged.
 
@@ -107,16 +111,21 @@
   - Refusing, rather than dropping with a warning, keeps the entry and says so,
     which the request allowed ("keep it" or "say so"). Registering a tag while
     the registry itself is malformed is the case `check` already flags.
+- **`_registered_tag_entries` sets aside an entry holding a comma**, beside the
+  non-string case, so it is reported by `check` and refused by goal 4.
 - **Documentation.** Remove the "hand-edited into a non-canonical form (`CLI`)
   no longer matches" clause from `docs/changelogs/upcoming.md`, and add Fixed
-  entries to the changelog and release notes. Update the capability description
+  entries to the changelog and release notes. The Fixed entry also says that a
+  hand-written `Bug` now selects the tracker's bug issue type
+  (`TrackerCreate.type_for`, `tcw/store/base.py:1230`), and that `list`, `show`
+  and the web app display the canonical spelling. Update the capability description
   as listed above.
 
 ## Acceptance criteria
 
 1. An item whose `state.yaml` holds `tags: [CLI, cli, Docs Only]` reads as
    `['cli', 'docs-only']` from `FsWorkStore.get` and from `query`.
-2. With `cli` registered, a condition `{tags: [CLI]}` matches that item, and
+2. With `cli` and `docs-only` registered, a condition `{tags: [CLI]}` matches that item, and
    `check` reports no tag problem for it.
 3. `tcw work list --tag cli` lists that item, and `tcw work edit <slug>
    --untag cli` removes the tag from its `state.yaml`.
@@ -129,6 +138,11 @@
    `tcw work tags rm cli` behaves the same way.
 7. With `work.tags: [cli]`, `tags add docs` and `tags rm docs` still work as
    before.
+9. With `work.tags: [cli, {a: 1}]` (a mapping entry), `tags add docs` exits 1
+   with the same refusal rather than a `TypeError` traceback, which is what it
+   does today (`set(current)` at `tcw/store/fs.py:6487`).
+10. With `work.tags: [cli, "cli,docs"]`, `check` reports the entry `'cli,docs'`
+    as not a tag, and `tags add docs` refuses as in criterion 6.
 8. `docs/changelogs/upcoming.md` no longer says a hand-edited non-canonical tag
    stops matching, and the `work/tag-a-work-item` description no longer says a
    condition is matched as written.
@@ -150,5 +164,12 @@
 
 ## Notes
 
-- The choice to refuse rather than keep or warn (goal 3) is mine; the user can
+- Spec review (adversarial-spec-reviewer, 2026-09-27): criteria 2 and 3 were
+  wrong as first written — the fixture registered only `cli`, so `docs-only`
+  made `check` report a problem and `--untag cli` refuse. Fixed. Also adopted
+  from it: criterion 9 (a mapping entry crashes `tags add` today), the comma rule
+  for registry entries (goal 3, criterion 10) and the changelog line on the
+  tracker bug type.
+
+- The choice to refuse rather than keep or warn (goal 4) is mine; the user can
   overrule it at review.
