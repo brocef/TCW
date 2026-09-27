@@ -69,3 +69,8 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   note, left `0x1`/`-1` (git reads them as on; nobody sets them).
   Not filed: `start --worktree` on a hand-made glob-named folder (git refuses
   the branch name); work slugs cannot hold these characters.
+- **Verify** (tcw:verifier): accept; all five criteria met — 3 as rewritten, 4
+  through the helper (no command moves a capability folder). It reproduced the
+  4/6 split against main's code, ran every command with
+  `GIT_LITERAL_PATHSPECS=1`, and found the release note overstated the old bug
+  (it staged `abc`, it did not commit it); reworded. Decision: accept.
