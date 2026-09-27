@@ -925,6 +925,7 @@
   resolution: done
   resolved: '2026-09-26'
 2026-09-21-let-a-broken-extends-reach-the-user-instead-of-find-node-answering-no-node-here:
+  location: 031afe5d248d845039ddbe3f7d696ebf55d37bbd
   resolution: done
   resolved: '2026-09-26'
 2026-09-21-let-a-child-created-under-an-already-active-parent-run-its-own-planning-stages:
