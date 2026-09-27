@@ -701,6 +701,7 @@
   resolution: done
   resolved: '2026-09-10'
 2026-09-09-resolve-a-cross-node-external-blocker-against-the-node-that-owns-it:
+  location: 59e3f087bc90edd0c1fa4562d9ce4958414d82db
   resolution: done
   resolved: '2026-09-27'
 2026-09-09-resolve-capabilities-yaml-sidecar-paths-while-an-item-is-still-being-worked:
