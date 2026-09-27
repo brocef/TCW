@@ -308,13 +308,13 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
     assert "ghost" in failures[0] and "taxonomy.extends" in failures[0], failures
     assert _leftover_lines(problems) == [], problems
 
-    # The check command refuses too, and says nothing about the leftover. What
-    # it does say is not this item's: `find_node` turns any open failure other
-    # than a provisioning one into "no tcw taxonomy node here", a separate
-    # defect recorded in this item's outcome.
+    # The check command refuses too, says nothing about the leftover, and names
+    # the broken `extends` rather than sending the user to `tcw init`.
     monkeypatch.chdir(consumer)
     assert main(["taxonomy", "check"]) == 1
-    assert MARK not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert MARK not in err
+    assert "ghost" in err and "no tcw taxonomy node here" not in err, err
 
 
 @pytest.mark.parametrize("component,ident", [

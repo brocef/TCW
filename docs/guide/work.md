@@ -287,6 +287,8 @@ tcw work edit "$slug" --title "A better title"   # rename the item (the slug nev
 tcw work edit "$slug" --priority 9               # set/raise integer priority
 tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
 tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
+                                       # flags combine in one edit; if any part is refused
+                                       # (unknown tag, blocking cycle, …) nothing is changed
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities

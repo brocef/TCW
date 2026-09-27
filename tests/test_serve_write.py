@@ -492,6 +492,8 @@ class TestUpdateWork:
             "fields": {"title": "My update"},
         })
         assert status == HTTPStatus.CONFLICT
+        # Marked, so the web app can tell a stale write from any other 409.
+        assert body["code"] == "stale-revision"
 
     def test_update_unknown_field_rejected(self, seeded):
         root, base, slug = seeded
@@ -582,6 +584,7 @@ class TestArtifactReadWrite:
             "revision": old_rev,
         })
         assert status == HTTPStatus.CONFLICT
+        assert body["code"] == "stale-revision"
 
     def test_write_artifact_unknown_400(self, seeded):
         root, base, slug = seeded
@@ -736,6 +739,7 @@ class TestSidecarReadWrite:
         })
         assert status == HTTPStatus.CONFLICT
         assert name in body["error"] and owner in body["error"]
+        assert "code" not in body              # not a stale write: the app shows the message
         assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
         generated = {s["name"]: s["generated"]
                      for s in _get_json(base, f"/api/work/{slug}/sidecars")}

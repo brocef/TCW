@@ -235,7 +235,11 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
         # the actionable message is "fix this line" rather than "run this
         # command", so it travels the same way.
         raise
-    except ValueError:
+    except StoreLocationUnusable:
+        # The one failure that means "there is no store at this location" — the
+        # ladder's own definition (see `resolve_store`). Anything else, a broken
+        # `extends` or a malformed `<component>.path`, is a node that is here and
+        # wrong, and "run `tcw init`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
     # nothing when nothing is configured (rule 4), so the "is this component
@@ -6938,6 +6942,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         raise ValueError(
                             "blocker refs must be strings")
                 new_blocked_by = [self._entry_for(ref) for ref in blockers]
+                # Only entries the item does not already have: an item already in
+                # a cycle must stay saveable, including by the edit that breaks it.
+                current = self._require(slug).blocked_by
+                for ref, entry in zip(blockers, new_blocked_by):
+                    if not any(self._same_entry(entry, e) for e in current):
+                        self._check_new_blocker(slug, entry, ref)
             else:
                 raise ValueError("blockers must be a list or None")
 
