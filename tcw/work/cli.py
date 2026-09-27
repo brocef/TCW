@@ -3046,6 +3046,11 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     # a failure anywhere along that walk leaves an open ticket for work that is
     # done. Closed items that want tickets are a backfill, which is `link`'s job.
     if item.status in ("completed", "discarded"):
+        if st.pending_deletion(slug):
+            # `link` refuses this item too, so pointing there would be a dead end.
+            return refuse(f"{slug} is {item.status} and waiting for deletion "
+                          f"(work.retain is false); TCW does not create tickets for "
+                          f"closed work, and a binding here would never be kept.")
         # Reachable holding a `created` record: the bind failed, then the item
         # was completed or discarded. Telling somebody to bind "<ticket>" while
         # holding the key is a message that declines to help.
