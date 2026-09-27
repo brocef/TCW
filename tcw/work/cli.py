@@ -2717,11 +2717,16 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
                 # --parent and --initiative place the item this command creates.
                 # A re-run asking for a placement the bound item lacks must not
                 # read as success, and must not move an item a re-run only reports.
-                item = st.get(existing)
+                item = st.get(existing) if parent or initiative else None
                 bound = f"{ticket.key} (part {part}) is already bound to {existing}"
                 wrong = []
+                if (parent or initiative) and item is None:
+                    # Resolved or removed since the binding was found.
+                    wrong.append(f"{bound}, which could not be read again; run this "
+                                 f"command again.")
+                    parent = initiative = None
                 if parent and item.parent != parent:
-                    wrong.append(f"{bound}, which is not under {parent}. Import sets "
+                    wrong.append(f"{bound}, whose parent is not {parent}. Import sets "
                                  f"--parent only on the item it creates, so {existing} "
                                  f"was not moved; change its parent in the web app "
                                  f"(`tcw serve`).")
