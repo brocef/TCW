@@ -122,3 +122,11 @@ category.
   `desktop.ini` do not block: they are deleted with the term, so the term (and a
   folder holding only them) stops listing. `rm` no longer reports removing a term
   that still lists.
+- `tcw validate` checks the `capabilities.yaml` of every item in backlog, active
+  or review (`_open_sidecar_problems`), reporting `<file>:<line>: <problem>` for
+  an unroutable or ambiguous path, a `changed:` path that does not resolve, a
+  `new:` path that does not resolve once the item is active, and a `removed:`
+  path naming an inherited capability. `capability_gate(..., in_progress=True)`
+  shares the completion gate's routine without its completion-only checks
+  (`new` still `Missing`, `removed` still resolving). Resolved items are never
+  checked (GitHub #27).

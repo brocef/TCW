@@ -16,3 +16,9 @@ breaks that item's detail view.
 
 Likely direction: the same as the `capabilities.yaml` fix — `is_file()` first,
 catch `OSError`/`ValueError` alongside YAML errors, and let the item still list.
+
+Also, from the review of the `capabilities.yaml` fix: `_detail_snapshot` now
+reports a non-UTF-8 sidecar as present with a revision from a tolerant read, but
+`write_sidecar` checks that revision with a strict read, so a web save guarded
+by it fails with the decoder's byte-offset message (422) while an unguarded save
+succeeds. Decide whether a guarded save may replace such a file.

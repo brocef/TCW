@@ -71,3 +71,7 @@ internal module names.
   say — is named and the removal refused before anything changes. Files your
   operating system leaves in folders, such as `.DS_Store`, are cleaned up with
   the term.
+- **`tcw validate` catches a wrong path in a work item's `capabilities.yaml`
+  while the item is still being worked**, naming the file and line, instead of
+  leaving it to `tcw work complete`. Finished items are never checked, so old
+  records do not make validation noisy.
