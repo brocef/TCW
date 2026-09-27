@@ -190,3 +190,10 @@ def test_a_work_only_node_reports_nothing_new(tmp_path):
     root = repo(tmp_path / "node")
     init(["work"], root)
     assert validate(root) == []
+
+
+def test_path_mode_reports_a_moved_store_that_will_not_open(tmp_path):
+    root, store = moved(tmp_path, "taxonomy", "tax")
+    set_component_key(root, "taxonomy", "extends", ["ghost"])
+    lines = check_lines(validate(root, store), "taxonomy")
+    assert any("ghost" in p for p in lines), lines

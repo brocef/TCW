@@ -90,6 +90,19 @@ def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
     return roots
 
 
+def _intended_root(node_root: Path, comp: str) -> Path:
+    """Where `comp`'s store is configured to be, whether or not it opens."""
+    try:
+        config = load_yaml(node_root / "tcw-config.yaml", unique=True)
+    except Exception:
+        config = {}
+    section = config.get(comp) if isinstance(config, dict) else None
+    configured = section.get("path") if isinstance(section, dict) else None
+    return STORE_CLASSES[comp]._local_root(
+        node_root, configured if isinstance(configured, str) and configured.strip()
+        else None)
+
+
 def _scan_roots(node_root: Path, path, trees: dict) -> list[Path]:
     if path is not None:
         return [Path(path)]
@@ -147,10 +160,12 @@ def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
         return present
     p = Path(path).resolve()
     for c, root in trees.items():
-        # A store that will not open is still matched at its default folder, so
-        # the reason it will not open is reported rather than nothing.
-        where = root if isinstance(root, Path) else node_root / "docs" / c
-        if _under(p, where.resolve()):
+        # A store that will not open is still matched where it was meant to be
+        # — its configured path, or its default folder — so the reason it will
+        # not open is reported rather than nothing.
+        where = ([root] if isinstance(root, Path)
+                 else [_intended_root(node_root, c), node_root / "docs" / c])
+        if any(_under(p, w.resolve()) for w in where):
             return [c]
     try:
         if _under(p, FsWorkStore.open(node_root).root):
