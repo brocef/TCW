@@ -29,7 +29,8 @@ category.
   children are resolved and absent can close from `backlog` and cannot be
   demoted. `incomplete_graph_note(below=True)` limits the epic gates to missing
   child projects. `update_work` refuses to change a resolved item's
-  `initiative`. Tombstones written before this carry no epic and behave as
+  `initiative`. `reconcile` lists record-only children as
+  `node | slug | <status> | -` rows and counts them in "Ready to close". Tombstones written before this carry no epic and behave as
   before.
 - `delegate` and `reconcile` pass through a routing node — a registered child
   that keeps no board (GitHub #30). `delegate` resolves its target among

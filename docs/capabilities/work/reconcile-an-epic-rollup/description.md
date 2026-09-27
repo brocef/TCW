@@ -1,7 +1,8 @@
 As a user, I run `tcw work reconcile <epic>` to refresh the epic's own account of
 its slices. TCW walks the registered descendants, collects every item whose
-`initiative` points at this epic, and writes the result to the epic's own
-`rollup.md`. Nothing I wrote is touched: the rollup is generated, so it gets its
+`initiative` points at this epic — including resolved ones whose folders are not
+in this checkout, known from the record TCW keeps of them — and writes the result
+to the epic's own `rollup.md`. Nothing I wrote is touched: the rollup is generated, so it gets its
 own file instead of being folded into a document I am credited with. An epic that
 has only ever been reconciled still shows no `R` on the board, because no one has
 written its request yet.

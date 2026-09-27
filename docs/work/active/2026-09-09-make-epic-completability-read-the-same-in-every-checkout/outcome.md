@@ -21,9 +21,10 @@
   (recovery for records that predate the field), `docs/guide/work.md`, the
   `work/coordinate-a-cross-node-epic` capability (declared `changed`),
   changelog, release notes.
-- Tests: `tests/test_epic_completability_across_checkouts.py` (17). Nine
-  failed on the old code; the four "must stay not completable" cases pass on
-  both, as they should; the retention test fails if deletion drops the field.
+- Tests: `tests/test_epic_completability_across_checkouts.py` (17). Against
+  the code before this item, 12 fail and 5 pass — the four "must stay not
+  completable" cases and the present-child reconcile count, which should pass on
+  both; the retention test fails if deletion drops the field.
 
 ## Verification
 
@@ -60,4 +61,7 @@
   plan brought in line with the code.
 - **Review, separate change**: epics matched by slug alone across nodes —
   filed as `2026-09-27-match-an-epic-s-children-by-the-epic-s-node-as-well-as-its-slug`.
+- **Verifier, accepted**: `work/reconcile-an-epic-rollup` also changed (its
+  rollup lists record-only children) — described and declared; the changelog
+  names the new rollup rows; stale test counts and a leftover spec line fixed.
 - **Rejected**: none.
