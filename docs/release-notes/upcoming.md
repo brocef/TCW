@@ -62,7 +62,6 @@ internal module names.
   would have created a second, empty store. They now say what is wrong with
   `extends`.
 
-## Fixes
 
 - **`tcw validate` checks a taxonomy or capabilities ledger wherever it lives.**
   A ledger moved out of `docs/` with a `path` setting, or kept in another
@@ -76,14 +75,12 @@ internal module names.
 - **`tcw validate` lists a `taxonomy.path` that points nowhere** instead of
   stopping with an internal error.
 
-## Fixes
 
 - **Recovering an interrupted start works.** If `tcw` stopped partway through
   starting an item, the advice to run `tcw work start <slug> --take-over` only
   repeated the same error. It now finishes the start. The web app shows such
   items above the work list with a **Recover** button.
 
-## Fixes
 
 - **Tag conditions in lifecycle settings work the way tags do everywhere else.**
   `when: { tags: [CLI] }` now matches items tagged `cli`; before, it silently

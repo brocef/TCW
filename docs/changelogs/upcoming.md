@@ -147,7 +147,6 @@ category.
   prompt` in a node whose `work.path` is empty or not a string now fails with
   that error (exit 1) instead of printing TCW's built-in text.
 
-### Fixed
 
 - `tcw validate` finds the taxonomy and capabilities stores the way `find_node`
   does (`_tree_roots`): each is opened, reported if it will not open (a broken
@@ -168,7 +167,6 @@ category.
 - The stopgap pass after the component checks now runs only when a YAML problem
   skipped them; everything else it reported is reached by the component checks.
 
-### Fixed
 
 - `tcw work start <slug> --take-over` recovers an interrupted claim again. `_start`
   read the item with `get` for the `pre` hook before reaching the store, and
@@ -188,7 +186,6 @@ category.
   notice with a Recover button. `_strict_refuses` reads an interrupted claim
   instead of raising on it.
 
-### Fixed
 
 - Lifecycle `when.tags` / `when.not_tags` are normalized with `normalize_tag`
   at parse time, so `CLI` matches items tagged `cli`. **Behavior change:** a
