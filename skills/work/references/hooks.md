@@ -18,8 +18,8 @@ text · `builtin: true` is TCW's own default · `skill:` is a name, not
 instructions, and is the weakest kind.
 
 Any binding may carry `when: {tags: […], not_tags: […], type: …}` — keys ANDed, a
-list meaning any-of. Three keys by decision; anything harder is a `generate:`
-script. What a bare stage list means is in the `configure` skill's `work.md`.
+list meaning any-of, tags read as item tags are (`CLI` is `cli`). Three keys by
+decision; anything harder is a `generate:` script. What a bare stage list means is in the `configure` skill's `work.md`.
 
 ## The three verbs
 

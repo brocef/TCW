@@ -45,7 +45,8 @@ def _open_ledger(node_root: Path) -> "tuple[FsCapabilitiesStore | None, str | No
     return (store, None) if store.root.is_dir() else (None, None)
 
 
-def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
+def capability_gate(st: FsWorkStore, item: WorkItem, *,
+                    in_progress: bool = False) -> list[str]:
     """Check that `item`'s declared capability deltas were reconciled.
 
     Returns human-readable problems (empty = clean). A `new:` capability still
@@ -61,7 +62,13 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
     the store's own reason, as a problem line rather than an exception. Lives
     here (not in the abstract `WorkStore`) because it reaches into
     `FsCapabilitiesStore`; shared by the CLI `complete` path and
-    `reconcile --complete-when-ready` so both enforce it."""
+    `reconcile --complete-when-ready` so both enforce it.
+
+    `in_progress=True` is `tcw validate`'s view of unfinished work: it drops the
+    checks only true at completion (a `new:` path still `Missing`, a `removed:`
+    path still resolving), skips an unresolved `new:` path while the item is in
+    backlog, and returns nothing when the ledger or registry cannot be opened,
+    since validate reports that once on its own."""
     try:
         deltas = declared_capabilities(item.capabilities)
     except SidecarError as e:
@@ -76,7 +83,9 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
         except ValueError as e:
             reason = str(e)
     if reason is not None:
-        return [f"{path}: {reason}" for path in declared]
+        # Mid-work, `tcw validate` reports an unopenable ledger or registry once,
+        # in its own checks; repeating it for every declared path is noise.
+        return [] if in_progress else [f"{path}: {reason}" for path in declared]
 
     children: dict[str, "tuple[FsCapabilitiesStore | None, str | None]"] = {}
 
@@ -115,6 +124,8 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
             return
         where = "" if route.owner is None else f" in project '{route.owner}'"
         if kind == "removed":
+            # Mid-work only the inherited case is a problem: a local one still
+            # resolving is simply not removed yet.
             # Local only: `rm` deletes only local capabilities, and once a local
             # one is gone its bare path may fall through to an inherited
             # capability at the same path, which `rm` refuses — a dead end if
@@ -128,7 +139,7 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
                 problems.append(f"{path}: `tcw capabilities rm` deletes only local "
                                 f"capabilities; {who} cannot remove a capability "
                                 f"it inherits from '{alias}'")
-            elif route.store.get_local(route.path) is not None:
+            elif not in_progress and route.store.get_local(route.path) is not None:
                 problems.append(f"{path}: declared (removed) but still resolves{where} "
                                 f"(delete it with `tcw capabilities rm`)")
             return
@@ -138,8 +149,11 @@ def capability_gate(st: FsWorkStore, item: WorkItem) -> list[str]:
             problems.append(f"{path}: {e}")
             return
         if cap is None:
-            problems.append(f"{path}: declared ({kind}) but does not resolve{where}")
-        elif kind == "new" and cap.status == "Missing":
+            # A `new` capability is seeded at planning, so before implementation
+            # starts it may legitimately not exist yet.
+            if not (in_progress and kind == "new" and item.status == "backlog"):
+                problems.append(f"{path}: declared ({kind}) but does not resolve{where}")
+        elif kind == "new" and cap.status == "Missing" and not in_progress:
             problems.append(f"{path}: still Missing{where} "
                             f"(declared new; flip it or mark Omitted)")
 

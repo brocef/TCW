@@ -5,6 +5,9 @@ internal module names.
 
 ## Fixes
 
+- **A name containing `*`, `?` or `[` means only itself.** Saving a capability
+  named `a*` used to stage your unsaved changes to a capability named `abc` as
+  well, so the next commit took them along.
 - **One damaged `capabilities.yaml` no longer hides the whole board.** A file
   that is not plain text, a folder with that name, or a small file of nested
   YAML references used to stop `tcw work list` or leave `show --json` running
@@ -50,3 +53,30 @@ internal module names.
   starting an item, the advice to run `tcw work start <slug> --take-over` only
   repeated the same error. It now finishes the start. The web app shows such
   items above the work list with a **Recover** button.
+
+## Fixes
+
+- **Tag conditions in lifecycle settings work the way tags do everywhere else.**
+  `when: { tags: [CLI] }` now matches items tagged `cli`; before, it silently
+  never matched. If you used a differently spelled tag under `not_tags`, those
+  items are now excluded as you intended. `tcw validate` reports a condition tag
+  that is not registered, or several tags written as one (`"cli,docs"`).
+- **`tcw validate` names a bad key instead of crashing** when a settings key is
+  an unquoted number.
+- **`tcw work list --tags` says when the tag you asked for is not registered**,
+  so an empty list is not mistaken for "nothing has that tag".
+- **A `skill:` setting that cannot be a skill name, such as one with spaces in
+  it, is reported by `tcw validate` and ignored** until it is fixed, like any
+  other malformed setting.
+- **`tcw taxonomy rm` will not remove a term a capability still uses.** It lists
+  the capabilities that name the term, the same way it already lists other terms
+  that do.
+- **`tcw taxonomy rm` no longer says "Removed" for a term that is still there.**
+  A file under the term that Git does not track — a child term you never added,
+  say — is named and the removal refused before anything changes. Files your
+  operating system leaves in folders, such as `.DS_Store`, are cleaned up with
+  the term.
+- **`tcw validate` catches a wrong path in a work item's `capabilities.yaml`
+  while the item is still being worked**, naming the file and line, instead of
+  leaving it to `tcw work complete`. Finished items are never checked, so old
+  records do not make validation noisy.

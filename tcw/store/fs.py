@@ -139,6 +139,25 @@ def _git(*args, **kwargs):
     return subprocess.run(*args, stdin=stdin, **kwargs)
 
 
+def _literal(path: "str | Path") -> str:
+    """`path` as a git pathspec that means only itself.
+
+    Git reads every path argument as a pattern, even after `--`, so a store
+    folder named `a*` would also match `abc`. Per path rather than
+    `--literal-pathspecs`: that flag works by exporting `GIT_LITERAL_PATHSPECS`,
+    which the hooks `git commit` runs would inherit, and a user's hook filtering
+    on `'*.py'` would then silently match nothing. Not for `git mv`, which takes
+    plain paths and rejects the prefix.
+
+    Plain when `GIT_LITERAL_PATHSPECS` is already on — git exports it to hooks
+    and aliases run under `git --literal-pathspecs` — because git then reads the
+    prefix as part of a file name, and every path is literal anyway."""
+    setting = os.environ.get("GIT_LITERAL_PATHSPECS", "").strip().lower()
+    if setting in ("true", "yes", "on") or (setting.isdecimal() and int(setting)):
+        return str(path)
+    return f":(literal){path}"
+
+
 def git_root(start: Path | None = None) -> Path | None:
     """Top of the git work-tree containing `start` (cwd by default), or None.
 
@@ -206,6 +225,28 @@ def find_node_root(start: Path | None = None) -> Path | None:
         if d == d.parent:                  # filesystem-root fixpoint
             return None
         d = d.parent
+
+
+# Files an operating system writes into any folder a file browser opens. Named
+# exactly, never by pattern: removing a term deletes these if nothing else is
+# left, and a pattern would reach files a person made.
+OS_METADATA_FILES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
+
+
+def _untracked_under(folder: Path, tracked: set[Path]) -> list[Path]:
+    """Files (and symlinks) under `folder` that are not in `tracked`, skipping
+    operating-system metadata files. Symlinks are listed, never followed, and
+    compared as themselves: `tracked` holds paths with their folders resolved
+    and their last component as git lists it."""
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(folder, followlinks=False):
+        base = Path(dirpath)
+        links = [n for n in dirnames if (base / n).is_symlink()]
+        for name in [*filenames, *links]:
+            path = base / name              # `base` is under the resolved folder
+            if name not in OS_METADATA_FILES and path not in tracked:
+                found.append(path)
+    return sorted(found)
 
 
 def find_node(component: str, start: Path | None = None) -> Path | None:
@@ -607,7 +648,7 @@ def git_stage(node_root: Path, *paths: Path) -> None:
     # tracked path as not ignored, so a dropped path is always untracked.
     live = [str(p) for p in paths if p not in ignored]
     if live:
-        _git(["git", "-C", str(node_root), "add", "--", *live], check=True)
+        _git(["git", "-C", str(node_root), "add", "--", *map(_literal, live)], check=True)
     # After the `git add`, not before: if staging the live paths is refused the
     # caller rolls the whole write back, and a warning already on stderr saying
     # the dropped path "is on disk" would be false by the time it is read.
@@ -626,9 +667,9 @@ def _same_folder(a: Path, b: Path) -> bool:
 
 def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
-    # --literal-pathspecs: `--` ends options but a path is still a glob to git, so
-    # removing a folder named `a*` would also delete `abc`.
-    _git(["git", "-C", str(node_root), "--literal-pathspecs", "rm", "-rfq", "--", str(path)],
+    # Literal: `--` ends options but a path is still a glob to git, so removing
+    # a folder named `a*` would also delete `abc`.
+    _git(["git", "-C", str(node_root), "rm", "-rfq", "--", _literal(path)],
          check=True)
 
 
@@ -693,10 +734,10 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
         # otherwise refuses. With --cached it still only touches the index; the
         # files stay on disk.
         _git(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
-              "--ignore-unmatch", "--", str(src)], check=True)
+              "--ignore-unmatch", "--", _literal(src)], check=True)
         shutil.move(str(src), str(dst))
         return
-    _git(["git", "-C", str(node_root), "add", "--", str(src)], check=True)
+    _git(["git", "-C", str(node_root), "add", "--", _literal(src)], check=True)
     _git(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
 
 
@@ -715,7 +756,7 @@ def git_commit(node_root: Path, message: str, *paths: str) -> None:
     staged changes are left alone — used by start --worktree (Spec 2 §3.4)."""
     cmd = ["git", "-C", str(node_root), "commit", "-q", "-m", message]
     if paths:
-        cmd += ["--", *paths]
+        cmd += ["--", *map(_literal, paths)]
     _git(cmd, check=True)
 
 
@@ -729,7 +770,7 @@ def _has_committable_changes(node_root: Path, path: str) -> bool:
     committed stage it first, which is what `git_mv` already does.
     """
     r = _git(
-        ["git", "-C", str(node_root), "status", "--porcelain", "--", path],
+        ["git", "-C", str(node_root), "status", "--porcelain", "--", _literal(path)],
         capture_output=True, text=True)
     if r.returncode != 0:                              # unknown to git — nothing to record
         return False
@@ -780,7 +821,7 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     if not live:
         return None                                    # genuinely nothing to commit
     r = _git(
-        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *live],
+        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *map(_literal, live)],
         capture_output=True, text=True)
     if r.returncode != 0:
         return (r.stderr or r.stdout).strip() or f"git commit failed ({r.returncode})"
@@ -2279,22 +2320,80 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # removed child's folder) is deleted by nothing, and refusing over it
         # would name a "term" no `rm` can reach.
         self._require_repository()
-        listed = _git(["git", "-C", str(self.store_git_root), "--literal-pathspecs",
-                       "ls-files", "-z", "--", str(d)],
+        listed = _git(["git", "-C", str(self.store_git_root),
+                       "ls-files", "-z", "--", _literal(d)],
                       capture_output=True, text=True, check=True).stdout
         here, top = d.resolve(), self.root.resolve()
-        nested = sorted({str(parent.relative_to(top))
-                         for f in listed.split("\0") if f
-                         for parent in [(self.store_git_root / f).resolve().parent]
-                         if here in parent.parents})
+        # The folder resolved, the name kept: resolving the last component would
+        # let a symlink stand in for its target, or the target for the link.
+        tracked = [(self.store_git_root / f).parent.resolve() / Path(f).name
+                   for f in listed.split("\0") if f]
+        if not any(f.parent == here for f in tracked):
+            # `git rm` would fail with git's own words; say it in ours.
+            raise ValueError(f"cannot remove '{term.slug}': its files are not tracked "
+                             f"by git; `git add` them first, or delete the folder")
+        nested = sorted({str(f.parent.relative_to(top)) for f in tracked
+                         if here in f.parent.parents})
         if nested:
             raise ValueError(f"cannot remove '{term.slug}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
-        referrers = self._referrers(d)
+        # What `git rm` would leave behind: untracked files anywhere under the
+        # term. The listing counts any folder as a term, so a leftover would keep
+        # the term listed after "Removed". Refused here, before anything is
+        # touched, except for files an operating system writes into folders on
+        # its own, which are deleted with the term (below) — refusing over those
+        # would make every folder a file browser has opened unremovable.
+        untracked = _untracked_under(here, set(tracked))
+        if untracked:
+            names = ", ".join(str(p.relative_to(top)) for p in untracked)
+            raise ValueError(
+                f"cannot remove '{term.slug}': {names} under it is not tracked by "
+                f"git; `git add` it (`git add -f` if ignored) and remove it first, "
+                f"or delete it")
+        referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
         if referrers:
             raise ValueError(f"cannot remove '{term.slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
         self._rm(d)
+        if d.exists() and not _untracked_under(d.resolve(), set()):
+            shutil.rmtree(d)                    # only OS metadata files are left
+        if term.slug in self._local_slugs():
+            # A safety net: the check above found nothing to leave, so only a
+            # file written meanwhile gets here.
+            raise ValueError(f"removed the tracked files of '{term.slug}', but it "
+                             f"still lists: files git does not track remain in {d}")
+
+    def _capability_referrers(self, target: Path, slug: str) -> list[str]:
+        """`capability <path> (Subject|Feature)` for every local capability whose
+        reference resolves to the term folder `target` — what `tcw capabilities
+        check` would report dangling once it is gone.
+
+        The node's capabilities store is found by the normal resolution. None
+        here: nothing to ask. One that cannot be opened or read refuses the
+        removal, because whether it names the term cannot then be known.
+        """
+        try:
+            caps = FsCapabilitiesStore.open(self.node_root)
+            if not caps.root.is_dir():
+                return []
+            local = caps.list_all(local_only=True)
+        except (ValueError, yaml.YAMLError) as e:
+            raise ValueError(f"cannot remove '{slug}': the capabilities that might "
+                             f"name it cannot be read: {e}") from None
+        out = []
+        for cap in local:
+            named = set()
+            for field, ref in FsCapabilitiesStore._term_refs(cap.fields):
+                try:
+                    hit = self.get(ref)
+                except AmbiguousRef:
+                    continue
+                if (hit is not None and hit.origin == "local"
+                        and _same_folder(self.root / hit.slug, target)):
+                    named.add(field)
+            out += [f"capability {cap.path} ({field})"
+                    for field in ("Subject", "Feature") if field in named]
+        return out
 
     def _referrers(self, target: Path) -> list[str]:
         """`<term> (<field>)` for every other local term whose `relatesTo` or
@@ -3266,11 +3365,22 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                     out.append(f"{field} → {e}")
         return out
 
+    @staticmethod
+    def _term_refs(f) -> list[tuple[str, str]]:
+        """`(field, ref)` for every taxonomy reference a capability makes — the
+        one definition of which references count, read by `check` and by the
+        taxonomy's refusal to remove a term a capability names.
+
+        `str(...)`, as the other four ref fields already do: a ref resolver
+        takes a string, and a non-string here used to escape as AttributeError
+        out of `taxonomy.get` rather than as a refusal the caller can read."""
+        refs = [("Subject", str(s)) for s in _as_list(f.get("Subject"))]
+        if f.get("Feature"):
+            refs.append(("Feature", str(f["Feature"])))
+        return refs
+
     def _check_subject(self, f, taxonomy) -> list[str]:
-        # `str(...)`, as the other four ref fields already do: a ref resolver
-        # takes a string, and a non-string here used to escape as AttributeError
-        # out of `taxonomy.get` rather than as a refusal the caller can read.
-        subjects = [str(s) for s in _as_list(f.get("Subject"))]
+        subjects = [ref for field, ref in self._term_refs(f) if field == "Subject"]
         if not subjects or taxonomy is None:
             return []
         out = []
@@ -3283,10 +3393,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return out
 
     def _check_feature(self, f, taxonomy) -> list[str]:
-        feature = f.get("Feature")
+        feature = next((ref for field, ref in self._term_refs(f)
+                        if field == "Feature"), None)
         if not feature or taxonomy is None:
             return []
-        feature = str(feature)          # see `_check_subject`
         try:
             target = taxonomy.get(feature)
         except AmbiguousRef:
@@ -4228,6 +4338,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         name, so every one on disk is named for a literal slug and an escaped
         pattern built from the same string still finds it.
         """
+        # Only one plain path segment can be an item's name. Anything else — an
+        # absolute path, which `Path.glob` refuses with `NotImplementedError`,
+        # a separator, `..`, NUL — has no claims, and `get` then answers None.
+        if (not slug or slug in (".", "..") or "\0" in slug
+                or any(sep in slug for sep in ("/", "\\"))):
+            return []
         return sorted((self.root / ".claiming").glob(
             glob.escape(slug) + "-" + "[0-9a-f]" * 32))
 
@@ -4377,7 +4493,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             rel = (self.root / "backlog").resolve().relative_to(self.store_git_root.resolve())
         except ValueError:
             return None
-        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "--", str(rel)],
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "--", _literal(rel)],
                       capture_output=True, text=True, check=False)
         if listed.returncode != 0:
             return None
@@ -4589,6 +4705,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
             tags = value.get("tags", [])
             if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                 raise ValueError(f"{prefix} tags must be a list")
+            # As in a lifecycle condition: a comma is several tags written as
+            # one, which normalizing would quietly turn into `cli-docs`.
+            if joined := [tag for tag in tags if "," in tag]:
+                raise ValueError(f"{prefix} tag {joined[0]!r} holds several tags; "
+                                 f"list them separately")
+            try:
+                tags = [normalize_tag(tag) for tag in tags]
+            except ValueError as e:
+                raise ValueError(f"{prefix}: {e}") from None
             stale = [tag for tag in tags if tag not in registered]
             if stale:
                 raise ValueError(f"{prefix} has unregistered tag '{stale[0]}'")
@@ -5079,7 +5204,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # check below). `stdin` is closed explicitly so `_git`'s guarantee about
         # never inheriting a terminal still holds here.
         out = subprocess.run(
-            ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", rel],
+            ["git", "-C", str(self.store_git_root), "status", "--porcelain", "--", _literal(rel)],
             stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if out.returncode == 0 and out.stdout.strip():
             if only_own_entry and self._graveyard_dirt_is_only({slug, *also}):
@@ -5305,7 +5430,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError:
                 continue
             listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
-                           location, "--", str(rel)],
+                           location, "--", _literal(rel)],
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return True
@@ -5325,7 +5450,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError:
                 continue
             listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
-                           "--name-only", rev, "--", str(rel)],
+                           "--name-only", rev, "--", _literal(rel)],
                           capture_output=True, text=True, check=False)
             if listed.returncode != 0:
                 continue
@@ -5392,7 +5517,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError:
                 continue
             listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
-                           "HEAD", "--", str(rel)],
+                           "HEAD", "--", _literal(rel)],
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and listed.stdout.strip():
                 return rel
@@ -5404,7 +5529,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         that folder takes with it. Read from git, not from disk, so a removal
         rerun after the folder is already gone still finds them."""
         listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
-                       "--name-only", "HEAD", "--", str(committed)],
+                       "--name-only", "HEAD", "--", _literal(committed)],
                       capture_output=True, text=True, check=False)
         if listed.returncode != 0:
             return []
@@ -5453,7 +5578,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"{folder}{hint}. Deleting it would destroy the only copy. "
                 f"Commit the item, or set work.retain to keep it.")
         dirty = _git(["git", "-C", str(self.store_git_root), "status",
-                      "--porcelain", "--ignored", "--", str(committed)],
+                      "--porcelain", "--ignored", "--", _literal(committed)],
                      capture_output=True, text=True, check=False).stdout.strip()
         if dirty:
             raise ValueError(
@@ -5475,7 +5600,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if existing is not None and existing.location:
             listed = _git(["git", "-C", str(self.store_git_root), "ls-tree",
                            existing.location, "--",
-                           str(committed) if committed else "."],
+                           _literal(committed) if committed else "."],
                           capture_output=True, text=True, check=False)
             if listed.returncode == 0 and (committed is None or listed.stdout.strip()):
                 return existing.location
@@ -5747,7 +5872,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         work = self._config().get("work")
         if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
             return []
-        return sorted(str(t) for t in (work.get("tags") or []))
+        return sorted(self._registered_tag_entries()[0])
+
+    def _registered_tag_entries(self) -> tuple[set[str], list[str]]:
+        """The registered tags, normalized as every applied tag is — so `Bug`
+        registered by hand means `bug` — and the entries that are not tags at
+        all, which `check` reports rather than letting one break every tag read."""
+        work = self._config().get("work")
+        raw = work.get("tags") if isinstance(work, dict) else None
+        tags: set[str] = set()
+        bad: list[str] = []
+        for entry in raw if isinstance(raw, list) else []:
+            try:
+                if not isinstance(entry, str):
+                    raise ValueError(entry)
+                tags.add(normalize_tag(entry))
+            except ValueError:
+                bad.append(repr(entry))
+        return tags, bad
 
     # -- transition-commit policy (node-root `tcw-config.yaml` → `work.*`) --
 
@@ -6095,7 +6237,42 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self._work_config().get("procedures"))
         problems += procedure_problems
         problems += self._file_binding_problems(policy)
+        problems += self._condition_tag_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
+
+    def _condition_tag_problems(self, policy: LifecyclePolicy) -> list[str]:
+        """Condition tags that are not registered tags, so can never match.
+
+        Beside the parser rather than in it, as `_file_binding_problems` is: the
+        registry is this node's configuration, and a condition naming a tag that
+        was unregistered must still load — reported here, fixed afterwards —
+        rather than stop the whole policy from reading.
+        """
+        registered = set(self.registered_tags())
+        found: list[str] = []
+        places: list[tuple[str, list]] = []
+        for name, sb in policy.stages.items():
+            places += [(f"work.lifecycle.stages.{name}.pre", sb.pre),
+                       (f"work.lifecycle.stages.{name}.prompt", sb.prompt)]
+        for name, tb in policy.transitions.items():
+            places += [(f"work.lifecycle.transitions.{name}.pre", tb.pre),
+                       (f"work.lifecycle.transitions.{name}.post", tb.post)]
+        places += [(f"work.lifecycle.artifacts.{n}", b) for n, b in policy.artifacts.items()]
+        places += [(f"work.procedures.{n}", b) for n, b in policy.procedures.items()]
+        for where, bindings in places:
+            # Named by content, not position: the parser has already dropped any
+            # malformed entry, so a position here would count only the survivors.
+            for binding in bindings:
+                if binding.when is None:
+                    continue
+                entry = f"{where} entry '{binding.kind}: {binding.ref}'"
+                for key, tags in (("tags", binding.when.tags),
+                                  ("not_tags", binding.when.not_tags)):
+                    found += [f"{entry}: 'when.{key}' names '{tag}', which is not a "
+                              f"registered tag, so it never matches; register it "
+                              f"with `tcw work tags add {tag}` or fix the name"
+                              for tag in tags if tag not in registered]
+        return found
 
     def _file_binding_problems(self, policy: LifecyclePolicy) -> list[str]:
         """`file:` bindings that do not exist or leave the node.
@@ -6198,6 +6375,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         out: list[str] = []
         for t in tags:
+            if not isinstance(t, str):
+                raise ValueError(f"tag {t!r} must be a string")
             norm = normalize_tag(t)
             if norm not in registered:
                 raise ValueError(
@@ -6211,6 +6390,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         problems: list[str] = []
         if identifier is None:                         # node-wide config, not per-item
+            problems.extend(f"{SENTINEL}: work.tags entry {entry} is not a tag"
+                            for entry in self._registered_tag_entries()[1])
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())
@@ -6553,7 +6734,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             os.replace(temp, destination)
             self._stage(destination)
             tracked = _git(
-                ["git", "-C", str(self.store_git_root), "ls-files", "--error-unmatch", "--", str(source)],
+                ["git", "-C", str(self.store_git_root), "ls-files", "--error-unmatch", "--", _literal(source)],
                 capture_output=True,
             ).returncode == 0
             if tracked:

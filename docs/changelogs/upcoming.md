@@ -5,6 +5,17 @@ category.
 
 ### Fixed
 
+- Store names are never read as patterns. Every git call in `tcw/store/fs.py`
+  that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,
+  `ls-files`, `ls-tree`), and `tcw work complete`'s staged-binding check, pass
+  each path as `:(literal)<path>` (`_literal`), so writing the capability `a*`
+  no longer stages or commits `abc`. Per path, not `--literal-pathspecs`, which
+  exports `GIT_LITERAL_PATHSPECS` to the hooks `git commit` runs; `git_rm`'s flag
+  is replaced the same way. `git mv` takes plain paths and is unchanged.
+- `FsWorkStore._claiming_dirs` returns no claims for a slug that is not one
+  plain path segment, so `get`, `start` and `submit("/etc/passwd")` answer
+  "no such work item" instead of `NotImplementedError` from `Path.glob`, and
+  `GET /api/work/%2Fetc%2Fpasswd` is a 404.
 - One item's unreadable `capabilities.yaml` no longer breaks the board.
   `FsWorkStore._read_item` caught only `yaml.YAMLError`, so a file that was not
   UTF-8 or a folder of that name made `tcw work list` exit 1 for every item, a
@@ -90,3 +101,45 @@ category.
   claim published meanwhile is never taken from its owner. The board shows a
   notice with a Recover button. `_strict_refuses` reads an interrupted claim
   instead of raising on it.
+
+### Fixed
+
+- Lifecycle `when.tags` / `when.not_tags` are normalized with `normalize_tag`
+  at parse time, so `CLI` matches items tagged `cli`. **Behavior change:** a
+  condition written in a non-canonical form now fires, and for `not_tags` now
+  excludes; in a first-match artifact list, such a condition can now match
+  before a later canonical one; and an item whose tags were hand-edited into a
+  non-canonical form (`CLI`) no longer matches a condition written the same
+  way. An element holding a comma (`"cli,docs"`) or normalizing to nothing is
+  a parse problem. `tcw validate` reports condition tags that are not
+  registered (`FsWorkStore._condition_tag_problems`), in stages, transitions,
+  artifacts and procedures, naming the entry by its `kind: value`; the policy
+  still loads.
+- `registered_tags` returns normalized, de-duplicated tags; an entry that is not
+  a tag is reported by `check` instead of breaking tag reads. Plan-stage tags are
+  normalized before the registry check. `_validate_tags` refuses a non-string tag
+  with `ValueError` (was `AttributeError`, a 500 from the web API).
+- Six "unknown key" messages in `tcw/store/base.py` sort `map(str, keys)`, so an
+  unquoted number key is named instead of raising `TypeError`.
+- `tcw work list --tags X` with X registered in no listed node prints a note to
+  stderr and still lists.
+- A `skill:` binding whose value holds whitespace or a path separator is a parse
+  problem; existence is deliberately not checked.
+- `FsTaxonomyStore.remove` refuses a term a local capability names in `Subject`
+  or `Feature` (`_capability_referrers`, compared by folder identity), and
+  refuses — failing closed — when the node's capabilities store cannot be opened
+  or read. The abstract `TaxonomyStore.remove` contract says so.
+- It also refuses, before anything is removed, when any file under the term is
+  not tracked by git (`_untracked_under`), and a term whose own files are not
+  tracked gets a TCW message instead of git's. `.DS_Store`, `Thumbs.db` and
+  `desktop.ini` do not block: they are deleted with the term, so the term (and a
+  folder holding only them) stops listing. `rm` no longer reports removing a term
+  that still lists.
+- `tcw validate` checks the `capabilities.yaml` of every item in backlog, active
+  or review (`_open_sidecar_problems`), reporting `<file>:<line>: <problem>` for
+  an unroutable or ambiguous path, a `changed:` path that does not resolve, a
+  `new:` path that does not resolve once the item is active, and a `removed:`
+  path naming an inherited capability. `capability_gate(..., in_progress=True)`
+  shares the completion gate's routine without its completion-only checks
+  (`new` still `Missing`, `removed` still resolving). Resolved items are never
+  checked (GitHub #27).
