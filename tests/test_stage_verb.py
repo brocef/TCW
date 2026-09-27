@@ -211,10 +211,15 @@ def test_a_next_step_names_a_transition_only_where_one_is_needed():
         names_transition = "tcw work " in before
         if names_transition and " if " in before:
             # `plan` is legal in `active` too, so its transition is conditional:
-            # needed from some statuses, wrong from the others.
+            # needed from some statuses, wrong from the others — and the
+            # condition has to name the statuses that need it.
             assert here - there and here & there, (
                 f"{stage_id} names a conditional transition before {nxt}, which "
                 f"is only right when some of {sorted(here)} need it and some do not")
+            for status in here - there:
+                assert status in before, (
+                    f"{stage_id}'s condition does not name '{status}', the "
+                    f"status that needs the transition")
         elif names_transition:
             assert not (here & there), (
                 f"{stage_id} names a transition before {nxt}, but {nxt} is "

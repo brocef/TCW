@@ -62,7 +62,7 @@ those are evaluated once, by the session holding the user relationship.
 not refuse, but it prints a warning naming whichever is missing. An item started
 too early is not stuck — `spec` and `plan` are legal in `active` as well as
 `backlog`, so run `tcw work stage gate spec <slug>` and `... plan <slug>` and
-write them where you are working (the worktree, if the item has one). The
+write them where `tcw work path <slug>` says. The
 `implement` gate prints the same warning; a project that wants it to refuse binds
 a `pre` check there.
 

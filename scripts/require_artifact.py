@@ -3,7 +3,8 @@
 
 Bound to the `plan` and `implement` stages in `tcw-config.yaml`, so
 `tcw work stage gate plan <slug>` refuses on an item whose spec has not been
-written.
+written, and `tcw work stage gate implement <slug>` on one missing its spec or
+plan.
 
 It asks `tcw work show --json` rather than composing a store path. That is the
 litmus test applied to the check itself: the artifact map is the abstract answer

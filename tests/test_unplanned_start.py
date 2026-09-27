@@ -123,3 +123,31 @@ def test_spec_is_still_refused_in_review(tmp_path):
     assert _tcw(root, "submit", slug).returncode == 0
     out = _tcw(root, "stage", "gate", "spec", slug)
     assert out.returncode == 1 and "not legal" in out.stderr, out.stderr
+
+
+# ── review findings ──────────────────────────────────────────────────────────
+
+def test_an_unreadable_spec_does_not_fail_a_start_that_happened(tmp_path):
+    root = _node(tmp_path)
+    st = FsWorkStore.open(root)
+    slug = st.create("Thing", created="2026-01-01").slug
+    (st.path(slug) / "spec.md").write_bytes(b"caf\xe9 latin-1\n")
+    out = _tcw(root, "start", slug)
+    assert out.returncode == 0, out.stderr
+    assert f"started {slug}" in out.stdout
+
+
+def test_a_qualified_reference_is_advised_as_typed(tmp_path):
+    root = _node(tmp_path)
+    child = root / "kid"
+    child.mkdir()
+    init(["work"], child, "kid")
+    for path, links in ((root, {"children": {"kid": "kid"}}),
+                        (child, {"parent": {"repo": ".."}})):
+        cfg = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
+        cfg["connected-projects"] = links
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    slug = FsWorkStore.open(child).create("Thing", created="2026-01-01").slug
+    out = _tcw(root, "start", f"kid/{slug}")
+    assert out.returncode == 0, out.stderr
+    assert f"`tcw work stage gate spec kid/{slug}`" in out.stderr, out.stderr
