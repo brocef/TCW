@@ -286,13 +286,16 @@ def _map_store_error(e: Exception) -> tuple[int, bytes]:
     """Map store-level exceptions to HTTP status codes and JSON error bodies.
 
     "no such" / "no heading" ValueError messages → 404.
-    StaleRevision → 409.
+    StaleRevision → 409, with `"code": "stale-revision"`.
     IllegalTransition / validation ValueError / RefError → 422.
     Everything else → 500.
     """
     msg = str(e).lower()
     if isinstance(e, StaleRevision):
-        return _err(HTTPStatus.CONFLICT, str(e))
+        # The one 409 the web app answers with its conflict banner. Marked,
+        # because strict-tracker and generated-sidecar refusals are 409 too and
+        # must show their own message instead.
+        return _err(HTTPStatus.CONFLICT, str(e), code="stale-revision")
     if isinstance(e, IllegalTransition):
         return _err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
     if isinstance(e, RefError):
