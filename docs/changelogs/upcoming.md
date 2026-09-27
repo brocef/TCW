@@ -11,6 +11,16 @@ category.
 
 ### Fixed
 
+- A blocker naming another node's item resolves against that node (#28).
+  `WorkStore.external_blocker_state(text)` (default: still blocks) is
+  overridden by `FsWorkStore` to settle exactly `<project-id>/<slug>` through
+  `resolve_qualified_work_ref`, live item or tombstone; a bare `external:` entry
+  naming a tombstoned local slug resolves too. `unresolved_blockers` uses it,
+  so `start`, `complete`, `list` and the strict tracker check agree; a declared
+  project absent from this checkout keeps blocking with its reason in the label.
+  `_entry_for` records a tombstoned local slug as `slug:`. `reconcile`'s Next
+  line asks each row's own store and labels rows by node — it had keyed bare
+  slugs across nodes and ignored local `slug:` blockers outside the epic.
 - `delegate` and `reconcile` pass through a routing node — a registered child
   that keeps no board (GitHub #30). `delegate` resolves its target among
   `routed_children` (the nearest node with a work store on each branch; new in

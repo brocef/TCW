@@ -63,6 +63,13 @@ as "not registered" and add a second declaration.
    status, blockers, next-ready) to the epic's own `rollup.md` sidecar — the
    rollup is generated, so it never touches prose anyone is credited with.
    Re-run it to refresh before deciding the next move.
+6. **A slice that waits on another node's slice** records the dependency as
+   `tcw work edit <slug> --blocked-by <project-id>/<slug>`. It is stored as
+   `external:` text but settled against the node that owns it, anywhere in the
+   registered graph: it stops blocking once that item is resolved, even where
+   only its tombstone is left, and `start`, `list` and `reconcile`'s Next line
+   agree. A project declared but not in this checkout keeps it blocking, and the
+   label says why.
 
 **Which path?** Same TCW project → `--parent` children
 ([`decompose.md`](procedures/decompose.md)). Multiple registered projects → an `--epic` +

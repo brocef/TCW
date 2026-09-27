@@ -3853,9 +3853,13 @@ class WorkStore(ABC):
         return ref
 
     def _entry_for(self, ref: str) -> dict:
-        """A blocker entry: a resolvable ref → {slug}, else {external}."""
+        """A blocker entry: a ref to an item this store holds or once held →
+        {slug}, else {external}. A resolved item already reduced to its
+        tombstone is still this store's item; recording it as external text
+        would make it block forever."""
         ref = self._normalize_ref(ref)
-        return {"slug": ref} if self.get(ref) is not None else {"external": ref}
+        known = self.get(ref) is not None or self.tombstone(ref) is not None
+        return {"slug": ref} if known else {"external": ref}
 
     @staticmethod
     def _same_entry(a: dict, b: dict) -> bool:
@@ -4022,15 +4026,28 @@ class WorkStore(ABC):
         # cleared, which is the one thing a caller must not be handed.
         return self._require(slug)
 
+    def external_blocker_state(self, text: str) -> tuple[bool, str]:
+        """Whether an `external:` blocker's text names work that is resolved, and
+        if it still blocks, why (or "").
+
+        Storage-neutral: any store that can address another project's items can
+        answer it. The default — a store that cannot — keeps every external
+        blocker blocking, which is what they did before any store could."""
+        return False, ""
+
     def unresolved_blockers(self, item: WorkItem) -> list[str]:
         """Labels of blockers that still block `item`. An entry is unresolved if
-        it is external, or a slug whose item is not resolved — a *discarded*
+        it is external text `external_blocker_state` cannot settle as resolved
+        work, or a slug whose item is not resolved — a *discarded*
         blocker no longer blocks, since a decision not to do it is as final as
         doing it. A slug that no longer resolves counts as resolved (silently)."""
         out: list[str] = []
         for b in item.blocked_by:
             if "external" in b:
-                out.append(f"external: {b['external']}")
+                resolved, why = self.external_blocker_state(str(b["external"]))
+                if not resolved:
+                    out.append(f"external: {b['external']}"
+                               + (f" ({why})" if why else ""))
             elif "slug" in b:
                 try:
                     blocker = self.get(b["slug"])

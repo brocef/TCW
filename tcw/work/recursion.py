@@ -253,21 +253,27 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
 
 # ── reconcile ────────────────────────────────────────────────────────────────
 
-def _tasks_for(node_root: Path, epic_slug: str) -> list[tuple[str, WorkItem]]:
-    """(node-relative-path, item) for every item with initiative == epic_slug,
+def _node_stores(node_root: Path) -> dict[str, FsWorkStore]:
+    """Each node `reconcile` reads, keyed by its row label: "." for this node,
+    the project id for a descendant with a board."""
+    node_root = node_root.resolve()
+    return {("." if r.resolve() == node_root else registered_project_id(node_root, r)):
+            FsWorkStore.open(r)
+            for r in [node_root, *descendant_nodes(node_root)]}
+
+
+def _tasks_for(node_root: Path, epic_slug: str,
+               stores: dict[str, FsWorkStore] | None = None
+               ) -> list[tuple[str, WorkItem]]:
+    """(node label, item) for every item with initiative == epic_slug,
     across this node and every descendant that keeps a board — through a routing
     node, and below a child with a board of its own. The same set
     `initiative_children` gives the completion gate, so the table and the gate
     never disagree about an epic's slices. Slugs collide across nodes, so the
-    node path keys the rows."""
-    node_root = node_root.resolve()
-    out: list[tuple[str, WorkItem]] = []
-    for r in [node_root, *descendant_nodes(node_root)]:
-        rel = "." if r.resolve() == node_root else registered_project_id(node_root, r)
-        for item in FsWorkStore.open(r).query():
-            if item.initiative == epic_slug:
-                out.append((rel, item))
-    return out
+    node label keys the rows."""
+    stores = stores if stores is not None else _node_stores(node_root)
+    return [(rel, item) for rel, st in stores.items() for item in st.query()
+            if item.initiative == epic_slug]
 
 
 def _blocker_labels(item: WorkItem) -> str:
@@ -314,23 +320,29 @@ def _capability_deltas(tasks: list[tuple[str, WorkItem]]) -> list[str]:
     return out
 
 
-def _ready(tasks: list[tuple[str, WorkItem]]) -> list[str]:
-    # "Resolved", not "shipped": a discarded task is done being worked on, so it
-    # neither needs doing nor holds back anything blocked on it.
-    unresolved = {item.slug for _, item in tasks
-                  if item.status not in RESOLVED_STATUSES}
+def _ready(tasks: list[tuple[str, WorkItem]],
+           stores: dict[str, FsWorkStore]) -> list[str]:
+    """Open slices nothing blocks, asked of each row's **own** store — the
+    question `start` asks, so the Next line and `start` cannot disagree. Keyed
+    by node, not bare slug: equal slugs in two nodes are different items.
+    "Resolved", not "shipped": a discarded task is done being worked on, so it
+    neither needs doing nor holds back anything blocked on it."""
     ready: list[str] = []
-    for _rel, item in tasks:
+    for rel, item in tasks:
         if item.status in RESOLVED_STATUSES:
             continue
-        blocked = any(b.get("slug") in unresolved or "external" in b for b in item.blocked_by)
+        try:
+            blocked = bool(stores[rel].unresolved_blockers(item))
+        except Exception:                          # unknown is not "ready"
+            blocked = True
         if not blocked:
-            ready.append(item.slug)
+            ready.append(item.slug if rel == "." else f"{rel}/{item.slug}")
     return ready
 
 
 def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
-            completable: bool = False) -> str:
+            completable: bool = False,
+            stores: dict[str, FsWorkStore] | None = None) -> str:
     lines = ["<!-- tcw:rollup -->", f"### Rollup: {epic_slug}", ""]
     if not tasks:
         lines.append("_No tasks reference this initiative yet._")
@@ -350,7 +362,7 @@ def _render(epic_slug: str, tasks: list[tuple[str, WorkItem]],
             lines += ["", f"**Ready to close:** all {len(tasks)} children resolved — "
                       f"run `tcw work complete {epic_slug} --resolution done --confirm`"]
         else:
-            ready = _ready(tasks)
+            ready = _ready(tasks, stores or {})
             lines += ["", "**Next:** " + (", ".join(ready) if ready else "all blocked or complete")]
     lines.append("<!-- /tcw:rollup -->")
     return "\n".join(lines)
@@ -406,7 +418,9 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
         auto_completed = True
 
     completable = store.epic_completable(store.get(epic_slug))     # False once completed
-    block = _render(epic_slug, _tasks_for(node_root, epic_slug), completable=completable)
+    stores = _node_stores(node_root)
+    block = _render(epic_slug, _tasks_for(node_root, epic_slug, stores),
+                    completable=completable, stores=stores)
     _evict_legacy_rollup(store, epic_slug)
     current = store.read_sidecar(epic_slug, ROLLUP_SIDECAR)
     text = f"{block}\n"

@@ -279,6 +279,9 @@ tcw work rework "$slug"                # review → active (verification rejecte
                                        # refused while refined-outcome.md still says it passed)
 
 tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable)
+tcw work edit "$slug" --blocked-by other-node/its-slug  # an item in another registered
+                                                 # project; stops blocking once that item
+                                                 # is resolved there (other text always blocks)
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
 tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (repeatable;
                                                  # accepts the "external: …" form show/list print,
