@@ -1,7 +1,7 @@
 slug: 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here
 title: Say so when tracker import --parent meets a ticket already bound here
 created: '2026-09-27'
-resolution: null
+resolution: done
 tags:
 - bug
 - work
