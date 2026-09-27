@@ -1020,7 +1020,8 @@ def binding_refusal(store, slug: str, config, *, own=None,
 
 
 def authorize(store, slug: str, client, config, *, target: str, own=None,
-              ownership: bool = True) -> str | None:
+              ownership: bool = True, move: str | None = None,
+              resolution: str | None = None) -> str | None:
     """`None` when the ticket bound to `slug` authorizes a change leading to the
     tracker status `target` (empty when that status is unmapped); otherwise why not.
 
@@ -1034,6 +1035,13 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
 
     `ownership=False` skips the assignment check, for a completion: a claim gates
     work, not resolution. Where the ticket is is still asked.
+
+    `move` (with the item's `resolution`) also asks whether the workflow can carry
+    the ticket to `target` — the same `assess_move` call, with the same configured
+    transition name, that `deliver` makes — so a move the ticket cannot follow is
+    refused here rather than let through to leave a conflicting record that refuses
+    the next one. Not asked for an unmapped target, nor while another open part of
+    the ticket holds its moves: `deliver` moves nothing then either.
     """
     own = own or store
     bound, refusal = binding_refusal(store, slug, config, own=own)
@@ -1048,7 +1056,7 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
     # Where `deliver` would expect the ticket before moving it on, or already the
     # target. For an item sharing the ticket with another part that includes earlier
     # statuses, since that part may have held this one's moves.
-    _held, shared = _siblings(store, slug, bound)
+    held, shared = _siblings(store, slug, bound)
     allowed = tuple(dict.fromkeys(filter(None, (
         *expected_statuses(config.statuses, own.get(slug).status, None, None,
                            shared=shared), target))))
@@ -1066,6 +1074,15 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
                 f"tracker, or TCW held it there for another part of the ticket whose item "
                 f"is not in this checkout. Put it in {where}, then run this again; "
                 f"discarding the item is always allowed.{unsynced}")
+    if move and target and not held:
+        verdict, detail = assess_move(
+            ticket, target=target, expected=allowed,
+            move=move,
+            named_transition=transition_name(config.move_transitions, move, resolution))
+        if verdict == CONFLICTING:
+            return (f"{detail} The ticket could not follow this change, so it was not "
+                    f"made; fix the workflow or work.tracker.transitions, or move the "
+                    f"ticket yourself, then run this again.")
     return None
 
 

@@ -370,7 +370,7 @@ _STRICT_BROKEN = ("The tracker configuration has problems, and strict mode refus
 
 
 def _strict_refusal(st, bare: str, change: str, own=None, *,
-                    ownership: bool = True) -> str | None:
+                    ownership: bool = True, resolution: str | None = None) -> str | None:
     """Why strict tracker mode refuses `change` (a lifecycle move) of `bare`, or
     `None`. Loads no tracker code unless the node is strict; epics are not gated.
 
@@ -393,9 +393,11 @@ def _strict_refusal(st, bare: str, change: str, own=None, *,
     from tcw.store.base import target_status
     from tcw.tracker.jira import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
-    target = target_status(config.statuses, MOVE_STATUS[change], None)
+    # The real resolution: a per-resolution `statuses.completed` mapping read with
+    # none looks unmapped, and the gate would ask nothing of a completion.
+    target = target_status(config.statuses, MOVE_STATUS[change], resolution)
     return authorize(st, bare, JiraClient(config), config, target=target, own=own,
-                     ownership=ownership)
+                     ownership=ownership, move=change, resolution=resolution)
 
 
 def _claim_gate(st, bare: str) -> str | None:
@@ -2663,6 +2665,17 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
               "to use the ticket's key and summary.", file=sys.stderr)
         return 1
     st = _store()
+    # Where the item will sit, checked before the ticket is touched: a claim is a
+    # write to a shared tracker, and finding out afterwards that the parent does
+    # not exist would leave the ticket claimed for an item never made.
+    parent = getattr(args, "parent", None)
+    initiative = getattr(args, "initiative", None) or ""
+    if parent:
+        try:
+            st._require_live_parent(parent)
+        except ValueError as e:
+            print(f"tcw work {label}: {e}", file=sys.stderr)
+            return 1
     today = date.today().isoformat()
     ticket = None
     try:
@@ -2725,8 +2738,8 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
 
     title = args.title.strip() if args.title else f"{outcome.key} — {outcome.summary}"
     try:
-        slug = st.create_work(title, intake=_intake_text(outcome, description, today)
-                              ).item.slug
+        slug = st.create_work(title, intake=_intake_text(outcome, description, today),
+                              parent=parent, initiative=initiative).item.slug
     except _LOCAL_WRITE_ERRORS as e:
         print(f"tcw work {label}: claimed {outcome.key}, but the item could not "
               f"be created: {e}. Fix that and run this command again.", file=sys.stderr)
@@ -3974,7 +3987,8 @@ def _complete(args: argparse.Namespace) -> int:
     # refused — abandoning work authorizes none — and a completion is refused only for
     # its binding, never for who holds the ticket.
     if shipping and (reason := _strict_refusal(st, bare, "complete", own=branch_store,
-                                              ownership=False)):
+                                              ownership=False,
+                                              resolution=args.resolution)):
         return _strict_says_no("complete", f"{bare} was not changed", reason)
     # Also before the merge-back, for any resolution: the store refuses to close an
     # item with anything open beneath it, and finding that out after the branch is
@@ -4293,13 +4307,17 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                "never claimed by import); a tracker.yaml on an open item cannot be\n"
                "read; or the tracker does not show the claim afterwards.\n\n"
                "  tcw work tracker import EX-123\n"
-               "  tcw work tracker import EX-123 --part api --title 'The API half'\n",
+               "  tcw work tracker import EX-123 --part api --title 'The API half'\n"
+               "  tcw work tracker import EX-124 --parent <epic-slug>\n",
     )
     ptri.add_argument("ticket", help=TICKET_HELP)
     ptri.add_argument("--part", help="name one of several items for this ticket "
                                      "(lowercase letters, digits, hyphens; "
                                      "default: default)")
     ptri.add_argument("--title", help="the item's title (default: '<KEY> — <summary>')")
+    ptri.add_argument("--parent", help="nest the new item under this work item "
+                                       "(checked before the ticket is claimed)")
+    ptri.add_argument("--initiative", help="the initiative (epic) the new item belongs to")
     ptri.set_defaults(func=_tracker_import)
 
     ptrc = ptrs.add_parser(

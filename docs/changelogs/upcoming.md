@@ -3,7 +3,23 @@
 Developer changelog for the next version. Technical and precise; grouped by
 category.
 
+### Added
+
+- `tcw work tracker import --parent <slug> --initiative <epic>`: nest the
+  imported item, checked before the ticket is claimed — the way to nest a child
+  under strict mode, where `new --parent` stays refused.
+
 ### Fixed
+
+- Strict mode refuses a move its ticket cannot follow. `authorize`
+  (`tcw/tracker/sync.py`) takes `move` and `resolution` and asks `assess_move`
+  with the configured transition name, as `deliver` does, so a `submit`,
+  `rework` or `complete` whose workflow offers no transition — or several and no
+  name — is refused before the item moves, instead of leaving a conflicting
+  record that refused the next move. Skipped for an unmapped target and while
+  another open part holds the ticket. `_strict_refusal` passes the item's real
+  resolution, so a per-resolution `statuses.completed` is no longer read as
+  unmapped.
 
 - Store names are never read as patterns. Every git call in `tcw/store/fs.py`
   that takes a pathspec (`add`, `rm`, `rm --cached`, `status`, `commit --`,

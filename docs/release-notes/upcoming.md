@@ -5,6 +5,10 @@ internal module names.
 
 ## Fixes
 
+- **Strict mode no longer lets through a move the ticket cannot follow.** If your
+  workflow has no transition to where the item is going, `submit`, `rework` and
+  `complete` now refuse up front instead of moving the item and leaving it stuck.
+
 - **A name containing `*`, `?` or `[` means only itself.** Saving a capability
   named `a*` used to stage your unsaved changes to a capability named `abc` as
   well, so the next commit took them along.
@@ -80,3 +84,8 @@ internal module names.
   while the item is still being worked**, naming the file and line, instead of
   leaving it to `tcw work complete`. Finished items are never checked, so old
   records do not make validation noisy.
+
+## New
+
+- **Nest an imported item:** `tcw work tracker import <ticket> --parent <slug>`
+  (or `--initiative <epic>`) — the way to build a hierarchy under strict mode.
