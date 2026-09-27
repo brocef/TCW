@@ -542,6 +542,20 @@ class TcwHandler(BaseHTTPRequestHandler):
                                            f"{prefix}{it.slug}" if prefix else None))
         return items
 
+    def _interrupted_claims(self) -> list[dict]:
+        """Interrupted starts on every node the board shows, slugs qualified as
+        the board's are, so Recover addresses the node that holds the claim."""
+        anchor = self.server.node_root.resolve()
+        roots = [anchor]
+        if self.server.include_descendants:
+            roots += descendant_nodes(anchor)
+        claims = []
+        for root in roots:
+            prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
+            claims += [{"slug": f"{prefix}{c.slug}", "title": c.title}
+                       for c in FsWorkStore.open(root).interrupted_claims()]
+        return claims
+
     # ── HTTP method dispatchers ───────────────────────────────────────────
 
     def do_GET(self) -> None:
@@ -732,8 +746,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         # They are on no board (they are in no status), so without this the web
         # app could neither show one nor offer to recover it.
         if path == "/api/work/interrupted-claims":
-            self._send_json(HTTPStatus.OK, [
-                {"slug": c.slug, "title": c.title} for c in work.interrupted_claims()])
+            self._send_json(HTTPStatus.OK, self._interrupted_claims())
             return
 
         # Catch-all work detail: /api/work/<slug>
@@ -968,11 +981,6 @@ class TcwHandler(BaseHTTPRequestHandler):
                     # explicit `--take-over`; so the slug has to be an
                     # interrupted claim, and the claim goes to this server's own
                     # identity, found the way the CLI finds one.
-                    if not any(c.slug == slug for c in work.interrupted_claims()):
-                        self._send_err(HTTPStatus.CONFLICT,
-                                       f"{slug} is not an interrupted claim; "
-                                       f"nothing to recover")
-                        return
                     from tcw.work.cli import _local_owner
                     owner = _local_owner(work)
                     if not owner:
@@ -980,7 +988,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                                        "no claimant identity for this server; set "
                                        "TCW_WORK_OWNER or git user.email and restart it")
                         return
-                    start = lambda: work.start(slug, owner=owner, take_over=True)  # noqa: E731
+                    start = lambda: work.start(slug, owner=owner, recover=True)  # noqa: E731
                 try:
                     item = _transition_ok(work, slug, start)
                     # Payload built from the bare slug the store knows, then

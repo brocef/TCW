@@ -588,9 +588,9 @@ the owner you name, running the `start` hooks against the item as it was. The
 web app lists interrupted starts above the work list with a **Recover** button,
 which finishes the claim for the identity `tcw serve` runs as (`TCW_WORK_OWNER`,
 else your Git email or name); it recovers only an interrupted start, never an
-item someone else has already started. Under strict tracker mode recovery does
-not claim the ticket again: the interrupted start claimed it before moving the
-item.
+item someone else has already started. Under strict tracker mode recovery claims
+the ticket first, exactly as `tcw work start` does, and the web app refuses it
+and names the `--take-over` command instead, since it cannot check a ticket.
 
 ## Rolling up an epic, and delegating across nodes
 

@@ -3921,7 +3921,13 @@ class WorkStore(ABC):
         return out
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
+        """`recover` is `take_over` for an interrupted claim only: it refuses an
+        item that is settled in any status, so it can never take an active item
+        from its owner. A store that publishes atomically has no interrupted
+        claims, so for it every recover is refused."""
+        if recover:
+            raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
         item = self._require(slug)
         if item.status == "active":
             # Active with nobody holding it — what `tcw work tracker release` leaves —

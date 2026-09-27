@@ -138,6 +138,68 @@ def test_web_recover_refuses_an_item_that_is_not_an_interrupted_claim(served, st
         st.start(slug, owner="someone-else")
     before = (st.get(slug).status, st.get(slug).owner)
     status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {"recover": True})
-    assert status == 409 and "interrupted claim" in body["error"], body
+    assert status == 422 and "not an interrupted claim" in body["error"], body
     after = FsWorkStore.open(root).get(slug)
     assert (after.status, after.owner) == before
+
+
+# ── review fold-in: the gaps between "check" and "act" ───────────────────────
+
+def test_a_slug_with_a_settled_folder_is_not_listed(tmp_path):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    st = FsWorkStore.open(root)
+    stray = st.root / ".claiming" / f"{slug}-{'2b' * 16}"
+    stray.mkdir(parents=True)
+    (stray / "state.yaml").write_text(f"slug: {slug}\ntitle: Stray\n")
+    assert st.interrupted_claims() == []
+
+
+def test_the_store_refuses_to_recover_a_settled_item(tmp_path):
+    """Checked by the store against the read it acts on, so a claim published
+    after a caller looked is never taken from its owner."""
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug, owner="first")
+    with pytest.raises(ValueError, match="not an interrupted claim"):
+        st.start(slug, owner="second", recover=True)
+    assert st.get(slug).owner == "first"
+
+
+# ── strict tracker mode: recovery claims the ticket like any strict start ────
+
+from test_tracker_strict import strict  # noqa: E402,F401  (fixture)
+from test_tracker_sync import A, B, TICKET_ID, bound_item, claimed_ticket, cli, fake  # noqa: E402,F401
+
+
+def test_strict_recovery_claims_the_ticket(strict, fake):
+    slug = bound_item(strict)
+    interrupt(strict, slug)
+    code, _out, err = cli(strict, "work", "start", slug, "--take-over", "--owner", "me")
+    assert code == 0, err
+    held = fake.tickets[TICKET_ID]
+    assert (held.assignee, FsWorkStore.open(strict).get(slug).status) == (A, "active")
+
+
+def test_strict_recovery_of_someone_elses_ticket_moves_nothing(strict, fake):
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", B)
+    private = interrupt(strict, slug)
+    code, _out, err = cli(strict, "work", "start", slug, "--take-over", "--owner", "me")
+    assert code == 1 and "Bob" in err, err
+    assert private.is_dir() and fake.writes() == []
+
+
+def test_strict_web_recover_is_refused_naming_take_over(strict, fake):
+    from test_serve_write import _req, _start_server
+    slug = bound_item(strict)
+    interrupt(strict, slug)
+    httpd, base = _start_server(strict)
+    try:
+        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start",
+                            {"recover": True})
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert status == 409 and f"tcw work start {slug} --take-over" in body["error"], body

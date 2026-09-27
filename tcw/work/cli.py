@@ -485,7 +485,22 @@ def _unclaimable_on_active(config, ticket, *, take_over: bool) -> str:
             f"'{named}' and run this again.")
 
 
-def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
+def _recovered_binding(item):
+    """The ticket binding an interrupted claim holds, from the item it was read
+    as — no store read reaches a claim — or `Unbound()` when it names no ticket."""
+    from tcw.store.base import Bound, Unbound, bound_value
+    value = bound_value(item.tracker)
+    if value is None:
+        return Unbound()
+    ticket = value["ticket"]
+    return Bound(provider=value["provider"], project=value["project"],
+                 part=value["part"], ticket_id=ticket["id"], ticket_key=ticket["key"],
+                 ticket_url=ticket["url"], bound=value.get("bound") or "",
+                 sync=value.get("sync"), comment=value.get("comment"))
+
+
+def _strict_claim(st, bare: str, item, args, *,
+                  recovering: bool = False) -> tuple[int | None, bool]:
     """Under strict mode, claim a bound item's ticket before `start` moves it.
 
     Returns `(exit code of a refusal already printed, or None to go ahead, whether
@@ -498,14 +513,17 @@ def _strict_claim(st, bare: str, item, args) -> tuple[int | None, bool]:
     if item.status != "backlog" and not (item.status == "active"
                                          and (args.take_over or not item.owner)):
         return None, False                # the store refuses it, and names why
-    if not args.force and st.unresolved_blockers(item):
+    # Not when recovering: a take-over does not check blockers, so this early
+    # return would let the item move with no ticket claimed at all.
+    if not recovering and not args.force and st.unresolved_blockers(item):
         return None, False                # likewise, before any ticket is taken
     from tcw.tracker.claim import _normalize
     from tcw.tracker.intake import leave_pre_backlog, moved_out, read_ticket
     from tcw.tracker.jira import JiraClient, TrackerError
     from tcw.tracker.ownership import assert_ownership
     from tcw.tracker.sync import binding_refusal, lowest_rung
-    bound, refusal = binding_refusal(st, bare, config)
+    bound, refusal = binding_refusal(
+        st, bare, config, binding=_recovered_binding(item) if recovering else None)
     if bound is None:
         return _strict_says_no("start", f"{bare} was not started", refusal), False
     key = bound.ticket_key
@@ -1420,18 +1438,21 @@ def _start(args: argparse.Namespace) -> int:
         print("tcw work start: claimant identity required; pass --owner or set TCW_WORK_OWNER",
               file=sys.stderr)
         return 1
-    before = recovering or st.get(bare)      # again: a `pre` hook may have edited it
+    # Again, since a `pre` hook may have edited the item — the claim included.
+    if args.take_over:
+        recovering = next((c for c in st.interrupted_claims() if c.slug == bare),
+                          None)
+    before = recovering or st.get(bare)
     previous = before.status if before is not None else "backlog"
     # Where the item is before it moves, for the `--worktree` commit below. A
     # child made by an earlier version is nested in its parent's folder, so this
     # is not always `backlog/<slug>`; recovering an interrupted claim finds no
     # folder at all, and git says where it was.
     source = st.path(bare) or st._tracked_source(bare)
-    # Not when recovering: strict mode claims the ticket before `start` moves
-    # the item, so an interrupted start already holds it — and the binding it
-    # would read is inside the claim, where no ordinary read reaches.
-    strict = (before is not None and recovering is None and before.type != "epic"
-              and st.tracker_strict())
+    # Recovering too: the interrupted start may have run before strict mode was
+    # on, or the ticket may have changed hands since. The binding comes from the
+    # claimed item, since no ordinary read reaches a claim.
+    strict = (before is not None and before.type != "epic" and st.tracker_strict())
     if (before is not None and before.type == "epic" and args.worktree
             and st.tracker_strict()):
         # Epics are not gated so they can hold children; code written on an epic's
@@ -1443,7 +1464,8 @@ def _start(args: argparse.Namespace) -> int:
                                "tickets.")
     claimed = False
     if strict:
-        code, claimed = _strict_claim(st, bare, before, args)
+        code, claimed = _strict_claim(st, bare, before, args,
+                                      recovering=recovering is not None)
         if code is not None:
             return code
     try:

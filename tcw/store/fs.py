@@ -4000,7 +4000,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         raise AssertionError("unreachable")                # for the type checker
 
     def start(self, slug: str, force: bool = False, *, owner: str = "",
-              take_over: bool = False) -> WorkItem:
+              take_over: bool = False, recover: bool = False) -> WorkItem:
         """Publish a stamped backlog claim with a single atomic source rename."""
         # The literal first statement, not merely an early one: both the
         # take-over branch and the main claim call `git_stage` directly rather
@@ -4014,6 +4014,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # `--take-over` — the documented remedy for an interrupted claim —
         # unreachable the moment there was something to recover.
         item = self._get_now(slug)
+        if recover:
+            # Decided here, against the same read the take-over branch acts on,
+            # so a claim published since a caller looked cannot be taken from
+            # its new owner.
+            if item is not None:
+                raise ValueError(f"{slug} is not an interrupted claim; nothing to recover")
+            take_over = True
         if item is None and take_over:
             interrupted = self._claiming_dirs(slug)
             if len(interrupted) != 1:

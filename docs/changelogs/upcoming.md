@@ -19,10 +19,14 @@ category.
   printed the same error. New `WorkStore.interrupted_claims()` (default `[]`;
   `FsWorkStore` reads `.claiming/<slug>-<hex>`, reporting each item as it was,
   status `backlog`) supplies the item for the hook, `before` and `previous`.
-  Under strict tracker mode a recovery skips the ticket claim, which the
-  interrupted start already made.
-- The web app can recover one: `GET /api/work/interrupted-claims`, and the start
-  action's `recover: true`, which refuses (409) anything but an interrupted claim
-  and claims for the server's identity (`_local_owner`). The board shows a
+  Under strict tracker mode a recovery runs the same ticket claim as a start,
+  with the binding rebuilt from the claimed item (`_recovered_binding`;
+  `binding_refusal` gained `binding=`), since no store read reaches a claim.
+- The web app can recover one: `GET /api/work/interrupted-claims` (every node
+  the board shows, slugs qualified the same way), and the start action's
+  `recover: true`, which claims for the server's identity (`_local_owner`)
+  through the store's new `start(..., recover=True)`: a take-over that refuses
+  any item settled in a status, decided against the same read it acts on, so a
+  claim published meanwhile is never taken from its owner. The board shows a
   notice with a Recover button. `_strict_refuses` reads an interrupted claim
   instead of raising on it.
