@@ -82,3 +82,13 @@ Run unattended on 2026-09-26 (`extras-autonomous-work`).
   non-ASCII paths and `diff.relative` in the merge-back list; a non-mapping
   `create_issue` answer losing the "it may exist" warning; the filing path's
   "(creating it did not succeed)" placeholder.
+- **Verify** (tcw:verifier): criteria 1-4 met by hand and in tests (a folder
+  `tracker.yaml` through `link`/`unlink`/`sync`/strict `drop`/`show`/the web
+  route; 11 extra wrong shapes; a pending-deletion `link` against an
+  unreachable tracker; a real merge-back blocked by another item's staged file).
+  Fixed at verify: `create`'s closed-item message pointed at `link`, which now
+  refuses a pending deletion. Two older leftovers it found (a non-string status
+  name crashes `tracker show`; strict `drop`'s "is, or was, bound" wording)
+  added to the follow-up. Decision: accept.
+- **Merging main** conflicted in the web sidecar route with the
+  `capabilities.yaml` item's UTF-8 branch; both kept, `OSError` first.
