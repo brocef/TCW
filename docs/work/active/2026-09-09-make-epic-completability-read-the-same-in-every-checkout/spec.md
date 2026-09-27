@@ -71,7 +71,7 @@ complete an epic ("Cannot verify the initiative children…") or run
   resolved items can answer it (a tracker: resolved issues whose epic link is
   E). Default `[]` keeps today's behaviour for a store that cannot.
 - `incomplete_graph_note(below=True)` — store interface, default "".
-- The `initiative` field on the graveyard record — filesystem-adapter detail and registry data.
+- The `initiative` field on the graveyard record — filesystem-adapter detail.
 
 ## Acceptance criteria
 
