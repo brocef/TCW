@@ -19,7 +19,7 @@ import {
     TextField,
 } from "@radix-ui/themes"
 import { useBeforeUnload, useLocation, useNavigate } from "react-router"
-import { encodeRef, fetchJson, requestJson } from "../model/api"
+import { encodeRef, fetchJson, isStaleWrite, requestJson } from "../model/api"
 import {
     buildPathTree,
     buildWorkTree,
@@ -636,7 +636,7 @@ export function App() {
                     "PATCH",
                     body
                 )
-                if (result.status === 409) {
+                if (isStaleWrite(result)) {
                     setConflict({ local: structuredClone(editor.draft) })
                     return
                 }
@@ -668,7 +668,7 @@ export function App() {
                         revision: editor.revision,
                     }
                 )
-                if (result.status === 409) {
+                if (isStaleWrite(result)) {
                     setConflict({ local: editor.draft })
                     return
                 }

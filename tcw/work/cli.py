@@ -2428,16 +2428,12 @@ def _edit(args: argparse.Namespace) -> int:
             if st.get(ref) is None:
                 print(f"tcw work edit: no such work item: {ref}", file=sys.stderr)
                 return 1
-        # Removals first: they fail closed, so a bad --unblocked-by ref aborts
-        # before any --blocked-by/--blocks write lands (same spirit as the
-        # up-front --blocks validation above).
-        for ref in (args.unblocked_by or []):
-            st.remove_blocker(bare, ref)
-        for ref in (args.blocked_by or []):
-            st.add_blocker(bare, ref)
-        for ref in blocks:
-            st.add_blocker(ref, bare)             # reverse link: bare into ref's blocked_by
-        # Use composite update for field changes
+        # A refused edit changes nothing. The blocker edits are separate writes
+        # (`--blocks` writes other items), so everything they could refuse is
+        # checked together first; `update_work` then validates and writes the
+        # fields in one step; only after both do the blocker writes land.
+        st.check_blocker_edits(bare, add=args.blocked_by or [],
+                               remove=args.unblocked_by or [], blocks=blocks)
         st.update_work(
             bare,
             title=_provided(args.title),
@@ -2448,6 +2444,12 @@ def _edit(args: argparse.Namespace) -> int:
             tags=tags_kw,
             type=_provided(args.type),
         )
+        for ref in (args.unblocked_by or []):
+            st.remove_blocker(bare, ref)
+        for ref in (args.blocked_by or []):
+            st.add_blocker(bare, ref)
+        for ref in blocks:
+            st.add_blocker(ref, bare)             # reverse link: bare into ref's blocked_by
     except _ERRORS as e:
         print(f"tcw work edit: {e}", file=sys.stderr)
         return 1

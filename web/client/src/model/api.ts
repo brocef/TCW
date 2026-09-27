@@ -39,3 +39,11 @@ export async function requestJson<T>(
 }
 
 export const encodeRef = (value: string) => encodeURIComponent(value)
+
+/** Whether a failed save was refused for a stale revision — the one refusal the
+ * conflict banner answers. The server answers 409 for other refusals too (a
+ * strict tracker, a sidecar a command writes), and those show their message. */
+export function isStaleWrite(result: ApiResult<unknown>): boolean {
+    const data = result.data as { code?: unknown } | null
+    return result.status === 409 && data?.code === "stale-revision"
+}
