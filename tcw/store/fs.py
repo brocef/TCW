@@ -3079,8 +3079,15 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # Subject/Feature entirely, so the write path and `check` could disagree
         # about *whether* a ref is checked even once they agree about what a
         # problem is.
-        taxonomy = taxonomy if taxonomy is not None else self._taxonomy()
         problems: list[str] = []
+        if taxonomy is None:
+            try:
+                taxonomy = self._taxonomy()
+            except ValueError as e:
+                # A taxonomy that is configured and will not open — declared and
+                # not yet provisioned, say — costs the Subject/Feature checks, not
+                # every other problem this ledger has.
+                problems.append(f"Subject and Feature not checked: {e}")
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in capability federation")

@@ -71,7 +71,15 @@ def test_a_moved_taxonomy_is_scanned_for_yaml(tmp_path):
 def test_a_moved_capabilities_store_is_checked(tmp_path):
     root, store = moved(tmp_path, "capabilities")
     cap(store, "x", Status="Bogus")
-    assert check_lines(validate(root), "capabilities"), validate(root)
+    lines = check_lines(validate(root), "capabilities")
+    assert any("Bogus" in p for p in lines), lines
+
+
+def test_path_mode_matches_a_moved_store(tmp_path):
+    root, store = moved(tmp_path, "taxonomy")
+    term(store, "payment", relatesTo=["invoice"])
+    lines = check_lines(validate(root, store), "taxonomy")
+    assert any("invoice" in p for p in lines), lines
 
 
 # ── criterion 4: capabilities see a moved taxonomy ──────────────────────────
@@ -136,3 +144,39 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
     text = out.out + out.err
     reported = [line for line in text.splitlines() if "invoice" in line]
     assert len(reported) == 2, text
+    assert any("[parent]" in r for r in reported) and any("[child]" in r for r in reported), text
+
+
+# ── review findings: nothing that used to be reported goes quiet ──────────────
+
+def test_an_unopenable_taxonomy_costs_only_the_subject_checks(tmp_path, monkeypatch, capsys):
+    root = repo(tmp_path / "node")
+    cap(root / "docs" / "capabilities", "x", Status="Bogus")
+    set_component_key(root, "taxonomy", "path", "nowhere")
+    problems = FsCapabilitiesStore.open(root).check()
+    assert any("Bogus" in p for p in problems), problems
+    assert any("Subject and Feature not checked" in p and "nowhere" in p
+               for p in problems), problems
+
+
+@pytest.mark.parametrize("component", ["taxonomy", "capabilities"])
+def test_a_broken_extends_without_a_local_tree_is_reported(tmp_path, component):
+    root = repo(tmp_path / "node")
+    set_component_key(root, component, "extends", ["ghost"])
+    lines = check_lines(validate(root), component)
+    assert any("ghost" in p for p in lines), lines
+
+
+def test_path_mode_reports_a_store_that_will_not_open(tmp_path):
+    root = repo(tmp_path / "node")
+    (root / "docs" / "taxonomy").mkdir(parents=True)
+    set_component_key(root, "taxonomy", "path", "nowhere")
+    lines = check_lines(validate(root, root / "docs" / "taxonomy"), "taxonomy")
+    assert any("nowhere" in p for p in lines), lines
+
+
+def test_a_work_only_node_reports_nothing_new(tmp_path):
+    from tcw.store.fs import init
+    root = repo(tmp_path / "node")
+    init(["work"], root)
+    assert validate(root) == []

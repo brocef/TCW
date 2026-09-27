@@ -1,7 +1,8 @@
 """`tcw validate [path]` — one aggregate soundness pass over a TCW node.
 
-Passes over the scan roots (the whole node's `docs/{taxonomy,capabilities,
-work}` trees, or a single `[path]`):
+Passes over the scan roots (the node's taxonomy, capabilities and work stores
+wherever each resolves — moved by `<c>.path` or kept in another repository —
+or a single `[path]`):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
       (duplicate keys included); a parse error is a problem. Any shape is
@@ -11,8 +12,8 @@ work}` trees, or a single `[path]`):
       (code spans stripped first, so examples that teach the scheme don't fail).
   (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a syntax
       error or a record of the wrong shape (they re-load the file and raise).
-  (d) a leftover pre-2.5.0 store config file, reported directly for any tree
-      store (c) did not check — or, if that store will not open, why not.
+  (d) when (a) skipped (c): each tree store's open failure or leftover pre-2.5.0
+      store config file, so malformed YAML cannot hide either.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ import yaml
 from tcw.refs import resolve_tcw_ref
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
-    OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore, tree_store_present,
+    OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
     FsWorkStore, _UniqueKeyLoader, load_yaml,
 )
 
@@ -71,15 +72,21 @@ def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
     """Each tree store this node has, at its resolved root — or why it could
     not be opened. Resolved once, so scanning and checking cannot disagree about
     where a store is. A store moved by `<c>.path` or kept in another repository
-    is found here; testing for `docs/<c>` found neither."""
+    is found here; testing for `docs/<c>` found neither.
+
+    The rule `find_node` uses: a store that opens is here when its root is a
+    directory, and one that will not open is reported — which includes a broken
+    `extends` in a node with no tree of its own.
+    """
     roots: dict[str, Path | ValueError] = {}
     for comp in ("taxonomy", "capabilities"):
-        if not tree_store_present(node_root, comp):
-            continue
         try:
-            roots[comp] = STORE_CLASSES[comp].open(node_root).root
+            root = STORE_CLASSES[comp].open(node_root).root
         except ValueError as e:
             roots[comp] = e
+            continue
+        if root.is_dir():
+            roots[comp] = root
     return roots
 
 
@@ -140,7 +147,10 @@ def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
         return present
     p = Path(path).resolve()
     for c, root in trees.items():
-        if isinstance(root, Path) and _under(p, root.resolve()):
+        # A store that will not open is still matched at its default folder, so
+        # the reason it will not open is reported rather than nothing.
+        where = root if isinstance(root, Path) else node_root / "docs" / c
+        if _under(p, where.resolve()):
             return [c]
     try:
         if _under(p, FsWorkStore.open(node_root).root):
@@ -266,7 +276,7 @@ def validate(node_root: Path, path: Path | None = None, *,
         if previous is not None and previous != project.id:
             return [f"project graph: projects '{previous}' and '{project.id}' resolve to the same work.path: {root}"]
         work_roots[root] = project.id
-    trees = _tree_roots(node_root)
+    trees = _tree_roots(node_root) if target is None else {}
     if target is not None:
         roots = _target_roots(node_root, target)
         if not roots:
