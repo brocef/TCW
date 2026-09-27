@@ -209,3 +209,22 @@ def test_a_label_copied_from_list_removes_the_blocker(graph):
     assert label != "external: gone/some-item"     # it carries a reason
     a.remove_blocker(slug, label)
     assert a.get(slug).blocked_by == []
+
+
+def test_a_blocker_behind_a_routing_node_resolves(tmp_path):
+    """The plan's routing case: root → mid (no board) → pc."""
+    root = node(tmp_path / "root", "root", children={"pa": "pa", "mid": "mid"})
+    node(root / "pa", "pa", parent="root")
+    mid = root / "mid"
+    mid.mkdir()
+    (mid / "tcw-config.yaml").write_text(yaml.safe_dump(
+        {"id": "mid", "connected-projects": {"parent": {"root": ".."},
+                                             "children": {"pc": "pc"}}}))
+    node(mid / "pc", "pc", parent="mid")
+    a, c = FsWorkStore.open(root / "pa"), FsWorkStore.open(mid / "pc")
+    dep = new(c, "Dep")
+    slug = new(a, "Needs dep")
+    a.add_blocker(slug, f"pc/{dep}")
+    assert a.unresolved_blockers(a.get(slug)) != []
+    finish(c, dep)
+    assert a.unresolved_blockers(a.get(slug)) == []

@@ -36,6 +36,16 @@
   blockers on one `list`. Free text costs under 0.1 ms. Add a per-command cache
   when a real board shows the cost.
 
+- **Goal 1's base default.** The spec had the base store answer "still
+  blocks" for everything and the FS store settle bare tombstoned slugs. The base
+  now settles bare slugs itself (live item first, then tombstone), because it
+  needs only the store interface — the review's abstraction point — and so that
+  the machine that still holds the resolved folder answers like every other.
+- **Not changed: the rollup table's blocked-by column** still lists every
+  declared blocker, resolved or not, as it always has — including resolved
+  local `slug:` blockers. The Next line is the readiness answer; the column is
+  the record.
+
 ## Autonomous decisions
 
 - **Shape** — Codex and Opus: option 2, keep `external:` and resolve
@@ -57,4 +67,6 @@
 - **Review, separate change**: self-blocks and cycles through a qualified ref,
   and status-path blockers — filed as
   `2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-settle-status-path-blockers`.
+- **Verifier, accepted**: the routing-node case the plan named had no test;
+  added (`test_a_blocker_behind_a_routing_node_resolves`).
 - **Rejected**: none.
