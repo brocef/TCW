@@ -23,8 +23,9 @@ category.
   the default folder, or `taxonomy.path` / `taxonomy.repository` set), so
   Subject/Feature references are checked against it on write and in `check`. A
   configured taxonomy that will not open now refuses a capability write that
-  needs it, and `check` reports "Subject and Feature not checked: …" beside its
-  other problems instead of skipping those references silently.
+  needs it, and `check` reports "Subject and Feature not checked: …" once,
+  beside its other problems, when a checked capability names a Subject or
+  Feature — instead of skipping those references silently.
 - `tcw validate` no longer crashes when `taxonomy.path` points nowhere while
   `docs/capabilities` exists: `_run_check` reports a `ValueError` raised inside
   `check()` as a problem.

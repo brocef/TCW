@@ -250,11 +250,13 @@ def tree_store_present(node_root: Path, component: str) -> bool:
     `<c>.repository`, any value but null — a malformed one is present and must
     be reported, not skipped). FS-adapter-local, like `find_node`.
 
-    Asked instead of `(node_root / "docs" / component).is_dir()`, which is true
-    of neither a moved store nor one kept in another repository — so those were
-    never validated, and capabilities never checked Subject or Feature against a
-    moved taxonomy. `extends` alone is not a location: a node that only inherits
-    has no tree of its own.
+    Asked by `FsCapabilitiesStore._taxonomy` instead of
+    `(node_root / "docs" / component).is_dir()`, which is true of neither a moved
+    store nor one kept in another repository — so capabilities never checked
+    Subject or Feature against a moved taxonomy. Deliberately not "open it and
+    see", which `tcw validate` uses: `extends` alone is not a location, and a
+    node that only inherits a taxonomy should not have its capability checks
+    fail on that inheritance.
     """
     if (node_root / "docs" / component).is_dir():
         return True
@@ -3080,14 +3082,17 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # about *whether* a ref is checked even once they agree about what a
         # problem is.
         problems: list[str] = []
+        unchecked = ""
         if taxonomy is None:
             try:
                 taxonomy = self._taxonomy()
             except ValueError as e:
                 # A taxonomy that is configured and will not open — declared and
                 # not yet provisioned, say — costs the Subject/Feature checks, not
-                # every other problem this ledger has.
-                problems.append(f"Subject and Feature not checked: {e}")
+                # every other problem this ledger has. Said once, and only if a
+                # capability checked here names a Subject or Feature: otherwise
+                # nothing went unchecked, and every save would carry the line.
+                unchecked = f"Subject and Feature not checked: {e}"
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
             problems.append(f"extends '{project_id}': cycle in capability federation")
@@ -3143,6 +3148,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if status == "Blocked" and "Blocked by" not in f:
                 problems.append(f"{where}: Blocked requires Blocked by")
             problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
+            if unchecked and (f.get("Subject") or f.get("Feature")):
+                problems.append(unchecked)
+                unchecked = ""
 
         # Override + attachment validation (every meta dir, incl. override folders).
         meta_dirs = self._all_meta_dirs()

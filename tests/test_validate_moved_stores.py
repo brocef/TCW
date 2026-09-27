@@ -106,7 +106,9 @@ def test_a_missing_taxonomy_path_is_listed_not_raised(tmp_path):
     for tree in ("taxonomy", "capabilities"):
         (root / "docs" / tree).mkdir(parents=True)
     set_component_key(root, "taxonomy", "path", "nowhere")
+    cap(root / "docs" / "capabilities", "x", Status="Supported", Subject=["user"])
     problems = validate(root)                      # raised StoreLocationUnusable
+    assert any("nowhere" in p for p in check_lines(problems, "taxonomy")), problems
     assert any("nowhere" in p for p in check_lines(problems, "capabilities")), problems
 
 
@@ -151,12 +153,20 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
 
 def test_an_unopenable_taxonomy_costs_only_the_subject_checks(tmp_path, monkeypatch, capsys):
     root = repo(tmp_path / "node")
-    cap(root / "docs" / "capabilities", "x", Status="Bogus")
+    cap(root / "docs" / "capabilities", "x", Status="Bogus", Subject=["user"])
+    cap(root / "docs" / "capabilities", "y", Status="Bogus", Feature="login")
     set_component_key(root, "taxonomy", "path", "nowhere")
     problems = FsCapabilitiesStore.open(root).check()
     assert any("Bogus" in p for p in problems), problems
-    assert any("Subject and Feature not checked" in p and "nowhere" in p
-               for p in problems), problems
+    unchecked = [p for p in problems if "Subject and Feature not checked" in p]
+    assert len(unchecked) == 1 and "nowhere" in unchecked[0], problems
+
+
+def test_nothing_is_said_unchecked_when_no_capability_names_a_subject(tmp_path):
+    root = repo(tmp_path / "node")
+    cap(root / "docs" / "capabilities", "x", Status="Supported")
+    set_component_key(root, "taxonomy", "path", "nowhere")
+    assert FsCapabilitiesStore.open(root).check() == []
 
 
 @pytest.mark.parametrize("component", ["taxonomy", "capabilities"])

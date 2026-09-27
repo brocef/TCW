@@ -18,6 +18,7 @@ internal module names.
   not exist is caught there too. If a taxonomy is configured but cannot be found
   (for example, declared in another repository that is not set up on this
   machine), setting a capability's Subject or Feature now says so instead of
-  skipping the check.
+  skipping the check, and `tcw capabilities check` reports that those references
+  could not be checked whenever a capability has one.
 - **`tcw validate` lists a `taxonomy.path` that points nowhere** instead of
   stopping with an internal error.
