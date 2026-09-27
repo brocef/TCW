@@ -692,6 +692,12 @@ class TcwHandler(BaseHTTPRequestHandler):
                 return
             try:
                 resource = work.read_sidecar(slug, name)
+            except UnicodeDecodeError:
+                # Before ValueError, which it is: the decoder's own message names
+                # a byte offset, not the file.
+                self._send(HTTPStatus.BAD_REQUEST,
+                           f"{name} is not valid UTF-8; fix or replace the file".encode("utf-8"))
+                return
             except ValueError as e:
                 self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
                 return
