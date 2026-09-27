@@ -10,3 +10,5 @@ tags:
 - bug
 blocked_by:
 - slug: 2026-09-09-descend-through-a-storeless-routing-node-in-delegate-and-reconcile
+owner: brocef@users.noreply.github.com
+started: '2026-09-27T06:17:41.239669Z'
