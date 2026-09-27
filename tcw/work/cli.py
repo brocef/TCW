@@ -19,7 +19,7 @@ from tcw.store.base import (
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
+    COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, _literal, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
     declared_repository, git_commit_result, git_root, merge_worktree,
     nearest_work_ancestor,
@@ -4000,7 +4000,7 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: {err}", file=sys.stderr)
             staged = subprocess.run(
                 ["git", "-C", str(st.store_git_root), "diff", "--cached", "--name-only",
-                 "--", f":(literal){st.path(bare) / 'tracker.yaml'}"],
+                 "--", _literal(st.path(bare) / "tracker.yaml")],
                 stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.strip()
             if staged and isinstance(item.tracker, dict) and (
                     item.tracker.get("sync") or item.tracker.get("comment")):

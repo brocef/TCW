@@ -101,3 +101,14 @@ def test_a_move_takes_only_the_named_folder(pair):
     git_mv(root, glob_named, root / "d" / "moved")
     assert git(root, "diff", "--cached", "--name-status").split() == [
         "R100", "d/x[b]/f", "d/moved/f"]
+
+
+@pytest.mark.parametrize("setting", ["1", "true"])
+def test_an_inherited_literal_pathspecs_setting_still_writes(root, monkeypatch, setting):
+    """Git exports GIT_LITERAL_PATHSPECS to hooks and aliases run under
+    `git --literal-pathspecs`; with it on, git reads `:(literal)` as part of the
+    file name, so the prefix must be left off."""
+    monkeypatch.setenv("GIT_LITERAL_PATHSPECS", setting)
+    assert main(["capabilities", "add", "a*", "Star"]) == 0
+    assert main(["capabilities", "add", "abc", "Abc"]) == 0
+    assert "docs/capabilities/a*/meta.yaml" in git(root, "diff", "--cached", "--name-only")

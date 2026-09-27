@@ -146,7 +146,14 @@ def _literal(path: "str | Path") -> str:
     `--literal-pathspecs`: that flag works by exporting `GIT_LITERAL_PATHSPECS`,
     which the hooks `git commit` runs would inherit, and a user's hook filtering
     on `'*.py'` would then silently match nothing. Not for `git mv`, which takes
-    plain paths and rejects the prefix."""
+    plain paths and rejects the prefix.
+
+    Plain when `GIT_LITERAL_PATHSPECS` is already on — git exports it to hooks
+    and aliases run under `git --literal-pathspecs` — because git then reads the
+    prefix as part of a file name, and every path is literal anyway."""
+    setting = os.environ.get("GIT_LITERAL_PATHSPECS", "").strip().lower()
+    if setting in ("true", "yes", "on") or (setting.isdigit() and int(setting)):
+        return str(path)
     return f":(literal){path}"
 
 
