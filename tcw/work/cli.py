@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from tcw.store.base import (
+    bound_from_value,
     DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
@@ -485,20 +486,6 @@ def _unclaimable_on_active(config, ticket, *, take_over: bool) -> str:
             f"'{named}' and run this again.")
 
 
-def _recovered_binding(item):
-    """The ticket binding an interrupted claim holds, from the item it was read
-    as — no store read reaches a claim — or `Unbound()` when it names no ticket."""
-    from tcw.store.base import Bound, Unbound, bound_value
-    value = bound_value(item.tracker)
-    if value is None:
-        return Unbound()
-    ticket = value["ticket"]
-    return Bound(provider=value["provider"], project=value["project"],
-                 part=value["part"], ticket_id=ticket["id"], ticket_key=ticket["key"],
-                 ticket_url=ticket["url"], bound=value.get("bound") or "",
-                 sync=value.get("sync"), comment=value.get("comment"))
-
-
 def _strict_claim(st, bare: str, item, args, *,
                   recovering: bool = False) -> tuple[int | None, bool]:
     """Under strict mode, claim a bound item's ticket before `start` moves it.
@@ -523,7 +510,10 @@ def _strict_claim(st, bare: str, item, args, *,
     from tcw.tracker.ownership import assert_ownership
     from tcw.tracker.sync import binding_refusal, lowest_rung
     bound, refusal = binding_refusal(
-        st, bare, config, binding=_recovered_binding(item) if recovering else None)
+        st, bare, config,
+        # No sidecar read reaches an interrupted claim; the item it was read as
+        # carries the binding.
+        binding=bound_from_value(item.tracker) if recovering else None)
     if bound is None:
         return _strict_says_no("start", f"{bare} was not started", refusal), False
     key = bound.ticket_key

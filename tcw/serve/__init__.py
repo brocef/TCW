@@ -529,29 +529,28 @@ class TcwHandler(BaseHTTPRequestHandler):
         items are shaped differently from the items every other route returns,
         which is the drift the projection exists to prevent.
         """
-        anchor = self.server.node_root.resolve()
-        roots = [anchor]
-        if self.server.include_descendants:
-            roots += descendant_nodes(anchor)
         items = []
-        for root in roots:
-            prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
+        for root, prefix in self._board_roots():
             work = FsWorkStore.open(root)
             for it in work.board():
                 items.append(_item_payload(work, it.slug, it,
                                            f"{prefix}{it.slug}" if prefix else None))
         return items
 
-    def _interrupted_claims(self) -> list[dict]:
-        """Interrupted starts on every node the board shows, slugs qualified as
-        the board's are, so Recover addresses the node that holds the claim."""
+    def _board_roots(self) -> list[tuple[Path, str]]:
+        """The nodes the board shows, each with the prefix its slugs carry."""
         anchor = self.server.node_root.resolve()
         roots = [anchor]
         if self.server.include_descendants:
             roots += descendant_nodes(anchor)
+        return [(root, "" if root == anchor
+                 else f"{registered_project_id(anchor, root)}/") for root in roots]
+
+    def _interrupted_claims(self) -> list[dict]:
+        """Interrupted starts on every node the board shows, slugs qualified as
+        the board's are, so Recover addresses the node that holds the claim."""
         claims = []
-        for root in roots:
-            prefix = "" if root == anchor else f"{registered_project_id(anchor, root)}/"
+        for root, prefix in self._board_roots():
             claims += [{"slug": f"{prefix}{c.slug}", "title": c.title}
                        for c in FsWorkStore.open(root).interrupted_claims()]
         return claims

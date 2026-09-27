@@ -203,3 +203,17 @@ def test_strict_web_recover_is_refused_naming_take_over(strict, fake):
         httpd.shutdown()
         httpd.server_close()
     assert status == 409 and f"tcw work start {slug} --take-over" in body["error"], body
+
+
+def test_strict_recovery_claims_even_when_the_item_is_blocked(strict, fake):
+    """A take-over does not check blockers, so neither may the claim step skip on
+    them — or the item would move with no ticket claimed."""
+    slug = bound_item(strict)
+    st = FsWorkStore.open(strict)
+    blocker = st.create("Blocker", created="2026-01-01").slug
+    st.add_blocker(slug, blocker)
+    claimed_ticket(fake, "In Progress", B)
+    private = interrupt(strict, slug)
+    code, _out, err = cli(strict, "work", "start", slug, "--take-over", "--owner", "me")
+    assert code == 1 and "Bob" in err, err
+    assert private.is_dir()

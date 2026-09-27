@@ -86,5 +86,7 @@ then raises "`<slug>` has an interrupted claim; use --take-over --owner
 
 - A claim still genuinely in flight (another process mid-start) is listed as
   interrupted at once, without `get`'s 500 ms wait. Recovering it then races the
-  claimant's own rename; one of the two fails. That race is the store's existing
-  take-over race, shared with the CLI, and is not widened here.
+  claimant's own rename: one of the two fails, and the one that succeeds may
+  carry the recoverer's owner (the recoverer writes `owner` before renaming).
+  That race is the store's existing take-over race, shared with the CLI's
+  `--take-over`, and is not widened here; a separate item can add an age check.

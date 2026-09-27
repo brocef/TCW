@@ -545,6 +545,21 @@ def binding_value(binding: Unbound | Malformed | Bound) -> dict | None:
     return None
 
 
+def bound_from_value(value) -> "Bound | Unbound":
+    """The inverse of `binding_value` for a binding that names a ticket, else
+    `Unbound()` — for a reader that has only the item's `tracker` field, such as
+    the recovery of an interrupted claim, which no sidecar read reaches. Kept
+    beside `binding_value` so a field added to `Bound` is added to both."""
+    value = bound_value(value)
+    if value is None:
+        return Unbound()
+    ticket = value["ticket"]
+    return Bound(provider=value["provider"], project=value["project"],
+                 part=value["part"], ticket_id=ticket["id"], ticket_key=ticket["key"],
+                 ticket_url=ticket["url"], bound=value.get("bound") or "",
+                 sync=value.get("sync"), comment=value.get("comment"))
+
+
 def bound_value(value) -> dict | None:
     """`value` when it is a binding that names a ticket, otherwise `None`.
 
