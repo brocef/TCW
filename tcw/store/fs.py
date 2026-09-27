@@ -4518,6 +4518,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             tags = value.get("tags", [])
             if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                 raise ValueError(f"{prefix} tags must be a list")
+            try:
+                tags = [normalize_tag(tag) for tag in tags]
+            except ValueError as e:
+                raise ValueError(f"{prefix}: {e}") from None
             stale = [tag for tag in tags if tag not in registered]
             if stale:
                 raise ValueError(f"{prefix} has unregistered tag '{stale[0]}'")
@@ -5656,7 +5660,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
         work = self._config().get("work")
         if not isinstance(work, dict):                 # absent or hand-edited to a scalar/list
             return []
-        return sorted(str(t) for t in (work.get("tags") or []))
+        return sorted(self._registered_tag_entries()[0])
+
+    def _registered_tag_entries(self) -> tuple[set[str], list[str]]:
+        """The registered tags, normalized as every applied tag is — so `Bug`
+        registered by hand means `bug` — and the entries that are not tags at
+        all, which `check` reports rather than letting one break every tag read."""
+        work = self._config().get("work")
+        raw = work.get("tags") if isinstance(work, dict) else None
+        tags: set[str] = set()
+        bad: list[str] = []
+        for entry in raw if isinstance(raw, list) else []:
+            try:
+                if not isinstance(entry, str):
+                    raise ValueError(entry)
+                tags.add(normalize_tag(entry))
+            except ValueError:
+                bad.append(repr(entry))
+        return tags, bad
 
     # -- transition-commit policy (node-root `tcw-config.yaml` → `work.*`) --
 
@@ -6004,7 +6025,39 @@ class FsWorkStore(FsTreeStore, WorkStore):
             self._work_config().get("procedures"))
         problems += procedure_problems
         problems += self._file_binding_problems(policy)
+        problems += self._condition_tag_problems(policy)
         return [f"{SENTINEL}: {p}" for p in problems]
+
+    def _condition_tag_problems(self, policy: LifecyclePolicy) -> list[str]:
+        """Condition tags that are not registered tags, so can never match.
+
+        Beside the parser rather than in it, as `_file_binding_problems` is: the
+        registry is this node's configuration, and a condition naming a tag that
+        was unregistered must still load — reported here, fixed afterwards —
+        rather than stop the whole policy from reading.
+        """
+        registered = set(self.registered_tags())
+        found: list[str] = []
+        places: list[tuple[str, list]] = []
+        for name, sb in policy.stages.items():
+            places += [(f"work.lifecycle.stages.{name}.pre", sb.pre),
+                       (f"work.lifecycle.stages.{name}.prompt", sb.prompt)]
+        for name, tb in policy.transitions.items():
+            places += [(f"work.lifecycle.transitions.{name}.pre", tb.pre),
+                       (f"work.lifecycle.transitions.{name}.post", tb.post)]
+        places += [(f"work.lifecycle.artifacts.{n}", b) for n, b in policy.artifacts.items()]
+        places += [(f"work.procedures.{n}", b) for n, b in policy.procedures.items()]
+        for where, bindings in places:
+            for binding in bindings:
+                if binding.when is None:
+                    continue
+                for key, tags in (("tags", binding.when.tags),
+                                  ("not_tags", binding.when.not_tags)):
+                    found += [f"{where}: 'when.{key}' names '{tag}', which is not a "
+                              f"registered tag, so it never matches; register it "
+                              f"with `tcw work tags add {tag}` or fix the name"
+                              for tag in tags if tag not in registered]
+        return found
 
     def _file_binding_problems(self, policy: LifecyclePolicy) -> list[str]:
         """`file:` bindings that do not exist or leave the node.
@@ -6107,6 +6160,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         out: list[str] = []
         for t in tags:
+            if not isinstance(t, str):
+                raise ValueError(f"tag {t!r} must be a string")
             norm = normalize_tag(t)
             if norm not in registered:
                 raise ValueError(
@@ -6120,6 +6175,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         registered = set(self.registered_tags())
         problems: list[str] = []
         if identifier is None:                         # node-wide config, not per-item
+            problems.extend(f"{SENTINEL}: work.tags entry {entry} is not a tag"
+                            for entry in self._registered_tag_entries()[1])
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())

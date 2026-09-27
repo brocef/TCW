@@ -1048,6 +1048,21 @@ def _list(args: argparse.Namespace) -> int:
     st = _store()
     if st is None:
         return 1
+    if args.tag:
+        # A filter on a tag no listed node registers still runs — items can keep
+        # a tag that was unregistered, and finding them is how they get cleaned
+        # up — but an empty result must not read as "nothing is tagged that".
+        registered = set(st.registered_tags())
+        if args.include_descendants:
+            for root in descendant_nodes(st.node_root):
+                try:
+                    registered |= set(FsWorkStore.open(root).registered_tags())
+                except ValueError:
+                    pass                          # the board says why, below
+        for tag in args.tag:
+            if tag not in registered:
+                print(f"tcw work list: '{tag}' is not a registered tag; listing "
+                      f"items that carry it anyway", file=sys.stderr)
     if not args.include_descendants:
         _render_board(st, args.status, args.all, tags=args.tag)
         return 0
