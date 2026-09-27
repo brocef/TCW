@@ -94,7 +94,11 @@ internal module names.
   bare number.
 - **`tcw work tags add` and `rm` no longer quietly delete a registry entry that
   is not a tag**, such as a bare number or `"cli,docs"`. They refuse and name
-  it, so you can fix it by hand; `tcw validate` reports it too.
+  it, so you can fix it by hand; `tcw validate` reports it too. If you had typed
+  `"cli,docs"` into the list by hand, it used to register a tag `cli-docs`; it
+  now registers nothing, so write the tags you meant as separate entries. Applying
+  a tag written with a comma in it (through the web app, say) is refused the same
+  way.
 - **`tcw validate` names a bad key instead of crashing** when a settings key is
   an unquoted number.
 - **`tcw work list --tags` says when the tag you asked for is not registered**,

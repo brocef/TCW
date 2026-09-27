@@ -6514,6 +6514,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for t in tags:
             if not isinstance(t, str):
                 raise ValueError(f"tag {t!r} must be a string")
+            if "," in t:                               # as registry and conditions read it
+                raise ValueError(f"tag {t!r} holds several tags; list them separately")
             norm = normalize_tag(t)
             if norm not in registered:
                 raise ValueError(

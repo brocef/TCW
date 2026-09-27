@@ -119,3 +119,21 @@ def test_a_clean_registry_still_adds_and_removes(tmp_path, monkeypatch, capsys):
     assert code == 0 and out.split() == ["cli", "docs"], err
     code, out, err = run(root, monkeypatch, capsys, "work", "tags", "rm", "docs")
     assert code == 0 and out.split() == ["cli"], err
+
+
+# ── review fold-ins ──────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("raw, read", [(0, ["0"]), (False, ["False"])])
+def test_a_falsy_scalar_is_kept_so_check_reports_it(tmp_path, raw, read):
+    root = node(tmp_path, {"tags": ["cli"]})
+    slug = hand_tagged(root, raw)
+    st = FsWorkStore.open(root)
+    assert st.get(slug).tags == read
+    assert f"{slug}: unregistered tag '{read[0]}'" in st.check()
+
+
+def test_applying_a_tag_holding_a_comma_is_refused_as_several_tags(tmp_path):
+    root = node(tmp_path, {"tags": ["cli", "docs", "cli-docs"]})
+    st = FsWorkStore.open(root)
+    with pytest.raises(ValueError, match="several tags"):
+        st.create_work("Web save", tags=["cli,docs"])

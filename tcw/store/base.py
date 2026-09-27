@@ -1040,7 +1040,7 @@ def read_tags(raw) -> list[str]:
     its text, so `check` still reports it and nothing that prints tags breaks
     on it. A bare value, not in a list, is one tag."""
     out: list[str] = []
-    for entry in raw if isinstance(raw, list) else [raw] if raw else []:
+    for entry in raw if isinstance(raw, list) else [] if raw in (None, "") else [raw]:
         tag = str(entry)
         if isinstance(entry, str) and "," not in entry:
             try:

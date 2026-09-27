@@ -211,7 +211,10 @@ category.
   string rather than a list is one tag, not one per character.
 - `_write_tags` (`tcw work tags add` / `rm`) refuses, naming the entry, while
   `work.tags` holds an entry that is not a tag. It used to rewrite the list
-  without it, and raised `TypeError` on a mapping entry.
+  without it, and raised `TypeError` on a mapping entry. `_validate_tags` refuses
+  a tag holding a comma ("holds several tags") instead of normalizing it to one
+  tag, so the web API's `{"tags": ["cli,docs"]}` is refused like the registry
+  and conditions refuse it.
 - Six "unknown key" messages in `tcw/store/base.py` sort `map(str, keys)`, so an
   unquoted number key is named instead of raising `TypeError`.
 - `tcw work list --tags X` with X registered in no listed node prints a note to
