@@ -10,3 +10,10 @@ reproduced in a scratch layout and predating it:
 3. Question, not reproduced: should a `TCW_PROJECT_<ID>` override (rule 0) that
    names the main checkout's copy of a sibling be redirected to the worktree copy
    like a locator is? Today an explicit statement wins.
+4. From verify of `2026-09-15-resolve-sibling-nodes-to-their-worktree-copies`:
+   running from a submodule node inside a linked worktree (`app-wt/lib`) still
+   reports duplicates — `worktree_anchors` returns `None` for the submodule's own
+   directory — so validate from the worktree root also fails in that layout.
+5. The same: when the repository is itself a submodule of an outer repository,
+   `worktree_anchors` returns `None` (its git directory is `.git/modules/app`),
+   so #39's fix does not apply at all.
