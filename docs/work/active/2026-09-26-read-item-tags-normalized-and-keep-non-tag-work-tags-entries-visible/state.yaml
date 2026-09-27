@@ -8,3 +8,5 @@ tags:
 - store
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T16:15:53.121072Z'
+worktree: .worktrees/2026-09-26-read-item-tags-normalized-and-keep-non-tag-work-tags-entries-visible
+branch: work/2026-09-26-read-item-tags-normalized-and-keep-non-tag-work-tags-entries-visible
