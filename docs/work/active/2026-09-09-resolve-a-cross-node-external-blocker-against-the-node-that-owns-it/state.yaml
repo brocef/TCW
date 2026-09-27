@@ -12,3 +12,5 @@ blocked_by:
 - slug: 2026-09-09-descend-through-a-storeless-routing-node-in-delegate-and-reconcile
 owner: brocef@users.noreply.github.com
 started: '2026-09-27T06:17:41.239669Z'
+worktree: .worktrees/2026-09-09-resolve-a-cross-node-external-blocker-against-the-node-that-owns-it
+branch: work/2026-09-09-resolve-a-cross-node-external-blocker-against-the-node-that-owns-it
