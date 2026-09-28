@@ -2,7 +2,7 @@ slug: 2026-09-27-collect-changelog-and-release-note-entries-as-one-file-per-item
 title: Collect changelog and release-note entries as one file per item instead of
   a shared upcoming.md
 created: '2026-09-27'
-resolution: null
+resolution: done
 tags:
 - docs
 - skills
