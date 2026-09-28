@@ -191,3 +191,46 @@ def test_a_missing_upcoming_folder_aborts_before_anything_changes(tmp_path):
         cv.main(["patch"], root=root)
     assert cv.current_version(root) == "0.2.2"
     assert _git_out(root, "status", "--porcelain") == ""
+
+
+@pytest.mark.parametrize("state", ["edited", "untracked"])
+def test_an_uncommitted_entry_ships_rather_than_breaking_the_cut(tmp_path, state):
+    """`git rm` refuses a tracked file with local edits and an untracked one;
+    the cut used to fail after rewriting the version files, leaving no commit."""
+    root = make_repo(tmp_path, "0.2.2")
+    folder = root / "docs/changelogs/upcoming"
+    if state == "edited":
+        (folder / "a.md").write_text("## Added\n\n- changelog entry\n- edited late\n")
+    else:
+        (folder / "b.md").write_text("## Fixed\n\n- written late\n")
+    cv.main(["patch"], root=root)
+    shipped = (root / "docs/changelogs/v0.2.3.md").read_text()
+    assert ("- edited late" if state == "edited" else "- written late") in shipped
+    _assert_cut_is_clean(root, "0.2.3")
+
+
+def test_a_heading_with_no_entries_is_dropped(tmp_path):
+    root = make_repo(tmp_path, "0.2.2")
+    _entries(root, "changelogs", {
+        "a.md": "## Added\n\n- a added\n\n## Changed\n\n## Fixed\n",
+        "b.md": "## Fixed\n",
+    })
+    cv.main(["patch"], root=root)
+    shipped = (root / "docs/changelogs/v0.2.3.md").read_text()
+    assert _headings(shipped) == ["## Added"]
+
+
+def test_files_the_cut_does_not_combine_are_named(tmp_path, capsys):
+    root = make_repo(tmp_path, "0.2.2")
+    folder = root / "docs/changelogs/upcoming"
+    (folder / "note.txt").write_text("stray\n")
+    (folder / "sub").mkdir()
+    (folder / "sub" / "x.md").write_text("## Added\n\n- nested\n")
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "strays"], check=True)
+    cv.main(["patch"], root=root)
+    err = capsys.readouterr().err
+    assert "docs/changelogs/upcoming/note.txt" in err
+    assert "docs/changelogs/upcoming/sub" in err
+    assert "- nested" not in (root / "docs/changelogs/v0.2.3.md").read_text()
+    assert (folder / "note.txt").exists() and (folder / "sub" / "x.md").exists()

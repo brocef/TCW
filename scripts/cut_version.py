@@ -101,7 +101,8 @@ def combine(texts: list[str], order: tuple[str, ...] = ()) -> str:
     Each text splits into a leading block (anything before its first `## ` line)
     and `## ` sections, each running to the next `## ` line, so a `###` heading
     stays with the section above it. Sections with the same heading merge, their
-    bodies joined in the order given. Headings in `order` lead, in that order;
+    bodies joined in the order given; a heading nothing gives content to is
+    dropped rather than shipped bare. Headings in `order` lead, in that order;
     the rest follow in the order they first appear. Leading blocks come first."""
     leading: list[str] = []
     sections: dict[str, list[str]] = {}
@@ -115,8 +116,6 @@ def combine(texts: list[str], order: tuple[str, ...] = ()) -> str:
                         leading.append(part)
                 elif part:
                     sections.setdefault(heading, []).append(part)
-                else:
-                    sections.setdefault(heading, [])
                 heading, lines = line[3:].strip(), []
             else:
                 lines.append(line)
@@ -135,12 +134,25 @@ def combine_upcoming(root: Path, version: str) -> list[str]:
     for rel, order in UPCOMING.items():
         folder = root / rel
         entries = sorted(p for p in folder.glob("*.md") if p.name != GUIDANCE)
+        skipped = sorted(p for p in folder.iterdir()
+                         if p.name != GUIDANCE and p not in entries)
+        for p in skipped:
+            # Left in place, not lost — but an entry saved as `.txt` or in a
+            # subfolder would otherwise miss the release without a word.
+            print(f"cut_version: not combined, left in place: {p.relative_to(root)}",
+                  file=sys.stderr)
         body = combine([p.read_text(encoding="utf-8") for p in entries], order)
         dst = folder.parent / f"v{version}.md"
         dst.write_text(f"# v{version}\n" + (f"\n{body}\n" if body else ""), encoding="utf-8")
         written.append(str(dst.relative_to(root)))
         if entries:
-            _git(root, "rm", "-q", "--", *(str(p) for p in entries))
+            # `-f` takes a file with uncommitted edits and `--ignore-unmatch` one
+            # never added, so the release carries entries as they are on disk
+            # (as `git mv` of an edited `upcoming.md` did) instead of failing
+            # after the version files were already rewritten.
+            _git(root, "rm", "-q", "-f", "--ignore-unmatch", "--", *(str(p) for p in entries))
+            for p in entries:
+                p.unlink(missing_ok=True)
     return written
 
 
