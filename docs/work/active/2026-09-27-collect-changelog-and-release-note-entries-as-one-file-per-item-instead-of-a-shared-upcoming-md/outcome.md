@@ -57,3 +57,21 @@ guidance) · 8 ✔ · 9 ✔ · 10 ✔ · 11 ✔.
   untouched, as the spec intended.
 - The next version cut in this repo will ship two entries per folder: the
   carried-over one and this item's, merged under shared headings.
+
+## Rework pass (2026-09-27)
+
+Addresses all five items in `rework.md`.
+
+| Item | Commit | What |
+| --- | --- | --- |
+| 1, 3, 5 | `a78d9217` | `combine_upcoming` removes entries with `git rm -q -f --ignore-unmatch` and then deletes any file left on disk, so an entry with uncommitted edits or never added ships as it is instead of failing after the version files were rewritten. `combine` drops a heading no file gives content. A non-`.md` file or subfolder in `upcoming/` is left in place and named on standard error. Four new tests (two cases of the first), each seen failing on the defect it names before the fix: `CalledProcessError` from `git rm` (exit 1 and 128), the extra `## Changed`/`## Fixed` headings, and an empty standard error. |
+| 2, 3, 4, 5 | `7feca1eb` | `docs/releasing.md` and the procedure's `cut-version.md` row say "combines" instead of "rotates". `cut-version.md` Step 2 drops empty headings, uses `git rm -f`, and gains step 7 (name anything not combined). The entry rules in `release-notes-and-changelogs.md` and both folder READMEs warn against `## ` inside a code block. This item's changelog entry describes the new behavior. |
+
+**Tests:** `tests/test_cut_version.py` 16 passed; with the skill-wiring,
+procedure, path-pointer, repo-lifecycle and unattended-work tests, 53 passed.
+`tcw validate` OK. The full suite was not rerun: the only code changed is
+`scripts/cut_version.py`, which only `tests/test_cut_version.py` imports.
+
+**What the first pass got wrong:** the sweep for stale wording searched for
+`upcoming`, so it missed text that described the old behavior without that word
+("rotates the … working files"). The rework swept for `rotat` as well.
