@@ -62,7 +62,8 @@ it. For each folder:
    line plus everything up to the next `## ` line, so a `###` heading stays in
    the section above it.
 3. Merge sections whose heading text is the same: one heading, with the bodies
-   underneath in file-name order, separated by a blank line.
+   underneath in file-name order, separated by a blank line. Drop a heading
+   that no file gives any content, rather than shipping it bare.
 4. Order the merged sections. For the changelog: `Added`, `Changed`, `Fixed`,
    `Removed`, `Internal` first, in that order, when present; then any other
    heading in the order it first appeared. For release notes: the order each
@@ -70,7 +71,11 @@ it. For each folder:
 5. Write `v{version}.md`: the line `# v{version}`, a blank line, the leading
    blocks in file-name order, then the sections. A folder with no entries gives
    a file holding only the title line.
-6. Delete the combined entry files (`git rm`). Keep `README.md`.
+6. Delete the combined entry files (`git rm -f`, so an entry with uncommitted
+   edits ships as it is on disk). Keep `README.md`.
+7. Anything else in the folder — a file not ending `.md`, or a subfolder — is
+   not an entry. Leave it where it is, and tell the user its name: it may be an
+   entry saved in the wrong place.
 
 Never lose content — every entry waiting in `upcoming/` belongs to the version
 being cut. Do not fix a heading that looks mistyped (`## Fixes` beside

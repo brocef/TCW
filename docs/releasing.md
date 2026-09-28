@@ -3,8 +3,9 @@
 How this repository publishes itself. Not needed to _use_ TCW.
 
 Releases publish themselves. `scripts/cut_version.py` bumps every
-version-bearing file, rotates the changelog and release-note working files,
-commits, and tags; pushing that tag is what ships it:
+version-bearing file, combines the entry files waiting in
+`docs/changelogs/upcoming/` and `docs/release-notes/upcoming/` into that
+version's changelog and release notes, commits, and tags; pushing that tag is what ships it:
 
 ```sh
 python scripts/cut_version.py <patch|minor|major|X.Y.Z>

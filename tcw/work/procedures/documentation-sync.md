@@ -45,7 +45,7 @@ These workflows are deeper than the core trigger-evaluation loop and live as ref
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `references/release-notes-and-changelogs.md` | The project uses the opt-in `docs/release-notes/` + `docs/changelogs/` structure AND you're adding an entry file to `upcoming/`, combining entries at a cut, running the version cross-check, or migrating an existing `CHANGELOG.md`. |
 | the `configure` skill's `docs-sync.md`   | The project's `CLAUDE.md` has no `## Documentation Sync` section and the user wants to add one, or you need to create tracked files that don't exist yet.                                                        |
-| `references/cut-version.md`                  | The user asked to cut a version and you're running it — choosing the bump size, bumping every version-bearing file, rotating, committing, tagging. See "When the user asks to cut a version" below. |
+| `references/cut-version.md`                  | The user asked to cut a version and you're running it — choosing the bump size, bumping every version-bearing file, combining the `upcoming/` entries, committing, tagging. See "When the user asks to cut a version" below. |
 
 ## When the user asks to cut a version
 

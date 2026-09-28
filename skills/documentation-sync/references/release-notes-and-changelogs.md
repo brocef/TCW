@@ -30,7 +30,7 @@ Every change adds **its own file** to each `upcoming/` folder whose entry fires,
 
 - **Name it after the work item:** `<work-item-slug>.md`. Work done outside any item uses `<YYYY-MM-DD>-<short-description>.md`, the same shape. Because slugs start with a date, file-name order is roughly the order the work happened.
 - **Edit only your own file.** A second pass on the same item (rework) edits that item's file. Never edit another change's file, even to fix a typo in passing.
-- **No `#` title.** Put entries under `##` headings. The changelog uses `## Added`, `## Changed`, `## Fixed`, `## Removed`, `## Internal`. Release notes use whatever headings the project uses; reuse one another entry already has when yours belongs with it. A `###` heading belongs to the `##` section above it.
+- **No `#` title.** Put entries under `##` headings. The changelog uses `## Added`, `## Changed`, `## Fixed`, `## Removed`, `## Internal`. Release notes use whatever headings the project uses; reuse one another entry already has when yours belongs with it. A `###` heading belongs to the `##` section above it. Never start a line with `## ` inside a code block: the cut reads every such line as a section heading.
 - **Keep `README.md`.** It carries the drafting guidance, it is never combined into a release, and it keeps the folder in git when no entries are waiting.
 
 At a version cut, the files are combined into `v{version}.md` — see `cut-version.md`, Step 2.

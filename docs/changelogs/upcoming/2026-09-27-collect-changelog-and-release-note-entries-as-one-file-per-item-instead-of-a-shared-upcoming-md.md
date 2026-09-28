@@ -7,7 +7,11 @@
   Removed, Internal, and other headings follow in first-appearance order. Entry
   files are `git rm`ed in the release commit. `rotate_upcoming` is replaced by
   `combine` and `combine_upcoming`; the cut aborts before touching anything if an
-  `upcoming/` folder is missing.
+  `upcoming/` folder is missing. Entry files are removed with
+  `git rm -f --ignore-unmatch`, so one with uncommitted edits or never added
+  ships as it is on disk; a heading no entry gives content is dropped; a
+  non-`.md` file or subfolder in `upcoming/` is left in place and named on
+  standard error.
 - This repo's `work.documentation` entries now name
   `docs/{changelogs,release-notes}/upcoming/<slug>.md`; the two `upcoming.md`
   files moved to `upcoming/2026-09-27-carried-over.md`, and each folder gained a
@@ -25,5 +29,6 @@
 
 - `tests/test_cut_version.py` covers merging by heading, heading order, `###`
   subsections, text before the first heading, an empty folder, the README never
-  shipping, and a missing folder aborting. The eval fixture deliberately stays
+  shipping, a missing folder aborting, uncommitted and untracked entries, empty
+  headings, and files left uncombined. The eval fixture deliberately stays
   on a single `upcoming.md` (eval B10 lists exact changed paths).

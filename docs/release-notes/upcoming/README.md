@@ -11,6 +11,8 @@ Inside the file, give no `#` title. Put entries under `##` headings. Reuse a
 heading another entry already uses (`## Improvements`, `## Fixes`) when yours
 belongs with it, since identical headings merge; a heading of its own is fine
 for a change that deserves one.
+Never start a line with `## ` inside a code block: the cut would read it as a
+heading.
 
 `python scripts/cut_version.py` combines every file here except this one into
 `../v{version}.md` and deletes them.
