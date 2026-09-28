@@ -1050,6 +1050,7 @@
   resolution: done
   resolved: '2026-09-27'
 2026-09-27-collect-changelog-and-release-note-entries-as-one-file-per-item-instead-of-a-shared-upcoming-md:
+  location: 7bb5b8f7c2056cffbcce5b4b5cf70ee93f910bf1
   resolution: done
   resolved: '2026-09-27'
 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here:
