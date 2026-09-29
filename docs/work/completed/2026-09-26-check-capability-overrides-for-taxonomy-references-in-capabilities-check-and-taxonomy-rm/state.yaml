@@ -2,7 +2,7 @@ slug: 2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilit
 title: Check capability overrides for taxonomy references in capabilities check and
   taxonomy rm
 created: '2026-09-26'
-resolution: null
+resolution: done
 tags:
 - capabilities
 - taxonomy
