@@ -1050,6 +1050,7 @@
   resolution: done
   resolved: '2026-09-27'
 2026-09-26-refuse-to-take-over-a-claim-that-may-still-be-in-flight:
+  location: 5c883dc5cbd7a7053e23da03eca79298d6e83899
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-collect-changelog-and-release-note-entries-as-one-file-per-item-instead-of-a-shared-upcoming-md:
