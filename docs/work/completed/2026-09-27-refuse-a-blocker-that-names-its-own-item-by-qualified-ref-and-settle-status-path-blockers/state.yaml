@@ -2,7 +2,7 @@ slug: 2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-s
 title: Refuse a blocker that names its own item by qualified reference, and settle
   status-path blockers
 created: '2026-09-27'
-resolution: null
+resolution: done
 tags:
 - work
 - bug
