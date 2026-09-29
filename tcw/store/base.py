@@ -182,6 +182,10 @@ class ProjectOverride:
     source: str
     locator: Any
     problem: str | None = None
+    # It worked, and still may not be what was meant: set when the project it
+    # delivered disagrees with where the rest of the graph was read from. Never
+    # a problem, and never fatal — the override is followed as stated.
+    warning: str | None = None
 
 
 class ProjectRegistry(ABC):
