@@ -181,3 +181,49 @@ def test_a_state_file_that_vanishes_mid_read_still_raises(node, monkeypatch):
     monkeypatch.setattr(fs, "load_yaml", vanished)
     with pytest.raises(FileNotFoundError):
         FsWorkStore._safe_yaml(item / "state.yaml")
+
+
+# ── review fold-in: a damaged item is refused before anything moves ──────────
+
+def git_commit(root: Path) -> None:
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "items"], check=True)
+
+
+@pytest.mark.parametrize("damage", [not_utf8, folder, pipe], ids=["not-utf8", "folder", "pipe"])
+def test_start_refuses_a_damaged_item_before_moving_it(node, damage):
+    root, item, bad, _good = node
+    git_commit(root)
+    damage(item / "state.yaml")
+    done = cli(root, "work", "start", bad, "--owner", "me")
+    assert done.returncode == 1, done.stderr
+    assert "state.yaml cannot be read" in done.stderr, done.stderr
+    assert "codec can't decode" not in done.stderr
+    assert item.is_dir() and item.parent.name == "backlog"
+    st = FsWorkStore.open(root)
+    assert not (st.root / ".claiming").exists() or not list((st.root / ".claiming").iterdir())
+
+
+@pytest.mark.parametrize("to", ["submit", "complete"])
+def test_a_transition_refuses_a_damaged_item_before_moving_it(node, to):
+    root, _item, bad, _good = node
+    git_commit(root)
+    st = FsWorkStore.open(root)
+    st.start(bad, owner="me")
+    active = st.path(bad)
+    not_utf8(active / "state.yaml")
+    args = ["work", to, bad] + (["--resolution", "done", "--confirm", "--force"]
+                                if to == "complete" else [])
+    done = cli(root, *args)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "state.yaml cannot be read" in done.stderr, done.stderr
+    assert active.is_dir() and active.parent.name == "active"
+
+
+def test_two_differently_damaged_bodies_have_different_revisions(node):
+    _root, item, bad, _good = node
+    st = FsWorkStore.open(_root)
+    (item / "intake.md").write_bytes(b"# hi \xff\n")
+    first = st.get_detail(bad).core_revision
+    (item / "intake.md").write_bytes(b"# hi \xfe\n")
+    assert st.get_detail(bad).core_revision != first

@@ -4316,6 +4316,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers) + " (use --force to override)")
         src = self._find(slug)
+        if src is not None:
+            self._require_readable_state(src, slug)
         # `.claiming/` is staging: the contents are the state, and its own
         # existence means nothing. It is created on demand and **never removed**,
         # so a store an item was ever started in keeps it forever, empty.
@@ -4898,6 +4900,34 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise
         except (OSError, ValueError, yaml.YAMLError, RecursionError):
             return {}
+
+    @staticmethod
+    def _require_readable_state(d: Path, slug: str) -> None:
+        """Refuse to move an item whose `state.yaml` cannot be read.
+
+        The board reads it through `_safe_yaml`, which degrades a damaged file
+        to defaults — no blockers, no owner, no type — so every gate a move
+        checks would pass on values the item does not hold, and the strict read
+        that follows the move would fail with the item already moved. Asked
+        before anything moves, so the refusal means nothing happened. A folder
+        gone meanwhile is the caller's lost race to report, not damage."""
+        path = d / "state.yaml"
+        if path.is_file():
+            try:
+                load_yaml(path)
+                return
+            except FileNotFoundError:
+                return
+            except UnicodeDecodeError:
+                reason = "it is not valid UTF-8"
+            except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
+                reason = str(e).splitlines()[0] if str(e) else type(e).__name__
+        elif path.exists() or path.is_symlink():
+            reason = "it is not a regular file"
+        else:
+            return
+        raise ValueError(f"{slug}: state.yaml cannot be read ({reason}); "
+                         f"fix or replace it before changing the item")
 
     def _item_from_dir(self, d: Path) -> WorkItem | None:
         """`None` when the folder went away mid-read — a concurrent claim moved
@@ -5874,12 +5904,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             doc = self._safe_yaml(path)
         except (OSError, UnicodeDecodeError):
-            # `_safe_yaml` catches a YAML syntax error and nothing else, so a
-            # file that is unreadable or not valid UTF-8 came back out of it —
-            # and from here it would surface inside `_unique_slug`, turning
-            # `tcw work new` into a traceback about a file the user never
-            # touched. Every caller of this method wants "answer None and carry
-            # on", so the tolerance the docstring promises is completed here.
+            # `_safe_yaml` degrades damage to `{}` itself; what still comes out
+            # is `FileNotFoundError`, which it re-raises for its item-folder
+            # callers. The graveyard going away mid-read is simply no record:
+            # surfacing it inside `_unique_slug` would turn `tcw work new` into
+            # a traceback about a file the user never touched.
             return None
         if not isinstance(doc, dict):
             return None
@@ -7006,6 +7035,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # sends "ensure a directory exists" straight into the adapter), and it is
         # status-agnostic on purpose: it also repairs a hand-deleted folder
         # rather than special-casing whichever status was added last.
+        self._require_readable_state(src, slug)
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
         # A child made by an earlier version is leaving its parent's folder, so
