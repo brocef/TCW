@@ -351,3 +351,69 @@ def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
     assert _tcw(app, "taxonomy", "show", "core/premise", env=env).returncode == 0
     assert _tcw(app, "taxonomy", "show", "core/argument", env=env).returncode != 0
+
+
+# ── refusing writes, and allowing reads, from the CLI ────────────────────────
+
+def _cli_family(tmp_path: Path) -> tuple[Path, str]:
+    """Root `r` (a repository) with children `a` and `b`; `a` declares `core`
+    upstream; `core` is its own repository holding one committed work item.
+    Returns (root, the core item's slug)."""
+    core = _core_node(tmp_path / "core")
+    slug = _tcw(core, "work", "new", "Core thing").stdout.strip()
+    _git(core, "add", "-A")
+    _git(core, "commit", "-qm", "item")
+    root = _reader(tmp_path / "r", "r", {"children": {"a": "a", "b": "b"}})
+    for child, extra in (("a", {"upstream": {"core": "../../core"}}), ("b", {})):
+        node = root / child
+        node.mkdir()
+        init(["taxonomy", "capabilities", "work"], node, child)
+        cfg = yaml.safe_load((node / "tcw-config.yaml").read_text())
+        cfg["connected-projects"] = {"parent": {"r": ".."}, **extra}
+        (node / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "family")
+    return root, slug
+
+
+def _assert_core_untouched(tmp_path: Path) -> None:
+    status = subprocess.run(["git", "-C", str(tmp_path / "core"), "status",
+                             "--porcelain"], capture_output=True, text=True).stdout
+    assert status == "", status
+    head = subprocess.run(["git", "-C", str(tmp_path / "core"), "rev-list",
+                           "--count", "HEAD"], capture_output=True, text=True).stdout
+    assert head.strip() == "2", "a commit was made in the upstream"
+
+
+@pytest.mark.parametrize("where", ["a", "b", "."])
+@pytest.mark.parametrize("command", [
+    ("work", "start", "{ref}"),
+    ("work", "edit", "{ref}", "--title", "Renamed"),
+    ("work", "stage", "gate", "spec", "{ref}"),
+    ("work", "procedure", "prompt", "create-work", "{ref}"),
+    ("work", "drop", "{ref}", "--confirm"),
+])
+def test_a_write_into_an_upstream_is_refused_as_read_only(tmp_path, where, command):
+    root, slug = _cli_family(tmp_path)
+    args = [part.replace("{ref}", f"core/{slug}") for part in command]
+    out = _tcw(root / where, *args)
+    assert out.returncode != 0, out.stdout
+    assert "read-only" in out.stderr and "core" in out.stderr, out.stderr
+    assert "nonreciprocal" not in out.stderr
+    _assert_core_untouched(tmp_path)
+
+
+@pytest.mark.parametrize("where", ["a", "b", "."])
+def test_reading_an_upstream_item_is_allowed(tmp_path, where):
+    root, slug = _cli_family(tmp_path)
+    for args in (("work", "show", f"core/{slug}"), ("work", "path", f"core/{slug}")):
+        out = _tcw(root / where, *args)
+        assert out.returncode == 0, (args, out.stderr)
+    _assert_core_untouched(tmp_path)
+
+
+def test_a_link_into_an_upstream_item_resolves(tmp_path):
+    root, slug = _cli_family(tmp_path)
+    (root / "a" / "docs" / "note.md").write_text(f"See tcw://W/core/{slug}.\n")
+    out = _tcw(root / "a", "validate", "--no-recurse")
+    assert out.returncode == 0, out.stderr

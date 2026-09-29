@@ -616,6 +616,36 @@ def resolve_qualified_work_ref(anchor: Path, ref: str) -> "tuple[FsWorkStore, st
     return FsWorkStore.open(target), bare
 
 
+def qualified_work_ref_read_only(anchor: Path, ref: str) -> str | None:
+    """Why `ref` names an item the anchor node may not write, or None.
+
+    Only a project qualifier can make an item read-only: a bare slug and a
+    status-path locator stay on the anchor. The rule itself is the registry's
+    (`read_only_reason`), asked here at the anchor — never in a store opened at
+    the target, whose own registry would have the target as its current node
+    and allow the write."""
+    qualifier, _, bare = ref.partition("/")
+    if not qualifier or not bare or "/" in bare or qualifier in WORK_STATUSES:
+        return None
+    try:
+        registry = FsProjectRegistry.open(anchor).require_valid()
+    except ValueError:
+        return None
+    return registry.read_only_reason(qualifier)
+
+
+def resolve_qualified_work_ref_for_write(
+        anchor: Path, ref: str) -> "tuple[FsWorkStore, str] | None":
+    """`resolve_qualified_work_ref` for a caller about to change the item or run
+    its project's scripts: None for an item in a read-only project, as for one
+    that does not exist. Callers name the reason with
+    `qualified_work_ref_read_only`. The reading form stays for everything that
+    only reads."""
+    if qualified_work_ref_read_only(anchor, ref) is not None:
+        return None
+    return resolve_qualified_work_ref(anchor, ref)
+
+
 def qualified_work_ref_problem(anchor: Path, ref: str) -> str:
     """Why `resolve_qualified_work_ref(anchor, ref)` failed, as a user-facing
     message. Cold path only — callers use it after a `None`, so the extra registry

@@ -25,7 +25,8 @@ from tcw.store.fs import (
     parent_node, registered_children, registered_parent,
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
-    resolve_qualified_work_ref, uncommitted_paths, worktree_node_root,
+    qualified_work_ref_read_only, resolve_qualified_work_ref,
+    resolve_qualified_work_ref_for_write, uncommitted_paths, worktree_node_root,
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
@@ -129,7 +130,8 @@ def _store() -> FsWorkStore | None:
     return FsWorkStore.open(node)
 
 
-def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
+def _resolve(slug: str, label: str, *,
+             write: bool = True) -> tuple[FsWorkStore, str] | None:
     """Resolve a (possibly subproject-qualified) slug to (store, bare_slug).
 
     A bare slug stays on the anchor node (unchanged); `<project-id>/<slug>`
@@ -137,11 +139,21 @@ def _resolve(slug: str, label: str) -> tuple[FsWorkStore, str] | None:
     node in the registered graph, in any direction. Prints the right message and
     returns None on failure (no work node here, or the qualifier names no
     registered project) so callers just `return 1`. Item existence is still the
-    caller's `get`/`path` check — the returned slug is always bare."""
+    caller's `get`/`path` check — the returned slug is always bare.
+
+    `write` is the default, so a caller is refused an item in a read-only
+    (upstream) project unless it says it only reads: a verb that changes an
+    item, or runs its project's own scripts, gets the refusal without having to
+    remember to ask for it."""
     node = _require_node()
     if node is None:
         return None
-    resolved = resolve_qualified_work_ref(node, slug)
+    if write and (reason := qualified_work_ref_read_only(node, slug)) is not None:
+        print(f"tcw work {label}: {reason}; run this in "
+              f"{slug.partition('/')[0]} itself.", file=sys.stderr)
+        return None
+    resolved = (resolve_qualified_work_ref_for_write(node, slug) if write
+                else resolve_qualified_work_ref(node, slug))
     if resolved is None:
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
@@ -1120,7 +1132,7 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def _show(args: argparse.Namespace) -> int:
-    resolved = _resolve(args.slug, "show")
+    resolved = _resolve(args.slug, "show", write=False)
     if resolved is None:
         return 1
     st, bare = resolved
@@ -1192,7 +1204,7 @@ def _path(args: argparse.Namespace) -> int:
             return 1
         print(st.root)
         return 0
-    resolved = _resolve(args.slug, "path")
+    resolved = _resolve(args.slug, "path", write=False)
     if resolved is None:
         return 1
     st, bare = resolved
@@ -2396,7 +2408,7 @@ def _lifecycle(args: argparse.Namespace) -> int:
     # A work ref resolves the item's *owning* node, so a qualified descendant
     # reports its own policy rather than the anchor's.
     if args.slug:
-        resolved = _resolve(args.slug, "lifecycle")
+        resolved = _resolve(args.slug, "lifecycle", write=False)
         if resolved is None:
             return 1
         st, _bare = resolved
