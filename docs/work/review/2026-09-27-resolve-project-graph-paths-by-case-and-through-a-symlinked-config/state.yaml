@@ -6,7 +6,7 @@ resolution: null
 tags:
 - store
 - bug
-owner: brocef@users.noreply.github.com
-started: '2026-09-29T16:23:32.915704Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-27-resolve-project-graph-paths-by-case-and-through-a-symlinked-config
 branch: work/2026-09-27-resolve-project-graph-paths-by-case-and-through-a-symlinked-config

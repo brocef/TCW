@@ -94,30 +94,54 @@ def worktree_anchors(directory: Path) -> tuple[Path, Path] | None:
     return _ANCHOR_CACHE[key]
 
 
-def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
+def _config_file(path: Path) -> Path:
+    """A `tcw-config.yaml` path with its folder resolved and the file itself not
+    followed. A symlinked config belongs to the folder it sits in: that folder
+    is the node, and its relative locators are read from there — resolving the
+    file took them from wherever the link pointed."""
+    return path.parent.resolve() / path.name
+
+
+def _git_lines(directory: Path, *args: str) -> list[str] | None:
+    """`git -C directory <args>`'s output lines, or None on any failure."""
     try:
-        out = subprocess.run(
-            ["git", "-C", str(directory), "rev-parse", "--path-format=absolute",
-             "--show-toplevel", "--git-common-dir"],
+        return subprocess.run(
+            ["git", "-C", str(directory), *args],
             capture_output=True, text=True, check=True,
             stdin=subprocess.DEVNULL,      # reads no input; see tcw/store/fs.py::_git
             # splitlines(), NOT split(): git emits one path per line, and a repo
             # path containing a space (`~/My Drive`, `~/Google Drive`) would split
-            # into more than two tokens, trip the guard below, and silently
-            # disable worktree resolution for that user.
+            # into more than two tokens and silently disable worktree resolution.
         ).stdout.splitlines()
     except (subprocess.CalledProcessError, OSError):   # OSError covers git absent
         return None
-    if len(out) != 2:
+
+
+def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
+    out = _git_lines(directory, "rev-parse", "--path-format=absolute",
+                     "--show-toplevel", "--git-common-dir")
+    if not out or len(out) != 2:
         return None
     top, common = Path(out[0]).resolve(), Path(out[1]).resolve()
-    # A normal repo's common dir is `<main>/.git`; a *bare* main repo's is the
-    # bare directory itself, whose parent is not a worktree at all. Re-anchoring
-    # against that parent would be nonsense, so treat bare as "no anchors".
-    if common.name != ".git":
-        return None
-    main = common.parent
-    return None if main == top else (top, main)
+    if common.name == ".git":
+        main = common.parent
+    else:
+        # A repository that is itself a submodule keeps its git dir at
+        # `<outer>/.git/modules/<name>`, and records its checkout as
+        # `core.worktree`, relative to that dir. A *bare* repo records none and
+        # is not a worktree at all, so it gives no anchors.
+        worktree = _git_lines(common, "--git-dir", str(common), "config", "--get",
+                              "core.worktree")
+        if not worktree:
+            return None
+        main = (common / worktree[0]).resolve()
+    if main != top:
+        return top, main
+    # Not a linked worktree of its own repository. A submodule checked out in a
+    # superproject's linked worktree is its own repository, checked out right
+    # there; the worktree that matters is the superproject's.
+    outer = _git_lines(directory, "rev-parse", "--show-superproject-working-tree")
+    return worktree_anchors(Path(outer[0])) if outer else None
 
 
 @dataclass(frozen=True)
@@ -169,6 +193,10 @@ class FsProjectRegistry(ProjectRegistry):
         # contradicts it.
         self._override_refused: set[str] = set()
         self._loaded = False
+        # The first spelling met of each node folder, by the folder's identity: on
+        # a case-insensitive disk `Root` and `ROOT` are one folder, and keying the
+        # graph by path text loaded it twice.
+        self._spellings: dict[tuple[int, int], Path] = {}
         self._current_path = self.node_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
         self._anchors = worktree_anchors(self.node_root)
@@ -181,7 +209,7 @@ class FsProjectRegistry(ProjectRegistry):
 
     @property
     def current(self) -> Project:
-        cfg = self._cache.get(self._current_path.resolve())
+        cfg = self._cache.get(self._canonical(self._current_path))
         if cfg is None:
             raise ValueError(self._problems[0] if self._problems else "invalid project registry")
         return cfg.project
@@ -349,14 +377,14 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _config_for(self, project_id: str | None) -> _Config | None:
         if project_id is None:
-            return self._cache.get(self._current_path.resolve())
+            return self._cache.get(self._canonical(self._current_path))
         return self._by_id.get(project_id)
 
     def _load_graph(self) -> None:
         if self._loaded:
             return
         self._loaded = True
-        self._visit(self._current_path.resolve(), declared_id=None)
+        self._visit(self._current_path, declared_id=None)
         self._validate_reciprocity()
         self._validate_cycles()
         self._reconcile_overrides()
@@ -364,7 +392,7 @@ class FsProjectRegistry(ProjectRegistry):
     def _visit(self, config_path: Path, declared_id: str | None,
                declared_in: Path | None = None,
                declaration: RepositoryDeclaration | None = None) -> _Config | None:
-        config_path = config_path.resolve()
+        config_path = self._canonical(config_path)
         if config_path in self._cache:
             cfg = self._cache[config_path]
             if declared_id and cfg.project.id != declared_id:
@@ -522,15 +550,15 @@ class FsProjectRegistry(ProjectRegistry):
         """
         override = self._override_path(entry.id)
         if override is not None:
-            return override
+            return self._canonical(override)
         candidates: list[Path] = []
         if entry.locator is not None:
             candidates.append(self._locator_path(source_config, entry.locator))
         if entry.repository is not None:
             try:
-                candidates.append(self._worktree_copy(
-                    (provisioned_root(source_config.parent, entry.repository)
-                     / SENTINEL).resolve()))
+                candidates.append(self._worktree_copy(_config_file(
+                    provisioned_root(source_config.parent, entry.repository)
+                    / SENTINEL)))
             except StoreDeclarationError as error:
                 # A declaration this machine cannot turn into a path — a `~name`
                 # naming no user. Recorded against the config that carried it,
@@ -540,7 +568,7 @@ class FsProjectRegistry(ProjectRegistry):
                 self._problem(source_config, str(error))
         for candidate in candidates:
             if candidate.is_file():
-                return candidate
+                return self._canonical(candidate)
         return candidates[0] if candidates else (source_config.parent / SENTINEL)
 
     def _override_path(self, project_id: str) -> Path | None:
@@ -610,9 +638,8 @@ class FsProjectRegistry(ProjectRegistry):
     def _locator_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
         source_dir = source_config.parent.resolve()
-        resolved = (
-            (target if target.is_absolute() else source_dir / target) / SENTINEL
-        ).resolve()
+        resolved = _config_file(
+            (target if target.is_absolute() else source_dir / target) / SENTINEL)
         if self._anchors is None:
             return resolved
         top, main = self._anchors
@@ -629,7 +656,7 @@ class FsProjectRegistry(ProjectRegistry):
             and not resolved.parent.is_relative_to(top)
         ):
             counterpart = main / source_dir.relative_to(top)
-            resolved = (counterpart / target / SENTINEL).resolve()
+            resolved = _config_file(counterpart / target / SENTINEL)
         return self._worktree_copy(resolved)
 
     def _worktree_copy(self, resolved: Path) -> Path:
@@ -661,7 +688,20 @@ class FsProjectRegistry(ProjectRegistry):
             if not _same_repository(between / ".git", main):
                 return resolved                  # another repository's node
             between = between.parent
-        return copy.resolve()
+        return _config_file(copy)
+
+    def _canonical(self, config_path: Path) -> Path:
+        """`config_path` (see `_config_file`) under the first spelling seen of its
+        folder; as given when the folder cannot be read."""
+        config_path = _config_file(config_path)
+        try:
+            found = config_path.parent.stat()
+        except OSError:
+            return config_path
+        if not found.st_ino:
+            return config_path    # a filesystem with no inode numbers: text only
+        folder = self._spellings.setdefault((found.st_dev, found.st_ino), config_path.parent)
+        return folder / config_path.name
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():
@@ -786,13 +826,16 @@ class FsProjectRegistry(ProjectRegistry):
         for index, override in enumerate(self._overrides):
             if override.problem is not None:
                 continue
+            # Through `_canonical`, as the walk read it: the variable may spell
+            # the folder in other letter case than the walk met it first.
+            where = self._canonical(Path(override.locator) / SENTINEL)
             cfg = self._by_id.get(override.id)
-            if cfg is not None and cfg.path.parent == Path(override.locator):
+            if cfg is not None and cfg.path == where:
                 continue
             # Not `cfg`: that is whatever answered for this id, which is not
             # necessarily what the override pointed at. Name the node actually
             # sitting at the overridden location, read from the walk's cache.
-            at_location = self._cache.get(Path(override.locator) / SENTINEL)
+            at_location = self._cache.get(where)
             found = (f"which is '{at_location.project.id}', not '{override.id}'"
                      if at_location is not None
                      else f"which did not yield '{override.id}'")

@@ -60,11 +60,17 @@ resolutions at `current`, `_config_for`, `_load_graph`, `_visit`,
   spelling seen of its folder, keyed by the folder's `(st_dev, st_ino)`;
   unchanged when the folder cannot be read. Applied in `_visit`, to every
   `_target_path` answer, and to the current node's lookups.
-- `_probe_worktree`: the main worktree from `git worktree list --porcelain`
-  (its first entry; none for a bare repository) instead of assuming
-  `<common>/..`. When the directory is not in a linked worktree of its own
-  repository and `git rev-parse --show-superproject-working-tree` names a
-  superproject, answer with the superproject's anchors.
+- `_probe_worktree`: for a common git directory named `.git`, the main
+  worktree is its parent, as before; for any other (a submodule repository's
+  `<outer>/.git/modules/<name>`), the main worktree is its `core.worktree`,
+  and none (a bare repository) gives no anchors. When the directory is not in a
+  linked worktree of its own repository and `git rev-parse
+  --show-superproject-working-tree` names a superproject, answer with the
+  superproject's anchors. *(Amended at implement: `git worktree list`
+  reports a submodule's git directory as its main worktree, so it was not used.)*
+- `_reconcile_overrides` compares an override's location through
+  `_canonical` too. *(Added at review: it compared path text, so
+  `tcw provision` refused an override the walk had accepted.)*
 
 ## Abstraction litmus test
 
@@ -85,8 +91,10 @@ path operation. Nothing in the store interface changes.
 
 ## Risks
 
-- `git worktree list` is one more git call per registry probe; it is cached per
-  directory like the current probe.
+- One more git call (`--show-superproject-working-tree`) per node folder per
+  process in a primary checkout, cached like the existing probe; more inside a
+  submodule.
+- A filesystem that reports no inode numbers keeps text-only keys.
 - Two spellings of one folder now print the first spelling in messages.
 
 ## Notes
