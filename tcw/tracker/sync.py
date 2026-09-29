@@ -1044,7 +1044,9 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
     their current state is. The split is deliberate; they are different questions.
 
     `ownership=False` skips the assignment check, for a completion: a claim gates
-    work, not resolution. Where the ticket is is still asked.
+    work, not resolution — except where `needs_claim` says the move needs the
+    ticket held (a completion on a legacy `catch-up` binding). Where the ticket
+    is is still asked.
 
     `move` (with the item's `resolution`) also asks whether the workflow can carry
     the ticket to `target` — the same `assess_move` call, with the same configured
@@ -1093,12 +1095,16 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
     path = forward_from(ladder(config.statuses, MOVE_STATUS[move], resolution),
                         ticket.status) if move and bound.catch_up else ()
     if target and not held and len(path) > 2:
+        # The local step is only offered where there is one: an item already in
+        # review (a shared part lets its ticket lag) has no `submit` left to take.
+        step = (f"`tcw work submit {slug}` first, or " if own.get(slug).status == "active"
+                else "")
         return (f"{key} is in '{ticket.status}' and would have to pass through "
                 f"{', '.join(repr(s) for s in path[1:-1])} to follow this change, one "
                 f"transition at a time, which cannot be checked before it is made. "
-                f"Move {slug} one step at a time (from active, `tcw work submit "
-                f"{slug}` first), so each step is checked; discarding the item is "
-                f"always allowed.")
+                f"Take one step at a time — {step}move {key} to '{path[-2]}' "
+                f"yourself in the tracker — so the step left is checked, then run "
+                f"this again; discarding the item is always allowed.")
     if move and target and not held:
         verdict, detail = assess_move(
             ticket, target=target, expected=allowed,

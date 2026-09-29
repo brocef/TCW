@@ -283,6 +283,24 @@ def test_a_catch_up_walk_broken_part_way_is_refused_before_anything_moves(
     assert record(strict, slug) is None and fake.applied == []
 
 
+def test_the_advice_for_an_item_already_in_review_names_no_submit(strict, fake):  # noqa: F811
+    """A shared part lets a review item's ticket lag two rungs behind; there is
+    no `submit` left to take, and the tracker step the advice names works."""
+    api = bound_item(strict, "Api", part="api")
+    web = bound_item(strict, "Web", part="web")
+    claimed_ticket(fake, "In Progress", A)
+    FsWorkStore.open(strict).complete(web, "wontfix", [], force=True)
+    started(strict, api, submitted=True)
+    catch_up(strict, api)
+    fake.workflow = STRICT_LADDER
+    code, _out, err = cli(strict, "work", "complete", api, *COMPLETE)
+    assert code == 1 and "`tcw work submit" not in err, err
+    assert "move SYNC-1 to 'In Review' yourself" in err, err
+    claimed_ticket(fake, "In Review", A)
+    code, _out, err = cli(strict, "work", "complete", api, *COMPLETE)
+    assert code == 0, err
+
+
 def test_a_catch_up_completion_of_a_ticket_someone_else_holds_is_refused(
         strict, fake):  # noqa: F811
     from test_tracker_sync import B

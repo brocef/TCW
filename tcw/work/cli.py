@@ -380,7 +380,8 @@ def _strict_refusal(st, bare: str, change: str, own=None, *,
     checkout the completion runs in that governs it.
 
     `ownership=False` leaves out whether the ticket is held by the running account —
-    a completion's case, since a claim gates work, not resolution.
+    a completion's case, since a claim gates work, not resolution (except on a
+    legacy `catch-up` binding: `sync.needs_claim`).
     """
     if not st.tracker_strict():
         return None
@@ -4081,7 +4082,7 @@ def _complete(args: argparse.Namespace) -> int:
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none — and a completion is refused only for
-    # its binding, never for who holds the ticket.
+    # its binding, not for who holds the ticket (bar a legacy `catch-up` binding).
     if shipping and (reason := _strict_refusal(st, bare, "complete", own=branch_store,
                                               ownership=False,
                                               resolution=args.resolution)):
