@@ -599,7 +599,10 @@ the owner you name, running the `start` hooks against the item as it was. The
 web app lists interrupted starts above the work list with a **Recover** button,
 which finishes the claim for the identity `tcw serve` runs as (`TCW_WORK_OWNER`,
 else your Git email or name); it recovers only an interrupted start, never an
-item someone else has already started. Under strict tracker mode recovery claims
+item someone else has already started. Both first wait half a second for the
+claim to finish by itself: one that lands in that time belonged to a start that
+was still running, and recovery refuses it rather than taking it from its
+owner. Under strict tracker mode recovery claims
 the ticket first, exactly as `tcw work start` does, and the web app refuses it
 and names the `--take-over` command instead, since it cannot check a ticket.
 

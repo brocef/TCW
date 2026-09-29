@@ -1455,6 +1455,10 @@ def _start(args: argparse.Namespace) -> int:
     recovering = next((c for c in st.interrupted_claims() if c.slug == bare),
                       None) if args.take_over else None
     before = recovering or st.get(bare)
+    # Remembered across the re-read below: a claim that published while the
+    # hooks ran no longer lists as interrupted, and forgetting that it was one
+    # would fall through to taking over its live claimant's active item.
+    was_recovering = recovering is not None
     # `pre` hooks run before the store is touched at all — not merely before the
     # move. A hook is allowed to refuse the transition, and a refusal has to mean
     # nothing happened; evaluating one after any store call would make that false.
@@ -1498,7 +1502,12 @@ def _start(args: argparse.Namespace) -> int:
         if code is not None:
             return code
     try:
-        st.start(bare, force=args.force, owner=owner, take_over=args.take_over)
+        # A claim found interrupted is recovered as one, never taken over as an
+        # active item: if it published while the hooks above ran, its claimant
+        # was alive, and `recover` refuses where `take_over` would displace it.
+        recover = was_recovering or recovering is not None
+        st.start(bare, force=args.force, owner=owner,
+                 take_over=args.take_over and not recover, recover=recover)
     except _ERRORS as e:
         print(f"tcw work: {e}", file=sys.stderr)
         if claimed and not isinstance(e, TransitionCommitError):

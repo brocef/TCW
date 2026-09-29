@@ -1051,6 +1051,19 @@ def test_init_relocates_a_store_whose_only_extra_entry_is_claiming(tmp_path):
     assert (store / "work" / "backlog").is_dir()
 
 
+def test_init_relocates_a_store_whose_claiming_holds_a_stray_stamp(tmp_path):
+    """A claim's stamp writes a temporary `.stamp-*.yaml` in `.claiming/` and
+    renames it into place; a process that dies in between leaves it. It is
+    garbage, not work (spec: 2026-09-26-refuse-to-take-over-a-claim-that-may-
+    still-be-in-flight)."""
+    code, store = _default_store(tmp_path)
+    claiming = code / "docs" / "work" / ".claiming"
+    claiming.mkdir()
+    (claiming / ".stamp-0123abcd.yaml").write_text("owner: gone\n")
+    init(["work"], code, "demo", work_path=store / "work")
+    assert (store / "work" / "backlog").is_dir()
+
+
 def test_init_still_relocates_a_store_without_claiming(tmp_path):
     """The no-regression half, kept beside the case above so a reader sees both."""
     code, store = _default_store(tmp_path)

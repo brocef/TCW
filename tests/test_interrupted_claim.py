@@ -5,12 +5,15 @@ An interrupted claim is made the way a dead process leaves one: the item's folde
 moved into `.claiming/<slug>-<32 hex>` and never published."""
 
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 import yaml
 
 from tcw.cli import main
+from tcw.store.base import AlreadyClaimed, IllegalTransition
 from tcw.store.fs import FsWorkStore
 from test_lifecycle_hooks import configure, node
 
@@ -165,6 +168,197 @@ def test_the_store_refuses_to_recover_a_settled_item(tmp_path):
     with pytest.raises(ValueError, match="not an interrupted claim"):
         st.start(slug, owner="second", recover=True)
     assert st.get(slug).owner == "first"
+
+
+# ── a claim that may still be in flight is not taken ─────────────────────────
+# (spec: 2026-09-26-refuse-to-take-over-a-claim-that-may-still-be-in-flight)
+
+def publish_as(st: FsWorkStore, folder: Path, slug: str, owner: str) -> None:
+    """What a competing claimant's last two steps do: stamp, then publish."""
+    state = yaml.safe_load((folder / "state.yaml").read_text())
+    state["owner"] = owner
+    (folder / "state.yaml").write_text(yaml.safe_dump(state))
+    folder.replace(st.root / "active" / slug)
+
+
+def live_claimant(monkeypatch, st: FsWorkStore, private: Path, slug: str,
+                  owner: str) -> threading.Thread:
+    """A claimant still between its two renames, publishing 50 ms after the
+    recovery's wait begins — inside the window, whatever the machine's speed.
+    Without the wait it never hears the signal and publishes too late."""
+    waiting = threading.Event()
+    real = FsWorkStore._await_interrupted
+
+    def signalled(self, *args):
+        waiting.set()
+        return real(self, *args)
+
+    monkeypatch.setattr(FsWorkStore, "_await_interrupted", signalled)
+
+    def run():
+        waiting.wait(timeout=3)
+        time.sleep(0.05)
+        try:
+            publish_as(st, private, slug, owner)
+        except FileNotFoundError:
+            pass                                   # the recovery took it
+    t = threading.Thread(target=run)
+    t.start()
+    return t
+
+
+def assert_claim_area_clean(st: FsWorkStore) -> None:
+    claiming = st.root / ".claiming"
+    assert not claiming.exists() or list(claiming.iterdir()) == []
+
+
+def test_take_over_refuses_a_claim_that_publishes_within_the_window(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    private = interrupt(root, slug)
+    st = FsWorkStore.open(root)
+    t = live_claimant(monkeypatch, st, private, slug, "alice")
+    with pytest.raises(IllegalTransition, match="alice"):
+        st.start(slug, owner="me", take_over=True)
+    t.join()
+    assert FsWorkStore.open(root).get(slug).owner == "alice"
+
+
+def test_recover_refuses_a_claim_that_publishes_within_the_window(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    private = interrupt(root, slug)
+    st = FsWorkStore.open(root)
+    t = live_claimant(monkeypatch, st, private, slug, "alice")
+    with pytest.raises(IllegalTransition, match="alice"):
+        st.start(slug, owner="me", recover=True)
+    t.join()
+    assert FsWorkStore.open(root).get(slug).owner == "alice"
+
+
+def test_a_claimant_whose_folder_is_taken_reports_the_winner(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    st = FsWorkStore.open(root)
+    real = FsWorkStore._stamp_claim
+
+    def taken_first(self, folder, *args, **kwargs):
+        publish_as(self, folder, slug, "bob")
+        return real(self, folder, *args, **kwargs)
+
+    monkeypatch.setattr(FsWorkStore, "_stamp_claim", taken_first)
+    with pytest.raises(AlreadyClaimed, match="bob"):
+        st.start(slug, owner="me")
+    assert FsWorkStore.open(root).get(slug).owner == "bob"
+    assert_claim_area_clean(st)
+
+
+def test_a_take_over_whose_steal_loses_reports_the_winner(tmp_path, monkeypatch):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    interrupt(root, slug)
+    st = FsWorkStore.open(root)
+
+    def published_after_the_wait(self, slug_, found):
+        publish_as(self, found, slug_, "bob")
+
+    monkeypatch.setattr(FsWorkStore, "_await_interrupted", published_after_the_wait)
+    with pytest.raises(AlreadyClaimed, match="bob"):
+        st.start(slug, owner="me", take_over=True)
+    assert FsWorkStore.open(root).get(slug).owner == "bob"
+    assert_claim_area_clean(st)
+
+
+def test_a_claimant_resuming_after_a_take_over_cannot_publish(tmp_path, monkeypatch):
+    """A claimant suspended past the window resumes after the recoverer has
+    stamped: its rename must fail, not publish the recoverer's stamp as its own."""
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    found = interrupt(root, slug)
+    st = FsWorkStore.open(root)
+    monkeypatch.setattr(FsWorkStore, "_await_interrupted", lambda self, s, f: None)
+    real = FsWorkStore._stamp_claim
+    resumed = []
+
+    def claimant_resumes(self, folder, *args, **kwargs):
+        real(self, folder, *args, **kwargs)
+        try:
+            found.replace(self.root / "active" / slug)
+            resumed.append("published")
+        except FileNotFoundError:
+            resumed.append("refused")
+
+    monkeypatch.setattr(FsWorkStore, "_stamp_claim", claimant_resumes)
+    st.start(slug, owner="me", take_over=True)
+    assert resumed == ["refused"]
+    assert FsWorkStore.open(root).get(slug).owner == "me"
+
+
+def test_the_cli_take_over_refuses_a_claim_published_while_its_hooks_ran(
+        tmp_path, monkeypatch, capsys):
+    """The CLI finds the claim, runs `pre` hooks, then calls the store; a claim
+    published in between must be refused, not taken over as an active item."""
+    import tcw.work.cli as work_cli
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    private = interrupt(root, slug)
+    st = FsWorkStore.open(root)
+    real = work_cli.run_pre
+    published = []
+
+    def hooks_while_claimant_publishes(*args, **kwargs):
+        if not published:
+            publish_as(st, private, slug, "alice")
+            published.append(True)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(work_cli, "run_pre", hooks_while_claimant_publishes)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug, "--take-over", "--owner", "me"]) == 1
+    assert "not an interrupted claim" in capsys.readouterr().err
+    assert FsWorkStore.open(root).get(slug).owner == "alice"
+
+
+def test_an_unrelated_missing_folder_at_publish_rolls_the_claim_back(tmp_path, monkeypatch):
+    """Only a claim folder that is gone means a lost race. A publishing rename
+    that fails for another reason, with the claim folder still there, is an
+    ordinary failure, and the item goes back to backlog as before."""
+    import os
+    import tcw.store.fs as fs
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    st = FsWorkStore.open(root)
+    real = os.replace
+
+    def publish_fails(src, dst):
+        if Path(dst).parent.name == "active":
+            raise FileNotFoundError(dst)       # as if `active/` had gone
+        return real(src, dst)
+
+    monkeypatch.setattr(fs.os, "replace", publish_fails)
+    with pytest.raises(FileNotFoundError):
+        st.start(slug, owner="me")
+    monkeypatch.setattr(fs.os, "replace", real)
+    assert FsWorkStore.open(root).get(slug).status == "backlog"
+    assert_claim_area_clean(st)
+
+
+def test_a_stamp_leaves_nothing_behind_and_keeps_the_items_fields(tmp_path):
+    root = node(tmp_path)
+    slug = tagged_item(root)
+    st = FsWorkStore.open(root)
+    other = st.create("Interrupted too", created="2026-01-01").slug
+    st.set_field(other, "tags", ["bug"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "other"], check=True)
+    st.start(slug, owner="first")
+    interrupt(root, other)
+    st.start(other, owner="second", take_over=True)
+    assert_claim_area_clean(st)
+    for s, owner in ((slug, "first"), (other, "second")):
+        state = yaml.safe_load((st.path(s) / "state.yaml").read_text())
+        assert (state["owner"], state["tags"], state["created"]) == (owner, ["bug"], "2026-01-01")
+        assert state["title"]
 
 
 # ── strict tracker mode: recovery claims the ticket like any strict start ────
