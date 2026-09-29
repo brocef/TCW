@@ -8,3 +8,5 @@ tags:
 - store
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T14:12:07.083689Z'
+worktree: .worktrees/2026-09-26-refuse-to-take-over-a-claim-that-may-still-be-in-flight
+branch: work/2026-09-26-refuse-to-take-over-a-claim-that-may-still-be-in-flight
