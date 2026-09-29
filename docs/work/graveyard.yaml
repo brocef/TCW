@@ -1050,6 +1050,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-26-make-tcw-init-honor-a-configured-taxonomy-or-capabilities-path:
+  location: f91a6a1581415107807e61e6943ee187b17ced3a
   resolution: done
   resolved: '2026-09-29'
 2026-09-26-read-item-tags-normalized-and-keep-non-tag-work-tags-entries-visible:
