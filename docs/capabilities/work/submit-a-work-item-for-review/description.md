@@ -1,4 +1,4 @@
-As a user, I run `tcw work submit <slug>` to move an item from active into review, signalling that implementation is done and acceptance is pending.
+As a user, I run `tcw work submit <slug>` to move an item from active into review, signalling that implementation is done and acceptance is pending. The tool prints where the item now lives — the folder the verify stage writes into — and, on stderr, the next step: the verify stage's gate, which ends in `refined-outcome.md` to accept the work or `rework.md` to send it back.
 The item is not resolved while it sits in review: it still blocks whatever depends on it, and it still holds its initiative epic open, because verification can reject the work.
 When the item has a tracker ticket bound to it, submitting is refused before the item moves unless the ticket is assigned to me: a claim gates work (`work/synchronize-external-tracker-work`).
 Review is optional — a small change may complete straight from active, and the tool then prints a note that the verify stage was skipped rather than refusing.

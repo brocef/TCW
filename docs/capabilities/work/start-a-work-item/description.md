@@ -1,4 +1,5 @@
 As a user, I run `tcw work start <slug>` to move an item from backlog into active. The tool refuses if the item has unresolved blockers; I pass `--force` to override.
+It then prints where the item now lives and, on stderr, the next step: the gate of the first stage the item still needs — `spec`, then `plan`, then `implement`; for an active item I take over that already has an outcome, `implement` again if it carries a `rework.md`, otherwise `verify`. It never points straight at `tcw work complete`.
 For initiative child tasks, the tool also refuses to start the task until its related epic is active.
 
 TCW commits the status move itself, scoped to the item's own folders so unrelated edits in my working tree are never swept in. I turn that off with `work.auto-commit-transitions: false` in `tcw-config.yaml`, and `work.trunk-branch` adds an advisory warning when I transition from some other branch.

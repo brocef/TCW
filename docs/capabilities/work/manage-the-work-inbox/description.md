@@ -1,6 +1,8 @@
 As a user, I inspect raw work requests with `tcw work inbox list` and
 `tcw work inbox show <entry>`, then accept a request into the formal backlog
-with `tcw work inbox accept <entry> [--title <title>]`.
+with `tcw work inbox accept <entry> [--title <title>]`. Accepting a raw entry
+prints the new item's slug, where it now lives, and the next step — the `request`
+stage's gate — exactly as `tcw work new` does.
 I run `tcw work inbox path` to print the absolute, resolved inbox folder inside
 the active, configuration-aware work store.
 

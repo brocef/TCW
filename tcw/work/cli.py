@@ -14,8 +14,8 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    StoreNotProvisioned, TransitionCommitError, WorkItem,
-    bound_value, normalize_tag, AlreadyClaimed,
+    StoreNotProvisioned, TRANSITION_NEXT_STEPS, TransitionCommitError, WorkItem,
+    bound_value, normalize_tag, AlreadyClaimed, start_next_stage,
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
@@ -770,9 +770,8 @@ def _new(args: argparse.Namespace) -> int:
     # nobody works directly; creation has no such difficulty, and an epic on the
     # board with no ticket is a hole in the tracker's picture of the work.
     _ticket_on_filing(st, item.slug, "new")
-    if not args.epic:                         # epic's next step is delegate, not start
-        print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
-              file=sys.stderr)
+    # Epics included: they run `request`, `spec` and `plan` like any item.
+    _next_hint("new", item.slug)
     return 0
 
 
@@ -945,6 +944,7 @@ def _inbox_accept(args: argparse.Namespace) -> int:
             print(item.slug)
             if loc := st.locate(item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
+            _next_hint("new", item.slug)
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
             # binds the ticket that already exists and must not make a second.
             _ticket_on_filing(st, item.slug, "inbox accept")
@@ -1345,9 +1345,14 @@ def _post_result(err: str | None, transition: str, slug: str) -> int:
     return 1
 
 
-def _complete_hint(slug: str) -> None:
-    print(f"→ next: when done & verified, run "
-          f"`tcw work complete {slug} --resolution done --confirm`", file=sys.stderr)
+def _next_hint(key: str, ref: str) -> None:
+    """Print the next step after a transition, from `TRANSITION_NEXT_STEPS`.
+
+    `ref` is the reference as the user typed it — possibly qualified, such as
+    `kid/<slug>` — because the reader runs the printed command from where they
+    typed theirs."""
+    print(f"→ next: {TRANSITION_NEXT_STEPS[key].replace('<slug>', ref)}",
+          file=sys.stderr)
 
 
 def _local_owner(st, explicit: str | None = None) -> str:
@@ -1449,19 +1454,31 @@ def _sentence(text: str) -> str:
     return text + ("" if text.endswith((".", "!", "?")) else ".")
 
 
-def _unwritten_plan(st, bare: str, display: str) -> str:
-    """The sentence naming whichever of spec.md and plan.md is not written, or
-    "" when both are. A warning, never a refusal: a project that skips planning
-    small items is entitled to, and one that is not binds a `pre` check.
-
-    `bare` addresses the item; `display` is what the user typed and is the only
-    name printed, since a bare slug in the advice would resolve in the wrong node
-    for a qualified reference. A document that cannot be read yields no warning
-    rather than an error — by the time `start` asks, the item has moved, and a
-    warning must not turn that success into a failure."""
+def _present_artifacts(st, bare: str) -> set[str] | None:
+    """The names of the item's lifecycle artifacts that hold content, or `None`
+    when they cannot be read. `None` rather than an error: by the time `start`
+    asks, the item has moved, and advice must not turn that success into a
+    failure. An empty listing is unreadable too — a present item lists every
+    artifact, written or not, so `[]` means the folder vanished mid-read."""
     try:
-        present = {a.name for a in st.artifacts(bare) if a.present}
+        artifacts = st.artifacts(bare)
     except (OSError, ValueError):
+        return None
+    if not artifacts:
+        return None
+    return {a.name for a in artifacts if a.present}
+
+
+def _unwritten_plan(present: set[str] | None, display: str) -> str:
+    """The sentence naming whichever of spec.md and plan.md is not written, or
+    "" when both are, or when the artifacts could not be read. A warning, never a
+    refusal: a project that skips planning small items is entitled to, and one
+    that is not binds a `pre` check.
+
+    `display` is what the user typed and is the only name printed, since a bare
+    slug in the advice would resolve in the wrong node for a qualified
+    reference."""
+    if present is None:
         return ""
     missing = [n for n in ("spec", "plan") if n not in present]
     if not missing:
@@ -1563,12 +1580,16 @@ def _start(args: argparse.Namespace) -> int:
     # Before any worktree setup, so a failure there cannot skip the claim.
     delivered = _deliver_after(st, bare, "start", "start", previous,
                                say_claim=not claimed)
-    if missing := _unwritten_plan(st, bare, args.slug):
+    # Read once, for the warning and the next step alike, on either path below.
+    present = _present_artifacts(st, bare)
+    if missing := _unwritten_plan(present, args.slug):
         print(f"tcw work start: warning: {missing}", file=sys.stderr)
+    after_start = "start:" + (start_next_stage(present) if present is not None
+                              else "implement")
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
-        _complete_hint(args.slug)
+        _next_hint(after_start, args.slug)
         return _post_result(post_err, "start", args.slug) or min(delivered, 1)
     node = st.node_root
     ignore_changed = ensure_worktree_ignored(node)
@@ -1624,7 +1645,7 @@ def _start(args: argparse.Namespace) -> int:
     loc = st.locate(bare)
     print(f"started {args.slug} → {loc} (worktree {wt})" if loc
           else f"started {args.slug} → worktree {wt}")
-    _complete_hint(args.slug)
+    _next_hint(after_start, args.slug)
     return _post_result(post_err, "start", args.slug) or min(delivered, 1)
 
 
@@ -1652,11 +1673,10 @@ def _submit(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "submit", "submit", "active")
-    print(f"submitted {args.slug} → review")
-    print(f"→ next: verify the work, then either "
-          f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
-          f"send it back, delete refined-outcome.md and run "
-          f"`tcw work rework {args.slug}`", file=sys.stderr)
+    # The folder, not the status: verify writes into it next, and a reader still
+    # holding the `active` path would write beside the item rather than in it.
+    print(f"submitted {args.slug} → {st.locate(bare) or 'review'}")
+    _next_hint("submit", args.slug)
     return _post_result(post_err, "submit", args.slug) or min(delivered, 1)
 
 
@@ -1684,9 +1704,8 @@ def _rework(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "rework", "rework", "review")
-    print(f"reworking {args.slug} → active")
-    print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
-          file=sys.stderr)
+    print(f"reworking {args.slug} → {st.locate(bare) or 'active'}")
+    _next_hint("rework", args.slug)
     return _post_result(post_err, "rework", args.slug) or min(delivered, 1)
 
 
@@ -2242,7 +2261,8 @@ def _stage(args: argparse.Namespace) -> int:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
-    if step.id == "implement" and (missing := _unwritten_plan(st, bare, args.slug)):
+    if step.id == "implement" and (
+            missing := _unwritten_plan(_present_artifacts(st, bare), args.slug)):
         print(f"tcw work stage gate implement: warning: {missing}", file=sys.stderr)
 
     return _stage_gate(args, step, st, item, bare, item.status, args.slug)
@@ -4107,15 +4127,17 @@ def _complete(args: argparse.Namespace) -> int:
                   f"(use --force to override)", file=sys.stderr)
             return 1
     checklist = st.dod_checklist() if shipping else []
-    if shipping:
+    # The unticked list is the prompt, so only the unconfirmed run shows it. A
+    # confirmed run shows the list once the item has closed, as acknowledged:
+    # printed here, it sat above whichever refusal came next and read as its cause.
+    if shipping and not args.confirm:
         print("Definition of Done — acknowledge each item:")
         for c in checklist:
             print(f"  [ ] {c}")
-        if not args.confirm:
-            print("Refused: re-run with --confirm once the checklist is satisfied.",
-                  file=sys.stderr)
-            return 1
-    elif not args.confirm:
+        print("Refused: re-run with --confirm once the checklist is satisfied.",
+              file=sys.stderr)
+        return 1
+    elif not shipping and not args.confirm:
         print(f"Refused: discarding {args.slug} as '{args.resolution}' is "
               f"permanent. Re-run with --confirm.", file=sys.stderr)
         return 1
@@ -4229,6 +4251,10 @@ def _complete(args: argparse.Namespace) -> int:
                                             args.resolution)
         if removed:
             loc = None
+    if shipping:
+        print("Definition of Done — acknowledged with --confirm:")
+        for c in checklist:
+            print(f"  [x] {c}")
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:

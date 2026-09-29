@@ -1,0 +1,9 @@
+changed:
+    - work/open-a-work-item
+    - work/manage-the-work-inbox
+    - work/start-a-work-item
+    - work/submit-a-work-item-for-review
+    - work/rework-a-reviewed-work-item
+    - work/complete-a-work-item
+    - work/customize-the-definition-of-done
+    - skills/extras-triage-issues
