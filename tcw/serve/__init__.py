@@ -635,6 +635,12 @@ class TcwHandler(BaseHTTPRequestHandler):
                 return
             try:
                 resource = work.read_artifact(slug, name)
+            except UnicodeDecodeError:
+                # Before ValueError, which it is: the decoder's own message names
+                # a byte offset, not the file.
+                self._send(HTTPStatus.BAD_REQUEST,
+                           f"{name} is not valid UTF-8; fix or replace the file".encode("utf-8"))
+                return
             except ValueError as e:
                 self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
                 return
@@ -806,6 +812,15 @@ class TcwHandler(BaseHTTPRequestHandler):
                         })
                     else:
                         artifacts_list.append({"name": name, "present": False})
+                except UnicodeDecodeError:
+                    # Not valid UTF-8: listed with the snapshot's revision, so a
+                    # guarded save can replace it; opening it names the file.
+                    artifacts_list.append({
+                        "name": name,
+                        "present": name in lifecycle_present,
+                        "revision": detail.artifact_revisions.get(name, ""),
+                        "mediaType": "text/markdown",
+                    })
                 except ValueError:
                     pass
             # Sidecar discovery in detail

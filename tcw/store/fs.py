@@ -1569,8 +1569,23 @@ def _extended_component_stores(
 # ── Revision tokens & atomic writes (FS-adapter private details) ─────────────
 
 def _revision(content: str) -> str:
-    """Cheap content-hash revision token (16 hex chars of SHA-256)."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    """Cheap content-hash revision token (16 hex chars of SHA-256).
+
+    `surrogateescape` so a file read by `_read_revision_text` hashes back to its
+    own bytes: identical to a strict encode for any valid UTF-8 text, and a
+    stable token, distinct per byte sequence, for a file that is not."""
+    return hashlib.sha256(content.encode("utf-8", "surrogateescape")).hexdigest()[:16]
+
+
+def _read_revision_text(path: Path) -> str:
+    """A file's text for computing its revision — never for display or parsing.
+
+    Lossless: bytes that are not UTF-8 survive as escapes, so a damaged file
+    still has a revision, and the snapshot that hands one out and the guard that
+    checks it agree. A guarded save can therefore replace a damaged file, which
+    is how an editor repairs it. `read_text` keeps its newline handling, so no
+    valid file's token changes."""
+    return path.read_text(encoding="utf-8", errors="surrogateescape")
 
 
 def _require_detail(detail, kind: str, ref: str):
@@ -4248,6 +4263,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # earlier version left behind does not, and the relation the nested
             # source folder held would be lost on landing at the top level.
             tracked_parent = self._tracked_parent(claimed)
+            self._require_readable_state(found, claimed)
             self._await_interrupted(claimed, found)
             # Take the folder before writing a word into it, exactly as a
             # claimant takes it from `backlog/`. Written in place instead, a
@@ -4315,6 +4331,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if blockers:
                 raise ValueError("blocked by: " + ", ".join(blockers) + " (use --force to override)")
         src = self._find(slug)
+        if src is not None:
+            self._require_readable_state(src, slug)
         # `.claiming/` is staging: the contents are the state, and its own
         # existence means nothing. It is created on demand and **never removed**,
         # so a store an item was ever started in keeps it forever, empty.
@@ -4709,7 +4727,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # artifact that is a symlink out of the store. An escaped resource is
         # not present — the same fail-closed shape the node stores use.
         return (p.is_file() and self._within_store(p)
-                and bool(p.read_text(encoding="utf-8").strip()))
+                and bool(p.read_text(encoding="utf-8", errors="replace").strip()))
 
     def _resolve_body(self, d: Path) -> tuple[str | None, str]:
         """The body surface: (artifact name, text), or (None, "") when neither is
@@ -4718,7 +4736,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
             p = d / self._artifact_filename(name)
             try:
                 if self._present(p):
-                    return name, p.read_text(encoding="utf-8")
+                    # Display text: one damaged request must not take the board
+                    # down. Revisions re-read it losslessly (`_detail_snapshot`).
+                    return name, p.read_text(encoding="utf-8", errors="replace")
             except FileNotFoundError:
                 continue                              # claimed out from under us
         return None, ""
@@ -4863,7 +4883,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         folder = d / "plan"
         return [PlanStage(stage_id, title, dependencies, effort, complexity, priority, tags,
                           (folder / f"{stage_id}.md").is_file(),
-                          _revision((folder / f"{stage_id}.md").read_text(encoding="utf-8")) if (folder / f"{stage_id}.md").is_file() else "")
+                          _revision(_read_revision_text(folder / f"{stage_id}.md")) if (folder / f"{stage_id}.md").is_file() else "")
                 for stage_id, title, dependencies, effort, complexity, priority, tags in raw]
 
     def plan_stages(self, slug: str) -> list[PlanStage]:
@@ -4889,7 +4909,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError("stage content must be text")
         path = self._plan_stage_path(slug, stage_id)
         if revision is not None:
-            current = _revision(path.read_text(encoding="utf-8")) if path.is_file() else ""
+            current = _revision(_read_revision_text(path)) if path.is_file() else ""
             if current != revision:
                 raise StaleRevision(f"stale revision for plan stage '{stage_id}' of '{slug}'")
         owned = _mkdir_owned(path.parent)
@@ -4902,7 +4922,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         path = self._plan_stage_path(slug, stage_id)
         if not path.is_file():
             raise ValueError(f"plan stage '{stage_id}' is not present")
-        if revision is not None and _revision(path.read_text(encoding="utf-8")) != revision:
+        if revision is not None and _revision(_read_revision_text(path)) != revision:
             raise StaleRevision(f"stale revision for plan stage '{stage_id}' of '{slug}'")
         self._rm(path)
 
@@ -4939,12 +4959,53 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     @staticmethod
     def _safe_yaml(path: Path) -> dict:
-        """Tolerant load: a malformed state file degrades to empty rather than
-        crashing the board (the item still lists, status comes from the dir)."""
+        """Tolerant load: a state file that cannot be read degrades to empty
+        rather than crashing the board (the item still lists, status comes from
+        the dir). **For reads only** — every read-modify-write uses `load_yaml`
+        and refuses, so this `{}` can never be written back over a damaged file.
+
+        Damaged means malformed YAML, bytes that are not UTF-8, or anything but a
+        regular file at the name — checked first, since no exception rescues a
+        read that blocks on a named pipe. `FileNotFoundError` is not damage: it
+        is how `_item_from_dir` and the in-flight scan learn a claim moved the
+        folder mid-read, and swallowing it would turn a moved item into a
+        phantom."""
+        if not path.is_file():
+            return {}
         try:
             return load_yaml(path)
-        except yaml.YAMLError:
+        except FileNotFoundError:
+            raise
+        except (OSError, ValueError, yaml.YAMLError, RecursionError):
             return {}
+
+    @staticmethod
+    def _require_readable_state(d: Path, slug: str) -> None:
+        """Refuse to move an item whose `state.yaml` cannot be read.
+
+        The board reads it through `_safe_yaml`, which degrades a damaged file
+        to defaults — no blockers, no owner, no type — so every gate a move
+        checks would pass on values the item does not hold, and the strict read
+        that follows the move would fail with the item already moved. Asked
+        before anything moves, so the refusal means nothing happened. A folder
+        gone meanwhile is the caller's lost race to report, not damage."""
+        path = d / "state.yaml"
+        if path.is_file():
+            try:
+                load_yaml(path)
+                return
+            except FileNotFoundError:
+                return
+            except UnicodeDecodeError:
+                reason = "it is not valid UTF-8"
+            except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
+                reason = str(e).splitlines()[0] if str(e) else type(e).__name__
+        elif path.exists() or path.is_symlink():
+            reason = "it is not a regular file"
+        else:
+            return
+        raise ValueError(f"{slug}: state.yaml cannot be read ({reason}); "
+                         f"fix or replace it before changing the item")
 
     def _item_from_dir(self, d: Path) -> WorkItem | None:
         """`None` when the folder went away mid-read — a concurrent claim moved
@@ -5921,12 +5982,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             doc = self._safe_yaml(path)
         except (OSError, UnicodeDecodeError):
-            # `_safe_yaml` catches a YAML syntax error and nothing else, so a
-            # file that is unreadable or not valid UTF-8 came back out of it —
-            # and from here it would surface inside `_unique_slug`, turning
-            # `tcw work new` into a traceback about a file the user never
-            # touched. Every caller of this method wants "answer None and carry
-            # on", so the tolerance the docstring promises is completed here.
+            # `_safe_yaml` degrades damage to `{}` itself; what still comes out
+            # is `FileNotFoundError`, which it re-raises for its item-folder
+            # callers. The graveyard going away mid-read is simply no record:
+            # surfacing it inside `_unique_slug` would turn `tcw work new` into
+            # a traceback about a file the user never touched.
             return None
         if not isinstance(doc, dict):
             return None
@@ -7063,6 +7123,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # sends "ensure a directory exists" straight into the adapter), and it is
         # status-agnostic on purpose: it also repairs a hand-deleted folder
         # rather than special-casing whichever status was added last.
+        self._require_readable_state(src, slug)
         (self.root / to_status).mkdir(parents=True, exist_ok=True)
         dst = self.root / to_status / slug
         # A child made by an earlier version is leaving its parent's folder, so
@@ -7204,8 +7265,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # text. The name matters: promoting an intake to a request with identical
         # text changes the editable resource, and a revision that ignored the name
         # would let a guarded write succeed against a stale view of what it edits.
-        state_text = (d / "state.yaml").read_text(encoding="utf-8")
-        body_name, body_text = self._resolve_body(d)
+        state = d / "state.yaml"
+        state_text = _read_revision_text(state) if state.is_file() else ""
+        body_name, _display = self._resolve_body(d)
+        # The body re-read losslessly: `_resolve_body` replaces bad bytes for
+        # display, which would give two differently damaged bodies one token.
+        body_text = (_read_revision_text(d / self._artifact_filename(body_name))
+                     if body_name else "")
         core_rev = _revision_multi(state_text, body_name or "", body_text)
 
         # Artifact revisions
@@ -7213,17 +7279,17 @@ class FsWorkStore(FsTreeStore, WorkStore):
         for name in WORK_ARTIFACTS:
             p = d / self._artifact_filename(name)
             if p.is_file():
-                art_revs[name] = _revision(p.read_text(encoding="utf-8"))
+                art_revs[name] = _revision(_read_revision_text(p))
 
         # Sidecar revisions
         sc_revs: dict[str, str] = {}
         for sc_name, sc_info in WORK_SIDECARS.items():
             p = d / sc_name
             if p.is_file():
-                # Tolerant: a sidecar that is not UTF-8 must not stop the whole
-                # detail loading; `read_sidecar` refuses it by name instead.
-                sc_revs[sc_name] = _revision(
-                    p.read_text(encoding="utf-8", errors="replace"))
+                # Lossless: a sidecar that is not UTF-8 must not stop the whole
+                # detail loading (`read_sidecar` refuses it by name instead), and
+                # `write_sidecar`'s guard computes the same token.
+                sc_revs[sc_name] = _revision(_read_revision_text(p))
 
         return WorkDetail(
             item=item,
@@ -7541,7 +7607,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Stale revision check
         if revision is not None:
             if p.is_file():
-                current = _revision(p.read_text(encoding="utf-8"))
+                current = _revision(_read_revision_text(p))
                 if current != revision:
                     raise StaleRevision(
                         f"stale revision for artifact '{name}' of '{slug}' "
@@ -7644,7 +7710,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Stale revision check
         if revision is not None:
             if p.is_file():
-                current = _revision(p.read_text(encoding="utf-8"))
+                current = _revision(_read_revision_text(p))
                 if current != revision:
                     raise StaleRevision(
                         f"stale revision for sidecar '{name}' of '{slug}' "
