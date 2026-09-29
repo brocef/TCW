@@ -387,7 +387,9 @@ claimant died mid-claim, reads report an **interrupted claim** instead of guessi
 `tcw work start <slug> --take-over --owner <identity>` is the documented recovery:
 it runs the `start` hooks against the item as it was, and under strict tracker
 mode claims the ticket first like any start. The web app offers **Recover**
-(refused under strict mode, which it cannot check). A configured `work.path` changes only the
+(refused under strict mode, which it cannot check). Both wait out the same
+half-second window first and refuse a claim that publishes during it: that
+claimant was alive, so pick another item rather than re-running `--take-over`. A configured `work.path` changes only the
 filesystem adapter location; project identity, hooks, and code worktrees stay
 with the owning node.
 
