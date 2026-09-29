@@ -31,6 +31,10 @@ work:
 and `tcw work init` takes `--path <path>`. Each writes the key and creates the
 store there. For the work store, if a default `docs/work` already exists and
 holds no items, init replaces it; if it holds anything, init refuses.
+Run without a path option, `init` uses the `<component>.path` already in
+`tcw-config.yaml` — for all three components — and leaves the key as you
+wrote it. It refuses to create a taxonomy or capabilities store whose
+`repository` is declared and absent here: run `tcw provision` instead.
 
 **Changing a path later does not move existing items.** Editing `work.path` (or
 either of the other two) only changes where TCW looks. Entries already in the
@@ -92,7 +96,8 @@ whose `path` points at the same folder may inherit differently.
    line.
 2. Where a `repository` block was added, run `tcw provision` to fetch the store.
    `tcw provision --dry-run` prints what it would contact first. Never run
-   `tcw init` to get past a declared store that is missing here; that creates a
-   second, empty store beside the real one.
+   `tcw init` to get past a declared store that is missing here; that would
+   create a second, empty store beside the real one, and for taxonomy and
+   capabilities `init` now refuses.
 3. Confirm with `tcw work path`, `tcw taxonomy path` or `tcw capabilities path`,
    which print the folder each store resolved to.

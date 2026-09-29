@@ -1080,17 +1080,26 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # would replace what the user typed (`./store`, `~/store`) with its
     # normalized, home-expanded form.
     read_from_config: set[str] = set()
-    if work_path is None and "work" in components:
-        configured_work = existing_config.get("work") or {}
+    # Every component, not only `work`: `tcw taxonomy init` used to scaffold
+    # `docs/taxonomy` under a configured `taxonomy.path`, so the "run `tcw
+    # init`" advice for a configured-but-absent store never came true.
+    configured_text: dict[str, str] = {}
+    for c in components:
+        if c in paths:
+            continue
+        section = existing_config.get(c) or {}
         # `in`, not truthiness: `work.path: []` and `work.path: false` used to
         # fall through to the default store without a word, so a configuration
         # mistake read as a deliberate choice.
-        if isinstance(configured_work, dict) and "path" in configured_work:
-            configured_path = configured_work["path"]
-            if not isinstance(configured_path, str) or not configured_path:
-                raise ValueError(f"{root / SENTINEL}: work.path must be a string")
-            work_path = paths["work"] = Path(configured_path).expanduser()
-            read_from_config.add("work")
+        if isinstance(section, dict) and "path" in section:
+            configured_path = section["path"]
+            if (not isinstance(configured_path, str)
+                    or not configured_path.strip()):
+                raise ValueError(f"{root / SENTINEL}: {c}.path must be a string")
+            paths[c] = Path(configured_path).expanduser()
+            configured_text[c] = configured_path
+            read_from_config.add(c)
+    work_path = paths.get("work")
     # Everything `init` can refuse over, decided before it writes anything at
     # all — the sentinel included. It writes two locations, and each of these
     # checks used to sit next to the write it protects rather than ahead of all
@@ -1155,8 +1164,35 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     plan: list[tuple[str, Path, list[Path]]] = []
     for c in components:
         configured = paths.get(c)
-        base = ((configured if configured.is_absolute() else root / configured)
-                if configured is not None else root / "docs" / c)
+        if c != "work" and c in configured_text:
+            # Where the readers will look for it (`resolve_store`), not merely
+            # `root / path`: a relative path leaving a linked worktree re-anchors
+            # there, and a store built anywhere else is one nobody finds.
+            base = STORE_CLASSES[c]._local_root(root, configured_text[c])
+        else:
+            base = ((configured if configured.is_absolute() else root / configured)
+                    if configured is not None else root / "docs" / c)
+        section = existing_config.get(c)
+        if (c != "work" and isinstance(section, dict)
+                and section.get("repository") is not None and not base.exists()):
+            # A local tree always wins over a declared home (`resolve_store`
+            # rule 1), so an empty one scaffolded here would hide the real store
+            # from then on. Whether the home is already provisioned decides the
+            # advice: "run `tcw provision`" after it succeeded sends the user in
+            # a circle.
+            others = [o for o in components if o != c]
+            rest = (f" To scaffold the rest, name them: `tcw init {' '.join(others)}`."
+                    if others else "")
+            try:
+                resolve_store(STORE_CLASSES[c], root)
+            except ValueError:
+                raise ValueError(
+                    f"{root / SENTINEL}: {c} declares a repository; run `tcw provision` "
+                    f"to fetch it rather than scaffolding an empty local store.{rest}"
+                ) from None
+            raise ValueError(
+                f"{root / SENTINEL}: {c} is already provided by its declared "
+                f"repository; there is nothing to scaffold.{rest}")
         plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
                      if c == "work" else [base]))
     for component, _, leaves in plan:
