@@ -3,7 +3,7 @@
 - Recovering an interrupted claim (`start --take-over`, `start(recover=True)`
   behind the web app's Recover) no longer takes a claim that is still in flight.
   `FsWorkStore.start` waits the same 500 ms publication window `get` uses
-  (`_await_interrupted`) and refuses with `AlreadyClaimed` if the claim publishes
+  (`_await_interrupted`) and refuses (`IllegalTransition`) if the claim publishes
   meanwhile; it then takes the claim folder by rename into a fresh
   `.claiming/<slug>-<hex>` before writing into it, so a claimant that resumes
   late can no longer publish the recoverer's owner as its own.
