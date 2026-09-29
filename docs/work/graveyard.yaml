@@ -1046,6 +1046,7 @@
   resolution: done
   resolved: '2026-09-25'
 2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilities-check-and-taxonomy-rm:
+  location: e2e75d83452db3c2deeeace9281a1e804d56784e
   resolution: done
   resolved: '2026-09-29'
 2026-09-26-keep-one-unreadable-state-yaml-or-artifact-from-breaking-the-board-or-an-item-s-detail:
