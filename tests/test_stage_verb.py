@@ -200,6 +200,21 @@ def test_start_chooses_the_first_stage_whose_artifact_is_missing(present, stage)
     assert start_next_stage(present) == stage
 
 
+def test_an_item_whose_artifacts_vanished_mid_read_counts_as_unreadable():
+    """A store answers `[]` when the item's folder disappears while it reads,
+    and a present item always lists every artifact, so an empty list means the
+    artifacts could not be read. Reading it as "none written" would send `start`
+    to `spec` and warn that spec and plan are missing; unreadable falls back to
+    `implement` and warns about nothing."""
+    from tcw.work.cli import _present_artifacts
+
+    class VanishedStore:
+        def artifacts(self, slug):
+            return []
+
+    assert _present_artifacts(VanishedStore(), "gone") is None
+
+
 def test_a_silenced_stage_prints_nothing_and_is_not_bookended(tmp_path):
     """The end-to-end half of the opt-out: `prompt: [{blob: ""}]` has to reach
     stdout as zero bytes, not as a header and footer wrapped around an empty

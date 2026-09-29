@@ -1458,11 +1458,15 @@ def _present_artifacts(st, bare: str) -> set[str] | None:
     """The names of the item's lifecycle artifacts that hold content, or `None`
     when they cannot be read. `None` rather than an error: by the time `start`
     asks, the item has moved, and advice must not turn that success into a
-    failure."""
+    failure. An empty listing is unreadable too — a present item lists every
+    artifact, written or not, so `[]` means the folder vanished mid-read."""
     try:
-        return {a.name for a in st.artifacts(bare) if a.present}
+        artifacts = st.artifacts(bare)
     except (OSError, ValueError):
         return None
+    if not artifacts:
+        return None
+    return {a.name for a in artifacts if a.present}
 
 
 def _unwritten_plan(present: set[str] | None, display: str) -> str:
