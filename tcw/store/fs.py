@@ -5062,6 +5062,24 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return {}
 
     @staticmethod
+    def _state_damage(path: Path) -> str | None:
+        """Why `path` (a `state.yaml`) cannot be read, or `None` when it can —
+        or is gone, which is a moved folder rather than damage."""
+        if path.is_file():
+            try:
+                load_yaml(path)
+                return None
+            except FileNotFoundError:
+                return None
+            except UnicodeDecodeError:
+                return "it is not valid UTF-8"
+            except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
+                return str(e).splitlines()[0] if str(e) else type(e).__name__
+        if path.exists() or path.is_symlink():
+            return "it is not a regular file"
+        return None
+
+    @staticmethod
     def _require_readable_state(d: Path, slug: str) -> None:
         """Refuse to move an item whose `state.yaml` cannot be read.
 
@@ -5071,20 +5089,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         that follows the move would fail with the item already moved. Asked
         before anything moves, so the refusal means nothing happened. A folder
         gone meanwhile is the caller's lost race to report, not damage."""
-        path = d / "state.yaml"
-        if path.is_file():
-            try:
-                load_yaml(path)
-                return
-            except FileNotFoundError:
-                return
-            except UnicodeDecodeError:
-                reason = "it is not valid UTF-8"
-            except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
-                reason = str(e).splitlines()[0] if str(e) else type(e).__name__
-        elif path.exists() or path.is_symlink():
-            reason = "it is not a regular file"
-        else:
+        reason = FsWorkStore._state_damage(d / "state.yaml")
+        if reason is None:
             return
         raise ValueError(f"{slug}: state.yaml cannot be read ({reason}); "
                          f"fix or replace it before changing the item")
@@ -6221,6 +6227,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
         stores = [self, *(FsWorkStore.open(n) for n in descendant_nodes(self.node_root))]
         return [(st.node_root, item) for st in stores for item in st.query()
                 if item.initiative == epic_slug]
+
+    def unreadable_open_items(self) -> list[tuple[str, str]]:
+        return [(d.name, reason) for d in self._item_dirs()
+                if self._status_of(d) not in RESOLVED_STATUSES
+                and (reason := self._state_damage(d / "state.yaml"))]
+
+    def unreadable_slice_candidates(self) -> list[tuple[str, str]]:
+        """Here and in every node `initiative_slices` reads, labelled by node."""
+        out = list(self.unreadable_open_items())
+        for n in descendant_nodes(self.node_root):
+            label = registered_project_id(self.node_root, n)
+            out += [(f"{label}/{slug}", reason)
+                    for slug, reason in FsWorkStore.open(n).unreadable_open_items()]
+        return out
 
     def dod_checklist(self) -> list[str]:
         p = self.root / "dod.yaml"
