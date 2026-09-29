@@ -478,3 +478,81 @@ def test_serve_reads_an_upstream_item(tmp_path, served_family):
     status, text = _http(base, "GET", f"/api/work/{ref}")
     assert status == 200, (status, text)
     _assert_core_untouched(tmp_path)
+
+
+# ── delegate, nodes, and staying off the family's lists ──────────────────────
+
+def _with_package(root: Path) -> Path:
+    """Give `a` a child `pkg`, so there is a node below the declarer."""
+    a = root / "a"
+    cfg = yaml.safe_load((a / "tcw-config.yaml").read_text())
+    cfg["connected-projects"]["children"] = {"pkg": "pkg"}
+    (a / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    pkg = a / "pkg"
+    pkg.mkdir()
+    init(["taxonomy", "capabilities", "work"], pkg, "pkg")
+    cfg = yaml.safe_load((pkg / "tcw-config.yaml").read_text())
+    cfg["connected-projects"] = {"parent": {"a": ".."}}
+    (pkg / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return pkg
+
+
+@pytest.mark.parametrize("where", ["a", "."])
+def test_delegate_into_an_upstream_is_refused(tmp_path, where):
+    root, _ = _cli_family(tmp_path)
+    out = _tcw(root / where, "work", "delegate", "core", "Please do a thing")
+    assert out.returncode != 0, out.stdout
+    assert "read-only" in out.stderr and "child projects" in out.stderr, out.stderr
+    _assert_core_untouched(tmp_path)
+
+
+@pytest.mark.parametrize("where", ["a", "a/pkg"])
+def test_nodes_lists_the_upstream_under_its_own_heading(tmp_path, where):
+    root, _ = _cli_family(tmp_path)
+    _with_package(root)
+    out = _tcw(root / where, "work", "nodes")
+    assert out.returncode == 0, out.stderr
+    assert "upstream (read-only):" in out.stdout, out.stdout
+    section = out.stdout.split("upstream (read-only):", 1)[1]
+    assert "core" in section and "declared by a" in section, out.stdout
+
+
+def test_nodes_names_an_absent_upstream(tmp_path):
+    root, _ = _cli_family(tmp_path)
+    import shutil
+    shutil.rmtree(tmp_path / "core")
+    out = _tcw(root / "a", "work", "nodes")
+    section = out.stdout.split("upstream (read-only):", 1)[1]
+    assert "core" in section and "not in this checkout" in section, out.stdout
+
+
+def test_nodes_without_an_upstream_is_unchanged(tmp_path):
+    root, _ = _cli_family(tmp_path)
+    out = _tcw(root / "b", "work", "nodes")
+    assert out.returncode == 0, out.stderr
+    assert "upstream" not in out.stdout, out.stdout
+
+
+def test_the_upstream_stays_off_the_familys_lists(tmp_path):
+    root, slug = _cli_family(tmp_path)
+    for where in (".", "a"):
+        listed = _tcw(root / where, "work", "list", "--include-descendants")
+        assert listed.returncode == 0, listed.stderr
+        assert slug not in listed.stdout, listed.stdout
+        checked = _tcw(root / where, "validate")
+        assert "core" not in checked.stdout + checked.stderr, checked.stdout
+    epic = _tcw(root, "work", "new", "Big thing", "--epic").stdout.strip()
+    out = _tcw(root, "work", "reconcile", epic)
+    assert out.returncode == 0, out.stderr
+    assert "core" not in out.stdout, out.stdout
+    rollups = list(root.glob(f"docs/work/*/{epic}/rollup.md"))
+    assert rollups and "core" not in rollups[0].read_text()
+    httpd = TcwServer((HOST, 0), root, True)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        status, text = _http(f"http://{HOST}:{httpd.server_port}", "GET", "/api/work")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+    assert status == 200 and slug not in text, text
+    _assert_core_untouched(tmp_path)

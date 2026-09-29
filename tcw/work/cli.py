@@ -30,7 +30,7 @@ from tcw.store.fs import (
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
-from tcw.store.project import worktree_anchors
+from tcw.store.project import FsProjectRegistry, worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
 from tcw.work.resolve import (
@@ -294,7 +294,29 @@ def _nodes(args: argparse.Namespace) -> int:
             print(f"  {entry.id}  (not in this checkout)")
     else:
         print("children: (none — leaf)")
+    _print_upstreams(node)
     return 0
+
+
+def _print_upstreams(node: Path) -> None:
+    """The projects this node reads but may not write: every upstream declared by
+    it or by an ancestor, with who declared it and where it is. Printed only when
+    there is one, so a graph without upstreams reads exactly as it did."""
+    try:
+        registry = FsProjectRegistry.open(node)
+    except ValueError:
+        return
+    here = registry.current.id
+    lines = []
+    for declarer in [here, *(a.id for a in registry.ancestors(here))]:
+        for upstream_id in registry.declared_upstream_ids(declarer):
+            project = registry.get(upstream_id)
+            where = (os.path.relpath(project.locator, node) if project is not None
+                     else "(not in this checkout)")
+            lines.append(f"  {upstream_id}  (declared by {declarer})  {where}")
+    if lines:
+        print("upstream (read-only):")
+        print("\n".join(lines))
 
 
 def _no_store_note(child: Path) -> str:

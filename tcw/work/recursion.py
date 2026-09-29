@@ -525,6 +525,9 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
         # A child declared here and not present is not "no such child". Saying so
         # sends the reader to add a declaration that is already in their config.
         registry = FsProjectRegistry.open(node_root).require_valid()
+        if (reason := registry.read_only_reason(child_ref)) is not None:
+            raise ValueError(f"cannot delegate to '{child_ref}': {reason}; "
+                             f"delegate writes only into child projects")
         if any(entry.id == child_ref for entry in routed_unreachable_children(node_root)):
             raise ValueError(
                 f"cannot delegate to '{child_ref}': "
