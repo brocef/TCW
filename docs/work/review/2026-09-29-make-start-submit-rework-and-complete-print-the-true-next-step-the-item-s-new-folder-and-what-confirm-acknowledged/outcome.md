@@ -76,8 +76,8 @@ item:
   `complete` already behaved this way before this change; `submit` and `rework`
   now match them. It belongs with the backlog item
   `2026-09-29-make-a-stale-item-path-fail-loudly-complete-checks-for-the-verify-artifact-validate-finds-a-slug-under-two-statuses-and`,
-  which is about paths that mislead; not yet filed there, pending the user's
-  agreement.
+  which is about paths that mislead; filed there as a triage note with the
+  user's agreement.
 - **`start_next_stage` says `verify` for an active item that already holds
   `refined-outcome.md`** (verified from `active`, then released and taken over).
   The work skill's "Finding your place" would say that item is ready to
