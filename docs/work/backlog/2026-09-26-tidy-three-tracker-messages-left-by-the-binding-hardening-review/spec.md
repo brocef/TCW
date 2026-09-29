@@ -44,8 +44,8 @@ through `_check_issue` (`issue`, `search`), so one check there covers
 
 ## Goals
 
-1. The merge-back hint and both `ls-tree` readers see real paths: `-z` (and
-   `--no-relative` for `diff`), split on NUL.
+1. The merge-back hint and both `ls-tree` readers see real paths: `-z`, split
+   on NUL, and the `diff` run from the repository's top folder.
 2. A `create_issue` answer that is not a mapping, or names no string key and
    id, gives `create.py`'s "It may exist" warning.
 3. When creation succeeds and binding fails, the filing hook's message gives a
@@ -64,8 +64,10 @@ through `_check_issue` (`issue`, `search`), so one check there covers
 
 ## Design
 
-- (1) `cli.py`: `["git", …, "diff", "--cached", "--name-only", "-z",
-  "--no-relative"]`, `.split("\0")`. `fs.py`: `ls-tree -r -z --name-only`,
+- (1) `cli.py`: `["git", "-C", <repository top>, "diff", "--cached",
+  "--name-only", "-z"]`, `.split("\0")`. From the top, `diff.relative` makes
+  paths relative to the top, which is what they are compared as — so no
+  `--no-relative`, which needs git 2.28. `fs.py`: `ls-tree -r -z --name-only`,
   `.split("\0")` with empty entries dropped.
 - (2) `JiraClient._payload(method, path, body)`: the decoded JSON as it came.
   `_json` becomes `_mapping(self._payload(...), path)`; `create_issue` returns
@@ -111,5 +113,5 @@ answer any store can give.
 
 - A tracker that returns a numeric `key` would now be refused as a shape
   problem where it printed before. Jira documents keys as strings.
-- `--no-relative` needs git 2.28 (2020); the project already requires newer
-  git features elsewhere.
+- The hint's staged list is now printed relative to the repository top
+  rather than to the node; that is git's own default without `diff.relative`.
