@@ -9,8 +9,9 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    LIFECYCLE_STEPS, STAGE_IDS, STAGE_NEXT_STEPS, STAGE_STATUSES, WORK_STATUSES,
-    Artifact, WorkStore,
+    LIFECYCLE_STEPS, STAGE_IDS, STAGE_NEXT_STEPS, STAGE_STATUSES,
+    TRANSITION_LANDS_IN, TRANSITION_NEXT_STEPS, WORK_STATUSES,
+    Artifact, WorkStore, start_next_stage,
 )
 from tcw.store.fs import FsWorkStore, init
 from tcw.work.resolve import (
@@ -100,12 +101,8 @@ def test_the_next_step_table_covers_every_stage():
     assert set(STAGE_NEXT_STEPS) == set(STAGE_IDS)
 
 
-def test_every_next_step_names_a_command_that_exists():
-    """The footer is the one place TCW tells a reader what to run next, and it is
-    prose in a table — nothing resolves it against the parser. A verb renamed
-    without touching this table would send every reader of every stage to a
-    command that exits 2."""
-    import re
+def _shipped_verbs() -> set[str]:
+    """Every command path the parser ships, such as `work stage gate`."""
     from tcw.cli import build_parser
 
     def verbs(parser, prefix=()):
@@ -118,21 +115,89 @@ def test_every_next_step_names_a_command_that_exists():
                         found |= verbs(sub, (*prefix, name))
         return found
 
-    shipped = {v for v in verbs(build_parser()) if v}
+    return {v for v in verbs(build_parser()) if v}
+
+
+def _cited_commands(text: str) -> list[str]:
+    return re.findall(r"`tcw ([a-z][a-z -]*?)(?: <|`)", text)
+
+
+def _assert_names_real_commands(label: str, text: str, shipped: set[str]) -> None:
+    """Each `tcw …` in `text` is a shipped verb, and anything after the verb is
+    a stage id. Longest shipped prefix, so `work stage gate request` is read as
+    the verb `work stage gate` applied to the stage `request` — and the stage id
+    is checked too, not skipped as leftovers."""
+    for cited in _cited_commands(text):
+        words = cited.split()
+        verb = next((" ".join(words[:n]) for n in range(len(words), 0, -1)
+                     if " ".join(words[:n]) in shipped), None)
+        assert verb, (f"{label}'s next step names `tcw {cited}`, whose "
+                      f"leading words are not a command")
+        rest = words[len(verb.split()):]
+        assert all(w in STAGE_IDS for w in rest), (
+            f"{label}'s next step names `tcw {cited}`, and {rest} is not "
+            f"a stage id")
+
+
+def test_every_next_step_names_a_command_that_exists():
+    """The footer is the one place TCW tells a reader what to run next, and it is
+    prose in a table — nothing resolves it against the parser. A verb renamed
+    without touching this table would send every reader of every stage to a
+    command that exits 2."""
+    shipped = _shipped_verbs()
     for stage_id, text in STAGE_NEXT_STEPS.items():
-        for cited in re.findall(r"`tcw ([a-z][a-z -]*?)(?: <|`)", text):
-            words = cited.split()
-            # Longest shipped prefix, so `work stage gate request` is read as the
-            # verb `work stage gate` applied to the stage `request` — and the
-            # stage id is checked too, not skipped as leftovers.
-            verb = next((" ".join(words[:n]) for n in range(len(words), 0, -1)
-                         if " ".join(words[:n]) in shipped), None)
-            assert verb, (f"{stage_id}'s next step names `tcw {cited}`, whose "
-                          f"leading words are not a command")
-            rest = words[len(verb.split()):]
-            assert all(w in STAGE_IDS for w in rest), (
-                f"{stage_id}'s next step names `tcw {cited}`, and {rest} is not "
-                f"a stage id")
+        _assert_names_real_commands(stage_id, text, shipped)
+
+
+# ── the next step printed after a transition ─────────────────────────────────
+
+def test_the_transition_hint_table_covers_every_transition_that_prints_one():
+    """`start` has one entry per stage it can choose, so no entry is a template
+    with a stage left to fill in — a template is what the command check below
+    cannot read."""
+    assert set(TRANSITION_NEXT_STEPS) == set(TRANSITION_LANDS_IN)
+    starts = {k for k in TRANSITION_NEXT_STEPS if k.startswith("start")}
+    assert starts == {f"start:{s}" for s in ("spec", "plan", "implement", "verify")}
+    assert set(TRANSITION_NEXT_STEPS) - starts == {"new", "submit", "rework"}
+
+
+def test_every_transition_hint_names_a_command_that_exists():
+    """The hints after `new`, `start`, `submit` and `rework` drifted because no
+    table held them and no test read them: `start` sent readers to `complete`,
+    and `submit` told them to delete a file that did not exist yet.
+
+    Every entry must yield at least one command. An entry the pattern cannot
+    read — an unfilled `{stage}`, say — would otherwise pass by naming nothing."""
+    shipped = _shipped_verbs()
+    for key, text in TRANSITION_NEXT_STEPS.items():
+        filled = text.replace("<slug>", "2026-01-01-thing")
+        assert "<" not in filled and "{" not in filled, (
+            f"{key}'s hint has a placeholder left after substitution: {filled}")
+        assert _cited_commands(text), f"{key}'s hint names no `tcw …` command"
+        _assert_names_real_commands(key, text, shipped)
+
+
+def test_every_transition_hint_names_a_stage_legal_where_the_item_lands():
+    """A hint naming a stage its status makes illegal sends the reader to a
+    command that refuses them — `request` after `start` would."""
+    for key, text in TRANSITION_NEXT_STEPS.items():
+        status = TRANSITION_LANDS_IN[key]
+        for stage in re.findall(r"`tcw work stage gate (\w+)", text):
+            assert status in STAGE_STATUSES[stage], (
+                f"{key} lands the item in '{status}' and names '{stage}', which "
+                f"is legal only in {STAGE_STATUSES[stage]}")
+
+
+@pytest.mark.parametrize("present, stage", [
+    (set(), "spec"),
+    ({"intake", "initial-request"}, "spec"),
+    ({"spec"}, "plan"),
+    ({"spec", "plan"}, "implement"),
+    ({"spec", "plan", "outcome", "rework"}, "implement"),
+    ({"spec", "plan", "outcome"}, "verify"),
+])
+def test_start_chooses_the_first_stage_whose_artifact_is_missing(present, stage):
+    assert start_next_stage(present) == stage
 
 
 def test_a_silenced_stage_prints_nothing_and_is_not_bookended(tmp_path):

@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Collection
 from urllib.parse import quote
 
 
@@ -2312,6 +2312,67 @@ STAGE_NEXT_STEPS: dict[str, str] = {
                "done --confirm`; on rejection run `tcw work rework <slug>`"),
     "postmortem": "",
 }
+
+
+# What a reader does after a transition, keyed by the command that printed it.
+# The transition-side sibling of `STAGE_NEXT_STEPS`, and navigation text for the
+# same reason: it names a stage, never a status edge, so no store answers for it.
+#
+# These drifted while they were four literals in the CLI with nothing reading
+# them: `start` sent readers to `tcw work complete`, skipping implement and
+# verify, and `submit` told them to delete a `refined-outcome.md` that verify had
+# not written yet.
+#
+# `start` has one entry per stage it can choose (`start_next_stage`), rather than
+# one template, so every entry is a complete sentence the tests can check. No
+# entry names `spec.md` or `plan.md`: `start`'s warning names those files when
+# they are missing, and its tests assert they are absent when they are not.
+TRANSITION_NEXT_STEPS: dict[str, str] = {
+    # `inbox accept` of a raw entry prints this too: both leave a backlog item
+    # holding at most its intake.
+    "new": "run `tcw work stage gate request <slug>`",
+    "start:spec": "run `tcw work stage gate spec <slug>`",
+    "start:plan": "run `tcw work stage gate plan <slug>`",
+    "start:implement": "run `tcw work stage gate implement <slug>`",
+    "start:verify": "run `tcw work stage gate verify <slug>`",
+    # Both endings, and no command for either: the verify stage's own footer
+    # names `complete` and `rework`, and repeating them here is how this line
+    # went stale before.
+    "submit": ("run `tcw work stage gate verify <slug>`; it ends in "
+               "refined-outcome.md to accept the work or rework.md to send it back"),
+    "rework": "address rework.md: run `tcw work stage gate implement <slug>`",
+}
+
+# The status an item is in when each hint prints — what the tests check a named
+# stage against. Nothing else reads it.
+TRANSITION_LANDS_IN: dict[str, str] = {
+    "new": "backlog",
+    "start:spec": "active",
+    "start:plan": "active",
+    "start:implement": "active",
+    "start:verify": "active",
+    "submit": "review",
+    "rework": "active",
+}
+
+
+def start_next_stage(present: Collection[str]) -> str:
+    """The stage to run after `start`, from the artifacts the item holds.
+
+    Not always `implement`. An item can be started before it is specified or
+    planned, and `start` also takes an item already `active` — with
+    `--take-over`, or when nobody holds it — which may already have an outcome.
+    The order is the `work` skill's "Finding your place", restricted to stages
+    legal in `active` (so never `request`), with a reworked item sent back to
+    `implement` as `rework`'s own hint does.
+    """
+    if "spec" not in present:
+        return "spec"
+    if "plan" not in present:
+        return "plan"
+    if "outcome" not in present or "rework" in present:
+        return "implement"
+    return "verify"
 
 
 def _parse_condition(raw: Any, where: str, problems: list[str]) -> "Condition | None":
