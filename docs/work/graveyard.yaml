@@ -1109,6 +1109,9 @@
   location: 60b386ac8f6080ad151e7675fbae218e5b7d5353
   resolution: done
   resolved: '2026-09-29'
+? 2026-09-29-make-start-submit-rework-and-complete-print-the-true-next-step-the-item-s-new-folder-and-what-confirm-acknowledged
+: resolution: done
+  resolved: '2026-09-29'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
   location: f470f8071b5b45f655ff2fe3efe22a6a62049023
   resolution: done
