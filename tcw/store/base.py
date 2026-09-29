@@ -3945,6 +3945,13 @@ class WorkStore(ABC):
             return a["external"] == b["external"]
         return False
 
+    def _same_item(self, entry: dict, e: dict) -> bool:
+        """`_same_entry`, or `e` is text stored before this store read it as
+        `entry`'s item — `<status>/<slug>`, say. Re-adding that item must not
+        keep both, and the text form may block forever."""
+        return self._same_entry(entry, e) or (
+            "slug" in entry and "external" in e and self._entry_for(e["external"]) == entry)
+
     def _reaches(self, start: str, target: str, *,
                  settled: frozenset[str] = frozenset()) -> bool:
         """True if `start` (transitively, via blocked_by slugs) depends on `target`.
@@ -3982,7 +3989,8 @@ class WorkStore(ABC):
         self._check_new_blocker(slug, entry, ref)
         if any(self._same_entry(entry, e) for e in item.blocked_by):
             return                                       # idempotent
-        self.set_field(slug, "blocked_by", item.blocked_by + [entry])
+        kept = [e for e in item.blocked_by if not self._same_item(entry, e)]
+        self.set_field(slug, "blocked_by", kept + [entry])
 
     def check_blocker_edits(self, slug: str, *, add: list[str] = (),
                             remove: list[str] = (), blocks: list[str] = ()) -> None:
@@ -4004,7 +4012,7 @@ class WorkStore(ABC):
             entry = self._entry_for(ref)
             self._check_new_blocker(slug, entry, ref)
             if not any(self._same_entry(entry, e) for e in proposed):
-                proposed.append(entry)
+                proposed = [e for e in proposed if not self._same_item(entry, e)] + [entry]
         for ref in blocks:
             target = self._require(ref).slug
             if target == slug:
@@ -4026,8 +4034,11 @@ class WorkStore(ABC):
     def _without(self, entries: list[dict], slug: str, ref: str) -> list[dict]:
         """`entries` less the blocker `ref` names; refuses a ref that names none."""
         norm = self._normalize_ref(ref)
+        # The forms `_entry_for` records as a slug remove it too: removing with
+        # the text that added it has to work.
+        slugs = {norm, *self._local_forms(norm)}
         kept = [e for e in entries
-                if e.get("slug") != norm and e.get("external") != norm]
+                if e.get("slug") not in slugs and e.get("external") != norm]
         if len(kept) == len(entries) and norm.endswith(")"):
             # A label copied from `list` may carry the reason it still blocks,
             # "external: <text> (<why>)"; the stored text has no reason, and the

@@ -5864,7 +5864,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Also `<own-project-id>/<slug>`: the qualified addressing `tcw://` refs
         and cross-node blockers use, when it lands back on this very store."""
         forms = super()._local_forms(ref)
-        if "/" in ref:
+        if ref.count("/") == 1:            # exactly `<id>/<slug>`, not a folder path
             try:
                 found = resolve_qualified_work_ref(self.node_root, ref)
             except Exception:                      # a ref that cannot resolve is text

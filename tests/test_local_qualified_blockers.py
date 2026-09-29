@@ -88,3 +88,46 @@ def test_another_qualifier_naming_a_local_slug_stays_external(pa, capsys):
     root, alpha, beta = pa
     assert edit(capsys, beta, "--blocked-by", f"vendor/{alpha}")[0] == 0
     assert blocked_by(root, beta) == [{"external": f"vendor/{alpha}"}]
+
+
+# ── review fold-in ───────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("form", ["pa/{}", "backlog/{}", "external: pa/{}"])
+def test_the_text_that_added_a_blocker_removes_it(pa, capsys, form):
+    root, alpha, beta = pa
+    assert edit(capsys, beta, "--blocked-by", f"pa/{alpha}")[0] == 0
+    code, err = edit(capsys, beta, "--unblocked-by", form.format(alpha))
+    assert code == 0, err
+    assert blocked_by(root, beta) == []
+
+
+@pytest.mark.parametrize("old", ["pa/{}", "backlog/{}"])
+def test_re_adding_an_item_stored_as_text_replaces_the_text(pa, capsys, old):
+    """Stored before this change read it as the local item; `backlog/<slug>`
+    as text blocked forever, so keeping it beside the slug kept the bug."""
+    root, alpha, beta = pa
+    st = FsWorkStore.open(root)
+    st.set_field(beta, "blocked_by", [{"external": old.format(alpha)}])
+    assert edit(capsys, beta, "--blocked-by", f"pa/{alpha}")[0] == 0
+    assert blocked_by(root, beta) == [{"slug": alpha}]
+
+
+def test_a_folder_path_under_a_status_stays_text(pa, capsys):
+    root, alpha, beta = pa
+    assert edit(capsys, beta, "--blocked-by", f"backlog/zzz/{alpha}")[0] == 0
+    assert blocked_by(root, beta) == [{"external": f"backlog/zzz/{alpha}"}]
+
+
+def test_a_registered_siblings_item_with_a_local_slug_stays_external(tmp_path):
+    """`pb/<slug>` resolves — to pb's item. That this node holds an item with
+    the same slug must not make it this node's."""
+    from test_cross_node_blockers import node
+    root = node(tmp_path / "root", "root", children={"pa": "pa", "pb": "pb"})
+    node(root / "pa", "pa", parent="root")
+    node(root / "pb", "pb", parent="root")
+    a, b = FsWorkStore.open(root / "pa"), FsWorkStore.open(root / "pb")
+    dep = a.create("Dep", created="2026-01-01").slug
+    assert b.create("Dep", created="2026-01-01").slug == dep
+    needs = a.create("Needs", created="2026-01-01").slug
+    a.add_blocker(needs, f"pb/{dep}")
+    assert a.get(needs).blocked_by == [{"external": f"pb/{dep}"}]

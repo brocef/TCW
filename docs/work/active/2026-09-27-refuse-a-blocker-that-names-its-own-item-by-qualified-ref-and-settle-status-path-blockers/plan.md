@@ -5,9 +5,10 @@
 1. **Failing tests** — `tests/test_local_qualified_blockers.py`, one per
    criterion 1–5, on a single node `pa` (`init(["work"], root, "pa")`) through
    `tcw.cli.main`. Proof: 1–4 red today; 5 green today and mutation-checked
-   (make `_local_slug` answer every qualified ref → red).
-2. **Code** — `tcw/store/base.py` (`_normalize_ref`, `_entry_for`,
-   `_local_slug`); `tcw/store/fs.py` (`FsWorkStore._local_slug`).
+   (make `_local_forms` answer every qualified ref → red).
+2. **Code** — `tcw/store/base.py` (`_entry_for`, `_local_forms`, and at
+   review `_without` and `_same_item`); `tcw/store/fs.py`
+   (`FsWorkStore._local_forms`). *(Amended at review to the names built.)*
 3. **Full suite.**
 4. File the cross-node cycle follow-up.
 

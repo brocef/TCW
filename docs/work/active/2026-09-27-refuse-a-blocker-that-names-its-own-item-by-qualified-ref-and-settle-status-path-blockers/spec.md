@@ -43,22 +43,30 @@ rewritten (non-goal); `external_blocker_state` keeps settling them as today.
 ## Non-goals
 
 - Detecting a cycle across nodes (filed as a follow-up).
-- Rewriting blocker entries already stored as external text.
+- Rewriting blocker entries already stored as external text, except as the Design says
+  when the same item is added again, and the web app's save (see Risks).
 - A full filesystem path (what `tcw work path` prints) as a blocker.
 
 ## Design
 
-- Base store: `_normalize_ref` also strips a leading `<status>/` when the
-  remainder is a single segment and `<status>` is in `WORK_STATUSES` — status
-  names are part of the model, so any store can do this.
-- `_entry_for` asks a new overridable `_local_slug(ref) -> str | None` for the
-  local item a qualified ref names; the base answer is `None`. `FsWorkStore`
-  answers through `resolve_qualified_work_ref`: when it resolves to this store
-  (same root), the bare slug.
+*(Amended at review to match what was built. The first draft stripped
+`<status>/` inside `_normalize_ref` and added a `_local_slug` hook.)*
+
+- `_entry_for` tries the reference, then each of `_local_forms(ref)` — the bare
+  slugs it may name in this store — against `get` and `tombstone`. The base
+  answer maps `<status>/<slug>` (one segment after a status in
+  `WORK_STATUSES`, whether or not the item is still in that status) to
+  `<slug>`. `FsWorkStore` adds `<own-id>/<slug>` — exactly two segments —
+  through `resolve_qualified_work_ref`, when the result is this very store.
+- `_without` (removal) matches a `slug` entry against the same forms, so the
+  text that added a blocker removes it.
+- Re-adding an item held as text from before this change (`_same_item`)
+  replaces the text with the `slug` entry rather than keeping both: a
+  `backlog/<slug>` text entry never stopped blocking.
 
 ## Abstraction litmus test
 
-`_local_slug` is "does this reference, qualified by project, name an item in
+`_local_forms` is "does this reference, qualified by project, name an item in
 this store?" — any store that knows its own project identity can answer it, so
 it is a store method; the FS adapter implements it through the node graph. The
 status-prefix normalization is pure model vocabulary.
@@ -81,3 +89,8 @@ status-prefix normalization is pure model vocabulary.
 - A node whose id equals a status name (`active`) would see `active/<slug>`
   read as a status path. Both readings name a local item, so the result is the
   same.
+- The web app saves the whole blocker list, each value through `_entry_for`, so
+  saving any blocker change there rewrites an old `pa/<slug>` text entry as
+  `slug:` — and runs the self-block and cycle checks on it. An item holding an
+  old self-reference as text cannot have its blockers edited in the web app
+  until that entry is removed. Accepted: that entry is the bug being fixed.
