@@ -69,3 +69,27 @@ def test_a_declared_repository_is_not_shadowed_by_an_empty_local_store(root, cap
     code, _out, err = cli(capsys, "taxonomy", "init")
     assert code == 1 and "tcw provision" in err, err
     assert not (root / "docs" / "taxonomy").exists()
+
+
+def test_init_in_a_linked_worktree_builds_where_the_readers_look(tmp_path):
+    """A relative path that leaves the checkout is anchored at the primary
+    checkout (`anchor_configured_path`); `init` must build it there too, not
+    beside the worktree."""
+    from tcw.store.fs import FsTaxonomyStore
+    main_root = tmp_path / "a" / "main"
+    main_root.mkdir(parents=True)
+    for args in (["init", "-q", "-b", "main"], ["config", "user.email", "t@t"],
+                 ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(main_root), *args], check=True)
+    init(["work"], main_root, "node")
+    configure(main_root, taxonomy={"path": "../shared/terms"})
+    subprocess.run(["git", "-C", str(main_root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(main_root), "commit", "-qm", "c"], check=True)
+    wt = tmp_path / "b" / "wt"
+    subprocess.run(["git", "-C", str(main_root), "worktree", "add", "-q", str(wt), "-b", "w"],
+                   check=True)
+    init(["taxonomy"], wt, "node")
+    expected = tmp_path / "a" / "shared" / "terms"
+    assert expected.is_dir()
+    assert not (tmp_path / "b" / "shared").exists()
+    assert FsTaxonomyStore.open(wt).root.resolve() == expected.resolve()
