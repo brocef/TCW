@@ -140,3 +140,31 @@ def test_start_advises_a_qualified_reference_as_typed(tmp_path):
     out = _tcw(root, "start", f"kid/{slug}")
     assert out.returncode == 0, out.stderr
     _assert_next(out, f"tcw work stage gate implement kid/{slug}")
+
+
+# ── criteria 5-6: after `submit` and `rework` ────────────────────────────────
+
+def _submitted(root: Path) -> tuple[str, subprocess.CompletedProcess]:
+    slug = _item(root, "spec", "plan", "outcome")
+    assert _tcw(root, "start", slug).returncode == 0
+    return slug, _tcw(root, "submit", slug)
+
+
+def test_submit_names_the_new_folder_and_the_verify_stage(tmp_path):
+    slug, out = _submitted(_node(tmp_path))
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == f"submitted {slug} → docs/work/review/{slug}"
+    _assert_next(out, f"tcw work stage gate verify {slug}")
+    line = _next_lines(out.stderr)[0]
+    assert "refined-outcome.md" in line and "rework.md" in line, line
+
+
+def test_rework_names_the_new_folder_and_the_implement_stage(tmp_path):
+    root = _node(tmp_path)
+    slug, _ = _submitted(root)
+    FsWorkStore.open(root).write_artifact(slug, "rework", "# Rework\n")
+    out = _tcw(root, "rework", slug)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == f"reworking {slug} → docs/work/active/{slug}"
+    _assert_next(out, f"tcw work stage gate implement {slug}")
+    assert "rework.md" in _next_lines(out.stderr)[0]

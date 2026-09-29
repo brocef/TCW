@@ -1669,11 +1669,10 @@ def _submit(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "submit", st.node_root, bare, "review",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "submit", "submit", "active")
-    print(f"submitted {args.slug} → review")
-    print(f"→ next: verify the work, then either "
-          f"`tcw work complete {args.slug} --resolution done --confirm` or, to "
-          f"send it back, delete refined-outcome.md and run "
-          f"`tcw work rework {args.slug}`", file=sys.stderr)
+    # The folder, not the status: verify writes into it next, and a reader still
+    # holding the `active` path would write beside the item rather than in it.
+    print(f"submitted {args.slug} → {st.locate(bare) or 'review'}")
+    _next_hint("submit", args.slug)
     return _post_result(post_err, "submit", args.slug) or min(delivered, 1)
 
 
@@ -1701,9 +1700,8 @@ def _rework(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "rework", "rework", "review")
-    print(f"reworking {args.slug} → active")
-    print(f"→ next: address rework.md, then `tcw work submit {args.slug}`",
-          file=sys.stderr)
+    print(f"reworking {args.slug} → {st.locate(bare) or 'active'}")
+    _next_hint("rework", args.slug)
     return _post_result(post_err, "rework", args.slug) or min(delivered, 1)
 
 

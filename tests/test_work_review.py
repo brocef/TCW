@@ -303,11 +303,11 @@ def test_cli_submit_and_rework_round_trip(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
 
     assert main(["work", "submit", item.slug]) == 0
-    assert "→ review" in capsys.readouterr().out
+    assert f"→ docs/work/review/{item.slug}" in capsys.readouterr().out
     assert FsWorkStore.open(root).get(item.slug).status == "review"
 
     assert main(["work", "rework", item.slug]) == 0
-    assert "→ active" in capsys.readouterr().out
+    assert f"→ docs/work/active/{item.slug}" in capsys.readouterr().out
     assert FsWorkStore.open(root).get(item.slug).status == "active"
 
 
