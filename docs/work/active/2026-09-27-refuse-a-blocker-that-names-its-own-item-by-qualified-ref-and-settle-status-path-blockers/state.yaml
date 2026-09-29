@@ -8,3 +8,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T14:53:09.073975Z'
+worktree: .worktrees/2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-settle-status-path-blockers
+branch: work/2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-settle-status-path-blockers
