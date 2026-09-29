@@ -4123,15 +4123,17 @@ def _complete(args: argparse.Namespace) -> int:
                   f"(use --force to override)", file=sys.stderr)
             return 1
     checklist = st.dod_checklist() if shipping else []
-    if shipping:
+    # The unticked list is the prompt, so only the unconfirmed run shows it. A
+    # confirmed run shows the list once the item has closed, as acknowledged:
+    # printed here, it sat above whichever refusal came next and read as its cause.
+    if shipping and not args.confirm:
         print("Definition of Done — acknowledge each item:")
         for c in checklist:
             print(f"  [ ] {c}")
-        if not args.confirm:
-            print("Refused: re-run with --confirm once the checklist is satisfied.",
-                  file=sys.stderr)
-            return 1
-    elif not args.confirm:
+        print("Refused: re-run with --confirm once the checklist is satisfied.",
+              file=sys.stderr)
+        return 1
+    elif not shipping and not args.confirm:
         print(f"Refused: discarding {args.slug} as '{args.resolution}' is "
               f"permanent. Re-run with --confirm.", file=sys.stderr)
         return 1
@@ -4245,6 +4247,10 @@ def _complete(args: argparse.Namespace) -> int:
                                             args.resolution)
         if removed:
             loc = None
+    if shipping:
+        print("Definition of Done — acknowledged with --confirm:")
+        for c in checklist:
+            print(f"  [x] {c}")
     print(f"{'completed' if shipping else 'discarded'} {args.slug} "
           f"({args.resolution})" + (f" → {loc}" if loc else ""))
     if has_worktree:

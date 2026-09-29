@@ -168,3 +168,43 @@ def test_rework_names_the_new_folder_and_the_implement_stage(tmp_path):
     assert out.stdout.strip() == f"reworking {slug} → docs/work/active/{slug}"
     _assert_next(out, f"tcw work stage gate implement {slug}")
     assert "rework.md" in _next_lines(out.stderr)[0]
+
+
+# ── criteria 7-9: the Definition of Done ─────────────────────────────────────
+
+_DOD = ("tests pass", "docs synced", "capabilities reconciled", "reviewed")
+
+
+def test_confirm_prints_the_checklist_as_acknowledged_after_closing(tmp_path):
+    root = _node(tmp_path)
+    slug, _ = _submitted(root)
+    out = _tcw(root, "complete", slug, "--resolution", "done", "--confirm")
+    assert out.returncode == 0, out.stderr
+    lines = out.stdout.splitlines()
+    assert lines[0] == "Definition of Done — acknowledged with --confirm:", out.stdout
+    assert lines[1:1 + len(_DOD)] == [f"  [x] {c}" for c in _DOD], out.stdout
+    assert lines[1 + len(_DOD)].startswith(f"completed {slug} (done)"), out.stdout
+    assert "[ ]" not in out.stdout and "acknowledge each item" not in out.stdout
+
+
+def test_a_confirmed_completion_that_refuses_prints_no_checklist(tmp_path):
+    """The unticked list above an unrelated refusal read as its cause."""
+    root = _node(tmp_path)
+    slug, _ = _submitted(root)
+    out = _tcw(root, "complete", slug, "--resolution", "done", "--confirm",
+               "--already-integrated")
+    assert out.returncode == 1
+    assert "--already-integrated applies to an item started" in out.stderr
+    assert "Definition of Done" not in out.stdout and "[ ]" not in out.stdout
+    assert FsWorkStore.open(root).get(slug).status == "review"
+
+
+def test_without_confirm_the_unticked_checklist_and_refusal_are_unchanged(tmp_path):
+    root = _node(tmp_path)
+    slug, _ = _submitted(root)
+    out = _tcw(root, "complete", slug, "--resolution", "done")
+    assert out.returncode == 1
+    assert out.stdout.splitlines() == (
+        ["Definition of Done — acknowledge each item:"] + [f"  [ ] {c}" for c in _DOD])
+    assert "Refused: re-run with --confirm once the checklist is satisfied." in out.stderr
+    assert "[x]" not in out.stdout
