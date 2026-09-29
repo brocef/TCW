@@ -560,6 +560,16 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)
+    if initiative and "/" not in initiative:
+        # Always qualified: the child may hold a same-named epic of its own, and a
+        # bare slug read there would name that one.
+        found = FsWorkStore.open(node_root)._initiative_holder(initiative)
+        if found is None:
+            raise ValueError(
+                f"no epic '{initiative}' here or above; name it as "
+                f"<project-id>/<slug> to delegate a slice of it")
+        initiative = (f"{registered_project_id(node_root, found[0].node_root)}"
+                      f"/{found[1]}")
     return _inbox_write(FsWorkStore.open(children[child_ref]),
                         title, body, origin=origin, initiative=initiative)
 
@@ -588,4 +598,6 @@ def escalate(node_root: Path, title: str, body: str = "",
                    f"project '{absent.id}' is declared but not reachable here"))
         raise ValueError("no parent node to escalate to (this is the root)")
     origin = registered_project_id(node_root, node_root)
-    return _inbox_write(FsWorkStore.open(parent), title, body, origin, initiative)
+    store = FsWorkStore.open(parent)
+    return _inbox_write(store, title, body, origin,
+                        store.qualify_initiative(initiative or "") or None)

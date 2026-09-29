@@ -22,7 +22,6 @@ from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
     declared_repository, git_commit_result, git_root, merge_worktree,
-    nearest_work_ancestor,
     parent_node, registered_children, registered_parent,
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
@@ -1056,14 +1055,14 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
         if item.parent and (root, item.parent) in by_key:
             owner = (root, item.parent)
         elif item.initiative:
-            candidate_root: Path | None = root
-            while candidate_root is not None:
-                candidate_key = (candidate_root, item.initiative)
+            # The store's own rule, so the list nests a slice where the gates
+            # count it.
+            found = stores[root]._initiative_holder(item.initiative)
+            if found is not None:
+                candidate_key = (found[0].node_root.resolve(), found[1])
                 candidate = by_key.get(candidate_key)
                 if candidate is not None and candidate[2].type == "epic":
                     owner = candidate_key
-                    break
-                candidate_root = nearest_work_ancestor(candidate_root)
         if owner is not None and owner != key:
             children.setdefault(owner, []).append(entry)
             owned.add(key)
@@ -2786,7 +2785,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
                                  f"--parent only on the item it creates, so {existing} "
                                  f"was not moved; change its parent in the web app "
                                  f"(`tcw serve`).")
-                if initiative and item.initiative != initiative:
+                if initiative and item.initiative != st.qualify_initiative(initiative):
                     wrong.append(f"{bound}, whose initiative is not {initiative}. Import "
                                  f"sets --initiative only on the item it creates; run "
                                  f"`tcw work edit {existing} --initiative {initiative}`.")

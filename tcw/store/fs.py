@@ -6169,38 +6169,82 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return (" (this checkout is missing connected project(s): "
                 + ", ".join(sorted({u.id for u in absent})) + ")")
 
-    def initiative_epic(self, item: WorkItem) -> WorkItem | None:
-        if not item.initiative:
+    def _initiative_holder(self, value: str) -> "tuple[FsWorkStore, str] | None":
+        """The board an `initiative` value names, and the epic's slug there — the
+        one rule both directions read, so an item cannot start under one epic and
+        count toward another.
+
+        `<project-id>/<slug>` names that project's board. A bare slug names the
+        nearest board at or above this one holding a live item by that name:
+        what every bare value meant before the node was recorded, kept so old
+        values read as they did."""
+        value = (value or "").strip()
+        if not value:
             return None
-        local = self.get(item.initiative)
-        if local is not None:
-            return local
+        if "/" in value:
+            try:
+                return resolve_qualified_work_ref(self.node_root, value)
+            except ValueError:
+                return None
+        if self.get(value) is not None:
+            return self, value
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         for ancestor in registry.ancestors():
             path = Path(ancestor.locator)
             if not _has_work_store(path):
                 continue            # a routing node between two boards
-            got = FsWorkStore.open(path).get(item.initiative)
-            if got is not None:
-                return got
+            store = FsWorkStore.open(path)
+            if store.get(value) is not None:
+                return store, value
         return None
+
+    def qualify_initiative(self, value: str) -> str:
+        """Bare when the epic is on this board, `<project-id>/<slug>` when it is
+        on another; as given when it cannot be found or is already qualified."""
+        value = (value or "").strip()
+        if not value or "/" in value:
+            return value
+        found = self._initiative_holder(value)
+        if found is None or _same_folder(found[0].root, self.root):
+            return value
+        return f"{registered_project_id(self.node_root, found[0].node_root)}/{value}"
+
+    def _names_this_epic(self, store: "FsWorkStore", value: str, epic_slug: str,
+                         seen: dict) -> bool:
+        """Whether `value`, held on `store`'s board, names `epic_slug` on this
+        board. `seen` memoizes one walk's resolutions."""
+        if value != epic_slug and not value.endswith("/" + epic_slug):
+            return False
+        key = (store.root, value)
+        if key not in seen:
+            found = store._initiative_holder(value)
+            seen[key] = (found is not None and found[1] == epic_slug
+                         and _same_folder(found[0].root, self.root))
+        return seen[key]
+
+    def initiative_epic(self, item: WorkItem) -> WorkItem | None:
+        found = self._initiative_holder(item.initiative)
+        return found[0].get(found[1]) if found is not None else None
 
     def resolved_initiative_children(self, epic_slug: str) -> list[tuple[str, str]]:
         """Tombstones naming `epic_slug`, here and in every node below — the same
         nodes `initiative_children` reads — whose items are no longer present in
         that node. Keyed by node, because a slug is unique only within one."""
         out: list[tuple[str, str]] = []
+        seen: dict = {}
         for label, store in [(".", self), *(
                 (registered_project_id(self.node_root, n), FsWorkStore.open(n))
                 for n in descendant_nodes(self.node_root))]:
-            for slug in store._graveyard_initiative(epic_slug):
-                if store.get(slug) is None:            # a present item wins
+            for slug, value in store._graveyard_initiative(epic_slug):
+                if (self._names_this_epic(store, value, epic_slug, seen)
+                        and store.get(slug) is None):  # a present item wins
                     out.append((label, slug))
         return out
 
-    def _graveyard_initiative(self, epic_slug: str) -> list[str]:
-        """Slugs this store's graveyard records as resolved under `epic_slug`.
-        Tolerant of every degraded shape, as `tombstone` is."""
+    def _graveyard_initiative(self, epic_slug: str) -> list[tuple[str, str]]:
+        """`(slug, initiative)` for every record whose initiative could name
+        `epic_slug`, bare or qualified; which board it names is the caller's to
+        resolve. Tolerant of every degraded shape, as `tombstone` is."""
         path = self.root / self.GRAVEYARD_NAME
         try:
             doc = self._safe_yaml(path) if path.exists() else None
@@ -6208,9 +6252,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return []
         if not isinstance(doc, dict):
             return []
-        return sorted(str(slug) for slug, entry in doc.items()
+        return sorted((str(slug), value) for slug, entry in doc.items()
                       if isinstance(entry, dict)
-                      and entry.get("initiative") == epic_slug)
+                      and isinstance(value := entry.get("initiative"), str)
+                      and (value == epic_slug or value.endswith("/" + epic_slug)))
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
         """Slices of `epic_slug`, here and below."""
@@ -6225,8 +6270,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         is a routing node, and a slice below one is still a slice.
         """
         stores = [self, *(FsWorkStore.open(n) for n in descendant_nodes(self.node_root))]
+        seen: dict = {}
         return [(st.node_root, item) for st in stores for item in st.query()
-                if item.initiative == epic_slug]
+                if self._names_this_epic(st, item.initiative or "", epic_slug, seen)]
 
     def unreadable_open_items(self) -> list[tuple[str, str]]:
         return [(d.name, reason) for d in self._item_dirs()
@@ -7078,7 +7124,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         detail, primary = self._inbox_detail(ref)
         # Before anything is created or consumed: a bad initiative must not leave
         # a half-accepted item behind.
-        initiative = self._inbox_initiative(detail.body, ref)
+        initiative = self.qualify_initiative(self._inbox_initiative(detail.body, ref) or "")
         # `--title` wins, then the entry's own H1, then its name with TCW's
         # `YYYY-MM-DD-` filing prefix removed — that prefix is our convention,
         # not a title, and re-dating it into the slug is what dated it twice.
@@ -7494,7 +7540,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if blocked_by:
             state["blocked_by"] = blocked_by
         if initiative:
-            state["initiative"] = initiative
+            state["initiative"] = self.qualify_initiative(initiative)
         if parent:
             state["parent"] = parent
         if type:
@@ -7570,9 +7616,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # disagree, and rewriting the record would leave the graveyard with an
         # uncommitted change the next resolution refuses over.
         if initiative is not _UNSET:
+            if initiative:
+                initiative = self.qualify_initiative(initiative)
             current = self._require(slug)
             if (current.status in RESOLVED_STATUSES
-                    and (initiative or "") != (current.initiative or "")):
+                    and (initiative or "") != self.qualify_initiative(current.initiative or "")):
                 raise ValueError(
                     f"cannot change the initiative of {slug}: it is resolved, and "
                     f"its record keeps the epic it closed under")

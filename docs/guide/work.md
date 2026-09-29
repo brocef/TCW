@@ -589,6 +589,14 @@ tcw work reconcile "$epic" --commit         # …and commit it
 tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
 ```
 
+An epic's slug is unique only within its own node, so `initiative` records the
+epic's node when the epic lives elsewhere: `--initiative <slug>` in a child
+node stores `<project-id>/<slug>`, naming the node that holds it (the same
+form cross-node blockers use). You may also pass that form yourself. In the
+epic's own node the bare slug is stored. An older bare value still means the
+nearest epic of that name at or above the item, so a child node's own epic
+with the same slug keeps its own slices.
+
 Making an epic a plain item again is refused while any item names it as its
 initiative, whether that item is open or resolved, and while this checkout cannot
 reach every child project. Clear the children's `--initiative`, or complete the
@@ -629,8 +637,11 @@ board. `delegate`/`escalate` only ever write a request into the target node's
 target's _configured_ inbox, and they fail loudly rather than inventing a
 `docs/work/` folder when that store cannot be reached. `delegate` addresses its
 target by canonical project ID, the form `tcw work nodes` lists — never by
-filesystem path. A delegated request's `--initiative` survives acceptance, so a
-slice accepted in the child stays linked to the epic that asked for it.
+filesystem path. A delegated request's `--initiative` is written as
+`<project-id>/<slug>`, naming the epic in the sending node or above it (a slug
+found in neither is refused), and it survives acceptance, so a slice accepted
+in the child stays linked to the epic that asked for it, even when the child
+has an epic of the same name.
 
 ## When an epic and its tasks may change status
 

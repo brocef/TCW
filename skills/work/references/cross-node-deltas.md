@@ -26,10 +26,13 @@ as "not registered" and add a second declaration.
    `tcw work new --epic "<epic title>"` → note its slug.
 2. **Hand each slice down** to the owning sub-project:
    `tcw work delegate <child-project-id> "<slice title>" --initiative <epic-slug>` —
-   this drops a request (with `from:`/`initiative:` front-matter) into that
+   this drops a request (with `from:`/`initiative:` front-matter, the initiative
+   recorded as `<project-id>/<epic-slug>` so a same-named epic in the child
+   cannot take it) into that
    child node's `inbox/`. The orchestrator never writes into a child's tracking
    tree directly; the child agent runs process-inbox and
-   `tcw work new --initiative <epic-slug>` to adopt the slice.
+   `tcw work new --initiative <epic-slug>` to adopt the slice (stored as
+   `<project-id>/<epic-slug>` when the epic is in another node).
 
     The adopted slice carries the epic's bare slug in its `state.yaml`, which is
     machine-tracked but invisible to a human reading the request. Link the epic in
@@ -59,7 +62,9 @@ as "not registered" and add a second declaration.
 5. **Roll up progress** from the orchestrator:
    `tcw work reconcile <epic-slug>` follows every registered descendant that keeps
    a board — through routing nodes, and below a child with a board of its own — for
-   `initiative == <epic-slug>` and writes a consolidated table (node, slug,
+   items whose `initiative` names this epic — `<its-project-id>/<epic-slug>`, or
+   a bare `<epic-slug>` whose nearest holder at or above the item is this
+   epic's node — and writes a consolidated table (node, slug,
    status, blockers, next-ready) to the epic's own `rollup.md` sidecar — the
    rollup is generated, so it never touches prose anyone is credited with.
    Re-run it to refresh before deciding the next move.

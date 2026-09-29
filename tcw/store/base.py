@@ -3774,6 +3774,13 @@ class WorkStore(ABC):
         Returns the written ``SidecarResource`` with a fresh revision.
         """
 
+    def qualify_initiative(self, value: str) -> str:
+        """`value` as it should be stored: `<project-id>/<slug>` when the epic
+        lives in another project, so the reference cannot be taken by a
+        same-named epic nearer the item. A store that holds one project's items
+        only has nothing to qualify."""
+        return value
+
     def initiative_epic(self, item: WorkItem) -> WorkItem | None:
         """Resolve `item`'s initiative epic, if any.
 
