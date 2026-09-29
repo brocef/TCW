@@ -6207,18 +6207,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
                       and entry.get("initiative") == epic_slug)
 
     def initiative_children(self, epic_slug: str) -> list[WorkItem]:
-        """Slices of `epic_slug`, here and below.
+        """Slices of `epic_slug`, here and below."""
+        return [item for _node, item in self.initiative_slices(epic_slug)]
 
+    def initiative_slices(self, epic_slug: str) -> list[tuple[Path, WorkItem]]:
+        """`(node root, item)` for every slice of `epic_slug`, here and below.
+
+        The one walk behind both the completion gate (`initiative_children`) and
+        `reconcile`'s table, which drifted apart once and must agree.
         `descendant_nodes` rather than `child_nodes`: a node that keeps no board
-        is a routing node, and a slice below one is still a slice. The two
-        directions used to disagree about that — the downward walk stopped at a
-        storeless child while the registry's own descendant walk crossed it.
+        is a routing node, and a slice below one is still a slice.
         """
-        children = [i for i in self.query() if i.initiative == epic_slug]
-        for node in descendant_nodes(self.node_root):
-            children.extend(i for i in FsWorkStore.open(node).query()
-                            if i.initiative == epic_slug)
-        return children
+        stores = [self, *(FsWorkStore.open(n) for n in descendant_nodes(self.node_root))]
+        return [(st.node_root, item) for st in stores for item in st.query()
+                if item.initiative == epic_slug]
 
     def dod_checklist(self) -> list[str]:
         p = self.root / "dod.yaml"

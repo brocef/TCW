@@ -32,10 +32,13 @@ descendants for slices.
 1. `FsWorkStore.initiative_slices(epic) -> list[tuple[Path, WorkItem]]` — (node
    root, item) for this node and every descendant with a board.
    `initiative_children` returns its items; `_tasks_for` labels its nodes.
-2. `delegate` to a registered node with no board says so and names the nodes
-   with a board below it (or, if none, those it can delegate to).
-3. `delegate` to a registered node whose board is declared but not provisioned
-   says the board is not available here, with the provisioning reason.
+2. `delegate` to a node below this one with no board says so and names the
+   nodes with a board below it.
+3. `delegate` to a node below this one that configures a board this checkout
+   cannot open (declared and not provisioned, or a broken `work.path`) says the
+   board is not available here, with the reason.
+   *(Goals 2–3 amended at review: the first draft also answered for an
+   ancestor or sibling, and called a broken board "no board".)*
 
 ## Non-goals
 
@@ -50,12 +53,12 @@ descendants for slices.
   `FsWorkStore.open(node_root).initiative_slices(epic)` to its row label with
   the same labelling `_node_stores` uses (one `_label` helper); its unused
   `stores` parameter goes.
-- `delegate`: after the "below a node with a board" check, when
-  `registry.get(child_ref)` is registered, open its store:
-  `StoreNotProvisioned` → "cannot delegate to '<ref>': its board is not
-  available here (<reason>)"; any other `ValueError` → "'<ref>' keeps no board,
-  so it has no inbox to delegate to. Nodes with a board below it: <…>" (falling
-  back to the nodes this one can delegate to).
+- `delegate`: when `child_ref` is one of this node's registered descendants
+  and has no board it can open: if its config sets `work.path` or
+  `work.repository`, "cannot delegate to '<ref>': its board is not available
+  here (<reason>)"; otherwise "'<ref>' keeps no board, so it has no inbox to
+  delegate to. Nodes with a board below it: <…>". Any other name falls through
+  to "no child node". *(Amended at review and verify.)*
 
 ## Abstraction litmus test
 
