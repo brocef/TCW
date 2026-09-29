@@ -698,6 +698,8 @@ class FsProjectRegistry(ProjectRegistry):
             found = config_path.parent.stat()
         except OSError:
             return config_path
+        if not found.st_ino:
+            return config_path    # a filesystem with no inode numbers: text only
         folder = self._spellings.setdefault((found.st_dev, found.st_ino), config_path.parent)
         return folder / config_path.name
 
@@ -824,13 +826,16 @@ class FsProjectRegistry(ProjectRegistry):
         for index, override in enumerate(self._overrides):
             if override.problem is not None:
                 continue
+            # Through `_canonical`, as the walk read it: the variable may spell
+            # the folder in other letter case than the walk met it first.
+            where = self._canonical(Path(override.locator) / SENTINEL)
             cfg = self._by_id.get(override.id)
-            if cfg is not None and cfg.path.parent == Path(override.locator):
+            if cfg is not None and cfg.path == where:
                 continue
             # Not `cfg`: that is whatever answered for this id, which is not
             # necessarily what the override pointed at. Name the node actually
             # sitting at the overridden location, read from the walk's cache.
-            at_location = self._cache.get(Path(override.locator) / SENTINEL)
+            at_location = self._cache.get(where)
             found = (f"which is '{at_location.project.id}', not '{override.id}'"
                      if at_location is not None
                      else f"which did not yield '{override.id}'")

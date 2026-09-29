@@ -117,10 +117,10 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     assert where["vendor"] == (app / "vendor").resolve()
 
 
-def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path):
-    """A submodule's checkout in the worktree is the commit this branch pins: the
-    same node. Named both by the repository's root (inside the worktree) and by
-    the workspace (through the primary checkout), it must load once."""
+def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool) -> Path:
+    """`app` gains a submodule node `lib`, then a linked worktree `app-wt` with the
+    submodule checked out; returns the worktree. `named_by_workspace` also has
+    the workspace name `app/lib`, through the primary checkout."""
     lib = repo(tmp_path / "lib-origin")
     config(lib, "lib", parent={"app-repo": ".."})
     git(lib, "add", "-A")
@@ -131,11 +131,20 @@ def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path)
     app_cfg.write_text(app_cfg.read_text() + "    lib: lib\n")
     git(app, "add", "-A")
     git(app, "commit", "-qm", "lib submodule")
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
+    if named_by_workspace:
+        ws_cfg = workspace / "tcw-config.yaml"
+        ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
         "--init", "-q")
+    return workspace / "app-wt"
+
+
+def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path):
+    """A submodule's checkout in the worktree is the commit this branch pins: the
+    same node. Named both by the repository's root (inside the worktree) and by
+    the workspace (through the primary checkout), it must load once."""
+    with_submodule(workspace, tmp_path, named_by_workspace=True)
     done = validate(workspace / "app-wt" / "pkg-a")
     assert "duplicate project id 'lib'" not in done.stdout + done.stderr, \
         done.stdout + done.stderr

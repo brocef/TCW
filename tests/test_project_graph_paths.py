@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from test_worktree_sibling_nodes import config, git, repo, validate, workspace  # noqa: F401
+from test_worktree_sibling_nodes import (config, git, repo, validate,  # noqa: F401
+                                         with_submodule, workspace)
 
 
 def case_insensitive(where: Path) -> bool:
@@ -26,6 +27,20 @@ def test_a_locator_in_other_letter_case_loads_the_node_once(tmp_path):
     assert done.returncode == 0, done.stdout + done.stderr
 
 
+def test_an_override_in_other_letter_case_is_the_node_it_names(tmp_path, monkeypatch):
+    """`tcw provision` asks whether each override delivered its project; that
+    check compared path text and refused what the walk had accepted."""
+    if not case_insensitive(tmp_path):
+        pytest.skip("the disk is case-sensitive")
+    from tcw.store.project import FsProjectRegistry
+    root = repo(tmp_path / "Root")
+    config(root, "root", children={"kid": "kid"})
+    config(root / "kid", "kid", parent={"root": ".."})
+    monkeypatch.setenv("TCW_PROJECT_KID", str(tmp_path / "root" / "kid"))
+    registry = FsProjectRegistry.open(root / "kid")
+    assert [o.problem for o in registry.overrides()] == [None]
+
+
 def test_a_symlinked_config_belongs_to_the_folder_it_sits_in(tmp_path):
     node = repo(tmp_path / "node")
     store = tmp_path / "store"
@@ -37,29 +52,10 @@ def test_a_symlinked_config_belongs_to_the_folder_it_sits_in(tmp_path):
     assert "not reachable" not in done.stdout + done.stderr
 
 
-def submodule_workspace(workspace: Path, tmp_path: Path) -> Path:  # noqa: F811
-    lib = repo(tmp_path / "lib-origin")
-    config(lib, "lib", parent={"app-repo": ".."})
-    git(lib, "add", "-A")
-    git(lib, "commit", "-qm", "lib")
-    app = workspace / "app"
-    git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
-    app_cfg = app / "tcw-config.yaml"
-    app_cfg.write_text(app_cfg.read_text() + "    lib: lib\n")
-    git(app, "add", "-A")
-    git(app, "commit", "-qm", "lib submodule")
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
-    git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
-    git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
-        "--init", "-q")
-    return workspace / "app-wt"
-
-
 def test_a_submodule_node_inside_a_linked_worktree_loads_once(workspace, tmp_path):  # noqa: F811
-    wt = submodule_workspace(workspace, tmp_path)
+    wt = with_submodule(workspace, tmp_path, named_by_workspace=False)
     done = validate(wt / "lib")
-    assert "duplicate project id" not in done.stdout + done.stderr, done.stdout + done.stderr
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_a_linked_worktree_of_a_submodule_repository_resolves_there(tmp_path):
