@@ -1,4 +1,4 @@
-As a user, I run `tcw work rework <slug>` to move an item from review back into active after verification rejected the work. This is the only reverse transition in the state machine.
+As a user, I run `tcw work rework <slug>` to move an item from review back into active after verification rejected the work. This is the only reverse transition in the state machine. The tool prints where the item now lives and, on stderr, the next step: address `rework.md` in the implement stage.
 When the item has a tracker ticket bound to it, reworking is refused before the item moves unless the ticket is assigned to me, as for submitting (`work/synchronize-external-tracker-work`).
 The tool refuses while `refined-outcome.md` is still present, because that document asserts the work was verified and accepted. I delete it myself and record what remains in `rework.md`; TCW never deletes it for me.
 

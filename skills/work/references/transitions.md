@@ -142,8 +142,11 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   either checkout means the stage was not skipped.
 - `--already-integrated` skips the merge-back when the branch was merged outside
   TCW (a merged PR). Every other gate still runs.
-- The Definition-of-Done checklist is printed before `--confirm`. `[prompted]` —
-  it is no longer stored. The node sets its own list in `docs/work/dod.yaml`,
+- Without `--confirm`, the Definition-of-Done checklist is printed unticked and
+  the command refuses. `[prompted]` With `--confirm`, nothing is printed up
+  front; once the item has closed, the list is printed ticked, as acknowledged
+  by `--confirm` — and a refusal on the way prints no list at all. It is no
+  longer stored. The node sets its own list in `docs/work/dod.yaml`,
   which **replaces** the built-in four (`tests pass`, `docs synced`,
   `capabilities reconciled`, `reviewed`) rather than extending them — omit one
   and it is gone, with no error.

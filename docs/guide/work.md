@@ -371,16 +371,21 @@ the item holds is not also split at its commas). Tags don't affect board orderin
 
 ## What the commands print
 
-After `tcw work new` and `tcw work start`, the CLI prints the **next transition to
-run** (e.g. "→ next: when you begin implementing, run `tcw work start …`") so the
-lifecycle is hard to skip — the slug still goes to stdout alone, the hint to stderr.
+After `tcw work new`, `tcw work inbox accept`, `tcw work start`, `tcw work submit`
+and `tcw work rework`, the CLI prints the **next step** on stderr, as the gate of
+the stage that comes next — e.g. "→ next: run `tcw work stage gate request …`"
+after `new` — so the lifecycle is hard to skip. After `start` it is the first stage
+the item still needs: `spec`, `plan`, `implement`, or `verify` for an active item
+taken over with its outcome already written. After `submit` it is `verify`, whose
+two endings the hint names; after `rework`, `implement`. The slug still goes to
+stdout alone.
 `tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
 item's body file when it has one — piped stdin lands in `intake.md`, so that is
 what the hint points at. Created with nothing piped, an item has no body file
 yet and the line is simply omitted.
 Every command that moves an item also names where it now lives, as a path
-relative to the project root — `tcw work start` and `tcw work complete` on
-stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
+relative to the project root — `tcw work start`, `submit`, `rework` and `complete`
+on stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
 `tcw work inbox accept` on stderr beside their other hints, leaving their stdout
 the bare slug.
 
@@ -549,7 +554,9 @@ so moves never break references. Only the legal transitions above are permitted
 
 **Completion is gated.** `tcw work complete --resolution done` prints the
 Definition of Done and refuses without `--confirm` (and without `--force` if
-unresolved blockers exist). A discard prints no checklist and is not
+unresolved blockers exist). With `--confirm`, the list is printed only once the
+item has closed, ticked and headed "acknowledged with --confirm"; a confirmed
+completion refused for some other reason prints no list. A discard prints no checklist and is not
 blocker-gated, but still refuses without `--confirm`:
 
 ```
