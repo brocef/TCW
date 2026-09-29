@@ -14,8 +14,7 @@ from typing import NamedTuple
 import yaml
 
 from tcw.store.base import (
-    RESOLVED_STATUSES, RefError, SidecarError, StoreNotProvisioned, WorkItem,
-    declared_capabilities,
+    RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
     resolution_status,
     topo_order,
 )
@@ -508,6 +507,15 @@ def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
     return doc
 
 
+def _node_config(node: Path) -> dict | None:
+    """`node`'s `tcw-config.yaml` as a mapping, or None."""
+    try:
+        data = yaml.safe_load((node / "tcw-config.yaml").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
              initiative: str | None = None) -> Path:
     """Write a request DOWN into a child node's inbox/ (boundary: inbox only)."""
@@ -531,20 +539,23 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
                     f"'{child_ref}' is below '{above[0]}', the nearest node with "
                     f"a board; delegate to '{above[0]}' and let it pass the "
                     f"request on")
-            # Registered, and no board: saying "no child node" denied it existed.
+        # Below this node, and no board: saying "no child node" denied it existed.
+        # Only below — an ancestor or a sibling is not somewhere to delegate to,
+        # and "keeps no board" would be the wrong reason for refusing it.
+        if any(p.id == child_ref for p in registry.descendants()):
+            node = Path(registry.get(child_ref).locator)
             try:
-                FsWorkStore.open(Path(registry.get(child_ref).locator))
-            except StoreNotProvisioned as e:
-                raise ValueError(f"cannot delegate to '{child_ref}': its board is "
-                                 f"not available here ({e})") from None
-            except ValueError:
+                FsWorkStore.open(node)
+            except ValueError as e:
+                if "work" in (_node_config(node) or {}):
+                    raise ValueError(f"cannot delegate to '{child_ref}': its board is "
+                                     f"not available here ({e})") from None
                 below = sorted(c for c in children
                                if any(a.id == child_ref for a in registry.ancestors(c)))
                 raise ValueError(
                     f"'{child_ref}' keeps no board, so it has no inbox to delegate "
-                    f"to. " + (f"Nodes with a board below it: {', '.join(below)}."
-                               if below else f"Nodes you can delegate to: "
-                               f"{', '.join(sorted(children)) or '(none)'}.")) from None
+                    f"to. Nodes with a board below it: "
+                    f"{', '.join(below) or '(none)'}.") from None
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)

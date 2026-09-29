@@ -32,10 +32,13 @@ descendants for slices.
 1. `FsWorkStore.initiative_slices(epic) -> list[tuple[Path, WorkItem]]` — (node
    root, item) for this node and every descendant with a board.
    `initiative_children` returns its items; `_tasks_for` labels its nodes.
-2. `delegate` to a registered node with no board says so and names the nodes
-   with a board below it (or, if none, those it can delegate to).
-3. `delegate` to a registered node whose board is declared but not provisioned
-   says the board is not available here, with the provisioning reason.
+2. `delegate` to a node below this one with no board says so and names the
+   nodes with a board below it.
+3. `delegate` to a node below this one that configures a board this checkout
+   cannot open (declared and not provisioned, or a broken `work.path`) says the
+   board is not available here, with the reason.
+   *(Goals 2–3 amended at review: the first draft also answered for an
+   ancestor or sibling, and called a broken board "no board".)*
 
 ## Non-goals
 
