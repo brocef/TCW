@@ -5,7 +5,7 @@ resolution: null
 tags:
 - work
 - bug
-owner: brocef@users.noreply.github.com
-started: '2026-09-29T16:08:40.187861Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-27-close-two-strict-mode-gaps-left-by-the-unfollowable-move-gate
 branch: work/2026-09-27-close-two-strict-mode-gaps-left-by-the-unfollowable-move-gate
