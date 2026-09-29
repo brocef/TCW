@@ -2,7 +2,7 @@ slug: 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-
 title: Warn when a project override names the primary checkout's copy from a linked
   worktree
 created: '2026-09-29'
-resolution: null
+resolution: done
 tags:
 - bug
 owner: ''
