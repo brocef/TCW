@@ -3861,6 +3861,29 @@ class WorkStore(ABC):
         filesystem store does, and overrides this."""
         return [(item, False) for item in self.query()]
 
+    def unreadable_open_items(self) -> list[tuple[str, str]]:
+        """`(slug, reason)` for every open item whose recorded fields this store
+        cannot read. Such an item still lists, but without its `parent` or
+        `initiative`, so the gates that stop an item resolving over open work
+        cannot tell whether it belongs beneath one. A store that never holds a
+        record it cannot read has none."""
+        return []
+
+    def unreadable_slice_candidates(self) -> list[tuple[str, str]]:
+        """`(label, reason)` for every open item, wherever this store's epics
+        draw slices from, whose fields cannot be read. Local only by default;
+        a store that finds slices in other nodes also looks there."""
+        return self.unreadable_open_items()
+
+    @staticmethod
+    def _unreadable_refusal(verb: str, slug: str, what: str,
+                            found: list[tuple[str, str]]) -> ValueError:
+        named = ", ".join(f"{label} ({reason})" for label, reason in found)
+        return ValueError(f"Cannot {verb} {slug}: the state of these open items "
+                          f"cannot be read, so whether they are {what} is "
+                          f"unknown: {named}. Fix or replace each state.yaml "
+                          f"(`tcw validate` lists them) and retry.")
+
     def independent_descendants(self, slug: str) -> list[WorkItem]:
         """Every item beneath `slug` — the whole subtree, not only direct
         children — that has a status of its own, open or resolved.
@@ -4255,6 +4278,14 @@ class WorkStore(ABC):
                  force: bool = False) -> WorkItem:
         dest = resolution_status(resolution)          # raises on a bad resolution
         item = self._require(slug)
+        # Before the backlog shortcut is decided, since it reads the same slices:
+        # a slice whose state cannot be read has lost its `initiative`, so both
+        # would pass over it. Forceable, like the partial-graph refusal below —
+        # both say "cannot verify", not "something is open".
+        if item.type == "epic" and not force and (
+                unreadable := self.unreadable_slice_candidates()):
+            raise self._unreadable_refusal("complete epic", slug,
+                                           "its initiative children", unreadable)
         # A completable epic (all children resolved) may close straight from
         # `backlog` — coordinator epics never needed their own start/active. This
         # is a scoped exception, not a global `(backlog, completed)` transition,
@@ -4366,6 +4397,8 @@ class WorkStore(ABC):
         """Refuse when any item beneath `slug` is still open. Shared by `complete`
         and by callers that must refuse before doing anything irreversible of
         their own, such as merging a worktree branch."""
+        if (unreadable := self.unreadable_open_items()):
+            raise self._unreadable_refusal(verb, slug, "beneath it", unreadable)
         still_open = self.open_descendants(slug)
         if still_open:
             raise ValueError(f"Cannot {verb} {slug}; these items beneath it are "

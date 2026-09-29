@@ -344,7 +344,9 @@ destruction.
 
 An **epic** is the one exception: open initiative children block closing it by
 either route, because a child can't start until its epic is active, so closing
-the epic would strand them.
+the epic would strand them. It also refuses while an open item here or in a node
+below has a `state.yaml` that cannot be read, since that item may be one of its
+slices (`--force` overrides this, as it does for a checkout missing a node).
 
 ## Tags
 
@@ -528,7 +530,9 @@ A parent cannot be completed or discarded — not even with `--force` — while
 anything beneath it is still open, and cannot be dropped while any child names
 it; the refusal names each one. A child cannot be created under a completed or
 discarded item. `tcw validate` reports a `parent:` that names no item in the
-store.
+store. While any open item on the board has a `state.yaml` that cannot be
+read, no item can be completed or discarded, because that item may be a child
+of it; the refusal names each file to fix.
 
 Children made by versions before this sit inside their parent's folder and still
 move with it; one that is moved on its own keeps its parent and has its own
