@@ -53,12 +53,12 @@ descendants for slices.
   `FsWorkStore.open(node_root).initiative_slices(epic)` to its row label with
   the same labelling `_node_stores` uses (one `_label` helper); its unused
   `stores` parameter goes.
-- `delegate`: after the "below a node with a board" check, when
-  `registry.get(child_ref)` is registered, open its store:
-  `StoreNotProvisioned` → "cannot delegate to '<ref>': its board is not
-  available here (<reason>)"; any other `ValueError` → "'<ref>' keeps no board,
-  so it has no inbox to delegate to. Nodes with a board below it: <…>" (falling
-  back to the nodes this one can delegate to).
+- `delegate`: when `child_ref` is one of this node's registered descendants
+  and has no board it can open: if its config sets `work.path` or
+  `work.repository`, "cannot delegate to '<ref>': its board is not available
+  here (<reason>)"; otherwise "'<ref>' keeps no board, so it has no inbox to
+  delegate to. Nodes with a board below it: <…>". Any other name falls through
+  to "no child node". *(Amended at review and verify.)*
 
 ## Abstraction litmus test
 

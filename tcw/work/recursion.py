@@ -547,7 +547,8 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
             try:
                 FsWorkStore.open(node)
             except ValueError as e:
-                if "work" in (_node_config(node) or {}):
+                work = (_node_config(node) or {}).get("work")
+                if isinstance(work, dict) and ({"path", "repository"} & set(work)):
                     raise ValueError(f"cannot delegate to '{child_ref}': its board is "
                                      f"not available here ({e})") from None
                 below = sorted(c for c in children

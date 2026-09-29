@@ -66,6 +66,15 @@ def test_a_board_that_is_configured_but_broken_gives_its_reason(routed):
     assert "keeps no board" not in str(refused.value)
 
 
+def test_work_settings_without_a_board_are_still_no_board(routed):
+    cfg_path = routed / "mid" / "tcw-config.yaml"
+    cfg = yaml.safe_load(cfg_path.read_text())
+    cfg["work"] = {"lifecycle": {}}
+    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    with pytest.raises(ValueError, match="keeps no board"):
+        delegate(routed, "mid", "x")
+
+
 def test_naming_a_boardless_ancestor_is_no_child_node(routed):
     with pytest.raises(ValueError, match="no child node 'mid'"):
         delegate(routed / "mid" / "pa", "mid", "x")
