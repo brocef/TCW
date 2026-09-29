@@ -243,3 +243,19 @@ def test_a_guarded_plan_stage_save_replaces_a_damaged_stage(node):
         st.write_plan_stage(bad, "model", "# Model\n", revision="0" * 16)
     st.write_plan_stage(bad, "model", "# Model\n", revision=stage.revision)
     assert (item / "plan" / "model.md").read_text(encoding="utf-8") == "# Model\n"
+
+
+def test_recovering_a_damaged_interrupted_claim_is_refused_in_place(node):
+    """Recovery takes the claim folder by rename before stamping it; a damaged
+    state must be refused before that rename, not discovered after it."""
+    root, item, bad, _good = node
+    git_commit(root)
+    st = FsWorkStore.open(root)
+    private = st.root / ".claiming" / f"{bad}-{'1a' * 16}"
+    private.parent.mkdir(exist_ok=True)
+    item.replace(private)
+    not_utf8(private / "state.yaml")
+    with pytest.raises(ValueError, match="state.yaml cannot be read"):
+        st.start(bad, owner="me", take_over=True)
+    assert private.is_dir()
+    assert [d.name for d in (st.root / ".claiming").iterdir()] == [private.name]

@@ -4263,6 +4263,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # earlier version left behind does not, and the relation the nested
             # source folder held would be lost on landing at the top level.
             tracked_parent = self._tracked_parent(claimed)
+            self._require_readable_state(found, claimed)
             self._await_interrupted(claimed, found)
             # Take the folder before writing a word into it, exactly as a
             # claimant takes it from `backlog/`. Written in place instead, a
