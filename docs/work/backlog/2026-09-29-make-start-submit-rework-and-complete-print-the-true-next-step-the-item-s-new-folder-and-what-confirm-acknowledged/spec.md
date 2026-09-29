@@ -137,12 +137,12 @@ hint is correct for them and the exemption is removed.
 
 **`<slug>` is the reference the user typed** (`args.slug`, which may be
 qualified, such as `kid/<slug>`), and the bare slug is used only to read the
-item — the same split `_unwritten_plan` makes (`tcw/work/cli.py:1455-1472`,
+item — the same split `_unwritten_plan` makes (`tcw/work/cli.py:1452-1472`,
 asserted by `tests/test_unplanned_start.py:154`).
 
 **`start` chooses its stage from the item's artifacts.** Two facts make a
 fixed answer wrong. An item can be started before it is specified or planned
-(the warning built by `_unwritten_plan`, `tcw/work/cli.py:1455-1472`, printed at
+(the warning built by `_unwritten_plan`, `tcw/work/cli.py:1452-1472`, printed at
 `:1567`), and this project's own `implement` gate refuses without a spec and
 plan. And `start` is not limited to `backlog`: it takes an `active` item with
 `--take-over`, or with no flag when nobody holds it — the state
