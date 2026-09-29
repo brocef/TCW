@@ -37,7 +37,9 @@ the wheel build fails with the container's system build tools) belong to the
 Claude Code cloud container the suite ran in, not to this item: the same four
 fail on untouched `origin/main` there, and none touches code this item changed.
 Before the review fix, on the implementing machine, the suite was fully green
-(4914 passed, 3 skipped).
+(4914 passed, 3 skipped). **After it, on the same machine, at `f8196810` (the
+finished branch, with the review fix): 4915 passed, 3 skipped, bare `pytest`** —
+so the four container failures are confirmed as the container's alone.
 
 `tcw validate`, `tcw capabilities check` and `tcw capabilities drift` all report
 OK.
