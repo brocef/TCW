@@ -1070,6 +1070,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-close-two-strict-mode-gaps-left-by-the-unfollowable-move-gate:
+  location: ccc2bb1dec2e42bd524387f3dbe63a8b2b0dd733
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-collect-changelog-and-release-note-entries-as-one-file-per-item-instead-of-a-shared-upcoming-md:
