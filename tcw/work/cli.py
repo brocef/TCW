@@ -4142,7 +4142,16 @@ def _complete(args: argparse.Namespace) -> int:
     # completed here since would still read open there. When the worktree cannot
     # be read, only the primary copy is asked, and the store's own check after the
     # merge is what catches a branch-only child.
-    still_open = st.open_descendants(bare)
+    # The store's own checks come first — the same ones `complete` makes after
+    # the merge, including an open item whose state cannot be read.
+    try:
+        st.require_nothing_open_beneath(bare, "complete")
+        if item.type == "epic" and not args.force:
+            st.require_readable_slices(bare)
+    except ValueError as e:
+        print(f"tcw work complete: {e}", file=sys.stderr)
+        return 1
+    still_open = []
     if branch_store is not None:
         still_open += [s for s in branch_store.open_descendants(bare)
                        if st.get(s) is None and st.tombstone(s) is None]

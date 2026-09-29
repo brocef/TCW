@@ -101,8 +101,9 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   get right; the stage's own next-step line names both branches.
 - Unresolved blockers refuse a shipment. `[gated]`
 - An epic refuses while initiative children are open. `[gated]`
-- An open item whose `state.yaml` cannot be read refuses every `complete` on
-  its board (it may be a child), and an epic's `complete` when it sits in a
+- An open item whose `state.yaml` cannot be read refuses every other
+  `complete` and `drop` on its board (it may be a child), before any worktree
+  merge,, and an epic's `complete` when it sits in a
   node below (`--force` overrides only the epic case). Fix the file; `tcw
   validate` names it. `[gated]`
 - **Capability reconciliation is enforced**, not merely acknowledged: it fails if

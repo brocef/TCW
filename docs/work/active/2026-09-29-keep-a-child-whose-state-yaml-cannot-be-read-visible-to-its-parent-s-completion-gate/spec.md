@@ -62,6 +62,14 @@ still open. A damaged file silently switches both of them off.
 3. **One storage-neutral question.** Both gates ask the store the same
    thing: "which open items can you not read?"
 
+4. **Amended at review:** `drop` makes the parent gate's check too, since a
+   drop leaves no record for a hidden child to name. The damaged item itself
+   is excluded from both checks, so its own move gets
+   `_require_readable_state`'s plainer refusal and it can still be dropped.
+   `tcw work complete` runs the store's checks before merging a worktree
+   branch. `--force` bypasses the epic refusal only for items in nodes below:
+   one on the epic's own board is also caught by the parent gate.
+
 ## Non-goals
 
 - **Damaged resolved items are left alone.** A damaged item in `completed/`
