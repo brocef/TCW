@@ -2422,13 +2422,19 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             if not caps.root.is_dir():
                 return []
             local = caps.list_all(local_only=True)
+            # An override's references become the composed capability's own, so
+            # a term one names is as named as one a local capability names.
+            overrides = caps._override_fields()
         except (ValueError, yaml.YAMLError) as e:
             raise ValueError(f"cannot remove '{slug}': the capabilities that might "
                              f"name it cannot be read: {e}") from None
+        referrers = ([(f"capability {cap.path}", cap.fields) for cap in local]
+                     + [(f"capability override {path}", fields)
+                        for path, fields in overrides])
         out = []
-        for cap in local:
+        for label, fields in referrers:
             named = set()
-            for field, ref in FsCapabilitiesStore._term_refs(cap.fields):
+            for field, ref in FsCapabilitiesStore._term_refs(fields):
                 try:
                     hit = self.get(ref)
                 except AmbiguousRef:
@@ -2436,7 +2442,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 if (hit is not None and hit.origin == "local"
                         and _same_folder(self.root / hit.slug, target)):
                     named.add(field)
-            out += [f"capability {cap.path} ({field})"
+            out += [f"{label} ({field})"
                     for field in ("Subject", "Feature") if field in named]
         return out
 
@@ -2776,6 +2782,28 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         pointer (those are deltas, not caps; see `_override_index`)."""
         return [p for p in self._all_meta_dirs()
                 if not load_yaml(self.root / p / "meta.yaml").get("overrides")]
+
+    def _override_fields(self) -> list[tuple[str, dict]]:
+        """`(path, fields)` for every local override: the fields it sets on the
+        capability it overrides — its meta minus the structural keys and minus
+        `null`, which clears an inherited field and so references nothing.
+
+        The one definition of an override's references, read by `check` and by
+        the taxonomy's refusal to remove a term something still names; an
+        override's `Subject` becomes the composed capability's (`_apply_override`),
+        so leaving it out of either lets a reference dangle unreported."""
+        out = []
+        for p in self._all_meta_dirs():
+            meta = load_yaml(self.root / p / "meta.yaml")
+            if meta.get("overrides"):
+                out.append((p, self._set_fields(meta)))
+        return out
+
+    @staticmethod
+    def _set_fields(meta: dict) -> dict:
+        """The fields an override's meta sets (see `_override_fields`)."""
+        return {k: v for k, v in meta.items()
+                if k not in _CAP_STRUCTURAL and v is not None}
 
     def _override_index(self) -> dict[str, tuple[Path, dict]]:
         """`overrides` target string → (override folder, override meta)."""
@@ -3321,6 +3349,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             target = meta.get("overrides")
             if target and (e := self._override_problem(str(target))):
                 problems.append(f"{p}: {e}")
+            if target:
+                # The references it sets, checked as a local capability's are:
+                # they become the composed capability's own.
+                fields = self._set_fields(meta)
+                problems += [f"{p}: {e}" for e in self._ref_problems(fields, taxonomy)]
+                if unchecked and (fields.get("Subject") or fields.get("Feature")):
+                    problems.append(unchecked)
+                    unchecked = ""
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
