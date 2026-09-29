@@ -76,6 +76,10 @@ work:
       or a `TCW_PROJECT_<ID>`-style variable is added, removed, or changes meaning.
   retain:
     completed: false
+  procedures:
+    create-work:
+    - builtin: true
+    - file: docs/procedures/create-work.md
   lifecycle:
     stages:
       spec:
