@@ -14,7 +14,8 @@ from typing import NamedTuple
 import yaml
 
 from tcw.store.base import (
-    RESOLVED_STATUSES, RefError, SidecarError, WorkItem, declared_capabilities,
+    RESOLVED_STATUSES, RefError, SidecarError, StoreNotProvisioned, WorkItem,
+    declared_capabilities,
     resolution_status,
     topo_order,
 )
@@ -254,27 +255,26 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
 
 # ── reconcile ────────────────────────────────────────────────────────────────
 
+def _label(node_root: Path, r: Path) -> str:
+    """A node's row label: "." for this node, else its project id."""
+    return "." if r.resolve() == node_root.resolve() else registered_project_id(node_root, r)
+
+
 def _node_stores(node_root: Path) -> dict[str, FsWorkStore]:
-    """Each node `reconcile` reads, keyed by its row label: "." for this node,
-    the project id for a descendant with a board."""
+    """Each node `reconcile` reads, keyed by its row label."""
     node_root = node_root.resolve()
-    return {("." if r.resolve() == node_root else registered_project_id(node_root, r)):
-            FsWorkStore.open(r)
+    return {_label(node_root, r): FsWorkStore.open(r)
             for r in [node_root, *descendant_nodes(node_root)]}
 
 
-def _tasks_for(node_root: Path, epic_slug: str,
-               stores: dict[str, FsWorkStore] | None = None
-               ) -> list[tuple[str, WorkItem]]:
-    """(node label, item) for every item with initiative == epic_slug,
-    across this node and every descendant that keeps a board — through a routing
-    node, and below a child with a board of its own. The same set
-    `initiative_children` gives the completion gate, so the table and the gate
-    never disagree about an epic's slices. Slugs collide across nodes, so the
-    node label keys the rows."""
-    stores = stores if stores is not None else _node_stores(node_root)
-    return [(rel, item) for rel, st in stores.items() for item in st.query()
-            if item.initiative == epic_slug]
+def _tasks_for(node_root: Path, epic_slug: str) -> list[tuple[str, WorkItem]]:
+    """(node label, item) for every slice of `epic_slug` — `initiative_slices`,
+    the walk the completion gate uses too, so the table and the gate never
+    disagree about an epic's slices. Slugs collide across nodes, so the node
+    label keys the rows."""
+    node_root = node_root.resolve()
+    return [(_label(node_root, node), item)
+            for node, item in FsWorkStore.open(node_root).initiative_slices(epic_slug)]
 
 
 def _blocker_labels(item: WorkItem) -> str:
@@ -441,7 +441,7 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
 
     completable = store.epic_completable(store.get(epic_slug))     # False once completed
     stores = _node_stores(node_root)
-    block = _render(epic_slug, _tasks_for(node_root, epic_slug, stores), stores,
+    block = _render(epic_slug, _tasks_for(node_root, epic_slug), stores,
                     completable=completable)
     _evict_legacy_rollup(store, epic_slug)
     current = store.read_sidecar(epic_slug, ROLLUP_SIDECAR)
@@ -531,6 +531,20 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
                     f"'{child_ref}' is below '{above[0]}', the nearest node with "
                     f"a board; delegate to '{above[0]}' and let it pass the "
                     f"request on")
+            # Registered, and no board: saying "no child node" denied it existed.
+            try:
+                FsWorkStore.open(Path(registry.get(child_ref).locator))
+            except StoreNotProvisioned as e:
+                raise ValueError(f"cannot delegate to '{child_ref}': its board is "
+                                 f"not available here ({e})") from None
+            except ValueError:
+                below = sorted(c for c in children
+                               if any(a.id == child_ref for a in registry.ancestors(c)))
+                raise ValueError(
+                    f"'{child_ref}' keeps no board, so it has no inbox to delegate "
+                    f"to. " + (f"Nodes with a board below it: {', '.join(below)}."
+                               if below else f"Nodes you can delegate to: "
+                               f"{', '.join(sorted(children)) or '(none)'}.")) from None
         raise ValueError(f"no child node '{child_ref}'. children: "
                          f"{', '.join(sorted(children)) or '(none)'}")
     origin = registered_project_id(node_root, node_root)
