@@ -1106,5 +1106,6 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
+  location: f470f8071b5b45f655ff2fe3efe22a6a62049023
   resolution: done
   resolved: '2026-09-29'
