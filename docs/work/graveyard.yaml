@@ -1074,6 +1074,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-settle-status-path-blockers:
+  location: ddd3bcfc0ecb9713be3d5c30dbf9c0b4f62f7ae7
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here:
