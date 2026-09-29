@@ -150,6 +150,7 @@ class _Config:
     path: Path
     parent: dict[str, ConnectedProject]
     children: dict[str, ConnectedProject]
+    upstream: dict[str, ConnectedProject]
     raw: dict[str, Any]
 
 
@@ -182,6 +183,10 @@ class FsProjectRegistry(ProjectRegistry):
         self._by_id: dict[str, _Config] = {}
         self._problems: list[str] = []
         self._unreachable: list[UnreachableProject] = []
+        # Configs reached only across an `upstream` edge. Loaded as far as their
+        # own file and no further: their connections are not the reader's to
+        # load, check or write, so nothing beyond an upstream enters this graph.
+        self._upstream_only: set[Path] = set()
         # Rule 0's answer per project id, memoised. `_target_path` runs again for
         # every edge during the reciprocity walk, so without this the disk is
         # re-probed and `_overrides` grows with the graph's edge count.
@@ -245,6 +250,10 @@ class FsProjectRegistry(ProjectRegistry):
         cfg = self._config_for(project_id)
         return list(cfg.children) if cfg else []
 
+    def declared_upstream_ids(self, project_id: str | None = None) -> list[str]:
+        cfg = self._config_for(project_id)
+        return list(cfg.upstream) if cfg else []
+
     def ancestors(self, project_id: str | None = None) -> list[Project]:
         result: list[Project] = []
         seen: set[str] = set()
@@ -301,7 +310,8 @@ class FsProjectRegistry(ProjectRegistry):
         if not wanted:
             return None
         for cfg in list(self._cache.values()):
-            for entry in (*cfg.parent.values(), *cfg.children.values()):
+            for entry in (*cfg.parent.values(), *cfg.children.values(),
+                          *cfg.upstream.values()):
                 if entry.repository is None:
                     continue
                 if normalized_url(entry.repository.url) != wanted:
@@ -391,7 +401,16 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _visit(self, config_path: Path, declared_id: str | None,
                declared_in: Path | None = None,
-               declaration: RepositoryDeclaration | None = None) -> _Config | None:
+               declaration: RepositoryDeclaration | None = None,
+               via_upstream: bool = False) -> _Config | None:
+        """Load one config and, unless it was reached across an `upstream` edge,
+        every config its connections name.
+
+        A config reached across an upstream edge is loaded as far as its own
+        file: its id, so `get` finds it for `extends` and references, and
+        nothing it connects to. If the same folder is later reached through a
+        `parent` or `children` edge, it is one project reached both ways, and it
+        is loaded in full then."""
         config_path = self._canonical(config_path)
         if config_path in self._cache:
             cfg = self._cache[config_path]
@@ -400,6 +419,16 @@ class FsProjectRegistry(ProjectRegistry):
                     config_path,
                     f"registered key '{declared_id}' does not match target id '{cfg.project.id}'",
                 )
+            if config_path in self._upstream_only and not via_upstream:
+                self._upstream_only.discard(config_path)
+                # Read again with its connection problems recorded this time:
+                # they were not the reader's to check, and now they are.
+                cfg = self._read_config(config_path, declared_id, declared_in,
+                                        declaration) or cfg
+                self._cache[config_path] = cfg
+                if self._by_id.get(cfg.project.id, cfg).path == config_path:
+                    self._by_id[cfg.project.id] = cfg
+                self._follow_edges(config_path, cfg)
             return cfg
         # No re-entry guard, and none is needed. The config is cached *before*
         # its own edges are walked, so a cycle comes back to a cached config and
@@ -408,7 +437,7 @@ class FsProjectRegistry(ProjectRegistry):
         # only thing making it look as though something caught a cycle at load
         # time. `_validate_cycles` is what reports one.
         cfg = self._read_config(config_path, declared_id, declared_in,
-                                declaration)
+                                declaration, quiet_connections=via_upstream)
         if cfg is None:
             return None
         self._cache[config_path] = cfg
@@ -420,17 +449,27 @@ class FsProjectRegistry(ProjectRegistry):
             )
         else:
             self._by_id[cfg.project.id] = cfg
+        if via_upstream:
+            self._upstream_only.add(config_path)
+            return cfg
+        self._follow_edges(config_path, cfg)
+        return cfg
+
+    def _follow_edges(self, config_path: Path, cfg: _Config) -> None:
         for child_id, entry in cfg.children.items():
             self._visit(self._target_path(config_path, entry), child_id,
                         config_path, entry.repository)
         for parent_id, entry in cfg.parent.items():
             self._visit(self._target_path(config_path, entry), parent_id,
                         config_path, entry.repository)
-        return cfg
+        for upstream_id, entry in cfg.upstream.items():
+            self._visit(self._target_path(config_path, entry), upstream_id,
+                        config_path, entry.repository, via_upstream=True)
 
     def _read_config(self, path: Path, declared_id: str | None,
                      declared_in: Path | None = None,
                      declaration: RepositoryDeclaration | None = None,
+                     quiet_connections: bool = False,
                      ) -> _Config | None:
         if not path.is_file():
             # Not a defect. A locator is a fact about one machine — the same
@@ -478,24 +517,32 @@ class FsProjectRegistry(ProjectRegistry):
                 path,
                 f"registered key '{declared_id}' does not match target id '{project_id}'",
             )
+        # An upstream's connections are its own business, not its readers': a
+        # problem in them must not refuse a command in a project that only reads
+        # it. Everything above — the file, its id — is still checked.
+        before_connections = len(self._problems)
         connected = raw.get("connected-projects")
         if connected is None:
             connected = {}
         if not isinstance(connected, dict):
             self._problem(path, "connected-projects must be a mapping")
             connected = {}
-        unknown = set(connected) - {"parent", "children"}
+        unknown = set(connected) - {"parent", "children", "upstream"}
         if unknown:
             self._problem(path, f"unknown connected-projects keys: {', '.join(sorted(map(str, unknown)))}")
         children = self._relation(path, connected.get("children"), "children")
         parent = self._relation(path, connected.get("parent"), "parent")
+        upstream = self._relation(path, connected.get("upstream"), "upstream")
         if len(parent) > 1:
             self._problem(path, "connected-projects.parent must contain at most one entry")
+        if quiet_connections:
+            del self._problems[before_connections:]
         return _Config(
             project=Project(project_id, path.parent),
             path=path,
             parent=parent,
             children=children,
+            upstream=upstream,
             raw=raw,
         )
 

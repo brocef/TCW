@@ -216,6 +216,16 @@ class ProjectRegistry(ABC):
         `declared_parent_id`."""
         return [child.id for child in self.children(project_id)]
 
+    def declared_upstream_ids(self, project_id: str | None = None) -> list[str]:
+        """The ids of the declared upstream projects, reachable or not.
+
+        An upstream is a project this one reads from — its taxonomy, its
+        capabilities, its work items by reference — and never writes to, and
+        which does not name this project back. It is neither parent nor child,
+        so no walk over those relations reaches it. A registry that keeps no
+        such relation has none."""
+        return []
+
     def overrides(self) -> list["ProjectOverride"]:
         """The locators the caller supplied for this graph, in place of declared ones.
 
