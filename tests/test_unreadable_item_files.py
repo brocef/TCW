@@ -227,3 +227,19 @@ def test_two_differently_damaged_bodies_have_different_revisions(node):
     first = st.get_detail(bad).core_revision
     (item / "intake.md").write_bytes(b"# hi \xfe\n")
     assert st.get_detail(bad).core_revision != first
+
+
+def test_a_guarded_plan_stage_save_replaces_a_damaged_stage(node):
+    """The stage list hands out the revision; the write guard checks it."""
+    from tcw.store.base import StaleRevision
+    _root, item, bad, _good = node
+    st = FsWorkStore.open(_root)
+    st.write_artifact(bad, "plan",
+                      "---\nstages: [{id: model, title: Build, depends_on: []}]\n---\n")
+    (item / "plan").mkdir(exist_ok=True)
+    (item / "plan" / "model.md").write_bytes(b"# Model \xff\n")
+    [stage] = st.plan_stages(bad)
+    with pytest.raises(StaleRevision):
+        st.write_plan_stage(bad, "model", "# Model\n", revision="0" * 16)
+    st.write_plan_stage(bad, "model", "# Model\n", revision=stage.revision)
+    assert (item / "plan" / "model.md").read_text(encoding="utf-8") == "# Model\n"
