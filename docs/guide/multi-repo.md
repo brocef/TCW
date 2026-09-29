@@ -167,9 +167,16 @@ parent naming its child, by locator or by `repository:` — any project this
 repository's worktree also holds resolves to the worktree's copy — a submodule's
 checkout included, since it is the commit the branch pins, but not a separate
 repository cloned inside it — so running from any of the repository's projects sees one
-graph, not the primary checkout's copies as duplicates. (Running from inside a
-submodule's own checkout, or in a repository that is itself a submodule of
-another, is not covered yet.)
+graph, not the primary checkout's copies as duplicates. That holds from inside
+a submodule's own checkout in a linked worktree, and for a linked worktree of a
+repository that is itself a submodule of another. A `TCW_PROJECT_<ID>` override
+keeps the checkout it names, even the primary checkout's copy while you run
+inside a linked worktree: it says exactly where the project is.
+A project is its folder, not its spelling or its file: a locator naming the
+folder in other letter case on a case-insensitive disk (macOS, Windows) is the
+same project, and a `tcw-config.yaml` that is a symlink belongs to the folder it
+sits in, so its relative locators are read from there.
+
 This is the one place git metadata is consulted, and it only re-points a locator:
 it never discovers a project or infers a relation. Projects outside a worktree,
 and projects not in a git repository at all, are unaffected.
