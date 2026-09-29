@@ -1082,6 +1082,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-match-an-epic-s-children-by-the-epic-s-node-as-well-as-its-slug:
+  location: 986327ad617c19ea84e576106b77f6df7599f711
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-refuse-a-blocker-that-names-its-own-item-by-qualified-ref-and-settle-status-path-blockers:
