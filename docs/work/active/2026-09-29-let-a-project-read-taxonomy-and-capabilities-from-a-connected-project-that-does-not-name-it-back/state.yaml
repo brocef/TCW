@@ -10,3 +10,5 @@ tags:
 - cli
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T23:36:13.406442Z'
+worktree: .worktrees/2026-09-29-let-a-project-read-taxonomy-and-capabilities-from-a-connected-project-that-does-not-name-it-back
+branch: work/2026-09-29-let-a-project-read-taxonomy-and-capabilities-from-a-connected-project-that-does-not-name-it-back
