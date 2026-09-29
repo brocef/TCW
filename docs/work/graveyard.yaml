@@ -1085,6 +1085,9 @@
   location: ddd3bcfc0ecb9713be3d5c30dbf9c0b4f62f7ae7
   resolution: done
   resolved: '2026-09-29'
+2026-09-27-resolve-project-graph-paths-by-case-and-through-a-symlinked-config:
+  resolution: done
+  resolved: '2026-09-29'
 2026-09-27-say-so-when-tracker-import-parent-meets-a-ticket-already-bound-here:
   location: 5545af279c350b4e5263e488dca7174ca2be81ee
   resolution: done
