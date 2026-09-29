@@ -24,7 +24,8 @@ from tcw.store.base import (
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
-    find_node_root, heading_slug, registered_project_id, resolve_qualified_work_ref,
+    find_node_root, heading_slug, registered_project_id, qualified_work_ref_read_only,
+    resolve_qualified_work_ref,
 )
 from tcw.refs import resolve_tcw_ref
 from tcw.validate import ValidationTarget, validate
@@ -506,6 +507,21 @@ class TcwHandler(BaseHTTPRequestHandler):
         if self.server.include_descendants:
             return resolve_qualified_work_ref(self.server.node_root, slug)
         return FsWorkStore.open(self.server.node_root), slug
+
+    def _refused_read_only(self, slug: str) -> bool:
+        """Answer 403 and return True when `slug` names an item in a project this
+        node reads but may not write — an upstream project, or one reached only
+        through one. Every route that changes an item or runs its project's
+        scripts asks this first; reads do not, so the board can still show it."""
+        if not self.server.include_descendants:
+            return False
+        reason = qualified_work_ref_read_only(self.server.node_root, slug)
+        if reason is None:
+            return False
+        self._send_err(HTTPStatus.FORBIDDEN,
+                       f"{reason}; change it from that project itself",
+                       code="read-only-project")
+        return True
 
     def _hosted_projects(self) -> set[str]:
         """Project IDs whose items this server actually serves — the descendants it
@@ -993,6 +1009,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             slug = _decode_path_param(m.group(1))
             action = _decode_path_param(m.group(2))
             qslug = slug                          # preserve the addressed (qualified) slug
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1216,6 +1234,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if m:
             slug = _decode_path_param(m.group(1))
             qslug = slug                          # preserve the addressed (qualified) slug
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1370,6 +1390,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             if name not in WORK_ARTIFACTS:
                 self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
                 return
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1408,6 +1430,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if m:
             slug = _decode_path_param(m.group(1))
             stage_id = _decode_path_param(m.group(2))
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1442,6 +1466,8 @@ class TcwHandler(BaseHTTPRequestHandler):
                 self._send_err(HTTPStatus.CONFLICT,
                                f"{name} is written by `{owner}`, not edited; "
                                f"run that command instead.")
+                return
+            if self._refused_read_only(slug):
                 return
             resolved = self._resolve_work(slug)
             if resolved is None:
@@ -1498,6 +1524,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if m:
             slug = _decode_path_param(m.group(1))
             stage_id = _decode_path_param(m.group(2))
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1515,6 +1543,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/work/([^/]+)$", path)
         if m:
             slug = _decode_path_param(m.group(1))
+            if self._refused_read_only(slug):
+                return
             resolved = self._resolve_work(slug)
             if resolved is None:
                 self._send(HTTPStatus.NOT_FOUND, b"no such work item")
@@ -1584,6 +1614,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         slug_q, _, stage_q = middle.partition("/plan-stages/")
         slug = _decode_path_param(slug_q)
         stage_id = _decode_path_param(stage_q)
+        if self._refused_read_only(slug):
+            return
         resolved = self._resolve_work(slug)
         if resolved is None:
             self._send(HTTPStatus.NOT_FOUND, b"no such work item")
