@@ -27,8 +27,9 @@ compose, blank segments are ignored, and a value naming no tag at all is refused
 
 One exception: `--untag` first matches its value against the item's tags as
 written, so a hand-written tag that is not valid (`'cli,docs'`, `'!!!'`, which
-`tcw validate` reports) is removed with `--untag 'cli,docs'`. An edit never
-refuses a tag the item already holds — only one it adds.
+`tcw validate` reports) is removed with `--untag 'cli,docs'` — as written, and not also split into
+`cli` and `docs`. An edit never refuses a tag the item already holds (invalid,
+or valid but no longer registered) — only one it adds.
 
 ```sh
 tcw work tags add cli,docs                   # registers two tags, not "cli-docs"

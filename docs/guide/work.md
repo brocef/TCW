@@ -361,7 +361,8 @@ carrying a tag that was later unregistered. A tag typed by hand into an item's
 `"cli,docs"`, `tcw work tags add` and `rm` refuse and name it rather than
 dropping it. An item holding such a tag in its `state.yaml` keeps it through
 every edit until you remove it — `tcw validate` reports it, and
-`--untag 'cli,docs'` removes it exactly as written. Tags don't affect board ordering.
+`--untag 'cli,docs'` removes it exactly as written (a value matching a tag
+the item holds is not also split at its commas). Tags don't affect board ordering.
 
 ## What the commands print
 

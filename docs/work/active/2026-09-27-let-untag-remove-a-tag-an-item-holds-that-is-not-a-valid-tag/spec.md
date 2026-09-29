@@ -36,7 +36,8 @@ is affected.
 2. Otherwise `--untag` behaves as today: comma-separated, normalized.
 3. An edit is refused for the tags it adds, never for a tag the item already
    holds: `--tag`, a partial `--untag`, and a web save resending the tags all
-   keep a held invalid tag as it stands (added at implement — see Notes).
+   keep a held tag that is invalid, or valid but no longer registered, as it
+   stands; `check` still reports it (added at implement — see Notes).
 
 ## Non-goals
 

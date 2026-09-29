@@ -61,3 +61,22 @@ def test_adding_an_invalid_tag_is_still_refused(tmp_path):
     slug = hand_tagged(root, ["cli"])
     with pytest.raises(ValueError, match="holds several tags"):
         FsWorkStore.open(root).update_work(slug, tags=["cli", "cli,docs"])
+
+
+def test_a_held_tag_later_unregistered_is_kept_and_still_reported(tmp_path, monkeypatch, capsys):
+    """"Refused for what it adds" covers an unregistered tag too: the edit
+    succeeds, and `check` still names the tag."""
+    root = node(tmp_path, {"tags": ["docs"]})
+    slug = hand_tagged(root, ["cli"])
+    code, _out, err = run(root, monkeypatch, capsys, "work", "edit", slug, "--tag", "docs")
+    assert code == 0, err
+    assert tags(root, slug) == ["cli", "docs"]
+    assert any("unregistered tag 'cli'" in p for p in FsWorkStore.open(root).check())
+
+
+def test_an_exact_held_match_is_removed_as_written_and_not_split(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path, {"tags": ["cli", "docs"]})
+    slug = hand_tagged(root, ["cli,docs", "cli", "docs"])
+    code, _out, err = run(root, monkeypatch, capsys, "work", "edit", slug, "--untag", "cli,docs")
+    assert code == 0, err
+    assert tags(root, slug) == ["cli", "docs"]

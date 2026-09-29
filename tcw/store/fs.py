@@ -6589,7 +6589,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
         kept as it stands, valid or not: an edit is refused for what it adds,
         never for what the item already carries, or one bad hand-written tag
         would refuse every edit — the web's resend of the tags included — until
-        `state.yaml` was fixed by hand. `check` still reports it."""
+        `state.yaml` was fixed by hand. That covers a tag that is not valid and
+        one valid but no longer registered; `check` still reports either. It is
+        kept in the form `read_tags` gives it (`CLI` is written back as `cli`)."""
         registered = set(self.registered_tags())
         out: list[str] = []
         for t in tags:
