@@ -5997,6 +5997,19 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 self._publish_after_transition(slug, status or "removed")
             return location
 
+    def _local_forms(self, ref: str) -> list[str]:
+        """Also `<own-project-id>/<slug>`: the qualified addressing `tcw://` refs
+        and cross-node blockers use, when it lands back on this very store."""
+        forms = super()._local_forms(ref)
+        if ref.count("/") == 1:            # exactly `<id>/<slug>`, not a folder path
+            try:
+                found = resolve_qualified_work_ref(self.node_root, ref)
+            except Exception:                      # a ref that cannot resolve is text
+                found = None
+            if found is not None and _same_folder(found[0].root, self.root):
+                forms.append(found[1])
+        return forms
+
     def external_blocker_state(self, text: str) -> tuple[bool, str]:
         """Also settle `<project-id>/<slug>` — exactly that shape, through
         `resolve_qualified_work_ref`, the addressing `tcw://` references already

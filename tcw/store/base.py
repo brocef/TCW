@@ -3917,10 +3917,24 @@ class WorkStore(ABC):
         """A blocker entry: a ref to an item this store holds or once held →
         {slug}, else {external}. A resolved item already reduced to its
         tombstone is still this store's item; recording it as external text
-        would make it block forever."""
+        would make it block forever.
+
+        So is a ref that names one of this store's items another way — as
+        `<status>/<slug>`, or qualified with this node's own project id. Left as
+        text, it escaped the self-block and cycle checks, which compare slugs,
+        and a reference to the item itself blocked it forever."""
         ref = self._normalize_ref(ref)
-        known = self.get(ref) is not None or self.tombstone(ref) is not None
-        return {"slug": ref} if known else {"external": ref}
+        for candidate in (ref, *self._local_forms(ref)):
+            if self.get(candidate) is not None or self.tombstone(candidate) is not None:
+                return {"slug": candidate}
+        return {"external": ref}
+
+    def _local_forms(self, ref: str) -> list[str]:
+        """Bare slugs `ref` may name in this store besides itself. `<status>/<slug>`
+        is model vocabulary every store shares; a store that knows its own
+        project id adds `<own-id>/<slug>`."""
+        status, sep, rest = ref.partition("/")
+        return [rest] if sep and status in WORK_STATUSES and rest and "/" not in rest else []
 
     @staticmethod
     def _same_entry(a: dict, b: dict) -> bool:
@@ -3930,6 +3944,13 @@ class WorkStore(ABC):
         if "external" in a and "external" in b:
             return a["external"] == b["external"]
         return False
+
+    def _same_item(self, entry: dict, e: dict) -> bool:
+        """`_same_entry`, or `e` is text stored before this store read it as
+        `entry`'s item — `<status>/<slug>`, say. Re-adding that item must not
+        keep both, and the text form may block forever."""
+        return self._same_entry(entry, e) or (
+            "slug" in entry and "external" in e and self._entry_for(e["external"]) == entry)
 
     def _reaches(self, start: str, target: str, *,
                  settled: frozenset[str] = frozenset()) -> bool:
@@ -3968,7 +3989,8 @@ class WorkStore(ABC):
         self._check_new_blocker(slug, entry, ref)
         if any(self._same_entry(entry, e) for e in item.blocked_by):
             return                                       # idempotent
-        self.set_field(slug, "blocked_by", item.blocked_by + [entry])
+        kept = [e for e in item.blocked_by if not self._same_item(entry, e)]
+        self.set_field(slug, "blocked_by", kept + [entry])
 
     def check_blocker_edits(self, slug: str, *, add: list[str] = (),
                             remove: list[str] = (), blocks: list[str] = ()) -> None:
@@ -3990,7 +4012,7 @@ class WorkStore(ABC):
             entry = self._entry_for(ref)
             self._check_new_blocker(slug, entry, ref)
             if not any(self._same_entry(entry, e) for e in proposed):
-                proposed.append(entry)
+                proposed = [e for e in proposed if not self._same_item(entry, e)] + [entry]
         for ref in blocks:
             target = self._require(ref).slug
             if target == slug:
@@ -4012,8 +4034,11 @@ class WorkStore(ABC):
     def _without(self, entries: list[dict], slug: str, ref: str) -> list[dict]:
         """`entries` less the blocker `ref` names; refuses a ref that names none."""
         norm = self._normalize_ref(ref)
+        # The forms `_entry_for` records as a slug remove it too: removing with
+        # the text that added it has to work.
+        slugs = {norm, *self._local_forms(norm)}
         kept = [e for e in entries
-                if e.get("slug") != norm and e.get("external") != norm]
+                if e.get("slug") not in slugs and e.get("external") != norm]
         if len(kept) == len(entries) and norm.endswith(")"):
             # A label copied from `list` may carry the reason it still blocks,
             # "external: <text> (<why>)"; the stored text has no reason, and the
