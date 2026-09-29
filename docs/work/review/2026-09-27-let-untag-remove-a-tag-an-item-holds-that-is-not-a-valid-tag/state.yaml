@@ -5,7 +5,7 @@ resolution: null
 tags:
 - bug
 - work
-owner: brocef@users.noreply.github.com
-started: '2026-09-29T14:47:28.101679Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-27-let-untag-remove-a-tag-an-item-holds-that-is-not-a-valid-tag
 branch: work/2026-09-27-let-untag-remove-a-tag-an-item-holds-that-is-not-a-valid-tag
