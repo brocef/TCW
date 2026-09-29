@@ -187,6 +187,10 @@ class FsProjectRegistry(ProjectRegistry):
         # own file and no further: their connections are not the reader's to
         # load, check or write, so nothing beyond an upstream enters this graph.
         self._upstream_only: set[Path] = set()
+        # Who declared each config as an upstream, by the config's path: named
+        # when two declarers disagree about where one project lives.
+        self._upstream_declarers: dict[Path, list[str]] = {}
+        self._warnings: list[str] = []
         # Rule 0's answer per project id, memoised. `_target_path` runs again for
         # every edge during the reciprocity walk, so without this the disk is
         # re-probed and `_overrides` grows with the graph's edge count.
@@ -324,6 +328,37 @@ class FsProjectRegistry(ProjectRegistry):
     def check(self) -> list[str]:
         return list(self._problems)
 
+    def warnings(self) -> list[str]:
+        return list(self._warnings)
+
+    def read_only_reason(self, project_id: str,
+                         from_id: str | None = None) -> str | None:
+        self._load_graph()
+        if project_id not in self._by_id:
+            return None
+        start = self._config_for(from_id)
+        if start is None:
+            return None
+        seen = {start.project.id}
+        frontier = [start]
+        while frontier:
+            cfg = frontier.pop()
+            if cfg.project.id == project_id:
+                return None
+            for neighbor_id in (*cfg.children, *cfg.parent):
+                neighbor = self._by_id.get(neighbor_id)
+                if neighbor is None or neighbor_id in seen:
+                    continue
+                seen.add(neighbor_id)
+                frontier.append(neighbor)
+        declarer = next((cfg.project.id for cfg in self._cache.values()
+                         if project_id in cfg.upstream), None)
+        if declarer is None:
+            return (f"'{project_id}' is not connected to '{start.project.id}' as a "
+                    f"parent or child")
+        return (f"'{project_id}' is a read-only upstream project here (reached "
+                f"through '{declarer}')")
+
     def overrides(self) -> list[ProjectOverride]:
         """The `TCW_PROJECT_*` locators that took effect in this graph.
 
@@ -396,6 +431,7 @@ class FsProjectRegistry(ProjectRegistry):
         self._loaded = True
         self._visit(self._current_path, declared_id=None)
         self._validate_reciprocity()
+        self._validate_upstreams()
         self._validate_cycles()
         self._reconcile_overrides()
 
@@ -441,11 +477,21 @@ class FsProjectRegistry(ProjectRegistry):
         if cfg is None:
             return None
         self._cache[config_path] = cfg
+        if via_upstream and declared_in is not None:
+            declarer = self._cache.get(self._canonical(declared_in))
+            if declarer is not None:
+                self._upstream_declarers.setdefault(config_path, []).append(
+                    declarer.project.id)
         previous = self._by_id.get(cfg.project.id)
         if previous and previous.path != config_path:
+            declarers = [*self._upstream_declarers.get(previous.path, []),
+                         *self._upstream_declarers.get(config_path, [])]
+            named = (f"; declared upstream by {', '.join(repr(d) for d in declarers)}"
+                     if declarers else "")
             self._problem(
                 config_path,
-                f"duplicate project id '{cfg.project.id}' also used by {previous.path}",
+                f"duplicate project id '{cfg.project.id}' also used by {previous.path}"
+                f"{named}",
             )
         else:
             self._by_id[cfg.project.id] = cfg
@@ -750,8 +796,31 @@ class FsProjectRegistry(ProjectRegistry):
         folder = self._spellings.setdefault((found.st_dev, found.st_ino), config_path.parent)
         return folder / config_path.name
 
+    def _upstream_reader(self, project_id: str) -> str | None:
+        """A project in this graph declaring `project_id` as its upstream."""
+        return next((cfg.project.id for cfg in self._cache.values()
+                     if project_id in cfg.upstream), None)
+
+    def _read_as_upstream(self, cfg: _Config, parent_id: str, reader: str) -> None:
+        warning = (f"{cfg.path}: '{cfg.project.id}' names '{parent_id}' as its parent, "
+                   f"but is read as an upstream project by '{reader}'; remove the "
+                   f"parent entry from '{cfg.project.id}' — an upstream need not "
+                   f"name its readers")
+        if warning not in self._warnings:
+            self._warnings.append(warning)
+
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():
+            if cfg.path in self._upstream_only:
+                # Its connections are not ours to check. The one thing worth
+                # saying is the migration's leftover: a parent claim its parent
+                # now answers by reading it as an upstream.
+                for parent_id, entry in cfg.parent.items():
+                    parent = self._cache.get(self._target_path(cfg.path, entry))
+                    if (parent is not None and cfg.project.id not in parent.children
+                            and (reader := self._upstream_reader(cfg.project.id))):
+                        self._read_as_upstream(cfg, parent_id, reader)
+                continue
             for child_id, entry in cfg.children.items():
                 child_path = self._target_path(cfg.path, entry)
                 child = self._cache.get(child_path)
@@ -780,6 +849,13 @@ class FsProjectRegistry(ProjectRegistry):
                     continue
                 reciprocal = parent.children.get(cfg.project.id)
                 if reciprocal is None:
+                    # The migration's middle state: the parent moved this node
+                    # from `children` to `upstream`, and this node has not yet
+                    # dropped its parent entry. A warning, so neither side is
+                    # blocked while the two repositories catch up.
+                    if (reader := self._upstream_reader(cfg.project.id)) is not None:
+                        self._read_as_upstream(cfg, parent_id, reader)
+                        continue
                     self._problem(
                         parent.path,
                         f"nonreciprocal connection: child '{cfg.project.id}' is not declared",
@@ -794,6 +870,27 @@ class FsProjectRegistry(ProjectRegistry):
                         parent.path,
                         f"registered key '{parent_id}' does not match target id '{parent.project.id}'",
                     )
+
+    def _validate_upstreams(self) -> None:
+        """An upstream is read-only, so it cannot also be something its declarer
+        writes to — its own child or parent, or any project it reaches through
+        them. Checked from the declarer, not from the current node: the conflict
+        is in the declarer's connections, wherever the command was run."""
+        for cfg in list(self._cache.values()):
+            if cfg.path in self._upstream_only:
+                continue
+            for upstream_id in cfg.upstream:
+                if upstream_id == cfg.project.id:
+                    self._problem(cfg.path, f"'{upstream_id}' is declared as its own "
+                                            f"upstream")
+                elif (upstream_id in self._by_id and self.read_only_reason(
+                        upstream_id, from_id=cfg.project.id) is None):
+                    self._problem(
+                        cfg.path,
+                        f"'{upstream_id}' is declared upstream (read-only) by "
+                        f"'{cfg.project.id}', but '{cfg.project.id}' is also "
+                        f"connected to it as a parent or child; declare one or the "
+                        f"other")
 
     def _points_elsewhere(self, source_config: Path, locator: ConnectedProject,
                           expected: Path) -> bool:

@@ -226,6 +226,25 @@ class ProjectRegistry(ABC):
         such relation has none."""
         return []
 
+    def read_only_reason(self, project_id: str,
+                         from_id: str | None = None) -> str | None:
+        """Why `from_id` (default: the current project) may not write to
+        `project_id`, or None when it may.
+
+        **The one place the write rule lives.** A project is writable from a
+        node only when the node reaches it by `parent` and `children`
+        connections alone, each followed as declared by the project it starts
+        from. Anything else the graph holds was reached across an upstream
+        connection and is read-only there — however many nodes declare it, and
+        from whichever side of the family it is named. A registry with no
+        upstream relation has nothing read-only."""
+        return None
+
+    def warnings(self) -> list[str]:
+        """Graph facts worth saying that are neither defects nor unreachable
+        projects — printed by `tcw validate`, never fatal."""
+        return []
+
     def overrides(self) -> list["ProjectOverride"]:
         """The locators the caller supplied for this graph, in place of declared ones.
 

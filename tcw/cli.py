@@ -437,6 +437,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print(f"{entry.declared_in}: connected project '{entry.id}' is declared "
               f"at {entry.locator}, which is not in this checkout; it was found "
               f"at {registry.get(entry.id).locator}", file=sys.stderr)
+    for warning in registry.warnings():
+        print(f"warning: {warning}", file=sys.stderr)
     from tcw.validate import validate
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]
