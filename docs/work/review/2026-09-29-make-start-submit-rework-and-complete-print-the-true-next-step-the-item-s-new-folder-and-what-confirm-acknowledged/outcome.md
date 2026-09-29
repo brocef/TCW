@@ -15,11 +15,11 @@ Covers GitHub #68, #67 and point 1 of #58. Everything shipped on
 | 5    | `adbd7f5f` | With `--confirm`, the Definition of Done prints ticked, under `Definition of Done — acknowledged with --confirm:`, only after the item has closed. A refusal on the way prints no checklist. Without `--confirm` nothing changes. |
 | 6    | `a183bc07` | Guide, skills, and eight capability descriptions. |
 | 6    | `85581005` | Changelog and release-note entries; the item's `capabilities.yaml`. |
-| review fix | `24f870dd` | `_present_artifacts` returns `None` for an empty listing. `FsWorkStore.artifacts` answers `[]` when the folder vanishes mid-read, and a present item always lists every artifact, so `[]` means unreadable. Before, `start` would have pointed at `spec` and warned that spec and plan were missing; now it falls back to `implement` and warns about nothing, as the spec's Design says. Test first, watched fail (`set() is not None`). |
+| review fix | `63ae976d` | `_present_artifacts` returns `None` for an empty listing. `FsWorkStore.artifacts` answers `[]` when the folder vanishes mid-read, and a present item always lists every artifact, so `[]` means unreadable. Before, `start` would have pointed at `spec` and warned that spec and plan were missing; now it falls back to `implement` and warns about nothing, as the spec's Design says. Test first, watched fail (`set() is not None`). |
 
 ## Test result
 
-Full suite, bare `pytest`, at `080c8e0b`, in a Claude Code cloud container:
+Full suite, bare `pytest`, at `a4fe3c60`, in a Claude Code cloud container:
 **4905 passed, 9 skipped, 4 failed.** The four failures are the container's, not
 this item's — the same four fail on untouched `origin/main` in the same container,
 and none touches code this item changed:
@@ -63,7 +63,7 @@ Other evidence gathered during implementation:
   against the unfilled text, where an unfilled `{stage}` makes it fail.
 - **The spec's fallback to `implement` was implemented for errors only.** An
   empty artifact listing, which the filesystem store returns when the folder
-  disappears mid-read, was read as "nothing written". Fixed in `24f870dd`.
+  disappears mid-read, was read as "nothing written". Fixed in `63ae976d`.
 
 ## Notes
 

@@ -14,7 +14,7 @@ GitHub #68, #67 and point 1 of #58.
 ## Evidence
 
 Checked in this session, against the branch's code, after the last code change
-(`24f870dd`).
+(`63ae976d`).
 
 | # | Criterion | Result |
 | - | --------- | ------ |
