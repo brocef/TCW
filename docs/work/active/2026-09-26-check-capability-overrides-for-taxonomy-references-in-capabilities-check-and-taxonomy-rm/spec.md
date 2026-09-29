@@ -69,8 +69,14 @@ override folder `ov` with `overrides: cap-aaa111`, `Subject: [zed]`,
 - `check`: in the existing loop over meta folders, for an override add
   `f"{p}: {problem}"` for each of `self._ref_problems(fields, taxonomy)`, and
   emit the "Subject and Feature not checked" note the same way the local loop
-  does. When `check(identifier)` selects one capability, its override (if any)
-  is checked as today's loop already selects `selected.path`.
+  does — for a whole-node check only. When `check(identifier)` selects one
+  capability, its composed fields (override included) are already checked by
+  the capability loop, so the override branch is skipped there; checking both
+  reported each problem twice. *(Amended at review: the first draft said the
+  override was reached through `selected.path`, but an inherited capability's
+  path is upstream's, and when no local folder of that name exists the attachment
+  loop crashed. That crash predates this change and is fixed with it: a
+  selected path with no local folder is skipped.)*
 - `_capability_referrers`: also walk `caps._override_fields()` through
   `_term_refs`, labelling a hit `capability override <path> (<field>)`.
 

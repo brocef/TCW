@@ -3335,7 +3335,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             meta_dirs = [selected.path]
         for p in meta_dirs:
             d = self.root / p
-            if not self._node_readable(d):
+            # `is_dir` because an inherited capability's path is upstream's, and
+            # a local folder of that name exists only when its override sits there.
+            if not d.is_dir() or not self._node_readable(d):
                 continue          # `selected` bypasses the _all_meta_dirs filter
             meta = load_yaml(d / "meta.yaml")
             listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
@@ -3349,9 +3351,11 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             target = meta.get("overrides")
             if target and (e := self._override_problem(str(target))):
                 problems.append(f"{p}: {e}")
-            if target:
+            if target and selected is None:
                 # The references it sets, checked as a local capability's are:
-                # they become the composed capability's own.
+                # they become the composed capability's own. A selected
+                # capability's composed fields, override included, were checked
+                # above; checking them here too reported each problem twice.
                 fields = self._set_fields(meta)
                 problems += [f"{p}: {e}" for e in self._ref_problems(fields, taxonomy)]
                 if unchecked and (fields.get("Subject") or fields.get("Feature")):

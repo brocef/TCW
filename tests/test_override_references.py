@@ -112,3 +112,23 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
     err = capsys.readouterr().err
     assert "capabilities that might name it cannot be read" in err and "Traceback" not in err, err
     assert FsTaxonomyStore.open(root).get("zed") is not None
+
+
+# ── review fold-in: check(identifier) on an inherited capability ────────────
+
+def test_checking_an_overridden_capability_by_path_reports_each_problem_once(tmp_path):
+    """`set` puts an override at the folder mirroring the upstream path, so the
+    selected capability's composed fields and its override folder are the same
+    references."""
+    root = node(tmp_path)
+    write_cap(root, "auth/login", overrides="cap-aaa111", Subject=["ghost"])
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    problems = FsCapabilitiesStore.open(root).check(identifier="auth/login")
+    assert problems.count("auth/login: Subject → dangling ref 'ghost'") == 1, problems
+
+
+def test_checking_an_inherited_capability_overridden_elsewhere_does_not_crash(tmp_path):
+    root = node(tmp_path)
+    override(root, Subject=["ghost"])
+    problems = FsCapabilitiesStore.open(root).check(identifier="auth/login")
+    assert "auth/login: Subject → dangling ref 'ghost'" in problems, problems

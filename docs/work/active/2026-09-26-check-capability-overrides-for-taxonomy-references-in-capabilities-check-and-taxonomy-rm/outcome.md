@@ -31,6 +31,16 @@
   the override walk outside the refusal's `try`; both corrected before commit
   (`_set_fields` is the one definition).
 
+## Review fold-in
+
+- `check(identifier)` on an overridden capability reported each override
+  reference problem twice (composed fields, then the override folder). The
+  override branch now runs only for a whole-node check.
+- `check(identifier)` on an inherited capability with no local folder at its
+  path crashed with `FileNotFoundError` (predates this change); such a path is
+  now skipped.
+- Two tests added, each mutation-checked (reverting either fix turns its test red).
+
 ## Autonomous decisions
 
 - No advisor consult: no open question; the scope choice (all references, not
