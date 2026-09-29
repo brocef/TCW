@@ -73,7 +73,30 @@ def validate_part(value: str | None) -> str:
 
 
 def ever_bound(store, slug: str) -> bool:
-    """Whether `slug` holds a binding, or holds the record of one it used to.
+    """Whether `slug` holds a binding, the record of one it used to, or a
+    `tracker.yaml` that cannot be read — see `binding_record`."""
+    return binding_record(store, slug) != ""
+
+
+def drop_refusal(store, slug: str) -> str:
+    """Why strict mode refuses to drop `slug`, or `""`. One wording for the CLI
+    and the web app."""
+    record = binding_record(store, slug)
+    if record == "unreadable":
+        return (f"{slug}'s {BINDING_SIDECAR} cannot be read, so whether it records "
+                f"a ticket is unknown, and dropping would erase it. Fix the file, "
+                f"or discard the item instead: `tcw work complete {slug} "
+                f"--resolution wontfix --confirm`.")
+    if record:
+        return (f"{slug} is, or was, bound to a ticket, and dropping would erase "
+                f"that record. Discard it instead: `tcw work complete {slug} "
+                f"--resolution wontfix --confirm`.")
+    return ""
+
+
+def binding_record(store, slug: str) -> str:
+    """`"bound"` when `slug` holds a binding or the record of one it used to,
+    `"unreadable"` when its `tracker.yaml` cannot be read, else `""`.
 
     Not "whether a sidecar file exists". A `created` or `owed` record is a
     sidecar with no binding in it and none in its history: the item has never
@@ -83,24 +106,25 @@ def ever_bound(store, slug: str) -> bool:
     gate said the same, with `unlink` refusing the item too, so hand-editing
     `tracker.yaml` was the only way out.
 
-    Unreadable counts as bound. When the file cannot be read, the safe answer is
-    the one that refuses to destroy it.
+    Unreadable is not "never bound": when the file cannot be read, the safe
+    answer is the one that refuses to destroy it. It is told apart so a refusal
+    does not claim a binding nobody could read.
     """
     try:
         found = store.read_sidecar(slug, BINDING_SIDECAR)
     except (OSError, UnicodeDecodeError):
-        return True
+        return "unreadable"
     if found is None:
-        return False
+        return ""
     try:
         data = yaml.safe_load(found.content)
         # Any `unlinked` content at all, not just the list `unlink` writes: a
         # hand-written one in another shape still says a binding was removed.
         if isinstance(data, dict) and data.get("unlinked"):
-            return True
-        return not isinstance(classify_binding(data), Unbound)
+            return "bound"
+        return "" if isinstance(classify_binding(data), Unbound) else "bound"
     except Exception:                   # noqa: BLE001 — see the docstring
-        return True
+        return "unreadable"
 
 
 def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | None]:

@@ -668,6 +668,18 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
     _record_owed(st, slug, reason, verb, str(date.today()))
 
 
+def _staged_paths(top) -> list[str]:
+    """Staged paths as git names them from `top`, unescaped.
+
+    `-z` because the default output quotes a path holding anything but ASCII
+    (`core.quotePath`), and run from the top because `diff.relative` makes the
+    paths relative to the folder git runs in — either way a comparison with a
+    real path missed."""
+    out = subprocess.run(["git", "-C", str(top), "diff", "--cached", "--name-only", "-z"],
+                         stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout
+    return [path for path in out.split("\0") if path]
+
+
 def _record_owed(st, slug: str, reason: str, verb: str, since: str) -> None:
     """Note that this item was meant to get a ticket and did not."""
     from tcw.tracker.intake import record_owed
@@ -3301,9 +3313,15 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     # Bound through `link`, not beside it: one implementation of what a binding
     # means. `deliver_start` because a ticket made for work already under way must be
     # claimed and brought to where the item is, which is `deliver`'s job.
-    return _tracker_link(argparse.Namespace(
+    linked = _tracker_link(argparse.Namespace(
         slug=slug, ticket=created.key, part=part, deliver_start=True),
         verb="tracker create")
+    if linked != 0 and reasons is not None:
+        # `_tracker_link` prints its own refusal and collects nothing, so the
+        # filing hook reported the placeholder "creating it did not succeed"
+        # for a ticket that had been made.
+        reasons.append("binding it failed; the reason is printed above")
+    return linked
 
 
 def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> int:
@@ -4111,10 +4129,8 @@ def _complete(args: argparse.Namespace) -> int:
             # Git refuses the merge while *any* file in this repository's index is
             # staged — another item's record as much as this one's — so every
             # staged path is named, from the repository actually being merged.
-            staged = subprocess.run(
-                ["git", "-C", str(st.node_root), "diff", "--cached", "--name-only"],
-                stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout.split("\n")
-            staged = [path for path in staged if path]
+            top = git_root(st.node_root)
+            staged = _staged_paths(top or st.node_root)
             if staged:
                 print("tcw work complete: git may refuse the merge while files are "
                       "staged but not committed; if the message above names none of "
@@ -4123,7 +4139,7 @@ def _complete(args: argparse.Namespace) -> int:
                       file=sys.stderr)
                 for path in staged:
                     print(f"  {path}", file=sys.stderr)
-            own, top = st.path(bare), git_root(st.node_root)
+            own = st.path(bare)
             if own is not None and top is not None and isinstance(item.tracker, dict) and (
                     item.tracker.get("sync") or item.tracker.get("comment")) and any(
                     (top / path).resolve() == (own / "tracker.yaml").resolve()
@@ -4265,16 +4281,13 @@ def _drop(args: argparse.Namespace) -> int:
               f"record. Re-run with --confirm.", file=sys.stderr)
         print(f"Would delete {args.slug} ({loc})", file=sys.stderr)
         return 1
-    from tcw.tracker.intake import created_but_unbound_refusal, ever_bound
+    from tcw.tracker.intake import created_but_unbound_refusal, drop_refusal
     if refusal := created_but_unbound_refusal(st, bare):
         print(f"tcw work drop: {bare} was not dropped. {refusal}", file=sys.stderr)
         return 1
     if st.tracker_strict():
-        if ever_bound(st, bare):
-            return _strict_says_no("drop", f"{bare} was not dropped",
-                                   f"It is, or was, bound to a ticket, and dropping would "
-                                   f"erase that record. Discard it instead: `tcw work "
-                                   f"complete {bare} --resolution wontfix --confirm`.")
+        if refusal := drop_refusal(st, bare):
+            return _strict_says_no("drop", f"{bare} was not dropped", refusal)
     try:
         st.drop(bare)
     except _ERRORS as e:

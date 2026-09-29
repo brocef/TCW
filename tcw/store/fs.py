@@ -5638,12 +5638,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 rel = (self.root / status).resolve().relative_to(self.store_git_root.resolve())
             except ValueError:
                 continue
-            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+            # `-z`: without it a path holding anything but ASCII is printed
+            # quoted, and never matches.
+            listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r", "-z",
                            "--name-only", rev, "--", _literal(rel)],
                           capture_output=True, text=True, check=False)
             if listed.returncode != 0:
                 continue
-            hits += [str(Path(line).parent) for line in listed.stdout.splitlines()
+            hits += [str(Path(line).parent) for line in listed.stdout.split("\0")
                      if line.endswith(f"/{slug}/state.yaml")
                      and Path(line).parent.parent != Path(rel)]
         return Path(hits[0]) if len(hits) == 1 else None
@@ -5717,13 +5719,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
         at `committed` — children made by earlier versions, which a removal of
         that folder takes with it. Read from git, not from disk, so a removal
         rerun after the folder is already gone still finds them."""
-        listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r",
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r", "-z",
                        "--name-only", "HEAD", "--", _literal(committed)],
                       capture_output=True, text=True, check=False)
         if listed.returncode != 0:
             return []
         found = []
-        for line in sorted(listed.stdout.splitlines()):
+        for line in sorted(filter(None, listed.stdout.split("\0"))):
             folder = Path(line).parent
             if Path(line).name != "state.yaml" or folder == committed:
                 continue
