@@ -10,7 +10,9 @@
 - `tcw work start` points at the first stage the item still needs, chosen by
   `start_next_stage` from its artifacts: `spec`, `plan`, `implement`, or — for an
   unheld active item that already has `outcome.md` and no `rework.md` —
-  `verify`. The artifacts are read once, shared with the unplanned-item warning
+  `verify`; `implement` when the artifacts cannot be read, including a store
+  answering an empty listing because the folder vanished mid-read. The
+  artifacts are read once, shared with the unplanned-item warning
   (`_present_artifacts`).
 - `tcw work submit` and `tcw work rework` print the item's location from
   `locate`, falling back to the status name, and point at the `verify` and
