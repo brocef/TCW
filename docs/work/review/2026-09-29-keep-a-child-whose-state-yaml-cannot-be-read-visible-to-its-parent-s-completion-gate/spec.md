@@ -99,7 +99,7 @@ still open. A damaged file silently switches both of them off.
   - `_require_readable_state` keeps its current message.
 - **Parent gate.** In `require_nothing_open_beneath`, before the open-
   descendant check: if any open items cannot be read, raise
-  `Cannot {verb} {slug}: the state of these open items cannot be read, so whether they sit beneath it is unknown: a (reason), … Fix or replace each state.yaml (`tcw validate` lists them) and retry.`
+  `Cannot {verb} {slug}: the state of these open items cannot be read, so whether they are beneath it is unknown: a (reason), … Fix or replace each state.yaml (`tcw validate` lists them) and retry.`
 - **Epic gate.** In `complete`, for an epic and without `force`, before
   `from_backlog_epic` is computed: collect `unreadable_open_items()` from
   this store and from each descendant node's store (the same
