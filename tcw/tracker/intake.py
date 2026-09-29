@@ -72,8 +72,25 @@ def validate_part(value: str | None) -> str:
     return value
 
 
-def ever_bound(store, slug: str) -> bool:
-    """Whether `slug` holds a binding, or holds the record of one it used to.
+def drop_refusal(store, slug: str) -> str:
+    """Why strict mode refuses to drop `slug`, or `""`. One wording for the CLI
+    and the web app."""
+    record = binding_record(store, slug)
+    if record == "unreadable":
+        return (f"{slug}'s {BINDING_SIDECAR} cannot be read, so whether it records "
+                f"a ticket is unknown, and dropping would erase it. Fix the file, "
+                f"or discard the item instead: `tcw work complete {slug} "
+                f"--resolution wontfix --confirm`.")
+    if record:
+        return (f"{slug} is, or was, bound to a ticket, and dropping would erase "
+                f"that record. Discard it instead: `tcw work complete {slug} "
+                f"--resolution wontfix --confirm`.")
+    return ""
+
+
+def binding_record(store, slug: str) -> str:
+    """`"bound"` when `slug` holds a binding or the record of one it used to,
+    `"unreadable"` when its `tracker.yaml` cannot be read, else `""`.
 
     Not "whether a sidecar file exists". A `created` or `owed` record is a
     sidecar with no binding in it and none in its history: the item has never
@@ -83,24 +100,25 @@ def ever_bound(store, slug: str) -> bool:
     gate said the same, with `unlink` refusing the item too, so hand-editing
     `tracker.yaml` was the only way out.
 
-    Unreadable counts as bound. When the file cannot be read, the safe answer is
-    the one that refuses to destroy it.
+    Unreadable is not "never bound": when the file cannot be read, the safe
+    answer is the one that refuses to destroy it. It is told apart so a refusal
+    does not claim a binding nobody could read.
     """
     try:
         found = store.read_sidecar(slug, BINDING_SIDECAR)
     except (OSError, UnicodeDecodeError):
-        return True
+        return "unreadable"
     if found is None:
-        return False
+        return ""
     try:
         data = yaml.safe_load(found.content)
         # Any `unlinked` content at all, not just the list `unlink` writes: a
         # hand-written one in another shape still says a binding was removed.
         if isinstance(data, dict) and data.get("unlinked"):
-            return True
-        return not isinstance(classify_binding(data), Unbound)
+            return "bound"
+        return "" if isinstance(classify_binding(data), Unbound) else "bound"
     except Exception:                   # noqa: BLE001 — see the docstring
-        return True
+        return "unreadable"
 
 
 def binding_of(store, slug: str) -> tuple[Unbound | Malformed | Bound, str | None]:
@@ -349,7 +367,7 @@ def _with_key(content: str, key: str, record: dict | None) -> str:
 def created_but_unbound(store, slug: str) -> dict | None:
     """The `created` record on `slug`, or `None`. Never raises.
 
-    Separate from `ever_bound`, which answers "was this ever bound" — a `created`
+    Separate from `binding_record`, which answers "was this ever bound" — a `created`
     record is not a binding and never was, so that answer is correctly no. But
     it is the only local pointer to a ticket that really exists, and deleting
     the item deletes the sidecar with it, leaving an open ticket in a shared
@@ -367,7 +385,7 @@ def created_but_unbound(store, slug: str) -> dict | None:
 def created_but_unbound_refusal(store, slug: str) -> str | None:
     """Why `slug` must not be destroyed, or `None`.
 
-    Deliberately **not** gated on strict mode, unlike `ever_bound`'s refusal.
+    Deliberately **not** gated on strict mode, unlike `drop_refusal`.
     Strict mode answers "may work proceed without a ticket"; this answers "is a
     real ticket about to lose the only thing that names it", and a project does
     not have to be strict to get into that state — `create.on-new` does not

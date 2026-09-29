@@ -1551,13 +1551,13 @@ def test_unlink_refuses_when_the_sidecar_changed_under_it(node, monkeypatch):
 
 def test_an_unlinked_item_is_still_remembered_as_having_been_bound(
         node, monkeypatch):
-    """The other side of the same question. `ever_bound` must keep saying yes
+    """The other side of the same question. `binding_record` must keep saying bound
     for an item whose binding was removed — that history is exactly what strict
     mode's drop gate refuses to destroy — while saying no for one that only
     carries a pending record."""
     root, slug = _created_node(node, monkeypatch, status="backlog")
     from tcw.store.fs import FsWorkStore
-    from tcw.tracker.intake import BINDING_SIDECAR, binding_document, ever_bound
+    from tcw.tracker.intake import BINDING_SIDECAR, binding_document, binding_record
     store = FsWorkStore.open(root)
     store.write_sidecar(
         slug, BINDING_SIDECAR,
@@ -1569,7 +1569,7 @@ def test_an_unlinked_item_is_still_remembered_as_having_been_bound(
     assert _run(["work", "tracker", "unlink", slug,
                  "--reason", "bound to the wrong ticket"])[0] == 0
 
-    assert ever_bound(FsWorkStore.open(root), slug) is True
+    assert binding_record(FsWorkStore.open(root), slug) == "bound"
 
 
 def test_unlink_clears_a_stale_created_record(node, monkeypatch):
@@ -1641,8 +1641,8 @@ def test_an_item_holding_a_created_key_is_not_dropped_out_from_under_it(
 
     `created` names a ticket that exists. Dropping the item deletes its sidecar,
     which is the only place that key is written down — so the ticket would be
-    left open in a shared tracker with nothing anywhere naming it. `ever_bound`
-    is still correctly False here: it was never *bound*. The gate asks a second
+    left open in a shared tracker with nothing anywhere naming it. `binding_record`
+    still correctly answers "" here: it was never *bound*. The gate asks a second
     question.
 
     **Both modes**, because this is not a strict-mode rule. Strict answers "may

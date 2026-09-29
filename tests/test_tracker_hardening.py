@@ -98,7 +98,15 @@ BAD = [
     ("recent_comments", {"comments": {"x": 1}}),
     ("recent_comments", {"comments": ["hi"]}),
     ("description", {"fields": "text"}),
-    ("create_issue", [{"id": "1"}]),
+    # Values read from an issue, not only the levels holding them.
+    ("issue", {"fields": {"status": {"name": 5}}}),
+    ("issue", {"key": 1, "fields": {}}),
+    ("issue", {"fields": {"summary": ["s"]}}),
+    ("issue", {"fields": {"assignee": {"displayName": {"x": 1}}}}),
+    ("search", {"issues": [{"fields": {"status": {"statusCategory": {"key": 2}}}}]}),
+    # `create_issue` is deliberately absent: its answer is returned as it came,
+    # so `create.py` can warn that the ticket may exist
+    # (`tests/test_tracker_message_tidy.py`).
 ]
 
 

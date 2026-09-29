@@ -185,16 +185,19 @@ class JiraClient:
                 f"before it answered ({error.__class__.__name__})") from error
 
     def _json(self, method: str, path: str, body: dict | None = None) -> dict:
+        return _mapping(self._payload(method, path, body), path)
+
+    def _payload(self, method: str, path: str, body: dict | None = None):
+        """The decoded answer, whatever its shape; `{}` for an empty body."""
         _status, _headers, raw = self._request(
             method, path, body, timeout=self.config.timeout_seconds)
         if not raw:
             return {}
         try:
-            payload = json.loads(raw)
+            return json.loads(raw)
         except ValueError as error:
             raise TrackerError(
                 f"the tracker returned a response that is not JSON for {path}") from error
-        return _mapping(payload, path)
 
     # -- operations --
 
@@ -261,8 +264,12 @@ class JiraClient:
 
 
     def create_issue(self, *, project: str, summary: str, description: dict,
-                     issue_type: str, components: tuple = ()) -> dict:
-        """Create an issue and return `{"id", "key"}`.
+                     issue_type: str, components: tuple = ()):
+        """Create an issue and return the answer, normally `{"id", "key"}`.
+
+        As it came, not shape-checked: the request may have made the ticket
+        whatever the answer looks like, and the caller's warning to look for it
+        is worth more than "unexpected shape".
 
         The issue lands in whatever status the project's workflow starts in —
         Jira decides, not the caller — which is why every caller must move it
@@ -278,7 +285,7 @@ class JiraClient:
         }
         if components:
             fields["components"] = [{"name": name} for name in components]
-        return self._json("POST", "/rest/api/3/issue", {"fields": fields})
+        return self._payload("POST", "/rest/api/3/issue", {"fields": fields})
 
     def apply_transition(self, issue_id: str, transition_id: str) -> None:
         """Apply one transition. Success says only that Jira accepted the request.
@@ -377,14 +384,26 @@ def _entries(value, path: str) -> list:
     return value
 
 
+def _text(value, path: str) -> None:
+    """Refuse a value that is present and not a string: `{"name": 5}` reached
+    `.strip()` and crashed `tracker show`."""
+    if value is not None and not isinstance(value, str):
+        raise _shape_error(path)
+
+
 def _check_issue(issue, path: str) -> dict:
     """An issue whose `fields`, `status`, `statusCategory` and `assignee` are each a
-    mapping or null — every level the claim and create paths read with `.get`."""
+    mapping or null — every level the claim and create paths read with `.get` —
+    and whose values read from them are each a string or null."""
     issue = _mapping(issue, path)
     fields = _mapping(issue.get("fields"), path)
     status = _mapping(fields.get("status"), path)
-    _mapping(status.get("statusCategory"), path)
-    _mapping(fields.get("assignee"), path)
+    category = _mapping(status.get("statusCategory"), path)
+    assignee = _mapping(fields.get("assignee"), path)
+    for value in (issue.get("key"), fields.get("summary"), status.get("name"),
+                  category.get("key"), assignee.get("accountId"),
+                  assignee.get("displayName")):
+        _text(value, path)
     return issue
 
 

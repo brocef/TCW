@@ -127,8 +127,9 @@ def create_and_place(client, config, *, slug: str, title: str, body: str,
             issue_type=settings.type_for(is_epic=is_epic, tags=tags),
             components=settings.components,
         )
-        key, issue_id = str(issue.get("key", "")), str(issue.get("id", ""))
-        if not key or not issue_id:
+        answer = issue if isinstance(issue, dict) else {}
+        key, issue_id = answer.get("key"), answer.get("id")
+        if not (isinstance(key, str) and key and isinstance(issue_id, str) and issue_id):
             # Before `on_created`, so nothing records half a key. Everything after
             # this point addresses the ticket by one or the other.
             raise TrackerError(
