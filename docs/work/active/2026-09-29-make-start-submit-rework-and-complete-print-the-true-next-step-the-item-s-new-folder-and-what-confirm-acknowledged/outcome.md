@@ -19,7 +19,19 @@ Covers GitHub #68, #67 and point 1 of #58. Everything shipped on
 
 ## Test result
 
-Full suite, bare `pytest`, at `080c8e0b`: running; result recorded here when it finishes.
+Full suite, bare `pytest`, at `080c8e0b`, in a Claude Code cloud container:
+**4905 passed, 9 skipped, 4 failed.** The four failures are the container's, not
+this item's — the same four fail on untouched `origin/main` in the same container,
+and none touches code this item changed:
+
+- `tests/test_check_versions.py::test_a_hanging_cli_is_abandoned_silently`
+  (both cases) and `::test_a_child_left_holding_the_output_does_not_delay_the_warning`
+  — the abandoned `tcw` process is still alive when the test checks.
+- `tests/test_shipped_prompts.py::test_the_prompts_are_in_the_built_wheel` —
+  `pip wheel --no-build-isolation` fails with the container's system build tools.
+
+`tests/test_stage_verb.py`, which holds this item's guard tests and the new
+unreadable-listing test, passes in full (61).
 
 (At `85581005`, before the review fix: 4914 passed, 3 skipped.)
 
