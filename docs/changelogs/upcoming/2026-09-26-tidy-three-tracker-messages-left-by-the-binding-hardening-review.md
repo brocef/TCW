@@ -6,7 +6,8 @@
   no longer hides the "tracker.yaml holds a record" hint (now
   `_merge_back_hint`). `FsWorkStore`'s `git ls-tree` readers
   (`_nested_tree_path`, `_nested_in_commit`) and `git ls-files` reader
-  (`_tracked_source`) take `-z` for the same reason. All four decode with
+  (`_tracked_source`) take `-z` for the same reason. They and `remove`'s
+  `ls-files -z` decode with
   `surrogateescape` (`_GIT_PATHS`), so a path that is not UTF-8 cannot crash
   them. `intake.ever_bound` is removed; `binding_record` replaces it.
 - `JiraClient.create_issue` returns the decoded answer as it came

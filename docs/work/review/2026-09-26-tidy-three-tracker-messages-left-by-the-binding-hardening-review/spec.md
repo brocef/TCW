@@ -83,8 +83,8 @@ through `_check_issue` (`issue`, `search`), so one check there covers
 - (4) `_check_issue`: a helper `_text(value, path)` — `None` or a `str`, else
   `_shape_error` — applied to the six values above.
 - (5) `tcw/tracker/intake.py`: `binding_record(store, slug) -> str` answering
-  `""` (never bound), `"bound"`, or `"unreadable"`; `ever_bound` becomes
-  `binding_record(...) != ""`. Both drop refusals choose their wording from it:
+  `""` (never bound), `"bound"`, or `"unreadable"`; `ever_bound` is
+  removed (amended at review: no caller was left). Both drop refusals choose their wording from it:
   "{slug}'s tracker.yaml cannot be read, so whether it records a ticket is
   unknown, and dropping would erase it. Fix the file, or discard it instead: …".
 

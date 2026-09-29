@@ -2394,7 +2394,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         self._require_repository()
         listed = _git(["git", "-C", str(self.store_git_root),
                        "ls-files", "-z", "--", _literal(d)],
-                      capture_output=True, text=True, check=True).stdout
+                      capture_output=True, check=True, **_GIT_PATHS).stdout
         here, top = d.resolve(), self.root.resolve()
         # The folder resolved, the name kept: resolving the last component would
         # let a symlink stand in for its target, or the target for the link.
