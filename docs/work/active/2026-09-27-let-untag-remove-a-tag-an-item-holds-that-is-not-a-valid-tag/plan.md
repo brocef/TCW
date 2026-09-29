@@ -10,7 +10,9 @@ Worked in a `--worktree` branch from `bug-run`.
    after task 2.
 2. **Code** — `tcw/work/cli.py`: drop `type=_tags` from `--untag`; in `_edit`,
    resolve each value against `current.tags` first, then `_tag_list`.
-   Proof: task 1 green; `grep -rln untag tests/` files green.
+   And `tcw/store/fs.py`: `_validate_tags(tags, held=…)`, called from
+   `update_work` with the item's current tags (amended at implement; see the
+   spec's Notes). Proof: task 1 green; `grep -rln untag tests/` files green.
 3. **Full suite.**
 
 ## Documentation Sync
