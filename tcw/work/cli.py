@@ -1355,11 +1355,6 @@ def _next_hint(key: str, ref: str) -> None:
           file=sys.stderr)
 
 
-def _complete_hint(slug: str) -> None:
-    print(f"→ next: when done & verified, run "
-          f"`tcw work complete {slug} --resolution done --confirm`", file=sys.stderr)
-
-
 def _local_owner(st, explicit: str | None = None) -> str:
     """This machine's claimant identity: `--owner`, then `TCW_WORK_OWNER`, then the
     Git email, then the Git name. `""` when none is set."""
@@ -1459,19 +1454,27 @@ def _sentence(text: str) -> str:
     return text + ("" if text.endswith((".", "!", "?")) else ".")
 
 
-def _unwritten_plan(st, bare: str, display: str) -> str:
-    """The sentence naming whichever of spec.md and plan.md is not written, or
-    "" when both are. A warning, never a refusal: a project that skips planning
-    small items is entitled to, and one that is not binds a `pre` check.
-
-    `bare` addresses the item; `display` is what the user typed and is the only
-    name printed, since a bare slug in the advice would resolve in the wrong node
-    for a qualified reference. A document that cannot be read yields no warning
-    rather than an error — by the time `start` asks, the item has moved, and a
-    warning must not turn that success into a failure."""
+def _present_artifacts(st, bare: str) -> set[str] | None:
+    """The names of the item's lifecycle artifacts that hold content, or `None`
+    when they cannot be read. `None` rather than an error: by the time `start`
+    asks, the item has moved, and advice must not turn that success into a
+    failure."""
     try:
-        present = {a.name for a in st.artifacts(bare) if a.present}
+        return {a.name for a in st.artifacts(bare) if a.present}
     except (OSError, ValueError):
+        return None
+
+
+def _unwritten_plan(present: set[str] | None, display: str) -> str:
+    """The sentence naming whichever of spec.md and plan.md is not written, or
+    "" when both are, or when the artifacts could not be read. A warning, never a
+    refusal: a project that skips planning small items is entitled to, and one
+    that is not binds a `pre` check.
+
+    `display` is what the user typed and is the only name printed, since a bare
+    slug in the advice would resolve in the wrong node for a qualified
+    reference."""
+    if present is None:
         return ""
     missing = [n for n in ("spec", "plan") if n not in present]
     if not missing:
@@ -1573,12 +1576,16 @@ def _start(args: argparse.Namespace) -> int:
     # Before any worktree setup, so a failure there cannot skip the claim.
     delivered = _deliver_after(st, bare, "start", "start", previous,
                                say_claim=not claimed)
-    if missing := _unwritten_plan(st, bare, args.slug):
+    # Read once, for the warning and the next step alike, on either path below.
+    present = _present_artifacts(st, bare)
+    if missing := _unwritten_plan(present, args.slug):
         print(f"tcw work start: warning: {missing}", file=sys.stderr)
+    after_start = "start:" + (start_next_stage(present) if present is not None
+                              else "implement")
     if not args.worktree:
         loc = st.locate(bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
-        _complete_hint(args.slug)
+        _next_hint(after_start, args.slug)
         return _post_result(post_err, "start", args.slug) or min(delivered, 1)
     node = st.node_root
     ignore_changed = ensure_worktree_ignored(node)
@@ -1634,7 +1641,7 @@ def _start(args: argparse.Namespace) -> int:
     loc = st.locate(bare)
     print(f"started {args.slug} → {loc} (worktree {wt})" if loc
           else f"started {args.slug} → worktree {wt}")
-    _complete_hint(args.slug)
+    _next_hint(after_start, args.slug)
     return _post_result(post_err, "start", args.slug) or min(delivered, 1)
 
 
@@ -2252,7 +2259,8 @@ def _stage(args: argparse.Namespace) -> int:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
         return 1
-    if step.id == "implement" and (missing := _unwritten_plan(st, bare, args.slug)):
+    if step.id == "implement" and (
+            missing := _unwritten_plan(_present_artifacts(st, bare), args.slug)):
         print(f"tcw work stage gate implement: warning: {missing}", file=sys.stderr)
 
     return _stage_gate(args, step, st, item, bare, item.status, args.slug)

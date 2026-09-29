@@ -10,6 +10,9 @@ text is present."""
 import subprocess
 from pathlib import Path
 
+import pytest
+import yaml
+
 from tcw.store.fs import FsWorkStore, init
 
 
@@ -71,3 +74,69 @@ def test_an_epic_points_at_the_request_stage_too(tmp_path):
     assert out.returncode == 0, out.stderr
     slug = out.stdout.strip()
     _assert_next(out, f"tcw work stage gate request {slug}")
+
+
+# ── criterion 4: after `start` ───────────────────────────────────────────────
+
+def _item(root: Path, *artifacts: str) -> str:
+    st = FsWorkStore.open(root)
+    slug = st.create("Thing", created="2026-01-01").slug
+    for name in artifacts:
+        st.write_artifact(slug, name, f"# {name}\n")
+    return slug
+
+
+def _committed(root: Path) -> None:
+    """`--worktree` branches from HEAD, so the item must be in a commit."""
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "seed"], check=True)
+
+
+@pytest.mark.parametrize("worktree", [False, True])
+@pytest.mark.parametrize("artifacts, stage", [
+    ((), "spec"),
+    (("spec",), "plan"),
+    (("spec", "plan"), "implement"),
+])
+def test_start_points_at_the_first_unwritten_stage(tmp_path, artifacts, stage,
+                                                   worktree):
+    root = _node(tmp_path)
+    slug = _item(root, *artifacts)
+    if worktree:
+        _committed(root)
+    out = _tcw(root, "start", slug, *(["--worktree"] if worktree else []))
+    assert out.returncode == 0, out.stderr
+    _assert_next(out, f"tcw work stage gate {stage} {slug}")
+
+
+@pytest.mark.parametrize("artifacts, stage", [
+    (("spec", "plan", "outcome", "rework"), "implement"),
+    (("spec", "plan", "outcome"), "verify"),
+])
+def test_starting_an_unheld_active_item_points_past_its_outcome(tmp_path,
+                                                                artifacts, stage):
+    """`start` takes an `active` item nobody holds — what `tracker release`
+    leaves — and such an item can already hold an outcome."""
+    root = _node(tmp_path)
+    slug = _item(root, *artifacts)
+    FsWorkStore.open(root).start(slug)            # active, with no owner
+    assert FsWorkStore.open(root).get(slug).owner == ""
+    out = _tcw(root, "start", slug)
+    assert out.returncode == 0, out.stderr
+    _assert_next(out, f"tcw work stage gate {stage} {slug}")
+
+
+def test_start_advises_a_qualified_reference_as_typed(tmp_path):
+    root = _node(tmp_path)
+    child = root / "kid"
+    child.mkdir()
+    init(["work"], child, "kid")
+    for path, links in ((root, {"children": {"kid": "kid"}}),
+                        (child, {"parent": {"repo": ".."}})):
+        cfg = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
+        cfg["connected-projects"] = links
+        (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    slug = _item(child, "spec", "plan")
+    out = _tcw(root, "start", f"kid/{slug}")
+    assert out.returncode == 0, out.stderr
+    _assert_next(out, f"tcw work stage gate implement kid/{slug}")

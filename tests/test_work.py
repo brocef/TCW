@@ -1279,7 +1279,8 @@ def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     assert main(["work", "start", slug]) == 0
     start_out = capsys.readouterr()
     assert start_out.out.strip() == f"started {slug} → docs/work/active/{slug}"
-    assert "tcw work complete" in start_out.err and slug in start_out.err
+    assert f"tcw work stage gate spec {slug}" in start_out.err       # unplanned item
+    assert "tcw work complete" not in start_out.err
 
 
 def test_cli_new_epic_points_at_request_not_start(tmp_path, monkeypatch, capsys):
