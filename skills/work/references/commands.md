@@ -17,7 +17,7 @@
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
 | finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain.<status>: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
 | record a resolved slug   | `tcw work tombstone add <slug> [--resolution <r>] [--resolved <ISO>]` — for work resolved *before* the store kept records; refuses only a **live** slug or one already recorded, so it works on the machine still holding the resolved folder and is safe to re-run; commits and publishes |
-| record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated                                |
+| record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated; `<own-id>/<slug>` and `<status>/<slug>` are recorded as the local item                                |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
 | retitle an item          | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
 | tags                     | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` — every tag value may be `a,b,c`                                                                    |
