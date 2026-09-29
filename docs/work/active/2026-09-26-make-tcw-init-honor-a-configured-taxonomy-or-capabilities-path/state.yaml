@@ -1,0 +1,12 @@
+slug: 2026-09-26-make-tcw-init-honor-a-configured-taxonomy-or-capabilities-path
+title: Make tcw init honor a configured taxonomy or capabilities path
+created: '2026-09-26'
+resolution: null
+tags:
+- bug
+- store
+- cli
+owner: brocef@users.noreply.github.com
+started: '2026-09-29T15:02:44.891518Z'
+worktree: .worktrees/2026-09-26-make-tcw-init-honor-a-configured-taxonomy-or-capabilities-path
+branch: work/2026-09-26-make-tcw-init-honor-a-configured-taxonomy-or-capabilities-path

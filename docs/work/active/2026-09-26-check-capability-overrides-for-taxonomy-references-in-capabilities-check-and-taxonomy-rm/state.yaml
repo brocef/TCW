@@ -1,0 +1,13 @@
+slug: 2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilities-check-and-taxonomy-rm
+title: Check capability overrides for taxonomy references in capabilities check and
+  taxonomy rm
+created: '2026-09-26'
+resolution: null
+tags:
+- capabilities
+- taxonomy
+- bug
+owner: brocef@users.noreply.github.com
+started: '2026-09-29T14:39:22.489388Z'
+worktree: .worktrees/2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilities-check-and-taxonomy-rm
+branch: work/2026-09-26-check-capability-overrides-for-taxonomy-references-in-capabilities-check-and-taxonomy-rm
