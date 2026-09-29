@@ -25,6 +25,11 @@ accepted wherever `--tag` and `--untag` are, and any value of either spelling ma
 be a list — including the positionals of `tags add` and `tags rm`. The spellings
 compose, blank segments are ignored, and a value naming no tag at all is refused.
 
+One exception: `--untag` first matches its value against the item's tags as
+written, so a hand-written tag that is not valid (`'cli,docs'`, `'!!!'`, which
+`tcw validate` reports) is removed with `--untag 'cli,docs'`. An edit never
+refuses a tag the item already holds — only one it adds.
+
 ```sh
 tcw work tags add cli,docs                   # registers two tags, not "cli-docs"
 tcw work new "Login crash" --tags bug,cli
