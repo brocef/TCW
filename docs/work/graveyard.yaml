@@ -1101,6 +1101,9 @@
   location: b8031d1a80252542b2013d1b8e143cbdc3142a9d
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing:
+  resolution: done
+  resolved: '2026-09-29'
 2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-parent-s-completion-gate:
   location: 60b386ac8f6080ad151e7675fbae218e5b7d5353
   resolution: done
