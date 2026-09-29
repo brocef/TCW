@@ -2,7 +2,7 @@ slug: 2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-par
 title: Keep a child whose state.yaml cannot be read visible to its parent's completion
   gate
 created: '2026-09-29'
-resolution: null
+resolution: done
 tags:
 - bug
 - work
