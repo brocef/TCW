@@ -16,3 +16,7 @@
   and `GET /api/work/<slug>/artifacts/<name>` refuses one with
   "<name> is not valid UTF-8; fix or replace the file" instead of the decoder's
   byte offset.
+- `start` and every transition refuse an item whose `state.yaml` cannot be read
+  (`FsWorkStore._require_readable_state`), naming the file, before anything
+  moves — the tolerant board read would otherwise let their gates pass on
+  defaults and the move fail after it had happened.
