@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 
 import pytest
@@ -47,6 +48,40 @@ def test_a_nested_item_under_a_non_ascii_path_is_found(tmp_path):
     subprocess.run(["git", "-C", str(top), "commit", "-qm", "c"], check=True)
     folder = st.path(parent).relative_to(st.store_git_root)
     assert [found[0] for found in st._nested_in_commit(folder)] == [child]
+
+
+def test_the_merge_back_hint_finds_the_record_from_a_node_in_a_subfolder(tmp_path, capsys):
+    """The call site, not only the helper: a node below the top with
+    `diff.relative=true`, whose staged `tracker.yaml` holds a delivery record."""
+    from types import SimpleNamespace
+
+    from tcw.store.fs import init
+    from tcw.work.cli import _merge_back_hint
+    top = tmp_path / "repo"
+    root = top / "nöde"
+    root.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(top)], check=True)
+    subprocess.run(["git", "-C", str(top), "config", "diff.relative", "true"], check=True)
+    init(["work"], root, "n")
+    st = FsWorkStore.open(root)
+    slug = st.create("Item", created="2026-01-01").slug
+    (st.path(slug) / "tracker.yaml").write_text("sync: {}\n")
+    subprocess.run(["git", "-C", str(top), "add", "-A"], check=True)
+    _merge_back_hint(st, slug, SimpleNamespace(tracker={"sync": {"to": "done"}}))
+    assert "tracker.yaml holds a record" in capsys.readouterr().err
+
+
+def test_a_staged_path_that_is_not_utf8_does_not_crash(tmp_path):
+    """`-z` prints raw bytes; without it git escaped them, so a strict decode
+    is a crash this change would otherwise introduce."""
+    from tcw.work.cli import _staged_paths
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    blob = subprocess.run(["git", "-C", str(tmp_path), "hash-object", "-w", "--stdin"],
+                          input=b"x", capture_output=True, check=True).stdout.decode().strip()
+    subprocess.run([b"git", b"-C", bytes(tmp_path), b"update-index", b"--add", b"--cacheinfo",
+                    b"100644," + blob.encode() + b",caf\xe9.txt"], check=True)
+    [path] = _staged_paths(tmp_path)
+    assert os.fsencode(path) == b"caf\xe9.txt"
 
 
 # ── criterion 2: a create answer of any shape warns the ticket may exist ────
@@ -106,3 +141,18 @@ def test_strict_drop_of_an_unreadable_binding_says_it_cannot_be_read(strict):  #
     from tcw.serve import _strict_refuses
     web = _strict_refuses(FsWorkStore.open(strict), "drop", slug)
     assert "cannot be read" in web and "is, or was, bound" not in web, web
+
+
+def test_the_index_is_read_for_an_item_under_a_non_ascii_path(tmp_path):
+    """`_tracked_source`, the third reader of git path lines."""
+    from pathlib import Path
+
+    from tcw.store.fs import init
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    init(["work"], root, "n", Path("wörk"))
+    st = FsWorkStore.open(root)
+    slug = st.create("Item", created="2026-01-01").slug
+    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+    assert st._tracked_source(slug).resolve() == st.path(slug).resolve()

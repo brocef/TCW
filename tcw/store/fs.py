@@ -122,6 +122,12 @@ def _capability_resources(folder: Path, meta: dict) -> list[Path]:
 
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
 
+#: How to read git's `-z` path output. `-z` prints a path's raw bytes, and one
+#: that is not UTF-8 must not crash the decode; `surrogateescape` round-trips it
+#: back to the same bytes when it becomes a `Path` again.
+_GIT_PATHS = {"encoding": "utf-8", "errors": "surrogateescape"}
+
+
 def _git(*args, **kwargs):
     """Run a `git` command with stdin closed.
 
@@ -4633,11 +4639,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             rel = (self.root / "backlog").resolve().relative_to(self.store_git_root.resolve())
         except ValueError:
             return None
-        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "--", _literal(rel)],
-                      capture_output=True, text=True, check=False)
+        listed = _git(["git", "-C", str(self.store_git_root), "ls-files", "-z", "--",
+                       _literal(rel)], capture_output=True, check=False, **_GIT_PATHS)
         if listed.returncode != 0:
             return None
-        hits = sorted({str(Path(line).parent) for line in listed.stdout.splitlines()
+        hits = sorted({str(Path(line).parent) for line in listed.stdout.split("\0")
                        if line.endswith(f"/{slug}/state.yaml")})
         if len(hits) > 1:
             raise ValueError(f"{slug} is tracked in more than one folder: "
@@ -5639,10 +5645,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except ValueError:
                 continue
             # `-z`: without it a path holding anything but ASCII is printed
-            # quoted, and never matches.
+            # quoted, and never matches (so do `_nested_in_commit` and
+            # `_tracked_source`).
             listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r", "-z",
                            "--name-only", rev, "--", _literal(rel)],
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, check=False, **_GIT_PATHS)
             if listed.returncode != 0:
                 continue
             hits += [str(Path(line).parent) for line in listed.stdout.split("\0")
@@ -5721,7 +5728,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         rerun after the folder is already gone still finds them."""
         listed = _git(["git", "-C", str(self.store_git_root), "ls-tree", "-r", "-z",
                        "--name-only", "HEAD", "--", _literal(committed)],
-                      capture_output=True, text=True, check=False)
+                      capture_output=True, check=False, **_GIT_PATHS)
         if listed.returncode != 0:
             return []
         found = []

@@ -668,6 +668,33 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
     _record_owed(st, slug, reason, verb, str(date.today()))
 
 
+def _merge_back_hint(st, bare: str, item) -> None:
+    """What to do when merging the item's branch back failed."""
+    # Git refuses the merge while *any* file in this repository's index is
+    # staged — another item's record as much as this one's — so every
+    # staged path is named, from the repository actually being merged.
+    top = git_root(st.node_root)
+    staged = _staged_paths(top or st.node_root)
+    if staged:
+        print("tcw work complete: git may refuse the merge while files are "
+              "staged but not committed; if the message above names none of "
+              "these, fix what it names instead. Otherwise commit or unstage "
+              "(`git restore --staged <path>`) each, then complete again:",
+              file=sys.stderr)
+        for path in staged:
+            print(f"  {path}", file=sys.stderr)
+    own = st.path(bare)
+    if own is not None and top is not None and isinstance(item.tracker, dict) and (
+            item.tracker.get("sync") or item.tracker.get("comment")) and any(
+            (top / path).resolve() == (own / "tracker.yaml").resolve()
+            for path in staged):
+        # A delivery record is staged, never committed: `sync` clears it.
+        print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "
+              f"ticket move or progress comment that did not reach the "
+              f"tracker. Run `tcw work tracker sync {bare}` to clear it once "
+              f"the ticket follows, or commit it.", file=sys.stderr)
+
+
 def _staged_paths(top) -> list[str]:
     """Staged paths as git names them from `top`, unescaped.
 
@@ -675,8 +702,9 @@ def _staged_paths(top) -> list[str]:
     (`core.quotePath`), and run from the top because `diff.relative` makes the
     paths relative to the folder git runs in — either way a comparison with a
     real path missed."""
+    from tcw.store.fs import _GIT_PATHS
     out = subprocess.run(["git", "-C", str(top), "diff", "--cached", "--name-only", "-z"],
-                         stdin=subprocess.DEVNULL, capture_output=True, text=True).stdout
+                         stdin=subprocess.DEVNULL, capture_output=True, **_GIT_PATHS).stdout
     return [path for path in out.split("\0") if path]
 
 
@@ -4126,29 +4154,7 @@ def _complete(args: argparse.Namespace) -> int:
         err = merge_worktree(st.node_root, branch)
         if err:
             print(f"tcw work complete: {err}", file=sys.stderr)
-            # Git refuses the merge while *any* file in this repository's index is
-            # staged — another item's record as much as this one's — so every
-            # staged path is named, from the repository actually being merged.
-            top = git_root(st.node_root)
-            staged = _staged_paths(top or st.node_root)
-            if staged:
-                print("tcw work complete: git may refuse the merge while files are "
-                      "staged but not committed; if the message above names none of "
-                      "these, fix what it names instead. Otherwise commit or unstage "
-                      "(`git restore --staged <path>`) each, then complete again:",
-                      file=sys.stderr)
-                for path in staged:
-                    print(f"  {path}", file=sys.stderr)
-            own = st.path(bare)
-            if own is not None and top is not None and isinstance(item.tracker, dict) and (
-                    item.tracker.get("sync") or item.tracker.get("comment")) and any(
-                    (top / path).resolve() == (own / "tracker.yaml").resolve()
-                    for path in staged):
-                # A delivery record is staged, never committed: `sync` clears it.
-                print(f"tcw work complete: {bare}'s tracker.yaml holds a record of a "
-                      f"ticket move or progress comment that did not reach the "
-                      f"tracker. Run `tcw work tracker sync {bare}` to clear it once "
-                      f"the ticket follows, or commit it.", file=sys.stderr)
+            _merge_back_hint(st, bare, item)
             return 1
         item = st.get(bare)                           # re-read: the sidecar's declared
                                                       # list may have changed on the branch

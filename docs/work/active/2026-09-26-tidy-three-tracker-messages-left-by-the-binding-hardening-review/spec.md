@@ -25,7 +25,7 @@ Read from the code on `bug-run` (2026-09-29); each becomes a failing test first.
 4. `_check_issue` checks that `fields`, `status`, `statusCategory` and
    `assignee` are mappings, not what they hold: `{"status": {"name": 5}}` reaches
    `assess(current_status=5)`, which calls `.strip()`.
-5. Strict `drop` (CLI `_drop`, web `_web_strict_refusal`) asks
+5. Strict `drop` (CLI `_drop`, web `_strict_refuses`) asks
    `ever_bound`, which answers `True` for an unreadable `tracker.yaml`; both then
    say "is, or was, bound to a ticket".
 
@@ -36,7 +36,7 @@ a command that should report a tracker problem.
 
 **Sibling sweep** (`grep -rn "\-\-name-only" tcw`; `grep -rn "current_status=" tcw`;
 callers of `ever_bound`): `FsWorkStore` reads `git ls-tree -r --name-only` in two
-places (`_committed_resolved_folder`, `_nested_in_commit`) and compares the lines
+places (`_nested_tree_path`, `_nested_in_commit`) and compares the lines
 with paths — the same quoting defect (not `diff.relative`, which `ls-tree` does
 not honor). Both are fixed here with `-z`. Every issue a command reads goes
 through `_check_issue` (`issue`, `search`), so one check there covers
@@ -44,8 +44,12 @@ through `_check_issue` (`issue`, `search`), so one check there covers
 
 ## Goals
 
-1. The merge-back hint and both `ls-tree` readers see real paths: `-z`, split
-   on NUL, and the `diff` run from the repository's top folder.
+1. The merge-back hint and the three index/tree readers (`_nested_tree_path`,
+   `_nested_in_commit`, `_tracked_source`) see real paths: `-z`, split on NUL,
+   decoded with `surrogateescape` so a path that is not UTF-8 does not crash,
+   and the `diff` run from the repository's top folder. *(Amended at review:
+   `_tracked_source`'s `ls-files` was missed by the first sweep, and `-z`
+   alone introduced a decoding crash.)*
 2. A `create_issue` answer that is not a mapping, or names no string key and
    id, gives `create.py`'s "It may exist" warning.
 3. When creation succeeds and binding fails, the filing hook's message gives a

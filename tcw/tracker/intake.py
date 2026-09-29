@@ -72,12 +72,6 @@ def validate_part(value: str | None) -> str:
     return value
 
 
-def ever_bound(store, slug: str) -> bool:
-    """Whether `slug` holds a binding, the record of one it used to, or a
-    `tracker.yaml` that cannot be read — see `binding_record`."""
-    return binding_record(store, slug) != ""
-
-
 def drop_refusal(store, slug: str) -> str:
     """Why strict mode refuses to drop `slug`, or `""`. One wording for the CLI
     and the web app."""
@@ -373,7 +367,7 @@ def _with_key(content: str, key: str, record: dict | None) -> str:
 def created_but_unbound(store, slug: str) -> dict | None:
     """The `created` record on `slug`, or `None`. Never raises.
 
-    Separate from `ever_bound`, which answers "was this ever bound" — a `created`
+    Separate from `binding_record`, which answers "was this ever bound" — a `created`
     record is not a binding and never was, so that answer is correctly no. But
     it is the only local pointer to a ticket that really exists, and deleting
     the item deletes the sidecar with it, leaving an open ticket in a shared
@@ -391,7 +385,7 @@ def created_but_unbound(store, slug: str) -> dict | None:
 def created_but_unbound_refusal(store, slug: str) -> str | None:
     """Why `slug` must not be destroyed, or `None`.
 
-    Deliberately **not** gated on strict mode, unlike `ever_bound`'s refusal.
+    Deliberately **not** gated on strict mode, unlike `drop_refusal`.
     Strict mode answers "may work proceed without a ticket"; this answers "is a
     real ticket about to lose the only thing that names it", and a project does
     not have to be strict to get into that state — `create.on-new` does not

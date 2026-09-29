@@ -3,9 +3,12 @@
 - `tcw work complete`'s merge-back hint reads staged paths with
   `git diff --cached --name-only -z` from the repository top (`_staged_paths`),
   so a non-ASCII path (quoted under `core.quotePath`) or `diff.relative=true`
-  no longer hides the "tracker.yaml holds a record" hint. `FsWorkStore`'s two
-  `git ls-tree -r --name-only` readers (`_committed_resolved_folder`,
-  `_nested_in_commit`) take `-z` for the same reason.
+  no longer hides the "tracker.yaml holds a record" hint (now
+  `_merge_back_hint`). `FsWorkStore`'s `git ls-tree` readers
+  (`_nested_tree_path`, `_nested_in_commit`) and `git ls-files` reader
+  (`_tracked_source`) take `-z` for the same reason. All four decode with
+  `surrogateescape` (`_GIT_PATHS`), so a path that is not UTF-8 cannot crash
+  them. `intake.ever_bound` is removed; `binding_record` replaces it.
 - `JiraClient.create_issue` returns the decoded answer as it came
   (`_payload`), and `create.py` reads `key`/`id` only as non-empty strings, so
   an answer of any other shape — `[]`, `"ok"`, `{"key": null}` — gets the
