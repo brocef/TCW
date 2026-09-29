@@ -143,3 +143,13 @@ Follow-up comment on #58 by @brocef, 2026-09-29:
 ## Triage notes
 
 The follow-up comment on #58 suggests a folder that never moves (status kept only in `state.yaml`). That is a much larger design change to the store layout; it is recorded here for the spec stage to weigh, not taken as the ask.
+
+A related path problem, found in code review of
+`2026-09-29-make-start-submit-rework-and-complete-print-the-true-next-step-the-item-s-new-folder-and-what-confirm-acknowledged`
+and left for this item: for a qualified reference (`tcw work start kid/<slug>`,
+and the same for `submit`, `rework` and `complete`), the folder printed after the
+transition is relative to the child project, not to the directory the command
+ran in, so it names a path that does not exist from where the user is standing.
+`start` and `complete` already did this; that item made `submit` and `rework`
+print a folder too, in the same form. Printing an absolute path, or one relative
+to the working directory, would fix all four.
