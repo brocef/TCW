@@ -8,3 +8,5 @@ tags:
 - work
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T16:59:27.518262Z'
+worktree: .worktrees/2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-parent-s-completion-gate
+branch: work/2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-parent-s-completion-gate
