@@ -43,7 +43,7 @@
   honors the path).
 - Review (adversarial-code-reviewer, "merge after fixes"): accepted findings 1
   and 2. Finding 3 (a malformed `repository:` value gets the provision advice)
-  is now answered by the resolver's own message in the unprovisioned branch.
+  left as is: `tcw provision` then names the bad line, so it costs one step.
   Findings 4–6 (explicit `--taxonomy-path` not anchored in a worktree; a
   symlinked root skipping re-anchoring; an absolute path outside any
   repository) predate this change and were left out, as the reviewer
