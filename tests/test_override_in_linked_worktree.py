@@ -42,4 +42,4 @@ def test_no_warning_when_the_copy_holds_another_project(workspace, monkeypatch):
     cfg.write_text(cfg.read_text().replace("id: pkg-b", "id: pkg-z"))
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(app / "pkg-b"))
     done = validate(wt / "pkg-a")
-    assert "warning:" not in done.stdout + done.stderr
+    assert done.returncode == 0 and "warning:" not in done.stdout + done.stderr

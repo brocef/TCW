@@ -860,7 +860,12 @@ class FsProjectRegistry(ProjectRegistry):
             held = yaml.safe_load(copy.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, yaml.YAMLError):
             return None
-        if not isinstance(held, dict) or held.get("id") != override.id:
+        try:                                   # read as `_read_config` reads it
+            held_id = validate_project_id(str(held.get("id") or "")) \
+                if isinstance(held, dict) else None
+        except ValueError:
+            return None
+        if held_id != override.id:
             return None
         return (f"{override.source} names {override.locator}, the primary "
                 f"checkout's copy, while this worktree has its own at "
