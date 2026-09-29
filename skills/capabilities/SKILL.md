@@ -111,7 +111,7 @@ another project's capabilities.
 
 To **drop an override** and re-inherit the upstream entry verbatim, `tcw capabilities reset <path>` — it removes only the local override folder (never the upstream node), and refuses clearly when there is no override (a standalone local capability → delete it with `tcw capabilities rm`; a path that already inherits verbatim → nothing to drop). Whole-override only; to revert a single inherited field, `set <path> --field K=<value>` instead.
 
-`tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), attachment lists, and federation cycles.
+`tcw capabilities check` validates override targets (dangling / ambiguous / must-be-inherited), the references an override sets (`Subject`, `Feature`, `Blocked by`, `Superseded by`, `Roles`, `When` — checked as a local capability's are), attachment lists, and federation cycles.
 
 ## Product-layer coordination (orchestrator-relay)
 
