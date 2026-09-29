@@ -7,3 +7,5 @@ tags:
 - docs
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T19:09:43.751441Z'
+worktree: .worktrees/2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing
+branch: work/2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing
