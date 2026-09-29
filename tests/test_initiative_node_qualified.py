@@ -141,3 +141,11 @@ def test_a_resolved_local_epic_keeps_its_bare_slices_on_another_clone(graph):
     root = FsWorkStore.open(graph)
     assert root.resolved_initiative_children(EPIC) == []
     assert not root.epic_completable(root.get(EPIC))
+
+
+def test_a_status_path_is_not_an_epic_reference(graph):
+    epic_in(graph)
+    st = FsWorkStore.open(graph)
+    item = st.create_work("Slice", initiative=f"backlog/{EPIC}").item
+    assert item.slug not in slugs(st.initiative_children(EPIC))
+    assert st.initiative_epic(item) is None

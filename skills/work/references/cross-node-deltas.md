@@ -34,7 +34,7 @@ as "not registered" and add a second declaration.
    `tcw work new --initiative <epic-slug>` to adopt the slice (stored as
    `<project-id>/<epic-slug>` when the epic is in another node).
 
-    The adopted slice carries the epic's bare slug in its `state.yaml`, which is
+    The adopted slice carries the epic reference in its `state.yaml`, which is
     machine-tracked but invisible to a human reading the request. Link the epic in
     prose too, at the top of the slice's `initial-request.md` — never in its
     `intake.md`: a body write always targets the request, promoting an

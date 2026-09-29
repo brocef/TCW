@@ -10,7 +10,7 @@
 
 - `initiative` may be `<project-id>/<slug>`, the same form cross-node blockers
   use, resolved through `resolve_qualified_work_ref`.
-  - New `AbstractWorkStore.qualify_initiative`, which returns the value
+  - New `WorkStore.qualify_initiative`, which returns the value
     unchanged by default. `create_work`, `update_work` and `inbox_accept` store
     through it: bare when the epic is on this board, qualified when it is
     elsewhere.

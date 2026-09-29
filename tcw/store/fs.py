@@ -6182,6 +6182,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not value:
             return None
         if "/" in value:
+            if not self._project_slug_shaped(value):
+                return None
             try:
                 found = resolve_qualified_work_ref(self.node_root, value)
             except ValueError:
@@ -6196,6 +6198,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if store.get(value) is not None or store.tombstone(value) is not None:
                 return store, value
         return None
+
+    @staticmethod
+    def _project_slug_shaped(value: str) -> bool:
+        """Exactly `<project-id>/<slug>`: a status path would count only while
+        the epic sat in that status, and `./x` is not a project."""
+        qualifier = value.partition("/")[0]
+        return (value.count("/") == 1 and qualifier not in WORK_STATUSES
+                and qualifier != ".")
 
     def _self_and_ancestor_boards(self) -> "Iterator[FsWorkStore]":
         yield self
@@ -6218,7 +6228,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return value
         if "/" in value:
             try:
-                named = resolve_qualified_work_ref(self.node_root, value)
+                named = (resolve_qualified_work_ref(self.node_root, value)
+                         if self._project_slug_shaped(value) else None)
             except ValueError:
                 named = None
             if named is not None and self._initiative_holder(value) is None:

@@ -72,7 +72,10 @@ reference.
 4. **Amended at review — only here or above.** A qualified value names an
    epic only in the item's own project or in one above it, because that is
    as far as an epic's walk down can reach.
-   - Writers refuse any other value.
+   - Writers refuse a value naming a project that exists but is beside or
+     below. One naming no known project, or not shaped `<project-id>/<slug>`
+     (a status path, say), is stored as given, as an unresolvable bare value
+     is, and names nothing.
    - The holder rule reads one written by hand as naming nothing, so the
      start gate refuses the item rather than letting it start as a slice its
      epic never counts.
