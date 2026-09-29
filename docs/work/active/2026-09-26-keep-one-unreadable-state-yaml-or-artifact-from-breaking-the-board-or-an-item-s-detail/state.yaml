@@ -8,3 +8,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T14:30:58.958463Z'
+worktree: .worktrees/2026-09-26-keep-one-unreadable-state-yaml-or-artifact-from-breaking-the-board-or-an-item-s-detail
+branch: work/2026-09-26-keep-one-unreadable-state-yaml-or-artifact-from-breaking-the-board-or-an-item-s-detail
