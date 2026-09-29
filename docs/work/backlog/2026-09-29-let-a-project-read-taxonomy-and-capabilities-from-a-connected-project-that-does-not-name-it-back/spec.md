@@ -136,9 +136,11 @@ filesystem registry implements:
 
 - `declared_upstream_ids(project_id=None) -> list[str]` — the ids a project
   declares under `upstream`, as `declared_child_ids` does for children.
-- `read_only_reason(project_id) -> str | None` — `None` when the current node may
-  write to that project; otherwise the sentence saying why not. This is the only
-  place the write rule lives.
+- `read_only_reason(project_id, from_id=None) -> str | None` — `None` when the
+  node `from_id` (default: the current node) may write to that project;
+  otherwise the sentence saying why not. This is the only place the write rule
+  lives: the refusals call it from the current node, and the graph-problem check
+  below calls it from each declarer.
 
 **Abstraction check.** Both are questions about the connected-project graph that
 any registry — a database, a tracker's project links — can answer; neither is a
@@ -202,16 +204,18 @@ construction rather than by being listed:
 
 - `_resolve` in the work CLI, for every verb that changes an item or runs the
   project's own scripts: `start`, `submit`, `rework`, `complete`, `edit`, `drop`,
-  `delete`, `scaffold`, `stage gate`, `stage prompt` and `lifecycle`. The
-  `stage` verbs count as writes because they execute the upstream's own `pre`
-  and `generate:` bindings; reading an upstream item is `show` and `path`.
+  `delete`, `scaffold`, `stage gate`, `stage prompt` and `procedure prompt`. The
+  `stage` and `procedure prompt` verbs count as writes because they execute the
+  upstream's own `pre` and `generate:` bindings. Reads are `show`, `path`,
+  `lifecycle` (which lists bindings without resolving them) and `stage validate`
+  (which checks only the words given).
 - `tcw serve`'s `_resolve_work` for every mutating request (`PATCH`, `PUT`,
   `DELETE`, `POST …/actions/…`); `GET` uses the reading form.
 - `tcw work delegate`, before its existing `no child node` refusal
   (`recursion.py:560`).
-- `tcw work tracker` verbs that take a qualified reference and bind or move a
-  ticket for it (`link`, `create`, `claim`, `release`, `sync`); the plan lists
-  them from the parser.
+- Not the `tcw work tracker` verbs: they take a bare slug only and read the
+  current node's own board (`_store()`), so `core/<slug>` is already "no such work
+  item in this node" and nothing reaches the upstream. They are left as they are.
 
 The refusal reads: `tcw work <verb>: '<id>' is a read-only upstream project here
 (reached through '<declarer>'); run this in <id> itself.`
@@ -231,15 +235,16 @@ New graph problems:
 
 - a node declaring itself as its own upstream;
 - an upstream id that is **also writable from the declaring node** under the
-  write rule — the same id under `children` or `parent`, or an ancestor,
+  write rule, computed with `read_only_reason(id, from_id=<declarer>)` and
+  following each project's edges in their declared direction only — the same id under `children` or `parent`, or an ancestor,
   descendant or sibling reached by parent/children edges: "'<id>' is declared
   upstream (read-only) by '<declarer>', but '<declarer>' is also connected to it
   as a parent/child; declare one or the other".
 
 **The relaxation, for migration.** A node naming a parent that does not list it
 as a child is today's `child '<id>' is not declared` failure. It becomes a
-**warning** when some project in the loaded graph declares that node as its
-upstream: "'<id>' names '<parent>' as its parent, but is read as an upstream
+**warning** when any config the graph loaded — fully, or only as far as its own
+file — declares that node as its upstream: "'<id>' names '<parent>' as its parent, but is read as an upstream
 project by '<reader>'; remove the parent entry from '<id>' — an upstream need not
 name its readers". While it stands, the old parent still behaves as the node's
 parent from the node's own checkout (escalate, tracker inheritance, initiative
@@ -262,20 +267,28 @@ location, or "unreachable".
 
 ### The Proposit move, for the requester
 
-Order matters: the reader side changes first.
+Order matters, and at no step may one node list core as a child while another
+declares it upstream — that is the "also writable from the declarer" problem, and
+it would block every command.
 
-1. In `proposit-app/tcw-config.yaml` (`proposit-app-repo`), add
+1. In the orchestration root, **move** `proposit-core` from
+   `connected-projects.children` to `connected-projects.upstream` — one edit to one
+   file, entry unchanged (`path: proposit-core` plus core's `repository`).
+   Everything keeps working: the packages reach core through their parents and the
+   root's upstream edge. `validate` warns that core still names `proposit-app` as
+   its parent.
+2. In `proposit-app/tcw-config.yaml` (`proposit-app-repo`), add
    `connected-projects.upstream.proposit-core` with `path: ../proposit-core` and
-   core's `repository` entry. Optionally declare it on the orchestration root
-   too, with `path: proposit-core`; both resolve to the same folder.
-2. In the orchestration root, remove `proposit-core` from
-   `connected-projects.children`. Everything keeps working; `validate` warns
-   that core still names `proposit-app` as its parent.
-3. In proposit-core, before removing its parent:
+   core's `repository` entry. In the workspace it resolves to the same folder as
+   the root's entry, so the two are one project; a checkout holding only
+   proposit-app now reaches core without the orchestration repository.
+3. Optionally, remove the root's `upstream` entry; the root still reaches core
+   (read-only) through `proposit-app-repo`.
+4. In proposit-core, before removing its parent:
    - **Tracker:** its `work.tracker` block holds only `candidate-query` and
      inherits `provider`, `base-url` and `credentials` from the root. Delete the
      block, or declare it in full; otherwise core's `validate` fails with
-     "required" problems once step 4 lands.
+     "required" problems once step 5 lands.
    - **Initiatives:** items stamped `initiative: <root-epic>` keep the stamp;
      core's `validate` ignores an initiative it cannot resolve, and `start` on
      such an item refuses without `--force`. Clear them with
@@ -284,9 +297,9 @@ Order matters: the reader side changes first.
      orchestration repository, naming it. Moving the board is the requester's
      own step; until then, the root can read core's board but no longer write to
      it through `proposit-core/<slug>`.
-4. In proposit-core, delete `connected-projects.parent`. The warning goes away;
+5. In proposit-core, delete `connected-projects.parent`. The warning goes away;
    core's `validate` sees no connections.
-5. The packages' `extends: [proposit-core]` lines are unchanged.
+6. The packages' `extends: [proposit-core]` lines are unchanged throughout.
 
 The reverse order — core dropping `parent` while the root still lists it as a
 child — fails with today's `nonreciprocal connection` message, which names the
@@ -314,20 +327,24 @@ All in scratch projects built by tests, with real git repositories where a
 3. **Public upstream, reader-only checkout.** `app`'s upstream entry for `core`
    has a `repository` (a local bare repository) and a `path` that does not exist.
    `tcw provision` in `app` obtains `core`; criterion 1 then holds; `core`'s
-   `tcw-config.yaml` contains no connection. `TCW_PROJECT_CORE` pointing at
-   another copy is honored. An absent upstream is a `validate` warning with exit
+   `tcw-config.yaml` contains no connection. With `TCW_PROJECT_CORE` pointing at
+   another copy holding a different term, `tcw taxonomy list` in `app` shows that
+   term instead. An absent upstream is a `validate` warning with exit
    0, and `extends` of it reports it unreachable as today.
 4. **Refused writes.** Each of these exits non-zero with a message containing
    `read-only` and `core` and not `nonreciprocal`, and leaves `core`'s git status
    clean: `tcw work delegate core …`; `tcw work start core/<slug>`;
    `tcw work edit core/<slug> --title x`; `tcw work stage gate spec core/<slug>`;
-   `tcw work tracker link core/<slug> <key>`; `tcw serve --include-descendants`
-   `PATCH /api/work/core%2F<slug>` and `POST …/actions/start` (HTTP 4xx).
+   `tcw work procedure prompt <id> core/<slug>`; and, under
+   `tcw serve --include-descendants`, `PATCH /api/work/core%2F<slug>` and
+   `POST /api/work/core%2F<slug>/actions/start`, each answering HTTP 4xx with a
+   body containing `read-only`.
 5. **Read-only from every direction.** With `core` declared by one child `a` of
    root `r`: from `a`'s sibling `b`, and from `r`, `tcw work start core/<slug>` is
    refused as in 4, and `tcw work show core/<slug>` succeeds.
 6. **Reads allowed.** `tcw work show core/<slug>`, `tcw work path core/<slug>`,
-   `GET /api/work/core%2F<slug>` and a `tcw://W/core/<slug>` link resolve.
+   `GET /api/work/core%2F<slug>` under
+   `tcw serve --include-descendants`, and a `tcw://W/core/<slug>` link resolve.
 7. **Not walked, not beyond.** `core` is absent from `tcw work list
    --include-descendants`, `validate`'s recursion, `tcw serve`'s board and
    `reconcile` of an epic; it appears under `upstream (read-only):` in
@@ -338,9 +355,13 @@ All in scratch projects built by tests, with real git repositories where a
    the declarer's child, parent, grandparent or sibling is a problem. Two
    declarers resolving the same id to the same folder are fine; to different
    folders, a `duplicate project id` problem naming both.
-9. **Migration order.** Reader switched (upstream declared, removed from the
-   parent's `children`), upstream still naming that parent: `validate` exits 0
-   in both with the warning above. Upstream dropped its parent while the reader
+9. **Migration order**, each state the steps above pass through, in a scratch
+   copy of the Proposit shape (root, `proposit-app-repo`, one package, core):
+   after step 1, `validate` exits 0 in all four with the warning in core and the
+   root; after step 2, the same; after step 5 (with core's tracker block
+   removed), exit 0 with no warning. The forbidden middle state — the package's
+   parent declares core upstream while the root still lists it as a child — is
+   the "also writable" problem. Upstream dropped its parent while the reader
    still lists it as a child: the existing `nonreciprocal connection` failure.
    An upstream whose tracker block lacks `provider` and which has no parent: the
    "no parent to inherit" line appears beside the "required" problems.
@@ -381,7 +402,11 @@ All in scratch projects built by tests, with real git repositories where a
   write endpoints — and that the migration steps would leave core failing
   `validate`. All accepted; the capability-sidecar refusal it questioned was
   dropped as out of scope. The loading rule became config-only on its
-  recommendation.
+  recommendation. Round 2 (on `8a7fa41a`) confirmed the write rule, the loading
+  and the relaxation, and found that the first migration order passed through
+  the forbidden middle state; the order was fixed, `procedure prompt` added,
+  `lifecycle` and the tracker verbs reclassified as not writing, and
+  `read_only_reason` given a starting node.
 - Docs that state connections are always two-way and will change:
   `skills/configure/references/projects.md:30-40`, `docs/guide/multi-repo.md:21`,
   `docs/capabilities/cli/validate-a-node/description.md:7`.
