@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-29-one-way-read-only-connection-for-inherited-taxonomy.md`
+
+## Inbox body
+
 # Let a project inherit taxonomy and capabilities from a project that does not name it back
 
 ## Origin
