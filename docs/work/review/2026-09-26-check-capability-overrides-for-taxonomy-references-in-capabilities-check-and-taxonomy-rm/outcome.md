@@ -20,7 +20,7 @@
   meta folder, overrides included, inside the same `try`, so the malformed file
   is caught before the walk. The walk sits inside the `try` as a safeguard.
 - Full suite (`pytest -q -n 6`): 4768 passed, 3 skipped, exit 0.
-- Hands-on: see `refined-outcome.md`.
+- Hands-on: the verifier's, recorded in `refined-outcome.md`.
 
 ## What the plan or spec got wrong
 
