@@ -6183,26 +6183,49 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None
         if "/" in value:
             try:
-                return resolve_qualified_work_ref(self.node_root, value)
+                found = resolve_qualified_work_ref(self.node_root, value)
             except ValueError:
                 return None
-        if self.get(value) is not None:
-            return self, value
-        registry = FsProjectRegistry.open(self.node_root).require_valid()
-        for ancestor in registry.ancestors():
-            path = Path(ancestor.locator)
-            if not _has_work_store(path):
-                continue            # a routing node between two boards
-            store = FsWorkStore.open(path)
-            if store.get(value) is not None:
+            # Only here or above: that is where an epic's walk down can reach,
+            # and a slice it cannot count must not pass the start gate either.
+            return found if found is not None and self._at_or_above(found[0]) else None
+        for store in self._self_and_ancestor_boards():
+            # A record counts as holding it too: the folder of a resolved epic is
+            # not in every clone, and without it a bare value would fall through
+            # to a same-named epic further up on some machines only.
+            if store.get(value) is not None or store.tombstone(value) is not None:
                 return store, value
         return None
 
+    def _self_and_ancestor_boards(self) -> "Iterator[FsWorkStore]":
+        yield self
+        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        for ancestor in registry.ancestors():
+            path = Path(ancestor.locator)
+            if _has_work_store(path):        # skip a routing node between boards
+                yield FsWorkStore.open(path)
+
+    def _at_or_above(self, store: "FsWorkStore") -> bool:
+        return any(_same_folder(s.root, store.root)
+                   for s in self._self_and_ancestor_boards())
+
     def qualify_initiative(self, value: str) -> str:
         """Bare when the epic is on this board, `<project-id>/<slug>` when it is
-        on another; as given when it cannot be found or is already qualified."""
+        on another; as given when it cannot be found or is already qualified.
+        Refuses a qualified value naming a board beside or below this one."""
         value = (value or "").strip()
-        if not value or "/" in value:
+        if not value:
+            return value
+        if "/" in value:
+            try:
+                named = resolve_qualified_work_ref(self.node_root, value)
+            except ValueError:
+                named = None
+            if named is not None and self._initiative_holder(value) is None:
+                raise ValueError(
+                    f"initiative '{value}' names a project that is neither this "
+                    f"one nor above it; an epic counts only slices at or below "
+                    f"its own project")
             return value
         found = self._initiative_holder(value)
         if found is None or _same_folder(found[0].root, self.root):

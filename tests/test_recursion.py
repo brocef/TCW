@@ -456,11 +456,12 @@ def _no_items(node: Path) -> bool:
 def test_delegate_writes_child_inbox_only(tmp_path):
     parent = mk_node(tmp_path, "parent")
     child = mk_node(parent, "child")
+    FsWorkStore.open(parent).create("Epic", created="2026-01-01")
     doc = delegate(parent, "child", "Do a thing", body="details", initiative="2026-01-01-epic")
     assert doc.parent == (child / "docs" / "work" / "inbox")
     text = doc.read_text()
     assert "from: parent" in text
-    assert "initiative: 2026-01-01-epic" in text
+    assert "initiative: parent/2026-01-01-epic" in text   # the epic's node recorded
     assert "details" in text
     assert _no_items(child)                                # boundary: never touches backlog/active/completed
 

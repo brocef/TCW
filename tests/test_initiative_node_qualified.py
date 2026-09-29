@@ -64,9 +64,9 @@ def test_delegate_records_the_epic_s_node(graph):
     assert item.initiative == f"root/{EPIC}"
     assert item.slug in slugs(FsWorkStore.open(graph).initiative_children(EPIC))
     assert item.slug not in slugs(kid.initiative_children(EPIC))
+    FsWorkStore.open(graph).transition(EPIC, "active")    # tell the two apart
     epic = kid.initiative_epic(kid.get(item.slug))
-    assert epic is not None and epic.slug == EPIC
-    assert FsWorkStore.open(graph).get(EPIC).status == epic.status
+    assert epic is not None and epic.slug == EPIC and epic.status == "active"
 
 
 def test_delegate_refuses_an_epic_it_cannot_find(graph):
@@ -103,3 +103,41 @@ def test_list_nests_a_qualified_slice_under_the_epic(graph, monkeypatch, capsys)
     assert lines[row].startswith("  kid/"), lines
     assert lines[row - 1].startswith(EPIC), lines          # under root's epic
     assert lines.index("# kid") > row, lines                # not in kid's section
+
+
+@pytest.fixture
+def siblings(tmp_path):
+    root = node(tmp_path / "root", "root", board=False, children={"a": "a", "b": "b"})
+    node(root / "a", "a", board=True, parent="root")
+    node(root / "b", "b", board=True, parent="root")
+    return root
+
+
+def test_an_initiative_naming_a_sibling_is_refused(siblings):
+    epic_in(siblings / "a")
+    b = FsWorkStore.open(siblings / "b")
+    with pytest.raises(ValueError, match="neither this one nor above it"):
+        b.create_work("B slice", initiative=f"a/{EPIC}")
+    item = b.create("B slice", created="2026-01-01")
+    b.set_field(item.slug, "initiative", f"a/{EPIC}")     # written by hand
+    assert b.initiative_epic(b.get(item.slug)) is None   # so start refuses
+    with pytest.raises(ValueError, match="names no epic in 'b'"):
+        delegate(siblings, "b", "Slice", initiative=f"a/{EPIC}")
+
+
+def test_a_resolved_local_epic_keeps_its_bare_slices_on_another_clone(graph):
+    """`completed/` is not in every clone: the graveyard record is what says
+    the kid's own epic existed."""
+    import shutil
+    epic_in(graph)
+    epic_in(graph / "kid")
+    kid = FsWorkStore.open(graph / "kid")
+    slice_slug = kid.create_work("Kid slice", initiative=EPIC).item.slug
+    kid.complete(slice_slug, "wontfix", [])
+    kid.complete(EPIC, "done", [], force=True)
+    for d in (graph / "kid" / "docs" / "work").glob("*/2026-0*"):
+        if d.parent.name in ("completed", "discarded"):
+            shutil.rmtree(d)
+    root = FsWorkStore.open(graph)
+    assert root.resolved_initiative_children(EPIC) == []
+    assert not root.epic_completable(root.get(EPIC))

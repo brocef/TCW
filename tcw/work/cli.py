@@ -2785,7 +2785,8 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
                                  f"--parent only on the item it creates, so {existing} "
                                  f"was not moved; change its parent in the web app "
                                  f"(`tcw serve`).")
-                if initiative and item.initiative != st.qualify_initiative(initiative):
+                if initiative and (st.qualify_initiative(item.initiative or "")
+                                   != st.qualify_initiative(initiative)):
                     wrong.append(f"{bound}, whose initiative is not {initiative}. Import "
                                  f"sets --initiative only on the item it creates; run "
                                  f"`tcw work edit {existing} --initiative {initiative}`.")

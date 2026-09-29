@@ -592,7 +592,9 @@ tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if ever
 An epic's slug is unique only within its own node, so `initiative` records the
 epic's node when the epic lives elsewhere: `--initiative <slug>` in a child
 node stores `<project-id>/<slug>`, naming the node that holds it (the same
-form cross-node blockers use). You may also pass that form yourself. In the
+form cross-node blockers use). You may also pass that form yourself, naming
+this project or one above it: an epic counts only slices at or below its own
+project, so a value naming a project beside or below is refused. In the
 epic's own node the bare slug is stored. An older bare value still means the
 nearest epic of that name at or above the item, so a child node's own epic
 with the same slug keeps its own slices.

@@ -562,7 +562,8 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
     origin = registered_project_id(node_root, node_root)
     if initiative and "/" not in initiative:
         # Always qualified: the child may hold a same-named epic of its own, and a
-        # bare slug read there would name that one.
+        # bare slug read there would name that one. Resolved from here, not from
+        # the child, which is why this is not the child's `qualify_initiative`.
         found = FsWorkStore.open(node_root)._initiative_holder(initiative)
         if found is None:
             raise ValueError(
@@ -570,6 +571,10 @@ def delegate(node_root: Path, child_ref: str, title: str, body: str = "",
                 f"<project-id>/<slug> to delegate a slice of it")
         initiative = (f"{registered_project_id(node_root, found[0].node_root)}"
                       f"/{found[1]}")
+    elif initiative and FsWorkStore.open(children[child_ref])._initiative_holder(
+            initiative) is None:
+        raise ValueError(f"initiative '{initiative}' names no epic in "
+                         f"'{child_ref}' or above it")
     return _inbox_write(FsWorkStore.open(children[child_ref]),
                         title, body, origin=origin, initiative=initiative)
 

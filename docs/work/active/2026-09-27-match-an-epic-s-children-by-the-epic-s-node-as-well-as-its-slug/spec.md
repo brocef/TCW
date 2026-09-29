@@ -69,7 +69,20 @@ reference.
    `initiative_epic`, `initiative_slices`, `resolved_initiative_children` and
    the list's indentation all use it. An item is a slice of epic E in node N
    exactly when its value resolves to (N, E).
-4. **No migration.** Existing bare values keep their current meaning under
+4. **Amended at review — only here or above.** A qualified value names an
+   epic only in the item's own project or in one above it, because that is
+   as far as an epic's walk down can reach.
+   - Writers refuse any other value.
+   - The holder rule reads one written by hand as naming nothing, so the
+     start gate refuses the item rather than letting it start as a slice its
+     epic never counts.
+   - `delegate` also checks a qualified value, from the child's side.
+5. **Amended at review — a record also holds a slug.** A graveyard record
+   counts as holding a slug for the bare rule. Without that, a bare value
+   written for a node's own epic would fall through to an epic of the same
+   name further up once the resolved epic's folder is missing, as it is on
+   every other clone.
+6. **No migration.** Existing bare values keep their current meaning under
    the nearest-holder rule. Only the case this item reports, a node holding
    its own same-slug epic, changes answer: that node's own epic now wins.
 
@@ -77,8 +90,14 @@ reference.
 
 - **Rewriting stored bare values.**
 - **The legacy hazard left by a dropped epic.** If a same-slug descendant
-  epic is later dropped, its children with bare values fall through to the
-  ancestor's epic. New writes are qualified, so this only affects old data.
+  epic is later *dropped* (which leaves no record), its children with bare
+  values fall through to the ancestor's epic. A resolved epic keeps its
+  children through its graveyard record (Goal 5).
+- **Delegating the child's own epic** now needs `<child-id>/<slug>`, since a
+  bare slug is resolved from the sending node.
+- **Extra ways a read can raise.** Resolving can now call `get`, which can
+  raise `MultipleMatch` or report an interrupted claim, and the registry
+  check on the list and completion paths. Left for a separate change.
 - **Type checks.** Checking that the item a reference resolves to is an epic.
   `initiative_epic` does not check this today.
 - **The `--initiative` flag.** It accepts both forms; no new flag.
