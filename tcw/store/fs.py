@@ -1177,10 +1177,22 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                 and section.get("repository") is not None and not base.exists()):
             # A local tree always wins over a declared home (`resolve_store`
             # rule 1), so an empty one scaffolded here would hide the real store
-            # from then on.
+            # from then on. Whether the home is already provisioned decides the
+            # advice: "run `tcw provision`" after it succeeded sends the user in
+            # a circle.
+            others = [o for o in components if o != c]
+            rest = (f" To scaffold the rest, name them: `tcw init {' '.join(others)}`."
+                    if others else "")
+            try:
+                resolve_store(STORE_CLASSES[c], root)
+            except ValueError:
+                raise ValueError(
+                    f"{root / SENTINEL}: {c} declares a repository; run `tcw provision` "
+                    f"to fetch it rather than scaffolding an empty local store.{rest}"
+                ) from None
             raise ValueError(
-                f"{root / SENTINEL}: {c} declares a repository; run `tcw provision` "
-                f"to fetch it rather than scaffolding an empty local store")
+                f"{root / SENTINEL}: {c} is already provided by its declared "
+                f"repository; there is nothing to scaffold.{rest}")
         plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
                      if c == "work" else [base]))
     for component, _, leaves in plan:

@@ -37,9 +37,11 @@ def cli(capsys, *argv):
     return code, out.out, out.err
 
 
-@pytest.mark.parametrize("component, where", [("taxonomy", "knowledge/terms"),
-                                              ("capabilities", "ledger")])
+@pytest.mark.parametrize("component, where", [("taxonomy", "./knowledge/terms"),
+                                              ("capabilities", "ledger/")])
 def test_init_scaffolds_at_the_configured_path(root, capsys, component, where):
+    """Spelled so that normalizing it would change it: a path written back
+    through `Path` loses the `./` and the trailing slash."""
     configure(root, **{component: {"path": where}})
     code, _out, err = cli(capsys, component, "init")
     assert code == 0, err
@@ -93,3 +95,25 @@ def test_init_in_a_linked_worktree_builds_where_the_readers_look(tmp_path):
     assert expected.is_dir()
     assert not (tmp_path / "b" / "shared").exists()
     assert FsTaxonomyStore.open(wt).root.resolve() == expected.resolve()
+
+
+def test_init_of_several_components_names_the_rest(root, capsys):
+    configure(root, taxonomy={"repository": {"url": "git@host:o/terms.git"}})
+    code, _out, err = cli(capsys, "init", "work", "taxonomy", "--id", "node")
+    assert code == 1 and "`tcw init work`" in err, err
+
+
+def test_a_provisioned_repository_is_not_sent_back_to_provision(root, capsys, tmp_path):
+    """After `tcw provision` succeeded, "run `tcw provision`" is a circle."""
+    remote = tmp_path / "remote"
+    (remote / "trees" / "taxonomy").mkdir(parents=True)
+    (remote / "trees" / "taxonomy" / ".gitkeep").write_text("")
+    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"],
+                 ["add", "-A"], ["commit", "-qm", "seed"]):
+        subprocess.run(["git", "-C", str(remote), *args], check=True)
+    configure(root, taxonomy={"repository": {"url": str(remote), "path": "trees/taxonomy",
+                                             "checkout": str(tmp_path / "co")}})
+    assert cli(capsys, "provision", "--component", "taxonomy")[0] == 0
+    code, _out, err = cli(capsys, "taxonomy", "init")
+    assert code == 1 and "already provided" in err and "tcw provision" not in err, err
+    assert not (root / "docs" / "taxonomy").exists()
