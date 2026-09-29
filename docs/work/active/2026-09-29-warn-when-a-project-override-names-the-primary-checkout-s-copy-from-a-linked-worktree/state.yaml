@@ -1,0 +1,9 @@
+slug: 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree
+title: Warn when a project override names the primary checkout's copy from a linked
+  worktree
+created: '2026-09-29'
+resolution: null
+tags:
+- bug
+owner: brocef@users.noreply.github.com
+started: '2026-09-29T18:55:16.180041Z'
