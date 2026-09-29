@@ -95,6 +95,17 @@ MOVE_ONTO = {"active": "start", "review": "submit", "completed": "complete",
 # ticket nobody held: every other move then had to be a claim first, and a claim
 # assigns. `start`, `submit` and `rework` are still work, and still need one.
 MOVES_NEEDING_NO_CLAIM = frozenset({"complete", "discard"})
+
+
+def needs_claim(move: str, bound) -> bool:
+    """Whether carrying `move` to the ticket needs it held by the running account.
+
+    A resolution does not (`MOVES_NEEDING_NO_CLAIM`) — except a completion on a
+    binding still carrying `catch-up: true`, whose walk climbs the working
+    statuses on the way. One rule for `deliver` and the strict gate, which
+    disagreed: the gate let such a completion through and `deliver` then
+    recorded a conflict for the ticket someone else held."""
+    return move not in MOVES_NEEDING_NO_CLAIM or (bound.catch_up and move == "complete")
 # Where to look for the status a ticket was left in, from an item's previous status.
 _EARLIER = {"active": ("active",), "review": ("review", "active")}
 # The same, from a recorded move whose `since` is unknown: where that move started.
@@ -398,8 +409,7 @@ def deliver(store, slug: str, client, config, *, move: str | None,
     # A resolution takes no ticket (`MOVES_NEEDING_NO_CLAIM`) — except on a catch-up
     # binding toward a completion, whose walk climbs the working statuses on the way
     # and so still needs the ticket held, exactly as it always did.
-    resolving = assessed in MOVES_NEEDING_NO_CLAIM and not (bound.catch_up
-                                                           and assessed == "complete")
+    resolving = assessed is not None and not needs_claim(assessed, bound)
     # Nothing is sent and nothing is written: the ticket is only reported on. A `sync`
     # with no record has no window of statuses the ticket may be in — no local move
     # just happened — so it reconciles the ticket to the item from wherever it sits, in
@@ -1048,6 +1058,7 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
     if bound is None:
         return refusal
     key = bound.ticket_key
+    ownership = ownership or (move is not None and needs_claim(move, bound))
     try:
         ticket = read_ticket(client, bound.ticket_id)
     except TrackerError as error:
@@ -1075,12 +1086,20 @@ def authorize(store, slug: str, client, config, *, target: str, own=None,
                 f"is not in this checkout. Put it in {where}, then run this again; "
                 f"discarding the item is always allowed.{unsynced}")
     # A `catch-up` binding (written by the retired `link --sync-status`) with more
-    # than one rung to climb is walked rung by rung by `deliver`, so a missing
-    # shortcut is not a move it cannot follow; a one-step move still is.
-    walked = bound.catch_up and len(forward_from(
-        ladder(config.statuses, MOVE_STATUS[move], resolution), ticket.status)) > 2 \
-        if move else False
-    if move and target and not held and not walked:
+    # than one rung to climb is walked rung by rung by `deliver`. Only the first
+    # rung can be checked — Jira reports the transitions offered from where the
+    # ticket is now — so a walk broken further up completed the item and left the
+    # ticket behind. Refused instead: one step at a time, each step is checked.
+    path = forward_from(ladder(config.statuses, MOVE_STATUS[move], resolution),
+                        ticket.status) if move and bound.catch_up else ()
+    if target and not held and len(path) > 2:
+        return (f"{key} is in '{ticket.status}' and would have to pass through "
+                f"{', '.join(repr(s) for s in path[1:-1])} to follow this change, one "
+                f"transition at a time, which cannot be checked before it is made. "
+                f"Move {slug} one step at a time (from active, `tcw work submit "
+                f"{slug}` first), so each step is checked; discarding the item is "
+                f"always allowed.")
+    if move and target and not held:
         verdict, detail = assess_move(
             ticket, target=target, expected=allowed,
             move=move,

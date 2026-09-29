@@ -239,21 +239,70 @@ def test_a_ticket_already_at_the_target_passes(strict, fake):  # noqa: F811
     assert cli(strict, "work", "submit", slug)[0] == 0
 
 
-def test_a_catch_up_binding_is_walked_not_refused(strict, fake):  # noqa: F811
-    """A binding the retired `link --sync-status` wrote: `deliver` walks it rung
-    by rung, so a missing shortcut is not a move it cannot follow."""
+def catch_up(root, slug):
+    """Mark the binding as the retired `link --sync-status` left it."""
     import yaml
+    content = yaml.safe_load(binding_text(root, slug))
+    content["catch-up"] = True
+    content.pop("sync", None)
+    (FsWorkStore.open(root).path(slug) / "tracker.yaml").write_text(
+        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+
+
+COMPLETE = ("--resolution", "done", "--confirm", "--force")
+
+
+def test_a_catch_up_walk_is_refused_and_taken_one_step_at_a_time(strict, fake):  # noqa: F811
+    """Replaces "walked, not refused": the walk's later rungs cannot be checked
+    before they are made (spec: 2026-09-27-close-two-strict-mode-gaps-…)."""
     slug = bound_item(strict)
     claimed_ticket(fake, "In Progress", A)
     started(strict, slug)
-    content = yaml.safe_load(binding_text(strict, slug))
-    content["catch-up"] = True
-    content.pop("sync", None)
-    (FsWorkStore.open(strict).path(slug) / "tracker.yaml").write_text(
-        yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+    catch_up(strict, slug)
     fake.workflow = STRICT_LADDER
-    code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
-                          "--confirm", "--force")
+    code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
+    assert code == 1 and "one step at a time" in err and "'In Review'" in err, err
+    assert status(strict, slug) == "active" and fake.applied == []
+    assert cli(strict, "work", "submit", slug)[0] == 0
+    code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
+    assert code == 0, err
+    assert fake.tickets[TICKET_ID].status == "Done"
+
+
+def test_a_catch_up_walk_broken_part_way_is_refused_before_anything_moves(
+        strict, fake):  # noqa: F811
+    from tracker_fake import BROKEN_LADDER
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Progress", A)
+    started(strict, slug)
+    catch_up(strict, slug)
+    fake.workflow = BROKEN_LADDER
+    code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
+    assert code == 1 and "one step at a time" in err, err
+    assert status(strict, slug) == "active"
+    assert record(strict, slug) is None and fake.applied == []
+
+
+def test_a_catch_up_completion_of_a_ticket_someone_else_holds_is_refused(
+        strict, fake):  # noqa: F811
+    from test_tracker_sync import B
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Review", A)
+    started(strict, slug, submitted=True)
+    catch_up(strict, slug)
+    claimed_ticket(fake, "In Review", B)
+    code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
+    assert code == 1 and "assigned to Bob" in err, err
+    assert status(strict, slug) == "review"
+    assert record(strict, slug) is None and fake.applied == []
+
+
+def test_a_catch_up_completion_one_step_away_and_held_passes(strict, fake):  # noqa: F811
+    slug = bound_item(strict)
+    claimed_ticket(fake, "In Review", A)
+    started(strict, slug, submitted=True)
+    catch_up(strict, slug)
+    code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
     assert code == 0, err
     assert fake.tickets[TICKET_ID].status == "Done"
 
