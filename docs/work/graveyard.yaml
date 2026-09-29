@@ -1066,6 +1066,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-26-tidy-three-tracker-messages-left-by-the-binding-hardening-review:
+  location: 9bff23bea70aa9222deebf8822a5e2c4f75a8060
   resolution: done
   resolved: '2026-09-29'
 2026-09-27-collect-changelog-and-release-note-entries-as-one-file-per-item-instead-of-a-shared-upcoming-md:
