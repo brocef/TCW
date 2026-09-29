@@ -1905,7 +1905,7 @@ def test_start_complete_via_qualified_slug(tmp_path, monkeypatch, capsys):
     assert main(["work", "start", f"project-a/{slug}"]) == 0
     out = capsys.readouterr()
     assert f"started project-a/{slug}" in out.out
-    assert f"complete project-a/{slug}" in out.err            # hint echoes QUALIFIED slug
+    assert f"stage gate spec project-a/{slug}" in out.err     # hint echoes QUALIFIED slug
     assert FsWorkStore.open(sub).get(slug).status == "active"
     assert main(["work", "complete", f"project-a/{slug}",
                  "--resolution", "done", "--confirm"]) == 0
