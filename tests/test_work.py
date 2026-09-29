@@ -1272,7 +1272,8 @@ def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     new_out = capsys.readouterr()
     slug = new_out.out.strip()
     assert "\n" not in slug                                  # stdout is just the slug…
-    assert "tcw work start" in new_out.err and slug in new_out.err   # …hint is on stderr
+    assert f"tcw work stage gate request {slug}" in new_out.err       # …hint is on stderr
+    assert "tcw work start" not in new_out.err
     assert f"→ created at docs/work/backlog/{slug}" in new_out.err   # …and its new home
 
     assert main(["work", "start", slug]) == 0
@@ -1281,12 +1282,13 @@ def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     assert "tcw work complete" in start_out.err and slug in start_out.err
 
 
-def test_cli_new_epic_omits_start_hint(tmp_path, monkeypatch, capsys):
+def test_cli_new_epic_points_at_request_not_start(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path)
     monkeypatch.chdir(root)
-    assert main(["work", "new", "E", "--epic"]) == 0         # epic's next step is delegate
-    assert "tcw work start" not in capsys.readouterr().err
+    assert main(["work", "new", "E", "--epic"]) == 0         # epics run `request` too
+    err = capsys.readouterr().err
+    assert "tcw work stage gate request" in err and "tcw work start" not in err
 
 
 def test_cli_edit_ambiguous_slug_errors(tmp_path, monkeypatch):

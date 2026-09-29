@@ -14,8 +14,8 @@ from tcw.store.base import (
     DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, RESOLVED_STATUSES, STAGE_IDS, STAGE_STATUSES, WORK_ARTIFACTS,
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
-    StoreNotProvisioned, TransitionCommitError, WorkItem,
-    bound_value, normalize_tag, AlreadyClaimed,
+    StoreNotProvisioned, TRANSITION_NEXT_STEPS, TransitionCommitError, WorkItem,
+    bound_value, normalize_tag, AlreadyClaimed, start_next_stage,
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
@@ -770,9 +770,8 @@ def _new(args: argparse.Namespace) -> int:
     # nobody works directly; creation has no such difficulty, and an epic on the
     # board with no ticket is a hole in the tracker's picture of the work.
     _ticket_on_filing(st, item.slug, "new")
-    if not args.epic:                         # epic's next step is delegate, not start
-        print(f"→ next: when you begin implementing, run `tcw work start {item.slug}`",
-              file=sys.stderr)
+    # Epics included: they run `request`, `spec` and `plan` like any item.
+    _next_hint("new", item.slug)
     return 0
 
 
@@ -945,6 +944,7 @@ def _inbox_accept(args: argparse.Namespace) -> int:
             print(item.slug)
             if loc := st.locate(item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
+            _next_hint("new", item.slug)
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
             # binds the ticket that already exists and must not make a second.
             _ticket_on_filing(st, item.slug, "inbox accept")
@@ -1343,6 +1343,16 @@ def _post_result(err: str | None, transition: str, slug: str) -> int:
     print(f"tcw work {transition}: {err}. {slug} moved and was committed; the "
           f"hook failure does not roll that back.", file=sys.stderr)
     return 1
+
+
+def _next_hint(key: str, ref: str) -> None:
+    """Print the next step after a transition, from `TRANSITION_NEXT_STEPS`.
+
+    `ref` is the reference as the user typed it — possibly qualified, such as
+    `kid/<slug>` — because the reader runs the printed command from where they
+    typed theirs."""
+    print(f"→ next: {TRANSITION_NEXT_STEPS[key].replace('<slug>', ref)}",
+          file=sys.stderr)
 
 
 def _complete_hint(slug: str) -> None:
