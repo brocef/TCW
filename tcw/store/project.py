@@ -831,6 +831,8 @@ class FsProjectRegistry(ProjectRegistry):
             where = self._canonical(Path(override.locator) / SENTINEL)
             cfg = self._by_id.get(override.id)
             if cfg is not None and cfg.path == where:
+                if (warning := self._other_branch_warning(override, where)):
+                    self._overrides[index] = replace(override, warning=warning)
                 continue
             # Not `cfg`: that is whatever answered for this id, which is not
             # necessarily what the override pointed at. Name the node actually
@@ -843,6 +845,27 @@ class FsProjectRegistry(ProjectRegistry):
                 override,
                 problem=f"{override.source} names {override.locator}, {found}",
             )
+
+    def _other_branch_warning(self, override: ProjectOverride,
+                              where: Path) -> str | None:
+        """Why `override`, run from a linked worktree, reads its project from
+        another branch: it names the primary checkout's copy while this
+        worktree holds the same project. Kept as stated — it says exactly where
+        the project is — but a variable set once for a machine lands here
+        whenever a worktree is used, and the graph then mixes two branches."""
+        copy = self._worktree_copy(where)
+        if copy == where:
+            return None
+        try:
+            held = yaml.safe_load(copy.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            return None
+        if not isinstance(held, dict) or held.get("id") != override.id:
+            return None
+        return (f"{override.source} names {override.locator}, the primary "
+                f"checkout's copy, while this worktree has its own at "
+                f"{copy.parent}; '{override.id}' is read from another branch "
+                f"than the rest of the graph")
 
     def _problem(self, path: Path, message: str) -> None:
         rendered = f"{path}: {message}"

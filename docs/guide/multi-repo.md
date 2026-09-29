@@ -171,7 +171,10 @@ graph, not the primary checkout's copies as duplicates. That holds from inside
 a submodule's own checkout in a linked worktree, and for a linked worktree of a
 repository that is itself a submodule of another. A `TCW_PROJECT_<ID>` override
 keeps the checkout it names, even the primary checkout's copy while you run
-inside a linked worktree: it says exactly where the project is.
+inside a linked worktree: it says exactly where the project is. `tcw validate`
+then warns, naming the worktree's own copy, because that project is read from
+another branch than the rest of the graph; point the variable at the worktree's
+copy, or unset it, if that is not what you meant.
 A project is its folder, not its spelling or its file: a locator naming the
 folder in other letter case on a case-insensitive disk (macOS, Windows) is the
 same project, and a `tcw-config.yaml` that is a symlink belongs to the folder it

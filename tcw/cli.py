@@ -406,6 +406,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     for override in registry.overrides():
         print(f"connected project '{override.id}' is overridden by "
               f"{override.source} to {override.locator}", file=sys.stderr)
+        if override.warning:
+            print(f"  warning: {override.warning}", file=sys.stderr)
     registry_problems = registry.check()
     if registry_problems:
         for problem in registry_problems:
