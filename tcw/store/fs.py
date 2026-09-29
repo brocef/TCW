@@ -4233,21 +4233,29 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # to the lookup cannot quietly reintroduce a mismatch between the
             # path searched and the path written. The suffix is one hyphen plus
             # `uuid4().hex`, 32 characters — see where the claim is created.
-            claimed = interrupted[0].name[:-33]
+            found = interrupted[0]
+            claimed = found.name[:-33]
             # Where the claim came from, asked of git: the folder is gone, and a
             # child made by an earlier version came from inside its parent's.
             src = self._tracked_source(claimed) or self.root / "backlog" / claimed
-            state_path = interrupted[0] / "state.yaml"
-            state = load_yaml(state_path)
-            state["owner"], state["started"] = owner, started
             # A claim this version made already carries `parent:`; one an
             # earlier version left behind does not, and the relation the nested
             # source folder held would be lost on landing at the top level.
-            if not state.get("parent") and (tracked := self._tracked_parent(claimed)):
-                state["parent"] = tracked
-            dump_yaml(state_path, state)
+            tracked_parent = self._tracked_parent(claimed)
+            self._await_interrupted(claimed, found)
+            # Take the folder before writing a word into it, exactly as a
+            # claimant takes it from `backlog/`. Written in place instead, a
+            # claimant still alive could publish the recoverer's stamp as its
+            # own; renamed first, whichever rename loses fails cleanly, and
+            # nobody's `state.yaml` is written by anyone but its holder.
+            private = found.parent / f"{claimed}-{uuid.uuid4().hex}"
             dst = self.root / "active" / claimed
-            os.replace(interrupted[0], dst)
+            try:
+                os.replace(found, private)
+                self._stamp_claim(private, owner, started, parent=tracked_parent)
+                os.replace(private, dst)
+            except FileNotFoundError:
+                self._lost_the_claim(claimed)             # always raises
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
                 self._commit_transition(claimed, src, dst, "active", None)
@@ -4343,21 +4351,73 @@ class FsWorkStore(FsTreeStore, WorkStore):
             os.replace(src, private)
         except FileNotFoundError:
             self._lost_the_claim(slug)                # always raises
-        state_path = private / "state.yaml"
-        state = load_yaml(state_path)
-        state["owner"], state["started"] = owner, started
-        dump_yaml(state_path, state)
+        # From here the folder can be taken from under us — by a recovery that
+        # judged this claim interrupted — so losing it at any step is a lost
+        # race, reported as one, never a bare `FileNotFoundError`.
+        try:
+            self._stamp_claim(private, owner, started)
+        except FileNotFoundError:
+            self._lost_the_claim(slug)                # always raises
         dst = self.root / "active" / slug
         try:
             os.replace(private, dst)
+        except FileNotFoundError:
+            self._lost_the_claim(slug)                # always raises
         except BaseException:
-            os.replace(private, src)
+            try:
+                os.replace(private, src)
+            except FileNotFoundError:
+                self._lost_the_claim(slug)            # always raises
             raise
         git_stage(self.store_git_root, src, dst)
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, "active", item)
             self._publish_after_transition(slug, "active")
         return self._require(slug)
+
+    def _stamp_claim(self, folder: Path, owner: str, started: str,
+                     parent: str | None = None) -> None:
+        """Stamp `owner` and `started` (and `parent`, when the claim lacks one)
+        into a claim folder's `state.yaml` by atomic replace.
+
+        Never a write in place: `dump_yaml` truncates and then writes, so a
+        writer that opened the file before its folder was taken would still be
+        writing into it afterwards, and a reader could see it empty. The
+        temporary file sits in `.claiming/` itself — outside every item folder,
+        and never matching a claim's `<slug>-<32 hex>` name — so the final
+        rename is the one step that touches the item, and it fails with
+        `FileNotFoundError` once the folder has gone. `load_yaml` answers `{}`
+        for a folder already gone; that empty state can never land, for the
+        same reason.
+        """
+        state_path = folder / "state.yaml"
+        state = load_yaml(state_path)
+        state["owner"], state["started"] = owner, started
+        if parent and not state.get("parent"):
+            state["parent"] = parent
+        tmp = folder.parent / f".stamp-{uuid.uuid4().hex}.yaml"
+        try:
+            dump_yaml(tmp, state)
+            os.replace(tmp, state_path)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def _await_interrupted(self, slug: str, found: Path) -> None:
+        """Return once the claim at `found` has sat unpublished for the window
+        `get` waits before calling a claim interrupted; refuse if it publishes
+        meanwhile, or report the lost race if its folder leaves.
+
+        A claimant between its two renames is alive, and recovering from under
+        it would rob it. Publication found here is a refusal, not a reason to
+        take over the now-active item: that needs a fresh, explicit take-over.
+        """
+        for _ in range(50):                    # the publication window, 500 ms
+            time.sleep(0.01)
+            current = self._get_now(slug)
+            if current is not None:
+                raise AlreadyClaimed(slug, current.owner, current.started)
+            if not found.is_dir():
+                self._lost_the_claim(slug)            # always raises
 
     def _claiming_dirs(self, slug: str) -> list[Path]:
         """The adapter-private folders of claims for `slug` still mid-flight.
