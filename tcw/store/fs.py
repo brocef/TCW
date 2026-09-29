@@ -6581,12 +6581,22 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return self._write_tags(set(self.registered_tags())
                                 - {normalize_tag(t) for t in tags})
 
-    def _validate_tags(self, tags: list[str]) -> list[str]:
+    def _validate_tags(self, tags: list[str], held: list[str] = ()) -> list[str]:
         """Normalize each tag and reject any not in the registered set (fail
-        closed). Dedupes, preserving first-seen order."""
+        closed). Dedupes, preserving first-seen order.
+
+        `held` is the item's tags as `read_tags` reads them. One of those is
+        kept as it stands, valid or not: an edit is refused for what it adds,
+        never for what the item already carries, or one bad hand-written tag
+        would refuse every edit — the web's resend of the tags included — until
+        `state.yaml` was fixed by hand. `check` still reports it."""
         registered = set(self.registered_tags())
         out: list[str] = []
         for t in tags:
+            if isinstance(t, str) and t in held:
+                if t not in out:
+                    out.append(t)
+                continue
             if not isinstance(t, str):
                 raise ValueError(f"tag {t!r} must be a string")
             if "," in t:                               # as registry and conditions read it
@@ -7385,7 +7395,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if tags is None:
                 new_tags = []
             elif isinstance(tags, list):
-                new_tags = self._validate_tags(tags)
+                new_tags = self._validate_tags(tags, held=read_tags(state.get("tags")))
             else:
                 raise ValueError("tags must be a list or None")
 
