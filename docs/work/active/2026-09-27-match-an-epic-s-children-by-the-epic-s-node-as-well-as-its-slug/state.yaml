@@ -7,3 +7,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-29T17:44:27.208463Z'
+worktree: .worktrees/2026-09-27-match-an-epic-s-children-by-the-epic-s-node-as-well-as-its-slug
+branch: work/2026-09-27-match-an-epic-s-children-by-the-epic-s-node-as-well-as-its-slug
