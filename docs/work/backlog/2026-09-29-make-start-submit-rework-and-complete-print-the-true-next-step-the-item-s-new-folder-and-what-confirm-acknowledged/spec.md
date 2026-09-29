@@ -9,7 +9,8 @@ Planned ledger changes only; nothing is written to the ledger at this stage.
 - **changed:** `work/manage-the-work-inbox` — `tcw work inbox accept` of a raw
   entry prints the same next step as `new`.
 - **changed:** `work/start-a-work-item` — after `start`, the next step is the
-  first planning stage still missing, or `implement`; never `complete`.
+  first stage whose artifact is still missing (`spec`, `plan`, `implement`,
+  `verify`, in the order below); never `complete`.
 - **changed:** `work/submit-a-work-item-for-review` — `submit` prints the item's
   new location and points at the `verify` stage.
 - **changed:** `work/rework-a-reviewed-work-item` — `rework` prints the item's
@@ -18,7 +19,11 @@ Planned ledger changes only; nothing is written to the ledger at this stage.
   Done is printed only once the item has actually been closed, as acknowledged
   items, saying `--confirm` acknowledged them.
 - **changed:** `work/customize-the-definition-of-done` — its description of when
-  the checklist is printed follows the change above.
+  the checklist is printed follows the change above, and no longer calls it a
+  prompt on the `--confirm` path.
+- **changed:** `skills/extras-triage-issues` — its description says the
+  issue-closing reminder "rides on the completion checklist"; under `--confirm`
+  that checklist now appears after the item has closed.
 
 No new capabilities. No taxonomy entries are touched: "next step", "stage",
 "transition" and "Definition of Done" are already the project's words for these
@@ -44,9 +49,10 @@ references are to the tree at `3bd7c53a`):
    stages running.
 3. **`submit` names a file that does not exist** (GitHub #68). Its hint
    (`tcw/work/cli.py:1656-1659`) says to "delete refined-outcome.md" to send the
-   work back. Right after `submit` that file has never been written — the
-   `verify` stage writes it, on acceptance only — and rejecting means writing
-   `rework.md`, which the hint never mentions.
+   work back. Right after `submit` that file normally does not exist — the
+   `verify` stage writes it, on acceptance only (it can exist already only if
+   `verify` was run from `active`, which `STAGE_STATUSES` allows) — and
+   rejecting means writing `rework.md`, which the hint never mentions.
 4. **`submit` and `rework` report a status, not where the item went**
    (GitHub #58, point 1). They print `submitted <slug> → review` and
    `reworking <slug> → active` (`tcw/work/cli.py:1655`, `:1687`), while `start`
@@ -94,8 +100,6 @@ and no such tests, which is how their hints drifted.
   planning gates should accept an `active` item (GitHub #71). That is item
   `2026-09-29-let-a-started-item-still-pass-its-planning-gates-or-stop-start-from-letting-it-past-them`.
   This item only makes the hint point at whichever stage is legal today.
-- Epics. `new --epic` prints no next step on purpose (`tcw/work/cli.py:773`:
-  an epic's next step is delegation, not `start`), and that stays as it is.
 - Accepting a tracker ticket through `inbox accept`, which runs
   `tracker import` (`tcw/work/cli.py:954-957`) and has its own output.
 - What the transitions do: what they refuse, move or commit is unchanged. The
@@ -118,23 +122,54 @@ Keys and text (`<slug>` is substituted as in `STAGE_NEXT_STEPS`):
 | Key      | Item lands in | Next-step text                                                                                                  |
 | -------- | ------------- | --------------------------------------------------------------------------------------------------------------- |
 | `new`    | `backlog`     | run `tcw work stage gate request <slug>`                                                                        |
-| `start`  | `active`      | run `tcw work stage gate {stage} <slug>` — `{stage}` chosen as below                                             |
+| `start`  | `active`      | one entry per stage `start` can choose — `spec`, `plan`, `implement`, `verify` — each reading run `tcw work stage gate <stage> <slug>`; chosen as below |
 | `submit` | `review`      | run `tcw work stage gate verify <slug>`; it ends in `refined-outcome.md` (accept) or `rework.md` (send back)     |
 | `rework` | `active`      | address rework.md: run `tcw work stage gate implement <slug>`                                                   |
 
 `inbox accept` of a raw entry uses the `new` row: both create a backlog item
 holding only its intake.
 
-**`start` chooses its stage from the item's artifacts**, because an item can be
-started before it is specified or planned (the `start` warning at
-`tcw/work/cli.py:1466-1472` already says so), and in that case `implement` is
-not yet the next stage — this project's own `implement` gate refuses without a
-spec and plan. The rule: the first of `spec`, `plan`, `implement` whose artifact
-(`spec`, `plan`, `outcome`) is not present, read through `st.artifacts(slug)`.
+**Epics get the `new` hint too.** `new --epic` prints no next step today, with
+the reason "epic's next step is delegate, not start" (`tcw/work/cli.py:773`).
+That reason was about the `start` hint. Epics run `request`, `spec` and `plan`
+like any item (`skills/work/references/epic-deltas.md:14-16`), so the `request`
+hint is correct for them and the exemption is removed.
+
+**`<slug>` is the reference the user typed** (`args.slug`, which may be
+qualified, such as `kid/<slug>`), and the bare slug is used only to read the
+item — the same split `_unwritten_plan` makes (`tcw/work/cli.py:1455-1472`,
+asserted by `tests/test_unplanned_start.py:154`).
+
+**`start` chooses its stage from the item's artifacts.** Two facts make a
+fixed answer wrong. An item can be started before it is specified or planned
+(the warning built by `_unwritten_plan`, `tcw/work/cli.py:1455-1472`, printed at
+`:1567`), and this project's own `implement` gate refuses without a spec and
+plan. And `start` is not limited to `backlog`: it takes an `active` item with
+`--take-over`, or with no flag when nobody holds it — the state
+`tcw work tracker release` leaves (`tcw/store/base.py:4234-4243`). Such an item
+may already hold `outcome.md`, with or without `rework.md`.
+
+The rule is the work skill's own "Finding your place" order
+(`skills/work/SKILL.md:45-48`), restricted to stages legal in `active`, and
+extended for a reworked item the way the `rework` row below already is:
+
+1. no `spec.md` → `spec`
+2. else no `plan.md` → `plan`
+3. else no `outcome.md`, **or** `rework.md` present → `implement`
+4. else → `verify`
+
 `request` is not considered, because it is not legal in `active`
-(`STAGE_STATUSES`, `tcw/store/base.py:2270-2278`). All three candidates are legal in
-`active`. If reading the artifacts fails, the hint falls back to `implement`
-rather than printing nothing.
+(`STAGE_STATUSES`, `tcw/store/base.py:2270-2278`). All four candidates are legal
+in `active`. The hint and the skill paragraph must agree; the skill paragraph
+gains the `rework.md` case so they do.
+
+The artifacts are read once, shared with `_unwritten_plan`, under its existing
+error handling (`OSError`, `ValueError`). If the read fails the hint falls back
+to `implement` rather than printing nothing. When spec or plan is missing, the
+warning and the hint both name the same gate command; that repetition is
+accepted. The hint text never contains the words `spec.md` or `plan.md`, because
+`tests/test_unplanned_start.py:58,65` assert those do not appear on standard
+error in cases where they should not.
 
 The `start` hint does not name `submit`, for the reason `STAGE_NEXT_STEPS`
 gives for `implement`: `verify` is legal from `active`, and the stage footers
@@ -173,6 +208,25 @@ For a `done` resolution:
   `Definition of Done — acknowledged with --confirm:` followed by one
   `  [x] <entry>` line per entry, on standard output. If any refusal or failure
   happens first, the checklist is not printed at all.
+- **The move lands but its commit fails** (`TransitionCommitError`,
+  `tcw/work/cli.py:4203-4207`): the command returns 1 without the `completed`
+  line today, and it also returns without the checklist. Its error message
+  already says the item moved; printing an acknowledgement beside a failure
+  would read as success.
+
+Every other path after a successful move reaches line 4232 — `post` hooks,
+tracker delivery, the tracker-owed "kept rather than removed" branch, and the
+automatic deletion — so none of them loses the checklist.
+
+**Under `--confirm` the checklist is a record, not a prompt.** It says what was
+acknowledged, after the fact. A reader who wants to see it *before* committing
+to it runs `complete` without `--confirm`, which is unchanged. One consequence:
+the `extras-triage-issues` reminder to answer the originating GitHub issue
+"rides on the completion checklist" (`docs/work/dod.yaml`) and now reaches the reader
+only after the item has closed. That is acceptable because this repository
+answers issues only after the version carrying the fix is published
+(`CLAUDE.md`, "Closing the originating GitHub issue waits for publication"), so
+the reminder was never meant to be acted on before closing.
 
 The heading still begins `Definition of Done`, which keeps existing tests that
 look for that phrase on the success path meaningful (`tests/test_work.py:887`,
@@ -181,29 +235,43 @@ must stay green.
 
 ### Documentation
 
-- `docs/guide/work.md` "What the commands print" (`:373-381`): replace the old
-  example hint and name `submit` and `rework` among the commands that print the
-  item's location.
+- `docs/guide/work.md` "What the commands print" (`:373-381`): it says `new` and
+  `start` print "the **next transition** to run"; they now print a stage. Replace
+  that wording and the old example, and name `submit` and `rework` among the
+  commands that print the item's location.
 - `docs/guide/work.md` "The completion gate" (`:548-561`): say what `--confirm`
   prints and when.
-- The capability descriptions listed under **Capability changes**.
+- `skills/work/references/transitions.md:145` ("printed before `--confirm`.
+  `[prompted]`"), `skills/configure/references/work.md:121-139`, and
+  `skills/work/SKILL.md:45-48` (the `rework.md` case).
+- The capability descriptions listed under **Capability changes**, including
+  `complete-a-work-item`'s sentence "the checklist is still printed before I
+  confirm", `customize-the-definition-of-done`'s "prints before it accepts
+  `--confirm`" and "it prompts me", and
+  `docs/capabilities/skills/extras-triage-issues/description.md:4`.
 - Changelog and release-note entries under `docs/{changelogs,release-notes}/upcoming/`.
 
 ## Acceptance criteria
 
-Each is checked in a scratch project made with `tcw init` in an empty git
-repository, unless it names a test.
+Criteria 1–9 are automated CLI tests, run against a scratch project made with
+`tcw init` in an empty git repository, in the style of `tests/test_work.py` and
+`tests/test_unplanned_start.py`.
 
 1. `echo body | tcw work new "Thing"` prints on standard error a line beginning
    `→ next:` that contains `tcw work stage gate request <slug>` and does not
    contain `tcw work start`.
 2. Accepting a raw inbox entry with `tcw work inbox accept <entry>` prints the
    same `→ next:` line as criterion 1, for the accepted item's slug.
-3. `tcw work new --epic "E"` prints no `→ next:` line (unchanged).
-4. `tcw work start <slug>` on an item with neither `spec.md` nor `plan.md`
-   prints a `→ next:` line naming `tcw work stage gate spec <slug>`; with
-   `spec.md` only, `plan`; with both, `implement`. None of the three names
-   `tcw work complete`. The same holds for `tcw work start <slug> --worktree`.
+3. `tcw work new --epic "E"` prints the same `→ next:` line as criterion 1, for
+   the epic's slug.
+4. `tcw work start <slug>` prints a `→ next:` line naming
+   `tcw work stage gate <stage> <slug>`, where `<stage>` is: `spec` with neither
+   `spec.md` nor `plan.md`; `plan` with `spec.md` only; `implement` with both;
+   and, on an unowned `active` item started again, `implement` with `outcome.md`
+   and `rework.md`, and `verify` with `outcome.md` and no `rework.md`. None of
+   these names `tcw work complete`. The first three cases also hold for
+   `tcw work start <slug> --worktree`, and for a qualified reference
+   (`kid/<slug>`) the hint shows the reference as typed.
 5. `tcw work submit <slug>` prints on standard output
    `submitted <slug> → docs/work/review/<slug>`, and on standard error a
    `→ next:` line naming `tcw work stage gate verify <slug>`, mentioning both
@@ -221,12 +289,15 @@ repository, unless it names a test.
 9. `tcw work complete <slug> --resolution done` (no `--confirm`) prints the
    unticked checklist and `Refused: re-run with --confirm…` exactly as before,
    and exits 1.
-10. A test asserts that `TRANSITION_NEXT_STEPS` has exactly the keys `new`,
-    `start`, `submit`, `rework`; that every `tcw …` command it names is a
-    shipped command (by the method of `tests/test_stage_verb.py:102-133`); and
-    that every stage it names is legal in the status that key lands the item in
-    (`STAGE_STATUSES`) — covering each stage `start` can choose.
-11. `grep -rn "when done & verified\|delete refined-outcome\|when you begin implementing" tcw/ docs/guide/ skills/ README.md`
+10. A test asserts that `TRANSITION_NEXT_STEPS` covers `new`, `submit`, `rework`
+    and each of `start`'s four candidate stages; that every `tcw …` command in
+    every entry, **with `<slug>` substituted and no unfilled placeholder left**,
+    is a shipped command (by the method of `tests/test_stage_verb.py:102-133`);
+    and that every stage an entry names is legal in the status that transition
+    lands the item in (`STAGE_STATUSES`). The test fails if any entry yields no
+    command match at all, so an entry the pattern cannot read is not silently
+    skipped.
+11. `grep -rn "when done & verified\|delete refined-outcome\|when you begin implementing\|printed before \`--confirm\`\|prints before it accepts\|next transition\*\* to" tcw/ docs/guide/ docs/capabilities/ skills/ README.md`
     finds nothing.
 12. The full test suite passes, run as CI runs it (bare `pytest`).
 
@@ -237,9 +308,12 @@ repository, unless it names a test.
   (`tests/test_work_review.py:306` and `:310` assert the substring and are
   updated). The same change was made to `start` earlier without complaint;
   accepted.
-- **The `start` hint reads artifacts** for the first time. A read failure must
-  not turn a successful `start` into a failure, so it falls back to
-  `implement` (Design).
+- **The `start` hint reads artifacts.** It shares the read `_unwritten_plan`
+  already does, so there is no second read with different failure rules; a
+  failure falls back to `implement` (Design).
+- **The `--worktree` hint does not say to work inside the worktree.** It names
+  the stage, not where to run it. That predates this item and belongs to the
+  stale-path theme of the #58 item; noted, not changed.
 - **Printing the checklist later changes the output order** of a successful
   `--confirm` completion: the checklist now follows every warning printed during
   the checks. Anything reading the checklist before the `completed` line still
@@ -258,3 +332,16 @@ repository, unless it names a test.
   quotes a transition hint; `docs/guide/work.md:375` does and is updated.
 - `complete` from `active` already prints a note that the verify stage was
   skipped (`tcw/work/cli.py:4080-4093`); unchanged.
+- Other callers, checked: none of `new`, `start`, `submit`, `rework`, `complete`
+  has a JSON output mode. `tcw serve` calls the store directly and prints no
+  hints; its checklist is its own web form. `reconcile --complete-when-ready`
+  (`tcw/work/recursion.py:432-437`) completes an epic and prints no checklist;
+  unchanged here, though `complete-a-work-item`'s claim that the
+  Definition-of-Done gate "still runs either way" is inaccurate for it and is
+  left for a separate item.
+- Adversarial spec review, round 1 (after `1b6ac687`): all three blocking
+  findings accepted — the `start` rule gained the `outcome.md` cases, the
+  documentation list gained the "printed before `--confirm`" statements, and
+  criterion 10 no longer lets a templated row pass unchecked. The "could be
+  noted" findings were accepted except the `--worktree` location, recorded in
+  Risks as out of scope.
