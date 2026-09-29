@@ -3919,7 +3919,10 @@ def declared_connected_projects(
         return [], []
     declared: list[tuple[str, RepositoryDeclaration]] = []
     problems: list[str] = []
-    for label in ("parent", "children"):
+    # `upstream` too: obtaining a read-only project into this machine's own
+    # checkout area writes nothing into it, and a reader holding only its own
+    # repository has no other way to reach one.
+    for label in ("parent", "children", "upstream"):
         relation = connected.get(label)
         if not isinstance(relation, dict):
             continue

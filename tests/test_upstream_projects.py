@@ -239,3 +239,115 @@ def test_the_reverse_migration_order_still_fails(tmp_path):
     config(tmp_path / "r" / "core", "id: core\n")
     assert any("nonreciprocal connection" in p
                for p in FsProjectRegistry.open(tmp_path / "r").check())
+
+
+# ── reading through an upstream, from the CLI ────────────────────────────────
+
+import subprocess  # noqa: E402
+
+import pytest  # noqa: E402
+import yaml  # noqa: E402
+
+from tcw.store.fs import init  # noqa: E402
+
+
+def _git(path: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(path), *args], check=True,
+                   capture_output=True)
+
+
+def _tcw(cwd: Path, *args: str, env: dict | None = None):
+    import os
+    return subprocess.run(["tcw", *args], cwd=str(cwd), capture_output=True,
+                          text=True, env={**os.environ, **(env or {})})
+
+
+def _core_node(path: Path, term: str = "Argument") -> Path:
+    """A standalone project with one term and one capability, committed —
+    usable as a node and as a remote."""
+    path.mkdir(parents=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "t@t")
+    _git(path, "config", "user.name", "t")
+    init(["taxonomy", "capabilities", "work"], path, "core")
+    assert _tcw(path, "taxonomy", "add", term).returncode == 0
+    assert _tcw(path, "capabilities", "add", "arguments/build-an-argument").returncode == 0
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "seed")
+    return path
+
+
+def _reader(path: Path, project_id: str, connected: dict) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "t@t")
+    _git(path, "config", "user.name", "t")
+    init(["taxonomy", "capabilities", "work"], path, project_id)
+    cfg = yaml.safe_load((path / "tcw-config.yaml").read_text())
+    cfg["connected-projects"] = connected
+    (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return path
+
+
+def _assert_reads_core(app: Path, term_slug: str = "argument") -> None:
+    for command in (("taxonomy", "extends", "add", "core"),
+                    ("capabilities", "extends", "core")):
+        out = _tcw(app, *command)
+        assert out.returncode == 0, (command, out.stderr)
+    out = _tcw(app, "taxonomy", "show", f"core/{term_slug}")
+    assert out.returncode == 0, out.stderr
+    out = _tcw(app, "capabilities", "show", "core/arguments/build-an-argument")
+    assert out.returncode == 0, out.stderr
+    out = _tcw(app, "validate")
+    assert out.returncode == 0, out.stderr
+    assert "nonreciprocal" not in out.stderr
+
+
+def test_the_cli_reads_an_upstream_one_hop(tmp_path):
+    core = _core_node(tmp_path / "core")
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})
+    _assert_reads_core(app)
+    out = _tcw(core, "validate")
+    assert out.returncode == 0, out.stderr
+    assert "app" not in out.stdout + out.stderr
+
+
+def test_the_cli_reads_an_upstream_through_a_parent(tmp_path):
+    _core_node(tmp_path / "core")
+    repo = _reader(tmp_path / "repo", "repo", {"children": {"pkg": "pkg"},
+                                              "upstream": {"core": "../core"}})
+    pkg = repo / "pkg"
+    pkg.mkdir()
+    init(["taxonomy", "capabilities", "work"], pkg, "pkg")
+    cfg = yaml.safe_load((pkg / "tcw-config.yaml").read_text())
+    cfg["connected-projects"] = {"parent": {"repo": ".."}}
+    (pkg / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    _assert_reads_core(pkg)
+
+
+def test_a_public_upstream_is_provisioned_into_a_reader_only_checkout(
+        tmp_path, monkeypatch):
+    """The case that motivated this: the upstream is fetched by its repository
+    entry on a machine holding only the reader, and it names nothing back."""
+    cache = tmp_path / "cache"
+    remote = _core_node(tmp_path / "remote-core")
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": {
+        "path": "../not-here", "repository": {"url": str(remote), "ref": "main"}}}})
+    env = {"XDG_CACHE_HOME": str(cache)}
+    before = _tcw(app, "validate", env=env)
+    assert before.returncode == 0 and "tcw provision" in before.stderr, before.stderr
+    out = _tcw(app, "provision", env=env)
+    assert out.returncode == 0, out.stderr
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    _assert_reads_core(app)
+    assert "connected-projects" not in (remote / "tcw-config.yaml").read_text()
+
+
+def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
+    _core_node(tmp_path / "core", term="Argument")
+    _core_node(tmp_path / "other-core", term="Premise")
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})
+    assert _tcw(app, "taxonomy", "extends", "add", "core").returncode == 0
+    env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
+    assert _tcw(app, "taxonomy", "show", "core/premise", env=env).returncode == 0
+    assert _tcw(app, "taxonomy", "show", "core/argument", env=env).returncode != 0
