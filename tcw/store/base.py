@@ -3917,10 +3917,24 @@ class WorkStore(ABC):
         """A blocker entry: a ref to an item this store holds or once held →
         {slug}, else {external}. A resolved item already reduced to its
         tombstone is still this store's item; recording it as external text
-        would make it block forever."""
+        would make it block forever.
+
+        So is a ref that names one of this store's items another way — as
+        `<status>/<slug>`, or qualified with this node's own project id. Left as
+        text, it escaped the self-block and cycle checks, which compare slugs,
+        and a reference to the item itself blocked it forever."""
         ref = self._normalize_ref(ref)
-        known = self.get(ref) is not None or self.tombstone(ref) is not None
-        return {"slug": ref} if known else {"external": ref}
+        for candidate in (ref, *self._local_forms(ref)):
+            if self.get(candidate) is not None or self.tombstone(candidate) is not None:
+                return {"slug": candidate}
+        return {"external": ref}
+
+    def _local_forms(self, ref: str) -> list[str]:
+        """Bare slugs `ref` may name in this store besides itself. `<status>/<slug>`
+        is model vocabulary every store shares; a store that knows its own
+        project id adds `<own-id>/<slug>`."""
+        status, sep, rest = ref.partition("/")
+        return [rest] if sep and status in WORK_STATUSES and rest and "/" not in rest else []
 
     @staticmethod
     def _same_entry(a: dict, b: dict) -> bool:
