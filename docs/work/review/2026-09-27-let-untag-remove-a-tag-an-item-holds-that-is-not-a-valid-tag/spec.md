@@ -34,10 +34,14 @@ is affected.
 1. `--untag <value>` removes a tag the item holds whose text is exactly
    `<value>`, whether or not it is a valid tag.
 2. Otherwise `--untag` behaves as today: comma-separated, normalized.
+3. An edit is refused for the tags it adds, never for a tag the item already
+   holds: `--tag`, a partial `--untag`, and a web save resending the tags all
+   keep a held tag that is invalid, or valid but no longer registered, as it
+   stands; `check` still reports it (added at implement — see Notes).
 
 ## Non-goals
 
-- Changing `--tag`, `_validate_tags`, or how `read_tags` reads.
+- Changing `--tag`'s parsing or how `read_tags` reads.
 - Pointing the "holds several tags" refusal at `--untag`.
 
 ## Design
@@ -47,9 +51,15 @@ matched first against `current.tags` verbatim; a value the item holds is removed
 as it stands, and any other value goes through `_tag_list` (a `ValueError` there
 is the existing handler's refusal, exit 1).
 
+`update_work` passes the item's held tags (`read_tags` of its `state.yaml`)
+to `_validate_tags`, which keeps any of them as it stands and validates only the
+rest.
+
 ## Abstraction litmus test
 
-No store operation changes; this is CLI argument handling.
+`update_work`'s tag validation changes: "an edit is refused for what it
+adds" is a rule any store can apply, since it only compares the new list with
+the item's current one. No new operation.
 
 ## Acceptance criteria
 
@@ -60,7 +70,20 @@ No store operation changes; this is CLI argument handling.
    `'cli,docs'` tag) removes both, as today.
 4. `edit --untag '!!!'` on an item that does not hold `'!!!'` exits 1 with
    "invalid tag" in stderr and changes nothing.
-5. The full test suite passes.
+5. On an item holding `'cli,docs'`, `edit --tag docs` exits 0 leaving
+   `['cli,docs', 'docs']`; `update_work(tags=['!!!', 'cli'], title=…)` on an item
+   holding both succeeds; `update_work(tags=['cli', 'cli,docs'])` on an item not
+   holding `'cli,docs'` is still refused.
+6. The full test suite passes.
+
+## Notes
+
+- Amended at implement (2026-09-29). With criterion 1's own example (`'cli,docs'`
+  and `'!!!'` both held), removing one left the other, and `update_work`
+  re-validated the whole remaining list and refused it — so matching `--untag`
+  verbatim alone could not pass criterion 1. The intake's other symptoms (every
+  `--tag`, every web save refused) have the same root, so the fix moved to the
+  one place all three go through.
 
 ## Risks
 

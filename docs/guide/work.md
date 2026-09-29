@@ -359,7 +359,10 @@ carrying a tag that was later unregistered. A tag typed by hand into an item's
 `state.yaml` counts in its canonical spelling (`CLI` is `cli`). While
 `work.tags` holds an entry that is not a tag, such as a bare number or
 `"cli,docs"`, `tcw work tags add` and `rm` refuse and name it rather than
-dropping it. Tags don't affect board ordering.
+dropping it. An item holding such a tag in its `state.yaml` keeps it through
+every edit until you remove it — `tcw validate` reports it, and
+`--untag 'cli,docs'` removes it exactly as written (a value matching a tag
+the item holds is not also split at its commas). Tags don't affect board ordering.
 
 ## What the commands print
 

@@ -2469,7 +2469,13 @@ def _edit(args: argparse.Namespace) -> int:
         # Recompute the tag set only when --tag/--untag were given (else _UNSET).
         tags_kw = _UNSET
         if args.tag or args.untag:
-            untag = set(args.untag or [])
+            # A value the item holds is removed as it stands. `read_tags` keeps
+            # an entry that cannot be a tag — `'cli,docs'`, `'!!!'` — as its
+            # text, so splitting or normalizing it first would never match, and
+            # the item could not be cleaned from the CLI at all.
+            untag: set[str] = set()
+            for value in args.untag or []:
+                untag.update([value] if value in current.tags else _tag_list(value))
             final = [t for t in current.tags if t not in untag]
             for t in (args.tag or []):
                 if t not in final:
@@ -4819,8 +4825,11 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                          '(refused while items name it as their initiative)')
     pe.add_argument("--tag", "--tags", action="extend", type=_tags,
                     help="apply a registered tag (repeatable; a value may be a,b,c)")
-    pe.add_argument("--untag", "--untags", action="extend", type=_tags,
-                    help="remove a tag (repeatable; a value may be a,b,c)")
+    # No `type=`: a value is first matched against the item's tags as written
+    # (see `_edit`), which a parse-time split or normalize would prevent.
+    pe.add_argument("--untag", "--untags", action="append",
+                    help="remove a tag (repeatable; a value may be a,b,c; a tag the "
+                         "item holds is matched as written, even one that is not valid)")
     pe.set_defaults(func=_edit)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
