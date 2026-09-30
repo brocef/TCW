@@ -28,7 +28,8 @@ from tcw.store.fs import (
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
     qualified_work_ref_read_only, resolve_qualified_work_ref,
-    resolve_qualified_work_ref_for_write, uncommitted_paths, worktree_node_root,
+    resolve_qualified_work_ref_for_write, unbranched_commits, unbranched_summary,
+    uncommitted_paths, worktree_node_root,
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
@@ -4299,6 +4300,24 @@ def _complete(args: argparse.Namespace) -> int:
                       f"worktree rather than discarding it, and if it still records "
                       f"an undelivered move, run `tcw work tracker sync {bare}` "
                       f"there first.", file=sys.stderr)
+            return 1
+    # Also regardless of `--force`, for the same reason: commits on the worktree's
+    # detached `HEAD` that no ref holds are carried by neither the merge-back nor
+    # `--already-integrated`, and the teardown would lose them. A discard is not
+    # refused — its teardown keeps the worktree instead, as it keeps the branch.
+    if shipping and has_worktree:
+        wt = st.node_root / WORKTREES_DIR / bare
+        found = unbranched_commits(wt)
+        if isinstance(found, str) or found:
+            what = (found if isinstance(found, str) else
+                    f"its worktree at {wt} is on no branch and holds commits no "
+                    f"branch, tag or remote-tracking branch contains: "
+                    f"{unbranched_summary(found)}. The completion would not carry "
+                    f"them and removing the worktree would lose them")
+            print(f"tcw work complete: {bare} was not completed: {what}. Save them "
+                  f"with `git -C {wt} branch <name>` — and merge that into "
+                  f"{branch or 'the work branch'} if they belong to this item — "
+                  f"then complete again.", file=sys.stderr)
             return 1
     # `[prompted]`: an obligation on the CLI to say something, not a gate and not
     # an interactive prompt. Completing straight from `active` skips the verify

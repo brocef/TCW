@@ -1175,12 +1175,71 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
             f"checkout, or merge {branch}, then re-run")
 
 
+UNBRANCHED_SHOWN = 10
+
+
+def unbranched_commits(worktree: Path) -> "list[str] | str":
+    """Short hashes of the commits removing `worktree` would lose — reachable
+    from its `HEAD` and from no branch, tag or remote-tracking branch — or a
+    reason when git cannot say. `[]` when there is no such folder.
+
+    Only a detached `HEAD` can hold them: a worktree on a branch is covered by
+    `--branches`. `--all` would not do, since it counts every worktree's `HEAD`,
+    this one's included. A stash is deliberately not counted as keeping a commit:
+    it is a scratch area people clear without thinking of it as a save.
+
+    `git worktree remove` also deletes the worktree's own reflog, so these
+    commits then survive only as unreachable objects until garbage collection.
+
+    Checked to be the worktree's own top first: `.worktrees/` sits inside the
+    primary checkout, so `git -C` on a plain folder there answers silently for
+    the *primary checkout* — naming its commits as this folder's."""
+    if not worktree.is_dir():
+        return []
+    run = lambda *a: _git(["git", "-C", str(worktree), *a],   # noqa: E731
+                          capture_output=True, text=True)
+    top = run("rev-parse", "--show-toplevel")
+    if top.returncode != 0 or not top.stdout.strip() or \
+            Path(top.stdout.strip()).resolve() != worktree.resolve():
+        return f"git could not check {worktree}: it is not a git worktree of its own"
+    r = run("rev-list", "--abbrev-commit", "HEAD",
+            "--not", "--branches", "--tags", "--remotes")
+    if r.returncode != 0:
+        detail = (r.stderr.strip().splitlines() or ["no output"])[0]
+        return f"git could not check {worktree} ({detail})"
+    return r.stdout.split()
+
+
+def unbranched_summary(commits: list[str]) -> str:
+    """`commits` as a refusal names them: at most `UNBRANCHED_SHOWN`."""
+    shown = ", ".join(commits[:UNBRANCHED_SHOWN])
+    more = len(commits) - UNBRANCHED_SHOWN
+    return shown + (f" and {more} more" if more > 0 else "")
+
+
+def unbranched_problem(worktree: Path) -> str | None:
+    """Why `worktree` must not be removed, or None when nothing would be lost."""
+    found = unbranched_commits(worktree)
+    if isinstance(found, str):
+        return f"{found}, so it was not removed"
+    if not found:
+        return None
+    return (f"the worktree at {worktree} has commits on no branch — "
+            f"{unbranched_summary(found)} — and removing it would lose them. Save "
+            f"them with `git -C {worktree} branch <name>`, then remove it with "
+            f"`git worktree remove {worktree}`")
+
+
 def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> list[str]:
     """Best-effort teardown (Spec 2 §3.4): `git worktree remove` refuses on a
-    dirty worktree — the safety net against losing uncommitted work. Returns
-    warnings (empty == clean)."""
+    dirty worktree — the safety net against losing uncommitted work — and this
+    refuses one whose detached `HEAD` holds commits no ref does, which git
+    would remove. Returns warnings (empty == clean); a refusal keeps the branch
+    as well as the worktree."""
     warns: list[str] = []
     wt = node_root / WORKTREES_DIR / slug
+    if problem := unbranched_problem(wt):
+        return [problem]
     r = _git(["git", "-C", str(node_root), "worktree", "remove", str(wt)],
              capture_output=True, text=True)
     if r.returncode != 0:
