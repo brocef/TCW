@@ -302,6 +302,9 @@ tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity
 tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
                                        # flags combine in one edit; if any part is refused
                                        # (unknown tag, blocking cycle, …) nothing is changed
+tcw work rename "$slug" add-remove-or-step-down   # a new slug for an open item (the date is kept);
+                                       # references on this board follow, and the old slug
+                                       # keeps resolving — see "Renaming an item"
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
@@ -698,6 +701,33 @@ in `tcw work list` and in its rollup, and it may be completed **directly from
 `backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
 throwaway `start` just to close it (the Definition-of-Done and capability gates
 still apply).
+
+## Renaming an item
+
+An item's slug is its identity, so `tcw work edit --title` leaves it alone. When
+the scope has changed enough that the slug misleads, `tcw work rename <slug>
+<new-slug>` gives an open item a new one. Pass the whole slug or only the part
+after the date; the item keeps its original date either way.
+
+In one commit it moves the folder in place and rewrites everything on the board
+that names the item: other items' blockers, a child's `parent` and
+`initiative`, the `initiative` on resolved children's records, and a
+capability's `Planning doc:`. An epic's initiative children on other boards are
+repointed too, each committed in its own repository.
+
+The old slug is recorded in `docs/work/renames.yaml` and keeps working where
+nothing could rewrite it. `tcw work show` and `tcw work path` follow it and say
+so; a blocker naming it, from this project or another, reads the renamed item's
+real status; and no new item is ever given it. Commands that change an item
+refuse the old slug and name the new one, so you are never acting on a name you
+did not know was stale.
+
+A rename is refused, and nothing changes, for a completed or discarded item,
+an item with a worktree or branch (rename those by hand), an item someone else
+holds, a slug already taken, or a different date. It never rewrites prose, a
+tracker ticket's text, or commit messages; it lists the item's files that still
+mention the old slug. `tcw validate` checks `renames.yaml` for loops and for an
+old slug that an item holds again.
 
 ## Running an item in an isolated checkout
 
