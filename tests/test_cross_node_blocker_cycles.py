@@ -206,3 +206,34 @@ def test_an_interrupted_claim_elsewhere_does_not_fail_the_edit(graph):
     shutil.move(str(folder(b, y)), str(claiming))
     out = tcw(graph / "pa", "edit", x, "--blocked-by", f"pb/{y}")
     assert out.returncode == 0, out.stderr
+
+
+def test_a_walk_through_an_interrupted_claim_elsewhere_does_not_fail(graph):
+    """The walk itself crosses into the other store and meets the claim."""
+    a, b = store(graph, "pa"), store(graph, "pb")
+    x, z, y = new(a, "X"), new(a, "Z"), new(b, "Y")
+    a.add_blocker(x, f"pb/{y}")
+    claiming = graph / "pb" / "docs" / "work" / ".claiming" / f"{y}-{'a' * 32}"
+    claiming.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(folder(b, y)), str(claiming))
+    out = tcw(graph / "pa", "edit", z, "--blocked-by", x)
+    assert out.returncode == 0, out.stderr
+
+
+def test_an_interrupted_claim_here_does_not_fail_creating_an_item(graph):
+    a = store(graph, "pa")
+    p, q = new(a, "P"), new(a, "Q")
+    a.add_blocker(p, q)
+    claiming = graph / "pa" / "docs" / "work" / ".claiming" / f"{q}-{'a' * 32}"
+    claiming.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(folder(a, q)), str(claiming))
+    out = tcw(graph / "pa", "new", "New thing", "--blocked-by", p)
+    assert out.returncode == 0, out.stderr
+
+
+def test_a_plain_string_blocker_does_not_crash_blocks(graph):
+    a = store(graph, "pa")
+    x, z = new(a, "X"), new(a, "Z")
+    a.set_field(x, "blocked_by", ["some-text"])               # hand-edited
+    out = tcw(graph / "pa", "edit", x, "--blocks", z)
+    assert "Traceback" not in out.stderr, out.stderr

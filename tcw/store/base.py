@@ -4104,6 +4104,8 @@ class WorkStore(ABC):
         entry is part of. A missing item is a dead end for the walk, not an
         error. A store that can address other projects extends this for
         `<project-id>/<slug>`."""
+        if not isinstance(entry, dict):            # hand-edited data: not followed
+            return None
         if "slug" in entry:
             return self, entry["slug"]
         text = str(entry.get("external") or "").strip()
@@ -4118,9 +4120,10 @@ class WorkStore(ABC):
 
         The walk follows every blocker `_blocker_target` resolves, into other
         stores too, each item through its own store: a qualified blocker means
-        what it meant to the node that stored it. Anything that fails while
-        reading another store's item leaves that item unfollowed — another
-        node's state never fails an edit here.
+        what it meant to the node that stored it. An item that cannot be read —
+        an interrupted claim, an ambiguous slug, in this store or another — is
+        not followed: the state of an item the edit does not name never fails
+        the edit.
 
         `settled` items (slugs of this store) are not expanded: a caller that has
         already started the walk from an item's *proposed* blockers passes it,
@@ -4143,8 +4146,6 @@ class WorkStore(ABC):
             try:
                 item = store.get(slug)
             except Exception:
-                if store is self:
-                    raise
                 continue
             if item is None:
                 continue
