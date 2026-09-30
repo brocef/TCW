@@ -253,3 +253,33 @@ def test_commit_claim_and_the_scans_are_not_abstract():
     assert "artifacts" in WorkStore.__abstractmethods__
     assert "commit_claim" not in WorkStore.__abstractmethods__
     assert "refresh_for_creation" not in WorkStore.__abstractmethods__
+
+
+def test_a_lock_released_before_it_is_looked_for_is_still_retried(tmp_path, monkeypatch):
+    """Found by hand: a plain `git commit` in another shell held `index.lock`
+    and released it between the failure and the check, so nothing retried."""
+    root, st = store(tmp_path)
+    [slug] = items(root, st, 1)
+    real = fs._git
+    failed = []
+
+    def once(args, **kwargs):
+        if "commit" in args and not failed:
+            failed.append(True)
+            return subprocess.CompletedProcess(args, 128, "", "fatal: Unable to create index.lock")
+        return real(args, **kwargs)
+    monkeypatch.setattr(fs, "_git", once)
+    FsWorkStore.open(root).start(slug, owner="x")
+    assert failed and git(root, "status", "--porcelain").strip() == ""
+
+
+def test_a_refusing_hook_is_not_run_twice(tmp_path, monkeypatch):
+    root, st = store(tmp_path)
+    [slug] = items(root, st, 1)
+    count = tmp_path / "count"
+    hook = root / ".git" / "hooks" / "pre-commit"
+    hook.write_text(f"#!/bin/sh\necho x >> {count}\nexit 1\n")
+    hook.chmod(0o755)
+    with pytest.raises(Exception):
+        FsWorkStore.open(root).start(slug, owner="x")
+    assert count.read_text().count("x") == 1

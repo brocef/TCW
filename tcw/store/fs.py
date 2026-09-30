@@ -185,7 +185,12 @@ def _git_index(args: list, check: bool = False, **kwargs) -> "subprocess.Complet
             where = _git(["git", "-C", str(root), "rev-parse", "--git-path", "index.lock"],
                          capture_output=True, text=True)
             lock = (Path(root) / where.stdout.strip()) if where.returncode == 0 else Path()
-        if not (lock.name and lock.exists()) or time.monotonic() >= deadline:
+        # Retried while the lock file is there, or on git's exit 128 — what a
+        # lock it could not create exits with — since the other process may
+        # have finished between the failure and this check. A refusing
+        # `pre-commit` hook exits 1 and is never run twice.
+        held = bool(lock.name) and lock.exists()
+        if not (held or r.returncode == 128) or time.monotonic() >= deadline:
             break
         time.sleep(0.1)
     if lock is not None and lock.name and lock.exists():
