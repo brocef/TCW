@@ -1125,6 +1125,9 @@
 : location: f14e660ad212437fe7f5b47a3753ab9148e6a9a7
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-refuse-a-catch-up-rework-whose-ticket-is-already-past-the-item:
+  resolution: done
+  resolved: '2026-09-29'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
   location: f470f8071b5b45f655ff2fe3efe22a6a62049023
   resolution: done
