@@ -1142,6 +1142,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-suggest-what-was-meant-when-a-subcommand-or-stage-name-is-wrong:
+  location: ae5a18432af5a4e6e270b3e85339d19e07b02f3e
   resolution: done
   resolved: '2026-09-30'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
