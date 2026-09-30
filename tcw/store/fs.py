@@ -37,7 +37,7 @@ except ImportError:                                # not POSIX
 import yaml
 
 from tcw.store.base import (
-    BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    _HELD_TWICE, BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD, InboxEntryNotFound,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     binding_value, classify_binding, unreadable_binding,
@@ -6107,6 +6107,35 @@ class FsWorkStore(FsTreeStore, WorkStore):
         store, slug = target
         return (self, slug) if store._store_key() == self._store_key() else target
 
+    def unreadable_reason(self, slug: str) -> str | None:
+        """Two folders holding `slug`, or its `state.yaml` damaged. A folder
+        mid-move, or none, is not damage."""
+        try:
+            d = self._find(slug)
+        except MultipleMatch:
+            return _HELD_TWICE
+        except Exception:
+            return None
+        return None if d is None else self._state_damage(d / "state.yaml")
+
+    def _item_label(self, store: WorkStore, slug: str) -> str:
+        """Another node's item as `<project-id>/<slug>`, as it is typed here —
+        any project in the graph, a sibling included, since a qualified blocker
+        can name one."""
+        if store._store_key() == self._store_key():
+            return slug
+        try:
+            projects = FsProjectRegistry.open(self.node_root).projects()
+        except Exception:
+            return slug
+        for project in projects:
+            try:
+                if Path(project.locator).samefile(store.node_root):
+                    return f"{project.id}/{slug}"
+            except OSError:                        # not in this checkout
+                continue
+        return slug
+
     def _store_key(self) -> object:
         """The store folder's identity, not its spelling: two opens of one
         folder — by different paths, or by paths differing only in letter case
@@ -7655,8 +7684,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         slug = self._unique_slug(created_date, title)
         # Only now is there a slug to check against: an entry elsewhere may
         # already wait on it, and creating the item would close that cycle.
-        for ref, entry in zip(blockers or [], blocked_by):
-            self._check_new_blocker(slug, entry, ref)
+        self._check_new_blockers(slug, list(zip(blockers or [], blocked_by)))
 
         d = self.root / "backlog" / slug
 
@@ -7787,9 +7815,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # Only entries the item does not already have: an item already in
                 # a cycle must stay saveable, including by the edit that breaks it.
                 current = self._require(slug).blocked_by
-                for ref, entry in zip(blockers, new_blocked_by):
-                    if not any(self._same_entry(entry, e) for e in current):
-                        self._check_new_blocker(slug, entry, ref)
+                self._check_new_blockers(slug, [
+                    (ref, entry) for ref, entry in zip(blockers, new_blocked_by)
+                    if not any(self._same_entry(entry, e) for e in current)])
             else:
                 raise ValueError("blockers must be a list or None")
 

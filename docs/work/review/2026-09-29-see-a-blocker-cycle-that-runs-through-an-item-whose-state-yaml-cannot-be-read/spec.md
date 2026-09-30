@@ -38,7 +38,12 @@ slice cannot be read (`require_readable_slices`, `_unreadable_refusal`,
    project id when it is in another project) and why, and saying that whether
    the edit makes a cycle is unknown until it is fixed.
 2. A cycle found through other edges is refused as a cycle, whatever else the
-   walks met.
+   walks met — across every blocker one call adds (`--blocked-by` repeated,
+   `update_work`, `create_work`), and across every proposed blocker of a
+   `--blocks` check. *(Narrowed at implementation: an edit combining
+   `--blocked-by` with `--blocks` decides the added blockers first, so an
+   unreadable item there is reported before a cycle only the `--blocks` half
+   would find. Nothing is written either way.)*
 3. Every blocker-write path behaves the same: `--blocked-by`, `--blocks`,
    `update_work` (web `PATCH`), `create_work` (`tcw work new --blocked-by`,
    web `POST`).
@@ -134,3 +139,14 @@ In a scratch graph, root `r` with children `pa`, `pb`, each keeping a board.
   transient move. Resolved items count too, with neutral wording, rather than
   open-only: the walk does not check status and a simpler rule is easier to
   explain.
+- *Implementation notes.* `unreadable_open_items` was not rewritten over
+  `unreadable_reason`: that calls `_find`, which scans the store per call, so
+  the listing would become quadratic, and a duplicate slug would change its
+  output. `_item_label` searches every project in the graph
+  (`FsProjectRegistry.projects()`, compared with `samefile`) rather than
+  `registered_project_id`, which knows only ancestors and descendants and so
+  would leave a sibling's item unqualified. The refusal's remedy is worded per
+  reason: fix the `state.yaml` for damage, remove the extra folder for a slug
+  held twice (`tcw validate` crashes on a duplicate slug today, so it is not
+  named there). Cost is one extra scan of the store's folders plus a parse per
+  visited item with no blockers, not one read as Risks said.
