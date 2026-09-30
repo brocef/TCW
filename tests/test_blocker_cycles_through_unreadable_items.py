@@ -111,6 +111,35 @@ def test_an_ambiguous_slug_on_the_path_refuses_the_edit(graph):
     out = tcw(graph / "pa", "edit", z, "--blocked-by", x)
     assert out.returncode != 0, out.stdout
     assert y in out.stderr and "more than one folder" in out.stderr, out.stderr
+    assert "remove the extra folder" in out.stderr.lower(), out.stderr
+    assert "state.yaml" not in out.stderr, out.stderr       # nothing to fix there
+
+
+# ── 2 (goal), 4: decided once across every blocker of one call ───────────────
+
+def test_a_cycle_through_a_second_added_blocker_wins(graph):
+    a, x, y, z = chain(graph)
+    w = new(a, "W")
+    a.add_blocker(w, z)
+    damage(a, y)
+    out = tcw(graph / "pa", "edit", z, "--blocked-by", x, "--blocked-by", w)
+    assert out.returncode != 0 and CYCLE in out.stderr, out.stderr
+
+
+def test_blocks_refuses_a_damaged_path_alone(graph):
+    """The `--blocks` half on its own: no cycle, one proposed blocker leading
+    through a damaged item."""
+    a = store(graph, "pa")
+    s, t, p, y = (new(a, n) for n in ("S", "T", "P", "Y"))
+    a.add_blocker(p, y)
+    a.add_blocker(s, p)
+    damage(a, y)
+    before = (state_bytes(a, s), state_bytes(a, t))
+    # With another change in the same edit: a refusal only when the reverse
+    # link is written would leave the new title behind.
+    out = tcw(graph / "pa", "edit", s, "--blocks", t, "--title", "Renamed")
+    assert out.returncode != 0 and UNREADABLE in out.stderr and y in out.stderr, out.stderr
+    assert (state_bytes(a, s), state_bytes(a, t)) == before
 
 
 # ── 7: what is not refused ───────────────────────────────────────────────────
@@ -154,8 +183,12 @@ def test_not_refused(graph, case):
 
 
 def test_editing_the_damaged_item_itself_is_the_existing_refusal(graph):
+    """Refused by the strict read of the item's own file, before any walk."""
     a, x, y, z = chain(graph)
     damage(a, y)
+    before = state_bytes(a, y)
     out = tcw(graph / "pa", "edit", y, "--blocked-by", new(a, "Other"))
     assert out.returncode != 0, out.stdout
+    assert "while parsing" in out.stderr, out.stderr
     assert "blocking cycle with this edit" not in out.stderr, out.stderr
+    assert state_bytes(a, y) == before

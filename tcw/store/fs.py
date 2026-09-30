@@ -36,6 +36,7 @@ except ImportError:                                # not POSIX
 
 import yaml
 
+from tcw.store.base import _HELD_TWICE  # noqa: E402
 from tcw.store.base import (
     BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD, InboxEntryNotFound,
@@ -6107,7 +6108,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         try:
             d = self._find(slug)
         except MultipleMatch:
-            return "more than one folder holds this slug"
+            return _HELD_TWICE
         except Exception:
             return None
         return None if d is None else self._state_damage(d / "state.yaml")
@@ -7678,8 +7679,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         slug = self._unique_slug(created_date, title)
         # Only now is there a slug to check against: an entry elsewhere may
         # already wait on it, and creating the item would close that cycle.
-        for ref, entry in zip(blockers or [], blocked_by):
-            self._check_new_blocker(slug, entry, ref)
+        self._check_new_blockers(slug, list(zip(blockers or [], blocked_by)))
 
         d = self.root / "backlog" / slug
 
@@ -7810,9 +7810,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # Only entries the item does not already have: an item already in
                 # a cycle must stay saveable, including by the edit that breaks it.
                 current = self._require(slug).blocked_by
-                for ref, entry in zip(blockers, new_blocked_by):
-                    if not any(self._same_entry(entry, e) for e in current):
-                        self._check_new_blocker(slug, entry, ref)
+                self._check_new_blockers(slug, [
+                    (ref, entry) for ref, entry in zip(blockers, new_blocked_by)
+                    if not any(self._same_entry(entry, e) for e in current)])
             else:
                 raise ValueError("blockers must be a list or None")
 

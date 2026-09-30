@@ -7,6 +7,7 @@
   (`MultipleMatch`) — and one helper, `_refuse_blocker_walks`, decides after
   every walk: a cycle wins, otherwise the unknown items refuse the edit, named
   with their project id when in another project (new hook
-  `WorkStore._item_label`). `--blocks` decides across all of the item's
-  blockers together. Interrupted claims and unreachable projects stay silent.
+  `WorkStore._item_label`). All the blockers one call adds
+  (`_check_new_blockers`), and all of an item's blockers for `--blocks`, are
+  decided together. The remedy is worded per reason. Interrupted claims and unreachable projects stay silent.
   Applies to `--blocked-by`, `--blocks`, `update_work` and `create_work`.

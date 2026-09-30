@@ -280,10 +280,11 @@ tcw work submit "$slug"                # active → review (implemented, accepta
 tcw work rework "$slug"                # review → active (verification rejected the work;
                                        # refused while refined-outcome.md still says it passed)
 
-tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable); refused
-                                                 # while an item on the path it leads into
-                                                 # cannot be read (a damaged state.yaml), as
-                                                 # whether it makes a loop is then unknown
+tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable); this and
+                                                 # --blocks are refused while an item on the
+                                                 # path they lead into cannot be read (a
+                                                 # damaged state.yaml, or a slug two folders
+                                                 # hold): whether they make a loop is unknown
 tcw work edit "$slug" --blocked-by other-node/its-slug  # an item in another registered
                                                  # project; stops blocking once that item
                                                  # is resolved there (other text always blocks);
