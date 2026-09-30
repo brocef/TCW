@@ -6,3 +6,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-30T01:51:25.040640Z'
+worktree: .worktrees/2026-09-29-refuse-a-catch-up-rework-whose-ticket-is-already-past-the-item
+branch: work/2026-09-29-refuse-a-catch-up-rework-whose-ticket-is-already-past-the-item
