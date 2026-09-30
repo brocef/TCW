@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-let-the-worktree-merge-back-wait-out-a-store-commit-s-index-lock.md`
+
+## Inbox body
+
 # Let the worktree merge-back wait out a store commit's index.lock
 
 Follow-up from #73 (one store lock).
