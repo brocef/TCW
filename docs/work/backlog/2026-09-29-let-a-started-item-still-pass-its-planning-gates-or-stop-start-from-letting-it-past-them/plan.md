@@ -44,6 +44,13 @@ nothing runs; open → `stage prompt`, without checks). **Proves** criteria 4-5.
   [Guide-Topic-Change]
 - The capability descriptions `work/run-a-lifecycle-stage` and
   `work/start-a-work-item`, and the item's `capabilities.yaml`.
+- **The "Amending a request" rule added by #74** (`2026-09-29-say-where-a-dated-amendment-to-an-item-s-request-belongs`),
+  in `skills/work/references/commands.md`, `docs/guide/work.md` and
+  `tcw/work/procedures/create-work.md`. It says the `request` stage runs only
+  in backlog, so an active item without a request has it written directly.
+  Once `request` is legal in `active`, that route is the stage. Found while
+  writing #74's outcome: the two items touch the same rule, and neither
+  item's own review would see it.
 - The changelog and release notes.
 
 ## Task 5 — Full suite
