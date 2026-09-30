@@ -1684,8 +1684,9 @@ def _start(args: argparse.Namespace) -> int:
         store_paths.append(".gitignore")
         ignore_changed = False
     what = "worktree" if same_repo else "worktree metadata"
-    err = git_commit_result(st.store_git_root, f"tcw work: start {bare} ({what})",
-                            *store_paths)
+    with st._store_lock():
+        err = git_commit_result(st.store_git_root, f"tcw work: start {bare} ({what})",
+                                *store_paths)
     if err:
         print(f"tcw work start: {bare} is active, but committing the worktree "
               f"setup in {st.store_git_root} failed; no worktree was created:\n{err}",

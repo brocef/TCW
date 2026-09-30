@@ -562,9 +562,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except subprocess.CalledProcessError as error:
         # Deliberately generic: the only policy here is "a git subprocess
-        # failed", which is true of every component. git's own diagnostic has
-        # already reached the terminal — no `check=True` call in the filesystem
-        # adapter captures output — so re-printing `error.stderr` would double it.
+        # failed", which is true of every component. The index-touching calls
+        # capture git's output (so a retried failure does not print once per
+        # try), and it is printed here; an uncaptured call has already shown it.
         # `cmd` is a sequence *or* a string (stdlib contract); joining a string
         # iterates its characters. No shipped raiser passes one, but a handler
         # whose whole justification is that it assumes nothing about its caller
@@ -573,6 +573,8 @@ def main(argv: list[str] | None = None) -> int:
             shlex.join(str(a) for a in error.cmd)
         print(f"tcw: git command failed (exit {error.returncode}): {cmd}",
               file=sys.stderr)
+        if isinstance(error.stderr, str) and error.stderr.strip():
+            print(error.stderr.rstrip("\n"), file=sys.stderr)
         return 1
 
 

@@ -79,11 +79,13 @@ def test_two_processes_on_two_items_each_get_their_own_commit(tmp_path, verb):
             _, err = p.communicate(timeout=120)
             assert p.returncode == 0, err
             assert "index.lock" not in err, err
+        to = "active" if verb == "start" else "review"
         for s in pair:
             touched = git(root, "log", "-1", "--format=", "--name-only",
-                          "--grep", f" {s}")
+                          "--fixed-strings", "--grep", f"{s} → {to}")
             assert touched.strip(), f"no commit for {s}"
-            assert all(s in line for line in touched.split()), touched
+            assert all(f"/{s}/" in f"/{line}" or line.endswith(f"/{s}")
+                       for line in touched.split()), touched
     assert git(root, "status", "--porcelain").strip() == ""
 
 
@@ -200,3 +202,54 @@ def test_a_stale_index_lock_is_named(tmp_path, monkeypatch):
         lock.unlink()
     text = str(info.value) + str(getattr(info.value, "stderr", ""))
     assert "index.lock" in text and "delete it by hand" in text, text
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_a_creation_kept_waiting_is_left_staged_not_reported_as_unchanged(
+        tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root, st = store(tmp_path)
+    monkeypatch.chdir(root)
+    proc = hold_in_another_process(root, 3)
+    try:
+        monkeypatch.setattr(FsWorkStore, "STORE_LOCK_TIMEOUT", 0.5)
+        assert main(["work", "new", "Made while waiting"]) == 0
+    finally:
+        proc.wait()
+    out = capsys.readouterr()
+    assert "left staged" in out.err and "Nothing was changed" not in out.err.split("left staged")[0]
+    assert "made-while-waiting" in git(root, "diff", "--cached", "--name-only")
+
+
+def test_a_stale_index_lock_is_named_on_the_terminal(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root, st = store(tmp_path)
+    [slug] = items(root, st, 1)
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(fs, "INDEX_LOCK_RETRY", 0.3)
+    lock = root / ".git" / "index.lock"
+    lock.write_text("")
+    try:
+        main(["work", "start", slug])
+    finally:
+        lock.unlink()
+    err = capsys.readouterr().err
+    assert "index.lock" in err and "delete it by hand" in err, err
+
+
+def test_two_stores_in_one_repository_share_the_lock(tmp_path):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    commit_all(child)
+    commit_all(parent)
+    a, b = FsWorkStore.open(parent), FsWorkStore.open(child)
+    same = git(parent, "rev-parse", "--absolute-git-dir") == git(child, "rev-parse", "--absolute-git-dir")
+    assert (a._store_lock_path() == b._store_lock_path()) == same
+
+
+def test_commit_claim_and_the_scans_are_not_abstract():
+    from tcw.store.base import WorkStore
+    assert "artifacts" in WorkStore.__abstractmethods__
+    assert "commit_claim" not in WorkStore.__abstractmethods__
+    assert "refresh_for_creation" not in WorkStore.__abstractmethods__

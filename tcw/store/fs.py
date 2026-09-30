@@ -150,6 +150,13 @@ def _git(*args, **kwargs):
 INDEX_LOCK_RETRY = 2.0
 
 
+def _git_error(error: "subprocess.CalledProcessError") -> str:
+    """What to show for a failed git call: git's own words when they were
+    captured, which `str(error)` leaves out."""
+    detail = error.stderr.strip() if isinstance(error.stderr, str) else ""
+    return detail or str(error)
+
+
 def _git_index(args: list, check: bool = False, **kwargs) -> "subprocess.CompletedProcess":
     """Run a git command that takes the index (`add`, `mv`, `rm`, `commit`),
     retrying briefly while another git process holds `index.lock`.
@@ -4313,7 +4320,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # and a `git commit`, so a busy store can legitimately hold it for a second
     # or two, and timing out early would turn contention into a spurious failure.
     STORE_LOCK_TIMEOUT = 30.0
-    GRAVEYARD_LOCK_TIMEOUT = STORE_LOCK_TIMEOUT      # the old name; tests still set it
+    GRAVEYARD_LOCK_TIMEOUT = STORE_LOCK_TIMEOUT      # the old name, kept for callers
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
                  store_git_root: Path | None = None,
@@ -5411,6 +5418,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _graveyard_path(self) -> Path:
         return self.root / self.GRAVEYARD_NAME
 
+    class LockTimeout(ValueError):
+        """The store lock was not free within the timeout. A `ValueError`, so
+        every caller that reports refusals reports this one; `commit_writes`
+        catches it, since its files are already written."""
+
     # Per thread, per lock file: how deep this thread is inside `_store_lock`.
     _lock_depth = threading.local()
 
@@ -5420,14 +5432,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
         `TMPDIR`, and which git never tracks or shows. Outside a repository, in
         the temp folder. Keyed by the store root, since one repository can hold
         several stores."""
-        key = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
+        # Keyed by the working tree's own git folder, which is what holds the
+        # index every commit here contends for: two stores in one repository —
+        # a parent node and a child — share an index and so share the lock.
         r = _git(["git", "-C", str(self.root if self.root.is_dir() else self.node_root),
-                  "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                 capture_output=True, text=True)
-        folder = Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
-        if folder is None or not folder.is_dir():
-            folder = Path(tempfile.gettempdir())
-        return folder / f"tcw-store-{key}.lock"
+                  "rev-parse", "--path-format=absolute", "--git-common-dir",
+                  "--absolute-git-dir"], capture_output=True, text=True)
+        lines = r.stdout.split("\n") if r.returncode == 0 else []
+        if len(lines) >= 2 and Path(lines[0]).is_dir():
+            key = hashlib.sha256(lines[1].strip().encode()).hexdigest()[:16]
+            return Path(lines[0].strip()) / f"tcw-store-{key}.lock"
+        key = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
+        return Path(tempfile.gettempdir()) / f"tcw-store-{key}.lock"
 
     @contextmanager
     def _store_lock(self):
@@ -5484,7 +5500,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                             holder = path.read_text(encoding="utf-8").strip()
                         except OSError:
                             holder = ""
-                        raise ValueError(
+                        raise self.LockTimeout(
                             f"another tcw process has held the work store {self.root} "
                             f"for over {timeout:g}s"
                             + (f" (process {holder})" if holder else "")
@@ -6921,9 +6937,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Staged above without the lock — a stage is one `git add`, and the
         # index retry covers a collision — but the commit reads the whole index,
         # so it is taken for that, and released before the push.
-        with self._store_lock():
-            if err := git_commit_result(self.store_git_root, message, *rel):
-                return f"committing it failed:\n{err}\nCommit it yourself."
+        try:
+            with self._store_lock():
+                if err := git_commit_result(self.store_git_root, message, *rel):
+                    return f"committing it failed:\n{err}\nCommit it yourself."
+        except self.LockTimeout as error:
+            return f"it is left staged, not committed: {error} Commit it yourself."
         if self.publishes:
             try:
                 self.publish()
@@ -7737,7 +7756,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # set and would exit as a traceback.
                 raise TransitionCommitError(
                     f"{slug} moved to {to_status}, but writing its fields "
-                    f"failed:\n{e}")
+                    f"failed:\n{_git_error(e)}")
         if resolving:
             # After the move for the same reason the fields are: the move is
             # where this process learns it won the race, and a tombstone written
@@ -7749,7 +7768,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             except subprocess.CalledProcessError as e:
                 raise TransitionCommitError(
                     f"{slug} moved to {to_status}, but recording it in the "
-                    f"graveyard failed:\n{e}")
+                    f"graveyard failed:\n{_git_error(e)}")
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, to_status, item,
                                     extra=(self._graveyard_path(),) if resolving else ())

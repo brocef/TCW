@@ -208,8 +208,9 @@ the same time; each command keeps its own changes and its own commit. TCW holds
 one lock per store from a command's check through its commit. The lock file is
 in the repository's git folder (`tcw-store-<key>.lock` beside `HEAD`), so it is
 shared whatever `TMPDIR` each session has, and it never shows in `git status`.
-A command that waits more than 30 seconds changes nothing and names the
-process holding the lock. Fetching, pushing, hooks, tracker calls and a
+A transition that waits more than 30 seconds changes nothing and names the
+process holding the lock; a creation kept waiting is left staged and says so,
+since the item already exists. Fetching, pushing, hooks, tracker calls and a
 worktree's merge-back run outside the lock, so they hold nobody up — but a
 slow `pre-commit` hook runs inside the commit, and so inside the lock. When git
 run by something else holds `index.lock`, a command waits up to two seconds,

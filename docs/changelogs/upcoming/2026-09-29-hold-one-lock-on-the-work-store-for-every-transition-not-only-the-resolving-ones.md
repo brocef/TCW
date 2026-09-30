@@ -8,9 +8,19 @@
   - the commit step of `commit_writes`;
   - the new `commit_claim`, which replaces the commit in the CLI's
     `_own_locally`.
-- **Where the lock lives:** `<git common dir>/tcw-store-<key>.lock`, shared by
-  every worktree and session whatever `TMPDIR` is. Outside a repository it
-  falls back to the temp folder.
+- **Where the lock lives:** `<git common dir>/tcw-store-<key>.lock`, keyed by
+  the working tree's own git folder — the one holding the index every commit
+  contends for — so every session and every store in one working tree share
+  it, whatever `TMPDIR` is. Outside a repository it falls back to the temp
+  folder, keyed by the store.
+- A lock timeout is `FsWorkStore.LockTimeout`, a `ValueError`. `commit_writes`
+  catches it and leaves the creation staged with a warning, since the item
+  already exists.
+- `reconcile --commit`, whose pathspec is the whole store, and the commits
+  of `start --worktree` take the lock too.
+- A failed git call's captured output is printed by the top-level handler and
+  in the transition's error, so the stale `index.lock` advice reaches the
+  terminal.
 - **Reentrant per thread.** The holder writes its process id and command into
   the lock file, and a waiter that times out names it.
 - `STORE_LOCK_TIMEOUT` (30 s); `GRAVEYARD_LOCK_TIMEOUT` remains as the old

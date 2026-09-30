@@ -3342,6 +3342,10 @@ def priority_order(items: list[WorkItem]) -> list[WorkItem]:
 class WorkStore(ABC):
     """The work axis: raw intake plus a three-status item state machine.
 
+    An adapter keeps concurrent state changes on one store apart — the
+    filesystem store with a lock around each commit, a database with a
+    transaction.
+
     The status vocabulary + legal-transition graph are core (above); adapters
     implement the abstract primitives and `_effect_transition`. The named
     operations (`start`/`complete`/`drop`) are concrete here so every adapter
@@ -3575,7 +3579,6 @@ class WorkStore(ABC):
         """
         return []
 
-    @abstractmethod
     def commit_claim(self, slug: str, owner: str, label: str) -> None:
         """Record that `owner` holds `slug` — a claim that is not a transition.
         A store whose writes are already durable only sets the field."""
@@ -3594,6 +3597,7 @@ class WorkStore(ABC):
         already durable — a database, a tracker — records nothing more."""
         return None
 
+    @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
 
