@@ -526,19 +526,28 @@ def test_already_integrated_skips_the_merge_but_keeps_the_gates(
     assert main(["work", "start", slug, "--worktree"]) == 0
     capsys.readouterr()
 
-    # Stand in for an external merge: the branch exists but was never merged, so
-    # TCW's own merge-back would have pulled it in. --already-integrated must not.
+    # Stand in for an external merge: a squash of the branch's work, as a merged
+    # pull request would land it. `--already-integrated` has to find that — it
+    # checks the merge since 2.8 — and skip its own merge-back, which would have
+    # made a merge commit of the branch on top of the squash.
     wt = root / ".worktrees" / slug                    # the item's own worktree
     (wt / "only-on-the-branch.txt").write_text("x")
-    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "add", "--", "only-on-the-branch.txt"],
+                   check=True)
     subprocess.run(["git", "-C", str(wt), "commit", "-qm", "branch work"], check=True)
+    subprocess.run(["git", "-C", str(root), "merge", "-q", "--squash", f"work/{slug}"],
+                   check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "squash"], check=True)
+    squashed = log_count(root)
 
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
                  "--already-integrated"]) == 0
     capsys.readouterr()
 
     assert FsWorkStore.open(root).get(slug).status == "completed"
-    assert not (root / "only-on-the-branch.txt").exists()   # the merge was skipped
+    assert (root / "only-on-the-branch.txt").exists()        # the squash's own file
+    # One commit, the completion itself: no merge commit was made.
+    assert log_count(root) == squashed + 1
 
 
 def test_already_integrated_still_refuses_on_an_unreconciled_capability(
@@ -585,9 +594,10 @@ def test_already_integrated_tolerates_a_worktree_removed_externally(
     assert FsWorkStore.open(root).get(slug).status == "completed"
 
 
-def test_already_integrated_is_rejected_without_a_worktree(tmp_path, monkeypatch, capsys):
-    """Accepting it silently would teach the wrong model: the flag skips a
-    merge-back only a TCW-created worktree ever performs."""
+def test_already_integrated_without_a_worktree_asks_for_the_branch(
+        tmp_path, monkeypatch, capsys):
+    """With no recorded branch there is nothing to check, so it asks for
+    `--branch` rather than taking the flag on trust."""
     from tcw.cli import main
     root = node(tmp_path)
     slug = make_item(root)
@@ -597,7 +607,7 @@ def test_already_integrated_is_rejected_without_a_worktree(tmp_path, monkeypatch
 
     assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
                  "--already-integrated"]) == 1
-    assert "--already-integrated" in capsys.readouterr().err
+    assert "--branch" in capsys.readouterr().err
     assert FsWorkStore.open(root).get(slug).status == "active"
 
 
