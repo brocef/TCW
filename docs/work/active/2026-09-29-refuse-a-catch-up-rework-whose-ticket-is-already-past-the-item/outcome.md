@@ -36,8 +36,9 @@
 - Mutation checks: restoring the old behavior, dropping `not expected`, and
   `return False` each turned tests red (8, 1 and 5 failures); after review,
   disabling the held branch (2 failures) and dropping its `done` guard (1).
-- All 1205 tracker tests pass (`-k tracker`) at 7dcd9a8e. Full suite: see
-  below.
+- All 1205 tracker tests pass (`-k tracker`) at 7dcd9a8e. Full suite (bare
+  `pytest`, `venv4` first on PATH): 5005 passed, 3 skipped at 7e0e8356
+  (24 minutes).
 - Hands-on: the CLI was exercised only through these tests, which run the
   real commands against an in-process fake tracker. Not run against a real
   Jira: that would move real tickets on a shared board.
