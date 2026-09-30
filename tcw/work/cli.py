@@ -1,6 +1,7 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import difflib
 import contextlib
 import io
 import json
@@ -158,6 +159,21 @@ def _resolve(slug: str, label: str, *,
     if resolved is None:
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
+    store, bare = resolved
+    try:
+        gone = store.path(bare) is None
+    except MultipleMatch:
+        gone = False                                   # the caller reports it
+    if gone and (renamed := store.renamed(bare)):
+        # A read follows a rename; a change does not — acting on a name the user
+        # may not know is stale would be a quiet surprise.
+        new = slug[: -len(bare)] + renamed
+        if write:
+            print(f"tcw work {label}: {slug} was renamed to {new}; use the new slug.",
+                  file=sys.stderr)
+            return None
+        print(f"tcw work {label}: {slug} was renamed to {new}.", file=sys.stderr)
+        return store, renamed
     return resolved
 
 
@@ -795,6 +811,7 @@ def _new(args: argparse.Namespace) -> int:
                                "`tcw work tracker import <ticket>`."
                                if st.tracker_config() is not None else _STRICT_BROKEN)
     try:
+        st.refresh_for_creation()
         detail = st.create_work(
             args.title,
             intake=read_piped_stdin(),   # piped text is raw input, not a request
@@ -822,9 +839,23 @@ def _new(args: argparse.Namespace) -> int:
     # nobody works directly; creation has no such difficulty, and an epic on the
     # board with no ticket is a hole in the tracker's picture of the work.
     _ticket_on_filing(st, item.slug, "new")
+    # After the ticket, so a binding it wrote is in the same commit.
+    _commit_created(st, "new", f"tcw work: new {item.slug}", item.slug)
     # Epics included: they run `request`, `spec` and `plan` like any item.
     _next_hint("new", item.slug)
     return 0
+
+
+def _commit_created(st, verb: str, message: str, slug: str,
+                    *also: Path) -> None:
+    """Commit what a creation wrote: the item's folder, and `also` (an accepted
+    entry's old path). A refusal is a warning — the item exists, and running the
+    command again would make a second one."""
+    folder = st.path(slug)
+    if folder is None:
+        return
+    if reason := st.commit_writes(message, folder, removed=also):
+        print(f"tcw work {verb}: created {slug}, but {reason}", file=sys.stderr)
 
 
 def _inbox_list(args: argparse.Namespace) -> int:
@@ -978,6 +1009,9 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         # A raw entry is refused under strict mode, and with `--part`, which only a
         # ticket takes; in both cases the ref is resolved without being consumed.
         peek = strict or args.part is not None
+        source = None if peek else st.inbox_source(args.entry)
+        if not peek:
+            st.refresh_for_creation()
         try:
             item = st.inbox_show(args.entry) if peek else \
                 st.inbox_accept(args.entry, title=args.title)
@@ -1000,6 +1034,9 @@ def _inbox_accept(args: argparse.Namespace) -> int:
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
             # binds the ticket that already exists and must not make a second.
             _ticket_on_filing(st, item.slug, "inbox accept")
+            _commit_created(st, "inbox accept",
+                            f"tcw work: {source.name if source else args.entry} "
+                            f"→ {item.slug}", item.slug, *([source] if source else []))
             return 0
     if not _inbox_can_try_ticket(st, "inbox accept", not_found):
         return 1
@@ -1521,11 +1558,12 @@ def _present_artifacts(st, bare: str) -> set[str] | None:
     return {a.name for a in artifacts if a.present}
 
 
-def _unwritten_plan(present: set[str] | None, display: str) -> str:
-    """The sentence naming whichever of spec.md and plan.md is not written, or
-    "" when both are, or when the artifacts could not be read. A warning, never a
-    refusal: a project that skips planning small items is entitled to, and one
-    that is not binds a `pre` check.
+def _unwritten_planning(present: set[str] | None, display: str) -> str:
+    """The sentence naming whichever of initial-request.md, spec.md and plan.md
+    is not written, or "" when all are, or when the artifacts could not be read.
+    A warning, never a refusal: a project that skips planning small items is
+    entitled to, and one that is not binds a `pre` check. The request is named
+    only while the spec is missing too — the order `start_next_stage` follows.
 
     `display` is what the user typed and is the only name printed, since a bare
     slug in the advice would resolve in the wrong node for a qualified
@@ -1533,9 +1571,13 @@ def _unwritten_plan(present: set[str] | None, display: str) -> str:
     if present is None:
         return ""
     missing = [n for n in ("spec", "plan") if n not in present]
+    if "spec" in missing and "initial-request" not in present:
+        missing.insert(0, "initial-request")
     if not missing:
         return ""
-    gates = " and ".join(f"`tcw work stage gate {n} {display}`" for n in missing)
+    stage = {"initial-request": "request"}
+    gates = " and ".join(f"`tcw work stage gate {stage.get(n, n)} {display}`"
+                         for n in missing)
     return (f"{display} has no {' or '.join(f'{n}.md' for n in missing)}; "
             f"{'they' if len(missing) > 1 else 'it'} can still be written while "
             f"the item is active: {gates}")
@@ -1634,7 +1676,7 @@ def _start(args: argparse.Namespace) -> int:
                                say_claim=not claimed)
     # Read once, for the warning and the next step alike, on either path below.
     present = _present_artifacts(st, bare)
-    if missing := _unwritten_plan(present, args.slug):
+    if missing := _unwritten_planning(present, args.slug):
         print(f"tcw work start: warning: {missing}", file=sys.stderr)
     after_start = "start:" + (start_next_stage(present) if present is not None
                               else "implement")
@@ -1845,31 +1887,6 @@ def _binding_json(b) -> dict:
     return out
 
 
-class _HidesRemovedSpellings(argparse.ArgumentParser):
-    """Keeps the removed per-stage parsers out of argparse's "choose from" list.
-
-    They are registered as subparsers so the old `tcw work stage <id> <ref>`
-    spelling gets a migration message instead of a bare "invalid choice", and
-    `help=` is omitted so they stay out of `--help`. But `_check_value` builds
-    its "choose from" list straight off the action's choices, so a plain typo was
-    told the seven removed spellings were valid verbs — the opposite of what
-    registering them is for.
-
-    The guard is narrow on purpose: it fires only for the action that actually
-    offers the real verbs, so every other subcommand group keeps argparse's own
-    message unchanged.
-    """
-
-    def _check_value(self, action, value):
-        choices = getattr(action, "choices", None) or ()
-        if value not in choices and {"prompt", "gate"} <= set(choices):
-            real = [c for c in choices if c not in STAGE_IDS]
-            raise argparse.ArgumentError(
-                action, f"invalid choice: {value!r} (choose from "
-                        f"{', '.join(repr(c) for c in real)})")
-        super()._check_value(action, value)
-
-
 def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
                 display: str) -> int:
     """Everything `tcw work stage prompt` does once it knows what to resolve.
@@ -1993,8 +2010,56 @@ def _stage_step(verb: str, stage_id: str):
         legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
         print(f"tcw work stage {verb}: unknown stage '{stage_id}'; expected one "
               f"of {', '.join(legal)}", file=sys.stderr)
+        if hint := _stage_hint(verb, stage_id, legal):
+            print(hint, file=sys.stderr)
         return None
     return step
+
+
+# How each transition is run. Not always `tcw work <id>`: a discard is a
+# completion with another resolution, and auto-delete runs on its own.
+_TRANSITION_COMMAND = {
+    "start": "`tcw work start <slug>`",
+    "submit": "`tcw work submit <slug>`",
+    "rework": "`tcw work rework <slug>`",
+    "complete": "`tcw work complete <slug> --resolution done --confirm`",
+    "discard": "`tcw work complete <slug> --resolution wontfix --confirm` (or "
+               + ", ".join(f"`{r}`" for r in sorted(WORK_RESOLUTIONS - {"done", "wontfix"}))
+               + ")",
+}
+
+
+def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
+    """What a word given as a stage probably meant: an artifact names the stage
+    that writes it, a transition names its own command, and anything else is
+    matched against the stage ids by spelling. "" when nothing fits.
+
+    `rework` is both — `verify` writes `rework.md`, and `tcw work rework` is the
+    transition — so it gets both answers."""
+    name = word.removesuffix(".md")
+    writers = [s.id for s in LIFECYCLE_STEPS if name in s.produces]
+    step = LIFECYCLE_STEPS_BY_ID.get(name)
+    said = []
+    if writers:
+        said.append(f"`{name}.md` is written by the `{writers[0]}` stage: "
+                    f"`{_stage_command(verb, writers[0])}`.")
+    elif name.replace("-", "") in legal:
+        stage = name.replace("-", "")
+        said.append(f"the stage is spelled `{stage}`: `{_stage_command(verb, stage)}`.")
+    if step is not None and step.kind == "transition":
+        said.append(f"`{name}` is a transition, not a stage"
+                    + (f": {how}." if (how := _TRANSITION_COMMAND.get(name)) else "."))
+    if not said:
+        close = difflib.get_close_matches(name, legal, n=3, cutoff=0.6)
+        if close:
+            said.append("did you mean " + " or ".join(f"`{c}`" for c in close) + "?")
+    return " ".join(said)
+
+
+def _stage_command(verb: str, stage: str, ref: str = "<slug>") -> str:
+    """`tcw work stage <verb> <stage> <ref>` — without a reference for `inbox`,
+    which runs before an item exists: both verbs refuse one for it."""
+    return f"tcw work stage {verb} {stage}" + ("" if stage == "inbox" else f" {ref}")
 
 
 def _stage_removed_form(args: argparse.Namespace) -> int:
@@ -2009,14 +2074,12 @@ def _stage_removed_form(args: argparse.Namespace) -> int:
     # it, so the placeholder every other stage wants would advise a command that
     # is itself refused — two wrong turns for someone migrating off the old
     # spelling. The one stage that takes no reference is shown none.
-    if args.removed_stage == "inbox":
-        ref = ""
-    else:
-        ref = f" {args.rest[0]}" if args.rest else " <slug>"
+    ref = args.rest[0] if args.rest else "<slug>"
     print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
-          f"`tcw work stage gate {args.removed_stage}{ref}` to check the "
-          f"stage and run its checks, or `tcw work stage prompt "
-          f"{args.removed_stage}{ref}` for its instructions", file=sys.stderr)
+          f"`{_stage_command('gate', args.removed_stage, ref)}` to check the "
+          f"stage and run its checks, or "
+          f"`{_stage_command('prompt', args.removed_stage, ref)}` for its "
+          f"instructions", file=sys.stderr)
     return 2
 
 
@@ -2312,12 +2375,47 @@ def _stage(args: argparse.Namespace) -> int:
     if item.status not in legal:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
+        if hint := _illegal_stage_hint(step.id, item.status, legal, args.slug,
+                                       _present_artifacts(st, bare)):
+            print(hint, file=sys.stderr)
         return 1
     if step.id == "implement" and (
-            missing := _unwritten_plan(_present_artifacts(st, bare), args.slug)):
+            missing := _unwritten_planning(_present_artifacts(st, bare), args.slug)):
         print(f"tcw work stage gate implement: warning: {missing}", file=sys.stderr)
 
     return _stage_gate(args, step, st, item, bare, item.status, args.slug)
+
+
+def _illegal_stage_hint(stage: str, status: str, legal: tuple[str, ...],
+                        display: str, present: set[str] | None) -> str:
+    """How to go on from a stage refused for the item's status — the refusal
+    alone says where the stage runs, not how to get there. Only moves that exist
+    are named: `rework` back from review, `start` out of backlog, `submit` into
+    review. `stage prompt` is offered for reading only, since it skips what the
+    gate — and a transition it stands in for — would check."""
+    if status in RESOLVED_STATUSES:
+        also = (" except `postmortem`" if "completed" in STAGE_STATUSES["postmortem"]
+                and status == "completed" else "")
+        return f"{display} is {status}: no stage runs on it{also}."
+    said = ""
+    if stage == "request" and status == "review":
+        # "Amending a request": in review the request is written directly, and
+        # sending accepted-looking work back only to add one is the wrong move.
+        said = (f"in review, write initial-request.md directly, where "
+                f"`tcw work path {display}` says")
+    elif status == "review" and "active" in legal:
+        accepted = present is not None and "refined-outcome" in present
+        said = (f"to run it, send the item back with `tcw work rework {display}`"
+                + (" — after deleting refined-outcome.md, which says the work was "
+                   "accepted" if accepted else ""))
+    elif status == "backlog" and "active" in legal:
+        said = f"start the item first: `tcw work start {display}`"
+    elif status == "active" and "review" in legal and "active" not in legal:
+        said = f"submit the item first: `tcw work submit {display}`"
+    text = _sentence("; ".join(filter(None, [
+        said, f"`tcw work stage prompt {stage} {display}` prints its instructions "
+              f"to read, without entering the stage"])))
+    return text[0].upper() + text[1:]
 
 
 # Which stage writes each artifact, inverted from the one table that says so.
@@ -2555,6 +2653,31 @@ def _lifecycle(args: argparse.Namespace) -> int:
         if i:
             print()
         print("\n".join(_lifecycle_lines(step, bindings_for)))
+    return 0
+
+
+def _rename(args: argparse.Namespace) -> int:
+    resolved = _resolve(args.slug, "rename")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item, notes = st.rename(bare, args.new_slug, owner=_local_owner(st))
+    except TransitionCommitError as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    except _ERRORS as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    loc = st.locate(item.slug)
+    print(f"renamed {bare} → {item.slug}" + (f" ({loc})" if loc else ""))
+    for note in notes:
+        print(f"tcw work rename: {note}", file=sys.stderr)
+    bound = bound_value(item.tracker) if item.tracker else None
+    ticket = (bound.get("ticket") or {}).get("key") if isinstance(bound, dict) else None
+    if ticket:
+        print(f"tcw work rename: ticket {ticket} was written naming {bare}; update "
+              f"any slug or link in its text yourself.", file=sys.stderr)
     return 0
 
 
@@ -2915,6 +3038,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         return 1
 
     title = args.title.strip() if args.title else f"{outcome.key} — {outcome.summary}"
+    st.refresh_for_creation()
     try:
         slug = st.create_work(title, intake=_intake_text(outcome, description, today),
                               parent=parent, initiative=initiative).item.slug
@@ -2956,6 +3080,9 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
             and _normalize(outcome.claimed_from) != _normalize(outcome.status)):
         status, put_back_failed = put_back(client, outcome)
         outcome = replace(outcome, status=status)
+    # After the binding, where the rollback above can no longer run: a commit of
+    # an item that `st.drop` then removed would leave a staged deletion behind.
+    _commit_created(st, label, f"tcw work: import {outcome.key} → {slug}", slug)
     print(slug)
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
     if put_back_failed:
@@ -4126,8 +4253,9 @@ def _complete(args: argparse.Namespace) -> int:
         else (None, item))
     # What was judged just above came off the worktree's *working files*, while the
     # merge-back carries only what the branch committed. Uncommitted item files are
-    # an ordinary state — only transitions commit themselves, so a field edit, a
-    # blocker change or a verify artifact written in the worktree is at most staged
+    # an ordinary state — transitions and creation commit themselves, but a field
+    # edit, a blocker change or a verify artifact written in the worktree is at
+    # most staged
     # — so this is guidance, not an accusation.
     #
     # It runs regardless of `--force`, and that is the whole distinction: `--force`
@@ -4461,8 +4589,7 @@ def _drop(args: argparse.Namespace) -> int:
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
-    g = p.add_subparsers(dest="cmd", required=True,
-                         parser_class=_HidesRemovedSpellings)
+    g = p.add_subparsers(dest="cmd", required=True)
 
     # A positional has no flag to hint at its meaning, so every one of them says
     # what it wants. These three recur; the rest are written where they are added.
@@ -4934,8 +5061,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # The removed form. Registered so it fails with the command to run instead
     # of argparse's bare "invalid choice", and hidden so it is not offered as a
     # third verb — from `--help` by the metavar above, and from the
-    # invalid-choice error by `_HidesRemovedSpellings`, which is what makes that
-    # claim true. It never resolves anything: a migration message, not an alias.
+    # invalid-choice error and its suggestions by `tcw.cli_suggest`, which offers
+    # only what `--help` lists: registering these without `help=` is what keeps
+    # them out of both. It never resolves anything: a migration message, not an alias.
     for _sid in STAGE_IDS:
         # No `help=`: omitting it keeps the parser out of the choices list
         # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
@@ -5006,6 +5134,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="remove a tag (repeatable; a value may be a,b,c; a tag the "
                          "item holds is matched as written, even one that is not valid)")
     pe.set_defaults(func=_edit)
+
+    prn = g.add_parser("rename", help="change an open item's slug; what names it on "
+                                      "this board follows, and the old slug still "
+                                      "resolves")
+    prn.add_argument("slug", help=SLUG_HELP)
+    prn.add_argument("new_slug", metavar="new-slug",
+                     help="the new slug, or only the part after the item's date")
+    prn.set_defaults(func=_rename)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
     pc.add_argument("slug", help=SLUG_HELP)

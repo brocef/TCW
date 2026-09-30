@@ -10,6 +10,10 @@ in step as you go; do not batch the moves at the end.
 
 **TCW commits every transition itself** (`work.auto-commit-transitions`, default
 true, set with the `configure` skill), scoped to the item's own folders so unrelated edits are never swept in.
+Creation commits the same way: `new` and `inbox accept` commit the item they
+made, and `escalate` and `delegate` commit the request in the receiving
+project's repository. A refused creation commit only warns, since re-running
+would create a second item — commit the files yourself.
 Do not commit a status move by hand. If a commit is refused, the item still
 moved and the tool says so — commit it yourself, do not re-run the transition.
 
@@ -59,12 +63,15 @@ those are evaluated once, by the session holding the user relationship.
   branch carries the code side only; the item lives where `tcw work path` says.
 
 `spec.md` and `plan.md` being present is a **check**, not a gate: the tool does
-not refuse, but it prints a warning naming whichever is missing. An item started
-too early is not stuck — `spec` and `plan` are legal in `active` as well as
-`backlog`, so run `tcw work stage gate spec <slug>` and `... plan <slug>` and
-write them where `tcw work path <slug>` says. The
+not refuse, but it prints a warning naming whichever is missing — and
+`initial-request.md` too, while there is no spec. An item started too early is
+not stuck — `request`, `spec` and `plan` are legal in `active` as well as
+`backlog`, so run `tcw work stage gate request <slug>`, `... spec <slug>` and
+`... plan <slug>` and write them where `tcw work path <slug>` says. The
 `implement` gate prints the same warning; a project that wants it to refuse binds
-a `pre` check there.
+a `pre` check there. A stage refused for the item's status says how to go on:
+`tcw work rework` back from review, `tcw work start` out of backlog, or
+`tcw work stage prompt` for the instructions without the gate's checks.
 
 ## submit — `active → review`
 

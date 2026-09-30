@@ -70,9 +70,14 @@ asking what to do will change something.
 **`gate` refuses a stage that makes no sense for the item's current status,
 before any hook runs**: `implement` on a backlog item, or `spec` on one already
 closed. `verify` is legal from `active` as well as `review`, because an item can
-be closed without ever having been submitted. `postmortem` is the out-of-band
-exception, legal in review and after completion — but not on a discarded item,
-which was closed without shipping.
+be closed without ever having been submitted. `request`, `spec` and `plan` are
+legal in `active` as well as `backlog`, since nothing moves an item back and one
+started before it was planned would otherwise never pass them. `postmortem` is
+the out-of-band exception, legal in review and after completion — but not on a
+discarded item, which was closed without shipping. A refusal says how to go on:
+send a reviewed item back with `tcw work rework`, start a backlog one with
+`tcw work start`, or read the instructions with `prompt`, whose checks do not
+run; on a resolved item, it says no stage runs.
 
 **`prompt` refuses none of that**, which is the point of having it. Given an item
 the stage is not legal for, it prints the instructions anyway and says so in a

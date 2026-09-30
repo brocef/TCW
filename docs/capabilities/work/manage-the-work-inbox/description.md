@@ -37,3 +37,5 @@ land in the target project's configured inbox, wherever `work.path` puts it. If
 that store cannot be resolved, the command fails with a non-zero exit and an
 error rather than creating a default `docs/work/inbox` folder nobody reads — a
 misrouted request is reported, never silently written away.
+
+Accepting a raw entry commits the new item and the entry's removal together, under `work.auto-commit-transitions`, as `tcw work new` does.

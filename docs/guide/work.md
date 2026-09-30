@@ -186,8 +186,19 @@ make it for you.
 **Every transition commits its own move.** `tcw work start`, `submit`, `rework`,
 and `complete` each leave a commit recording just that item's status change —
 scoped to the item's own folders, so unrelated edits in your working tree are
-never swept in. Set `work.auto-commit-transitions: false` in `tcw-config.yaml` to
-turn it off and commit them yourself. `work.trunk-branch: main` adds a warning
+never swept in. **Creation commits too**: `tcw work new` and `inbox accept`
+commit the item they created (with any tracker binding filing wrote, and the
+accepted entry's removal), as do `tracker import` and accepting a ticket, and
+`escalate` and `delegate` commit the request they wrote in the receiving
+project's repository, under that project's own setting. A request into a
+store that publishes to a remote is left staged there, for that project to
+commit. A store that publishes is brought up to date before a creation, as
+before a transition; offline, the creation is left staged and says so. A
+creation whose commit is refused — by a `pre-commit` hook, say — still
+succeeds and says so, leaving the files staged, because running it again would
+create a second item. Set `work.auto-commit-transitions: false` in
+`tcw-config.yaml` to turn all of this off and commit them yourself; the files are
+then left staged. `work.trunk-branch: main` adds a warning
 when you transition an item from some other branch; it is advisory only and
 never checks anything out.
 
@@ -302,6 +313,9 @@ tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity
 tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
                                        # flags combine in one edit; if any part is refused
                                        # (unknown tag, blocking cycle, …) nothing is changed
+tcw work rename "$slug" add-remove-or-step-down   # a new slug for an open item (the date is kept);
+                                       # references on this board follow, and the old slug
+                                       # keeps resolving — see "Renaming an item"
 
 tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, unreconciled capabilities,
@@ -387,8 +401,9 @@ After `tcw work new`, `tcw work inbox accept`, `tcw work start`, `tcw work submi
 and `tcw work rework`, the CLI prints the **next step** on stderr, as the gate of
 the stage that comes next — e.g. "→ next: run `tcw work stage gate request …`"
 after `new` — so the lifecycle is hard to skip. After `start` it is the first stage
-the item still needs: `spec`, `plan`, `implement`, or `verify` for an active item
-taken over with its outcome already written. After `submit` it is `verify`, whose
+the item still needs: `request` while it has neither a request nor a spec,
+then `spec`, `plan`, `implement`, or `verify` for an active item taken over with
+its outcome already written. After `submit` it is `verify`, whose
 two endings the hint names; after `rework`, `implement`. The slug still goes to
 stdout alone.
 `tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
@@ -458,9 +473,9 @@ in the request, never the intake:
   Re-running the `request` stage keeps these sections. The web app's request
   tab shows the whole file; `tcw work show` prints only the start of the body,
   so read the file itself to see every amendment.
-- An item that has only `intake.md` has no request yet. In `backlog`, write one
-  with the `request` stage, with the amendment folded in or under its own
-  dated heading. Once the item has moved on, that stage no longer runs, so
+- An item that has only `intake.md` has no request yet. In `backlog` or
+  `active`, write one with the `request` stage, with the amendment folded in
+  or under its own dated heading. In `review` that stage does not run, so
   write `initial-request.md` directly — write the file yourself, or use the web
   app's body editor; either promotes the item.
   The intake is left as it arrived either way.
@@ -714,6 +729,33 @@ in `tcw work list` and in its rollup, and it may be completed **directly from
 `backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
 throwaway `start` just to close it (the Definition-of-Done and capability gates
 still apply).
+
+## Renaming an item
+
+An item's slug is its identity, so `tcw work edit --title` leaves it alone. When
+the scope has changed enough that the slug misleads, `tcw work rename <slug>
+<new-slug>` gives an open item a new one. Pass the whole slug or only the part
+after the date; the item keeps its original date either way.
+
+In one commit it moves the folder in place and rewrites everything on the board
+that names the item: other items' blockers, a child's `parent` and
+`initiative`, the `initiative` on resolved children's records, and a
+capability's `Planning doc:`. An epic's initiative children on other boards are
+repointed too, each committed in its own repository.
+
+The old slug is recorded in `docs/work/renames.yaml` and keeps working where
+nothing could rewrite it. `tcw work show` and `tcw work path` follow it and say
+so; a blocker naming it, from this project or another, reads the renamed item's
+real status; and no new item is ever given it. Commands that change an item
+refuse the old slug and name the new one, so you are never acting on a name you
+did not know was stale.
+
+A rename is refused, and nothing changes, for a completed or discarded item,
+an item with a worktree or branch (rename those by hand), an item someone else
+holds, a slug already taken, or a different date. It never rewrites prose, a
+tracker ticket's text, or commit messages; it lists the item's files that still
+mention the old slug. `tcw validate` checks `renames.yaml` for loops and for an
+old slug that an item holds again.
 
 ## Running an item in an isolated checkout
 

@@ -1105,6 +1105,10 @@
   location: c481ba8f79aaafb5ed7eb1bbfe600cb9d8020e8b
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-add-a-way-to-rename-a-work-item-s-slug:
+  location: 74072e91eeab1ba941f05735228ce34b5ff0f4c7
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing:
   location: ada0edbe485a653fb5d3a1e3c19f3db70bb2d10c
   resolution: done
@@ -1121,6 +1125,10 @@
   location: 8f8dc645275d5a317dc25ac73e8308023e67d8d8
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-let-a-started-item-still-pass-its-planning-gates-or-stop-start-from-letting-it-past-them:
+  location: e9d73e10ba2faea389cc0b84f063eedcea9732e1
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-let-complete-already-integrated-check-a-branch-worked-in-a-worktree-tcw-did-not-create:
   location: e1590ca91ef04980f738534c746a0bbfb4bed6d3
   resolution: done
@@ -1129,6 +1137,10 @@
 : location: f14e660ad212437fe7f5b47a3753ab9148e6a9a7
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-make-work-new-and-work-escalate-commit-their-own-files-as-status-moves-do:
+  location: f0e17284f175bf4ff15589c1a0c55f58f2fb1830
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-refuse-a-catch-up-rework-whose-ticket-is-already-past-the-item:
   location: 528813808ce45b856dea8db60f44d84f8cd33dc3
   resolution: done
@@ -1141,6 +1153,10 @@
   location: 06c02c2a796f4a392d9779996e6b9dd1667b6a26
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-suggest-what-was-meant-when-a-subcommand-or-stage-name-is-wrong:
+  location: ae5a18432af5a4e6e270b3e85339d19e07b02f3e
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
   location: f470f8071b5b45f655ff2fe3efe22a6a62049023
   resolution: done

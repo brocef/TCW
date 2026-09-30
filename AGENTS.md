@@ -33,10 +33,12 @@ hang (`tcw work new` once blocked inside a capture script). As soon as a session
 starts editing `tcw/`, drive the work system by editing its files directly, and say
 so rather than silently alternating between the two. Everything in `docs/work/` is
 plain files and can be maintained by hand: add an inbox entry or an item folder,
-write its artifacts, edit `state.yaml`, rename a folder to change a slug, or move it
-to another status directory. A hand edit runs none of the lifecycle's gates or
-hooks — no `pre` checks, Definition of Done, commits or tracker sync — so do what
-those would have done yourself, and update every reference to a slug you rename.
+write its artifacts, edit `state.yaml`, rename a folder to change a slug
+(`tcw work rename` does that and rewrites every reference, when it is not the
+code being changed), or move it to another status directory. A hand edit runs
+none of the lifecycle's gates or hooks — no `pre` checks, Definition of Done,
+commits or tracker sync — so do what those would have done yourself, and update
+every reference to a slug you rename.
 
 **Closing the originating GitHub issue waits for publication.** `docs/work/dod.yaml`
 lists _"originating GitHub issue answered and closed, if the item came from one"_

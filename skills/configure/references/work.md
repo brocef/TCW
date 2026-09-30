@@ -158,8 +158,9 @@ work:
 ```
 
 - **`work.auto-commit-transitions`** — `true` or `false`, default `true`. When
-  `true`, every transition commits its own status move. Set it to `false` to
-  commit the moves yourself. A value that is not `true` or `false` is read as the
+  `true`, every transition commits its own status move, and `new`,
+  `inbox accept`, `escalate` and `delegate` commit what they create. Set it to
+  `false` to commit them yourself; creations are then left staged. A value that is not `true` or `false` is read as the
   default, and `tcw validate` does not report it.
 - **`work.trunk-branch`** — a branch name, unset by default. When set, a
   transition made on some other branch prints a warning and still commits where

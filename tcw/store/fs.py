@@ -45,6 +45,7 @@ from tcw.store.base import (
     WORK_STATUSES, WORK_TYPES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
+    slugify, _DATE_PREFIX, rename_slug,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
@@ -1449,7 +1450,7 @@ _UniqueKeyLoader.add_constructor(
 #: which `write_sidecar` already enforces — so it is held to the contract like
 #: `state.yaml`.
 OWNED_YAML_NAMES = frozenset({
-    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml",
+    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml", "renames.yaml",
 })
 
 
@@ -1522,11 +1523,12 @@ def dump_yaml(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
-def slugify(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-
-
-_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
 
 
 def _extends_ids(config: dict, label: str) -> list[str]:
@@ -5135,7 +5137,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         #
         # A YAML read per candidate, not per call: the loop body runs only on a
         # real collision, and `_find` already walks the store on every iteration.
-        while self._find(slug) is not None or self.tombstone(slug) is not None:
+        # And renamed-away slugs, which still resolve to the renamed item.
+        renamed = self._renames()
+        while (self._find(slug) is not None or self.tombstone(slug) is not None
+               or slug in renamed):
             slug, n = f"{base}-{n}", n + 1
         return slug
 
@@ -6231,10 +6236,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     return False, ""               # not a project: prose
                 return False, qualified_work_ref_problem(self.node_root, text)
             store, slug = found
+            renamed = store.renamed(slug)
             target = store.get(slug)
+            if target is None and renamed:
+                target = store.get(renamed)
             if target is not None:
                 return target.status in RESOLVED_STATUSES, ""
-            if store.tombstone(slug) is not None:
+            if store.tombstone(renamed or slug) is not None:
                 return True, ""
             return False, f"no such work item: {text}"
         except Exception:                          # a blocker never fails its reader
@@ -6286,6 +6294,346 @@ class FsWorkStore(FsTreeStore, WorkStore):
             location=str(entry.get("location") or ""),
             initiative=str(entry.get("initiative") or ""),
         )
+
+    # -- renames --
+
+    RENAMES_NAME = "renames.yaml"
+
+    def _renames(self) -> dict[str, str]:
+        """`renames.yaml` as `{old: new}`. Tolerant, like `tombstone`: a damaged
+        file answers nothing rather than taking a read down; `validate` says what
+        is wrong with it."""
+        path = self.root / self.RENAMES_NAME
+        if not path.exists():
+            return {}
+        try:
+            doc = self._safe_yaml(path)
+        except (OSError, UnicodeDecodeError):
+            return {}
+        if not isinstance(doc, dict):
+            return {}
+        return {k: v for k, v in doc.items() if isinstance(k, str) and isinstance(v, str)}
+
+    def renamed(self, slug: str) -> str | None:
+        """The slug `slug` now goes by, following a chain of renames to its end;
+        None if it was never renamed. A loop answers None, and `validate` reports
+        it. Kept apart from the graveyard on purpose: every tombstone reader takes
+        a tombstone to mean resolved work, so a renamed item recorded there would
+        silently unblock whatever still named its old slug."""
+        doc = self._renames()
+        seen, current = {slug}, slug
+        while current in doc:
+            current = doc[current]
+            if current in seen:
+                return None
+            seen.add(current)
+        return None if current == slug else current
+
+    def renames_problems(self) -> list[str]:
+        path = self.root / self.RENAMES_NAME
+        if not path.exists():
+            return []
+        try:
+            doc = load_yaml(path)
+        except (yaml.YAMLError, OSError, UnicodeDecodeError) as e:
+            return [f"{path}: does not parse ({e.__class__.__name__})"]
+        if doc and not isinstance(doc, dict):
+            return [f"{path}: is not a mapping of old slug to new slug"]
+        problems = []
+        for old, new in (doc or {}).items():
+            if not isinstance(old, str) or not isinstance(new, str):
+                problems.append(f"{path}: entry {old!r} is not slug: slug")
+            elif self.renamed(old) is None:
+                problems.append(f"{path}: {old} is part of a loop of renames")
+            elif self._find(old) is not None:
+                problems.append(f"{path}: {old} was renamed away, but an item "
+                                f"holds that slug again")
+        return problems
+
+    def _names_here(self, value: str, slug: str) -> str | None:
+        """`value` with `slug` replaced by nothing — the spelling to keep — when
+        `value` names `slug` on this store, bare or as `<own-project-id>/<slug>`;
+        None when it names something else."""
+        if value == slug:
+            return ""
+        if value.endswith("/" + slug) and slug in self._local_forms(value):
+            return value[: -len(slug)]
+        return None
+
+    def rename(self, slug: str, new_slug: str, *,
+               owner: str = "") -> "tuple[WorkItem, list[str]]":
+        """Give an open item a new slug: move its folder, rewrite what names it,
+        record the old slug in `renames.yaml`, and commit — in one commit here,
+        plus one in each other board that held an initiative child. Returns the
+        renamed item and notes on what still names the old slug and was left
+        alone (the item's own prose, a tracker ticket)."""
+        self._require_repository()
+        item = self._require(slug)
+        new = self.rename_refusal(item, new_slug, owner)
+        # Read before anything moves: once the folder has its new name, nothing
+        # still names the old one to find by.
+        slices = [(n, i) for n, i in (self.initiative_slices(slug) if item.type == "epic"
+                                      else []) if n.resolve() != self.node_root.resolve()]
+        with self._graveyard_lock():
+            # Every refusal before the first write. A rename that stops halfway
+            # leaves the old slug recorded as renamed, and every retry — by either
+            # slug — is then refused as taken, so nothing below may be what fails.
+            claiming = self.root / ".claiming"
+            if claiming.is_dir() and any(p.name.startswith(f"{slug}-")
+                                         for p in claiming.iterdir()):
+                raise ValueError(f"{slug} has a claim in progress; retry once it settles")
+            self.rename_refusal(self._require(slug), new_slug, owner)   # under the lock
+            src = self._require_dir(slug)
+            dst = src.parent / new
+            if dst.exists():
+                raise ValueError(f"{dst} already exists; move or remove it, then retry")
+            renames_path = self.root / self.RENAMES_NAME
+            record = self._readable_mapping(renames_path)
+            record[slug] = new
+            edits, graveyard = self._reference_edits(slug, new)
+            metas = self._capability_links(slug)
+            writes = [renames_path, *(d / "state.yaml" for d, _ in edits), *metas]
+            if graveyard is not None:
+                writes.append(self._graveyard_path())
+            for path in [src, *writes]:
+                self._require_clean(path)
+            before = {p: (p.read_bytes() if p.exists() else None) for p in writes}
+            moved = False
+            try:
+                self._write_staged([(renames_path, yaml.safe_dump(record, sort_keys=True))])
+                git_mv(self.store_git_root, src, dst)
+                moved = True
+                written = self._apply_reference_edits(edits, slug, new, graveyard)
+                elsewhere = self._rewrite_capability_links(metas, slug, new)
+            except BaseException as error:
+                left = self._undo_rename(src, dst, moved, before)
+                if left and isinstance(error, Exception):
+                    raise ValueError(
+                        f"{error}\nThe rename was undone except for:\n  - "
+                        + "\n  - ".join(left)
+                        + "\nRestore these by hand (git status shows them).") from error
+                raise
+            touched = [renames_path, src, dst, *written]
+            notes = self._prose_mentions(dst, slug)
+            if self.auto_commit_transitions():
+                mine = [p for p in touched + elsewhere if _is_under(p, self.store_git_root)]
+                rel = [str(p.resolve().relative_to(self.store_git_root.resolve()))
+                       if p.exists() else str(p.relative_to(self.store_git_root))
+                       for p in mine]
+                if err := git_commit_result(self.store_git_root,
+                                            f"tcw work: rename {slug} → {new}", *rel):
+                    raise TransitionCommitError(
+                        f"{slug} was renamed to {new}, but committing it failed:\n{err}\n"
+                        f"The rename is staged; commit it yourself. Use the new slug "
+                        f"from now on — the old one is recorded as renamed.")
+                for p in elsewhere:
+                    if p not in mine and (root := git_root(p.parent)) is not None:
+                        if err := git_commit_result(root, f"tcw work: rename {slug} → {new}",
+                                                    str(p.relative_to(root))):
+                            notes.append(f"{p} names {new} now, but committing it in "
+                                         f"{root} failed: {err}")
+        for node, child in slices:
+            notes += FsWorkStore.open(node)._repoint_initiative(child.slug, slug, new)
+        return self._require(new), notes
+
+    def _readable_mapping(self, path: Path) -> dict:
+        """`path` parsed as a mapping, or {} if absent; refuses anything else
+        rather than overwriting what it could not read."""
+        if not path.exists():
+            return {}
+        try:
+            doc = load_yaml(path)
+        except Exception as e:
+            raise ValueError(f"{path} cannot be read ({e}); fix it, then retry")
+        if doc is None:
+            return {}
+        if not isinstance(doc, dict):
+            raise ValueError(f"{path} is not a mapping; fix it, then retry")
+        return doc
+
+    def _undo_rename(self, src: Path, dst: Path, moved: bool,
+                     before: "dict[Path, bytes | None]") -> list[str]:
+        """Put back what a failed rename changed, returning what could not be.
+        Every file it wrote was clean when read, so its bytes then are the
+        committed ones. Each step runs whatever the one before did: a partial
+        undo that stops at the first git error leaves the worst state of all."""
+        left: list[str] = []
+        if moved and dst.exists() and not src.exists():
+            back = subprocess.run(["git", "-C", str(self.store_git_root), "mv", "-k",
+                                   str(dst), str(src)], capture_output=True, text=True,
+                                  stdin=subprocess.DEVNULL)
+            if back.returncode != 0 or not src.exists():
+                try:
+                    dst.rename(src)       # the folder at least; the index is reset below
+                except OSError as e:
+                    left.append(f"the folder is still at {dst} ({e})")
+            if not src.exists():
+                return left + [f"not restored, since the folder did not move back: "
+                               f"{', '.join(str(p) for p in before)}"]
+            subprocess.run(["git", "-C", str(self.store_git_root), "reset", "-q", "--",
+                            _literal(str(dst.relative_to(self.store_git_root)))],
+                           capture_output=True, stdin=subprocess.DEVNULL)
+        for path, data in before.items():
+            try:
+                repo = git_root(path.parent) or self.store_git_root
+                reset = subprocess.run(
+                    ["git", "-C", str(repo), "reset", "-q", "--",
+                     _literal(str(path.resolve().relative_to(repo.resolve())))],
+                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                if data is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(data)
+                if reset.returncode != 0:
+                    left.append(f"{path} is restored on disk but may still be staged: "
+                                f"{reset.stderr.strip()}")
+            except (OSError, ValueError) as e:
+                left.append(f"{path} could not be restored ({e})")
+        return left
+
+    def _require_clean(self, path: Path) -> None:
+        """Refuse when `path` has uncommitted changes and auto-commit is on: the
+        commit about to be made would carry someone else's edit to it."""
+        if not self.auto_commit_transitions() or not path.exists():
+            return
+        # A capability file can be in the project's repository while the work
+        # store has its own, so ask the repository that holds the path.
+        repo = git_root(path if path.is_dir() else path.parent) or self.store_git_root
+        rel = str(path.resolve().relative_to(repo.resolve()))
+        out = subprocess.run(["git", "-C", str(repo), "status",
+                              "--porcelain", "--", _literal(rel)],
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if out.returncode == 0 and out.stdout.strip():
+            raise ValueError(f"{path} has uncommitted changes; commit or revert them, "
+                             f"then retry")
+
+    def _reference_edits(self, old: str, new: str) -> "tuple[list[tuple[Path, dict]], dict | None]":
+        """What naming `old` on this board would change: `(folder, fields)` per
+        item whose `blocked_by`, `parent` or `initiative` names it, and the
+        rewritten graveyard if any record's `initiative` does (else None).
+        Reads only — every file is parsed here, so a damaged one refuses the
+        rename before anything is written."""
+        edits = []
+        for d in self._item_dirs():
+            state = self._safe_yaml(d / "state.yaml")
+            fields = {}
+            blockers = state.get("blocked_by")
+            if isinstance(blockers, list):
+                changed = False
+                out = []
+                for b in blockers:
+                    if isinstance(b, dict):
+                        for key in ("slug", "external"):
+                            value = b.get(key)
+                            if isinstance(value, str) and (
+                                    keep := self._names_here(value, old)) is not None:
+                                b = {**b, key: keep + new}
+                                changed = True
+                    out.append(b)
+                if changed:
+                    fields["blocked_by"] = out
+            for key in ("parent", "initiative"):
+                value = state.get(key)
+                if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
+                    fields[key] = keep + new
+            if fields:
+                edits.append((d, fields))
+        doc = self._readable_mapping(self._graveyard_path())
+        changed = False
+        for entry in doc.values():
+            value = entry.get("initiative") if isinstance(entry, dict) else None
+            if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
+                entry["initiative"] = keep + new
+                changed = True
+        return edits, (doc if changed else None)
+
+    def _apply_reference_edits(self, edits: "list[tuple[Path, dict]]", old: str,
+                               new: str, graveyard: dict | None) -> list[Path]:
+        """Write what `_reference_edits` planned, after the folder moved — the
+        renamed item's own folder, and anything nested in it, is at `new` now."""
+        written = []
+        for d, fields in edits:
+            here = d if d.exists() else self._moved(d, old, new)
+            self._set_fields_at(here, fields)
+            written.append(here / "state.yaml")
+        if graveyard is not None:
+            path = self._graveyard_path()
+            self._write_staged([(path, yaml.safe_dump(graveyard, sort_keys=True,
+                                                      allow_unicode=True))])
+            written.append(path)
+        return written
+
+    @staticmethod
+    def _moved(d: Path, old: str, new: str) -> Path:
+        """`d` after the folder named `old` among its ancestors became `new`."""
+        parts = list(d.parts)
+        i = len(parts) - 1 - parts[::-1].index(old)
+        parts[i] = new
+        return Path(*parts)
+
+    def _repoint_initiative(self, child: str, old: str, new: str) -> list[str]:
+        """On another board: repoint `child`'s `initiative` from the epic `old` to
+        `new`, committing it in this board's repository. Returns notes."""
+        d = self._find(child)
+        if d is None:
+            return []
+        value = self._safe_yaml(d / "state.yaml").get("initiative")
+        if not isinstance(value, str) or not value.endswith("/" + old):
+            return []
+        try:
+            # Checked here, not by the rename: this board's repository is its own,
+            # and its commit must not carry somebody's unsaved edit to the file.
+            self._require_clean(d / "state.yaml")
+        except ValueError:
+            return [f"{child} in {self.node_root} still names {old}: its state.yaml "
+                    f"has uncommitted changes. Set its initiative to "
+                    f"{value[: -len(old)] + new} there by hand"]
+        try:
+            self._set_fields_at(d, {"initiative": value[: -len(old)] + new})
+            if self.auto_commit_transitions():
+                rel = str((d / "state.yaml").relative_to(self.store_git_root))
+                if err := git_commit_result(self.store_git_root,
+                                            f"tcw work: initiative {old} → {new}", rel):
+                    return [f"{child} in {self.node_root} points at the new epic slug, "
+                            f"but committing it failed: {err}"]
+        except (ValueError, OSError, subprocess.CalledProcessError) as e:
+            return [f"{child} in {self.node_root} still names {old}: {e}"]
+        return []
+
+    @staticmethod
+    def _planning_doc_pattern(old: str) -> "re.Pattern[str]":
+        # A bare slug on its own line, as every `Planning doc:` is written; a
+        # quoted or qualified value is left alone.
+        return re.compile(rf"^(Planning doc:\s*){re.escape(old)}\s*$", re.M)
+
+    def _capability_links(self, old: str) -> list[Path]:
+        """Capability `meta.yaml` files on this node whose `Planning doc:` is `old`."""
+        try:
+            root = FsCapabilitiesStore.open(self.node_root).root
+        except Exception:                          # no capabilities component here
+            return []
+        pattern = self._planning_doc_pattern(old)
+        return [meta for meta in sorted(root.rglob("meta.yaml"))
+                if pattern.search(meta.read_text(encoding="utf-8"))]
+
+    def _rewrite_capability_links(self, metas: list[Path], old: str,
+                                  new: str) -> list[Path]:
+        pattern = self._planning_doc_pattern(old)
+        for meta in metas:
+            text = meta.read_text(encoding="utf-8")
+            meta.write_text(pattern.sub(rf"\g<1>{new}", text), encoding="utf-8")
+            if (repo := git_root(meta.parent)) is not None:
+                git_stage(repo, meta)
+        return metas
+
+    @staticmethod
+    def _prose_mentions(folder: Path, old: str) -> list[str]:
+        found = [p.relative_to(folder).as_posix() for p in sorted(folder.rglob("*"))
+                 if p.is_file() and p.suffix in (".md", ".yaml", ".txt")
+                 and p.name != "state.yaml"
+                 and old in p.read_text(encoding="utf-8", errors="replace")]
+        return ([f"still names the old slug, left as written: {', '.join(found)}"]
+                if found else [])
 
     def get(self, slug: str) -> WorkItem | None:
         """The settled item, or None if it is genuinely absent.
@@ -6755,6 +7103,90 @@ class FsWorkStore(FsTreeStore, WorkStore):
         value = self._work_config().get("auto-commit-transitions")
         return value if isinstance(value, bool) else True
 
+    def refresh_for_creation(self) -> None:
+        """Bring a provisioned store up to date before a creation writes into it,
+        as a transition does before it moves anything. Committing a creation on a
+        stale copy would diverge it from its remote, and every later transition's
+        fast-forward would then refuse. A refresh that fails is remembered, not
+        raised: creating still works offline, and `commit_writes` then leaves the
+        files staged rather than committing them."""
+        self._creation_unrefreshed = None
+        if not self.publishes or not self.auto_commit_transitions():
+            return
+        try:
+            self._refresh_before_transition()
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            self._creation_unrefreshed = str(error).strip() or error.__class__.__name__
+
+    def commit_writes(self, message: str, *paths: Path, removed: tuple[Path, ...] = (),
+                      publish: bool = True) -> str | None:
+        """Commit what a creation just wrote — only those paths — the way a
+        transition commits its move. None when committed, when there was nothing
+        to commit, or when `work.auto-commit-transitions` is off; otherwise the
+        rest of a sentence beginning "created X, but …", saying what to do.
+
+        `paths` are staged first, whatever the switch says: a creation leaves its
+        files in one state, and a scoped `git commit` ignores an untracked file.
+        `removed` are committed but never staged — an accepted entry, whose
+        removal is already in the index; staging it would record back whatever
+        untracked file the removal left on disk.
+
+        A store that publishes is committed only after `refresh_for_creation`
+        brought it up to date, and with `publish` — `escalate` and `delegate`
+        write into a project whose remote only that project's own commands
+        update, so there the request is left staged.
+
+        Never raises for a refused commit. A creation that succeeded must not
+        look like one that failed: re-running it makes a second item, where
+        re-running a transition is merely refused."""
+        if git_root(self.store_git_root) is None:
+            return None
+        present = [p for p in paths if p.exists()]
+        try:
+            if present:
+                git_stage(self.store_git_root, *present)
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or "").strip() if isinstance(error.stderr, str) else ""
+            return f"staging it failed: {detail or error}. Stage and commit it yourself."
+        if not self.auto_commit_transitions():
+            return None
+        if self.publishes:
+            if not publish:
+                return (f"it is left staged, not committed: {self.store_git_root} "
+                        f"publishes to a remote that its own project's commands "
+                        f"update. Commit it there.")
+            if (reason := getattr(self, "_creation_unrefreshed", "unchecked")):
+                why = ("it was not brought up to date first" if reason == "unchecked"
+                       else f"bringing it up to date failed ({reason})")
+                return (f"it is left staged, not committed: {self.store_git_root} "
+                        f"publishes to a remote, and {why}. Commit and push it once "
+                        f"the remote is reachable.")
+        rel = []
+        for p in (*paths, *removed):
+            try:
+                rel.append(str(p.resolve().relative_to(self.store_git_root.resolve())))
+            except ValueError:
+                return (f"{p} is outside the store's repository "
+                        f"{self.store_git_root}, so it was not committed. Commit it "
+                        f"yourself.")
+        if err := git_commit_result(self.store_git_root, message, *rel):
+            return f"committing it failed:\n{err}\nCommit it yourself."
+        if self.publishes:
+            try:
+                self.publish()
+            except (ValueError, OSError, subprocess.CalledProcessError) as error:
+                return (f"publishing it failed; it is committed in "
+                        f"{self.store_git_root}:\n{error}\nPush it yourself once the "
+                        f"remote is reachable.")
+        return None
+
+    def inbox_source(self, ref: str) -> Path | None:
+        """Where the inbox entry `ref` resolves to, or None if it does not."""
+        try:
+            return self._inbox_path(self._resolve_inbox_ref(ref))
+        except (InboxEntryNotFound, ValueError, MultipleMatch):
+            return None
+
     def lifecycle_policy(self) -> LifecyclePolicy:
         """The node's configured stage/transition bindings.
 
@@ -7070,6 +7502,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())
+            problems.extend(self.renames_problems())
         duplicates = self.duplicate_slugs()
         if identifier is not None:
             try:

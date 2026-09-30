@@ -2293,13 +2293,14 @@ LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
 # * `spec` and `plan` include `active` because nothing moves an item back to
 #   `backlog`: an item started before it was specified or planned would
 #   otherwise never pass either gate again. `backlog` stays first — it is where
-#   they normally run.
+#   they normally run. `request` joined them in 2.8 for the same reason: work
+#   written up after it started had no gate for its request at all.
 #
 # `inbox` is empty: it runs before an item exists, so there is no status to be
 # legal in and no item to resolve a stage against.
 STAGE_STATUSES: dict[str, tuple[str, ...]] = {
     "inbox": (),
-    "request": ("backlog",),
+    "request": ("backlog", "active"),
     "spec": ("backlog", "active"),
     "plan": ("backlog", "active"),
     "implement": ("active",),
@@ -2361,6 +2362,7 @@ TRANSITION_NEXT_STEPS: dict[str, str] = {
     # `inbox accept` of a raw entry prints this too: both leave a backlog item
     # holding at most its intake.
     "new": "run `tcw work stage gate request <slug>`",
+    "start:request": "run `tcw work stage gate request <slug>`",
     "start:spec": "run `tcw work stage gate spec <slug>`",
     "start:plan": "run `tcw work stage gate plan <slug>`",
     "start:implement": "run `tcw work stage gate implement <slug>`",
@@ -2377,6 +2379,7 @@ TRANSITION_NEXT_STEPS: dict[str, str] = {
 # stage against. Nothing else reads it.
 TRANSITION_LANDS_IN: dict[str, str] = {
     "new": "backlog",
+    "start:request": "active",
     "start:spec": "active",
     "start:plan": "active",
     "start:implement": "active",
@@ -2396,16 +2399,54 @@ def refined_outcome_missing(slug: str, stray: str = "") -> str:
             + ". Use --force to complete without it.")
 
 
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+
+
+_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+
+
+def rename_slug(old: str, new: str) -> str:
+    """The full slug `tcw work rename <old> <new>` means, or ValueError.
+
+    `new` may be a whole slug or only the part after the date. The date stays
+    the item's own — it records when the item was made, not when it was named —
+    so a different date is refused rather than quietly replaced. Never
+    rewritten into slug form: an argument that is not one already is refused
+    naming the form it would be, so the slug that lands is the slug typed."""
+    new = new.strip()
+    old_date = _DATE_PREFIX.match(old)
+    new_date = _DATE_PREFIX.match(new)
+    if new_date and old_date and new_date.group(0) != old_date.group(0):
+        raise ValueError(f"{new} has a different date than {old}; the date is when "
+                         f"the item was made, and a rename keeps it — give only "
+                         f"the part after it")
+    full = new if new_date or not old_date else old_date.group(0) + new
+    body = _DATE_PREFIX.sub("", full)
+    if not body or slugify(body) != body:
+        hint = slugify(body) if body and slugify(body) != "untitled" else ""
+        raise ValueError(f"'{new}' is not a slug (lower-case letters, digits and "
+                         f"single hyphens)" + (f"; did you mean '{hint}'?" if hint else ""))
+    if len(body) > 120:
+        raise ValueError(f"'{new}' is longer than 120 characters after the date")
+    return full
+
+
 def start_next_stage(present: Collection[str]) -> str:
     """The stage to run after `start`, from the artifacts the item holds.
 
     Not always `implement`. An item can be started before it is specified or
     planned, and `start` also takes an item already `active` — with
     `--take-over`, or when nobody holds it — which may already have an outcome.
-    The order is the `work` skill's "Finding your place", restricted to stages
-    legal in `active` (so never `request`), with a reworked item sent back to
-    `implement` as `rework`'s own hint does.
+    The order is the `work` skill's "Finding your place", with a reworked item
+    sent back to `implement` as `rework`'s own hint does.
+
+    The request counts as missing only while the spec is too. A spec supersedes
+    its job of recording what was asked, so an item already specified — the
+    usual shape of work written up after it started — is never sent back for it.
     """
+    if "initial-request" not in present and "spec" not in present:
+        return "request"
     if "spec" not in present:
         return "spec"
     if "plan" not in present:
@@ -3412,6 +3453,49 @@ class WorkStore(ABC):
     def get(self, slug: str) -> WorkItem | None:
         """Resolve a stable id (slug) to its item, or None. Raises `MultipleMatch`."""
 
+    def renamed(self, slug: str) -> str | None:
+        """The slug `slug` now goes by after `rename`, or None. A store that
+        keeps the slug as a field keeps a table of old names to answer this; one
+        that cannot rename never has an answer."""
+        return None
+
+    def rename(self, slug: str, new_slug: str, *,
+               owner: str = "") -> "tuple[WorkItem, list[str]]":
+        """Give an open item a new slug, rewriting what names it on this store.
+        Returns the renamed item and notes on what was left naming the old one.
+        An adapter checks `rename_refusal` first, which holds every refusal that
+        does not depend on how items are stored."""
+        raise NotImplementedError
+
+    def rename_refusal(self, item: WorkItem, new_slug: str, owner: str) -> str:
+        """The new slug for `item`, or raise `ValueError` saying why it may not
+        be renamed. Storage-neutral: status, fields, holder, and whether the new
+        slug is taken as a live item, a resolved item's record or an old name."""
+        slug = item.slug
+        new = rename_slug(slug, new_slug)
+        if new == slug:
+            raise ValueError(f"{slug} already has that slug")
+        if item.status in RESOLVED_STATUSES:
+            raise ValueError(f"{slug} is {item.status}; only an open item is renamed — "
+                             f"its folder may not exist in other clones, and its "
+                             f"old slug is already recorded as resolved")
+        if item.worktree or item.branch:
+            raise ValueError(
+                f"{slug} has a worktree or branch ({item.branch or item.worktree}), "
+                f"which a rename would strand. Complete or tear that down first, or "
+                f"rename by hand: `git branch -m`, move .worktrees/{slug}, and update "
+                f"the item's `branch` and `worktree` fields")
+        if item.owner and item.owner != owner:
+            raise ValueError(
+                f"{slug} is held by {item.owner}. Run it as them "
+                f"(`TCW_WORK_OWNER={item.owner} tcw work rename {slug} {new_slug}`), "
+                f"or take the item over with `tcw work start {slug} --take-over`")
+        if (self.get(new) is not None or self.tombstone(new) is not None
+                or self.renamed(new) is not None):
+            raise ValueError(f"{new} is already taken by an item, a resolved item's "
+                             f"record, or an earlier rename")
+        return new
+
     @abstractmethod
     def tombstone(self, slug: str) -> Tombstone | None:
         """The record of an item this store once held and has since resolved, or
@@ -3588,6 +3672,19 @@ class WorkStore(ABC):
         """Slugs held by more than one item. A store that keys items by slug
         cannot have any."""
         return {}
+
+    def refresh_for_creation(self) -> None:
+        """Bring the store up to date before a creation writes, where it has a
+        remote copy to fall behind. A store with no copy of its own has nothing
+        to do."""
+
+    def commit_writes(self, message: str, *paths: Any, removed: tuple = (),
+                      publish: bool = True) -> str | None:
+        """Record what a creation just wrote, as a transition records its move.
+        None when recorded or when there is nothing to do; otherwise the rest of
+        a sentence beginning "created X, but …". A store whose every write is
+        already durable — a database, a tracker — records nothing more."""
+        return None
 
     @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
@@ -4420,10 +4517,14 @@ class WorkStore(ABC):
         if not text or "/" in text:
             return False, ""
         try:
+            renamed = self.renamed(text)
             live = self.get(text)
+            if live is None and renamed:
+                live = self.get(renamed)
             if live is not None:
                 return live.status in RESOLVED_STATUSES, ""
-            return self.tombstone(text) is not None, ""
+            # Resolved under its new slug, whose record is the one written.
+            return self.tombstone(renamed or text) is not None, ""
         except Exception:                          # a blocker never fails its reader
             return False, ""
 
@@ -4443,6 +4544,10 @@ class WorkStore(ABC):
             elif "slug" in b:
                 try:
                     blocker = self.get(b["slug"])
+                    # A renamed blocker is still the same work: follow it, or a
+                    # reference the rename could not rewrite would unblock.
+                    if blocker is None and (renamed := self.renamed(b["slug"])):
+                        blocker = self.get(renamed)
                 except ValueError:
                     # An adapter can refuse to settle a blocker — a claim on it
                     # was abandoned. That is still a blocker, and reporting it as

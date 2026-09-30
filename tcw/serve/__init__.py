@@ -967,6 +967,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 initiative = body.get("initiative", "")
                 type_val = body.get("type", "")
                 tags = body.get("tags") or None
+                work.refresh_for_creation()
                 detail = work.create_work(
                     title=title,
                     created=created,
@@ -987,6 +988,14 @@ class TcwHandler(BaseHTTPRequestHandler):
                     # stale — which the next sidecar write from the page would
                     # be rejected on.
                     detail = work.get_detail(detail.item.slug) or detail
+                # After the owed record, so it is in the same commit. A refusal
+                # is logged, not returned: the item exists, and an error here
+                # would invite the browser to create it a second time.
+                folder = work.path(detail.item.slug)
+                if folder is not None and (reason := work.commit_writes(
+                        f"tcw work: new {detail.item.slug}", folder)):
+                    print(f"tcw serve: created {detail.item.slug}, but {reason}",
+                          file=sys.stderr)
                 response = {
                     "item": _item_payload(work, detail.item.slug, detail.item),
                     "coreRevision": detail.core_revision,

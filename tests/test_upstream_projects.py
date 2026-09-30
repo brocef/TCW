@@ -386,8 +386,10 @@ def _cli_family(tmp_path: Path) -> tuple[Path, str]:
     Returns (root, the core item's slug)."""
     core = _core_node(tmp_path / "core")
     slug = _tcw(core, "work", "new", "Core thing").stdout.strip()
-    _git(core, "add", "-A")
-    _git(core, "commit", "-qm", "item")
+    _git(core, "add", "-A")          # `new` commits its own files; this catches the rest
+    if subprocess.run(["git", "-C", str(core), "status", "--porcelain"],
+                      capture_output=True, text=True).stdout.strip():
+        _git(core, "commit", "-qm", "item")
     root = _reader(tmp_path / "r", "r", {"children": {"a": "a", "b": "b"}})
     for child, extra in (("a", {"upstream": {"core": "../../core"}}), ("b", {})):
         node = root / child

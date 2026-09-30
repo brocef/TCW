@@ -1,8 +1,0 @@
-slug: 2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-the-resolving-ones
-title: Hold one lock on the work store for every transition, not only the resolving
-  ones
-created: '2026-09-29'
-resolution: null
-tags:
-- store
-- work

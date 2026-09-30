@@ -7,6 +7,7 @@ FS realization only — a remote recursion layer would be additive.
 
 import os
 import re
+import sys
 from datetime import date
 from pathlib import Path
 from typing import NamedTuple
@@ -487,8 +488,7 @@ def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
     success in a directory nobody reads."""
     if not store.root.is_dir():
         raise ValueError(f"work store root does not exist: {store.root}")
-    # The one write in the adapter that never stages, so it is also the one the
-    # `_stage` guard cannot reach. Left unguarded it "succeeds" outside a
+    # Checked before anything is written. Left unguarded it "succeeds" outside a
     # repository by dropping an untracked note into a store whose own
     # `inbox accept` will refuse it — a request that can never become work.
     # Checked against the *destination* store, which for `delegate` is the
@@ -504,6 +504,11 @@ def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
     doc = inbox / f"{name}.md"
     doc.write_text("---\n" + "\n".join(front) + "\n---\n\n"
                    f"# {title}\n\n{body}\n", encoding="utf-8")
+    # In the receiving store's repository, under its own switch — the request
+    # is that project's to commit, as the item a transition moves is its store's.
+    if reason := store.commit_writes(
+            f"tcw work: request from {origin} → inbox/{doc.name}", doc, publish=False):
+        print(f"tcw work: wrote {doc}, but {reason}", file=sys.stderr)
     return doc
 
 

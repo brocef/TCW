@@ -21,6 +21,7 @@
 | record / clear a blocker | `tcw work edit <slug> --blocked-by <ref>` · `--unblocked-by <ref>` — one flag per blocker, never comma-separated; `<own-id>/<slug>` and `<status>/<slug>` are recorded as the local item                                |
 | set priority / estimates | `tcw work edit <slug> --priority N --effort <l> --complexity <l>`                                                                               |
 | retitle an item          | `tcw work edit <slug> --title "<new title>"` — the slug is the stable ID and does not change; the body's `#` heading is prose you edit yourself |
+| rename an item's slug    | `tcw work rename <slug> <new-slug>` — open items only; references on this board follow, and the old slug still resolves; see "Renaming an item" |
 | tags                     | `tcw work tags add\|rm\|list` · `tcw work edit <slug> --tag <t> --untag <t>` — every tag value may be `a,b,c`                                                                    |
 | add a child item         | `tcw work new "<sub>" --parent <slug>`                                                                                                          |
 | add an epic task         | `tcw work new "<task>" --initiative <epic-slug>` (or `<project-id>/<epic-slug>`; stored qualified when the epic is in another node)                                                                                                |
@@ -76,10 +77,10 @@ and it goes in the request, never the intake:
 - **Append it to `initial-request.md`** under `## Added <YYYY-MM-DD>`, saying
   where it came from. Never rewrite what is already there; re-running the
   `request` stage keeps these sections.
-- **An item with only `intake.md` has no request yet.** In `backlog`, write one
-  with the `request` stage, the amendment folded in or under its own dated
-  heading; with no user to ask, write it from the evidence and say so in
-  `## Notes`. Past `backlog` that stage no longer runs, so write
+- **An item with only `intake.md` has no request yet.** In `backlog` or
+  `active`, write one with the `request` stage, the amendment folded in or
+  under its own dated heading; with no user to ask, write it from the evidence
+  and say so in `## Notes`. In `review` that stage does not run, so write
   `initial-request.md` directly — write the file, or use the web app's body
   editor; either promotes the item.
   Either way `intake.md` stays byte-for-byte as it arrived.
@@ -379,6 +380,26 @@ indistinguishable from a typo without reading the project's workflow definition.
 *unset* key is a different case, and `show` does report it: nothing has to be read
 from the workflow to know the setting is empty. `list` reports it no more than it
 reports a wrong value — it prints one row per ticket and consults no transition.
+
+## Renaming an item
+
+`tcw work rename <slug> <new-slug>` changes an open item's slug when its scope
+has changed. Give the whole new slug or only the part after the date; the date
+is kept. In one commit it moves the folder in place and rewrites, on this
+board, every blocker, `parent` and `initiative` naming the item, graveyard
+`initiative` entries, and capability `Planning doc:` lines; an epic's
+initiative children on other boards are repointed and committed there.
+
+The old slug goes into `renames.yaml` and keeps resolving: `show` and `path`
+follow it with a note, blockers naming it (from any project) read the renamed
+item's status, and no new item is given it. Any command that changes an item
+refuses the old slug and names the new one — use the new slug from then on.
+
+Refused, with nothing changed: a resolved item, an item with a worktree or
+branch (rename those by hand: `git branch -m`, move `.worktrees/<slug>`, edit
+`branch` and `worktree`), another owner's claim, a taken slug, or a new date.
+Prose in the item's files, commit messages, and a tracker ticket's text are
+never rewritten; the command lists what still mentions the old slug.
 
 ## Addressing
 
