@@ -14,6 +14,8 @@ to produce with `tcw work stage prompt request <slug>`.
 
 `initial-request.md` — and, for an epic, the coordination goal it alone states:
 what the children are collectively for. See [`epic-deltas.md`](../epic-deltas.md).
+A re-run keeps any dated `## Added` sections — amendments recorded later; see
+[`commands.md`](../commands.md) § Amending a request.
 
 ## Steps
 

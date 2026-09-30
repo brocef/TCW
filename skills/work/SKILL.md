@@ -53,6 +53,9 @@ no `refined-outcome.md`/`rework.md` → `verify`. Resume across sessions with `t
 - **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
   it. Never batch several stages into one commit. TCW commits the _transitions_
   itself; do not commit those by hand.
+- **A later amendment goes in `initial-request.md`**, under a dated `## Added`
+  heading — never in `intake.md`; once a spec or plan exists it must reach them
+  too. [`commands.md`](references/commands.md) § Amending a request. `[judgment]`
 - **`tcw work stage gate <id> <slug>`** at every stage entry — it refuses; `work-stage` carries the instructions.
   Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `configure` skill
 - For a small change, ask whether to compress planning detail — but keep the item

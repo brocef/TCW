@@ -441,6 +441,28 @@ happened rather than letting it look like an ordinary save. Raw input that
 quietly changes is not raw input, so `intake.md` is editable only as a named
 artifact.
 
+## Amending a request after it is written
+
+An **amendment** is something that changes what an item asks for after it was
+written up — a decision made later, a clarification, a new constraint. It goes
+in the request, never the intake:
+
+- Append it to `initial-request.md` under a dated `## Added <YYYY-MM-DD>`
+  heading that says where it came from, without rewriting what is there.
+  Re-running the `request` stage keeps these sections, and `tcw work show`
+  and the web app's request tab display them.
+- An item that has only `intake.md` has no request yet: write one first, with
+  the amendment folded in or under its own dated heading. The intake is left
+  as it arrived.
+- Once the item has a spec or plan, the amendment has to reach them, because
+  the `implement` and `verify` stages read those and not the request. While
+  the item is in `backlog` or `active`, revise `spec.md` (and `plan.md`), or say
+  in the appended section why neither needs to change. For an item in
+  `review`, write it into `rework.md` and send the item back with
+  `tcw work rework`.
+- A linked tracker ticket is not updated: its description is written once,
+  when the ticket is created.
+
 ## Splitting a plan into stage documents
 
 For large implementations, `plan.md` may optionally declare a bounded DAG of

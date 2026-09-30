@@ -61,6 +61,25 @@ stored truncated. `TCW_STDIN_TIMEOUT` sets the bound in seconds; `0` never waits
 The same holds for `tcw work delegate`, `tcw work escalate`, `tcw taxonomy add`,
 and `tcw capabilities add`.
 
+## Amending a request
+
+Something that changes what an item asks for after it was written up — a
+decision made later, a clarification, a new constraint — is an **amendment**,
+and it goes in the request, never the intake:
+
+- **Append it to `initial-request.md`** under `## Added <YYYY-MM-DD>`, saying
+  where it came from. Never rewrite what is already there; re-running the
+  `request` stage keeps these sections.
+- **An item with only `intake.md` has no request yet.** Write one first — the
+  `request` stage — with the amendment folded in or under its own dated
+  heading. `intake.md` stays byte-for-byte as it arrived.
+- **Once a spec or plan exists, the request is not enough.** `implement` and
+  `verify` never read it. In `backlog` or `active`, revise `spec.md` (and
+  `plan.md`), or say in the appended section why neither changes. In
+  `review`, write the amendment into `rework.md` and run `tcw work rework`.
+- **A bound ticket is not updated.** Its description is written once, from the
+  body, when the ticket is created.
+
 ## The documentation gate
 
 `tcw work docs` prints the project's documentation entries — what must be updated

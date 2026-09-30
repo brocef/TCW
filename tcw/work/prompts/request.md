@@ -13,6 +13,8 @@ Optional `## Notes` — anything worth keeping that has no home in the request
 itself. Optional `## References` — material the requester considers relevant (a
 link, a repo path, another work item), each with a one-line _why it matters_.
 The `spec` stage reads that section; bare URLs with no reason save it nothing.
+If `initial-request.md` already exists, keep its dated `## Added` sections: they
+are amendments recorded after it was written.
 
 ## Steps
 

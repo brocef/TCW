@@ -19,3 +19,10 @@ glance which items hold raw input and which have had their `request` stage
 written. Editing an item's body always writes the request and never the intake:
 on an item that has only intake, that edit promotes the item and says so, and
 the intake is left byte-for-byte as it arrived.
+
+The same holds for something that changes the request later — a decision, a
+clarification, a new constraint. It is appended to the request under a dated
+`## Added` heading and never to the intake; an item that has only intake gets
+its request written first. Once the item has a spec or plan, the amendment is
+carried into them too, because the stages that build and check the work read
+those rather than the request.

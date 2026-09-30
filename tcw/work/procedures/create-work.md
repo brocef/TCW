@@ -61,9 +61,12 @@ tracked things covering the same work is itself news.
 
 - **Append only what is new.** Add it under a dated `## Added <YYYY-MM-DD>`
   heading that says where it came from, and never rewrite what is there. For an
-  item, append to `initial-request.md` if it exists, otherwise `intake.md`. For
-  an inbox entry that is a folder, append to the Markdown file that
-  `tcw work inbox show <entry>` prints as its body. Commit as in step 4.
+  item, follow the `work` skill's "Amending a request"
+  (`references/commands.md`): append to `initial-request.md`, and on an item
+  with only `intake.md` write the request first — the intake is raw input and
+  is never appended to. For an inbox entry that is a folder, append to the
+  Markdown file that `tcw work inbox show <entry>` prints as its body; an entry
+  becomes an item's `intake.md` only when it is accepted. Commit as in step 4.
 - **Revise** means re-running `spec`, and `plan` if one exists, after the
   append. Gate each one with `tcw work stage gate`, and commit each artifact
   separately. Hand them to subagents under the `work` skill's
