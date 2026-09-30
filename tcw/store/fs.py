@@ -37,7 +37,7 @@ except ImportError:                                # not POSIX
 
 import yaml
 
-from tcw.store.yaml_source import named as _named_yaml
+from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
     _HELD_TWICE, BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD, InboxEntryNotFound,
@@ -1548,8 +1548,8 @@ def load_yaml(path: Path, unique: bool = False) -> dict:
     if not path.exists():
         return {}
     text = path.read_text(encoding="utf-8")
-    data = yaml.load(_named_yaml(text, path),
-                     Loader=_UniqueKeyLoader if unique else yaml.SafeLoader)
+    data = _load_named_yaml(text, path,
+                            _UniqueKeyLoader if unique else yaml.SafeLoader)
     if data is None:                       # absent content: empty file, or `null`
         return {}
     if not isinstance(data, dict):

@@ -68,3 +68,14 @@ def test_a_yaml_error_names_the_file_it_came_from(project):
     assert out.returncode == 1, out.stderr
     assert f'in "{root / "tcw-config.yaml"}"' in out.stderr, out.stderr
     assert BARE not in out.stderr, out.stderr
+    # The file's name must not cost the parser's excerpt of the line and caret.
+    # Without the excerpt, the position line ends with no colon and no caret.
+    assert 'line 2, column 1:\n' in out.stderr and "^" in out.stderr, out.stderr
+
+
+def test_validate_keeps_the_excerpt(project):
+    root, _, damaged, _ = project
+    out = subprocess.run(["tcw", "validate"], cwd=root, capture_output=True, text=True)
+    text = out.stdout + out.stderr
+    assert "key: [unclosed" in text and "^" in text, text
+    assert BARE not in text, text

@@ -1,17 +1,23 @@
-"""YAML text that remembers which file it came from."""
+"""Parse YAML text that came from a file, naming that file in any error."""
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
+import yaml
 
-def named(text: str, path: Path | str) -> io.StringIO:
-    """`text` as a stream PyYAML reports under `path`'s name.
+
+def load(text: str, path: Path | str, loader: type = yaml.SafeLoader):
+    """`yaml.load(text, Loader=loader)`, with `path` as the name in every error.
 
     Handed a plain string, PyYAML calls it `"<unicode string>"` in every error
-    position, so a syntax error names no file. A stream's `name` is used instead.
-    The text is still read by the caller, so decoding is exactly what it was."""
-    stream = io.StringIO(text)
-    stream.name = str(path)
-    return stream
+    position, so a syntax error names no file. Handing it a named stream instead
+    fixes the name but drops the excerpt of the offending line and its `^` caret,
+    which PyYAML keeps only for a string. Naming the loader built from the string
+    keeps both."""
+    parser = loader(text)
+    parser.name = str(path)
+    try:
+        return parser.get_single_data()
+    finally:
+        parser.dispose()

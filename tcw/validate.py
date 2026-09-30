@@ -26,7 +26,7 @@ from typing import Literal
 import yaml
 
 from tcw.refs import resolve_tcw_ref
-from tcw.store.yaml_source import named as _named_yaml
+from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
     OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
@@ -405,7 +405,7 @@ def validate(node_root: Path, path: Path | None = None, *,
                 yaml_syntax_error = True
                 continue
             try:
-                data = yaml.load(_named_yaml(text, f), Loader=_UniqueKeyLoader)
+                data = _load_named_yaml(text, f, _UniqueKeyLoader)
             except yaml.YAMLError as e:
                 problems.append(f"{_rel(f, node_root)}: {e}")
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
