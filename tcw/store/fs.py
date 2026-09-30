@@ -1179,7 +1179,10 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
         return (f"{branch} cannot be checked against HEAD {head} ({current}): "
                 f"{unusable}. Pull the merge into this checkout, or merge {branch}, "
                 f"then re-run")
-    overrides = [a for name in drivers for a in ("-c", f"merge.{name}.driver=false")]
+    # `union` too, configured or not: the built-in keeps both sides' lines, so a
+    # line the branch deleted and `HEAD` changed comes back as `HEAD`'s.
+    overrides = [a for name in dict.fromkeys([*drivers, "union"])
+                 for a in ("-c", f"merge.{name}.driver=false")]
     merged = run(*overrides, "merge-tree", "--write-tree", "HEAD", ref)
     tree = run("rev-parse", "HEAD^{tree}").stdout.strip()
     if merged.returncode == 0 and merged.stdout.split("\n", 1)[0].strip() == tree:
@@ -1192,8 +1195,8 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
                 f"({detail}); `git merge-tree --write-tree` needs git 2.38 or newer")
     because = (f" This repository defines its own merge drivers "
                f"({', '.join(drivers)}), which this check does not let decide a "
-               f"file, so a squash merge touching a file one governs is not "
-               f"confirmed." if drivers else "")
+               f"file (nor git's `union`), so a squash merge touching a file one "
+               f"governs is not confirmed." if drivers else "")
     return (f"{branch} is not merged into this checkout's HEAD {head} ({current}): "
             f"merging it would still change files.{because} Pull the merge into "
             f"this checkout, or merge {branch}, then re-run")
@@ -1246,8 +1249,10 @@ def unbranched_commits(worktree: Path) -> "list[str] | str":
     run = lambda *a: _git(["git", "-C", str(worktree), *a],   # noqa: E731
                           capture_output=True, text=True)
     top = run("rev-parse", "--show-toplevel")
+    # By folder identity, not text: git spells the path as the disk does, and a
+    # project reached through an override in other letter case spells it its way.
     if top.returncode != 0 or not top.stdout.strip() or \
-            Path(top.stdout.strip()).resolve() != worktree.resolve():
+            not _same_folder(Path(top.stdout.strip()), worktree):
         return f"git could not check {worktree}: it is not a git worktree of its own"
     r = run("rev-list", "--abbrev-commit", "HEAD",
             "--not", "--branches", "--tags", "--remotes")

@@ -4308,16 +4308,23 @@ def _complete(args: argparse.Namespace) -> int:
     if shipping and has_worktree:
         wt = st.node_root / WORKTREES_DIR / bare
         found = unbranched_commits(wt)
-        if isinstance(found, str) or found:
-            what = (found if isinstance(found, str) else
-                    f"its worktree at {wt} is on no branch and holds commits no "
-                    f"branch, tag or remote-tracking branch contains: "
-                    f"{unbranched_summary(found)}. The completion would not carry "
-                    f"them and removing the worktree would lose them")
-            print(f"tcw work complete: {bare} was not completed: {what}. Save them "
-                  f"with `git -C {wt} branch <name>` — and merge that into "
-                  f"{branch or 'the work branch'} if they belong to this item — "
-                  f"then complete again.", file=sys.stderr)
+        if isinstance(found, str):
+            # Not "save them on a branch": `git -C` on a folder that is not its
+            # own worktree acts on the primary checkout.
+            print(f"tcw work complete: {bare} was not completed: {found}, so what "
+                  f"removing it would lose is unknown. If it is a stray folder, "
+                  f"move what you need out of it and delete it; then complete "
+                  f"again.", file=sys.stderr)
+            return 1
+        if found:
+            into = (f" — and merge that into {branch} if they belong to this item"
+                    if branch and branch_exists(st.node_root, branch) else "")
+            print(f"tcw work complete: {bare} was not completed: its worktree at "
+                  f"{wt} is on no branch and holds commits no branch, tag or "
+                  f"remote-tracking branch contains: {unbranched_summary(found)}. "
+                  f"The completion would not carry them and removing the worktree "
+                  f"would lose them. Save them with `git -C {wt} branch <name>`"
+                  f"{into}, then complete again.", file=sys.stderr)
             return 1
     # `[prompted]`: an obligation on the CLI to say something, not a gate and not
     # an interactive prompt. Completing straight from `active` skips the verify
@@ -4406,10 +4413,15 @@ def _complete(args: argparse.Namespace) -> int:
         # A recorded branch already gone passes: an external flow that merged
         # the pull request may have deleted it, and there is nothing left to lose.
         if exists and (reason := branch_integration(st.node_root, checked)):
+            # git will not delete a branch a worktree has checked out, so a
+            # worktree item's way out starts with removing the worktree.
+            first = (f"remove its worktree (`git worktree remove "
+                     f"{st.node_root / WORKTREES_DIR / bare}`), then "
+                     if has_worktree else "")
             way_out = (f"If its work landed some other way, complete without "
                        f"--already-integrated: nothing is merged or deleted for an "
                        f"item without a worktree." if args.branch and not branch else
-                       f"If its work landed some other way, delete {checked} "
+                       f"If its work landed some other way, {first}delete {checked} "
                        f"yourself and re-run: a recorded branch that no longer "
                        f"exists is not checked.")
             print(f"tcw work complete: {reason}. {args.slug} was not changed. "

@@ -120,3 +120,26 @@ def test_a_plain_folder_is_not_answered_for_by_the_primary_checkout(tmp_path):
     answer = unbranched_commits(plain)
     assert isinstance(answer, str), answer          # "could not check", not a list
     assert primary[:7] not in answer
+
+
+def test_a_plain_folder_at_the_worktree_path_gets_its_own_advice(tcw_worktree, capsys):
+    """When git cannot check, "save them on a branch" would act on the primary
+    checkout — the refusal says what the folder is instead."""
+    root, slug, branch = tcw_worktree
+    wt = root / ".worktrees" / slug
+    git(root, "worktree", "remove", "--force", str(wt))
+    wt.mkdir(parents=True)
+    (wt / "stray.txt").write_text("x")
+    assert complete(slug) == 1
+    err = capsys.readouterr().err
+    assert "not a git worktree" in err, err
+    assert "branch <name>" not in err, err
+    assert status(root, slug) == "active"
+
+
+def test_advice_never_names_a_branch_that_is_gone(detached, capsys):
+    root, slug, branch, wt, lost = detached
+    git(root, "branch", "-D", branch)
+    assert complete(slug, "--already-integrated") == 1
+    err = capsys.readouterr().err
+    assert lost[:7] in err and f"into {branch}" not in err, err

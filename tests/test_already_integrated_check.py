@@ -300,3 +300,33 @@ def test_a_merge_commit_still_passes_with_a_driver(repo):
     (repo / ".git" / "info" / "attributes").write_text(KEEP_OURS)
     git(repo, "merge", "-q", "--no-edit", "work")
     assert branch_integration(repo, "work") is None
+
+
+def test_the_built_in_union_driver_cannot_hide_a_deletion(tmp_path):
+    """`merge=union` keeps both sides' lines, so a line the branch deleted and
+    the main line changed comes back as the main line's — `HEAD`'s tree."""
+    root = tmp_path / "u"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@t")
+    git(root, "config", "user.name", "t")
+    (root / "f.txt").write_text("a\nb\nc\nd\ne\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    git(root, "switch", "-qc", "work")
+    (root / "f.txt").write_text("a\nb\nc\ne\n")
+    git(root, "commit", "-qam", "delete d")
+    git(root, "switch", "-q", "main")
+    (root / "f.txt").write_text("a\nb\nc\nD\ne\n")
+    git(root, "commit", "-qam", "change d")
+    (root / ".git" / "info").mkdir(exist_ok=True)
+    (root / ".git" / "info" / "attributes").write_text("* merge=union\n")
+    assert branch_integration(root, "work") is not None
+
+
+def test_way_out_for_a_worktree_item_says_to_remove_the_worktree_first(tcw_worktree, capsys):
+    """git will not delete a branch a worktree has checked out."""
+    root, slug, branch = tcw_worktree
+    assert complete(slug=slug) == 1
+    err = capsys.readouterr().err
+    assert "git worktree remove" in err and branch in err, err
