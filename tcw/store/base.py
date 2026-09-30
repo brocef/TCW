@@ -3576,6 +3576,11 @@ class WorkStore(ABC):
         return []
 
     @abstractmethod
+    def commit_claim(self, slug: str, owner: str, label: str) -> None:
+        """Record that `owner` holds `slug` — a claim that is not a transition.
+        A store whose writes are already durable only sets the field."""
+        self.set_field(slug, "owner", owner)
+
     def refresh_for_creation(self) -> None:
         """Bring the store up to date before a creation writes, where it has a
         remote copy to fall behind. A store with no copy of its own has nothing

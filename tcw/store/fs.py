@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from datetime import date, datetime, timezone
@@ -144,6 +145,51 @@ def _git(*args, **kwargs):
     """
     stdin = kwargs.pop("stdin", subprocess.DEVNULL)
     return subprocess.run(*args, stdin=stdin, **kwargs)
+
+
+INDEX_LOCK_RETRY = 2.0
+
+
+def _git_index(args: list, check: bool = False, **kwargs) -> "subprocess.CompletedProcess":
+    """Run a git command that takes the index (`add`, `mv`, `rm`, `commit`),
+    retrying briefly while another git process holds `index.lock`.
+
+    Another session's commit, an editor's git integration, or a `git status`
+    can hold the index for a moment. This store's own writers are kept apart
+    by `_store_lock`; nothing can keep them apart from git run by something
+    else, so a failure is retried for up to `INDEX_LOCK_RETRY` seconds while
+    the lock file exists. The test is the file, never git's message, which is
+    translated and changes between versions. A lock that outlives the wait —
+    often one a crashed git left behind — is named in the error.
+
+    Always captures output, so a retried failure does not print once per try.
+    `check=True` raises `CalledProcessError` carrying git's own stderr."""
+    kwargs.setdefault("capture_output", True)
+    kwargs.setdefault("text", True)
+    root = args[args.index("-C") + 1] if "-C" in args else "."
+    deadline = time.monotonic() + INDEX_LOCK_RETRY
+    lock = None
+    while True:
+        r = _git(args, **kwargs)
+        if r.returncode == 0:
+            return r
+        if lock is None:
+            where = _git(["git", "-C", str(root), "rev-parse", "--git-path", "index.lock"],
+                         capture_output=True, text=True)
+            lock = (Path(root) / where.stdout.strip()) if where.returncode == 0 else Path()
+        if not (lock.name and lock.exists()) or time.monotonic() >= deadline:
+            break
+        time.sleep(0.1)
+    if lock is not None and lock.name and lock.exists():
+        note = (f"\n{lock} is still there after {INDEX_LOCK_RETRY:g}s. If no other git "
+                f"process is running, a crashed one left it behind: delete it by hand "
+                f"and retry.")
+        if isinstance(r.stderr, str):
+            r = subprocess.CompletedProcess(r.args, r.returncode, r.stdout,
+                                            r.stderr.rstrip("\n") + note)
+    if check:
+        raise subprocess.CalledProcessError(r.returncode, args, r.stdout, r.stderr)
+    return r
 
 
 def _literal(path: "str | Path") -> str:
@@ -730,7 +776,8 @@ def git_stage(node_root: Path, *paths: Path) -> None:
     # tracked path as not ignored, so a dropped path is always untracked.
     live = [str(p) for p in paths if p not in ignored]
     if live:
-        _git(["git", "-C", str(node_root), "add", "--", *map(_literal, live)], check=True)
+        _git_index(["git", "-C", str(node_root), "add", "--", *map(_literal, live)],
+                   check=True)
     # After the `git add`, not before: if staging the live paths is refused the
     # caller rolls the whole write back, and a warning already on stderr saying
     # the dropped path "is on disk" would be false by the time it is read.
@@ -751,8 +798,8 @@ def git_rm(node_root: Path, path: Path) -> None:
     # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
     # Literal: `--` ends options but a path is still a glob to git, so removing
     # a folder named `a*` would also delete `abc`.
-    _git(["git", "-C", str(node_root), "rm", "-rfq", "--", _literal(path)],
-         check=True)
+    _git_index(["git", "-C", str(node_root), "rm", "-rfq", "--", _literal(path)],
+               check=True)
 
 
 NOT_A_REPOSITORY = "not inside a git repository. Run `git init` first."
@@ -815,12 +862,12 @@ def git_mv(node_root: Path, src: Path, dst: Path) -> None:
         # legitimately differs from both HEAD and the worktree, which `rm`
         # otherwise refuses. With --cached it still only touches the index; the
         # files stay on disk.
-        _git(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
-              "--ignore-unmatch", "--", _literal(src)], check=True)
+        _git_index(["git", "-C", str(node_root), "rm", "-rqf", "--cached",
+                    "--ignore-unmatch", "--", _literal(src)], check=True)
         shutil.move(str(src), str(dst))
         return
-    _git(["git", "-C", str(node_root), "add", "--", _literal(src)], check=True)
-    _git(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
+    _git_index(["git", "-C", str(node_root), "add", "--", _literal(src)], check=True)
+    _git_index(["git", "-C", str(node_root), "mv", "--", str(src), str(dst)], check=True)
 
 
 WORKTREES_DIR = ".worktrees"
@@ -902,9 +949,8 @@ def git_commit_result(node_root: Path, message: str, *paths: str) -> str | None:
     live = [p for p in paths if _has_committable_changes(node_root, p)]
     if not live:
         return None                                    # genuinely nothing to commit
-    r = _git(
-        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *map(_literal, live)],
-        capture_output=True, text=True)
+    r = _git_index(
+        ["git", "-C", str(node_root), "commit", "-q", "-m", message, "--", *map(_literal, live)])
     if r.returncode != 0:
         return (r.stderr or r.stdout).strip() or f"git commit failed ({r.returncode})"
     return None
@@ -4266,7 +4312,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
     # gives up. Generous: the section it guards spans a `git mv`, a field write
     # and a `git commit`, so a busy store can legitimately hold it for a second
     # or two, and timing out early would turn contention into a spurious failure.
-    GRAVEYARD_LOCK_TIMEOUT = 30.0
+    STORE_LOCK_TIMEOUT = 30.0
+    GRAVEYARD_LOCK_TIMEOUT = STORE_LOCK_TIMEOUT      # the old name; tests still set it
 
     def __init__(self, root: Path, *, node_root: Path | None = None,
                  store_git_root: Path | None = None,
@@ -4413,6 +4460,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # guard reaches neither.
         self._require_repository()
         self._refresh_before_transition()
+        publish: list[str] = []
+        # The claim's renames were already safe between processes; the lock is
+        # for the index, which the stage and scoped commit below share with
+        # every other writer. The push waits until it is released.
+        with self._store_lock():
+            item = self._start_locked(slug, force, owner=owner, take_over=take_over,
+                                      recover=recover, publish=publish)
+        for claimed in publish:
+            self._publish_after_transition(claimed, "active")
+        return item
+
+    def _start_locked(self, slug: str, force: bool, *, owner: str, take_over: bool,
+                      recover: bool, publish: list[str]) -> WorkItem:
+        """The body of `start`, under the store lock. Appends to `publish` the
+        slug to push once the lock is released, when it committed one."""
         started = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         # `_get_now`: the take-over branch below exists precisely for the state
         # the stabilizing `get` raises on, so probing through `get` would make
@@ -4465,7 +4527,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             git_stage(self.store_git_root, src, dst)
             if self.auto_commit_transitions():
                 self._commit_transition(claimed, src, dst, "active", None)
-                self._publish_after_transition(claimed, "active")
+                publish.append(claimed)
             return self._require(claimed)
         if item is None:
             # Empty has two meanings: no such slug, or a competitor moved the
@@ -4582,7 +4644,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         git_stage(self.store_git_root, src, dst)
         if self.auto_commit_transitions():
             self._commit_transition(slug, src, dst, "active", item)
-            self._publish_after_transition(slug, "active")
+            publish.append(slug)
         return self._require(slug)
 
     def _stamp_claim(self, folder: Path, owner: str, started: str,
@@ -5349,69 +5411,100 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def _graveyard_path(self) -> Path:
         return self.root / self.GRAVEYARD_NAME
 
+    # Per thread, per lock file: how deep this thread is inside `_store_lock`.
+    _lock_depth = threading.local()
+
+    def _store_lock_path(self) -> Path:
+        """Where this store's lock lives: in the repository's git folder, which
+        every worktree and every session of the repository shares whatever its
+        `TMPDIR`, and which git never tracks or shows. Outside a repository, in
+        the temp folder. Keyed by the store root, since one repository can hold
+        several stores."""
+        key = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
+        r = _git(["git", "-C", str(self.root if self.root.is_dir() else self.node_root),
+                  "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                 capture_output=True, text=True)
+        folder = Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
+        if folder is None or not folder.is_dir():
+            folder = Path(tempfile.gettempdir())
+        return folder / f"tcw-store-{key}.lock"
+
     @contextmanager
-    def _graveyard_lock(self):
-        """Hold one store's resolving transitions apart from each other, across
-        the whole check-write-commit sequence.
+    def _store_lock(self):
+        """Hold every writer of this store apart, across check, write and commit.
 
-        **Not reentrant.** `flock` locks the open file description, and this
-        opens a fresh one each time, so a second acquisition in the same process
-        contends with the first exactly as another process would — spinning to
-        the timeout and then reporting somebody else's fault. Every acquirer is
-        therefore a top-level entry point: `_effect_transition`,
-        `record_tombstone` and `delete_resolved`, none of which calls another.
+        Every transition, `start`'s claims, the tombstone writers and the
+        creation commits take it. Without it, two sessions acting on
+        *different* items still collide: a scoped `git commit` takes the index,
+        so one session's commit can carry the other's staged files, or fail on
+        the other's `index.lock`. Resolving transitions have a worse failure
+        besides — both read the graveyard, the second write wins, and an item
+        sits in `completed/` with no tombstone.
 
-        Without this the sequence is three steps with nothing between them: the
-        cleanliness check runs before the move, the write runs after it, and the
-        commit after that. Two agents resolving *different* items in one working
-        tree can interleave anywhere in that span, and the worst outcome is
-        silent — both read the same mapping, the second write wins, and an item
-        sits in `completed/` with no tombstone. `_unique_slug` can then hand its
-        slug to a new item, which is precisely the collision the graveyard
-        exists to prevent, arriving by another route.
+        **Nothing slow runs under it.** The fetch before a transition and the
+        push after it, hooks, tracker calls and the worktree merge-back all run
+        outside, so one session's slow network never queues another's `start`.
 
-        **The lock file lives in the system temp directory, not in the store.**
-        The graveyard itself cannot be locked: it is replaced atomically, so a
-        lock held on the old file protects nothing once the replacement lands.
-        A dedicated file inside the store would work but would sit in
-        `git status` as an untracked path forever, and the store root is tracked.
-        Keying a temp path off the store's resolved path gets the same mutual
-        exclusion between processes on this machine and leaves the repository
-        alone. Two clones on two machines are not covered and do not need to be
-        — that case ends in a git merge conflict on the graveyard, which is a
-        plain YAML conflict a human settles.
+        **Reentrant within a thread.** A depth count per thread means a helper
+        that locks may be called from one that already holds it. Another thread
+        still waits: the web app serves each request on its own thread, and each
+        outermost acquisition opens its own file, which `flock` treats as a
+        separate holder.
 
-        `flock` rather than a lock directory because the kernel releases it when
-        the process dies. A directory-based lock has to answer "is the holder
-        still alive", and a stale one wedges every future resolution in the
-        store — a worse failure than the race it prevents.
-
-        On a platform without `fcntl` this degrades to no locking, which is the
-        behaviour every caller had before it existed.
+        `flock`, because the kernel releases it when the process dies, so a
+        crash never leaves the store wedged. The holder writes its process id
+        and command into the file, which a waiter that times out reports. Two
+        clones on two machines are not covered; that ends in a git merge, as it
+        always has. Without `fcntl` this does no locking, as before it existed.
         """
         if fcntl is None:
             yield
             return
-        key = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
-        path = Path(tempfile.gettempdir()) / f"tcw-graveyard-{key}.lock"
-        with open(path, "w") as handle:
-            deadline = time.monotonic() + self.GRAVEYARD_LOCK_TIMEOUT
+        path = self._store_lock_path()
+        depths = getattr(self._lock_depth, "depths", None)
+        if depths is None:
+            depths = self._lock_depth.depths = {}
+        if depths.get(path, 0):
+            depths[path] += 1
+            try:
+                yield
+            finally:
+                depths[path] -= 1
+            return
+        with open(path, "a+") as handle:
+            timeout = min(self.STORE_LOCK_TIMEOUT, self.GRAVEYARD_LOCK_TIMEOUT)
+            deadline = time.monotonic() + timeout
             while True:
                 try:
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
                 except OSError:
                     if time.monotonic() >= deadline:
+                        try:
+                            holder = path.read_text(encoding="utf-8").strip()
+                        except OSError:
+                            holder = ""
                         raise ValueError(
-                            f"another process in {self.root} has been resolving "
-                            f"an item for over {self.GRAVEYARD_LOCK_TIMEOUT:g}s "
-                            f"and still holds the graveyard. Nothing was "
-                            f"changed here; retry once it finishes.")
+                            f"another tcw process has held the work store {self.root} "
+                            f"for over {timeout:g}s"
+                            + (f" (process {holder})" if holder else "")
+                            + ". Nothing was changed here; retry once it finishes.")
                     time.sleep(0.02)
+            try:
+                handle.seek(0)
+                handle.truncate()
+                handle.write(f"{os.getpid()} {' '.join(sys.argv)[:200]}\n")
+                handle.flush()
+            except OSError:
+                pass                               # the name is a courtesy
+            depths[path] = 1
             try:
                 yield
             finally:
+                depths[path] = 0
                 fcntl.flock(handle, fcntl.LOCK_UN)
+
+    _graveyard_lock = _store_lock          # the old name, for code on other branches
 
     def retention_conflicts(self) -> list[str]:
         """Where this node says it retains resolved work and git disagrees.
@@ -5716,14 +5809,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Same span, same reason, as a resolving transition: this reads the
         # graveyard, writes it back and commits it, and a concurrent resolution
         # anywhere in between loses one of the two entries.
-        with self._graveyard_lock():
-            # Inside the lock, not before it: refreshing rewrites the very file
-            # the check is about to inspect, so doing it outside would let
-            # another local process's write land in between. A transition
-            # refreshes first for the same reason this does — a read-modify-write
-            # onto a stale graveyard is how two clones produce a merge conflict
-            # that neither of them had to have.
-            self._refresh_before_transition()
+        # Refreshed first, as a transition is — a read-modify-write onto a stale
+        # graveyard is how two clones produce a merge conflict neither had to
+        # have — but outside the lock, which holds nothing slow. A local writer
+        # landing in between is still caught: the check below reads the file
+        # under the lock.
+        self._refresh_before_transition()
+        publish = False
+        with self._store_lock():
             self._require_writable_graveyard(slug)
             # The adopter backfills where the resolved folder is still on disk,
             # so the item can say which epic it closed under.
@@ -5745,17 +5838,18 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # on the machine that wrote it until some later transition
                 # happens to push it. Its own message, because
                 # `_publish_after_transition` describes an item that moved and
-                # nothing moved here.
-                if self.publishes:
-                    try:
-                        self.publish()
-                    except (ValueError, OSError,
-                            subprocess.CalledProcessError) as error:
-                        raise PublicationError(
-                            f"{slug} was recorded in the graveyard and committed "
-                            f"in {self.store_git_root} — the record is saved "
-                            f"there — but publishing it to the remote failed, so "
-                            f"other checkouts will not see it yet:\n{error}")
+                # nothing moved here. After the lock, like every push.
+                publish = self.publishes
+        if publish:
+            try:
+                self.publish()
+            except (ValueError, OSError,
+                    subprocess.CalledProcessError) as error:
+                raise PublicationError(
+                    f"{slug} was recorded in the graveyard and committed "
+                    f"in {self.store_git_root} — the record is saved "
+                    f"there — but publishing it to the remote failed, so "
+                    f"other checkouts will not see it yet:\n{error}")
         recorded = self.tombstone(slug)
         assert recorded is not None                # just written, above
         return recorded
@@ -6039,7 +6133,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         operation.
         """
         self._require_repository()
-        with self._graveyard_lock():
+        pushed = None
+        with self._store_lock():
             item = self._get_now(slug)
             if item is None and self.tombstone(slug) is None:
                 raise ValueError(f"no such work item: {slug}")
@@ -6110,9 +6205,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 # Its own push. The resolving transition published the first
                 # commit before this one existed, and a remote left holding an
                 # item the store has deleted is exactly the divergence
-                # publication exists to prevent.
-                self._publish_after_transition(slug, status or "removed")
-            return location
+                # publication exists to prevent. After the lock, like every push.
+                pushed = status or "removed"
+        if pushed:
+            self._publish_after_transition(slug, pushed)
+        return location
 
     def _local_forms(self, ref: str) -> list[str]:
         """Also `<own-project-id>/<slug>`: the qualified addressing `tcw://` refs
@@ -6821,8 +6918,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 return (f"{p} is outside the store's repository "
                         f"{self.store_git_root}, so it was not committed. Commit it "
                         f"yourself.")
-        if err := git_commit_result(self.store_git_root, message, *rel):
-            return f"committing it failed:\n{err}\nCommit it yourself."
+        # Staged above without the lock — a stage is one `git add`, and the
+        # index retry covers a collision — but the commit reads the whole index,
+        # so it is taken for that, and released before the push.
+        with self._store_lock():
+            if err := git_commit_result(self.store_git_root, message, *rel):
+                return f"committing it failed:\n{err}\nCommit it yourself."
         if self.publishes:
             try:
                 self.publish()
@@ -6831,6 +6932,20 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         f"{self.store_git_root}:\n{error}\nPush it yourself once the "
                         f"remote is reachable.")
         return None
+
+    def commit_claim(self, slug: str, owner: str, label: str) -> None:
+        """Write `slug`'s owner and commit just that, under the store lock — a
+        tracker claim, which is not a transition but must leave history of who
+        took what, as `start --take-over` does. Raises `ValueError`/`OSError`
+        when the write fails and `TransitionCommitError` when the commit does."""
+        with self._store_lock():
+            self.set_field(slug, "owner", owner)
+            if self.auto_commit_transitions():
+                rel = str(self._require_dir(slug).relative_to(self.store_git_root))
+                if err := git_commit_result(self.store_git_root,
+                                            f"tcw work: {label} {slug}", rel):
+                    raise TransitionCommitError(
+                        f"{slug} was recorded, but committing it failed:\n{err}")
 
     def inbox_source(self, ref: str) -> Path | None:
         """Where the inbox entry `ref` resolves to, or None if it does not."""
@@ -7554,19 +7669,21 @@ class FsWorkStore(FsTreeStore, WorkStore):
         self._require_repository()
         self._refresh_before_transition()
         resolving = to_status in RESOLVED_STATUSES
-        # Held from the cleanliness check through the commit, because those are
-        # the two ends of the window another resolving transition can interleave
-        # with. Only taken when there is a graveyard write to protect — an
-        # ordinary status move touches nothing shared and must not queue behind
-        # one that does.
-        with self._graveyard_lock() if resolving else nullcontext():
-            self._effect_transition_locked(slug, to_status, fields, resolving)
+        # Held from the cleanliness check through the commit. Every transition,
+        # not only resolving ones: an ordinary move shares the index with every
+        # other, and a scoped commit racing another's staging carries its files.
+        # The push comes after, outside it, so a slow remote queues nobody.
+        with self._store_lock():
+            committed = self._effect_transition_locked(slug, to_status, fields, resolving)
+        if committed:
+            self._publish_after_transition(slug, to_status)
 
     def _effect_transition_locked(self, slug: str, to_status: str,
-                                  fields: dict | None, resolving: bool) -> None:
-        """The body of `_effect_transition`, run under the graveyard lock when
-        the target status is a resolved one. Split out only so the lock has a
-        single obvious span; it has no other caller."""
+                                  fields: dict | None, resolving: bool) -> bool:
+        """The body of `_effect_transition`, run under the store lock. Split out
+        only so the lock has a single obvious span; it has no other caller.
+        Returns whether it committed, which is whether there is anything to
+        publish."""
         # Before anything moves: a resolving transition has to write the shared
         # graveyard, and a refusal has to mean nothing happened.
         if resolving:
@@ -7639,7 +7756,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
             # Inside the commit branch, not beside it: with auto-commit off the
             # move is uncommitted, so a push would contact the remote and
             # publish nothing. Nothing to commit means nothing to publish.
-            self._publish_after_transition(slug, to_status)
+            return True
+        return False
 
     def _commit_transition(self, slug: str, src: Path, dst: Path,
                            to_status: str, item: "WorkItem | None",

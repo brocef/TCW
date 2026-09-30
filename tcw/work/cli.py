@@ -3671,18 +3671,14 @@ def _own_locally(st, slug: str, owner: str, label: str) -> int:
     reason; this is that, for a claim that is not a transition.
     """
     try:
-        st.set_field(slug, "owner", owner)
+        st.commit_claim(slug, owner, label)
+    except TransitionCommitError as e:
+        print(f"tcw work tracker {label}: {e}", file=sys.stderr)
+        return 1
     except _LOCAL_WRITE_ERRORS as e:
         print(f"tcw work tracker {label}: the owner could not be written: {e}. "
               f"Run this command again.", file=sys.stderr)
         return 1
-    if st.auto_commit_transitions():
-        rel = str(st.path(slug).relative_to(st.store_git_root))
-        if err := git_commit_result(st.store_git_root,
-                                    f"tcw work: {label} {slug}", rel):
-            print(f"tcw work tracker {label}: {slug} was recorded, but committing it "
-                  f"failed:\n{err}", file=sys.stderr)
-            return 1
     return 0
 
 
