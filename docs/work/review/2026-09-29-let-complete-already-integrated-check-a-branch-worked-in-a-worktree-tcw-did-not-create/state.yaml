@@ -6,7 +6,7 @@ resolution: null
 tags:
 - cli
 - work
-owner: brocef@users.noreply.github.com
-started: '2026-09-30T14:27:08.384460Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-29-let-complete-already-integrated-check-a-branch-worked-in-a-worktree-tcw-did-not-create
 branch: work/2026-09-29-let-complete-already-integrated-check-a-branch-worked-in-a-worktree-tcw-did-not-create
