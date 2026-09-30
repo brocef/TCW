@@ -14,8 +14,14 @@
   it, whatever `TMPDIR` is. Outside a repository it falls back to the temp
   folder, keyed by the store.
 - A lock timeout is `FsWorkStore.LockTimeout`, a `ValueError`. `commit_writes`
-  catches it and leaves the creation staged with a warning, since the item
-  already exists.
+  stages and commits in one locked span, catches it, and leaves the creation
+  written but uncommitted with a warning, since the item already exists.
+- `rename`'s repoint of an initiative child on another board takes that
+  board's own store lock.
+- Index commands also retry on git's exit status 128 — a lock git could not
+  create — even when `index.lock` is gone by the time it is looked for. Any
+  other fatal git error is then reported about 2 s later than before; a
+  `pre-commit` hook that refuses with exit 1 is never run twice.
 - `reconcile --commit`, whose pathspec is the whole store, and the commits
   of `start --worktree` take the lock too.
 - A failed git call's captured output is printed by the top-level handler and

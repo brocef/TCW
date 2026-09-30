@@ -218,8 +218,10 @@ def test_a_creation_kept_waiting_is_left_staged_not_reported_as_unchanged(
     finally:
         proc.wait()
     out = capsys.readouterr()
-    assert "left staged" in out.err and "Nothing was changed" not in out.err.split("left staged")[0]
-    assert "made-while-waiting" in git(root, "diff", "--cached", "--name-only")
+    assert "not committed" in out.err and "Stage and commit it yourself" in out.err, out.err
+    slug = out.out.strip()
+    assert (root / "docs/work/backlog" / slug / "state.yaml").exists()   # created
+    assert slug not in git(root, "log", "--format=%s")
 
 
 def test_a_stale_index_lock_is_named_on_the_terminal(tmp_path, monkeypatch, capsys):

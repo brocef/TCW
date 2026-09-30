@@ -9,7 +9,7 @@ lives in the repository's git folder, so every session and worktree shares it
 whatever its temp folder is, and nothing appears in `git status`. A
 transition that waits more than 30 seconds gives up, changes nothing, and names
 the process holding the lock; creating an item that has to wait that long
-leaves the new item staged and tells me to commit it. The slow parts — fetching and pushing a published store,
+leaves the new item written but uncommitted and tells me to commit it. The slow parts — fetching and pushing a published store,
 hooks, tracker calls, and a worktree's merge-back — run outside it, so one
 session's slow network never holds up another's `start`.
 

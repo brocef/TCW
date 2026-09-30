@@ -5440,8 +5440,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         """Where this store's lock lives: in the repository's git folder, which
         every worktree and every session of the repository shares whatever its
         `TMPDIR`, and which git never tracks or shows. Outside a repository, in
-        the temp folder. Keyed by the store root, since one repository can hold
-        several stores."""
+        the temp folder. Keyed by the working tree's git folder, since several
+        stores in one repository share its index."""
         # Keyed by the working tree's own git folder, which is what holds the
         # index every commit here contends for: two stores in one repository —
         # a parent node and a child — share an index and so share the lock.
@@ -6689,7 +6689,15 @@ class FsWorkStore(FsTreeStore, WorkStore):
 
     def _repoint_initiative(self, child: str, old: str, new: str) -> list[str]:
         """On another board: repoint `child`'s `initiative` from the epic `old` to
-        `new`, committing it in this board's repository. Returns notes."""
+        `new`, committing it in this board's repository under this board's own
+        store lock. Returns notes."""
+        try:
+            with self._store_lock():
+                return self._repoint_initiative_locked(child, old, new)
+        except self.LockTimeout as e:
+            return [f"{child} in {self.node_root} still names {old}: {e}"]
+
+    def _repoint_initiative_locked(self, child: str, old: str, new: str) -> list[str]:
         d = self._find(child)
         if d is None:
             return []
@@ -7257,6 +7265,31 @@ class FsWorkStore(FsTreeStore, WorkStore):
         re-running a transition is merely refused."""
         if git_root(self.store_git_root) is None:
             return None
+        # Staged and committed in one span under the lock, so a whole-store
+        # commit elsewhere (`reconcile --commit`) never carries these files; the
+        # push waits until it is released.
+        try:
+            with self._store_lock():
+                result = self._commit_writes_locked(message, paths, removed, publish)
+        except self.LockTimeout as error:
+            return (f"it is not committed: {error} Stage and commit it yourself.")
+        if result is not self._COMMITTED:
+            return result
+        if self.publishes:
+            try:
+                self.publish()
+            except (ValueError, OSError, subprocess.CalledProcessError) as error:
+                return (f"publishing it failed; it is committed in "
+                        f"{self.store_git_root}:\n{error}\nPush it yourself once the "
+                        f"remote is reachable.")
+        return None
+
+    _COMMITTED = object()
+
+    def _commit_writes_locked(self, message: str, paths: tuple, removed: tuple,
+                              publish: bool) -> "str | None | object":
+        """`commit_writes` under the store lock: a reason, None when there was
+        nothing to commit, or `_COMMITTED` when it committed and may publish."""
         present = [p for p in paths if p.exists()]
         try:
             if present:
@@ -7285,23 +7318,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 return (f"{p} is outside the store's repository "
                         f"{self.store_git_root}, so it was not committed. Commit it "
                         f"yourself.")
-        # Staged above without the lock — a stage is one `git add`, and the
-        # index retry covers a collision — but the commit reads the whole index,
-        # so it is taken for that, and released before the push.
-        try:
-            with self._store_lock():
-                if err := git_commit_result(self.store_git_root, message, *rel):
-                    return f"committing it failed:\n{err}\nCommit it yourself."
-        except self.LockTimeout as error:
-            return f"it is left staged, not committed: {error} Commit it yourself."
-        if self.publishes:
-            try:
-                self.publish()
-            except (ValueError, OSError, subprocess.CalledProcessError) as error:
-                return (f"publishing it failed; it is committed in "
-                        f"{self.store_git_root}:\n{error}\nPush it yourself once the "
-                        f"remote is reachable.")
-        return None
+        if err := git_commit_result(self.store_git_root, message, *rel):
+            return f"committing it failed:\n{err}\nCommit it yourself."
+        return self._COMMITTED
 
     def commit_claim(self, slug: str, owner: str, label: str) -> None:
         """Write `slug`'s owner and commit just that, under the store lock — a
@@ -8258,8 +8277,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         merged, just attributed to the wrong commit. The guard removes the case
         it can see — a graveyard already dirty when the transition starts — and
         narrows the rest to the window between the check and the commit.
-        Serializing that window needs a lock held across check, write and commit,
-        which this does not have.
+        Every caller now holds `_store_lock` across check, write and commit,
+        which closes that window between sessions on one machine.
 
         The move is never rolled back on a commit failure. The `git mv` already
         landed in both the index and the working tree, and undoing it introduces
