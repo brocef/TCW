@@ -5,7 +5,7 @@ resolution: null
 tags:
 - bug
 - work
-owner: brocef@users.noreply.github.com
-started: '2026-09-30T01:16:02.159861Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-29-detect-a-blocker-cycle-that-runs-across-nodes
 branch: work/2026-09-29-detect-a-blocker-cycle-that-runs-across-nodes
