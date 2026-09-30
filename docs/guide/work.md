@@ -341,6 +341,8 @@ tcw work complete "$slug" --resolution done --confirm --already-integrated
                                        # checks it reached this checkout's HEAD (a merge,
                                        # fast-forward or squash), then skips the merge-back
                                        # and keeps every other gate; refused if unmerged
+                                       # (a repository's own merge drivers get no say, so
+                                       # a squash touching a file one governs is refused)
 tcw work complete "$slug" --resolution done --confirm --already-integrated --branch feature/x
                                        # the same for an item started without --worktree and
                                        # worked on a branch of your own; that branch is kept
@@ -801,6 +803,15 @@ worktree: both the merge-back and the teardown act on the primary checkout, and
 `git worktree remove` would be deleting the directory you are standing in. From
 inside, TCW refuses and names where to re-run it. Every other command works from
 either place.
+
+If you made commits in the worktree while it was **not on a branch** (a
+"detached" checkout, for example after `git checkout <commit>`), neither the
+merge-back nor `--already-integrated` would carry them, and removing the worktree
+would lose them. `complete` stops before changing anything, names those commits,
+and tells you to save them with `git -C <worktree> branch <name>` — merging that
+into the work branch if they belong to the item — before completing again.
+`--force` does not skip this. Discarding the item still works; it leaves such a
+worktree in place for you, as it leaves the unmerged branch.
 
 ## Working from an external tracker
 

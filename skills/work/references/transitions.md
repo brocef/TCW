@@ -160,7 +160,17 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `HEAD`, by a merge, a fast-forward, or a squash that leaves nothing to merge,
   and refuses before anything changes if not. `[gated]` Every other gate still
   runs. For an item started without `--worktree`, name the branch it was worked
-  on with `--branch <name>`; TCW never deletes that branch.
+  on with `--branch <name>`; TCW never deletes that branch. The check does not
+  let the repository's own merge drivers decide a file, so in a repository that
+  configures any, a squash merge touching a file one governs is refused; delete
+  the branch yourself and re-run.
+- For a `--worktree` item whose worktree is **detached at commits no branch,
+  tag or remote-tracking branch contains**, a completion is refused before
+  anything changes, `--force` included: neither the merge-back nor
+  `--already-integrated` carries them, and removing the worktree would lose
+  them. `[gated]` Save them with `git -C <worktree> branch <name>` (and merge
+  that into the work branch if they belong to the item). A discard is not
+  refused; it leaves such a worktree in place, as it leaves the branch.
 - Without `--confirm`, the Definition-of-Done checklist is printed unticked and
   the command refuses. `[prompted]` With `--confirm`, nothing is printed up
   front; once the item has closed, the list is printed ticked, as acknowledged
