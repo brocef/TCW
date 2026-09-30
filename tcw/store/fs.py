@@ -36,9 +36,8 @@ except ImportError:                                # not POSIX
 
 import yaml
 
-from tcw.store.base import _HELD_TWICE  # noqa: E402
 from tcw.store.base import (
-    BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    _HELD_TWICE, BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD, InboxEntryNotFound,
     RESOLVED_STATUSES, TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS,
     binding_value, classify_binding, unreadable_binding,
