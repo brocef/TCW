@@ -94,6 +94,35 @@ def worktree_anchors(directory: Path) -> tuple[Path, Path] | None:
     return _ANCHOR_CACHE[key]
 
 
+def _below(path: Path, root: Path) -> Path | None:
+    """The part of `path` below `root` when `path` is `root` or inside it, else
+    None — deciding "inside" by folder identity, not by text.
+
+    `Path.resolve()` keeps the spelling it was given, so on a disk that ignores
+    letter case `.../APP/pkg` and git's `.../app/pkg` are one folder that text
+    comparison calls two. The text answer is tried first; failing it, each of
+    `path` and its parents is compared with `root` by device and inode, as
+    `_canonical` compares the graph's keys. A folder that cannot be read is
+    skipped, and a filesystem reporting no inode numbers keeps the text answer.
+    """
+    if path.is_relative_to(root):
+        return path.relative_to(root)
+    try:
+        found = root.stat()
+    except OSError:
+        return None
+    if not found.st_ino:
+        return None
+    for ancestor in (path, *path.parents):
+        try:
+            here = ancestor.stat()
+        except OSError:
+            continue
+        if (here.st_dev, here.st_ino) == (found.st_dev, found.st_ino):
+            return path.relative_to(ancestor)
+    return None
+
+
 def _config_file(path: Path) -> Path:
     """A `tcw-config.yaml` path with its folder resolved and the file itself not
     followed. A symlinked config belongs to the folder it sits in: that folder
@@ -743,12 +772,13 @@ class FsProjectRegistry(ProjectRegistry):
         # working). Only a target that leaves the checkout was authored against
         # the primary checkout's position on disk, so resolve it against the
         # source directory's counterpart under the main worktree root instead.
+        inside = _below(source_dir, top)
         if (
             not target.is_absolute()
-            and source_dir.is_relative_to(top)
-            and not resolved.parent.is_relative_to(top)
+            and inside is not None
+            and _below(resolved.parent, top) is None
         ):
-            counterpart = main / source_dir.relative_to(top)
+            counterpart = main / inside
             resolved = _config_file(counterpart / target / SENTINEL)
         return self._worktree_copy(resolved)
 
@@ -771,9 +801,10 @@ class FsProjectRegistry(ProjectRegistry):
         if self._anchors is None:
             return resolved
         top, main = self._anchors
-        if not resolved.is_relative_to(main) or resolved.is_relative_to(top):
+        under_main = _below(resolved, main)
+        if under_main is None or _below(resolved, top) is not None:
             return resolved
-        copy = top / resolved.relative_to(main)
+        copy = top / under_main
         if not copy.is_file():
             return resolved
         between = copy.parent

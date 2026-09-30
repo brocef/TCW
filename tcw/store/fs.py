@@ -63,7 +63,8 @@ from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
-from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
+from tcw.store.project import (FsProjectRegistry, _below, validate_project_id,
+                               worktree_anchors)
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -971,7 +972,10 @@ def worktree_node_root(node_root: Path, worktree: str) -> Path | None:
     top = git_root(node_root)
     if top is None:
         return None
-    return node_root / worktree / node_root.resolve().relative_to(top.resolve())
+    offset = _below(node_root.resolve(), top.resolve())
+    if offset is None:
+        return None
+    return node_root / worktree / offset
 
 
 def uncommitted_paths(directory: Path) -> list[str]:
@@ -1804,8 +1808,9 @@ def anchor_configured_path(node_root: Path, value: Path) -> Path:
         return node_root
     top, main = anchors
     resolved = (node_root / value).resolve()
-    if node_root.is_relative_to(top) and not resolved.is_relative_to(top):
-        return main / node_root.relative_to(top)
+    inside = _below(node_root, top)
+    if inside is not None and _below(resolved, top) is None:
+        return main / inside
     return node_root
 
 

@@ -35,7 +35,6 @@ def _clean(done) -> str:
     return out
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_an_override_in_other_letter_case_works_from_the_worktree(workspace, monkeypatch):  # noqa: F811
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(app / "pkg-b", app)))
@@ -43,7 +42,6 @@ def test_an_override_in_other_letter_case_works_from_the_worktree(workspace, mon
     assert "warning:" in out and "TCW_PROJECT_PKG_B" in out, out
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_an_override_upper_cased_throughout_works_from_the_worktree(workspace, monkeypatch):  # noqa: F811
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(app / "pkg-b").upper())
@@ -57,7 +55,6 @@ def test_an_override_in_other_letter_case_from_the_primary_checkout(workspace, m
     assert "warning:" not in out, out
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_a_store_path_escaping_the_worktree_is_anchored_in_any_letter_case(workspace):  # noqa: F811
     app, wt = linked(workspace)
     escaping = Path("../../../elsewhere")
@@ -67,7 +64,6 @@ def test_a_store_path_escaping_the_worktree_is_anchored_in_any_letter_case(works
     assert as_typed.samefile(as_git), (as_typed, as_git)
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_the_worktree_node_root_is_found_in_any_letter_case(workspace):  # noqa: F811
     app, _wt = linked(workspace)
     typed = _upper_app(app / "pkg-a", app)
