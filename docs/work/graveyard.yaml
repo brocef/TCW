@@ -1105,6 +1105,9 @@
   location: c481ba8f79aaafb5ed7eb1bbfe600cb9d8020e8b
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-add-a-way-to-rename-a-work-item-s-slug:
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing:
   location: ada0edbe485a653fb5d3a1e3c19f3db70bb2d10c
   resolution: done
