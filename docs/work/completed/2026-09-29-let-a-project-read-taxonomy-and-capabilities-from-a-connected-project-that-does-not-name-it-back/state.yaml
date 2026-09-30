@@ -2,7 +2,7 @@ slug: 2026-09-29-let-a-project-read-taxonomy-and-capabilities-from-a-connected-p
 title: Let a project read taxonomy and capabilities from a connected project that
   does not name it back
 created: '2026-09-29'
-resolution: null
+resolution: done
 priority: 90
 tags:
 - taxonomy
