@@ -1716,8 +1716,9 @@ def _start(args: argparse.Namespace) -> int:
         store_paths.append(".gitignore")
         ignore_changed = False
     what = "worktree" if same_repo else "worktree metadata"
-    err = git_commit_result(st.store_git_root, f"tcw work: start {bare} ({what})",
-                            *store_paths)
+    with st._store_lock():
+        err = git_commit_result(st.store_git_root, f"tcw work: start {bare} ({what})",
+                                *store_paths)
     if err:
         print(f"tcw work start: {bare} is active, but committing the worktree "
               f"setup in {st.store_git_root} failed; no worktree was created:\n{err}",
@@ -3728,18 +3729,14 @@ def _own_locally(st, slug: str, owner: str, label: str) -> int:
     reason; this is that, for a claim that is not a transition.
     """
     try:
-        st.set_field(slug, "owner", owner)
+        st.commit_claim(slug, owner, label)
+    except TransitionCommitError as e:
+        print(f"tcw work tracker {label}: {e}", file=sys.stderr)
+        return 1
     except _LOCAL_WRITE_ERRORS as e:
         print(f"tcw work tracker {label}: the owner could not be written: {e}. "
               f"Run this command again.", file=sys.stderr)
         return 1
-    if st.auto_commit_transitions():
-        rel = str(st.path(slug).relative_to(st.store_git_root))
-        if err := git_commit_result(st.store_git_root,
-                                    f"tcw work: {label} {slug}", rel):
-            print(f"tcw work tracker {label}: {slug} was recorded, but committing it "
-                  f"failed:\n{err}", file=sys.stderr)
-            return 1
     return 0
 
 

@@ -159,3 +159,15 @@ apart", and no method.
   proposed the fix. The git folder location is my own choice. It keeps the
   existing reason for not putting the file in the store (it must not show in
   `git status`), and removes the per-session temp folder problem.
+
+## Notes
+
+- *Corrected at review:* the base class gains a method after all,
+  `WorkStore.commit_claim`, with a default that only sets the owner, since
+  the CLI's tracker claim now calls it on any store. The litmus sentence is on
+  `WorkStore`'s docstring.
+- *Corrected at review:* the index retry covers a store command meeting the
+  merge-back's `index.lock`, not the reverse; `merge_worktree` runs plain
+  git. Recorded as a follow-up.
+- *Changed at review:* the lock is keyed by the working tree's git folder, not
+  the store root, because two stores in one repository share one index.

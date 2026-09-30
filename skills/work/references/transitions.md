@@ -16,6 +16,8 @@ project's repository. A refused creation commit only warns, since re-running
 would create a second item — commit the files yourself.
 Do not commit a status move by hand. If a commit is refused, the item still
 moved and the tool says so — commit it yourself, do not re-run the transition.
+Several sessions on one machine may drive one store at once: TCW locks the store
+around each command's commit, so no lock of your own is needed.
 
 **A gitignored destination is untracked rather than moved.** `tcw work init`
 gitignores `completed/` and `discarded/` by default (their `.gitkeep` stays

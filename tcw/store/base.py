@@ -3386,6 +3386,10 @@ def priority_order(items: list[WorkItem]) -> list[WorkItem]:
 class WorkStore(ABC):
     """The work axis: raw intake plus a three-status item state machine.
 
+    An adapter keeps concurrent state changes on one store apart — the
+    filesystem store with a lock around each commit, a database with a
+    transaction.
+
     The status vocabulary + legal-transition graph are core (above); adapters
     implement the abstract primitives and `_effect_transition`. The named
     operations (`start`/`complete`/`drop`) are concrete here so every adapter
@@ -3661,6 +3665,11 @@ class WorkStore(ABC):
         publishes atomically never has any, which is this default.
         """
         return []
+
+    def commit_claim(self, slug: str, owner: str, label: str) -> None:
+        """Record that `owner` holds `slug` — a claim that is not a transition.
+        A store whose writes are already durable only sets the field."""
+        self.set_field(slug, "owner", owner)
 
     def stray_folders(self, slug: str | None = None) -> list[tuple[Any, list[str]]]:
         """`(location, files)` for each place named like an item that is not it —

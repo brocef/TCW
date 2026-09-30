@@ -202,6 +202,22 @@ then left staged. `work.trunk-branch: main` adds a warning
 when you transition an item from some other branch; it is advisory only and
 never checks anything out.
 
+**Several sessions can share one store.** Agents or terminals working in one
+checkout, or in worktrees of it, can transition, claim and create items at
+the same time; each command keeps its own changes and its own commit. TCW holds
+one lock per store from a command's check through its commit. The lock file is
+in the repository's git folder (`tcw-store-<key>.lock` beside `HEAD`), so it is
+shared whatever `TMPDIR` each session has, and it never shows in `git status`.
+A transition that waits more than 30 seconds changes nothing and names the
+process holding the lock; a creation kept waiting leaves the new item written
+but uncommitted and says so, since the item already exists. Fetching, pushing, hooks, tracker calls and a
+worktree's merge-back run outside the lock, so they hold nobody up — but a
+slow `pre-commit` hook runs inside the commit, and so inside the lock. When git
+run by something else holds `index.lock`, a command waits up to two seconds,
+then says the lock may have been left by a crashed git and must be deleted by
+hand. The lock uses `flock`, which some network filesystems do not honour;
+there, and between two machines, sessions meet only in a git merge.
+
 ## The Definition of Done
 
 **The completion checklist is yours to set.** `tcw work complete --resolution

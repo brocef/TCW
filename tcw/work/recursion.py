@@ -469,7 +469,10 @@ def reconcile(node_root: Path, epic_slug: str, commit: bool = False,
         # because it was — written and staged above, before the commit was
         # attempted — so the user knows the change is in their index rather than
         # lost, and that re-running is the recovery.
-        err = git_commit_result(store.store_git_root, f"tcw work: {msg}", work_pathspec)
+        # Under the store lock: this pathspec is the whole store, so a commit
+        # racing another session's staged move would carry it.
+        with store._store_lock():
+            err = git_commit_result(store.store_git_root, f"tcw work: {msg}", work_pathspec)
         if err:
             raise ValueError(f"reconciled {epic_slug} and staged the rollup, but "
                              f"committing it failed:\n{err}")
