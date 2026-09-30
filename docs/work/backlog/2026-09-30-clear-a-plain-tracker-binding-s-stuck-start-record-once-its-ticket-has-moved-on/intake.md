@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-29-a-plain-binding-s-stuck-start-record-never-clears.md`
+
+## Inbox body
+
 # A plain binding's recorded start never clears once its ticket has moved on
 
 Found verifying `2026-09-29-refuse-a-catch-up-rework-whose-ticket-is-already-past-the-item`.
