@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-keep-an-item-s-folder-in-one-place-and-its-status-only-in-state-yaml.md`
+
+## Inbox body
+
 # Keep an item's folder in one place, and its status only in state.yaml
 
 Follow-up from #58 (a stale item path), deferred there as a non-goal.
