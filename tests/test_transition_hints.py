@@ -194,7 +194,7 @@ def test_a_confirmed_completion_that_refuses_prints_no_checklist(tmp_path):
     out = _tcw(root, "complete", slug, "--resolution", "done", "--confirm",
                "--already-integrated")
     assert out.returncode == 1
-    assert "--already-integrated applies to an item started" in out.stderr
+    assert "records no branch to check" in out.stderr, out.stderr
     assert "Definition of Done" not in out.stdout and "[ ]" not in out.stdout
     assert FsWorkStore.open(root).get(slug).status == "review"
 

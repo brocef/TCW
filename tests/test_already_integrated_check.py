@@ -12,8 +12,6 @@ from tcw.store.fs import FsWorkStore
 
 from test_work_autocommit import make_item, node
 
-PENDING = pytest.mark.xfail(strict=True, reason="not implemented yet")
-
 
 def git(root: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(root), *args], capture_output=True,
@@ -68,7 +66,6 @@ def hand_made(tmp_path, monkeypatch, capsys):
 
 # ── 1-3: a TCW worktree ──────────────────────────────────────────────────────
 
-@PENDING
 def test_an_unmerged_branch_is_refused_and_kept(tcw_worktree, capsys):
     root, slug, branch = tcw_worktree
     head = git(root, "rev-parse", "HEAD")
@@ -98,7 +95,6 @@ def test_a_squash_merged_branch_completes(tcw_worktree, capsys):
 
 # ── 4-6, 9: a branch TCW did not create ──────────────────────────────────────
 
-@PENDING
 def test_a_merged_hand_made_branch_completes_and_is_kept(hand_made, capsys):
     root, slug, branch, _ = hand_made
     git(root, "merge", "-q", "--no-edit", branch)
@@ -107,7 +103,6 @@ def test_a_merged_hand_made_branch_completes_and_is_kept(hand_made, capsys):
     assert branch_exists(root, branch)                        # never TCW's to delete
 
 
-@PENDING
 def test_an_unmerged_hand_made_branch_is_refused(hand_made, capsys):
     root, slug, branch, _ = hand_made
     assert complete("--branch", branch, slug=slug) == 1
@@ -115,17 +110,13 @@ def test_an_unmerged_hand_made_branch_is_refused(hand_made, capsys):
     assert status(root, slug) == "active"
 
 
-@PENDING
 def test_branch_without_already_integrated_is_a_usage_error(hand_made, capsys):
     root, slug, branch, _ = hand_made
-    with pytest.raises(SystemExit) as raised:
-        main(["work", "complete", slug, "--resolution", "done", "--confirm",
-              "--branch", branch])
-    assert raised.value.code == 2
+    assert main(["work", "complete", slug, "--resolution", "done", "--confirm",
+                 "--branch", branch]) == 2
     assert "--already-integrated" in capsys.readouterr().err
 
 
-@PENDING
 def test_a_branch_that_does_not_exist_is_refused(hand_made, capsys):
     root, slug, _, _ = hand_made
     assert complete("--branch", "nosuch", slug=slug) == 1
@@ -133,7 +124,6 @@ def test_a_branch_that_does_not_exist_is_refused(hand_made, capsys):
     assert status(root, slug) == "active"
 
 
-@PENDING
 def test_a_branch_other_than_the_recorded_one_is_refused(tcw_worktree, capsys):
     root, slug, branch = tcw_worktree
     git(root, "merge", "-q", "--no-edit", branch)
@@ -144,7 +134,6 @@ def test_a_branch_other_than_the_recorded_one_is_refused(tcw_worktree, capsys):
     assert status(root, slug) == "active"
 
 
-@PENDING
 def test_no_branch_at_all_is_refused_naming_the_flag(hand_made, capsys):
     root, slug, _, _ = hand_made
     assert complete(slug=slug) == 1
@@ -164,7 +153,6 @@ def test_a_recorded_branch_deleted_outside_tcw_completes(tcw_worktree, capsys):
 
 # ── 8: not from the branch itself ────────────────────────────────────────────
 
-@PENDING
 def test_a_checkout_on_the_branch_itself_is_refused(hand_made, monkeypatch, capsys):
     """Checked against itself, any branch is "merged"."""
     root, slug, branch, wt = hand_made

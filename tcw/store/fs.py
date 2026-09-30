@@ -1055,6 +1055,51 @@ def merge_worktree(node_root: Path, branch: str) -> str | None:
     return None
 
 
+def branch_exists(node_root: Path, branch: str) -> bool:
+    """Whether `branch` is a local branch in the node's repository."""
+    return _git(["git", "-C", str(node_root), "rev-parse", "--verify", "--quiet",
+                 f"refs/heads/{branch}"], capture_output=True).returncode == 0
+
+
+def branch_integration(node_root: Path, branch: str) -> str | None:
+    """Whether `branch` already reached the primary checkout's `HEAD` — the
+    commit TCW's own merge-back would have merged it into. None when it did;
+    otherwise the reason, for `complete --already-integrated` to refuse with.
+
+    Two ways count, since a pull request is merged three ways:
+
+    - the branch tip is an ancestor of `HEAD` — a merge commit or a fast-forward;
+    - merging it would change nothing: `git merge-tree --write-tree` produces
+      `HEAD`'s own tree — a squash or a rebase, whose commits are new ones.
+
+    Fails closed. A `git` without `merge-tree --write-tree` (older than 2.38)
+    exits non-zero, which reads as "not shown to be merged", the same as a
+    conflict does. Never run against the store's repository: the branch belongs
+    to the code the node's checkout holds."""
+    if git_root(node_root) is None:
+        return (f"the primary checkout at {node_root} is not in a git repository, "
+                f"so {branch} cannot be checked")
+    run = lambda *a: _git(["git", "-C", str(node_root), *a],   # noqa: E731
+                          capture_output=True, text=True)
+    current = run("symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
+    if current == branch:
+        # Against itself any branch is "merged", so this is no evidence at all.
+        return (f"{branch} is checked out here, so it cannot be checked against "
+                f"itself — run this from the checkout it was merged into")
+    head = run("rev-parse", "--short", "HEAD").stdout.strip() or "HEAD"
+    ref = f"refs/heads/{branch}"
+    if run("merge-base", "--is-ancestor", ref, "HEAD").returncode == 0:
+        return None
+    merged = run("merge-tree", "--write-tree", "HEAD", ref)
+    tree = run("rev-parse", "HEAD^{tree}").stdout.strip()
+    if merged.returncode == 0 and merged.stdout.split("\n", 1)[0].strip() == tree:
+        return None
+    where = f" ({current})" if current else ""
+    return (f"{branch} is not merged into this checkout's HEAD {head}{where}: "
+            f"merging it would still change files. Pull the merge into this "
+            f"checkout, or merge {branch}, then re-run")
+
+
 def remove_worktree(node_root: Path, slug: str, branch: str | None = None) -> list[str]:
     """Best-effort teardown (Spec 2 §3.4): `git worktree remove` refuses on a
     dirty worktree — the safety net against losing uncommitted work. Returns

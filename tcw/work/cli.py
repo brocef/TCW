@@ -21,7 +21,8 @@ from tcw.store.base import (
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, WORKTREES_DIR, FsWorkStore, add_worktree,
     child_nodes, descendant_nodes, ensure_worktree_ignored, find_node,
-    declared_repository, git_commit_result, git_root, merge_worktree,
+    branch_exists, branch_integration, declared_repository, git_commit_result,
+    git_root, merge_worktree,
     parent_node, registered_children, registered_parent,
     unreachable_children, unreachable_parent,
     qualified_work_ref_problem, registered_project_id, remove_worktree,
@@ -4047,6 +4048,10 @@ def _child_path_hint(st, item) -> str:
 
 
 def _complete(args: argparse.Namespace) -> int:
+    if args.branch and not args.already_integrated:
+        print("tcw work complete: --branch names the branch to check for "
+              "--already-integrated, and means nothing without it.", file=sys.stderr)
+        return 2
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
         return 1
@@ -4178,12 +4183,32 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"Refused: discarding {args.slug} as '{args.resolution}' is "
               f"permanent. Re-run with --confirm.", file=sys.stderr)
         return 1
-    if args.already_integrated and not has_worktree:
-        # Accepting it silently would teach the wrong model: the flag exists to
-        # skip a merge-back that only a TCW-created worktree ever performs.
-        print(f"tcw work complete: --already-integrated applies to an item started "
-              f"with --worktree; {args.slug} has none.", file=sys.stderr)
-        return 1
+    # Before the merge-back, the `pre` hook and the store move, so a refusal
+    # leaves everything as it was. Until 2.8 the flag skipped the merge-back on
+    # the caller's word, and the teardown then force-deleted the branch — so a
+    # branch that was never merged was destroyed along with its work.
+    if args.already_integrated and shipping:
+        checked = args.branch or branch
+        if args.branch and branch and args.branch != branch:
+            print(f"tcw work complete: {args.slug} records branch {branch}; "
+                  f"--branch {args.branch} names another. Leave --branch off to "
+                  f"check the recorded one.", file=sys.stderr)
+            return 1
+        if checked is None:
+            print(f"tcw work complete: {args.slug} records no branch to check; name "
+                  f"the one it was worked on with --branch <name>.", file=sys.stderr)
+            return 1
+        exists = branch_exists(st.node_root, checked)
+        if args.branch and not exists:
+            print(f"tcw work complete: no local branch {checked} in "
+                  f"{st.node_root}.", file=sys.stderr)
+            return 1
+        # A recorded branch already gone passes: an external flow that merged
+        # the pull request may have deleted it, and there is nothing left to lose.
+        if exists and (reason := branch_integration(st.node_root, checked)):
+            print(f"tcw work complete: {reason}. {args.slug} was not changed.",
+                  file=sys.stderr)
+            return 1
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none — and a completion is refused only for
@@ -4931,7 +4956,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pc.add_argument("--force", action="store_true", help="complete despite unresolved blockers")
     pc.add_argument("--already-integrated", action="store_true",
                     help="the work branch was merged outside TCW (e.g. a merged PR): "
-                         "skip the merge-back, keep every other gate")
+                         "check that it reached this checkout, skip the merge-back, "
+                         "keep every other gate")
+    pc.add_argument("--branch", metavar="NAME",
+                    help="with --already-integrated: the branch an item started "
+                         "without --worktree was worked on, to check instead; "
+                         "never deleted")
     pc.set_defaults(func=_complete)
 
     pd = g.add_parser("drop", help="backlog → deleted")
