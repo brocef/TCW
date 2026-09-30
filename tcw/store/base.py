@@ -3576,6 +3576,19 @@ class WorkStore(ABC):
         return []
 
     @abstractmethod
+    def refresh_for_creation(self) -> None:
+        """Bring the store up to date before a creation writes, where it has a
+        remote copy to fall behind. A store with no copy of its own has nothing
+        to do."""
+
+    def commit_writes(self, message: str, *paths: Any, removed: tuple = (),
+                      publish: bool = True) -> str | None:
+        """Record what a creation just wrote, as a transition records its move.
+        None when recorded or when there is nothing to do; otherwise the rest of
+        a sentence beginning "created X, but …". A store whose every write is
+        already durable — a database, a tracker — records nothing more."""
+        return None
+
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
 

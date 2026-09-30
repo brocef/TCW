@@ -10,6 +10,10 @@ in step as you go; do not batch the moves at the end.
 
 **TCW commits every transition itself** (`work.auto-commit-transitions`, default
 true, set with the `configure` skill), scoped to the item's own folders so unrelated edits are never swept in.
+Creation commits the same way: `new` and `inbox accept` commit the item they
+made, and `escalate` and `delegate` commit the request in the receiving
+project's repository. A refused creation commit only warns, since re-running
+would create a second item — commit the files yourself.
 Do not commit a status move by hand. If a commit is refused, the item still
 moved and the tool says so — commit it yourself, do not re-run the transition.
 

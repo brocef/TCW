@@ -779,6 +779,7 @@ def _new(args: argparse.Namespace) -> int:
                                "`tcw work tracker import <ticket>`."
                                if st.tracker_config() is not None else _STRICT_BROKEN)
     try:
+        st.refresh_for_creation()
         detail = st.create_work(
             args.title,
             intake=read_piped_stdin(),   # piped text is raw input, not a request
@@ -806,9 +807,23 @@ def _new(args: argparse.Namespace) -> int:
     # nobody works directly; creation has no such difficulty, and an epic on the
     # board with no ticket is a hole in the tracker's picture of the work.
     _ticket_on_filing(st, item.slug, "new")
+    # After the ticket, so a binding it wrote is in the same commit.
+    _commit_created(st, "new", f"tcw work: new {item.slug}", item.slug)
     # Epics included: they run `request`, `spec` and `plan` like any item.
     _next_hint("new", item.slug)
     return 0
+
+
+def _commit_created(st, verb: str, message: str, slug: str,
+                    *also: Path) -> None:
+    """Commit what a creation wrote: the item's folder, and `also` (an accepted
+    entry's old path). A refusal is a warning — the item exists, and running the
+    command again would make a second one."""
+    folder = st.path(slug)
+    if folder is None:
+        return
+    if reason := st.commit_writes(message, folder, removed=also):
+        print(f"tcw work {verb}: created {slug}, but {reason}", file=sys.stderr)
 
 
 def _inbox_list(args: argparse.Namespace) -> int:
@@ -962,6 +977,9 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         # A raw entry is refused under strict mode, and with `--part`, which only a
         # ticket takes; in both cases the ref is resolved without being consumed.
         peek = strict or args.part is not None
+        source = None if peek else st.inbox_source(args.entry)
+        if not peek:
+            st.refresh_for_creation()
         try:
             item = st.inbox_show(args.entry) if peek else \
                 st.inbox_accept(args.entry, title=args.title)
@@ -984,6 +1002,9 @@ def _inbox_accept(args: argparse.Namespace) -> int:
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
             # binds the ticket that already exists and must not make a second.
             _ticket_on_filing(st, item.slug, "inbox accept")
+            _commit_created(st, "inbox accept",
+                            f"tcw work: {source.name if source else args.entry} "
+                            f"→ {item.slug}", item.slug, *([source] if source else []))
             return 0
     if not _inbox_can_try_ticket(st, "inbox accept", not_found):
         return 1
@@ -2960,6 +2981,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         return 1
 
     title = args.title.strip() if args.title else f"{outcome.key} — {outcome.summary}"
+    st.refresh_for_creation()
     try:
         slug = st.create_work(title, intake=_intake_text(outcome, description, today),
                               parent=parent, initiative=initiative).item.slug
@@ -3001,6 +3023,9 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
             and _normalize(outcome.claimed_from) != _normalize(outcome.status)):
         status, put_back_failed = put_back(client, outcome)
         outcome = replace(outcome, status=status)
+    # After the binding, where the rollback above can no longer run: a commit of
+    # an item that `st.drop` then removed would leave a staged deletion behind.
+    _commit_created(st, label, f"tcw work: import {outcome.key} → {slug}", slug)
     print(slug)
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
     if put_back_failed:
@@ -4171,8 +4196,9 @@ def _complete(args: argparse.Namespace) -> int:
         else (None, item))
     # What was judged just above came off the worktree's *working files*, while the
     # merge-back carries only what the branch committed. Uncommitted item files are
-    # an ordinary state — only transitions commit themselves, so a field edit, a
-    # blocker change or a verify artifact written in the worktree is at most staged
+    # an ordinary state — transitions and creation commit themselves, but a field
+    # edit, a blocker change or a verify artifact written in the worktree is at
+    # most staged
     # — so this is guidance, not an accusation.
     #
     # It runs regardless of `--force`, and that is the whole distinction: `--force`

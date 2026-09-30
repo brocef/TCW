@@ -186,8 +186,19 @@ make it for you.
 **Every transition commits its own move.** `tcw work start`, `submit`, `rework`,
 and `complete` each leave a commit recording just that item's status change —
 scoped to the item's own folders, so unrelated edits in your working tree are
-never swept in. Set `work.auto-commit-transitions: false` in `tcw-config.yaml` to
-turn it off and commit them yourself. `work.trunk-branch: main` adds a warning
+never swept in. **Creation commits too**: `tcw work new` and `inbox accept`
+commit the item they created (with any tracker binding filing wrote, and the
+accepted entry's removal), as do `tracker import` and accepting a ticket, and
+`escalate` and `delegate` commit the request they wrote in the receiving
+project's repository, under that project's own setting. A request into a
+store that publishes to a remote is left staged there, for that project to
+commit. A store that publishes is brought up to date before a creation, as
+before a transition; offline, the creation is left staged and says so. A
+creation whose commit is refused — by a `pre-commit` hook, say — still
+succeeds and says so, leaving the files staged, because running it again would
+create a second item. Set `work.auto-commit-transitions: false` in
+`tcw-config.yaml` to turn all of this off and commit them yourself; the files are
+then left staged. `work.trunk-branch: main` adds a warning
 when you transition an item from some other branch; it is advisory only and
 never checks anything out.
 

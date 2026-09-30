@@ -30,5 +30,6 @@ the `work-stage` skill with `request` and the new item's slug, and run the `requ
 produce `initial-request.md` — asking the user whatever is unclear, since that
 is what the stage exists for.
 
-Commit each item as you create it. Do not carry an entry into `spec`; that is
+TCW commits each item as it is accepted (unless `work.auto-commit-transitions`
+is off; then commit each one yourself). Do not carry an entry into `spec`; that is
 the `commands-plan-work` skill.

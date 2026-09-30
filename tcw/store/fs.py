@@ -6755,6 +6755,90 @@ class FsWorkStore(FsTreeStore, WorkStore):
         value = self._work_config().get("auto-commit-transitions")
         return value if isinstance(value, bool) else True
 
+    def refresh_for_creation(self) -> None:
+        """Bring a provisioned store up to date before a creation writes into it,
+        as a transition does before it moves anything. Committing a creation on a
+        stale copy would diverge it from its remote, and every later transition's
+        fast-forward would then refuse. A refresh that fails is remembered, not
+        raised: creating still works offline, and `commit_writes` then leaves the
+        files staged rather than committing them."""
+        self._creation_unrefreshed = None
+        if not self.publishes or not self.auto_commit_transitions():
+            return
+        try:
+            self._refresh_before_transition()
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            self._creation_unrefreshed = str(error).strip() or error.__class__.__name__
+
+    def commit_writes(self, message: str, *paths: Path, removed: tuple[Path, ...] = (),
+                      publish: bool = True) -> str | None:
+        """Commit what a creation just wrote — only those paths — the way a
+        transition commits its move. None when committed, when there was nothing
+        to commit, or when `work.auto-commit-transitions` is off; otherwise the
+        rest of a sentence beginning "created X, but …", saying what to do.
+
+        `paths` are staged first, whatever the switch says: a creation leaves its
+        files in one state, and a scoped `git commit` ignores an untracked file.
+        `removed` are committed but never staged — an accepted entry, whose
+        removal is already in the index; staging it would record back whatever
+        untracked file the removal left on disk.
+
+        A store that publishes is committed only after `refresh_for_creation`
+        brought it up to date, and with `publish` — `escalate` and `delegate`
+        write into a project whose remote only that project's own commands
+        update, so there the request is left staged.
+
+        Never raises for a refused commit. A creation that succeeded must not
+        look like one that failed: re-running it makes a second item, where
+        re-running a transition is merely refused."""
+        if git_root(self.store_git_root) is None:
+            return None
+        present = [p for p in paths if p.exists()]
+        try:
+            if present:
+                git_stage(self.store_git_root, *present)
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or "").strip() if isinstance(error.stderr, str) else ""
+            return f"staging it failed: {detail or error}. Stage and commit it yourself."
+        if not self.auto_commit_transitions():
+            return None
+        if self.publishes:
+            if not publish:
+                return (f"it is left staged, not committed: {self.store_git_root} "
+                        f"publishes to a remote that its own project's commands "
+                        f"update. Commit it there.")
+            if (reason := getattr(self, "_creation_unrefreshed", "unchecked")):
+                why = ("it was not brought up to date first" if reason == "unchecked"
+                       else f"bringing it up to date failed ({reason})")
+                return (f"it is left staged, not committed: {self.store_git_root} "
+                        f"publishes to a remote, and {why}. Commit and push it once "
+                        f"the remote is reachable.")
+        rel = []
+        for p in (*paths, *removed):
+            try:
+                rel.append(str(p.resolve().relative_to(self.store_git_root.resolve())))
+            except ValueError:
+                return (f"{p} is outside the store's repository "
+                        f"{self.store_git_root}, so it was not committed. Commit it "
+                        f"yourself.")
+        if err := git_commit_result(self.store_git_root, message, *rel):
+            return f"committing it failed:\n{err}\nCommit it yourself."
+        if self.publishes:
+            try:
+                self.publish()
+            except (ValueError, OSError, subprocess.CalledProcessError) as error:
+                return (f"publishing it failed; it is committed in "
+                        f"{self.store_git_root}:\n{error}\nPush it yourself once the "
+                        f"remote is reachable.")
+        return None
+
+    def inbox_source(self, ref: str) -> Path | None:
+        """Where the inbox entry `ref` resolves to, or None if it does not."""
+        try:
+            return self._inbox_path(self._resolve_inbox_ref(ref))
+        except (InboxEntryNotFound, ValueError, MultipleMatch):
+            return None
+
     def lifecycle_policy(self) -> LifecyclePolicy:
         """The node's configured stage/transition bindings.
 
