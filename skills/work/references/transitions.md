@@ -141,7 +141,11 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   `--worktree` item it needs **both** copies to read `active`: `submit` run in
   either checkout means the stage was not skipped.
 - `--already-integrated` skips the merge-back when the branch was merged outside
-  TCW (a merged PR). Every other gate still runs.
+  TCW (a merged PR). It first checks that the branch reached this checkout's
+  `HEAD`, by a merge, a fast-forward, or a squash that leaves nothing to merge,
+  and refuses before anything changes if not. `[gated]` Every other gate still
+  runs. For an item started without `--worktree`, name the branch it was worked
+  on with `--branch <name>`; TCW never deletes that branch.
 - Without `--confirm`, the Definition-of-Done checklist is printed unticked and
   the command refuses. `[prompted]` With `--confirm`, nothing is printed up
   front; once the item has closed, the list is printed ticked, as acknowledged

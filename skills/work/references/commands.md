@@ -500,5 +500,6 @@ unless the *node* is in a repository even when the store is fine; a plain
 work branch back in the node's repository, and refuses rather than completing
 if that repository is gone — a completion that skipped its merge-back would
 leave the branch stranded with nothing to say so. `--already-integrated` is the
-exception, and deliberately: it says the merge already happened, so there is no
-merge to protect and the worktree teardown is best-effort from there.
+exception, and deliberately: the merge already happened, which it checks against
+the node repository's `HEAD` before going on, so there is no merge to protect
+and the worktree teardown is best-effort from there.

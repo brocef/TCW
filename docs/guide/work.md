@@ -307,7 +307,12 @@ tcw work complete "$slug" --resolution done --confirm
 tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
 tcw work complete "$slug" --resolution done --confirm --already-integrated
                                        # the work branch was merged outside TCW (a merged PR):
-                                       # skip the merge-back, keep every other gate
+                                       # checks it reached this checkout's HEAD (a merge,
+                                       # fast-forward or squash), then skips the merge-back
+                                       # and keeps every other gate; refused if unmerged
+tcw work complete "$slug" --resolution done --confirm --already-integrated --branch feature/x
+                                       # the same for an item started without --worktree and
+                                       # worked on a branch of your own; that branch is kept
 tcw work complete "$slug" --resolution wontfix --confirm        # → discarded/ (no Definition of Done; legal from backlog)
 tcw work drop some-slug --confirm      # erase a mis-created item, leaving no record
 ```
