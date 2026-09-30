@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-29-store-git-root-compared-by-text-with-node-paths.md`
+
+## Inbox body
+
 # Paths from git compared by text with paths from a project's locator
 
 Found verifying `2026-09-29-accept-a-project-override-spelled-in-other-letter-case-from-a-linked-worktree`.
