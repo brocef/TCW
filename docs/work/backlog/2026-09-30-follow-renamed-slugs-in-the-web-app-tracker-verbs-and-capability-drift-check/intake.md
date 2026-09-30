@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-follow-renames-in-the-web-app-tracker-verbs-and-the-capability-drift-check.md`
+
+## Inbox body
+
 # Follow renames in the web app, tracker verbs and the capability drift check
 
 Follow-up from #70 (`tcw work rename`).
