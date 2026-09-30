@@ -31,7 +31,8 @@ state and went to Jira directly.
    valid choice at that level:
    - `status`, `info`, `view`, `get`, `cat` → `show`;
    - `ls` → `list`.
-   - At the `work` level, `status` suggests both `show` (one item) and `list`
+   - Wherever `list` exists (as built: `work`, `tracker`, `inbox`, not only
+     `work`), `status` suggests both `show` (one item) and `list`
      (the board, whose `--status` filters by it).
    - Words for removal are not mapped. `drop`, `delete` and `rm` are
      destructive, and pointing at one is worse than no hint.
