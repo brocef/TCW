@@ -192,6 +192,7 @@ def test_a_confirmed_completion_that_refuses_prints_no_checklist(tmp_path):
     """The unticked list above an unrelated refusal read as its cause."""
     root = _node(tmp_path)
     slug, _ = _submitted(root)
+    (root / "docs/work/review" / slug / "refined-outcome.md").write_text("# Accepted\n")
     out = _tcw(root, "complete", slug, "--resolution", "done", "--confirm",
                "--already-integrated")
     assert out.returncode == 1
@@ -203,6 +204,7 @@ def test_a_confirmed_completion_that_refuses_prints_no_checklist(tmp_path):
 def test_without_confirm_the_unticked_checklist_and_refusal_are_unchanged(tmp_path):
     root = _node(tmp_path)
     slug, _ = _submitted(root)
+    (root / "docs/work/review" / slug / "refined-outcome.md").write_text("# Accepted\n")
     out = _tcw(root, "complete", slug, "--resolution", "done")
     assert out.returncode == 1
     assert out.stdout.splitlines() == (
