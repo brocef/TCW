@@ -65,7 +65,8 @@ tracked things covering the same work is itself news.
   (`references/commands.md`): append to `initial-request.md`, and on an item
   with only `intake.md` write the request first — the intake is raw input and
   is never appended to. Delegated or unattended, write that request from the
-  evidence you have and say so in its `## Notes`. For an inbox entry that is a folder, append to the
+  evidence you have and say so in its `## Notes`. A bound tracker ticket is not
+  updated. For an inbox entry that is a folder, append to the
   Markdown file that `tcw work inbox show <entry>` prints as its body; an entry
   becomes an item's `intake.md` only when it is accepted. Commit as in step 4.
 - **Revise** means re-running `spec`, and `plan` if one exists, after the
