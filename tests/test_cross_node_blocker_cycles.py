@@ -113,7 +113,9 @@ def test_blocks_closing_a_cross_node_cycle_is_refused(graph):
     a.add_blocker(x2, f"pb/{y}")
     b.add_blocker(y, f"pa/{x}")
     before = (state_bytes(a, x), state_bytes(a, x2))
-    out = tcw(graph / "pa", "edit", x2, "--blocks", x)
+    # With another change in the same edit: a refusal that comes only after
+    # the fields were written would leave the new title behind.
+    out = tcw(graph / "pa", "edit", x2, "--blocks", x, "--title", "Renamed")
     assert out.returncode != 0 and CYCLE in out.stderr, out.stderr
     assert (state_bytes(a, x), state_bytes(a, x2)) == before
 
