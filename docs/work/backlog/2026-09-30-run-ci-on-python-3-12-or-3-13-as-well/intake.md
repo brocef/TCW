@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-run-ci-on-python-3-12-or-3-13.md`
+
+## Inbox body
+
 # Run CI on Python 3.12 or 3.13 as well
 
 From the adversarial review of #69
