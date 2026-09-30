@@ -3402,6 +3402,17 @@ class WorkStore(ABC):
         """Resolve a stable id (slug) to its item, or None. Raises `MultipleMatch`."""
 
     @abstractmethod
+    def renamed(self, slug: str) -> str | None:
+        """The slug `slug` now goes by after `rename`, or None. A store that
+        keeps the slug as a field keeps a table of old names to answer this."""
+        return None
+
+    def rename(self, slug: str, new_slug: str, *,
+               owner: str = "") -> "tuple[WorkItem, list[str]]":
+        """Give an open item a new slug, rewriting what names it on this store.
+        Returns the renamed item and notes on what was left naming the old one."""
+        raise NotImplementedError
+
     def tombstone(self, slug: str) -> Tombstone | None:
         """The record of an item this store once held and has since resolved, or
         None if it never held one by that id.
@@ -4399,6 +4410,8 @@ class WorkStore(ABC):
             return False, ""
         try:
             live = self.get(text)
+            if live is None and (renamed := self.renamed(text)):
+                live = self.get(renamed)
             if live is not None:
                 return live.status in RESOLVED_STATUSES, ""
             return self.tombstone(text) is not None, ""
@@ -4421,6 +4434,10 @@ class WorkStore(ABC):
             elif "slug" in b:
                 try:
                     blocker = self.get(b["slug"])
+                    # A renamed blocker is still the same work: follow it, or a
+                    # reference the rename could not rewrite would unblock.
+                    if blocker is None and (renamed := self.renamed(b["slug"])):
+                        blocker = self.get(renamed)
                 except ValueError:
                     # An adapter can refuse to settle a blocker — a claim on it
                     # was abandoned. That is still a blocker, and reporting it as

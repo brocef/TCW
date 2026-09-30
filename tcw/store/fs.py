@@ -1469,6 +1469,40 @@ def slugify(name: str) -> str:
 _DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
 
 
+def _is_under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def rename_slug(old: str, new: str) -> str:
+    """The full slug `tcw work rename <old> <new>` means, or ValueError.
+
+    `new` may be a whole slug or only the part after the date. The date stays
+    the item's own — it records when the item was made, not when it was named —
+    so a different date is refused rather than quietly replaced. Never
+    rewritten into slug form: an argument that is not one already is refused
+    naming the form it would be, so the slug that lands is the slug typed."""
+    new = new.strip()
+    old_date = _DATE_PREFIX.match(old)
+    new_date = _DATE_PREFIX.match(new)
+    if new_date and old_date and new_date.group(0) != old_date.group(0):
+        raise ValueError(f"{new} has a different date than {old}; the date is when "
+                         f"the item was made, and a rename keeps it — give only "
+                         f"the part after it")
+    full = new if new_date or not old_date else old_date.group(0) + new
+    body = _DATE_PREFIX.sub("", full)
+    if not body or slugify(body) != body:
+        hint = slugify(body) if body and slugify(body) != "untitled" else ""
+        raise ValueError(f"'{new}' is not a slug (lower-case letters, digits and "
+                         f"single hyphens)" + (f"; did you mean '{hint}'?" if hint else ""))
+    if len(body) > 120:
+        raise ValueError(f"'{new}' is longer than 120 characters after the date")
+    return full
+
+
 def _extends_ids(config: dict, label: str) -> list[str]:
     """The declared `extends` list, or a `ValueError` naming what is wrong.
 
@@ -5075,7 +5109,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         #
         # A YAML read per candidate, not per call: the loop body runs only on a
         # real collision, and `_find` already walks the store on every iteration.
-        while self._find(slug) is not None or self.tombstone(slug) is not None:
+        # And renamed-away slugs, which still resolve to the renamed item.
+        renamed = self._renames()
+        while (self._find(slug) is not None or self.tombstone(slug) is not None
+               or slug in renamed):
             slug, n = f"{base}-{n}", n + 1
         return slug
 
@@ -6172,6 +6209,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 return False, qualified_work_ref_problem(self.node_root, text)
             store, slug = found
             target = store.get(slug)
+            if target is None and (renamed := store.renamed(slug)):
+                target = store.get(renamed)
             if target is not None:
                 return target.status in RESOLVED_STATUSES, ""
             if store.tombstone(slug) is not None:
@@ -6226,6 +6265,244 @@ class FsWorkStore(FsTreeStore, WorkStore):
             location=str(entry.get("location") or ""),
             initiative=str(entry.get("initiative") or ""),
         )
+
+    # -- renames --
+
+    RENAMES_NAME = "renames.yaml"
+
+    def _renames(self) -> dict[str, str]:
+        """`renames.yaml` as `{old: new}`. Tolerant, like `tombstone`: a damaged
+        file answers nothing rather than taking a read down; `validate` says what
+        is wrong with it."""
+        path = self.root / self.RENAMES_NAME
+        if not path.exists():
+            return {}
+        try:
+            doc = self._safe_yaml(path)
+        except (OSError, UnicodeDecodeError):
+            return {}
+        if not isinstance(doc, dict):
+            return {}
+        return {k: v for k, v in doc.items() if isinstance(k, str) and isinstance(v, str)}
+
+    def renamed(self, slug: str) -> str | None:
+        """The slug `slug` now goes by, following a chain of renames to its end;
+        None if it was never renamed. A loop answers None, and `validate` reports
+        it. Kept apart from the graveyard on purpose: every tombstone reader takes
+        a tombstone to mean resolved work, so a renamed item recorded there would
+        silently unblock whatever still named its old slug."""
+        doc = self._renames()
+        seen, current = {slug}, slug
+        while current in doc:
+            current = doc[current]
+            if current in seen:
+                return None
+            seen.add(current)
+        return None if current == slug else current
+
+    def renames_problems(self) -> list[str]:
+        path = self.root / self.RENAMES_NAME
+        if not path.exists():
+            return []
+        try:
+            doc = load_yaml(path)
+        except (yaml.YAMLError, OSError, UnicodeDecodeError) as e:
+            return [f"{path}: does not parse ({e.__class__.__name__})"]
+        if doc and not isinstance(doc, dict):
+            return [f"{path}: is not a mapping of old slug to new slug"]
+        problems = []
+        for old, new in (doc or {}).items():
+            if not isinstance(old, str) or not isinstance(new, str):
+                problems.append(f"{path}: entry {old!r} is not slug: slug")
+            elif self.renamed(old) is None:
+                problems.append(f"{path}: {old} is part of a loop of renames")
+            elif self._find(old) is not None:
+                problems.append(f"{path}: {old} was renamed away, but an item "
+                                f"holds that slug again")
+        return problems
+
+    def _names_here(self, value: str, slug: str) -> str | None:
+        """`value` with `slug` replaced by nothing — the spelling to keep — when
+        `value` names `slug` on this store, bare or as `<own-project-id>/<slug>`;
+        None when it names something else."""
+        if value == slug:
+            return ""
+        if value.endswith("/" + slug) and slug in self._local_forms(value):
+            return value[: -len(slug)]
+        return None
+
+    def rename(self, slug: str, new_slug: str, *,
+               owner: str = "") -> "tuple[WorkItem, list[str]]":
+        """Give an open item a new slug: move its folder, rewrite what names it,
+        record the old slug in `renames.yaml`, and commit — in one commit here,
+        plus one in each other board that held an initiative child. Returns the
+        renamed item and notes on what still names the old slug and was left
+        alone (the item's own prose, a tracker ticket)."""
+        self._require_repository()
+        item = self._require(slug)
+        new = rename_slug(slug, new_slug)
+        if new == slug:
+            raise ValueError(f"{slug} already has that slug")
+        if item.status in RESOLVED_STATUSES:
+            raise ValueError(f"{slug} is {item.status}; only an open item is renamed — "
+                             f"its folder may not exist in other clones, and its "
+                             f"old slug is already recorded as resolved")
+        if item.worktree or item.branch:
+            raise ValueError(
+                f"{slug} has a worktree or branch ({item.branch or item.worktree}), "
+                f"which a rename would strand. Complete or tear that down first, or "
+                f"rename by hand: `git branch -m`, move .worktrees/{slug}, and update "
+                f"the item's `branch` and `worktree` fields")
+        if item.owner and item.owner != owner:
+            raise ValueError(f"{slug} is held by {item.owner}; only its holder "
+                             f"renames it")
+        claiming = self.root / ".claiming"
+        if claiming.is_dir() and any(p.name.startswith(f"{slug}-")
+                                     for p in claiming.iterdir()):
+            raise ValueError(f"{slug} has a claim in progress; retry once it settles")
+        if (self._find(new) is not None or self.tombstone(new) is not None
+                or new in self._renames()):
+            raise ValueError(f"{new} is already taken by an item, a resolved item's "
+                             f"record, or an earlier rename")
+        # Read before anything moves: once the folder has its new name, nothing
+        # still names the old one to find by.
+        slices = [(n, i) for n, i in (self.initiative_slices(slug) if item.type == "epic"
+                                      else []) if n.resolve() != self.node_root.resolve()]
+        with self._graveyard_lock():
+            renames_path = self.root / self.RENAMES_NAME
+            self._require_clean(renames_path)
+            record = load_yaml(renames_path) if renames_path.exists() else {}
+            record = record if isinstance(record, dict) else {}
+            record[slug] = new
+            self._write_staged([(renames_path, yaml.safe_dump(record, sort_keys=True))])
+            src = self._require_dir(slug)
+            dst = src.parent / new
+            git_mv(self.store_git_root, src, dst)
+            touched = [renames_path, src, dst, *self._rewrite_references(slug, new)]
+            elsewhere = self._rewrite_capability_links(slug, new)
+            notes = self._prose_mentions(dst, slug)
+            if self.auto_commit_transitions():
+                mine = [p for p in touched + elsewhere if _is_under(p, self.store_git_root)]
+                rel = [str(p.resolve().relative_to(self.store_git_root.resolve()))
+                       if p.exists() else str(p.relative_to(self.store_git_root))
+                       for p in mine]
+                if err := git_commit_result(self.store_git_root,
+                                            f"tcw work: rename {slug} → {new}", *rel):
+                    raise TransitionCommitError(
+                        f"{slug} was renamed to {new}, but committing it failed:\n{err}")
+                for p in elsewhere:
+                    if p not in mine and (root := git_root(p.parent)) is not None:
+                        git_commit_result(root, f"tcw work: rename {slug} → {new}",
+                                          str(p.relative_to(root)))
+        for node, child in slices:
+            notes += FsWorkStore.open(node)._repoint_initiative(child.slug, slug, new)
+        return self._require(new), notes
+
+    def _require_clean(self, path: Path) -> None:
+        """Refuse when `path` has uncommitted changes and auto-commit is on: the
+        commit about to be made would carry someone else's edit to it."""
+        if not self.auto_commit_transitions() or not path.exists():
+            return
+        rel = str(path.relative_to(self.store_git_root))
+        out = subprocess.run(["git", "-C", str(self.store_git_root), "status",
+                              "--porcelain", "--", _literal(rel)],
+                             capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if out.returncode == 0 and out.stdout.strip():
+            raise ValueError(f"{path} has uncommitted changes; commit or revert them, "
+                             f"then retry")
+
+    def _rewrite_references(self, old: str, new: str) -> list[Path]:
+        """Point every `blocked_by`, `parent` and `initiative` on this board, and
+        every graveyard `initiative`, at `new`. Returns the files written."""
+        written = []
+        for d in self._item_dirs():
+            state = self._safe_yaml(d / "state.yaml")
+            fields = {}
+            blockers = state.get("blocked_by")
+            if isinstance(blockers, list):
+                changed = False
+                out = []
+                for b in blockers:
+                    if isinstance(b, dict):
+                        for key in ("slug", "external"):
+                            value = b.get(key)
+                            if isinstance(value, str) and (
+                                    keep := self._names_here(value, old)) is not None:
+                                b = {**b, key: keep + new}
+                                changed = True
+                    out.append(b)
+                if changed:
+                    fields["blocked_by"] = out
+            for key in ("parent", "initiative"):
+                value = state.get(key)
+                if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
+                    fields[key] = keep + new
+            if fields:
+                self._set_fields_at(d, fields)
+                written.append(d / "state.yaml")
+        path = self._graveyard_path()
+        if path.exists():
+            doc = load_yaml(path)
+            if isinstance(doc, dict):
+                changed = False
+                for entry in doc.values():
+                    value = entry.get("initiative") if isinstance(entry, dict) else None
+                    if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
+                        entry["initiative"] = keep + new
+                        changed = True
+                if changed:
+                    self._require_clean(path)
+                    self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
+                                                              allow_unicode=True))])
+                    written.append(path)
+        return written
+
+    def _repoint_initiative(self, child: str, old: str, new: str) -> list[str]:
+        """On another board: repoint `child`'s `initiative` from the epic `old` to
+        `new`, committing it in this board's repository. Returns notes."""
+        d = self._find(child)
+        if d is None:
+            return []
+        value = self._safe_yaml(d / "state.yaml").get("initiative")
+        if not isinstance(value, str) or not value.endswith("/" + old):
+            return []
+        try:
+            self._set_fields_at(d, {"initiative": value[: -len(old)] + new})
+            if self.auto_commit_transitions():
+                rel = str((d / "state.yaml").relative_to(self.store_git_root))
+                if err := git_commit_result(self.store_git_root,
+                                            f"tcw work: initiative {old} → {new}", rel):
+                    return [f"{child} in {self.node_root} points at the new epic slug, "
+                            f"but committing it failed: {err}"]
+        except (ValueError, OSError, subprocess.CalledProcessError) as e:
+            return [f"{child} in {self.node_root} still names {old}: {e}"]
+        return []
+
+    def _rewrite_capability_links(self, old: str, new: str) -> list[Path]:
+        """Capability `meta.yaml` `Planning doc:` lines on this node naming `old`."""
+        try:
+            root = FsCapabilitiesStore.open(self.node_root).root
+        except Exception:                          # no capabilities component here
+            return []
+        pattern = re.compile(rf"^(Planning doc:\s*){re.escape(old)}\s*$", re.M)
+        written = []
+        for meta in sorted(root.rglob("meta.yaml")):
+            text = meta.read_text(encoding="utf-8")
+            if pattern.search(text):
+                meta.write_text(pattern.sub(rf"\g<1>{new}", text), encoding="utf-8")
+                if (repo := git_root(meta.parent)) is not None:
+                    git_stage(repo, meta)
+                written.append(meta)
+        return written
+
+    @staticmethod
+    def _prose_mentions(folder: Path, old: str) -> list[str]:
+        found = [p.relative_to(folder).as_posix() for p in sorted(folder.rglob("*"))
+                 if p.is_file() and p.suffix in (".md", ".yaml", ".txt")
+                 and p.name != "state.yaml"
+                 and old in p.read_text(encoding="utf-8", errors="replace")]
+        return ([f"still names the old slug, left as written: {', '.join(found)}"]
+                if found else [])
 
     def get(self, slug: str) -> WorkItem | None:
         """The settled item, or None if it is genuinely absent.
@@ -7010,6 +7287,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())
+            problems.extend(self.renames_problems())
         if identifier is not None:
             item = self.get(identifier)
             if item is None:
