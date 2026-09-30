@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tcw.cli_suggest import SuggestingParser, attach_index
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
@@ -479,7 +480,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="tcw", description="Taxonomy · Capabilities · Work.")
+    parser = SuggestingParser(prog="tcw", description="Taxonomy · Capabilities · Work.")
     parser.add_argument("--version", action="version", version=f"tcw {__version__}")
     sub = parser.add_subparsers(dest="group", required=True)
 
@@ -528,6 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=f"{name} commands (not yet implemented)")
         p.set_defaults(func=_not_yet(name))
 
+    attach_index(parser)
     return parser
 
 

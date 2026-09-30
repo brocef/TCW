@@ -1,6 +1,7 @@
 """`tcw work` — the changes. Single-node state machine per phase-5-work B.2."""
 
 import argparse
+import difflib
 import contextlib
 import io
 import json
@@ -1828,31 +1829,6 @@ def _binding_json(b) -> dict:
     return out
 
 
-class _HidesRemovedSpellings(argparse.ArgumentParser):
-    """Keeps the removed per-stage parsers out of argparse's "choose from" list.
-
-    They are registered as subparsers so the old `tcw work stage <id> <ref>`
-    spelling gets a migration message instead of a bare "invalid choice", and
-    `help=` is omitted so they stay out of `--help`. But `_check_value` builds
-    its "choose from" list straight off the action's choices, so a plain typo was
-    told the seven removed spellings were valid verbs — the opposite of what
-    registering them is for.
-
-    The guard is narrow on purpose: it fires only for the action that actually
-    offers the real verbs, so every other subcommand group keeps argparse's own
-    message unchanged.
-    """
-
-    def _check_value(self, action, value):
-        choices = getattr(action, "choices", None) or ()
-        if value not in choices and {"prompt", "gate"} <= set(choices):
-            real = [c for c in choices if c not in STAGE_IDS]
-            raise argparse.ArgumentError(
-                action, f"invalid choice: {value!r} (choose from "
-                        f"{', '.join(repr(c) for c in real)})")
-        super()._check_value(action, value)
-
-
 def _stage_tail(args: argparse.Namespace, step, st, item, slug: str,
                 display: str) -> int:
     """Everything `tcw work stage prompt` does once it knows what to resolve.
@@ -1976,8 +1952,56 @@ def _stage_step(verb: str, stage_id: str):
         legal = [s.id for s in LIFECYCLE_STEPS if s.kind == "stage"]
         print(f"tcw work stage {verb}: unknown stage '{stage_id}'; expected one "
               f"of {', '.join(legal)}", file=sys.stderr)
+        if hint := _stage_hint(verb, stage_id, legal):
+            print(hint, file=sys.stderr)
         return None
     return step
+
+
+# How each transition is run. Not always `tcw work <id>`: a discard is a
+# completion with another resolution, and auto-delete runs on its own.
+_TRANSITION_COMMAND = {
+    "start": "`tcw work start <slug>`",
+    "submit": "`tcw work submit <slug>`",
+    "rework": "`tcw work rework <slug>`",
+    "complete": "`tcw work complete <slug> --resolution done --confirm`",
+    "discard": "`tcw work complete <slug> --resolution wontfix --confirm` (or "
+               + ", ".join(f"`{r}`" for r in sorted(WORK_RESOLUTIONS - {"done", "wontfix"}))
+               + ")",
+}
+
+
+def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
+    """What a word given as a stage probably meant: an artifact names the stage
+    that writes it, a transition names its own command, and anything else is
+    matched against the stage ids by spelling. "" when nothing fits.
+
+    `rework` is both — `verify` writes `rework.md`, and `tcw work rework` is the
+    transition — so it gets both answers."""
+    name = word.removesuffix(".md")
+    writers = [s.id for s in LIFECYCLE_STEPS if name in s.produces]
+    step = LIFECYCLE_STEPS_BY_ID.get(name)
+    said = []
+    if writers:
+        said.append(f"`{name}.md` is written by the `{writers[0]}` stage: "
+                    f"`{_stage_command(verb, writers[0])}`.")
+    elif name.replace("-", "") in legal:
+        stage = name.replace("-", "")
+        said.append(f"the stage is spelled `{stage}`: `{_stage_command(verb, stage)}`.")
+    if step is not None and step.kind == "transition":
+        said.append(f"`{name}` is a transition, not a stage"
+                    + (f": {how}." if (how := _TRANSITION_COMMAND.get(name)) else "."))
+    if not said:
+        close = difflib.get_close_matches(name, legal, n=3, cutoff=0.6)
+        if close:
+            said.append("did you mean " + " or ".join(f"`{c}`" for c in close) + "?")
+    return " ".join(said)
+
+
+def _stage_command(verb: str, stage: str, ref: str = "<slug>") -> str:
+    """`tcw work stage <verb> <stage> <ref>` — without a reference for `inbox`,
+    which runs before an item exists: both verbs refuse one for it."""
+    return f"tcw work stage {verb} {stage}" + ("" if stage == "inbox" else f" {ref}")
 
 
 def _stage_removed_form(args: argparse.Namespace) -> int:
@@ -1992,14 +2016,12 @@ def _stage_removed_form(args: argparse.Namespace) -> int:
     # it, so the placeholder every other stage wants would advise a command that
     # is itself refused — two wrong turns for someone migrating off the old
     # spelling. The one stage that takes no reference is shown none.
-    if args.removed_stage == "inbox":
-        ref = ""
-    else:
-        ref = f" {args.rest[0]}" if args.rest else " <slug>"
+    ref = args.rest[0] if args.rest else "<slug>"
     print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
-          f"`tcw work stage gate {args.removed_stage}{ref}` to check the "
-          f"stage and run its checks, or `tcw work stage prompt "
-          f"{args.removed_stage}{ref}` for its instructions", file=sys.stderr)
+          f"`{_stage_command('gate', args.removed_stage, ref)}` to check the "
+          f"stage and run its checks, or "
+          f"`{_stage_command('prompt', args.removed_stage, ref)}` for its "
+          f"instructions", file=sys.stderr)
     return 2
 
 
@@ -4421,8 +4443,7 @@ def _drop(args: argparse.Namespace) -> int:
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the changes — work items through a state machine")
-    g = p.add_subparsers(dest="cmd", required=True,
-                         parser_class=_HidesRemovedSpellings)
+    g = p.add_subparsers(dest="cmd", required=True)
 
     # A positional has no flag to hint at its meaning, so every one of them says
     # what it wants. These three recur; the rest are written where they are added.
@@ -4894,8 +4915,9 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     # The removed form. Registered so it fails with the command to run instead
     # of argparse's bare "invalid choice", and hidden so it is not offered as a
     # third verb — from `--help` by the metavar above, and from the
-    # invalid-choice error by `_HidesRemovedSpellings`, which is what makes that
-    # claim true. It never resolves anything: a migration message, not an alias.
+    # invalid-choice error and its suggestions by `tcw.cli_suggest`, which offers
+    # only what `--help` lists: registering these without `help=` is what keeps
+    # them out of both. It never resolves anything: a migration message, not an alias.
     for _sid in STAGE_IDS:
         # No `help=`: omitting it keeps the parser out of the choices list
         # entirely, where `help=SUPPRESS` would print a literal "==SUPPRESS==".
