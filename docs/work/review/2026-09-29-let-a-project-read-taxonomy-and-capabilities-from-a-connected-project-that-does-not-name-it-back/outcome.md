@@ -83,6 +83,22 @@ tests) pass: 337 passed.
   unlink them as part of step 4; the scratch test passes because its fixture
   has no such links.
 
+- **The migration warning shows in every node, not only core and the root.**
+  Criterion 9 says the warning appears "in core and the root" after steps 1 and
+  2. Every node whose graph loads core reports it — all four in the test, all
+  six on the real configs — because each of them loads the same stale parent
+  claim. The test asserts the actual behavior.
+
+## Fixed at verify
+
+- `tcw work stage validate` resolved a qualified reference with the write form,
+  so it refused an upstream item although the spec lists it as a read (spec
+  line 210) and it writes nothing. It now uses the reading form;
+  `test_reading_an_upstream_item_is_allowed` covers it from `a`, `b` and the
+  root. Found by the verifier.
+- `test_the_override_variable_redirects_an_upstream_from_the_cli` now also checks
+  `tcw taxonomy list`, as criterion 3 words it, not only `show`.
+
 ## Verification beyond the suite
 
 On copies of the six Proposit configs (and their `docs/`) in a scratch

@@ -374,6 +374,8 @@ def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     env = {"TCW_PROJECT_CORE": str(tmp_path / "other-core")}
     assert _tcw(app, "taxonomy", "show", "core/premise", env=env).returncode == 0
     assert _tcw(app, "taxonomy", "show", "core/argument", env=env).returncode != 0
+    listed = _tcw(app, "taxonomy", "list", env=env).stdout
+    assert "premise" in listed and "argument" not in listed, listed
 
 
 # ── refusing writes, and allowing reads, from the CLI ────────────────────────
@@ -429,7 +431,8 @@ def test_a_write_into_an_upstream_is_refused_as_read_only(tmp_path, where, comma
 @pytest.mark.parametrize("where", ["a", "b", "."])
 def test_reading_an_upstream_item_is_allowed(tmp_path, where):
     root, slug = _cli_family(tmp_path)
-    for args in (("work", "show", f"core/{slug}"), ("work", "path", f"core/{slug}")):
+    for args in (("work", "show", f"core/{slug}"), ("work", "path", f"core/{slug}"),
+                 ("work", "stage", "validate", "spec", f"core/{slug}")):
         out = _tcw(root / where, *args)
         assert out.returncode == 0, (args, out.stderr)
     _assert_core_untouched(tmp_path)

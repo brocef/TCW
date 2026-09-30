@@ -2102,7 +2102,7 @@ def _stage_invocation_problem(words: list[str]) -> str | None:
                 if _store() is None:
                     return captured.getvalue().strip() or "No work store here."
                 return None
-            resolved = _resolve(words[1], "stage validate")
+            resolved = _resolve(words[1], "stage validate", write=False)
             if resolved is None:
                 return captured.getvalue().strip() or f"`{words[1]}` cannot be resolved."
             st, bare = resolved
