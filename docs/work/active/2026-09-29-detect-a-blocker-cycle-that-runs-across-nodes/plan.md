@@ -26,8 +26,8 @@ removes the marks.
 
 - `WorkStore._store_key()` → `id(self)`.
 - `WorkStore._blocker_target(entry)` → `(self, slug)` for `{"slug": s}`; for
-  `{"external": t}` with no `/`, `(self, t)` when `self.get(t)` or
-  `self.tombstone(t)` finds it; otherwise `None`.
+  `{"external": t}` shaped like a slug, `(self, t)` whether or not the item
+  exists (see the spec's corrected Design bullet); otherwise `None`.
 - `_reaches(start, target, *, settled)` takes pairs: `start` a
   `(store, slug)`, `target` a `(store, slug)`, `settled` a set of slugs local
   to `self`. Keyed by `(store._store_key(), slug)`; stores met are kept in a

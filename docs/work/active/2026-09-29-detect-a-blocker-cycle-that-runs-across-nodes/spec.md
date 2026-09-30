@@ -71,9 +71,13 @@ The walk moves from slugs to *(store, slug)* pairs.
 
 - A new `WorkStore` hook, `_blocker_target(entry) -> (WorkStore, slug) | None`:
   where a stored blocker entry points. The base answers `(self, slug)` for a
-  slug entry, and for an `external` entry that is a bare slug naming an item
-  this store holds or once held — the same case the base
-  `external_blocker_state` settles. Anything else is `None`.
+  slug entry, and for an `external` entry shaped like a slug
+  (`[a-z0-9][a-z0-9-]*`) whether or not that item exists yet — the base
+  `external_blocker_state` settles such an entry against the item of that name
+  once there is one, so an entry naming a future slug is a real edge (criterion
+  6). A name that matches no item is a dead end for the walk. Anything else is
+  `None`. *(Corrected during implementation: the first wording required the
+  item to exist, which criterion 6 contradicts.)*
 - `FsWorkStore` extends it for an `external` entry of exactly
   `<project-id>/<slug>` shape. One private helper does the shape check and the
   `resolve_qualified_work_ref(self.node_root, …)` call, and both
@@ -87,9 +91,11 @@ The walk moves from slugs to *(store, slug)* pairs.
   including spellings that differ only in letter case — are one store. Each
   item is expanded through *its own* store's `_blocker_target`. Stores met
   during one walk are kept by key, first open wins.
-- Anything that fails while expanding a pair in another store — resolving it,
-  or reading the item (an interrupted claim, an ambiguous slug) — means that
-  pair is not followed. Another node's state never makes an edit here fail.
+- Anything that fails while expanding a pair — resolving it, or reading the
+  item (an interrupted claim, an ambiguous slug), in this store or another —
+  means that pair is not followed. The state of an item the edit does not name
+  never makes the edit fail. *(Widened from "another store" after code review:
+  otherwise `tcw work new` began failing on an unrelated local claim.)*
 - `_check_new_blocker` and the `--blocks` half of `check_blocker_edits` go
   through `_blocker_target` instead of testing `"slug" in entry`.
 - `create_work` checks each new blocker with `_check_new_blocker` once the slug
