@@ -51,6 +51,11 @@ Twice so far it has been touched, and the two are opposites worth telling apart:
   checked byte-identical before the new bytes were written, through that
   item's own venv.
 
+- `2026-09-29-say-where-a-dated-amendment-to-an-item-s-request-belongs` added
+  two lines to the `request` prompt: a re-run keeps dated `## Added` sections.
+  Only the `request` entry's `stdout` moved, and the diff was those two lines;
+  the other five were checked byte-identical before the new bytes were written.
+
 Every stage is exercised at a status where it is **legal**. Not because
 `prompt` would refuse otherwise — it refuses nothing, which is the whole point of
 the reading verb — but because an illegal stage adds a `note —` line on stderr
