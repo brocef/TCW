@@ -77,7 +77,7 @@ def pair(graph):
 
 # ── 1, 2, 3: the edit that closes the cycle is refused ───────────────────────
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
+
 def test_a_two_node_cycle_is_refused(graph, pair):
     a, b, x, y = pair
     before = state_bytes(b, y)
@@ -87,7 +87,6 @@ def test_a_two_node_cycle_is_refused(graph, pair):
     assert state_bytes(b, y) == before
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_a_three_node_cycle_is_refused(graph):
     a, b, c = store(graph, "pa"), store(graph, "pb"), store(graph, "pc")
     x, y, z = new(a, "X"), new(b, "Y"), new(c, "Z")
@@ -97,7 +96,6 @@ def test_a_three_node_cycle_is_refused(graph):
     assert out.returncode != 0 and CYCLE in out.stderr, out.stderr
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_the_cycle_is_refused_when_edited_from_another_node(graph, pair):
     a, b, x, y = pair
     before = state_bytes(b, y)
@@ -108,7 +106,7 @@ def test_the_cycle_is_refused_when_edited_from_another_node(graph, pair):
 
 # ── 4: --blocks ──────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
+
 def test_blocks_closing_a_cross_node_cycle_is_refused(graph):
     a, b = store(graph, "pa"), store(graph, "pb")
     x, x2, y = new(a, "X"), new(a, "X two"), new(b, "Y")
@@ -122,7 +120,7 @@ def test_blocks_closing_a_cross_node_cycle_is_refused(graph):
 
 # ── 5: update_work, which the web app's PATCH calls ──────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
+
 def test_update_work_refuses_the_cycle(pair):
     a, b, x, y = pair
     with pytest.raises(ValueError, match=CYCLE):
@@ -131,7 +129,7 @@ def test_update_work_refuses_the_cycle(pair):
 
 # ── 6: create_work, through a blocker naming a slug that does not exist yet ─
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
+
 def test_creating_an_item_that_closes_a_cycle_is_refused(graph):
     a, b = store(graph, "pa"), store(graph, "pb")
     y = new(b, "Y")
@@ -142,7 +140,6 @@ def test_creating_an_item_that_closes_a_cycle_is_refused(graph):
     assert a.get(future) is None
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_creating_an_item_that_closes_a_local_cycle_is_refused(graph):
     a = store(graph, "pa")
     y = new(a, "Y")
@@ -182,7 +179,6 @@ def _case_insensitive(path: Path) -> bool:
     return Path(str(path).swapcase()).exists()
 
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_one_store_by_two_spellings_is_one_store(graph):
     if not _case_insensitive(graph):
         pytest.skip("the disk is case-sensitive")

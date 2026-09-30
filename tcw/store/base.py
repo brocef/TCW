@@ -4098,19 +4098,17 @@ class WorkStore(ABC):
         """Where a stored blocker entry points, if at a work item — the same
         entries `external_blocker_state` settles against one, and no others.
 
-        Here: a slug, and an `external` bare slug naming an item this store
-        holds or once held. A store that can address other projects extends it
-        for `<project-id>/<slug>`."""
+        Here: a slug, and an `external` text shaped like a slug, which settles
+        against this store's item of that name — including one not created yet,
+        since a slug is predictable and creating it would close any cycle the
+        entry is part of. A missing item is a dead end for the walk, not an
+        error. A store that can address other projects extends this for
+        `<project-id>/<slug>`."""
         if "slug" in entry:
             return self, entry["slug"]
         text = str(entry.get("external") or "").strip()
-        if not text or "/" in text:
-            return None
-        try:
-            if self.get(text) is not None or self.tombstone(text) is not None:
-                return self, text
-        except Exception:                          # unreadable here: not followed
-            return None
+        if re.fullmatch(r"[a-z0-9][a-z0-9-]*", text):
+            return self, text
         return None
 
     def _reaches(self, start: "tuple[WorkStore, str]", target: str, *,
