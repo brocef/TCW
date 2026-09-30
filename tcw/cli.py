@@ -210,12 +210,14 @@ def _declared_nodes_in_graph(
         # Every project the registry holds, not `ancestors + descendants`. That
         # triple omits a sibling and a sibling of an ancestor — the shapes a
         # workspace is actually made of — so a declaration living on one was
-        # never read, and the repository it named never obtained.
-        roots += [Path(project.locator) for project in
-                  FsProjectRegistry.open(root).projects()]
+        # never read, and the repository it named never obtained. Except an
+        # upstream: what it connects to is its own to obtain, not its readers'.
+        registry = FsProjectRegistry.open(root)
+        roots += [Path(project.locator) for project in registry.projects()
+                  if registry.read_only_reason(project.id) is None]
     except Exception:
         pass
-    found: list[tuple[Path, str, object]] = []
+    found: list[tuple[Path, str, object, str]] = []
     problems: list[str] = []
     for candidate in roots:
         candidate = candidate.resolve()
@@ -224,7 +226,7 @@ def _declared_nodes_in_graph(
         seen.add(candidate)
         declared, candidate_problems = declared_connected_projects(candidate)
         problems += [f"{candidate / SENTINEL}: {p}" for p in candidate_problems]
-        found += [(candidate, pid, d) for pid, d in declared]
+        found += [(candidate, pid, d, relation) for pid, d, relation in declared]
     return found, problems
 
 
@@ -250,7 +252,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
 
     failed = False
     seen: set[Path] = set()
-    queue: list[tuple[Path, str, object]] = []
+    queue: list[tuple[Path, str, object, str]] = []
     # "A project that is already here always wins" is the rule the whole feature
     # rests on, and the walk is the one place it was not applied: a declaration
     # is written by whichever node knows about that edge, so an ancestor
@@ -298,8 +300,14 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             return None
         return located if located != target.resolve() else None
 
-    def enqueue(root: Path) -> None:
+    def enqueue(root: Path, relation: str = "children") -> None:
         nonlocal failed
+        if relation == "upstream":
+            # Obtained so it can be read; its own connections are not followed,
+            # as the registry does not follow them. A reader must never fetch a
+            # project named only by something it reads — a public upstream can
+            # still name the private repository it is migrating away from.
+            return
         found, problems = _declared_nodes_in_graph(root, enqueued)
         for problem in problems:
             print(f"tcw provision: {problem}", file=sys.stderr)
@@ -314,7 +322,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
     enqueued: set[Path] = set()
     enqueue(node_root)
     while queue:
-        source, project_id, declaration = queue.pop(0)
+        source, project_id, declaration, relation = queue.pop(0)
         target = provisioned_store_root(source, declaration)
         if target in seen:
             continue
@@ -335,13 +343,13 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             # provisioning precisely when an earlier one was already in place.
             print(f"  {project_id}: already available")
             have.add(project_id)
-            enqueue(present)
+            enqueue(present, relation)
             continue
         provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
         if provisioner.is_available() and not refresh:
             print(f"  {project_id}: already available at {target}")
             have.add(project_id)
-            enqueue(target)
+            enqueue(target, relation)
             continue
         print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}")
         try:
@@ -363,7 +371,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         # routine when a parent and a grandparent both name it — report
         # "already available" in a run that fetched nothing.
         have.add(project_id)
-        enqueue(target)
+        enqueue(target, relation)
     return failed
 
 

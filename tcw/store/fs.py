@@ -3929,8 +3929,11 @@ def declared_repository(
 
 def declared_connected_projects(
     node_root: Path,
-) -> tuple[list[tuple[str, RepositoryDeclaration]], list[str]]:
+) -> tuple[list[tuple[str, RepositoryDeclaration, str]], list[str]]:
     """This node's connected projects that declare a repository, with problems.
+
+    Each entry is (project id, declaration, relation): the relation is how the
+    caller tells an upstream — obtained, but not read past — from the family.
 
     Reads the config directly, exactly as `declared_repository` does and for the
     same reason: it must answer for a graph that cannot be fully loaded, which is
@@ -3947,7 +3950,7 @@ def declared_connected_projects(
     connected = config.get("connected-projects") if isinstance(config, dict) else None
     if not isinstance(connected, dict):
         return [], []
-    declared: list[tuple[str, RepositoryDeclaration]] = []
+    declared: list[tuple[str, RepositoryDeclaration, str]] = []
     problems: list[str] = []
     # `upstream` too: obtaining a read-only project into this machine's own
     # checkout area writes nothing into it, and a reader holding only its own
@@ -3963,7 +3966,7 @@ def declared_connected_projects(
                 project_id, raw, f"connected-projects.{label}.{project_id}")
             problems.extend(entry_problems)
             if entry is not None and entry.repository is not None:
-                declared.append((entry.id, entry.repository))
+                declared.append((entry.id, entry.repository, label))
     return declared, problems
 
 

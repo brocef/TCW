@@ -343,6 +343,29 @@ def test_a_public_upstream_is_provisioned_into_a_reader_only_checkout(
     assert "connected-projects" not in (remote / "tcw-config.yaml").read_text()
 
 
+@pytest.mark.parametrize("present", [False, True])
+def test_provision_does_not_follow_an_upstreams_own_connections(
+        tmp_path, present):
+    """Mid-migration, core still names a private parent it can be fetched from.
+    A reader holding only its own repository obtains core and stops there: the
+    parent is core's to provision, not the reader's. `present` covers core
+    already being on the machine rather than obtained in this run."""
+    cache = tmp_path / "cache"
+    private = _core_node(tmp_path / "private-root")
+    remote = _core_node(tmp_path / "remote-core")
+    _edit(remote, lambda c: c.update({"connected-projects": {"parent": {"root": {
+        "path": "../not-here-either",
+        "repository": {"url": str(private), "ref": "main"}}}}}))
+    _git(remote, "commit", "-qam", "names its parent")
+    where = ({"path": "../remote-core"} if present else
+             {"path": "../not-here", "repository": {"url": str(remote), "ref": "main"}})
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": where}})
+    out = _tcw(app, "provision", env={"XDG_CACHE_HOME": str(cache)})
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert str(private) not in out.stdout + out.stderr, out.stdout
+    assert "root" not in out.stdout, out.stdout
+
+
 def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     _core_node(tmp_path / "core", term="Argument")
     _core_node(tmp_path / "other-core", term="Premise")
