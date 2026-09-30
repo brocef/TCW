@@ -20,7 +20,8 @@ from urllib.parse import unquote, urlparse
 from tcw.work.projection import work_item_json
 from tcw.store.base import (
     CAP_FIELDS, CAP_STATUSES, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
-    IllegalTransition, PublicationError, RefError, StaleRevision, TransitionCommitError,
+    IllegalTransition, MultipleMatch, PublicationError, RefError, StaleRevision,
+    TransitionCommitError,
 )
 from tcw.store.fs import (
     FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
@@ -300,6 +301,9 @@ def _map_store_error(e: Exception) -> tuple[int, bytes]:
         # because strict-tracker and generated-sidecar refusals are 409 too and
         # must show their own message instead.
         return _err(HTTPStatus.CONFLICT, str(e), code="stale-revision")
+    if isinstance(e, MultipleMatch):
+        # Two folders hold the slug: the data needs fixing, not the request.
+        return _err(HTTPStatus.CONFLICT, str(e))
     if isinstance(e, IllegalTransition):
         return _err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
     if isinstance(e, RefError):
@@ -551,8 +555,17 @@ class TcwHandler(BaseHTTPRequestHandler):
         for root, prefix in self._board_roots():
             work = FsWorkStore.open(root)
             for it in work.board():
-                items.append(_item_payload(work, it.slug, it,
-                                           f"{prefix}{it.slug}" if prefix else None))
+                try:
+                    items.append(_item_payload(work, it.slug, it,
+                                               f"{prefix}{it.slug}" if prefix else None))
+                except MultipleMatch:
+                    # Two folders hold the slug, so its artifacts cannot be
+                    # read. Listed with none, so one duplicate does not take the
+                    # board down; the item's own route says why.
+                    data = work_item_json(it, [])
+                    if prefix:
+                        data["slug"] = f"{prefix}{it.slug}"
+                    items.append(data)
         return items
 
     def _board_roots(self) -> list[tuple[Path, str]]:
@@ -580,6 +593,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             return
         try:
             self._get()
+        except MultipleMatch as e:
+            self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
@@ -588,6 +603,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             return
         try:
             self._post()
+        except MultipleMatch as e:
+            self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
@@ -596,6 +613,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             return
         try:
             self._patch()
+        except MultipleMatch as e:
+            self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
@@ -604,6 +623,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             return
         try:
             self._put()
+        except MultipleMatch as e:
+            self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 
@@ -612,6 +633,8 @@ class TcwHandler(BaseHTTPRequestHandler):
             return
         try:
             self._delete()
+        except MultipleMatch as e:
+            self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
             self._send(HTTPStatus.INTERNAL_SERVER_ERROR, str(e).encode("utf-8"))
 

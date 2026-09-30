@@ -115,3 +115,12 @@ def test_a_duplicated_epic_does_not_take_the_descendant_board_down(tmp_path):
         assert out.returncode == 0, (args, out.stderr)
         assert "Traceback" not in out.stderr, out.stderr
         assert child in out.stdout, out.stdout
+
+
+def test_a_blocker_held_twice_says_so(blocked_by_the_duplicate):
+    root, twice, waiting, _ = blocked_by_the_duplicate
+    row = next(r for r in tcw(root, "list").stdout.splitlines()
+               if r.startswith(f"{waiting} |"))
+    assert f"{twice} (held by more than one folder)" in row, row
+    out = tcw(root, "start", waiting)
+    assert out.returncode == 1 and f"{twice} (held by more than one folder)" in out.stderr, out.stderr

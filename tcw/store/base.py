@@ -4562,11 +4562,15 @@ class WorkStore(ABC):
                     # reference the rename could not rewrite would unblock.
                     if blocker is None and (renamed := self.renamed(b["slug"])):
                         blocker = self.get(renamed)
-                except (ValueError, MultipleMatch):
+                except MultipleMatch:
+                    # Still a blocker, and said why, since nothing else in this
+                    # item's refusal would explain it.
+                    out.append(f"{b['slug']} (held by more than one folder)")
+                    continue
+                except ValueError:
                     # An adapter can refuse to settle a blocker — a claim on it
-                    # was abandoned, or two folders hold its slug. That is still
-                    # a blocker, and reporting it as one keeps this item's caller
-                    # reading about *this* item.
+                    # was abandoned. That is still a blocker, and reporting it as
+                    # one keeps this item's caller reading about *this* item.
                     # Raising the blocker's error here would answer "why can't I
                     # start B?" with a message about A. Storage-neutral: any
                     # adapter may fail to resolve a reference.
