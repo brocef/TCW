@@ -271,10 +271,14 @@ def _open_sidecar_problems(node_root: Path, st: FsWorkStore,
     as `<file>:<line>: <problem>` — the completion gate's checks, less the ones
     that are only true at completion."""
     from tcw.work.recursion import capability_gate
+    held_twice = st.duplicate_slugs()           # reported by the store's check
+    if slug in held_twice:
+        return []
     items = [st.get(slug)] if slug is not None else st.query()
     out: list[str] = []
     for item in items:
-        if item is None or item.status not in ("backlog", "active", "review"):
+        if item is None or item.slug in held_twice \
+                or item.status not in ("backlog", "active", "review"):
             continue
         folder = st.path(item.slug)
         sidecar = folder / "capabilities.yaml" if folder is not None else None

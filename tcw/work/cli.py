@@ -15,7 +15,7 @@ from tcw.store.base import (
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TRANSITION_NEXT_STEPS, TransitionCommitError, WorkItem,
-    bound_value, normalize_tag, AlreadyClaimed, start_next_stage,
+    bound_value, normalize_tag, AlreadyClaimed, start_next_stage, refined_outcome_missing,
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
@@ -159,6 +159,23 @@ def _resolve(slug: str, label: str, *,
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
     return resolved
+
+
+def _shown(st, slug: str) -> str | None:
+    """Where `slug`'s folder is, as it can be reached from here: relative to the
+    current directory when it is under it, else absolute. `locate` answers
+    relative to the item's own project, which from a parent project
+    (`kid/<slug>`) or from a subdirectory names a path that does not exist."""
+    path = st.path(slug)
+    return None if path is None else _relative(path)
+
+
+def _relative(path: Path) -> str:
+    path = path.resolve()
+    try:
+        return path.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _split(val: str | None) -> list[str]:
@@ -795,7 +812,7 @@ def _new(args: argparse.Namespace) -> int:
         print(f"tcw work new: {e}", file=sys.stderr)
         return 1
     print(item.slug)
-    if loc := st.locate(item.slug):
+    if loc := _shown(st, item.slug):
         print(f"→ created at {loc}", file=sys.stderr)
     body = st.body_path(item.slug)
     if body is not None:
@@ -977,7 +994,7 @@ def _inbox_accept(args: argparse.Namespace) -> int:
                       f"{args.entry} is a raw inbox entry", file=sys.stderr)
                 return 1
             print(item.slug)
-            if loc := st.locate(item.slug):
+            if loc := _shown(st, item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
             _next_hint("new", item.slug)
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
@@ -1622,7 +1639,7 @@ def _start(args: argparse.Namespace) -> int:
     after_start = "start:" + (start_next_stage(present) if present is not None
                               else "implement")
     if not args.worktree:
-        loc = st.locate(bare)
+        loc = _shown(st, bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
         _next_hint(after_start, args.slug)
         return _post_result(post_err, "start", args.slug) or min(delivered, 1)
@@ -1677,7 +1694,7 @@ def _start(args: argparse.Namespace) -> int:
     except subprocess.CalledProcessError as e:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
-    loc = st.locate(bare)
+    loc = _shown(st, bare)
     print(f"started {args.slug} → {loc} (worktree {wt})" if loc
           else f"started {args.slug} → worktree {wt}")
     _next_hint(after_start, args.slug)
@@ -1710,7 +1727,7 @@ def _submit(args: argparse.Namespace) -> int:
     delivered = _deliver_after(st, bare, "submit", "submit", "active")
     # The folder, not the status: verify writes into it next, and a reader still
     # holding the `active` path would write beside the item rather than in it.
-    print(f"submitted {args.slug} → {st.locate(bare) or 'review'}")
+    print(f"submitted {args.slug} → {_shown(st, bare) or 'review'}")
     _next_hint("submit", args.slug)
     return _post_result(post_err, "submit", args.slug) or min(delivered, 1)
 
@@ -1739,7 +1756,7 @@ def _rework(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "rework", "rework", "review")
-    print(f"reworking {args.slug} → {st.locate(bare) or 'active'}")
+    print(f"reworking {args.slug} → {_shown(st, bare) or 'active'}")
     _next_hint("rework", args.slug)
     return _post_result(post_err, "rework", args.slug) or min(delivered, 1)
 
@@ -4227,6 +4244,25 @@ def _complete(args: argparse.Namespace) -> int:
               f"with --worktree, or to a completion with --branch; {args.slug} has "
               f"no worktree.", file=sys.stderr)
         return 1
+    # The store refuses this too, but only after the merge-back has run — too
+    # late for a refusal to leave the branch unmerged. Asked of the copy that
+    # would be merged, which for a worktree item is the branch's.
+    copies = [st] + ([branch_store] if branch_store is not None
+                     and branch_store.root.resolve() != st.root.resolve() else [])
+    stray = [f"{_relative(s)} ({', '.join(files)})"
+             for copy in copies for s, files in copy.stray_folders(bare)]
+    if (shipping and item.status == "review" and not args.force
+            and not any(a.name == "refined-outcome" and a.present
+                        for a in (branch_store or st).artifacts(bare))):
+        where = (f"a folder named like it but not it holds {'; '.join(stray)} — "
+                 f"written through the item's old path, most likely" if stray else "")
+        print(f"tcw work complete: {refined_outcome_missing(args.slug, where)}",
+              file=sys.stderr)
+        return 1
+    if stray:
+        print(f"tcw work complete: warning: a folder named like {bare} but not it — "
+              f"{'; '.join(stray)}. Move anything that belongs to the item into "
+              f"`tcw work path {bare}`, then remove it.", file=sys.stderr)
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none — and a completion is refused only for
@@ -4314,7 +4350,7 @@ def _complete(args: argparse.Namespace) -> int:
     # Before any removal: a record of what did not reach the tracker lives in the
     # item's folder, and removing the folder would lose it.
     delivered = _deliver_after(st, bare, "complete", transition_id, previous)
-    loc = st.locate(bare)
+    loc = _shown(st, bare)
     delete_code = 0
     if delivered == 1 and st.pending_deletion(bare):
         ticket = (st.get(bare).tracker or {}).get("ticket", {}).get("key", "its ticket")

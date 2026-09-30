@@ -7070,45 +7070,142 @@ class FsWorkStore(FsTreeStore, WorkStore):
             problems.extend(self.lifecycle_problems())
             problems.extend(self.documentation_problems())
             problems.extend(self.repository_problems())
+        duplicates = self.duplicate_slugs()
         if identifier is not None:
-            item = self.get(identifier)
+            try:
+                item = self.get(identifier)
+            except MultipleMatch:
+                item = None
+            if identifier in duplicates:
+                return [self._duplicate_problem(identifier, duplicates[identifier])]
             if item is None:
                 return [f"no such work item: {identifier}"]
             items = [item]
         else:
             items = self.query()
+            problems.extend(self._duplicate_problem(s, ds)
+                            for s, ds in sorted(duplicates.items()))
+            for folder, files in self.stray_folders():
+                problems.append(
+                    f"{self._shown_path(folder)}: named like the "
+                    f"item {folder.name} but not it (no state.yaml) — holding "
+                    f"{', '.join(files)}. Likely written through a path held since "
+                    f"before a transition; move the files into "
+                    f"`tcw work path {folder.name}`, then remove the folder")
         for item in items:
-            for tag in item.tags:
-                if tag not in registered:
-                    problems.append(f"{item.slug}: unregistered tag '{tag}'")
-            if not self._carried_by_its_parent(item):
-                problems.extend(self._status_resolution_problems(item))
-            problems.extend(self._parent_problems(item))
+            if item.slug in duplicates:
+                continue                               # reported above, once
             try:
-                stages = self._declared_plan_stages(item.slug)
-                if stages:
-                    folder = self._require_dir(item.slug)
-                    plan_content = (folder / "plan.md").read_text(encoding="utf-8")
-                    for heading in ("Overview", "Stage ordering"):
-                        if not self._nonempty_markdown_section(plan_content, heading):
-                            problems.append(f"{item.slug}: plan.md requires non-empty '{heading}' section")
-                    declared = {stage.id for stage in stages}
-                    stage_folder = folder / "plan"
-                    if stage_folder.is_dir():
-                        for path in sorted(stage_folder.glob("*.md")):
-                            if path.stem not in declared:
-                                problems.append(f"{item.slug}: undeclared plan stage resource '{path.name}'")
-                    for stage in stages:
-                        if not stage.present:
-                            problems.append(f"{item.slug}: plan stage '{stage.id}' document is missing")
-                            continue
-                        content = (stage_folder / f"{stage.id}.md").read_text(encoding="utf-8")
-                        for heading in ("Objective", "Pre-stage checks", "Implementation", "Post-stage checks"):
-                            if not self._nonempty_markdown_section(content, heading):
-                                problems.append(f"{item.slug}: plan stage '{stage.id}' requires non-empty '{heading}' section")
-            except ValueError as exc:
-                problems.append(f"{item.slug}: {exc}")
+                problems.extend(self._item_problems(item, registered))
+            except MultipleMatch as e:
+                problems.append(f"{item.slug}: {e}")
         return problems
+
+    def _duplicate_problem(self, slug: str, folders: list[Path]) -> str:
+        return (f"{slug}: held by {len(folders)} folders — "
+                f"{', '.join(self._shown_path(d) for d in folders)}. "
+                f"Keep the one whose state.yaml is right, merge any files it lacks "
+                f"from the others, and remove them")
+
+    def _shown_path(self, path: Path) -> str:
+        """`path` as a problem names it: from the project root, as git does."""
+        for base in (self.node_root, self.root):
+            try:
+                return path.resolve().relative_to(base.resolve()).as_posix()
+            except ValueError:
+                continue
+        return str(path)
+
+    def _item_problems(self, item, registered: set) -> list[str]:
+        problems: list[str] = []
+        for tag in item.tags:
+            if tag not in registered:
+                problems.append(f"{item.slug}: unregistered tag '{tag}'")
+        if not self._carried_by_its_parent(item):
+            problems.extend(self._status_resolution_problems(item))
+        problems.extend(self._parent_problems(item))
+        try:
+            stages = self._declared_plan_stages(item.slug)
+            if stages:
+                folder = self._require_dir(item.slug)
+                plan_content = (folder / "plan.md").read_text(encoding="utf-8")
+                for heading in ("Overview", "Stage ordering"):
+                    if not self._nonempty_markdown_section(plan_content, heading):
+                        problems.append(f"{item.slug}: plan.md requires non-empty '{heading}' section")
+                declared = {stage.id for stage in stages}
+                stage_folder = folder / "plan"
+                if stage_folder.is_dir():
+                    for path in sorted(stage_folder.glob("*.md")):
+                        if path.stem not in declared:
+                            problems.append(f"{item.slug}: undeclared plan stage resource '{path.name}'")
+                for stage in stages:
+                    if not stage.present:
+                        problems.append(f"{item.slug}: plan stage '{stage.id}' document is missing")
+                        continue
+                    content = (stage_folder / f"{stage.id}.md").read_text(encoding="utf-8")
+                    for heading in ("Objective", "Pre-stage checks", "Implementation", "Post-stage checks"):
+                        if not self._nonempty_markdown_section(content, heading):
+                            problems.append(f"{item.slug}: plan stage '{stage.id}' requires non-empty '{heading}' section")
+        except ValueError as exc:
+            problems.append(f"{item.slug}: {exc}")
+        return problems
+
+    # -- folders that look like an item but are not one --
+
+    @staticmethod
+    def _stray_contents(d: Path) -> list[str]:
+        """The files in `d` worth reporting — `.DS_Store` and friends are not."""
+        return sorted(p.relative_to(d).as_posix() for p in d.rglob("*")
+                      if p.is_file() and p.name not in (".DS_Store", "Thumbs.db"))
+
+    def stray_folders(self, slug: str | None = None) -> list[tuple[Path, list[str]]]:
+        """`(folder, files)` for each folder named like an item that is not it: no
+        `state.yaml`, not the item's own folder, and holding a real file. It is
+        what writing through a path held since before a transition leaves behind
+        — `submit` moves `active/<slug>/`, and a later write recreates it.
+
+        With `slug`, only that slug's possible spots, which is a handful of stat
+        calls; without, every status folder and every folder that holds items.
+        Names come from items and from tombstones, since a deleted resolved item
+        can be written to as easily. Dot-folders (`.claiming/`) never count."""
+        dirs = self._item_dirs()
+        actual = {d.name: d for d in dirs}
+        if slug is not None:
+            known = {slug}
+            parents = [self.root / s for s in WORK_STATUSES]
+            if slug in actual:
+                parents.append(actual[slug].parent)
+        else:
+            known = set(actual)
+            graveyard = self._graveyard_path()
+            if graveyard.exists():
+                try:
+                    doc = self._safe_yaml(graveyard)
+                except (OSError, UnicodeDecodeError):
+                    doc = {}
+                if isinstance(doc, dict):
+                    known |= {k for k in doc if isinstance(k, str)}
+            parents = [self.root / s for s in WORK_STATUSES] + dirs
+        found, seen = [], set()
+        for parent in parents:
+            for name in known if slug is not None else (
+                    [c.name for c in parent.iterdir()] if parent.is_dir() else []):
+                folder = parent / name
+                if (name.startswith(".") or name not in known or folder in seen
+                        or not folder.is_dir() or (folder / "state.yaml").exists()
+                        or actual.get(name) == folder):
+                    continue
+                seen.add(folder)
+                if files := self._stray_contents(folder):
+                    found.append((folder, files))
+        return found
+
+    def duplicate_slugs(self) -> dict[str, list[Path]]:
+        """Slugs more than one item folder claims, each with every folder."""
+        by_name: dict[str, list[Path]] = {}
+        for d in self._item_dirs():
+            by_name.setdefault(d.name, []).append(d)
+        return {name: ds for name, ds in by_name.items() if len(ds) > 1}
 
     def _carried_by_its_parent(self, item) -> bool:
         """A child made by an earlier version, resolved only because its parent
@@ -7194,8 +7291,12 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return bool(body.strip())
 
     def _validation_resources(self, identifier: str) -> list[Path]:
-        """Filesystem resources bounded to one work object."""
-        folder = self._find(identifier)
+        """Filesystem resources bounded to one work object — every folder's, for
+        a slug held twice, whose duplication `check` reports."""
+        try:
+            folder = self._find(identifier)
+        except MultipleMatch:
+            return [d / "state.yaml" for d in self.duplicate_slugs().get(identifier, [])]
         if folder is None:
             return []
         names = ["state.yaml", *[f"{name}.md" for name in WORK_ARTIFACTS],

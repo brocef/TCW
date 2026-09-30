@@ -2255,6 +2255,7 @@ LIFECYCLE_STEPS: tuple[LifecycleStep, ...] = (
         objective="Close the item as shipped.",
         moves="review | active → completed",
         gates=("unresolved blockers", "open initiative children",
+               "refined-outcome.md from review",
                "declared capabilities reconciled", "worktree merge-back",
                "--confirm")),
     LifecycleStep(
@@ -2383,6 +2384,16 @@ TRANSITION_LANDS_IN: dict[str, str] = {
     "submit": "review",
     "rework": "active",
 }
+
+
+def refined_outcome_missing(slug: str, stray: str = "") -> str:
+    """Why a completion from review was refused for want of its acceptance
+    record, and where to put it."""
+    return (f"{slug} has no refined-outcome.md, the verify stage's record that "
+            f"the work was accepted. Write it in the item's folder, which moved "
+            f"to review/ at submit — `tcw work path {slug}` prints it"
+            + (f"; {stray}" if stray else "")
+            + ". Use --force to complete without it.")
 
 
 def start_next_stage(present: Collection[str]) -> str:
@@ -3568,6 +3579,17 @@ class WorkStore(ABC):
         return []
 
     @abstractmethod
+    def stray_folders(self, slug: str | None = None) -> list[tuple[Any, list[str]]]:
+        """`(location, files)` for each place named like an item that is not it —
+        what writing through a location held since before a transition leaves
+        behind. A store whose items have no location to go stale has none."""
+        return []
+
+    def duplicate_slugs(self) -> dict[str, list[Any]]:
+        """Slugs held by more than one item. A store that keys items by slug
+        cannot have any."""
+        return {}
+
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
 
@@ -4495,11 +4517,11 @@ class WorkStore(ABC):
         a transition is the wrong shape — so the refusal names the file and the
         action instead.
 
-        This is the *only* transition the artifact gates. `complete` from
-        `review` is unaffected on either resolution: a present
-        `refined-outcome.md` is the normal path into `--resolution done`, and
-        abandoning verified work as `wontfix` is a legitimate decision. Only
-        `rework` asserts the opposite of what the file says.
+        `complete` from `review` gates on the same file the other way round: it
+        needs it for `--resolution done`, since the file is what says the work
+        was accepted. Abandoning verified work as `wontfix` is a legitimate
+        decision, so a discard needs nothing. Only `rework` asserts the opposite
+        of what the file says.
         """
         if any(a.name == "refined-outcome" and a.present
                for a in self.artifacts(slug)):
@@ -4571,6 +4593,16 @@ class WorkStore(ABC):
                 if blockers:
                     raise ValueError("blocked by: " + ", ".join(blockers)
                                      + " (use --force to override)")
+            # Shipping out of review needs the verify stage's acceptance record.
+            # Without it nothing distinguishes accepted work from work nobody
+            # verified — and the usual way it goes missing is quiet: written to
+            # the folder the item left at `submit`. Completing from `active`
+            # skips verify on purpose (the CLI says so), and an epic closing
+            # from `backlog` never had one; neither is refused.
+            if dest == "completed" and item.status == "review" and not any(
+                    a.name == "refined-outcome" and a.present
+                    for a in self.artifacts(slug)):
+                raise ValueError(refined_outcome_missing(slug))
         # The resolution rides the transition rather than preceding it: written
         # first, a `complete` that then loses the move would leave its resolution
         # on the item the winner moved — an item reading `wontfix` in

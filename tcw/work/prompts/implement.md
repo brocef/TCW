@@ -7,7 +7,8 @@ plan turned out to be wrong.
 discovery is unrestricted. **`rework.md` is what makes a second pass different
 from a first**: it follows what verification rejected, not what files exist.
 
-**Produce** `outcome.md`, in the item's folder, plus the code itself. Required:
+**Produce** `outcome.md`, in the item's folder wherever that folder currently
+lives (`tcw work path <slug>` prints it), plus the code itself. Required:
 what shipped task by task with commit references, the test result, and
 **anything the plan or spec got wrong**. Optional `## Notes`.
 
