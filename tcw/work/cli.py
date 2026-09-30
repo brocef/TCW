@@ -4305,7 +4305,9 @@ def _complete(args: argparse.Namespace) -> int:
     # detached `HEAD` that no ref holds are carried by neither the merge-back nor
     # `--already-integrated`, and the teardown would lose them. A discard is not
     # refused — its teardown keeps the worktree instead, as it keeps the branch.
-    if shipping and has_worktree:
+    # Not when the primary checkout has no repository at all: then nothing can be
+    # checked, and the merge-back's own refusal names the branch at risk.
+    if shipping and has_worktree and git_root(st.node_root) is not None:
         wt = st.node_root / WORKTREES_DIR / bare
         found = unbranched_commits(wt)
         if isinstance(found, str):
