@@ -2299,7 +2299,8 @@ def _stage(args: argparse.Namespace) -> int:
     if item.status not in legal:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
-        if hint := _illegal_stage_hint(step.id, item.status, legal, args.slug):
+        if hint := _illegal_stage_hint(step.id, item.status, legal, args.slug,
+                                       _present_artifacts(st, bare)):
             print(hint, file=sys.stderr)
         return 1
     if step.id == "implement" and (
@@ -2310,22 +2311,34 @@ def _stage(args: argparse.Namespace) -> int:
 
 
 def _illegal_stage_hint(stage: str, status: str, legal: tuple[str, ...],
-                        display: str) -> str:
+                        display: str, present: set[str] | None) -> str:
     """How to go on from a stage refused for the item's status — the refusal
     alone says where the stage runs, not how to get there. Only moves that exist
-    are named: `rework` back from review, `start` out of backlog."""
+    are named: `rework` back from review, `start` out of backlog, `submit` into
+    review. `stage prompt` is offered for reading only, since it skips what the
+    gate — and a transition it stands in for — would check."""
     if status in RESOLVED_STATUSES:
         also = (" except `postmortem`" if "completed" in STAGE_STATUSES["postmortem"]
                 and status == "completed" else "")
         return f"{display} is {status}: no stage runs on it{also}."
-    said = []
-    if status == "review" and "active" in legal:
-        said.append(f"to run it, send the item back with `tcw work rework {display}`")
+    said = ""
+    if stage == "request" and status == "review":
+        # "Amending a request": in review the request is written directly, and
+        # sending accepted-looking work back only to add one is the wrong move.
+        said = (f"in review, write initial-request.md directly, where "
+                f"`tcw work path {display}` says")
+    elif status == "review" and "active" in legal:
+        accepted = present is not None and "refined-outcome" in present
+        said = (f"to run it, send the item back with `tcw work rework {display}`"
+                + (" — after deleting refined-outcome.md, which says the work was "
+                   "accepted" if accepted else ""))
     elif status == "backlog" and "active" in legal:
-        said.append(f"start the item first: `tcw work start {display}`")
-    said.append(f"`tcw work stage prompt {stage} {display}` prints its instructions "
-                f"without the gate, whose checks then do not run")
-    text = _sentence("; or ".join(said))
+        said = f"start the item first: `tcw work start {display}`"
+    elif status == "active" and "review" in legal and "active" not in legal:
+        said = f"submit the item first: `tcw work submit {display}`"
+    text = _sentence("; ".join(filter(None, [
+        said, f"`tcw work stage prompt {stage} {display}` prints its instructions "
+              f"to read, without entering the stage"])))
     return text[0].upper() + text[1:]
 
 

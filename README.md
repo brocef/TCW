@@ -472,9 +472,9 @@ The stages, and the document each one writes:
 | Stage        | Runs while the item is | Writes                                                            |
 | ------------ | ---------------------- | ----------------------------------------------------------------- |
 | `inbox`      | not yet an item        | nothing; it creates the item, keeping the raw text as `intake.md` |
-| `request`    | backlog                | `initial-request.md`: what is asked for, and why                  |
-| `spec`       | backlog                | `spec.md`: what to build, with acceptance criteria                |
-| `plan`       | backlog                | `plan.md`: how to build it, as ordered tasks                      |
+| `request`    | backlog (or active)    | `initial-request.md`: what is asked for, and why                  |
+| `spec`       | backlog (or active)    | `spec.md`: what to build, with acceptance criteria                |
+| `plan`       | backlog (or active)    | `plan.md`: how to build it, as ordered tasks                      |
 | `implement`  | active                 | `outcome.md`: what was built, and what the plan got wrong         |
 | `verify`     | review (or active)     | `refined-outcome.md` if accepted, `rework.md` if not              |
 | `postmortem` | review or completed    | `post-mortem.md`: which stage could first have caught a problem   |

@@ -381,8 +381,9 @@ After `tcw work new`, `tcw work inbox accept`, `tcw work start`, `tcw work submi
 and `tcw work rework`, the CLI prints the **next step** on stderr, as the gate of
 the stage that comes next — e.g. "→ next: run `tcw work stage gate request …`"
 after `new` — so the lifecycle is hard to skip. After `start` it is the first stage
-the item still needs: `spec`, `plan`, `implement`, or `verify` for an active item
-taken over with its outcome already written. After `submit` it is `verify`, whose
+the item still needs: `request` while it has neither a request nor a spec,
+then `spec`, `plan`, `implement`, or `verify` for an active item taken over with
+its outcome already written. After `submit` it is `verify`, whose
 two endings the hint names; after `rework`, `implement`. The slug still goes to
 stdout alone.
 `tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new

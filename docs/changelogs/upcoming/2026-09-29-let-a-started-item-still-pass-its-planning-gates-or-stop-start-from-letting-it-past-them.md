@@ -11,4 +11,13 @@
 - A stage refused by `tcw work stage gate` for the item's status adds a line
   after the unchanged refusal: `tcw work rework` from review, `tcw work start`
   from backlog, `tcw work stage prompt` for either open case, and "no stage runs
-  on it" for a resolved item (`_illegal_stage_hint`).
+  on it" for a resolved item (`_illegal_stage_hint`). `request` in review
+  is told to write `initial-request.md` directly, `rework` advice on accepted
+  work names `refined-outcome.md` as what is in the way, and `postmortem` on
+  an active item names `submit`. The `stage prompt` alternative is offered
+  for reading only.
+- The "Amending a request" rule (added in this release by
+  `2026-09-29-say-where-a-dated-amendment-to-an-item-s-request-belongs`) now
+  writes the request with the `request` stage in `active` as well as
+  `backlog`, and directly only in `review`. Its own entry, written first,
+  says "past backlog"; this supersedes it.

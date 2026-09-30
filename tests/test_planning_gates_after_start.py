@@ -94,3 +94,51 @@ def test_a_resolved_item_is_told_nothing_runs_on_it(tmp_path):
 
 def test_request_is_legal_in_backlog_and_active():
     assert STAGE_STATUSES["request"] == ("backlog", "active")
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_start_with_a_spec_but_no_request_does_not_warn_of_the_request(tmp_path):
+    root = _node(tmp_path)
+    slug, out = _started(root, "spec")
+    warning = next(l for l in out.stderr.splitlines() if "warning" in l)
+    assert "plan.md" in warning and "initial-request" not in warning, warning
+
+
+def test_request_on_a_reviewed_item_says_to_write_it_directly(tmp_path):
+    root = _node(tmp_path)
+    slug = _item(root, "spec", "plan", "outcome")
+    assert _tcw(root, "start", slug).returncode == 0
+    assert _tcw(root, "submit", slug).returncode == 0
+    out = _tcw(root, "stage", "gate", "request", slug)
+    assert out.returncode == 1
+    assert "write initial-request.md directly" in out.stderr, out.stderr
+    assert "tcw work rework" not in out.stderr, out.stderr
+
+
+def test_rework_advice_on_accepted_work_names_the_file_in_the_way(tmp_path):
+    root = _node(tmp_path)
+    slug = _item(root, "initial-request", "spec", "plan", "outcome")
+    assert _tcw(root, "start", slug).returncode == 0
+    assert _tcw(root, "submit", slug).returncode == 0
+    FsWorkStore.open(root).write_artifact(slug, "refined-outcome", "# accepted\n")
+    out = _tcw(root, "stage", "gate", "spec", slug)
+    assert "after deleting refined-outcome.md" in out.stderr, out.stderr
+
+
+def test_postmortem_on_an_active_item_names_submit(tmp_path):
+    root = _node(tmp_path)
+    slug, _ = _started(root, "initial-request", "spec", "plan")
+    out = _tcw(root, "stage", "gate", "postmortem", slug)
+    assert out.returncode == 1
+    assert f"tcw work submit {slug}" in out.stderr, out.stderr
+
+
+def test_a_completed_item_is_told_only_postmortem_runs(tmp_path):
+    root = _node(tmp_path)
+    slug = _item(root)
+    st = FsWorkStore.open(root)
+    st.start(slug)
+    st.complete(slug, "done", [])
+    out = _tcw(root, "stage", "gate", "spec", slug)
+    assert "no stage runs on it except `postmortem`" in out.stderr, out.stderr

@@ -37,8 +37,8 @@ instead.
    (`start_next_stage`): no `initial-request.md` → `request`, then `spec`,
    `plan`, and so on. The request counts as missing only while `spec.md` is
    also unwritten. A spec supersedes the request's job of recording what was
-   asked, so an item that is already specified, planned or implemented is never
-   sent back to write its request. The same rule applies to goal 2's warning,
+   asked, so an item that is already specified is never sent back to write its
+   request. The same rule applies to goal 2's warning,
    and to the skill's own line, which is reworded to match.
 4. A stage refused for the item's status adds one line saying how to go on:
    - the item is past the stage and in `review`, while the stage is legal in
@@ -69,7 +69,8 @@ instead.
 - `_unwritten_plan` becomes `_unwritten_planning`, checking `initial-request`,
   `spec` and `plan`. An item with `intake.md` but no request still counts as
   missing the request: the `request` stage has not run.
-- `start_next_stage` returns `request` first when `initial-request` is absent.
+- `start_next_stage` returns `request` first when `initial-request` and `spec` are
+  both absent (goal 3).
 - `_stage` in `tcw/work/cli.py` adds the hint under the existing refusal.
 - `tcw/work/prompts/request.md`'s footer, and `STAGE_NEXT_STEPS`, say that
   after `request` on an active item the next step is `spec`, as today. That is
