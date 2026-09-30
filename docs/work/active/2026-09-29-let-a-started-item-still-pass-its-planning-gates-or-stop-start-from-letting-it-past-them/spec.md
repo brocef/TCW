@@ -92,8 +92,10 @@ reads the same way.
    today's text, and names `tcw work rework` and `tcw work stage prompt spec`.
 5. `tcw work stage gate implement <slug>` on a backlog item names
    `tcw work start`.
-6. The lifecycle baseline fixture and `tcw work lifecycle` output show
-   `request` legal in `backlog, active`.
+6. `request` is legal in `backlog, active`, asserted directly against
+   `STAGE_STATUSES`. *Corrected at verify:* this first named the lifecycle
+   baseline fixture and `tcw work lifecycle`, neither of which records which
+   statuses a stage is legal in.
 7. Existing tests pass, updated only where they pinned `request`'s old
    legality or the old start hint. The full suite passes as CI runs it.
 
