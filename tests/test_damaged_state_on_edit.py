@@ -79,3 +79,45 @@ def test_validate_keeps_the_excerpt(project):
     text = out.stdout + out.stderr
     assert "key: [unclosed" in text and "^" in text, text
     assert BARE not in text, text
+
+
+# ── every other read of a named file reports the file, not "<unicode string>" ─
+
+from tcw.store.config_edit import SetList, edit_text     # noqa: E402
+
+
+def test_init_names_the_config_it_cannot_read(tmp_path):
+    root = node(tmp_path / "q", "q")
+    (root / "tcw-config.yaml").write_text("key: [\n")
+    out = subprocess.run(["tcw", "init"], cwd=root, capture_output=True, text=True)
+    assert out.returncode == 1
+    assert "tcw-config.yaml" in out.stderr and BARE not in out.stderr, out.stderr
+
+
+def test_the_definition_of_done_names_its_file(project):
+    root, st, _, other = project
+    (root / "docs/work/dod.yaml").write_text("- [unclosed\n")
+    out = tcw(root, "complete", other, "--resolution", "done")
+    assert out.returncode == 1
+    assert "dod.yaml" in out.stderr and BARE not in out.stderr, out.stderr
+
+
+def test_a_capabilities_file_names_itself(project):
+    root, st, _, other = project
+    (root / "docs/work/backlog" / other / "capabilities.yaml").write_text("new: [\n")
+    problem = str(st.get(other).capabilities.get("_tcw_parse_error"))
+    assert "capabilities.yaml" in problem and BARE not in problem, problem
+
+
+def test_writing_a_sidecar_that_does_not_parse_names_it(project):
+    _, st, _, other = project
+    with pytest.raises(ValueError) as caught:
+        st.write_sidecar(other, "capabilities.yaml", "new: [\n")
+    assert "capabilities.yaml" in str(caught.value) and BARE not in str(caught.value)
+
+
+def test_a_config_edit_names_the_file_it_cannot_parse(tmp_path):
+    path = tmp_path / "tcw-config.yaml"
+    with pytest.raises(Exception) as caught:
+        edit_text(path, "key: [\n", [SetList("work", "tags", ("x",))])
+    assert str(path) in str(caught.value) and BARE not in str(caught.value), caught.value

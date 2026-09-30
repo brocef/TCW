@@ -5437,7 +5437,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             if caps.stat().st_size > SIDECAR_MAX_BYTES:
                 problem = f"{caps.name} is larger than {SIDECAR_MAX_BYTES} bytes"
             else:
-                parsed = yaml.safe_load(caps.read_text(encoding="utf-8"))
+                parsed = _load_named_yaml(caps.read_text(encoding="utf-8"), caps.name)
                 problem = sidecar_value_problem(parsed)
         except FileNotFoundError:
             return None
@@ -7098,7 +7098,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
     def dod_checklist(self) -> list[str]:
         p = self.root / "dod.yaml"
         if p.exists():
-            data = yaml.safe_load(p.read_text(encoding="utf-8"))
+            data = _load_named_yaml(p.read_text(encoding="utf-8"), self._shown_path(p))
             if isinstance(data, list):
                 return [str(x) for x in data]
             if isinstance(data, dict) and isinstance(data.get("checklist"), list):
@@ -8914,7 +8914,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         validation = sc_info.get("validation")
         if validation == "yaml_mapping":
             try:
-                parsed = yaml.safe_load(content)
+                parsed = _load_named_yaml(content, self._shown_path(p))
                 if parsed is not None and not isinstance(parsed, dict):
                     raise ValueError(
                         f"sidecar '{name}' must be a YAML mapping, "

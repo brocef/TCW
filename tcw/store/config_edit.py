@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from tcw.store.yaml_source import load as _load_named_yaml
 
 
 class ConfigEditRefused(ValueError):
@@ -131,7 +132,7 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
         if not target:
             return None
         return yaml.safe_dump(target, sort_keys=False, allow_unicode=True)
-    mapping = _load(text)
+    mapping = _load(text, path)
     if not isinstance(mapping, dict):
         mapping = {}
     target = intended(mapping, edits)
@@ -167,9 +168,9 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
 
 # ── reading ─────────────────────────────────────────────────────────────────
 
-def _load(text: str):
+def _load(text: str, path: Path | str = "the edited text"):
     from tcw.store.fs import _UniqueKeyLoader    # fs.py imports this module
-    return yaml.load(text, Loader=_UniqueKeyLoader)
+    return _load_named_yaml(text, path, _UniqueKeyLoader)
 
 
 def _assemble(text: str, replacements: list[_Replacement]) -> str:

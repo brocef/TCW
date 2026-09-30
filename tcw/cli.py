@@ -21,6 +21,7 @@ from tcw.store.fs import (
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
+from tcw.store.yaml_source import load as _load_named_yaml
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
@@ -57,7 +58,8 @@ def run_init(components: list[str], project_id: str | None = None,
     sentinel = root / SENTINEL
     if project_id is None:
         try:
-            configured = yaml.safe_load(sentinel.read_text(encoding="utf-8")) if sentinel.exists() else {}
+            configured = (_load_named_yaml(sentinel.read_text(encoding="utf-8"), sentinel)
+                          if sentinel.exists() else {})
         except yaml.YAMLError as error:
             print(f"tcw init: invalid {SENTINEL}: {error}", file=sys.stderr)
             return 1
