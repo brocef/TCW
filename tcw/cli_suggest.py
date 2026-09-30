@@ -35,6 +35,12 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "ls": ("list",),
 }
 
+# Never offered by any rule, and never answered either: pointing somebody at a
+# command that destroys things, when they typed something else, is worse than
+# no hint — and so is guessing what a mistyped removal was meant to remove
+# (`tcw work tracker delete` is not `tcw work delete`, which deletes an item).
+REMOVAL = frozenset({"rm", "drop", "delete"})
+
 _MAX = 3
 
 
@@ -53,10 +59,11 @@ def visible_choices(action: argparse._SubParsersAction) -> list[str]:
 
 def _offered(word: str, choices: list[str]) -> list[str]:
     """Rules 2 and 3 for one level: synonyms valid here, else close spellings."""
-    synonyms = [s for s in SYNONYMS.get(word, ()) if s in choices]
+    safe = [c for c in choices if c not in REMOVAL]
+    synonyms = [s for s in SYNONYMS.get(word, ()) if s in safe]
     if synonyms:
         return synonyms
-    return difflib.get_close_matches(word, choices, n=_MAX, cutoff=0.6)
+    return difflib.get_close_matches(word, safe, n=_MAX, cutoff=0.6)
 
 
 def _command(path: tuple[str, ...]) -> str:
@@ -94,21 +101,34 @@ class SuggestingParser(argparse.ArgumentParser):
         if not isinstance(action, argparse._SubParsersAction) or value in action.choices:
             return super()._check_value(action, value)
         choices = visible_choices(action)
+        hint = self._hint(str(value), choices)
+        if len(choices) == len(action.choices):
+            # Nothing hidden: argparse's own message, exactly as this Python
+            # version words it (3.12 and 3.13 leave the choices unquoted).
+            try:
+                super()._check_value(action, value)
+            except argparse.ArgumentError as error:
+                if not hint:
+                    raise
+                raise argparse.ArgumentError(action, f"{error.message}\n{hint}") from None
         message = (f"invalid choice: {value!r} (choose from "
                    f"{', '.join(repr(c) for c in choices)})")
-        if hint := self._hint(str(value), choices):
+        if hint:
             message += f"\n{hint}"
         raise argparse.ArgumentError(action, message)
 
     def _hint(self, word: str, choices: list[str]) -> str:
         root = getattr(self, "_tcw_root", None)
         here = getattr(self, "_tcw_path", None)
-        if root is None or here is None:
+        if root is None or here is None or word in REMOVAL:
             return ""
-        # Shallowest first: `tcw show` means `tcw work show` before it means
-        # `tcw work inbox show`. `sorted` is stable, so ties keep tree order.
-        elsewhere = sorted((p for p in root._tcw_index.get(word, ()) if p[:-1] != here),
-                           key=len)
+        # Same component first — `tcw work tags show` means a `tcw work …` show,
+        # not `tcw taxonomy show` — then shallowest: `tcw show` means
+        # `tcw work show` before `tcw work inbox show`. `sorted` is stable, so
+        # ties keep tree order.
+        elsewhere = sorted(
+            (p for p in root._tcw_index.get(word, ()) if p[:-1] != here),
+            key=lambda p: (-_shared(p, here), len(p)))
         if elsewhere:
             following = _following(root, here, word)
             commands = []
@@ -117,6 +137,16 @@ class SuggestingParser(argparse.ArgumentParser):
             return _phrase(commands[:_MAX])
         offered = _offered(word, choices)
         return _phrase([_command(here + (o,)) for o in offered]) if offered else ""
+
+
+def _shared(path: tuple[str, ...], here: tuple[str, ...]) -> int:
+    """How many leading words `path` shares with `here`."""
+    n = 0
+    for a, b in zip(path, here):
+        if a != b:
+            break
+        n += 1
+    return n
 
 
 def _following(root: SuggestingParser, here: tuple[str, ...], word: str) -> str:

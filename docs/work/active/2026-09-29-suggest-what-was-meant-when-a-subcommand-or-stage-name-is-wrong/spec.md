@@ -67,29 +67,42 @@ state and went to Jira directly.
 
 ## Design
 
-- A parser class, `_SuggestingParser`, used as the root parser in
-  `build_parser`. `add_subparsers` gives every subparser its parent's class,
-  so taxonomy, capabilities and every nested group get it.
-  `_HidesRemovedSpellings` is made a subclass of it.
+As built. This section was revised after review: the first draft kept
+`_HidesRemovedSpellings` as a subclass with a `_visible_choices` hook, and the
+code turned out simpler without it.
+
+- A parser class, `SuggestingParser` (`tcw/cli_suggest.py`), used as the root
+  parser in `build_parser`. `add_subparsers` gives every subparser its
+  parent's class, so taxonomy, capabilities and every nested group get it.
+- `_HidesRemovedSpellings` is removed. Instead, only the subcommands that
+  `--help` lists are ever offered or listed (`visible_choices`, from the
+  action's `_choices_actions`). The seven removed stage spellings are
+  registered without `help=`, so that rule hides them without naming them.
+  They are the only subcommands anywhere in the tree that `--help` leaves out.
 - Its `_check_value` acts only for a subcommand choice
-  (`argparse._SubParsersAction`). On an invalid word it raises argparse's
-  usual `ArgumentError`, with the same message, plus a hint line.
-- A `_visible_choices(action)` hook gives the choices that may be offered. The
-  base gives all of them; `_HidesRemovedSpellings` leaves out the seven removed
-  stage spellings. Its own message ("choose from …" without them) is kept, and
-  it now also gets the hint.
-- An index from each subcommand name to its full paths
-  (`tcw work tracker`, …), built by walking the finished tree once in
-  `build_parser`, leaving out the removed stage spellings. It is attached to
-  every parser, since a nested parser reports its own error and cannot see the
-  root.
+  (`argparse._SubParsersAction`). Where nothing is hidden, it takes argparse's
+  own message, so the wording is whatever the running Python prints (3.12 and
+  3.13 leave the choices unquoted; 3.11 and 3.14 quote them), then adds the
+  hint line. Where something is hidden (`tcw work stage`), it builds the
+  message from the listed choices, quoted, as `_HidesRemovedSpellings` did.
+- `rm`, `drop` and `delete` are never offered by any rule, and a typed one gets
+  no hint at all: guessing what a mistyped removal meant to remove is worse
+  than saying nothing.
+- `attach_index` walks the finished tree once. Every parser learns its path
+  and the root, and the root learns every listed subcommand's full paths.
+  Rule 1 prefers paths that share the most leading words with where the error
+  happened, then the shallowest.
 - The next word after the invalid one comes from the argument list the root
-  was parsing, kept on the root by its `parse_args`/`parse_known_args`.
+  was parsing, kept on the root by `parse_known_args`.
 - `suggest_on_error` is set to `False` explicitly. Python 3.14 has argparse's
   own suggestion, and it may later be turned on by default, which would print
   two hints.
-- Stage names: `_stage_step` in `tcw/work/cli.py` builds its message from
-  `LIFECYCLE_STEPS` (`produces`, `kind`), adding the hint after today's text.
+- Stage names: `_stage_step` in `tcw/work/cli.py` adds `_stage_hint` after
+  today's text, built from `LIFECYCLE_STEPS` (`produces`, `kind`). A
+  transition names the command that runs it (`discard` is
+  `tcw work complete --resolution …`, not `tcw work discard`). `_stage_command`
+  builds every `tcw work stage <verb> <stage> <slug>` it prints, with no
+  reference for `inbox`, and is shared with the removed-spelling message.
 
 Litmus: CLI presentation only, no store operation.
 

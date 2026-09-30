@@ -1964,8 +1964,9 @@ _TRANSITION_COMMAND = {
     "submit": "`tcw work submit <slug>`",
     "rework": "`tcw work rework <slug>`",
     "complete": "`tcw work complete <slug> --resolution done --confirm`",
-    "discard": "`tcw work complete <slug> --resolution wontfix --confirm` "
-               "(or `duplicate`, `superseded`)",
+    "discard": "`tcw work complete <slug> --resolution wontfix --confirm` (or "
+               + ", ".join(f"`{r}`" for r in sorted(WORK_RESOLUTIONS - {"done", "wontfix"}))
+               + ")",
 }
 
 
@@ -1982,10 +1983,10 @@ def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
     said = []
     if writers:
         said.append(f"`{name}.md` is written by the `{writers[0]}` stage: "
-                    f"`tcw work stage {verb} {writers[0]} <slug>`.")
+                    f"`{_stage_command(verb, writers[0])}`.")
     elif name.replace("-", "") in legal:
         stage = name.replace("-", "")
-        said.append(f"the stage is spelled `{stage}`: `tcw work stage {verb} {stage} <slug>`.")
+        said.append(f"the stage is spelled `{stage}`: `{_stage_command(verb, stage)}`.")
     if step is not None and step.kind == "transition":
         said.append(f"`{name}` is a transition, not a stage"
                     + (f": {how}." if (how := _TRANSITION_COMMAND.get(name)) else "."))
@@ -1994,6 +1995,12 @@ def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
         if close:
             said.append("did you mean " + " or ".join(f"`{c}`" for c in close) + "?")
     return " ".join(said)
+
+
+def _stage_command(verb: str, stage: str, ref: str = "<slug>") -> str:
+    """`tcw work stage <verb> <stage> <ref>` — without a reference for `inbox`,
+    which runs before an item exists: both verbs refuse one for it."""
+    return f"tcw work stage {verb} {stage}" + ("" if stage == "inbox" else f" {ref}")
 
 
 def _stage_removed_form(args: argparse.Namespace) -> int:
@@ -2008,14 +2015,12 @@ def _stage_removed_form(args: argparse.Namespace) -> int:
     # it, so the placeholder every other stage wants would advise a command that
     # is itself refused — two wrong turns for someone migrating off the old
     # spelling. The one stage that takes no reference is shown none.
-    if args.removed_stage == "inbox":
-        ref = ""
-    else:
-        ref = f" {args.rest[0]}" if args.rest else " <slug>"
+    ref = args.rest[0] if args.rest else "<slug>"
     print(f"tcw work stage: '{args.removed_stage}' is not a subcommand; run "
-          f"`tcw work stage gate {args.removed_stage}{ref}` to check the "
-          f"stage and run its checks, or `tcw work stage prompt "
-          f"{args.removed_stage}{ref}` for its instructions", file=sys.stderr)
+          f"`{_stage_command('gate', args.removed_stage, ref)}` to check the "
+          f"stage and run its checks, or "
+          f"`{_stage_command('prompt', args.removed_stage, ref)}` for its "
+          f"instructions", file=sys.stderr)
     return 2
 
 

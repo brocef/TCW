@@ -108,3 +108,47 @@ def test_discard_names_the_command_that_discards(tmp_path):
     out = stage(tmp_path, "gate", "discard", "some-slug")
     assert "tcw work discard" not in out.stderr, out.stderr
     assert "--resolution wontfix" in out.stderr, out.stderr
+
+
+# ── Review follow-ups ────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("argv", [
+    ("work", "rm", "x"), ("work", "inbox", "rm", "x"), ("work", "tracker", "delete", "x"),
+    ("work", "inbox", "drop", "x"), ("work", "drip", "x"), ("rm", "x"),
+])
+def test_no_removal_command_is_ever_suggested(capsys, argv):
+    """A removal word is never answered, and no rule offers one: `tcw work rm`
+    once pointed at `tcw taxonomy rm`, and `tcw work tracker delete` at
+    `tcw work delete`, which deletes the work item itself."""
+    err = usage_error(capsys, *argv)
+    assert "did you mean" not in err, err
+
+
+def test_a_valid_word_after_the_missing_level_is_kept(capsys):
+    err = usage_error(capsys, "tracker", "show")
+    assert "did you mean `tcw work tracker show`?" in err, err
+
+
+def test_the_same_component_is_suggested_first(capsys):
+    err = usage_error(capsys, "work", "tags", "show")
+    assert "`tcw work show`" in err and "taxonomy" not in err, err
+
+
+def test_nothing_hidden_keeps_argparses_own_message(capsys):
+    """Where no subcommand is hidden, the first line is whatever this Python's
+    argparse says — 3.12 and 3.13 leave the choices unquoted, 3.11 and 3.14
+    quote them — not a copy that is right on some versions only."""
+    parser = build_parser()
+    work = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    action = next(a for a in work.choices["work"]._actions
+                  if isinstance(a, argparse._SubParsersAction))
+    with pytest.raises(argparse.ArgumentError) as own:
+        argparse.ArgumentParser._check_value(work.choices["work"], action, "zzzz")
+    err = usage_error(capsys, "work", "zzzz")
+    assert own.value.message in err, err
+
+
+def test_the_inbox_stage_is_named_without_a_slug(tmp_path):
+    """`inbox` runs before an item exists; both verbs refuse a reference for it."""
+    out = stage(tmp_path, "gate", "inbox.md", "x")
+    assert "`tcw work stage gate inbox`" in out.stderr, out.stderr
