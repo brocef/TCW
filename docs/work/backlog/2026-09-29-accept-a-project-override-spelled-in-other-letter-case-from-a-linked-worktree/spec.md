@@ -32,9 +32,22 @@ duplicate ids and reciprocity failures. `_canonical` (lines 786-797) already
 compares folders by `(st_dev, st_ino)` for the graph's keys; these two rules do
 not.
 
-Sweep: other text comparisons of paths in `project.py` and in `fs.py`'s
-worktree handling were checked for the same pattern; see Notes for what was
-found and why each is or is not in scope.
+Sweep (every `is_relative_to` / `relative_to` in `project.py` and `fs.py`):
+two more compare a path against git's spelling of a worktree root, and share
+the defect when the *working directory* is typed in other letter case:
+
+- `anchor_configured_path` (`fs.py:1775-1809`) re-anchors a component store's
+  configured path that escapes a linked worktree, with
+  `node_root.is_relative_to(top)`, `resolved.is_relative_to(top)` and
+  `node_root.relative_to(top)`; a case-variant `node_root` is left
+  un-anchored, silently pointing the store at the wrong place.
+- `worktree_node_root` (`fs.py:956-974`) computes where a node sits inside an
+  item's worktree with `node_root.resolve().relative_to(top.resolve())`, which
+  raises `ValueError` for a case-variant `node_root`.
+
+`_same_repository` (`project.py:174`) compares two paths that both come from
+git, so their spellings agree; left alone. The remaining hits compare paths
+TCW built from the same root, and are not affected.
 
 ## Goals
 
@@ -42,8 +55,9 @@ found and why each is or is not in scope.
    project in any letter case behaves exactly as the same override in git's
    spelling: `tcw validate` exits 0 and prints the same warning the previous
    item added, naming the worktree's copy.
-2. Rule 1 and Rule 2 decide "inside this folder" and "the part below it" by
-   folder identity, not text.
+2. Rule 1 and Rule 2, `anchor_configured_path` and `worktree_node_root`
+   decide "inside this folder" and "the part below it" by folder identity, not
+   text.
 
 ## Non-goals
 
@@ -60,7 +74,8 @@ that, it walks `path` and its parents comparing each folder's
 `(st_dev, st_ino)` with `root`'s, and returns the remainder below the one that
 matches. A folder that cannot be read is skipped; a filesystem that reports no
 inode numbers falls back to the text answer, as `_canonical` does. Rules 1 and 2
-use it for all six comparisons.
+use it for all six comparisons, and `fs.py` imports it for
+`anchor_configured_path` and `worktree_node_root`.
 
 Filesystem-adapter private, as the rest of worktree handling is (the module
 already says so): the registry interface is unchanged. Litmus: not an
@@ -79,7 +94,13 @@ the disk ignores letter case (skipped otherwise).
 2. The same with the whole path upper-cased.
 3. From the primary checkout, the case-variant override behaves as the git
    spelling does (exit 0, no warning).
-4. The existing tests in `tests/test_override_in_linked_worktree.py`,
+4. `anchor_configured_path(node_root, value)`, with `node_root` the worktree's
+   `pkg-a` spelled with `APP` and `value` escaping the worktree, returns the
+   same folder as with git's spelling.
+5. `worktree_node_root(node_root, ".worktrees/x")` with a case-variant
+   `node_root` returns a path, not a `ValueError`, naming the same folder as
+   with git's spelling.
+6. The existing tests in `tests/test_override_in_linked_worktree.py`,
    `tests/test_worktree_sibling_nodes.py` and `tests/test_project_graph_paths.py`
    pass unchanged; the full suite passes as CI runs it.
 
