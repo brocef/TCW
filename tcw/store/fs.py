@@ -6521,6 +6521,14 @@ class FsWorkStore(FsTreeStore, WorkStore):
         if not isinstance(value, str) or not value.endswith("/" + old):
             return []
         try:
+            # Checked here, not by the rename: this board's repository is its own,
+            # and its commit must not carry somebody's unsaved edit to the file.
+            self._require_clean(d / "state.yaml")
+        except ValueError:
+            return [f"{child} in {self.node_root} still names {old}: its state.yaml "
+                    f"has uncommitted changes. Set its initiative to "
+                    f"{value[: -len(old)] + new} there by hand"]
+        try:
             self._set_fields_at(d, {"initiative": value[: -len(old)] + new})
             if self.auto_commit_transitions():
                 rel = str((d / "state.yaml").relative_to(self.store_git_root))

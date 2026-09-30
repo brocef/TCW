@@ -420,3 +420,34 @@ def test_an_undo_that_cannot_run_git_still_moves_the_folder_back(tmp_path, monke
     assert (root / "docs/work/backlog" / OLD / "state.yaml").exists()
     assert not (root / "docs/work/backlog" / NEW).exists()
     assert "undone except for" in err, err
+
+
+def test_a_childs_parent_and_a_nested_childs_folder_follow(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    parent = item(root, "Remove a participant")
+    child = item(root, "A child", parent=parent)
+    nested = root / "docs/work/backlog" / parent / "2026-01-01-nested"
+    nested.mkdir()
+    (nested / "state.yaml").write_text(f"title: Nested\nstatus: backlog\ncreated: '2026-01-01'\nparent: {parent}\n")
+    settle(root, "nested")
+    assert rename(root, monkeypatch, capsys, parent, "add-remove-or-step-down")[0] == 0
+    assert state(root, child)["parent"] == NEW
+    moved = root / "docs/work/backlog" / NEW / "2026-01-01-nested" / "state.yaml"
+    assert yaml.safe_load(moved.read_text())["parent"] == NEW
+    assert git(root, "status", "--porcelain").strip() == ""
+
+
+def test_a_dirty_child_on_another_board_is_left_and_named(tmp_path, monkeypatch, capsys):
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    commit_all(child)
+    commit_all(parent)
+    epic = item(parent, "Remove a participant", type="epic")
+    far = item(child, "Over there", initiative=f"parent/{epic}")
+    far_state = FsWorkStore.open(child).path(far) / "state.yaml"
+    far_state.write_text(far_state.read_text() + "# unsaved\n")
+    code, _, err = rename(parent, monkeypatch, capsys, epic, "add-remove-or-step-down")
+    assert code == 0, err
+    assert "uncommitted" in err and far in err, err
+    assert "# unsaved" in far_state.read_text()
+    assert yaml.safe_load(far_state.read_text())["initiative"] == f"parent/{epic}"

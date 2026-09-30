@@ -114,7 +114,9 @@ only by someone who knows every place a slug is recorded.
    all rewritten in the same commit.
 3. `tcw work show <old>` prints the renamed item and the note.
    `tcw work start <old>` exits 1, naming the new slug.
-4. A blocker in a second project naming `tcw://<project>/<old>`: its status
+4. A blocker in a second project naming `<project>/<old>` (*corrected at
+   verify:* this said `tcw://<project>/<old>`, a spelling external blockers
+   have never accepted; `tcw://` links in prose do follow the rename): its status
    follows the renamed item. The blocker is still open while the item is open,
    and resolved once it completes.
 5. `tcw work new` with a title that slugifies to the old slug gets `-2`, as it
