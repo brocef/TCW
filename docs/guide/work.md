@@ -304,7 +304,8 @@ tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeata
                                        # (unknown tag, blocking cycle, …) nothing is changed
 
 tcw work complete "$slug" --resolution done --confirm
-tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
+tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, unreconciled capabilities,
+                                                                # or (from review) a missing refined-outcome.md
 tcw work complete "$slug" --resolution done --confirm --already-integrated
                                        # the work branch was merged outside TCW (a merged PR):
                                        # checks it reached this checkout's HEAD (a merge,
