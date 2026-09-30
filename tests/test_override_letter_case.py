@@ -71,3 +71,13 @@ def test_the_worktree_node_root_is_found_in_any_letter_case(workspace):  # noqa:
     expected = worktree_node_root(app / "pkg-a", ".worktrees/x")
     assert found is not None and expected is not None
     assert str(found).lower() == str(expected).lower(), (found, expected)
+
+
+
+def test_an_override_naming_the_worktree_copy_in_other_letter_case(workspace, monkeypatch):  # noqa: F811
+    """The override names this worktree's own copy, spelled differently; its
+    parent's `..` leaves the worktree and must be re-anchored (Rule 1)."""
+    app, wt = linked(workspace)
+    monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(wt / "pkg-b", app)))
+    out = _clean(validate(wt / "pkg-a"))
+    assert "warning:" not in out, out
