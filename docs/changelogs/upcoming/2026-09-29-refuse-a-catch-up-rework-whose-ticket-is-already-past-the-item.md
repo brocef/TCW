@@ -8,5 +8,8 @@
   replaying one, whose ticket is above the item skips the catch-up walk and is
   carried as on a binding without `catch-up` — the move's own transition for a
   rework (not the start transition the walk would use), held for a start. A
-  conflict recorded by the old behavior clears on the next `sync`. A table test
-  pins that no gated move is declined inside the strict gate's allowed statuses.
+  `sync` replaying a start still owed, whose ticket this account holds above an
+  active item, is held too rather than declined. A conflict recorded by the old
+  behavior — for a rework or a start — clears on the next `sync`. Table tests
+  pin that no gated move is declined inside the strict gate's allowed statuses,
+  and that every replayed move except a start carries a window.

@@ -73,6 +73,49 @@ def test_a_recorded_rework_conflict_clears_on_sync(node, fake):  # noqa: F811
     _clean_binding(node, slug)
 
 
+def _with_recorded_conflict(root, slug, move, since, reason):
+    from tcw.tracker.sync import _now
+    st = FsWorkStore.open(root)
+    content = yaml.safe_load(binding_text(root, slug))
+    content["catch-up"] = True
+    content["sync"] = {"state": "conflicting", "move": move, "since": since,
+                       "reason": reason, "at": _now()}
+    (st.path(slug) / "tracker.yaml").write_text(yaml.safe_dump(content, sort_keys=False),
+                                                encoding="utf-8")
+
+
+@pytest.mark.parametrize("mode", ["strict", "node"])
+def test_a_recorded_start_conflict_clears_on_sync(mode, request, fake):  # noqa: F811
+    """The start half: a start the old behavior recorded as a conflict, its
+    ticket above the item and held by this account, is held on `sync` like the
+    live start is — not declined for good, which under strict mode refused
+    every later move with "run sync first"."""
+    root = request.getfixturevalue(mode)
+    slug = bound_item(root)
+    claimed_ticket(fake, "In Review", A)
+    started(root, slug)
+    _with_recorded_conflict(root, slug, "start", "",
+                            "SYNC-1 is in 'In Review', which is past where its item "
+                            "is, so it was not moved back.")
+    code, out, err = cli(root, "work", "tracker", "sync", slug)
+    assert code == 0, out + err
+    assert fake.tickets[TICKET_ID].status == "In Review" and fake.applied == []
+    assert record(root, slug) is None, record(root, slug)
+    code, _out, err = cli(root, "work", "submit", slug)
+    assert code == 0, err
+
+
+def test_a_recorded_start_conflict_with_the_ticket_done_is_still_refused(node, fake):  # noqa: F811
+    slug = bound_item(node)
+    claimed_ticket(fake, "Done", A)
+    started(node, slug)
+    _with_recorded_conflict(node, slug, "start", "", "old")
+    code, out, err = cli(node, "work", "tracker", "sync", slug)
+    assert code != 0, out + err
+    assert fake.tickets[TICKET_ID].status == "Done" and fake.applied == []
+    assert record(node, slug) is not None
+
+
 # ── 5: what must still be refused ────────────────────────────────────────────
 
 def test_a_strict_catch_up_rework_with_the_ticket_done_moves_nothing(strict, fake):  # noqa: F811
@@ -123,3 +166,18 @@ def test_a_sync_with_no_window_still_declines_a_ticket_past_its_item():
     from test_tracker_sync import STATUSES
     assert catch_up_declines(STATUSES, "In Review", "active", (), syncing=True)
     assert not catch_up_declines(STATUSES, "In Progress", "active", (), syncing=True)
+
+
+@pytest.mark.parametrize("move", ["submit", "rework", "complete", "discard"])
+def test_a_replayed_move_other_than_start_brings_a_window(move):
+    """A `sync` replaying a recorded move is never declined: every recorded
+    move but a start carries a window. A start has none, and is held instead
+    (`test_a_recorded_start_conflict_clears_on_sync`)."""
+    from tcw.tracker.sync import MOVE_STATUS, catch_up_declines, expected_statuses
+    from test_tracker_sync import STATUSES
+    for since in ("", *STATUSES.values()):
+        record = {"move": move, "since": since}
+        window = expected_statuses(STATUSES, None, record, None)
+        for ticket_status in STATUSES.values():
+            assert not catch_up_declines(STATUSES, ticket_status, MOVE_STATUS[move],
+                                         window, syncing=True), (since, ticket_status)

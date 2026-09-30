@@ -144,9 +144,13 @@ def catch_up_declines(statuses: dict, ticket_status: str, local: str,
     `catch-up` takes, where `assess_move` refuses anything outside the window and
     a start is held. One rule for `deliver` and the table test that pins it
     against the strict gate's allowed statuses."""
+    return _above_item(statuses, ticket_status, local) and syncing and not expected
+
+
+def _above_item(statuses: dict, ticket_status: str, local: str) -> bool:
+    """Whether the ticket's rung is above the rung of its item's status."""
     rung = lowest_rung(statuses, ticket_status)
-    above = rung is not None and rung > _RUNG_ORDER.get(local, rung)
-    return above and syncing and not expected
+    return rung is not None and rung > _RUNG_ORDER.get(local, rung)
 
 
 def ladder_steps(statuses: dict, local_target: str,
@@ -842,9 +846,19 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # rung, whoever held it before this run. Never from above where its item is:
         # a walk takes hops by the item's moves, and from there the first one could
         # only move it back.
-        rung = lowest_rung(config.statuses, ticket.status)
-        above = rung is not None and rung > _RUNG_ORDER.get(local, rung)
+        above = _above_item(config.statuses, ticket.status, local)
         if catch_up_declines(config.statuses, ticket.status, local, expected, syncing):
+            if (start_owed and local == "active" and ticket.category != "done"
+                    and ticket.assignee_id == ticket.me_id):
+                # A `sync` replaying a start — one an outage interrupted, or one
+                # an older version recorded as this conflict — whose ticket this
+                # account holds and somebody already moved on: held, as the live
+                # start is. Declining it would re-record the conflict on every
+                # sync, and under strict mode refuse every later move.
+                return finish(HELD, (
+                    f"{ticket.key} not moved to '{target}': it is already in "
+                    f"'{ticket.status}', past where {slug} is, and a start does not "
+                    f"move a ticket back."))
             # Says nothing about the claim: this run may well have just taken the
             # ticket above, and what stops here is the walk, not the claim.
             return finish(CONFLICTING, (
@@ -852,7 +866,8 @@ def deliver(store, slug: str, client, config, *, move: str | None,
                 f"is, so it was not moved back."))
         if not above:
             return walk(ticket)
-        # Above the item, inside the move's window: not walk material — the walk
+        # Above the item, with a window to be checked against (by `assess_move`,
+        # below, which refuses a ticket outside it): not walk material — the walk
         # hops by `MOVE_ONTO` and would take a rework back by the *start*
         # transition. Carried below exactly as without `catch-up`.
     # Without a catch-up, delivery after a claim is the one transition it always was;
