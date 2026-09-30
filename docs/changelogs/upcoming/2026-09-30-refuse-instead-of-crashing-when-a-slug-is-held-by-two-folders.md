@@ -12,3 +12,8 @@
   - The blocker-cycle refusal's remedy for a slug held twice points at
     `tcw validate`.
 - `tcw validate` itself was fixed for this case by #58.
+- `unresolved_blockers` labels a blocker whose slug two folders hold
+  `<slug> (held by more than one folder)`.
+- `tcw serve`: `MultipleMatch` is answered with 409 and the folders (every
+  method, and `_map_store_error`) instead of 500, and `/api/work` lists a
+  duplicated slug's row with no artifacts instead of failing the whole board.

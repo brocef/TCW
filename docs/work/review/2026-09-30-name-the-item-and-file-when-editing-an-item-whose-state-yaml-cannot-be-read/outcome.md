@@ -36,3 +36,13 @@
 
 - About twenty direct `yaml.safe_load` calls outside `load_yaml` still report
   `"<unicode string>"`; proposed as a follow-up.
+
+## Folded in at verify
+
+- `d4fbdc38`: `tcw init`'s config read, `dod.yaml`, an item's
+  `capabilities.yaml` (read and write) and `config_edit.edit_text` name their
+  file. The other direct `yaml.safe_load` calls either swallow errors (so show
+  nothing), parse text that is not a file, or feed the tracker binding, whose
+  message never includes the parser's text. The follow-up in Notes is done.
+- Tests: `tests/test_damaged_state_on_edit.py` 13 passed; the files touching
+  those sites — 3321 passed, 3 skipped.

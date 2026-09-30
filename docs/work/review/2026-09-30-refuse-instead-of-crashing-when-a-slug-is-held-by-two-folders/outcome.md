@@ -39,3 +39,15 @@
   response rather than crashing the server. Not verified by running it.
 - The board prints one row for the slug (it keys rows on the slug), showing
   whichever folder's status it read first.
+
+## Folded in at verify
+
+- `e2364c76`: a blocker held twice is labelled `(held by more than one folder)`
+  in the board and in `start`'s refusal. The web app answered a duplicated slug
+  with a 500 and **one duplicate emptied its whole board** (checked by a new
+  test, `tests/test_serve_duplicate_slug.py`); item routes now refuse with 409
+  naming the folders, and the board lists the row with no artifacts. This
+  corrects the Notes above, which guessed the web app was merely returning an
+  error page for the one item.
+- Tests: `tests/test_serve*.py`, `test_duplicate_slug_refusals.py`,
+  `test_work.py`, `test_retention.py` — 466 passed.

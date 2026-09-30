@@ -9,3 +9,7 @@
   `"<unicode string>"`, keeping PyYAML's line excerpt: new
   `tcw/store/yaml_source.load` names the loader built from the text.
   Other direct `yaml.safe_load` calls are unchanged.
+- The same naming for `tcw init`'s config read, `dod.yaml`, an item's
+  `capabilities.yaml` (read and write) and `config_edit.edit_text`. Reads that
+  swallow their errors, and tracker binding text (whose error shows no parser
+  text), are unchanged.
