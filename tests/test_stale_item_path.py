@@ -209,3 +209,75 @@ def test_a_child_items_folder_is_printed_from_here(tmp_path, monkeypatch, capsys
     assert main(["work", "start", f"child/{slug}"]) == 0
     printed = capsys.readouterr().out.split("→", 1)[1].split()[0]
     assert (parent / printed).is_dir(), printed
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_submit_run_in_the_worktree_is_refused_before_the_merge(tmp_path, monkeypatch, capsys):
+    """The primary copy still reads `active`; the branch's reads `review`."""
+    import test_worktree_completion as h
+    root = h.repo(tmp_path)
+    slug = h.new_item(root, monkeypatch, capsys)
+    wt = h.start_worktree(root, slug, monkeypatch, capsys)
+    h.branch_commit(wt)
+    assert h.run_in(wt, monkeypatch, capsys, "work", "submit", slug)[0] == 0
+    tip = h.head(h._top(wt))
+    code, _, err = h.run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                            "--resolution", "done", "--confirm")
+    assert code == 1 and "refined-outcome.md" in err, err
+    assert h._git(root, "merge-base", "--is-ancestor", tip, "HEAD").returncode != 0
+
+
+def test_refined_outcome_in_the_primary_copy_is_enough(tmp_path, monkeypatch, capsys):
+    import test_worktree_completion as h
+    root = h.repo(tmp_path)
+    slug = h.new_item(root, monkeypatch, capsys)
+    wt = h.start_worktree(root, slug, monkeypatch, capsys)
+    h.branch_commit(wt)
+    assert h.run_in(root, monkeypatch, capsys, "work", "submit", slug)[0] == 0
+    FsWorkStore.open(root).write_artifact(slug, "refined-outcome", "# Accepted\n")
+    h.commit_all(h._top(root), "accepted in primary")
+    code, _, err = h.run_in(root, monkeypatch, capsys, "work", "complete", slug,
+                            "--resolution", "done", "--confirm")
+    assert code == 0, err
+
+
+def test_an_epic_in_review_closes_without_one(tmp_path):
+    import test_epic_completable as e
+    from tcw.work.recursion import reconcile
+    root = e.mk_node(tmp_path)
+    st = FsWorkStore.open(root)
+    epic = e.make_epic(st, n_done=1, n_open=0)
+    st.start(epic, force=True)
+    st.submit(epic)
+    reconcile(root, epic, complete_when_ready=True)
+    assert FsWorkStore.open(root).get(epic).status == "completed"
+
+
+def test_a_nested_childs_old_spot_is_found(tmp_path):
+    import shutil
+    import test_epic_completable as e
+    root = e.mk_node(tmp_path)
+    st = FsWorkStore.open(root)
+    p = st.create("Parent", created="2026-01-01").slug
+    c = st.create("Child", created="2026-01-01", parent=p).slug
+    shutil.move(str(st.path(c)), str(st.path(p) / c))          # the older nested layout
+    settle(root)
+    old = FsWorkStore.open(root).path(c)
+    FsWorkStore.open(root).start(c, force=True)
+    old.mkdir(parents=True, exist_ok=True)
+    (old / "outcome.md").write_text("x\n")
+    assert [f for f, _ in FsWorkStore.open(root).stray_folders(c)] == [old]
+
+
+def test_artifacts_is_abstract_and_the_scans_are_not():
+    from tcw.store.base import WorkStore
+    assert "artifacts" in WorkStore.__abstractmethods__
+    assert not {"stray_folders", "duplicate_slugs"} & WorkStore.__abstractmethods__
+
+
+def test_the_refusal_comes_before_the_checklist(in_review, capsys):
+    root, slug = in_review
+    assert main(["work", "complete", slug, "--resolution", "done"]) == 1
+    err = capsys.readouterr()
+    assert "refined-outcome.md" in err.err and "[ ]" not in err.out + err.err

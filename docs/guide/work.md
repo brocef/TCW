@@ -582,6 +582,16 @@ read, no other item can be completed, discarded or dropped, because that item
 may be a child of it; the refusal names each file to fix. The damaged item
 itself can still be dropped.
 
+**Where an item's files go.** An item's folder moves with its status, so a path
+noted before a transition stops pointing at it: `submit` moves `active/<slug>/`
+to `review/<slug>/`, and a later write through the old path makes a new folder
+that nothing reads. Ask `tcw work path <slug>` where the folder is now.
+`tcw validate` reports each such stray folder — one named like an item, with
+no `state.yaml`, holding a file — and each slug that two item folders both
+hold, naming every folder. Completing an item in review as `done` needs its
+`refined-outcome.md`, and says so, naming any stray folder, when it is missing
+(an epic is exempt; `--force` overrides).
+
 Children made by versions before this sit inside their parent's folder and still
 move with it; one that is moved on its own keeps its parent and has its own
 status from then on. (Decomposing keeps any one item small; for work spanning

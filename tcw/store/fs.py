@@ -7175,6 +7175,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             parents = [self.root / s for s in WORK_STATUSES]
             if slug in actual:
                 parents.append(actual[slug].parent)
+                # A child the transition moved out of its parent's folder left
+                # the old spot there, under the parent.
+                parent = self._safe_yaml(actual[slug] / "state.yaml").get("parent")
+                if isinstance(parent, str) and parent in actual:
+                    parents.append(actual[parent])
         else:
             known = set(actual)
             graveyard = self._graveyard_path()

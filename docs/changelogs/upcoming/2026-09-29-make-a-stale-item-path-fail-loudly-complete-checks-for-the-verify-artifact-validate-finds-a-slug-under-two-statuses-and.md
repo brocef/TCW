@@ -3,7 +3,11 @@
 - `complete --resolution done` from `review` refuses without
   `refined-outcome.md` unless `--force`:
   - the store's `complete` checks it (so the web app is covered), and so does
-    the CLI before a worktree item's merge-back, reading the branch's copy;
+    the CLI, before the Definition-of-Done checklist and before a worktree
+    item's merge-back. A worktree item counts as in review, and as accepted,
+    when either its primary copy or its branch's copy says so;
+  - an epic is exempt: its children carry the verification, and
+    `reconcile --complete-when-ready` has no `--force`;
   - the message (`refined_outcome_missing`) names `tcw work path <slug>` and
     any stray folder holding files;
   - completing from `active`, discards and epics closed from `backlog` are

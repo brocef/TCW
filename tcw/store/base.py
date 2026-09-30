@@ -3578,7 +3578,6 @@ class WorkStore(ABC):
         """
         return []
 
-    @abstractmethod
     def stray_folders(self, slug: str | None = None) -> list[tuple[Any, list[str]]]:
         """`(location, files)` for each place named like an item that is not it —
         what writing through a location held since before a transition leaves
@@ -3590,6 +3589,7 @@ class WorkStore(ABC):
         cannot have any."""
         return {}
 
+    @abstractmethod
     def artifacts(self, slug: str) -> list[Artifact]:
         """The bounded lifecycle artifact set for `slug`, with presence only.
 
@@ -4599,7 +4599,10 @@ class WorkStore(ABC):
             # the folder the item left at `submit`. Completing from `active`
             # skips verify on purpose (the CLI says so), and an epic closing
             # from `backlog` never had one; neither is refused.
-            if dest == "completed" and item.status == "review" and not any(
+            # An epic is exempt: its children carry the verification, and
+            # `reconcile --complete-when-ready` closes it with no `--force`.
+            if dest == "completed" and item.status == "review" \
+                    and item.type != "epic" and not any(
                     a.name == "refined-outcome" and a.present
                     for a in self.artifacts(slug)):
                 raise ValueError(refined_outcome_missing(slug))

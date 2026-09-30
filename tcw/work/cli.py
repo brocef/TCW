@@ -4190,6 +4190,25 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: blocked by: {', '.join(blockers)} "
                   f"(use --force to override)", file=sys.stderr)
             return 1
+    # The store refuses this too, but only after the merge-back has run — too
+    # late for a refusal to leave the branch unmerged — and before the checklist,
+    # which is no use to acknowledge for a completion refused anyway. A worktree
+    # item has two copies: `submit` may have run in either, and verify may have
+    # written the file in either, so it is in review if either says so and
+    # accepted if either holds the file — which is what the merge will produce.
+    copies = [st] + ([branch_store] if branch_store is not None
+                     and branch_store.root.resolve() != st.root.resolve() else [])
+    stray = [f"{_relative(s)} ({', '.join(files)})"
+             for copy in copies for s, files in copy.stray_folders(bare)]
+    in_review = item.status == "review" or judged.status == "review"
+    if (shipping and in_review and not args.force and item.type != "epic"
+            and not any(a.name == "refined-outcome" and a.present
+                        for copy in copies for a in copy.artifacts(bare))):
+        where = (f"a folder named like it but not it holds {'; '.join(stray)} — "
+                 f"written through the item's old path, most likely" if stray else "")
+        print(f"tcw work complete: {refined_outcome_missing(args.slug, where)}",
+              file=sys.stderr)
+        return 1
     checklist = st.dod_checklist() if shipping else []
     # The unticked list is the prompt, so only the unconfirmed run shows it. A
     # confirmed run shows the list once the item has closed, as acknowledged:
@@ -4243,21 +4262,6 @@ def _complete(args: argparse.Namespace) -> int:
         print(f"tcw work complete: --already-integrated applies to an item started "
               f"with --worktree, or to a completion with --branch; {args.slug} has "
               f"no worktree.", file=sys.stderr)
-        return 1
-    # The store refuses this too, but only after the merge-back has run — too
-    # late for a refusal to leave the branch unmerged. Asked of the copy that
-    # would be merged, which for a worktree item is the branch's.
-    copies = [st] + ([branch_store] if branch_store is not None
-                     and branch_store.root.resolve() != st.root.resolve() else [])
-    stray = [f"{_relative(s)} ({', '.join(files)})"
-             for copy in copies for s, files in copy.stray_folders(bare)]
-    if (shipping and item.status == "review" and not args.force
-            and not any(a.name == "refined-outcome" and a.present
-                        for a in (branch_store or st).artifacts(bare))):
-        where = (f"a folder named like it but not it holds {'; '.join(stray)} — "
-                 f"written through the item's old path, most likely" if stray else "")
-        print(f"tcw work complete: {refined_outcome_missing(args.slug, where)}",
-              file=sys.stderr)
         return 1
     if stray:
         print(f"tcw work complete: warning: a folder named like {bare} but not it — "

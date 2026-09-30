@@ -12,7 +12,8 @@
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
 | submit for verification  | `tcw work submit <slug>`                                                                                                                        |
 | send back for rework     | `tcw work rework <slug>` (refused while `refined-outcome.md` exists)                                                                            |
-| finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated [--branch <b>]]`                                                            |
+| finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated [--branch <b>]]` — from review it needs `refined-outcome.md` (not for an epic) |
+| where an item's files go | `tcw work path <slug>` — the folder moves at each transition; `tcw validate` reports a stray folder left at an old path |
 | close without shipping   | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm`                                                                |
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
 | finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain.<status>: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
