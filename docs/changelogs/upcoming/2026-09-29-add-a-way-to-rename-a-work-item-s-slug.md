@@ -21,5 +21,15 @@
   - `_unique_slug` treats a renamed-away slug as taken;
   - `tcw validate` reports a `renames.yaml` that does not parse, a loop, or an
     old slug held by an item again.
+- Every refusal runs before the first write, and a failure after it is undone
+  (`_undo_rename`), so a rename is never left half done. Refused: a folder
+  already at the new name, a `renames.yaml` or graveyard that does not parse,
+  and uncommitted changes in the item or any file the rename rewrites.
+- `tcw://W/<old>` links resolve to the renamed item (`resolve_tcw_ref`), and
+  a blocker naming the old slug reads the resolved record under the new one,
+  which is what another clone has once the item is completed.
+- `slugify`, `rename_slug` and the storage-neutral refusals
+  (`WorkStore.rename_refusal`) are in `tcw/store/base.py`; `tcw.store.fs`
+  still exports `slugify`.
 - The record is kept apart from `graveyard.yaml` because every tombstone
   reader takes a tombstone to mean resolved work.

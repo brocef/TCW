@@ -2572,11 +2572,11 @@ def _rename(args: argparse.Namespace) -> int:
     print(f"renamed {bare} → {item.slug}" + (f" ({loc})" if loc else ""))
     for note in notes:
         print(f"tcw work rename: {note}", file=sys.stderr)
-    ticket = (item.tracker or {}).get("key") if isinstance(item.tracker, dict) else None
+    bound = bound_value(item.tracker) if item.tracker else None
+    ticket = (bound.get("ticket") or {}).get("key") if isinstance(bound, dict) else None
     if ticket:
-        print(f"tcw work rename: ticket {ticket} was written naming {bare}; its link "
-              f"still resolves, through the rename, but update its text if it "
-              f"quotes the slug.", file=sys.stderr)
+        print(f"tcw work rename: ticket {ticket} was written naming {bare}; update "
+              f"any slug or link in its text yourself.", file=sys.stderr)
     return 0
 
 

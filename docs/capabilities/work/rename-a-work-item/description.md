@@ -17,5 +17,5 @@ that changes an item refuses the old slug and names the new one.
 Only an open item is renamed, and only by its holder. An item with a worktree
 or branch is refused, with the manual steps, and so is a resolved one. The
 command lists files in the item that still mention the old slug in their
-prose, and says when a tracker ticket was written naming it; it rewrites
-neither.
+prose, and names the tracker ticket bound to it, whose text may quote the old
+slug; it rewrites neither. A failed rename is undone, so it can be run again.

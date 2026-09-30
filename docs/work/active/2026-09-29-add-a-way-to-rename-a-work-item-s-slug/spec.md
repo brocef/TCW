@@ -82,17 +82,24 @@ only by someone who knows every place a slug is recorded.
 ## Design
 
 - `WorkStore.rename(slug, new_slug) -> WorkItem` on the base class, with the
-  validation shared. A store where the slug is a field changes the field and
+  validation shared: `rename_slug` and `WorkStore.rename_refusal` in
+  `tcw/store/base.py` hold every refusal that does not depend on storage. A store where the slug is a field changes the field and
   keeps an alias. That passes the litmus.
 - `FsWorkStore.rename`, which runs:
   - under the store lock (`_graveyard_lock` today, `_store_lock` once
     `2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-the-resolving-ones`
     lands);
-  - then the `renames.yaml` write first, then `git mv` of the folder, then the
-    reference rewrites, then one scoped commit. A failure after the record
-    leaves the old slug resolving to the new one, and a re-run of `rename`
-    completes the move. It refuses when `renames.yaml` has uncommitted
-    changes, as the graveyard does.
+  - every refusal first: the destination folder must not exist, and
+    `renames.yaml`, the graveyard and every file about to be rewritten must
+    parse and have no uncommitted changes, nor may the item's own folder;
+  - then the `renames.yaml` write, then `git mv` of the folder, then the
+    reference rewrites, then one scoped commit. A failure after the first
+    write is undone (the move reversed, each file restored to the bytes it
+    had), so the command can simply be run again.
+    *Corrected at review:* this first said a failure after the record left
+    the old slug resolving and a re-run completed the move. A re-run was in
+    fact refused, by either slug, so a half-done rename could only be undone
+    by hand.
 - Lookup: `_find` misses → `renamed(slug)` → follow. Mutating CLI verbs call
   `_resolve`, which refuses on a followed rename. `show` and `path` accept it
   with the note. Blocker evaluation follows it.

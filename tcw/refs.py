@@ -135,6 +135,10 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
             return ResolveResult(
                 False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
         store, bare = resolved
+        # A renamed item answers to its old slug too: a link is exactly the kind
+        # of reference a rename cannot rewrite.
+        if store.get(bare) is None and (renamed := store.renamed(bare)):
+            bare = renamed
         # Locating the store that would hold the item is not the item existing.
         # `resolve_qualified_work_ref` answers "which store addresses this ref",
         # which is what `tcw serve`'s routing wants; `ok` answers "does this

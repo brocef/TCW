@@ -204,3 +204,200 @@ def test_a_capabilitys_planning_doc_is_rewritten(tmp_path, monkeypatch, capsys):
     assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
     assert f"Planning doc: {NEW}" in meta.read_text()
     assert git(root, "status", "--porcelain").strip() == ""
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_a_blocker_elsewhere_clears_when_the_renamed_item_resolves_in_another_clone(
+        tmp_path, monkeypatch, capsys):
+    """Resolved folders are not shared, so another clone only has the graveyard
+    record — written under the new slug."""
+    import shutil
+    parent = mk_node(tmp_path, "parent")
+    child = mk_node(parent, "child")
+    commit_all(child)
+    commit_all(parent)
+    item(child, "Remove a participant")
+    waiting = item(parent, "Waiting", blocked_by=[{"external": f"child/{OLD}"}])
+    monkeypatch.setenv("TCW_WORK_OWNER", "x")
+    assert rename(child, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    renamed = FsWorkStore.open(child)
+    renamed.start(NEW, owner="x")
+    renamed.complete(NEW, "done", [])
+    shutil.rmtree(renamed.root / "completed" / NEW, ignore_errors=True)   # another clone
+    board = FsWorkStore.open(parent)
+    assert board.unresolved_blockers(board.get(waiting)) == []
+
+
+def test_a_bare_blocker_the_rename_did_not_rewrite_still_follows(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    other = item(root, "Other")
+    assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    st = FsWorkStore.open(root)
+    st.set_field(other, "blocked_by", [{"slug": OLD}])          # written after the rename
+    assert st.unresolved_blockers(st.get(other)) == [OLD]
+    st.start(NEW, owner="x")
+    st.complete(NEW, "done", [])
+    shutil_rmtree = __import__("shutil").rmtree
+    shutil_rmtree(st.root / "completed" / NEW, ignore_errors=True)
+    assert st.unresolved_blockers(st.get(other)) == []
+
+
+def test_a_graveyard_that_cannot_be_read_refuses_before_anything_moves(
+        tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    blocked = item(root, "Blocked", blocked_by=[{"slug": OLD}])
+    graveyard = root / "docs/work/graveyard.yaml"
+    graveyard.write_text("{}\n")
+    settle(root, "graveyard")
+    graveyard.write_text("- not\n- a mapping\n")
+    head = git(root, "rev-parse", "HEAD")
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 1 and "graveyard.yaml" in err, err
+    assert git(root, "rev-parse", "HEAD") == head
+    assert (root / "docs/work/backlog" / OLD / "state.yaml").exists()
+    assert not (root / "docs/work/renames.yaml").exists()
+    assert git(root, "diff", "--cached", "--name-only").strip() == ""
+    assert state(root, blocked)["blocked_by"] == [{"slug": OLD}]
+
+
+def test_a_failure_after_the_move_is_undone(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    blocked = item(root, "Blocked", blocked_by=[{"slug": OLD}])
+    head = git(root, "rev-parse", "HEAD")
+
+    def boom(*a, **k):
+        raise ValueError("disk full")
+    monkeypatch.setattr(FsWorkStore, "_apply_reference_edits", boom)
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 1 and "disk full" in err, err
+    assert git(root, "rev-parse", "HEAD") == head
+    assert git(root, "status", "--porcelain").strip() == ""
+    assert (root / "docs/work/backlog" / OLD / "state.yaml").exists()
+    assert state(root, blocked)["blocked_by"] == [{"slug": OLD}]
+
+
+def test_a_leftover_folder_at_the_new_name_is_refused(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    (root / "docs/work/backlog" / NEW).mkdir()
+    (root / "docs/work/backlog" / NEW / ".DS_Store").write_text("")
+    head = git(root, "rev-parse", "HEAD")
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 1 and "already exists" in err, err
+    assert git(root, "rev-parse", "HEAD") == head
+    assert (root / "docs/work/backlog" / OLD / "state.yaml").exists()
+
+
+def test_uncommitted_edits_in_the_item_are_refused(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    (root / "docs/work/backlog" / OLD / "spec.md").write_text("# half written\n")
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 1 and "uncommitted" in err, err
+    assert not (root / "docs/work/renames.yaml").exists()
+
+
+def test_a_tcw_link_to_the_old_slug_still_validates(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    other = item(root, "Other")
+    (FsWorkStore.open(root).path(other) / "notes.md").write_text(
+        f"See [the item](tcw://W/{OLD}).\n")
+    settle(root, "link")
+    assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    assert main(["validate"]) == 0, capsys.readouterr()
+
+
+def test_a_bound_ticket_is_named(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    (root / "docs/work/backlog" / OLD / "tracker.yaml").write_text(
+        'schema: 1\nprovider: jira-cloud\nproject: probe\npart: default\n'
+        'ticket:\n    id: "10052"\n    key: TCWCLAIM-6\n'
+        '    url: https://example.invalid/browse/TCWCLAIM-6\n'
+        'bound: "2026-09-14"\nunlinked: []\n')
+    settle(root, "bind")
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 0, err
+    assert "TCWCLAIM-6" in err, err
+
+
+def test_path_follows_and_validate_reports_a_loop(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    assert main(["work", "path", OLD]) == 0
+    assert NEW in capsys.readouterr().out
+    (root / "docs/work/renames.yaml").write_text(
+        f"{OLD}: {NEW}\n2026-01-01-x: 2026-01-01-y\n2026-01-01-y: 2026-01-01-x\n")
+    assert main(["validate"]) == 1
+    out = capsys.readouterr()
+    assert "loop" in (out.out + out.err), out
+
+
+def test_an_epics_resolved_child_still_counts(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    epic = item(root, "Remove a participant", type="epic")
+    st = FsWorkStore.open(root)
+    st.start(epic, owner="x")
+    done = item(root, "Done", initiative=epic)
+    st.start(done, owner="x")
+    st.complete(done, "done", [])
+    settle(root, "resolved child")
+    monkeypatch.setenv("TCW_WORK_OWNER", "x")
+    assert rename(root, monkeypatch, capsys, epic, "add-remove-or-step-down")[0] == 0
+    graveyard = yaml.safe_load((root / "docs/work/graveyard.yaml").read_text()) or {}
+    live = {i.slug for i in FsWorkStore.open(root).initiative_children(NEW)}
+    assert done in live or graveyard.get(done, {}).get("initiative") == NEW
+
+
+def test_a_dirty_graveyard_the_rename_does_not_touch_is_left_out(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    graveyard = root / "docs/work/graveyard.yaml"
+    graveyard.write_text("{}\n")
+    settle(root, "graveyard")
+    graveyard.write_text("{}\n# someone's edit\n")
+    assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    assert "graveyard.yaml" not in git(root, "show", "--name-only", "--format=", "HEAD")
+    assert "someone's edit" in graveyard.read_text()
+
+
+def test_a_dirty_graveyard_the_rename_must_rewrite_refuses(tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    graveyard = root / "docs/work/graveyard.yaml"
+    graveyard.write_text(yaml.safe_dump({"2026-01-01-done": {
+        "resolution": "done", "resolved": "2026-01-02", "initiative": OLD}}))
+    settle(root, "graveyard")
+    item(root, "Remove a participant", type="epic")
+    graveyard.write_text(graveyard.read_text() + "# someone's edit\n")
+    head = git(root, "rev-parse", "HEAD")
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    assert code == 1 and "uncommitted" in err, err
+    assert git(root, "rev-parse", "HEAD") == head
+    assert not (root / "docs/work/renames.yaml").exists()
+
+
+def test_tombstone_is_still_abstract_and_renamed_is_not():
+    from tcw.store.base import WorkStore
+    assert "tombstone" in WorkStore.__abstractmethods__
+    assert "renamed" not in WorkStore.__abstractmethods__
+
+
+def test_an_unqualified_external_blocker_follows_to_the_resolved_record(
+        tmp_path, monkeypatch, capsys):
+    import shutil
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    other = item(root, "Other")
+    assert rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")[0] == 0
+    st = FsWorkStore.open(root)
+    st.set_field(other, "blocked_by", [{"external": OLD}])
+    st.start(NEW, owner="x")
+    st.complete(NEW, "done", [])
+    shutil.rmtree(st.root / "completed" / NEW, ignore_errors=True)   # another clone
+    assert st.unresolved_blockers(st.get(other)) == []

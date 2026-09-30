@@ -45,6 +45,7 @@ from tcw.store.base import (
     WORK_STATUSES, WORK_TYPES, _UNSET, resolution_status,
     AmbiguousRef, Artifact, ArtifactResource, Capability, CapabilitiesStore,
     CapabilityDetail, MultipleMatch, RefError, AlreadyClaimed, IllegalTransition,
+    slugify, _DATE_PREFIX, rename_slug,
     InboxEntry, InboxEntryDetail, InboxResource, PlanStage, PlanStageResource,
     LifecyclePolicy, SidecarResource, StaleRevision, TransitionCommitError,
     Binding, DocEntry, body_title, frontmatter_end,
@@ -1462,45 +1463,12 @@ def dump_yaml(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
-def slugify(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
-
-
-_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
-
-
 def _is_under(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
         return True
     except ValueError:
         return False
-
-
-def rename_slug(old: str, new: str) -> str:
-    """The full slug `tcw work rename <old> <new>` means, or ValueError.
-
-    `new` may be a whole slug or only the part after the date. The date stays
-    the item's own — it records when the item was made, not when it was named —
-    so a different date is refused rather than quietly replaced. Never
-    rewritten into slug form: an argument that is not one already is refused
-    naming the form it would be, so the slug that lands is the slug typed."""
-    new = new.strip()
-    old_date = _DATE_PREFIX.match(old)
-    new_date = _DATE_PREFIX.match(new)
-    if new_date and old_date and new_date.group(0) != old_date.group(0):
-        raise ValueError(f"{new} has a different date than {old}; the date is when "
-                         f"the item was made, and a rename keeps it — give only "
-                         f"the part after it")
-    full = new if new_date or not old_date else old_date.group(0) + new
-    body = _DATE_PREFIX.sub("", full)
-    if not body or slugify(body) != body:
-        hint = slugify(body) if body and slugify(body) != "untitled" else ""
-        raise ValueError(f"'{new}' is not a slug (lower-case letters, digits and "
-                         f"single hyphens)" + (f"; did you mean '{hint}'?" if hint else ""))
-    if len(body) > 120:
-        raise ValueError(f"'{new}' is longer than 120 characters after the date")
-    return full
 
 
 def _extends_ids(config: dict, label: str) -> list[str]:
@@ -6208,12 +6176,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     return False, ""               # not a project: prose
                 return False, qualified_work_ref_problem(self.node_root, text)
             store, slug = found
+            renamed = store.renamed(slug)
             target = store.get(slug)
-            if target is None and (renamed := store.renamed(slug)):
+            if target is None and renamed:
                 target = store.get(renamed)
             if target is not None:
                 return target.status in RESOLVED_STATUSES, ""
-            if store.tombstone(slug) is not None:
+            if store.tombstone(renamed or slug) is not None:
                 return True, ""
             return False, f"no such work item: {text}"
         except Exception:                          # a blocker never fails its reader
@@ -6340,46 +6309,46 @@ class FsWorkStore(FsTreeStore, WorkStore):
         alone (the item's own prose, a tracker ticket)."""
         self._require_repository()
         item = self._require(slug)
-        new = rename_slug(slug, new_slug)
-        if new == slug:
-            raise ValueError(f"{slug} already has that slug")
-        if item.status in RESOLVED_STATUSES:
-            raise ValueError(f"{slug} is {item.status}; only an open item is renamed — "
-                             f"its folder may not exist in other clones, and its "
-                             f"old slug is already recorded as resolved")
-        if item.worktree or item.branch:
-            raise ValueError(
-                f"{slug} has a worktree or branch ({item.branch or item.worktree}), "
-                f"which a rename would strand. Complete or tear that down first, or "
-                f"rename by hand: `git branch -m`, move .worktrees/{slug}, and update "
-                f"the item's `branch` and `worktree` fields")
-        if item.owner and item.owner != owner:
-            raise ValueError(f"{slug} is held by {item.owner}; only its holder "
-                             f"renames it")
-        claiming = self.root / ".claiming"
-        if claiming.is_dir() and any(p.name.startswith(f"{slug}-")
-                                     for p in claiming.iterdir()):
-            raise ValueError(f"{slug} has a claim in progress; retry once it settles")
-        if (self._find(new) is not None or self.tombstone(new) is not None
-                or new in self._renames()):
-            raise ValueError(f"{new} is already taken by an item, a resolved item's "
-                             f"record, or an earlier rename")
+        new = self.rename_refusal(item, new_slug, owner)
         # Read before anything moves: once the folder has its new name, nothing
         # still names the old one to find by.
         slices = [(n, i) for n, i in (self.initiative_slices(slug) if item.type == "epic"
                                       else []) if n.resolve() != self.node_root.resolve()]
         with self._graveyard_lock():
-            renames_path = self.root / self.RENAMES_NAME
-            self._require_clean(renames_path)
-            record = load_yaml(renames_path) if renames_path.exists() else {}
-            record = record if isinstance(record, dict) else {}
-            record[slug] = new
-            self._write_staged([(renames_path, yaml.safe_dump(record, sort_keys=True))])
+            # Every refusal before the first write. A rename that stops halfway
+            # leaves the old slug recorded as renamed, and every retry — by either
+            # slug — is then refused as taken, so nothing below may be what fails.
+            claiming = self.root / ".claiming"
+            if claiming.is_dir() and any(p.name.startswith(f"{slug}-")
+                                         for p in claiming.iterdir()):
+                raise ValueError(f"{slug} has a claim in progress; retry once it settles")
+            self.rename_refusal(self._require(slug), new_slug, owner)   # under the lock
             src = self._require_dir(slug)
             dst = src.parent / new
-            git_mv(self.store_git_root, src, dst)
-            touched = [renames_path, src, dst, *self._rewrite_references(slug, new)]
-            elsewhere = self._rewrite_capability_links(slug, new)
+            if dst.exists():
+                raise ValueError(f"{dst} already exists; move or remove it, then retry")
+            renames_path = self.root / self.RENAMES_NAME
+            record = self._readable_mapping(renames_path)
+            record[slug] = new
+            edits, graveyard = self._reference_edits(slug, new)
+            metas = self._capability_links(slug)
+            writes = [renames_path, *(d / "state.yaml" for d, _ in edits), *metas]
+            if graveyard is not None:
+                writes.append(self._graveyard_path())
+            for path in [src, *writes]:
+                self._require_clean(path)
+            before = {p: (p.read_bytes() if p.exists() else None) for p in writes}
+            moved = False
+            try:
+                self._write_staged([(renames_path, yaml.safe_dump(record, sort_keys=True))])
+                git_mv(self.store_git_root, src, dst)
+                moved = True
+                written = self._apply_reference_edits(edits, slug, new, graveyard)
+                elsewhere = self._rewrite_capability_links(metas, slug, new)
+            except BaseException:
+                self._undo_rename(src, dst, moved, before)
+                raise
+            touched = [renames_path, src, dst, *written]
             notes = self._prose_mentions(dst, slug)
             if self.auto_commit_transitions():
                 mine = [p for p in touched + elsewhere if _is_under(p, self.store_git_root)]
@@ -6392,18 +6361,53 @@ class FsWorkStore(FsTreeStore, WorkStore):
                         f"{slug} was renamed to {new}, but committing it failed:\n{err}")
                 for p in elsewhere:
                     if p not in mine and (root := git_root(p.parent)) is not None:
-                        git_commit_result(root, f"tcw work: rename {slug} → {new}",
-                                          str(p.relative_to(root)))
+                        if err := git_commit_result(root, f"tcw work: rename {slug} → {new}",
+                                                    str(p.relative_to(root))):
+                            notes.append(f"{p} names {new} now, but committing it in "
+                                         f"{root} failed: {err}")
         for node, child in slices:
             notes += FsWorkStore.open(node)._repoint_initiative(child.slug, slug, new)
         return self._require(new), notes
+
+    def _readable_mapping(self, path: Path) -> dict:
+        """`path` parsed as a mapping, or {} if absent; refuses anything else
+        rather than overwriting what it could not read."""
+        if not path.exists():
+            return {}
+        try:
+            doc = load_yaml(path)
+        except Exception as e:
+            raise ValueError(f"{path} cannot be read ({e}); fix it, then retry")
+        if doc is None:
+            return {}
+        if not isinstance(doc, dict):
+            raise ValueError(f"{path} is not a mapping; fix it, then retry")
+        return doc
+
+    def _undo_rename(self, src: Path, dst: Path, moved: bool,
+                     before: "dict[Path, bytes | None]") -> None:
+        """Put back what a failed rename changed. Every file it wrote was clean
+        when read, so its bytes then are the committed ones."""
+        if moved and dst.exists() and not src.exists():
+            subprocess.run(["git", "-C", str(self.store_git_root), "mv", "-k",
+                            str(dst), str(src)], capture_output=True,
+                           stdin=subprocess.DEVNULL)
+        for path, data in before.items():
+            subprocess.run(["git", "-C", str(self.store_git_root), "reset", "-q", "--",
+                            _literal(str(path.resolve().relative_to(
+                                self.store_git_root.resolve())))],
+                           capture_output=True, stdin=subprocess.DEVNULL)
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(data)
 
     def _require_clean(self, path: Path) -> None:
         """Refuse when `path` has uncommitted changes and auto-commit is on: the
         commit about to be made would carry someone else's edit to it."""
         if not self.auto_commit_transitions() or not path.exists():
             return
-        rel = str(path.relative_to(self.store_git_root))
+        rel = str(path.resolve().relative_to(self.store_git_root.resolve()))
         out = subprocess.run(["git", "-C", str(self.store_git_root), "status",
                               "--porcelain", "--", _literal(rel)],
                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -6411,10 +6415,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
             raise ValueError(f"{path} has uncommitted changes; commit or revert them, "
                              f"then retry")
 
-    def _rewrite_references(self, old: str, new: str) -> list[Path]:
-        """Point every `blocked_by`, `parent` and `initiative` on this board, and
-        every graveyard `initiative`, at `new`. Returns the files written."""
-        written = []
+    def _reference_edits(self, old: str, new: str) -> "tuple[list[tuple[Path, dict]], dict | None]":
+        """What naming `old` on this board would change: `(folder, fields)` per
+        item whose `blocked_by`, `parent` or `initiative` names it, and the
+        rewritten graveyard if any record's `initiative` does (else None).
+        Reads only — every file is parsed here, so a damaged one refuses the
+        rename before anything is written."""
+        edits = []
         for d in self._item_dirs():
             state = self._safe_yaml(d / "state.yaml")
             fields = {}
@@ -6438,24 +6445,39 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
                     fields[key] = keep + new
             if fields:
-                self._set_fields_at(d, fields)
-                written.append(d / "state.yaml")
-        path = self._graveyard_path()
-        if path.exists():
-            doc = load_yaml(path)
-            if isinstance(doc, dict):
-                changed = False
-                for entry in doc.values():
-                    value = entry.get("initiative") if isinstance(entry, dict) else None
-                    if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
-                        entry["initiative"] = keep + new
-                        changed = True
-                if changed:
-                    self._require_clean(path)
-                    self._write_staged([(path, yaml.safe_dump(doc, sort_keys=True,
-                                                              allow_unicode=True))])
-                    written.append(path)
+                edits.append((d, fields))
+        doc = self._readable_mapping(self._graveyard_path())
+        changed = False
+        for entry in doc.values():
+            value = entry.get("initiative") if isinstance(entry, dict) else None
+            if isinstance(value, str) and (keep := self._names_here(value, old)) is not None:
+                entry["initiative"] = keep + new
+                changed = True
+        return edits, (doc if changed else None)
+
+    def _apply_reference_edits(self, edits: "list[tuple[Path, dict]]", old: str,
+                               new: str, graveyard: dict | None) -> list[Path]:
+        """Write what `_reference_edits` planned, after the folder moved — the
+        renamed item's own folder, and anything nested in it, is at `new` now."""
+        written = []
+        for d, fields in edits:
+            here = d if d.exists() else self._moved(d, old, new)
+            self._set_fields_at(here, fields)
+            written.append(here / "state.yaml")
+        if graveyard is not None:
+            path = self._graveyard_path()
+            self._write_staged([(path, yaml.safe_dump(graveyard, sort_keys=True,
+                                                      allow_unicode=True))])
+            written.append(path)
         return written
+
+    @staticmethod
+    def _moved(d: Path, old: str, new: str) -> Path:
+        """`d` after the folder named `old` among its ancestors became `new`."""
+        parts = list(d.parts)
+        i = len(parts) - 1 - parts[::-1].index(old)
+        parts[i] = new
+        return Path(*parts)
 
     def _repoint_initiative(self, child: str, old: str, new: str) -> list[str]:
         """On another board: repoint `child`'s `initiative` from the epic `old` to
@@ -6478,22 +6500,31 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return [f"{child} in {self.node_root} still names {old}: {e}"]
         return []
 
-    def _rewrite_capability_links(self, old: str, new: str) -> list[Path]:
-        """Capability `meta.yaml` `Planning doc:` lines on this node naming `old`."""
+    @staticmethod
+    def _planning_doc_pattern(old: str) -> "re.Pattern[str]":
+        # A bare slug on its own line, as every `Planning doc:` is written; a
+        # quoted or qualified value is left alone.
+        return re.compile(rf"^(Planning doc:\s*){re.escape(old)}\s*$", re.M)
+
+    def _capability_links(self, old: str) -> list[Path]:
+        """Capability `meta.yaml` files on this node whose `Planning doc:` is `old`."""
         try:
             root = FsCapabilitiesStore.open(self.node_root).root
         except Exception:                          # no capabilities component here
             return []
-        pattern = re.compile(rf"^(Planning doc:\s*){re.escape(old)}\s*$", re.M)
-        written = []
-        for meta in sorted(root.rglob("meta.yaml")):
+        pattern = self._planning_doc_pattern(old)
+        return [meta for meta in sorted(root.rglob("meta.yaml"))
+                if pattern.search(meta.read_text(encoding="utf-8"))]
+
+    def _rewrite_capability_links(self, metas: list[Path], old: str,
+                                  new: str) -> list[Path]:
+        pattern = self._planning_doc_pattern(old)
+        for meta in metas:
             text = meta.read_text(encoding="utf-8")
-            if pattern.search(text):
-                meta.write_text(pattern.sub(rf"\g<1>{new}", text), encoding="utf-8")
-                if (repo := git_root(meta.parent)) is not None:
-                    git_stage(repo, meta)
-                written.append(meta)
-        return written
+            meta.write_text(pattern.sub(rf"\g<1>{new}", text), encoding="utf-8")
+            if (repo := git_root(meta.parent)) is not None:
+                git_stage(repo, meta)
+        return metas
 
     @staticmethod
     def _prose_mentions(folder: Path, old: str) -> list[str]:
