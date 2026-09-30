@@ -6695,6 +6695,54 @@ class FsWorkStore(FsTreeStore, WorkStore):
         value = self._work_config().get("auto-commit-transitions")
         return value if isinstance(value, bool) else True
 
+    def commit_writes(self, message: str, *paths: Path) -> str | None:
+        """Commit what a creation just wrote — only those paths — the way a
+        transition commits its move. None when committed, when there was nothing
+        to commit, or when `work.auto-commit-transitions` is off; otherwise
+        what went wrong, as a clause ("committing it failed: …").
+
+        Staged either way, and staged first: a creation leaves its files in one
+        state whatever the switch says, and a scoped `git commit` ignores an
+        untracked file. A path that is gone (an accepted inbox entry) is
+        committed, not staged — its removal is already in the index.
+
+        Never raises for a refused commit. A creation that succeeded must not
+        look like one that failed: re-running it makes a second item, where
+        re-running a transition is merely refused."""
+        if git_root(self.store_git_root) is None:
+            return None
+        present = [p for p in paths if p.exists()]
+        try:
+            if present:
+                git_stage(self.store_git_root, *present)
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or "").strip() if isinstance(error.stderr, str) else ""
+            return f"staging it failed: {detail or error}"
+        if not self.auto_commit_transitions():
+            return None
+        rel = []
+        for p in paths:
+            try:
+                rel.append(str(p.resolve().relative_to(self.store_git_root.resolve())))
+            except ValueError:
+                rel.append(str(p))
+        if err := git_commit_result(self.store_git_root, message, *rel):
+            return f"committing it failed:\n{err}"
+        if self.publishes:
+            try:
+                self.publish()
+            except (ValueError, OSError, subprocess.CalledProcessError) as error:
+                return (f"it is committed in {self.store_git_root}, but publishing "
+                        f"it to the declared remote failed:\n{error}")
+        return None
+
+    def inbox_source(self, ref: str) -> Path | None:
+        """Where the inbox entry `ref` resolves to, or None if it does not."""
+        try:
+            return self._inbox_path(self._resolve_inbox_ref(ref))
+        except (InboxEntryNotFound, ValueError, MultipleMatch):
+            return None
+
     def lifecycle_policy(self) -> LifecyclePolicy:
         """The node's configured stage/transition bindings.
 

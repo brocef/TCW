@@ -7,6 +7,7 @@ FS realization only — a remote recursion layer would be additive.
 
 import os
 import re
+import sys
 from datetime import date
 from pathlib import Path
 from typing import NamedTuple
@@ -504,6 +505,12 @@ def _inbox_write(store: FsWorkStore, title: str, body: str, origin: str,
     doc = inbox / f"{name}.md"
     doc.write_text("---\n" + "\n".join(front) + "\n---\n\n"
                    f"# {title}\n\n{body}\n", encoding="utf-8")
+    # In the receiving store's repository, under its own switch — the request
+    # is that project's to commit, as the item a transition moves is its store's.
+    if reason := store.commit_writes(
+            f"tcw work: request from {origin} → inbox/{doc.name}", doc):
+        print(f"tcw work: wrote {doc}, but {reason}\nCommit it yourself.",
+              file=sys.stderr)
     return doc
 
 
