@@ -584,3 +584,103 @@ def test_an_incomplete_tracker_with_a_parent_does_not(tmp_path):
     out = _tcw(root / "a", "validate", "--no-recurse")
     text = out.stdout + out.stderr
     assert "required" in text and _NO_PARENT not in text, text
+
+
+# ── the Proposit shape, end to end ───────────────────────────────────────────
+
+_ROOT_TRACKER = {
+    "provider": "jira-cloud",
+    "base-url": "https://root.example.invalid",
+    "candidate-query": "project = EX",
+    "credentials": {"email-env": "ROOT_EMAIL", "token-env": "ROOT_TOKEN"},
+}
+
+
+def _edit(node: Path, change) -> None:
+    cfg = yaml.safe_load((node / "tcw-config.yaml").read_text())
+    change(cfg)
+    (node / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
+def _proposit(tmp_path: Path) -> dict[str, Path]:
+    """The shape the request came from: an orchestration root `proposit-app` with
+    children `proposit-core` and `proposit-app-repo`; a package `shared` below the
+    app repository extending core's taxonomy; core's tracker block holding only
+    `candidate-query` and inheriting the rest from the root."""
+    root = tmp_path / "ws"
+    nodes = {"root": root, "core": root / "proposit-core",
+             "app": root / "proposit-app",
+             "shared": root / "proposit-app" / "packages" / "shared"}
+    for key, pid in (("root", "proposit-app"), ("core", "proposit-core"),
+                     ("app", "proposit-app-repo"), ("shared", "shared")):
+        nodes[key].mkdir(parents=True)
+        if key != "shared":            # three repositories, as in the workspace
+            _git(nodes[key], "init", "-q", "-b", "main")
+        init(["taxonomy", "capabilities", "work"], nodes[key], pid)
+    _edit(root, lambda c: c.update({"connected-projects": {"children": {
+        "proposit-core": "proposit-core", "proposit-app-repo": "proposit-app"}}}))
+    _set_tracker(root, dict(_ROOT_TRACKER))
+    _edit(nodes["core"], lambda c: c.update({"connected-projects": {
+        "parent": {"proposit-app": ".."}}}))
+    _set_tracker(nodes["core"], {"candidate-query": "project = CORE"})
+    _edit(nodes["app"], lambda c: c.update({"connected-projects": {
+        "parent": {"proposit-app": ".."}, "children": {"shared": "packages/shared"}}}))
+    _edit(nodes["shared"], lambda c: c.update({"connected-projects": {
+        "parent": {"proposit-app-repo": "../.."}}}))
+    assert _tcw(nodes["core"], "taxonomy", "add", "Argument").returncode == 0
+    out = _tcw(nodes["shared"], "taxonomy", "extends", "add", "proposit-core")
+    assert out.returncode == 0, out.stderr
+    return nodes
+
+
+def _validate_each(nodes: dict[str, Path]) -> dict[str, tuple[int, str]]:
+    result = {}
+    for key, node in nodes.items():
+        out = _tcw(node, "validate", "--no-recurse")
+        result[key] = (out.returncode, out.stdout + out.stderr)
+    return result
+
+
+def _assert_state(nodes, *, warned: set[str]) -> None:
+    for key, (code, text) in _validate_each(nodes).items():
+        assert code == 0, (key, text)
+        has_warning = "read as an upstream project" in text
+        assert has_warning == (key in warned), (key, text)
+    out = _tcw(nodes["shared"], "taxonomy", "show", "proposit-core/argument")
+    assert out.returncode == 0, out.stderr
+
+
+def test_the_proposit_migration_passes_through_no_blocked_state(tmp_path):
+    nodes = _proposit(tmp_path)
+    _assert_state(nodes, warned=set())
+
+    step_2 = lambda c: c["connected-projects"].update(  # noqa: E731
+        {"upstream": {"proposit-core": "../proposit-core"}})
+
+    # The forbidden middle state: step 2 before step 1.
+    _edit(nodes["app"], step_2)
+    code, text = _validate_each({"app": nodes["app"]})["app"]
+    assert code == 1 and "declare one or the other" in text, text
+    _edit(nodes["app"], lambda c: c["connected-projects"].pop("upstream"))
+
+    # Step 1: the root moves core from children to upstream, one edit.
+    def step_1(c):
+        c["connected-projects"]["children"].pop("proposit-core")
+        c["connected-projects"]["upstream"] = {"proposit-core": "proposit-core"}
+    _edit(nodes["root"], step_1)
+    _assert_state(nodes, warned={"root", "core", "app", "shared"})
+
+    # Step 2: the app repository declares core upstream too — one project.
+    _edit(nodes["app"], step_2)
+    _assert_state(nodes, warned={"root", "core", "app", "shared"})
+
+    # Step 5 before step 4: the tracker block has nowhere to inherit from.
+    _edit(nodes["core"], lambda c: c.pop("connected-projects"))
+    code, text = _validate_each({"core": nodes["core"]})["core"]
+    assert code == 1 and _NO_PARENT in text, text
+
+    # Step 4: the tracker block goes; with step 5 in place, nothing is left over.
+    _edit(nodes["core"], lambda c: c["work"].pop("tracker"))
+    _assert_state(nodes, warned=set())
+    out = _tcw(nodes["core"], "validate")
+    assert "proposit-app" not in out.stdout + out.stderr, out.stdout
