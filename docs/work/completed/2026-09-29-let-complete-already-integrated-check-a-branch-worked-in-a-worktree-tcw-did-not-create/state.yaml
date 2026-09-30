@@ -2,7 +2,7 @@ slug: 2026-09-29-let-complete-already-integrated-check-a-branch-worked-in-a-work
 title: Let complete --already-integrated check a branch worked in a worktree tcw did
   not create
 created: '2026-09-29'
-resolution: null
+resolution: done
 tags:
 - cli
 - work
