@@ -556,3 +556,31 @@ def test_the_upstream_stays_off_the_familys_lists(tmp_path):
         httpd.server_close()
     assert status == 200 and slug not in text, text
     _assert_core_untouched(tmp_path)
+
+
+# ── the tracker hint for a project with no parent ────────────────────────────
+
+_NO_PARENT = "has no parent to inherit work.tracker settings from"
+
+
+def _set_tracker(node: Path, tracker: dict) -> None:
+    cfg = yaml.safe_load((node / "tcw-config.yaml").read_text())
+    cfg.setdefault("work", {})["tracker"] = tracker
+    (node / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+
+def test_an_incomplete_tracker_with_no_parent_says_so(tmp_path):
+    core = _core_node(tmp_path / "core")
+    _set_tracker(core, {"candidate-query": "project = X"})
+    out = _tcw(core, "validate")
+    assert out.returncode == 1, out.stdout
+    text = out.stdout + out.stderr
+    assert "required" in text and _NO_PARENT in text, text
+
+
+def test_an_incomplete_tracker_with_a_parent_does_not(tmp_path):
+    root, _ = _cli_family(tmp_path)
+    _set_tracker(root / "a", {"candidate-query": "project = X"})
+    out = _tcw(root / "a", "validate", "--no-recurse")
+    text = out.stdout + out.stderr
+    assert "required" in text and _NO_PARENT not in text, text

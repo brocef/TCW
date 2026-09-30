@@ -6662,6 +6662,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None, [], False
         blocks: list[tuple[str, object]] = [(SENTINEL, own)]
         unreachable: str | None = None
+        orphan = False
         if isinstance(own, dict):
             try:
                 registry = FsProjectRegistry.open(self.node_root).require_valid()
@@ -6680,6 +6681,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
                     ancestors[-1].id if ancestors else None)
                 if parent_id is not None and registry.get(parent_id) is None:
                     unreachable = parent_id
+                # No parent at all: the missing settings can come from nowhere,
+                # which is the state an upstream is left in once it stops naming
+                # the project that used to supply them.
+                orphan = registry.declared_parent_id() is None
 
         merged, record, whole_block_label = merge_tracker_blocks(blocks)
         config, parsed = parse_tracker_config(merged)
@@ -6693,6 +6698,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 f"{SENTINEL}: work.tracker: declared parent '{unreachable}' is not "
                 f"available in this checkout, so any tracker settings it holds were "
                 f"not read (run tcw provision)")
+        if orphan and any(p.endswith(": required") for p in problems):
+            problems.append(
+                f"{SENTINEL}: work.tracker: this project has no parent to inherit "
+                f"work.tracker settings from; declare the whole block or remove it")
         if config is not None:
             strict = config.strict
         else:
