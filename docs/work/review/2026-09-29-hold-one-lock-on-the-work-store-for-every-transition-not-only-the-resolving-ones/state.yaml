@@ -6,7 +6,7 @@ resolution: null
 tags:
 - store
 - work
-owner: brocef@users.noreply.github.com
-started: '2026-09-30T16:20:07.559695Z'
+owner: ''
+started: ''
 worktree: .worktrees/2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-the-resolving-ones
 branch: work/2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-the-resolving-ones
