@@ -75,10 +75,10 @@ and it goes in the request, never the intake:
 - **Append it to `initial-request.md`** under `## Added <YYYY-MM-DD>`, saying
   where it came from. Never rewrite what is already there; re-running the
   `request` stage keeps these sections.
-- **An item with only `intake.md` has no request yet.** In `backlog`, write one
-  with the `request` stage, the amendment folded in or under its own dated
-  heading; with no user to ask, write it from the evidence and say so in
-  `## Notes`. Past `backlog` that stage no longer runs, so write
+- **An item with only `intake.md` has no request yet.** In `backlog` or
+  `active`, write one with the `request` stage, the amendment folded in or
+  under its own dated heading; with no user to ask, write it from the evidence
+  and say so in `## Notes`. In `review` that stage does not run, so write
   `initial-request.md` directly — write the file, or use the web app's body
   editor; either promotes the item.
   Either way `intake.md` stays byte-for-byte as it arrived.

@@ -386,8 +386,9 @@ After `tcw work new`, `tcw work inbox accept`, `tcw work start`, `tcw work submi
 and `tcw work rework`, the CLI prints the **next step** on stderr, as the gate of
 the stage that comes next — e.g. "→ next: run `tcw work stage gate request …`"
 after `new` — so the lifecycle is hard to skip. After `start` it is the first stage
-the item still needs: `spec`, `plan`, `implement`, or `verify` for an active item
-taken over with its outcome already written. After `submit` it is `verify`, whose
+the item still needs: `request` while it has neither a request nor a spec,
+then `spec`, `plan`, `implement`, or `verify` for an active item taken over with
+its outcome already written. After `submit` it is `verify`, whose
 two endings the hint names; after `rework`, `implement`. The slug still goes to
 stdout alone.
 `tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
@@ -457,9 +458,9 @@ in the request, never the intake:
   Re-running the `request` stage keeps these sections. The web app's request
   tab shows the whole file; `tcw work show` prints only the start of the body,
   so read the file itself to see every amendment.
-- An item that has only `intake.md` has no request yet. In `backlog`, write one
-  with the `request` stage, with the amendment folded in or under its own
-  dated heading. Once the item has moved on, that stage no longer runs, so
+- An item that has only `intake.md` has no request yet. In `backlog` or
+  `active`, write one with the `request` stage, with the amendment folded in
+  or under its own dated heading. In `review` that stage does not run, so
   write `initial-request.md` directly — write the file yourself, or use the web
   app's body editor; either promotes the item.
   The intake is left as it arrived either way.

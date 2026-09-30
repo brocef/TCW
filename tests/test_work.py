@@ -1279,7 +1279,9 @@ def test_cli_new_and_start_emit_next_step_hints(tmp_path, monkeypatch, capsys):
     assert main(["work", "start", slug]) == 0
     start_out = capsys.readouterr()
     assert start_out.out.strip() == f"started {slug} → docs/work/active/{slug}"
-    assert f"tcw work stage gate spec {slug}" in start_out.err       # unplanned item
+    next_line = [l for l in start_out.err.splitlines() if l.startswith("→ next:")]
+    # `new` with no body writes no request, and no spec either: `request` first.
+    assert next_line == [f"→ next: run `tcw work stage gate request {slug}`"], start_out.err
     assert "tcw work complete" not in start_out.err
 
 

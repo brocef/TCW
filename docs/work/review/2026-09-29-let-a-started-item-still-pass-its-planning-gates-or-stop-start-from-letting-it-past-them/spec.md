@@ -35,7 +35,11 @@ instead.
    last two.
 3. The hint after `start` follows the work skill's "Finding your place" order
    (`start_next_stage`): no `initial-request.md` → `request`, then `spec`,
-   `plan`, and so on.
+   `plan`, and so on. The request counts as missing only while `spec.md` is
+   also unwritten. A spec supersedes the request's job of recording what was
+   asked, so an item that is already specified is never sent back to write its
+   request. The same rule applies to goal 2's warning,
+   and to the skill's own line, which is reworded to match.
 4. A stage refused for the item's status adds one line saying how to go on:
    - the item is past the stage and in `review`, while the stage is legal in
      `active` (`request`, `spec`, `plan`, `implement`): send it back with
@@ -65,7 +69,8 @@ instead.
 - `_unwritten_plan` becomes `_unwritten_planning`, checking `initial-request`,
   `spec` and `plan`. An item with `intake.md` but no request still counts as
   missing the request: the `request` stage has not run.
-- `start_next_stage` returns `request` first when `initial-request` is absent.
+- `start_next_stage` returns `request` first when `initial-request` and `spec` are
+  both absent (goal 3).
 - `_stage` in `tcw/work/cli.py` adds the hint under the existing refusal.
 - `tcw/work/prompts/request.md`'s footer, and `STAGE_NEXT_STEPS`, say that
   after `request` on an active item the next step is `spec`, as today. That is
@@ -87,8 +92,10 @@ reads the same way.
    today's text, and names `tcw work rework` and `tcw work stage prompt spec`.
 5. `tcw work stage gate implement <slug>` on a backlog item names
    `tcw work start`.
-6. The lifecycle baseline fixture and `tcw work lifecycle` output show
-   `request` legal in `backlog, active`.
+6. `request` is legal in `backlog, active`, asserted directly against
+   `STAGE_STATUSES`. *Corrected at verify:* this first named the lifecycle
+   baseline fixture and `tcw work lifecycle`, neither of which records which
+   statuses a stage is legal in.
 7. Existing tests pass, updated only where they pinned `request`'s old
    legality or the old start hint. The full suite passes as CI runs it.
 
@@ -99,6 +106,10 @@ reads the same way.
 
 ## Notes
 
+- Revised at implementation. Read literally, the skill's order sends an item
+  with a spec, plan and outcome, but no request, back to the `request` stage.
+  That is the case this issue is about: work written up after it started. So
+  the request counts as missing only before a spec exists (goal 3).
 - No advisors were consulted. The question (legal, or only a better refusal)
   was settled by the accepted precedent `994727fb`, which made `spec` and
   `plan` legal in `active` for the same reason. Goal 4 answers the issue's
