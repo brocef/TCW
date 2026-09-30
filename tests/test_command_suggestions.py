@@ -100,3 +100,11 @@ def test_every_parser_in_the_tree_suggests():
                 for name, sp in a.choices.items():
                     walk(sp, path + [name])
     walk(build_parser(), ["tcw"])
+
+
+def test_discard_names_the_command_that_discards(tmp_path):
+    """`discard` is a transition with no verb of its own: it is a completion
+    with another resolution, so `tcw work discard` would be wrong advice."""
+    out = stage(tmp_path, "gate", "discard", "some-slug")
+    assert "tcw work discard" not in out.stderr, out.stderr
+    assert "--resolution wontfix" in out.stderr, out.stderr

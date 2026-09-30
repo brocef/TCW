@@ -1957,6 +1957,18 @@ def _stage_step(verb: str, stage_id: str):
     return step
 
 
+# How each transition is run. Not always `tcw work <id>`: a discard is a
+# completion with another resolution, and auto-delete runs on its own.
+_TRANSITION_COMMAND = {
+    "start": "`tcw work start <slug>`",
+    "submit": "`tcw work submit <slug>`",
+    "rework": "`tcw work rework <slug>`",
+    "complete": "`tcw work complete <slug> --resolution done --confirm`",
+    "discard": "`tcw work complete <slug> --resolution wontfix --confirm` "
+               "(or `duplicate`, `superseded`)",
+}
+
+
 def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
     """What a word given as a stage probably meant: an artifact names the stage
     that writes it, a transition names its own command, and anything else is
@@ -1975,7 +1987,8 @@ def _stage_hint(verb: str, word: str, legal: list[str]) -> str:
         stage = name.replace("-", "")
         said.append(f"the stage is spelled `{stage}`: `tcw work stage {verb} {stage} <slug>`.")
     if step is not None and step.kind == "transition":
-        said.append(f"`{name}` is a transition, not a stage: `tcw work {name} <slug>`.")
+        said.append(f"`{name}` is a transition, not a stage"
+                    + (f": {how}." if (how := _TRANSITION_COMMAND.get(name)) else "."))
     if not said:
         close = difflib.get_close_matches(name, legal, n=3, cutoff=0.6)
         if close:
