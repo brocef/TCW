@@ -103,3 +103,28 @@ instead of removing.
 - Found by the adversarial review of #72; the defect predates that change.
 - The refusal-versus-rescue-branch choice was made by the maintainer at triage
   (refuse and explain).
+
+## Amended after spec review (2026-09-30)
+
+An adversarial spec review ran before implementation. Accepted:
+
+- **The Risks claim about a folder that is not a worktree was wrong.**
+  `.worktrees/<slug>` sits inside the primary checkout, so `git -C` on a plain
+  folder there silently answers for the *primary checkout*. The helper therefore
+  first checks that `git -C <folder> rev-parse --show-toplevel` is that folder,
+  and fails closed ("git could not check") otherwise. Added criterion 7: a plain
+  folder at the worktree path, with the primary checkout detached at an
+  unbranched commit, is reported as "could not check", never as that commit.
+- **The loss is worse than "reachable only from the reflog".** `git worktree
+  remove` deletes that worktree's own reflog too, so the commits survive only as
+  unreachable objects until garbage collection. No message tells users to
+  recover from the reflog.
+- **`--force` does not bypass the refusal.** `--force` overrides whether shipping
+  is allowed, not what shipping would carry (`tcw/work/cli.py` comment above the
+  uncommitted-files check). Added to criterion 1.
+- **The refusal lists at most ten hashes** and says how many more there are.
+- **Stash is deliberately not excluded.** A stash made on the detached `HEAD`
+  keeps its commit reachable, but a stash is a scratch area users clear without
+  thinking of it as a save; refusing there errs on the safe side.
+- On a discard the item is terminal, so the worktree is removed by hand only; the
+  warning says how, and under `work.retain: false` it is the only record.
