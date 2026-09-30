@@ -18,7 +18,9 @@ swapped-case name). Tests for acceptance criteria 1-5; 1, 2, 4, 5 committed
 
 - `project.py`: `_below(path, root) -> Path | None` as the spec's Design
   describes; `_locator_path` Rule 1 and `_worktree_copy` Rule 2 rewritten over
-  it (the `between` loop's `is_relative_to(top)` included).
+  it. *(The `between` loop's `is_relative_to(top)` was left as text: `copy`
+  is built as `top / under_main`, so its spelling is `top`'s and the text
+  comparison is exact.)*
 - `fs.py`: `anchor_configured_path` and `worktree_node_root` use it (imported
   from `tcw.store.project`, which `fs.py` already imports from).
 - Remove the `xfail` marks. **Proves** criteria 1-5.

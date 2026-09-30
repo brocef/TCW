@@ -34,7 +34,11 @@ not.
 
 Sweep (every `is_relative_to` / `relative_to` in `project.py` and `fs.py`):
 two more compare a path against git's spelling of a worktree root, and share
-the defect when the *working directory* is typed in other letter case:
+the defect when they are given a node path taken from an override's spelling —
+a registry locator, which `tcw validate`'s recursive pass (`tcw/cli.py:455`)
+and a work store opened at that locator pass on. *(Corrected at code review:
+the first wording blamed a working directory typed in other letter case, which
+macOS never hands back — `os.getcwd()` returns the disk's own spelling.)*
 
 - `anchor_configured_path` (`fs.py:1775-1809`) re-anchors a component store's
   configured path that escapes a linked worktree, with

@@ -75,9 +75,20 @@ def test_the_worktree_node_root_is_found_in_any_letter_case(workspace):  # noqa:
 
 
 def test_an_override_naming_the_worktree_copy_in_other_letter_case(workspace, monkeypatch):  # noqa: F811
-    """The override names this worktree's own copy, spelled differently; its
-    parent's `..` leaves the worktree and must be re-anchored (Rule 1)."""
+    """The override names this worktree's own copy of a package, spelled
+    differently. Its `..` stays inside the worktree, so this guards the
+    mapping, not Rule 1 — it passes on the code before this change too."""
     app, wt = linked(workspace)
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(wt / "pkg-b", app)))
     out = _clean(validate(wt / "pkg-a"))
     assert "warning:" not in out, out
+
+
+def test_a_worktree_root_override_in_other_letter_case_reaches_its_parent(workspace, monkeypatch):  # noqa: F811
+    """Rule 1: the worktree's own root, named in other letter case; its parent
+    locator `..` leaves the worktree and must be re-anchored under the primary
+    checkout. Before the change the parent silently dropped out of the graph."""
+    app, wt = linked(workspace)
+    monkeypatch.setenv("TCW_PROJECT_APP_REPO", str(_upper_app(wt, app)))
+    out = _clean(validate(wt / "pkg-a"))
+    assert "not reachable" not in out, out
