@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-29-tcw-validate-crashes-on-a-duplicate-slug.md`
+
+## Inbox body
+
 # `tcw validate` crashes on a slug two folders hold
 
 Found reviewing `2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read`.
