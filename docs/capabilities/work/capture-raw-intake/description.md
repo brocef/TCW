@@ -24,5 +24,7 @@ The same holds for something that changes the request later — a decision, a
 clarification, a new constraint. It is appended to the request under a dated
 `## Added` heading and never to the intake; an item that has only intake gets
 its request written first. Once the item has a spec or plan, the amendment is
-carried into them too, because the stages that build and check the work read
-those rather than the request.
+carried into them too — or the appended section says why they do not change —
+because the stages that build and check the work read those rather than the
+request. For an item already in review, it goes into the rework notes that send
+the item back, and into the spec as well.

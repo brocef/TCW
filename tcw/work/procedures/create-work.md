@@ -54,7 +54,7 @@ tracked things covering the same work is itself news.
 | `covers` an `active` or `review` item | Tell the user the item, and any new information. Change nothing | Return the same | Report the same | `already in progress <ref>` |
 | `covers` anything else, and the idea adds nothing it does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
 | `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append | Append | Append | `amended <ref>` |
-| `covers` a `backlog` item with `spec.md` or `plan.md`, with new information | Append, then ask: revise, or leave as is | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` if left |
+| `covers` a `backlog` item with `spec.md` or `plan.md`, with new information | Append, then ask: revise, or leave as is (saying why in the appended section) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` if left |
 | `partly covers`, and the rest can stand alone | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
 | `partly covers`, and the rest cannot stand alone | Treat it as `covers` with new information | Same | Same | as that row |
 | No match | Create (step 4) | Create | Create | `created <slug>` |
@@ -64,7 +64,8 @@ tracked things covering the same work is itself news.
   item, follow the `work` skill's "Amending a request"
   (`references/commands.md`): append to `initial-request.md`, and on an item
   with only `intake.md` write the request first — the intake is raw input and
-  is never appended to. For an inbox entry that is a folder, append to the
+  is never appended to. Delegated or unattended, write that request from the
+  evidence you have and say so in its `## Notes`. For an inbox entry that is a folder, append to the
   Markdown file that `tcw work inbox show <entry>` prints as its body; an entry
   becomes an item's `intake.md` only when it is accepted. Commit as in step 4.
 - **Revise** means re-running `spec`, and `plan` if one exists, after the

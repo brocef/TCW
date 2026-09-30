@@ -449,17 +449,22 @@ in the request, never the intake:
 
 - Append it to `initial-request.md` under a dated `## Added <YYYY-MM-DD>`
   heading that says where it came from, without rewriting what is there.
-  Re-running the `request` stage keeps these sections, and `tcw work show`
-  and the web app's request tab display them.
-- An item that has only `intake.md` has no request yet: write one first, with
-  the amendment folded in or under its own dated heading. The intake is left
-  as it arrived.
+  Re-running the `request` stage keeps these sections. The web app's request
+  tab shows the whole file; `tcw work show` prints only the start of the body,
+  so read the file itself to see every amendment.
+- An item that has only `intake.md` has no request yet. In `backlog`, write one
+  with the `request` stage, with the amendment folded in or under its own
+  dated heading. Once the item has moved on, that stage no longer runs, so
+  write `initial-request.md` directly — write the file yourself, or use the web
+  app's body editor; either promotes the item.
+  The intake is left as it arrived either way.
 - Once the item has a spec or plan, the amendment has to reach them, because
   the `implement` and `verify` stages read those and not the request. While
   the item is in `backlog` or `active`, revise `spec.md` (and `plan.md`), or say
   in the appended section why neither needs to change. For an item in
-  `review`, write it into `rework.md` and send the item back with
-  `tcw work rework`.
+  `review`, delete `refined-outcome.md` if verification already wrote one, put
+  the amendment in `rework.md`, send the item back with `tcw work rework`, and
+  revise `spec.md` there too — verification checks the spec, not `rework.md`.
 - A linked tracker ticket is not updated: its description is written once,
   when the ticket is created.
 

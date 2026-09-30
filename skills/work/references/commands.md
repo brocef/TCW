@@ -53,6 +53,11 @@ Neither is created empty: `tcw work new "<title>"` with nothing piped leaves an
 item with no body file at all, which is why `R` on the board means the `request`
 stage has run and `i` means raw input is waiting for it.
 
+Writes never follow the fallback to `intake.md`. A body edit always targets
+`initial-request.md`; on an intake-only item it **promotes** the item, creating
+the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
+named artifact — raw input that quietly changes is not raw input.
+
 **Piping never hangs, and never half-succeeds.** Reading stdin is bounded: with
 nothing piped the command proceeds without intake and warns on stderr, so driving
 `tcw` from a script or hook that leaves its own stdin open is safe. A stream that
@@ -70,13 +75,19 @@ and it goes in the request, never the intake:
 - **Append it to `initial-request.md`** under `## Added <YYYY-MM-DD>`, saying
   where it came from. Never rewrite what is already there; re-running the
   `request` stage keeps these sections.
-- **An item with only `intake.md` has no request yet.** Write one first — the
-  `request` stage — with the amendment folded in or under its own dated
-  heading. `intake.md` stays byte-for-byte as it arrived.
-- **Once a spec or plan exists, the request is not enough.** `implement` and
-  `verify` never read it. In `backlog` or `active`, revise `spec.md` (and
-  `plan.md`), or say in the appended section why neither changes. In
-  `review`, write the amendment into `rework.md` and run `tcw work rework`.
+- **An item with only `intake.md` has no request yet.** In `backlog`, write one
+  with the `request` stage, the amendment folded in or under its own dated
+  heading; with no user to ask, write it from the evidence and say so in
+  `## Notes`. Past `backlog` that stage no longer runs, so write
+  `initial-request.md` directly — write the file, or use the web app's body
+  editor; either promotes the item.
+  Either way `intake.md` stays byte-for-byte as it arrived.
+- **Once a spec or plan exists, the request is not enough**, because
+  `implement` and `verify` never read it. In `backlog` or `active`, revise
+  `spec.md` (and `plan.md`), or say in the appended section why neither
+  changes. In `review`, delete `refined-outcome.md` if verify wrote one, put
+  the amendment in `rework.md`, run `tcw work rework`, and then revise
+  `spec.md` too — `verify` checks the spec, not `rework.md`.
 - **A bound ticket is not updated.** Its description is written once, from the
   body, when the ticket is created.
 
@@ -96,11 +107,6 @@ You rarely need the verb during a stage — `tcw work stage prompt plan` and
 as the read-only accessor for a node's documentation entries: the
 `documentation-sync` skill asks it first, before any stage prompt is resolved and
 outside the lifecycle altogether, and the web app reads the same answer.
-
-Writes never follow that fallback. A body edit always targets
-`initial-request.md`; on an intake-only item it **promotes** the item, creating
-the request and leaving `intake.md` byte-identical. Edit `intake.md` only as a
-named artifact — raw input that quietly changes is not raw input.
 
 ## Working from an external tracker
 
