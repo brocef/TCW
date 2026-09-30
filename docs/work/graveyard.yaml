@@ -1130,6 +1130,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-say-where-a-dated-amendment-to-an-item-s-request-belongs:
+  location: ce5cc69bb330bea00e81a89639d090dc9522b952
   resolution: done
   resolved: '2026-09-30'
 2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read:
