@@ -217,7 +217,9 @@ is imported.
 - **`catch-up: true` is read, never written.** A binding an older `--sync-status`
   wrote still walks its ticket forward one mapped status at a time (straight there
   when the workflow offers it), never backwards and never on a resolved ticket; a
-  plain `sync` makes one move. `tracker create` for work under way records the item's
+  plain `sync` makes one move. A lifecycle move whose ticket is already where the
+  move expects it (a `rework` from review, a `start` whose ticket is further on) is
+  carried as on any binding, with no conflict recorded. `tracker create` for work under way records the item's
   start as undelivered instead, so it claims, delivers the start, then the move after
   it.
 - **Triage:** a move that takes a ticket — `start`, `sync` of an undelivered start or

@@ -39,7 +39,9 @@ binding an older `--sync-status` wrote (`catch-up: true`) still has its ticket b
 up through the statuses I mapped, one at a time: forward only, never on a ticket
 already resolved, and stopping at the first step it cannot make, for `sync` to carry
 on from. A ticket TCW did claim and someone then moved backwards stays drift, and is
-not walked forward again.
+not walked forward again. A lifecycle move on such a binding whose ticket is already
+where the move expects it — a `rework` from review, say — is carried as on any other
+binding rather than recorded as a conflict.
 
 A ticket waiting in a status before the backlog — Jira's `Triage` is the usual
 one — is left there unless I name that status, and the transition out of it, under
