@@ -63,7 +63,7 @@ Decided with the maintainer at triage:
 - The item is much larger than a typical one and may be split at spec, for
   example the config version field and migrate command first, the layout change
   on top of them.
-- Reference material beyond the originating issue: not yet asked for; to be confirmed with the maintainer.
+- Reference material beyond the originating issue: asked; none provided.
 
 ## References
 
