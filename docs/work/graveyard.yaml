@@ -1121,6 +1121,9 @@
   location: 8f8dc645275d5a317dc25ac73e8308023e67d8d8
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-let-a-started-item-still-pass-its-planning-gates-or-stop-start-from-letting-it-past-them:
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-let-complete-already-integrated-check-a-branch-worked-in-a-worktree-tcw-did-not-create:
   location: e1590ca91ef04980f738534c746a0bbfb4bed6d3
   resolution: done
