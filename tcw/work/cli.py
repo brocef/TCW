@@ -4213,7 +4213,7 @@ def _complete(args: argparse.Namespace) -> int:
         if exists and (reason := branch_integration(st.node_root, checked)):
             way_out = (f"If its work landed some other way, complete without "
                        f"--already-integrated: nothing is merged or deleted for an "
-                       f"item without a worktree." if args.branch else
+                       f"item without a worktree." if args.branch and not branch else
                        f"If its work landed some other way, delete {checked} "
                        f"yourself and re-run: a recorded branch that no longer "
                        f"exists is not checked.")

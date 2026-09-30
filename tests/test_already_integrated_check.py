@@ -212,3 +212,12 @@ def test_already_integrated_on_a_discard_without_a_worktree_is_still_refused(
     assert main(["work", "complete", slug, "--resolution", "wontfix", "--confirm",
                  "--already-integrated"]) == 1
     assert status(root, slug) == "active"
+
+
+def test_naming_the_recorded_branch_gets_the_recorded_branchs_advice(tcw_worktree, capsys):
+    """`--branch` equal to the recorded branch is the recorded branch: the way out
+    is deleting it, not "an item without a worktree"."""
+    root, slug, branch = tcw_worktree
+    assert complete("--branch", branch, slug=slug) == 1
+    err = capsys.readouterr().err
+    assert f"delete {branch}" in err and "without a worktree" not in err, err
