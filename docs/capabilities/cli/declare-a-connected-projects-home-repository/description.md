@@ -21,3 +21,8 @@ its own — so I never have to name a repository my project does not know about.
 Provisioning still only ever happens because I asked for it. Declaring a
 connected project's home repository does not make any other command reach the
 network.
+
+`upstream` entries take the same `path` / `repository` ladder, and
+`tcw provision` obtains them the same way — but stops there: what an upstream
+itself declares is its own to obtain, so a reader never fetches a repository
+named only by something it reads.

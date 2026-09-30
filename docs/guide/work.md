@@ -490,9 +490,11 @@ descendant.)
 
 A qualified slug addresses **any node in the registered graph, in any direction** —
 descendant, ancestor, or sibling — not just nodes below you. A child project can
-therefore address (and link) an epic that lives in its parent. Project IDs are
-canonical and connections must be reciprocal, so there is nothing ambiguous to
-resolve; an unregistered project, or a path-shaped qualifier such as
+therefore address (and link) an epic that lives in its parent, or an item in an
+`upstream` project it reads — which it can show and link to but not change (see
+[Working across repositories](multi-repo.md#reading-a-project-that-does-not-name-you-upstream)).
+Project IDs are canonical and parent/child connections must be reciprocal, so
+there is nothing ambiguous to resolve; an unregistered project, or a path-shaped qualifier such as
 `some/folder/<slug>`, still does not resolve. A qualifier that names no registered
 project reports `no such project in this graph: <id>` rather than a misleading
 "no such work item".

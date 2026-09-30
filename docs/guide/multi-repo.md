@@ -17,8 +17,10 @@ cd orchestrator && tcw init --id orchestrator
 cd ../project-a && tcw init --id project-a
 ```
 
-Each invocation still selects the nearest enclosing sentinel. Cross-project
-operations use only reciprocal registrations:
+Each invocation still selects the nearest enclosing sentinel. A parent and a
+child each name the other; cross-project operations use only these reciprocal
+registrations, plus the one-way `upstream` relation described
+[below](#reading-a-project-that-does-not-name-you-upstream):
 
 ```yaml
 id: orchestrator
@@ -51,6 +53,62 @@ connected-projects:
 
 A bare locator string stays a locator, so nothing already written changes. The
 ladder is the store's, and `tcw provision` is what walks it.
+
+### Reading a project that does not name you: `upstream`
+
+A parent and a child name each other. Sometimes that is wrong: a public library
+read by a private application must not carry the application's name in its own
+files, and a shared project read by many should not have to list them all. For
+that, the reader declares the project under `upstream`, and the upstream's
+config stays as it is:
+
+```yaml
+id: proposit-app-repo
+connected-projects:
+    upstream:
+        proposit-core:
+            path: ../proposit-core
+            repository:
+                url: https://github.com/example/proposit-core.git
+                ref: main
+```
+
+The entry takes the same forms as a child's. What it gives the reader, and every
+project in the reader's family (its parents, children and their children):
+
+- **Reading.** `tcw taxonomy extends add proposit-core`, `tcw capabilities
+  extends proposit-core`, qualified work references such as
+  `tcw work show proposit-core/<slug>`, and `tcw://` links into it all resolve.
+- **Not writing.** Any command that would change an upstream item, or run its
+  project's scripts, is refused with the reason and a pointer to run it in the
+  upstream's own checkout: `start`, `edit`, `drop`, `submit`, the stage and
+  procedure verbs, `delegate`, and every changing route of
+  `tcw serve --include-descendants`, which answers 403. The rule is that a
+  project is writable from here only when it is reached through `parent` and
+  `children` links alone.
+- **Not following it.** Only the upstream's own config is read. Its parent,
+  children and upstreams are not loaded, not checked and not provisioned, so a
+  problem in its graph never blocks the reader, and a project reachable only
+  beyond it cannot be named at all. It is left out of `list
+  --include-descendants`, the family's `tcw validate`, `reconcile` and the web
+  board. `tcw work nodes` lists it under `upstream (read-only):` with the
+  project that declared it.
+
+Declaring as upstream a project that is also reachable as family — a child, a
+parent, a sibling, an ancestor — is a problem `tcw validate` reports: declare one
+or the other. Several projects may declare the same upstream; entries resolving
+to one folder are one project.
+
+**Turning a child into an upstream.** In the parent, move the entry from
+`children` to `upstream` in one edit. Then, in the former child, remove its
+`parent` entry. Between the two, `tcw validate` prints a warning that the former
+child still names a parent reading it as an upstream, so neither repository is
+blocked while they catch up. The other order — the child drops `parent` first —
+fails as a `nonreciprocal connection`, which names the fix. Before dropping the
+parent, look at what the former child inherited from it: a `work.tracker` block
+that relied on the parent for `provider`, `base-url` or `credentials` must be
+completed or removed, and `tcw validate` says which once there is no parent to
+inherit from.
 
 ## Overriding a project's path on this machine
 
@@ -296,7 +354,8 @@ tcw provision --component taxonomy
 Each declared component is obtained on its own, so one bad declaration does not
 suppress another's result. Connected projects are obtained after the components,
 and **transitively**: a project obtained because it was declared may declare
-others, and those are obtained in the same run. That is the one place `tcw`
+others, and those are obtained in the same run. An `upstream` is the exception:
+it is obtained, but what it declares is not, since its connections are its own. That is the one place `tcw`
 contacts a URL you did not write yourself, so every remote is printed before it
 is contacted — the transitive ones included — and `--dry-run` walks the whole
 queue without touching the network, saying plainly that a project it has not

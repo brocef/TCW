@@ -1,0 +1,10 @@
+new:
+    - cli/read-from-an-upstream-project
+changed:
+    - taxonomy/federate-shared-vocabulary
+    - capabilities/federate
+    - cli/validate-a-node
+    - work/inspect-the-node-topology
+    - work/delegate-a-request-to-a-child-node
+    - cli/reference-a-tcw-object
+    - cli/declare-a-connected-projects-home-repository

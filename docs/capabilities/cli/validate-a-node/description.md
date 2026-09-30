@@ -8,6 +8,14 @@ IDs, malformed registrations, missing targets, mismatched keys, nonreciprocal
 edges, cycles, legacy inheritance maps, and unreachable inheritance targets
 fail closed with migration guidance.
 
+A parent/child connection is declared on both sides; an `upstream` connection is
+declared only by the reader and needs no counterpart. An upstream is never
+validated as part of the reader: only its own config is read, and problems in
+its connections are its own. A project declared as its own upstream, or declared
+upstream while also reachable as family, is a problem. A former child still
+naming a parent that now reads it as an upstream is a warning, printed as
+`warning: …`, so neither project is blocked mid-migration.
+
 Validation also tells a store's three failure modes apart in different words: a
 `<component>.path` that is simply wrong, a store declared in another repository
 but not yet provisioned here (naming the declared remote and `tcw provision`),

@@ -28,3 +28,10 @@ store, not the command I was trying to run.
 The board view is separate: `tcw work list --include-descendants` aggregates the
 *items* held across the same graph, while this shows the graph itself. See
 [View the board](tcw://C/work/view-the-board).
+
+Upstream projects — declared by this node or an ancestor, read here but never
+written — are listed apart, under `upstream (read-only):`, each with the project
+that declared it and where it is (or `(not in this checkout)`). The section is
+printed only when there is one. They are not children: delegation and
+`--include-descendants` do not reach them. See
+[Read from an upstream project](tcw://C/cli/read-from-an-upstream-project).

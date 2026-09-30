@@ -161,7 +161,8 @@ The rules:
   merged, so that project's own children still inherit from further up.
 - **Parents are found through connected projects, not folders.** The parent must
   be connected to the child through `connected-projects` (see
-  [Working across repositories](multi-repo.md)).
+  [Working across repositories](multi-repo.md)). An `upstream` connection is not
+  a parent: a project read as an upstream inherits nothing from its readers.
 - **Every ancestor counts**, nearest first, all the way up, including projects that
   keep no board. The nearest file that sets a key wins that key.
 - **Nested settings merge key by key.** `credentials`, `transitions` and
@@ -194,7 +195,10 @@ wrote it. A bad value in a parent is reported once for every project that
 inherits it, because each of them has no tracker until it is fixed. If a declared
 parent is not checked out on this machine, any tracker problem comes with one more
 that names that parent and suggests `tcw provision`, since the missing settings may
-be the cause.
+be the cause. A project with no parent at all gets a line saying there is nothing
+to inherit from — declare the whole block or remove it. That is the state a
+project is left in after it stops naming its parent, for example when the parent
+starts reading it as an `upstream` instead.
 
 ## Claimable and exclusive
 

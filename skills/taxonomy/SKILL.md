@@ -96,7 +96,8 @@ viewers; it is not an editable taxonomy field.
 
 ## Inheritance (federation)
 
-A project may inherit another registered project's taxonomy. Declaring that is
+A project may inherit another registered project's taxonomy — a parent, a
+child, or an `upstream` it reads without being named back. Declaring that is
 the `configure` skill's `projects.md`. The source project ID is the inherited
 namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning

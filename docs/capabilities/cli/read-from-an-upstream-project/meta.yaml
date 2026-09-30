@@ -1,0 +1,7 @@
+id: cap-3d97a5
+name: Read from an upstream project
+Status: Supported
+Subject:
+    - node
+Planning doc: 2026-09-29-let-a-project-read-taxonomy-and-capabilities-from-a-connected-project-that-does-not-name-it-back
+Feature: connected-project-registry

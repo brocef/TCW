@@ -19,3 +19,8 @@ against the record when the record can settle it: a reference filed under
 `discarded/` to work that completed stays unresolved, because it says something
 untrue. Where no resolution was kept — the ordinary state of a backfilled
 record — the folder is taken on trust rather than refused.
+
+A qualified work reference into a read-only `upstream` project reads — `show`,
+`path`, links and `tcw serve`'s item view resolve — and refuses to write: every
+command or web route that would change the item says it is read-only here. See
+[Read from an upstream project](tcw://C/cli/read-from-an-upstream-project).

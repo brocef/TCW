@@ -27,10 +27,10 @@ connected-projects:
         orchestrator: ../orchestrator
 ```
 
-- `connected-projects` is a mapping with two keys, `parent` and `children`. Any
-  other key is reported by `tcw validate`.
-- Each of the two is a mapping from a project id to an entry. `parent` holds at
-  most one entry; `children` may hold any number.
+- `connected-projects` is a mapping with up to three keys, `parent`,
+  `children` and `upstream`. Any other key is reported by `tcw validate`.
+- Each is a mapping from a project id to an entry. `parent` holds at most one
+  entry; `children` and `upstream` may hold any number.
 - An entry is either a locator (a path to the project's folder, relative to this
   project) or a `{path, repository}` block, where `repository` takes the same
   keys as a store's repository block in `stores.md`.
@@ -38,6 +38,8 @@ connected-projects:
   child names the parent. `tcw validate` reports a connection declared on only
   one side, and commands that need a valid project graph, such as
   `tcw taxonomy extends add`, refuse until both sides agree.
+- `upstream` is the one exception: a one-way, read-only connection, declared
+  only by the reader. See below.
 
 A `repository` block answers only when the project is not found at its `path`.
 
@@ -46,6 +48,57 @@ A `repository` block answers only when the project is not found at its `path`.
 the ladder a store uses — the project at `path` wins when it is here — so a checkout that
 cloned one repository can still resolve `extends`, cross-node refs and the
 topology. Declarations follow the graph: each config names only its own edges.
+
+## `upstream`: a project you read but do not write
+
+```yaml
+id: proposit-app-repo
+connected-projects:
+    upstream:
+        proposit-core:
+            path: ../proposit-core
+            repository:
+                url: https://github.com/example/proposit-core.git
+                ref: main
+```
+
+An upstream project is one this project reads — its taxonomy and capabilities
+through `extends`, its work items by qualified reference such as
+`tcw work show proposit-core/<slug>` — without the upstream naming it back. Use it
+for a shared library, or a public project read by a private one that must not
+be named in the public project's files.
+
+- **Declared by the reader only.** The upstream's own config is unchanged and
+  never mentions its readers. Its entry takes the same forms as `children`.
+- **Reachable from the reader's whole family.** A package below the declarer
+  reaches the upstream through its parents, as it would a child of theirs.
+- **Read-only from here.** Anything that changes an item or runs its project's
+  scripts is refused for an upstream item — `start`, `edit`, `drop`, the stage
+  and procedure verbs, `delegate`, and every changing route of
+  `tcw serve --include-descendants` (403). Change it from the upstream's own
+  checkout. The rule: a project is writable from here only when it is reached
+  through `parent` and `children` links alone.
+- **Not part of the family.** Nothing beyond the upstream's own config is read:
+  its parent, children and upstreams are not followed, and a problem in its
+  graph does not block the reader. It is not listed by `list
+  --include-descendants`, not validated with the family, not rolled up by
+  `reconcile`, and not on the web board. `tcw work nodes` shows it under
+  `upstream (read-only):`, with the project that declared it.
+- **One or the other.** A project may not declare as upstream something it
+  also reaches as a parent, child, sibling or ancestor; `tcw validate` reports
+  it. Several projects may declare the same upstream: entries that resolve to
+  the same folder are one project, and ones that resolve to different folders
+  are a `duplicate project id` problem naming each declarer.
+
+**Moving an existing child to upstream.** Move its entry from the parent's
+`children` to `upstream` in one edit, then remove `parent` from the former
+child. In between, `tcw validate` prints a warning — the former child still
+names a parent that now reads it as an upstream — instead of a problem, so
+neither repository is blocked while they catch up. Doing it the other way
+round (the child drops `parent` first) fails as a `nonreciprocal connection`.
+Before the former child drops its parent, check what it inherited: an
+incomplete `work.tracker` block has nothing left to inherit from, and
+`tcw validate` says so.
 
 After editing, run `tcw validate`, then `tcw provision` if a `repository` block
 was added; it fetches the connected projects this machine does not have, and

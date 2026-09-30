@@ -92,7 +92,8 @@ for you. The project ID must be explicitly listed in this axis's `extends`.
 
 ## Federation (inherit another project's capabilities)
 
-A project may inherit another registered project's capabilities. Declaring that
+A project may inherit another registered project's capabilities — a parent, a
+child, or an `upstream` it reads without being named back. Declaring that
 is the `configure` skill's `projects.md`. Inherited capabilities use
 `<project-id>/<path>` and remain read-only in structure.
 

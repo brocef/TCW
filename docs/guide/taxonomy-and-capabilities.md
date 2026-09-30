@@ -48,7 +48,10 @@ vocabulary entry is expected, and writes nothing when it refuses; so register
 vocabulary before the features that name it. `tcw taxonomy check` validates the
 same refs across the whole tree.
 Taxonomies can **federate**: `tcw taxonomy extends add <project-id>` writes the
-registered source ID to `taxonomy.extends` in `tcw-config.yaml`, changing only
+registered source ID — a connected project, including an `upstream` one that
+does not name this project back (see [Working across
+repositories](multi-repo.md#reading-a-project-that-does-not-name-you-upstream))
+— to `taxonomy.extends` in `tcw-config.yaml`, changing only
 those lines — comments and formatting elsewhere in the file are kept, and a file
 it cannot edit safely is refused with the edit to make by hand (`tcw capabilities
 extends` behaves the same). Each project ID is

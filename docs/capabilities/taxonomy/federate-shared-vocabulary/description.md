@@ -10,3 +10,7 @@ alias-to-path maps fail closed. Adding or removing a project changes only the
 `taxonomy.extends` lines of `tcw-config.yaml`, keeping my comments and
 formatting; a file it cannot edit that way is refused with the exact edit to
 make by hand, never rewritten.
+
+The source may be any registered project reachable here, including an
+`upstream` project that does not name this one back — see
+[Read from an upstream project](tcw://C/cli/read-from-an-upstream-project).

@@ -26,3 +26,7 @@ untracked note the child's own inbox would never accept. See
 
 Two requests with the same title on the same day do not collide; the second gets a
 numeric suffix.
+
+Naming an upstream project is refused as read-only, with the reason: delegation
+writes only into child projects, and an upstream is changed from its own
+checkout.

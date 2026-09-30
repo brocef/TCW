@@ -260,7 +260,10 @@ agent through. See [Skills and Agents](#skills-and-agents).
 
 **Many repositories, one model.** Projects are identified by ID, never by path.
 A project can connect to others, inherit their taxonomy and capabilities, and
-address their work items as `<project-id>/<slug>`. A checkout holding only some of
+address their work items as `<project-id>/<slug>`. A connection is normally
+declared by both projects; an `upstream` one is declared only by the reader and
+is read-only from its side, so a private project can read a public one that never
+names it. A checkout holding only some of
 the connected repositories still works: the absent ones drop out rather than
 breaking your commands. See [Working across repositories](docs/guide/multi-repo.md).
 
@@ -691,7 +694,7 @@ driving it to completion, verifying it, processing the inbox) described in
 | Command              | What it does                                                      |
 | -------------------- | ----------------------------------------------------------------- |
 | `tcw work inbox`     | `inbox list`, `inbox show` and `inbox accept` raw requests, and Jira tickets awaiting triage |
-| `tcw work nodes`     | lists this project's parent and child projects                    |
+| `tcw work nodes`     | lists this project's parent, child and upstream projects          |
 | `tcw work delegate`  | writes a request into the nearest child project with a board      |
 | `tcw work escalate`  | writes a request into the parent project's inbox                  |
 | `tcw work reconcile` | reads every project below with a board; writes the epic's roll-up |

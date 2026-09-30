@@ -48,6 +48,9 @@ as "not registered" and add a second declaration.
     `<project-id>/<slug>` resolves to any node in the registered graph, in any
     direction, so the upward link validates. Note the viewer caveat: a child's
     `tcw serve` aggregates descendants, so it cannot open an ancestor's item.
+    It also resolves into an `upstream` project, which is read-only from here:
+    `show` and links work, but `delegate`, `start`, `edit` and the other
+    changing verbs refuse and point at the upstream's own checkout.
 
 3. **Each sub-project works its slice independently**, linking its own
    capabilities. An item that stays on a routing node with no capabilities
