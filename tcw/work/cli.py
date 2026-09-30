@@ -159,6 +159,21 @@ def _resolve(slug: str, label: str, *,
     if resolved is None:
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
+    store, bare = resolved
+    try:
+        gone = store.path(bare) is None
+    except MultipleMatch:
+        gone = False                                   # the caller reports it
+    if gone and (renamed := store.renamed(bare)):
+        # A read follows a rename; a change does not — acting on a name the user
+        # may not know is stale would be a quiet surprise.
+        new = slug[: -len(bare)] + renamed
+        if write:
+            print(f"tcw work {label}: {slug} was renamed to {new}; use the new slug.",
+                  file=sys.stderr)
+            return None
+        print(f"tcw work {label}: {slug} was renamed to {new}.", file=sys.stderr)
+        return store, renamed
     return resolved
 
 
@@ -2624,6 +2639,31 @@ def _lifecycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _rename(args: argparse.Namespace) -> int:
+    resolved = _resolve(args.slug, "rename")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item, notes = st.rename(bare, args.new_slug, owner=_local_owner(st))
+    except TransitionCommitError as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    except _ERRORS as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    loc = st.locate(item.slug)
+    print(f"renamed {bare} → {item.slug}" + (f" ({loc})" if loc else ""))
+    for note in notes:
+        print(f"tcw work rename: {note}", file=sys.stderr)
+    bound = bound_value(item.tracker) if item.tracker else None
+    ticket = (bound.get("ticket") or {}).get("key") if isinstance(bound, dict) else None
+    if ticket:
+        print(f"tcw work rename: ticket {ticket} was written naming {bare}; update "
+              f"any slug or link in its text yourself.", file=sys.stderr)
+    return 0
+
+
 def _edit(args: argparse.Namespace) -> int:
     resolved = _resolve(args.slug, "edit")
     if resolved is None:
@@ -5054,6 +5094,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="remove a tag (repeatable; a value may be a,b,c; a tag the "
                          "item holds is matched as written, even one that is not valid)")
     pe.set_defaults(func=_edit)
+
+    prn = g.add_parser("rename", help="change an open item's slug; what names it on "
+                                      "this board follows, and the old slug still "
+                                      "resolves")
+    prn.add_argument("slug", help=SLUG_HELP)
+    prn.add_argument("new_slug", metavar="new-slug",
+                     help="the new slug, or only the part after the item's date")
+    prn.set_defaults(func=_rename)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
     pc.add_argument("slug", help=SLUG_HELP)

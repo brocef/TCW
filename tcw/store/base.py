@@ -2388,6 +2388,39 @@ TRANSITION_LANDS_IN: dict[str, str] = {
 }
 
 
+def slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+
+
+_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}-")
+
+
+def rename_slug(old: str, new: str) -> str:
+    """The full slug `tcw work rename <old> <new>` means, or ValueError.
+
+    `new` may be a whole slug or only the part after the date. The date stays
+    the item's own — it records when the item was made, not when it was named —
+    so a different date is refused rather than quietly replaced. Never
+    rewritten into slug form: an argument that is not one already is refused
+    naming the form it would be, so the slug that lands is the slug typed."""
+    new = new.strip()
+    old_date = _DATE_PREFIX.match(old)
+    new_date = _DATE_PREFIX.match(new)
+    if new_date and old_date and new_date.group(0) != old_date.group(0):
+        raise ValueError(f"{new} has a different date than {old}; the date is when "
+                         f"the item was made, and a rename keeps it — give only "
+                         f"the part after it")
+    full = new if new_date or not old_date else old_date.group(0) + new
+    body = _DATE_PREFIX.sub("", full)
+    if not body or slugify(body) != body:
+        hint = slugify(body) if body and slugify(body) != "untitled" else ""
+        raise ValueError(f"'{new}' is not a slug (lower-case letters, digits and "
+                         f"single hyphens)" + (f"; did you mean '{hint}'?" if hint else ""))
+    if len(body) > 120:
+        raise ValueError(f"'{new}' is longer than 120 characters after the date")
+    return full
+
+
 def start_next_stage(present: Collection[str]) -> str:
     """The stage to run after `start`, from the artifacts the item holds.
 
@@ -3409,6 +3442,49 @@ class WorkStore(ABC):
     def get(self, slug: str) -> WorkItem | None:
         """Resolve a stable id (slug) to its item, or None. Raises `MultipleMatch`."""
 
+    def renamed(self, slug: str) -> str | None:
+        """The slug `slug` now goes by after `rename`, or None. A store that
+        keeps the slug as a field keeps a table of old names to answer this; one
+        that cannot rename never has an answer."""
+        return None
+
+    def rename(self, slug: str, new_slug: str, *,
+               owner: str = "") -> "tuple[WorkItem, list[str]]":
+        """Give an open item a new slug, rewriting what names it on this store.
+        Returns the renamed item and notes on what was left naming the old one.
+        An adapter checks `rename_refusal` first, which holds every refusal that
+        does not depend on how items are stored."""
+        raise NotImplementedError
+
+    def rename_refusal(self, item: WorkItem, new_slug: str, owner: str) -> str:
+        """The new slug for `item`, or raise `ValueError` saying why it may not
+        be renamed. Storage-neutral: status, fields, holder, and whether the new
+        slug is taken as a live item, a resolved item's record or an old name."""
+        slug = item.slug
+        new = rename_slug(slug, new_slug)
+        if new == slug:
+            raise ValueError(f"{slug} already has that slug")
+        if item.status in RESOLVED_STATUSES:
+            raise ValueError(f"{slug} is {item.status}; only an open item is renamed — "
+                             f"its folder may not exist in other clones, and its "
+                             f"old slug is already recorded as resolved")
+        if item.worktree or item.branch:
+            raise ValueError(
+                f"{slug} has a worktree or branch ({item.branch or item.worktree}), "
+                f"which a rename would strand. Complete or tear that down first, or "
+                f"rename by hand: `git branch -m`, move .worktrees/{slug}, and update "
+                f"the item's `branch` and `worktree` fields")
+        if item.owner and item.owner != owner:
+            raise ValueError(
+                f"{slug} is held by {item.owner}. Run it as them "
+                f"(`TCW_WORK_OWNER={item.owner} tcw work rename {slug} {new_slug}`), "
+                f"or take the item over with `tcw work start {slug} --take-over`")
+        if (self.get(new) is not None or self.tombstone(new) is not None
+                or self.renamed(new) is not None):
+            raise ValueError(f"{new} is already taken by an item, a resolved item's "
+                             f"record, or an earlier rename")
+        return new
+
     @abstractmethod
     def tombstone(self, slug: str) -> Tombstone | None:
         """The record of an item this store once held and has since resolved, or
@@ -4419,10 +4495,14 @@ class WorkStore(ABC):
         if not text or "/" in text:
             return False, ""
         try:
+            renamed = self.renamed(text)
             live = self.get(text)
+            if live is None and renamed:
+                live = self.get(renamed)
             if live is not None:
                 return live.status in RESOLVED_STATUSES, ""
-            return self.tombstone(text) is not None, ""
+            # Resolved under its new slug, whose record is the one written.
+            return self.tombstone(renamed or text) is not None, ""
         except Exception:                          # a blocker never fails its reader
             return False, ""
 
@@ -4442,6 +4522,10 @@ class WorkStore(ABC):
             elif "slug" in b:
                 try:
                     blocker = self.get(b["slug"])
+                    # A renamed blocker is still the same work: follow it, or a
+                    # reference the rename could not rewrite would unblock.
+                    if blocker is None and (renamed := self.renamed(b["slug"])):
+                        blocker = self.get(renamed)
                 except ValueError:
                     # An adapter can refuse to settle a blocker — a claim on it
                     # was abandoned. That is still a blocker, and reporting it as

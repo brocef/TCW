@@ -309,10 +309,11 @@ def test_a_live_item_resolves_without_being_marked_archived(tmp_path):
     assert r.ok is True and r.archived is False
 
 
-def test_resolution_needs_only_get_and_tombstone(tmp_path, monkeypatch):
-    """The litmus test, in code. A store exposing nothing but the two abstract
-    reads — no filesystem, no git, no paths — drives the same resolution, which
-    is what "could a non-filesystem store implement this?" means concretely."""
+def test_resolution_needs_only_get_tombstone_and_renamed(tmp_path, monkeypatch):
+    """The litmus test, in code. A store exposing nothing but three reads —
+    `get`, `tombstone` and `renamed`, with no filesystem, no git, no paths —
+    drives the same resolution, which is what "could a non-filesystem store
+    implement this?" means concretely."""
     class StoreWithNoFilesystem:
         node_root = tmp_path.resolve()
 
@@ -321,6 +322,9 @@ def test_resolution_needs_only_get_and_tombstone(tmp_path, monkeypatch):
 
         def tombstone(self, slug):
             return Tombstone(slug=slug, resolution="wontfix", resolved="2025-01-01")
+
+        def renamed(self, slug):
+            return None                      # never renamed
 
     monkeypatch.setattr("tcw.refs.resolve_qualified_work_ref",
                         lambda anchor, ref: (StoreWithNoFilesystem(), ref))
