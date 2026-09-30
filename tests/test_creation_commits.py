@@ -213,3 +213,50 @@ def test_the_web_app_still_creates_when_the_commit_is_refused(tmp_path):
         httpd.server_close()
     assert status == HTTPStatus.CREATED
     assert FsWorkStore.open(root).get(body["item"]["slug"]) is not None
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_a_provisioned_store_is_brought_up_to_date_before_the_creation_commits(
+        tmp_path, monkeypatch, capsys):
+    """Committed on a stale copy, the creation diverged the store from its remote
+    and every later transition refused. It is refreshed first, like a transition."""
+    import test_store_publication as pub
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    for key, value in (("GIT_AUTHOR_NAME", "a"), ("GIT_AUTHOR_EMAIL", "a@b"),
+                       ("GIT_COMMITTER_NAME", "a"), ("GIT_COMMITTER_EMAIL", "a@b")):
+        monkeypatch.setenv(key, value)
+    code = pub._node(tmp_path, local_store=False, declaration=True, provisioned=True)
+    monkeypatch.chdir(code)
+    assert main(["provision"]) == 0
+    other = tmp_path / "other"                     # another machine pushes first
+    subprocess.run(["git", "clone", "-q", str(tmp_path / "orchestrator.git"), str(other)],
+                   check=True)
+    (other / "stores/corelib/inbox/x.md").write_text("# x\n")
+    git(other, "add", "-A")
+    git(other, "commit", "-qm", "elsewhere")
+    git(other, "push", "-q")
+    capsys.readouterr()
+
+    assert main(["work", "new", "Created while behind"]) == 0
+    slug = capsys.readouterr().out.strip()
+    assert main(["work", "start", slug]) == 0, capsys.readouterr().err
+    remote_log = git(tmp_path / "orchestrator.git", "log", "--format=%s", "-5")
+    assert f"tcw work: new {slug}" in remote_log, remote_log
+
+
+def test_an_accepted_folder_entrys_untracked_leftover_is_not_committed(
+        tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    entry = root / "docs" / "work" / "inbox" / "folderentry"
+    entry.mkdir(parents=True)
+    (entry / "INDEX.md").write_text("# Folder entry\n\nbody\n")
+    commit_all(root, "entry")
+    (entry / "late.txt").write_text("added later, never committed")
+    monkeypatch.chdir(root)
+
+    assert main(["work", "inbox", "accept", "folderentry"]) == 0
+    capsys.readouterr()
+    committed = git(root, "show", "--name-status", "--format=", "HEAD")
+    assert "inbox/folderentry/late.txt" not in committed, committed   # not recorded back
+    assert "D\tdocs/work/inbox/folderentry/INDEX.md" in committed, committed

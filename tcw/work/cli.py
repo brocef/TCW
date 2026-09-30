@@ -777,6 +777,7 @@ def _new(args: argparse.Namespace) -> int:
                                "`tcw work tracker import <ticket>`."
                                if st.tracker_config() is not None else _STRICT_BROKEN)
     try:
+        st.refresh_for_creation()
         detail = st.create_work(
             args.title,
             intake=read_piped_stdin(),   # piped text is raw input, not a request
@@ -819,9 +820,8 @@ def _commit_created(st, verb: str, message: str, slug: str,
     folder = st.path(slug)
     if folder is None:
         return
-    if reason := st.commit_writes(message, folder, *also):
-        print(f"tcw work {verb}: created {slug}, but {reason}\nCommit it yourself.",
-              file=sys.stderr)
+    if reason := st.commit_writes(message, folder, removed=also):
+        print(f"tcw work {verb}: created {slug}, but {reason}", file=sys.stderr)
 
 
 def _inbox_list(args: argparse.Namespace) -> int:
@@ -976,6 +976,8 @@ def _inbox_accept(args: argparse.Namespace) -> int:
         # ticket takes; in both cases the ref is resolved without being consumed.
         peek = strict or args.part is not None
         source = None if peek else st.inbox_source(args.entry)
+        if not peek:
+            st.refresh_for_creation()
         try:
             item = st.inbox_show(args.entry) if peek else \
                 st.inbox_accept(args.entry, title=args.title)
@@ -2916,6 +2918,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
         return 1
 
     title = args.title.strip() if args.title else f"{outcome.key} — {outcome.summary}"
+    st.refresh_for_creation()
     try:
         slug = st.create_work(title, intake=_intake_text(outcome, description, today),
                               parent=parent, initiative=initiative).item.slug
@@ -2957,6 +2960,9 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
             and _normalize(outcome.claimed_from) != _normalize(outcome.status)):
         status, put_back_failed = put_back(client, outcome)
         outcome = replace(outcome, status=status)
+    # After the binding, where the rollback above can no longer run: a commit of
+    # an item that `st.drop` then removed would leave a staged deletion behind.
+    _commit_created(st, label, f"tcw work: import {outcome.key} → {slug}", slug)
     print(slug)
     print(f"→ {_claim_summary(outcome)}; bound to {slug}", file=sys.stderr)
     if put_back_failed:

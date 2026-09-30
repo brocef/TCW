@@ -967,6 +967,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 initiative = body.get("initiative", "")
                 type_val = body.get("type", "")
                 tags = body.get("tags") or None
+                work.refresh_for_creation()
                 detail = work.create_work(
                     title=title,
                     created=created,
