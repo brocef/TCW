@@ -106,3 +106,8 @@ A project-qualified reference resolves against the owning node, so I can ask
 about a descendant's item from the enclosing project — including on `prompt`,
 where it reads that node's `prompt:` bindings rather than the one I am standing
 in.
+
+The `implement` and `verify` instructions tell me to write the stage's file in
+the item's folder wherever it currently lives, which `tcw work path <slug>`
+prints: `submit` moves the folder to `review/`, so a path noted earlier no
+longer points at the item.

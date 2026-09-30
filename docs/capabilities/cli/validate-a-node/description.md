@@ -69,3 +69,9 @@ walks the working tree, not the index, so a file that is on disk but untracked �
 including the documents inside a resolved item's own folder — is still scanned.
 A mistyped reference *inside* a completed item's documents is therefore still
 reported only on a machine that still has them.
+
+In the work store it also reports two things a moved item leaves behind: a
+folder named like an item that is not the item (no `state.yaml`) yet holds a
+file — usually written through a path noted before a transition moved the
+item — and a slug that two item folders both hold, naming each folder, where
+it once stopped with a traceback.

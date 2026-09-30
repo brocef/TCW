@@ -39,6 +39,13 @@ A write through an item's old path no longer fails quietly.
 - **The spec did not consider an epic in review.** `reconcile
   --complete-when-ready` has no `--force`, so the check would strand it. Epics
   are exempt, like an epic closed from backlog.
+- **Criterion 6's premise was wrong.** The web app has no whole-store
+  validate endpoint and never returned a 500: it validates the one item it
+  just wrote, and already turned an exception into the warning "validation
+  could not complete". That per-item validation now returns the duplicate as a
+  problem, which is the useful half of the goal.
+- **The spec named a capability `work/validate-the-work-store`,** which does
+  not exist. `cli/validate-a-node` owns validation and is the one updated.
 - **Outside a git repository**, the missing-file refusal now comes before "not
   a repository". That matches how `rework` already behaves.
 
