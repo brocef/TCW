@@ -233,9 +233,10 @@ inside a linked worktree: it says exactly where the project is. `tcw validate`
 then warns, naming the worktree's own copy, because that project is read from
 another branch than the rest of the graph; point the variable at the worktree's
 copy, or unset it, if that is not what you meant.
-A project is its folder, not its spelling or its file: a locator naming the
-folder in other letter case on a case-insensitive disk (macOS, Windows) is the
-same project, and a `tcw-config.yaml` that is a symlink belongs to the folder it
+A project is its folder, not its spelling or its file: a locator — or a
+`TCW_PROJECT_<ID>` override, from a linked worktree too — naming the folder in
+other letter case on a case-insensitive disk (macOS, Windows) is the same
+project, and a `tcw-config.yaml` that is a symlink belongs to the folder it
 sits in, so its relative locators are read from there.
 
 This is the one place git metadata is consulted, and it only re-points a locator:
