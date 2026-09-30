@@ -13,7 +13,7 @@ from test_cross_node_blocker_cycles import (CYCLE, folder, graph, new,  # noqa: 
                                             state_bytes, store, tcw)
 
 UNREADABLE = "cannot be read"
-xfail = pytest.mark.xfail(strict=True, reason="the walk reads a damaged item as unblocked")
+
 
 
 def damage(st, slug) -> None:
@@ -31,7 +31,7 @@ def chain(graph):
 
 # ── 1: a damaged item on the path ────────────────────────────────────────────
 
-@xfail
+
 def test_a_damaged_item_on_the_path_refuses_the_edit(graph):
     a, x, y, z = chain(graph)
     damage(a, y)
@@ -44,7 +44,7 @@ def test_a_damaged_item_on_the_path_refuses_the_edit(graph):
 
 # ── 2: in another project, named with its project id ────────────────────────
 
-@xfail
+
 def test_a_damaged_item_in_another_project_is_named_with_its_project(graph):
     a, b = store(graph, "pa"), store(graph, "pb")
     x, z, y = new(a, "X"), new(a, "Z"), new(b, "Y")
@@ -84,7 +84,7 @@ def test_blocks_refuses_a_cycle_behind_a_damaged_path(graph):
 
 # ── 5: update_work and create_work ───────────────────────────────────────────
 
-@xfail
+
 def test_update_work_refuses(graph):
     a, x, y, z = chain(graph)
     damage(a, y)
@@ -92,7 +92,7 @@ def test_update_work_refuses(graph):
         a.update_work(z, blockers=[x])
 
 
-@xfail
+
 def test_creating_an_item_refuses(graph):
     a, x, y, z = chain(graph)
     damage(a, y)
@@ -103,7 +103,7 @@ def test_creating_an_item_refuses(graph):
 
 # ── 6: a slug two folders hold ───────────────────────────────────────────────
 
-@xfail
+
 def test_an_ambiguous_slug_on_the_path_refuses_the_edit(graph):
     a, x, y, z = chain(graph)
     here = folder(a, y)
@@ -158,4 +158,4 @@ def test_editing_the_damaged_item_itself_is_the_existing_refusal(graph):
     damage(a, y)
     out = tcw(graph / "pa", "edit", y, "--blocked-by", new(a, "Other"))
     assert out.returncode != 0, out.stdout
-    assert "whether this makes a blocking cycle" not in out.stderr, out.stderr
+    assert "blocking cycle with this edit" not in out.stderr, out.stderr

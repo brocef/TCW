@@ -6101,6 +6101,35 @@ class FsWorkStore(FsTreeStore, WorkStore):
         store, slug = target
         return (self, slug) if store._store_key() == self._store_key() else target
 
+    def unreadable_reason(self, slug: str) -> str | None:
+        """Two folders holding `slug`, or its `state.yaml` damaged. A folder
+        mid-move, or none, is not damage."""
+        try:
+            d = self._find(slug)
+        except MultipleMatch:
+            return "more than one folder holds this slug"
+        except Exception:
+            return None
+        return None if d is None else self._state_damage(d / "state.yaml")
+
+    def _item_label(self, store: WorkStore, slug: str) -> str:
+        """Another node's item as `<project-id>/<slug>`, as it is typed here —
+        any project in the graph, a sibling included, since a qualified blocker
+        can name one."""
+        if store._store_key() == self._store_key():
+            return slug
+        try:
+            projects = FsProjectRegistry.open(self.node_root).projects()
+        except Exception:
+            return slug
+        for project in projects:
+            try:
+                if Path(project.locator).samefile(store.node_root):
+                    return f"{project.id}/{slug}"
+            except OSError:                        # not in this checkout
+                continue
+        return slug
+
     def _store_key(self) -> object:
         """The store folder's identity, not its spelling: two opens of one
         folder — by different paths, or by paths differing only in letter case

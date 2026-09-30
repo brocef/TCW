@@ -3990,9 +3990,10 @@ class WorkStore(ABC):
 
     @staticmethod
     def _unreadable_refusal(verb: str, slug: str, what: str,
-                            found: list[tuple[str, str]]) -> ValueError:
+                            found: list[tuple[str, str]], *,
+                            noun: str = "open items") -> ValueError:
         named = ", ".join(f"{label} ({reason})" for label, reason in found)
-        return ValueError(f"Cannot {verb} {slug}: the state of these open items "
+        return ValueError(f"Cannot {verb} {slug}: the state of these {noun} "
                           f"cannot be read, so whether they are {what} is "
                           f"unknown: {named}. Fix or replace each state.yaml "
                           f"(`tcw validate` lists them) and retry.")
@@ -4088,6 +4089,17 @@ class WorkStore(ABC):
         return self._same_entry(entry, e) or (
             "slug" in entry and "external" in e and self._entry_for(e["external"]) == entry)
 
+    def unreadable_reason(self, slug: str) -> str | None:
+        """Why this store holds item `slug` but cannot read its recorded fields,
+        or `None` — when they can be read, or there is no such item. A store that
+        never holds a record it cannot read has none."""
+        return None
+
+    def _item_label(self, store: "WorkStore", slug: str) -> str:
+        """How a message from this store names `store`'s item `slug`. The slug
+        here; a store that can address other projects qualifies theirs."""
+        return slug
+
     def _store_key(self) -> object:
         """What makes two opens of this store one store, for walks that cross
         stores. The object itself here; an adapter that can open the same store
@@ -4114,7 +4126,8 @@ class WorkStore(ABC):
         return None
 
     def _reaches(self, start: "tuple[WorkStore, str]", target: str, *,
-                 settled: frozenset[str] = frozenset()) -> bool:
+                 settled: frozenset[str] = frozenset(),
+                 unreadable: "list[tuple[str, str]] | None" = None) -> bool:
         """True if the item at `start` — a (store, slug) pair — depends,
         transitively through its blockers, on this store's item `target`.
 
@@ -4123,7 +4136,10 @@ class WorkStore(ABC):
         what it meant to the node that stored it. An item that cannot be read —
         an interrupted claim, an ambiguous slug, in this store or another — is
         not followed: the state of an item the edit does not name never fails
-        the edit.
+        the edit by raising. Those whose blockers are unknown — a slug more than
+        one folder holds, or recorded fields the store cannot read — are
+        appended to `unreadable` as `(label, reason)`, for the caller to decide
+        on; an interrupted claim is not one of them.
 
         `settled` items (slugs of this store) are not expanded: a caller that has
         already started the walk from an item's *proposed* blockers passes it,
@@ -4145,10 +4161,23 @@ class WorkStore(ABC):
             seen.add(node)
             try:
                 item = store.get(slug)
+            except MultipleMatch:
+                if unreadable is not None:
+                    unreadable.append((self._item_label(store, slug),
+                                       "more than one folder holds this slug"))
+                continue
             except Exception:
                 continue
             if item is None:
                 continue
+            if not item.blocked_by and unreadable is not None:
+                # Damage always reads as no blockers, so only these need asking.
+                try:
+                    reason = store.unreadable_reason(slug)
+                except Exception:
+                    reason = None
+                if reason:
+                    unreadable.append((self._item_label(store, slug), reason))
             for entry in item.blocked_by:
                 try:
                     found = store._blocker_target(entry)
@@ -4158,18 +4187,38 @@ class WorkStore(ABC):
                     stack.append(found)
         return False
 
+    def _refuse_blocker_walks(self, starts: "list[tuple[WorkStore, str]]",
+                              target: str, *, settled: frozenset[str] = frozenset(),
+                              cycle: str, blocker: str) -> None:
+        """Walk from each of `starts` towards this store's `target`, then decide
+        once: a cycle in any walk refuses as `cycle`; otherwise an item on any
+        path whose blockers could not be read refuses, naming each, because
+        whether the edit closes a cycle is unknown; otherwise accept. Deciding
+        after every walk is what stops a damaged path hiding a cycle through
+        another."""
+        unreadable: list[tuple[str, str]] = []
+        if any(self._reaches(start, target, settled=settled, unreadable=unreadable)
+               for start in starts):
+            raise ValueError(cycle)
+        if unreadable:
+            raise self._unreadable_refusal(
+                f"add {blocker} as a blocker of", target,
+                "part of a blocking cycle with this edit",
+                list(dict.fromkeys(unreadable)), noun="items")
+
     def _check_new_blocker(self, slug: str, entry: dict, ref: str) -> None:
         """Refuse `entry` as a new blocker of `slug`: a self-block, or a cycle
         through the blockers as stored — across stores when the entry names an
-        item in another one. The one rule every blocker write uses."""
+        item in another one — or a walk that cannot see through an item on the
+        way. The one rule every blocker write uses."""
         found = self._blocker_target(entry)
         if found is None:
             return
         store, target = found
         if store._store_key() == self._store_key() and target == slug:
             raise ValueError("an item cannot block itself")
-        if self._reaches(found, slug):
-            raise ValueError(f"{ref} → {slug} would create a blocking cycle")
+        self._refuse_blocker_walks([found], slug, blocker=ref,
+                                   cycle=f"{ref} → {slug} would create a blocking cycle")
 
     def add_blocker(self, slug: str, ref: str) -> None:
         item = self._require(slug)
@@ -4205,10 +4254,10 @@ class WorkStore(ABC):
             target = self._require(ref).slug
             if target == slug:
                 raise ValueError("an item cannot block itself")
-            if any(found is not None
-                   and self._reaches(found, target, settled=frozenset({slug}))
-                   for found in map(self._blocker_target, proposed)):
-                raise ValueError(f"{slug} → {ref} would create a blocking cycle")
+            self._refuse_blocker_walks(
+                [f for f in map(self._blocker_target, proposed) if f is not None],
+                target, settled=frozenset({slug}), blocker=slug,
+                cycle=f"{slug} → {ref} would create a blocking cycle")
 
     def remove_blocker(self, slug: str, ref: str) -> None:
         """Remove one blocker. Fails closed on a ref that matches nothing.
