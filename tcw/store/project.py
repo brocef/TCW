@@ -17,6 +17,7 @@ from tcw.store.base import (
     WORK_STATUSES, parse_connected_entry,
 )
 from tcw.store.checkouts import normalized_url, provisioned_root
+from tcw.store.yaml_source import named as _named_yaml
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -568,7 +569,8 @@ class FsProjectRegistry(ProjectRegistry):
                                    declaration)
             return None
         try:
-            raw = yaml.load(path.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader) or {}
+            raw = yaml.load(_named_yaml(path.read_text(encoding="utf-8"), path),
+                            Loader=_UniqueKeyLoader) or {}
         except (OSError, yaml.YAMLError) as error:
             self._problem(path, f"invalid YAML: {error}")
             return None

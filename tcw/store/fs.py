@@ -37,6 +37,7 @@ except ImportError:                                # not POSIX
 
 import yaml
 
+from tcw.store.yaml_source import named as _named_yaml
 from tcw.store.base import (
     _HELD_TWICE, BODY_ORDER, CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
     DEFAULT_DOD, InboxEntryNotFound,
@@ -1547,7 +1548,8 @@ def load_yaml(path: Path, unique: bool = False) -> dict:
     if not path.exists():
         return {}
     text = path.read_text(encoding="utf-8")
-    data = yaml.load(text, Loader=_UniqueKeyLoader if unique else yaml.SafeLoader)
+    data = yaml.load(_named_yaml(text, path),
+                     Loader=_UniqueKeyLoader if unique else yaml.SafeLoader)
     if data is None:                       # absent content: empty file, or `null`
         return {}
     if not isinstance(data, dict):
@@ -5260,21 +5262,25 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return "it is not a regular file"
         return None
 
-    @staticmethod
-    def _require_readable_state(d: Path, slug: str) -> None:
-        """Refuse to move an item whose `state.yaml` cannot be read.
+    def _require_readable_state(self, d: Path, slug: str) -> None:
+        """Refuse to move or edit an item whose `state.yaml` cannot be read.
 
         The board reads it through `_safe_yaml`, which degrades a damaged file
         to defaults — no blockers, no owner, no type — so every gate a move
         checks would pass on values the item does not hold, and the strict read
         that follows the move would fail with the item already moved. Asked
         before anything moves, so the refusal means nothing happened. A folder
-        gone meanwhile is the caller's lost race to report, not damage."""
-        reason = FsWorkStore._state_damage(d / "state.yaml")
+        gone meanwhile is the caller's lost race to report, not damage.
+
+        An edit asks too, before its own strict read: that read refuses as well,
+        but with only the parser's text, which names neither item nor file."""
+        state = d / "state.yaml"
+        reason = FsWorkStore._state_damage(state)
         if reason is None:
             return
-        raise ValueError(f"{slug}: state.yaml cannot be read ({reason}); "
-                         f"fix or replace it before changing the item")
+        raise ValueError(f"{slug}: {self._shown_path(state)} cannot be read "
+                         f"({reason}); fix or replace it before changing the item "
+                         f"— `tcw validate` lists every item it cannot read")
 
     def _item_from_dir(self, d: Path) -> WorkItem | None:
         """`None` when the folder went away mid-read — a concurrent claim moved
@@ -8154,6 +8160,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         locations by a move landing between them.
         """
         self._require_repository()
+        self._require_readable_state(d, d.name)
         state = load_yaml(d / "state.yaml")
         state.update(fields)
         self._write_staged([(d / "state.yaml",
@@ -8514,6 +8521,7 @@ class FsWorkStore(FsTreeStore, WorkStore):
         # Read current state. A body write always targets the request, never the
         # read fallback: following it would either mutate raw intake or quietly
         # satisfy the `request` stage with text the author meant as an edit.
+        self._require_readable_state(d, slug)
         state = load_yaml(d / "state.yaml")
         body_path = d / "initial-request.md"
         had_request = self._present(body_path)
