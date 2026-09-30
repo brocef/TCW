@@ -284,6 +284,8 @@ tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeata
 tcw work edit "$slug" --blocked-by other-node/its-slug  # an item in another registered
                                                  # project; stops blocking once that item
                                                  # is resolved there (other text always blocks);
+                                                 # a loop through other projects is refused
+                                                 # as one within this project is;
                                                  # this node's own id, or a status path such as
                                                  # backlog/<slug>, names the local item itself
 tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another

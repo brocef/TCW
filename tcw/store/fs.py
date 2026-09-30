@@ -6061,6 +6061,56 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 forms.append(found[1])
         return forms
 
+    @staticmethod
+    def _qualified_shape(text: str) -> "tuple[str, str] | None":
+        """(qualifier, slug) when `text` is exactly `<project-id>/<slug>`."""
+        qualifier, _, bare = text.strip().partition("/")
+        if (not qualifier or not bare or "/" in bare or " " in bare
+                or qualifier in WORK_STATUSES):
+            return None
+        return qualifier, bare
+
+    def _qualified_target(self, text: str) -> "tuple[FsWorkStore, str] | None":
+        """The store and slug `<project-id>/<slug>` names, resolved from this
+        node — the one rule both settling a blocker and walking it for cycles
+        use, so the two cannot disagree about where it points. None for text of
+        another shape, a qualifier that is not a project here, or one that does
+        not resolve. Raises only what the registry or resolution raise; callers
+        decide what a failure means."""
+        if self._qualified_shape(text) is None:
+            return None
+        qualifier = text.strip().partition("/")[0]
+        registry = FsProjectRegistry.open(self.node_root)
+        if (registry.get(qualifier) is None
+                and registry.unreachable_project(qualifier) is None):
+            return None                            # not a project: prose
+        return resolve_qualified_work_ref(self.node_root, text.strip())
+
+    def _blocker_target(self, entry: dict) -> "tuple[WorkStore, str] | None":
+        """Also `<project-id>/<slug>`, resolved from this node as settling it
+        is. One that lands back on this store is this store's item."""
+        found = super()._blocker_target(entry)
+        if found is not None or "external" not in entry:
+            return found
+        try:
+            target = self._qualified_target(str(entry["external"]))
+        except Exception:                          # cannot resolve: not followed
+            return None
+        if target is None:
+            return None
+        store, slug = target
+        return (self, slug) if store._store_key() == self._store_key() else target
+
+    def _store_key(self) -> object:
+        """The store folder's identity, not its spelling: two opens of one
+        folder — by different paths, or by paths differing only in letter case
+        on a disk that ignores it — are one store, as `_same_folder` decides."""
+        try:
+            st = self.root.stat()
+            return (st.st_dev, st.st_ino)
+        except OSError:
+            return str(self.root.resolve())
+
     def external_blocker_state(self, text: str) -> tuple[bool, str]:
         """Also settle `<project-id>/<slug>` — exactly that shape, through
         `resolve_qualified_work_ref`, the addressing `tcw://` references already
@@ -6074,17 +6124,16 @@ class FsWorkStore(FsTreeStore, WorkStore):
         text = text.strip()
         if "/" not in text:
             return super().external_blocker_state(text)
-        qualifier, _, bare = text.partition("/")
-        if (not qualifier or not bare or "/" in bare or " " in bare
-                or qualifier in WORK_STATUSES):
+        if self._qualified_shape(text) is None:
             return False, ""
         try:
-            registry = FsProjectRegistry.open(self.node_root)
-            if (registry.get(qualifier) is None
-                    and registry.unreachable_project(qualifier) is None):
-                return False, ""                   # not a project: prose
-            found = resolve_qualified_work_ref(self.node_root, text)
+            found = self._qualified_target(text)
             if found is None:
+                qualifier = text.partition("/")[0]
+                registry = FsProjectRegistry.open(self.node_root)
+                if (registry.get(qualifier) is None
+                        and registry.unreachable_project(qualifier) is None):
+                    return False, ""               # not a project: prose
                 return False, qualified_work_ref_problem(self.node_root, text)
             store, slug = found
             target = store.get(slug)
@@ -7598,6 +7647,10 @@ class FsWorkStore(FsTreeStore, WorkStore):
         created_date = date.fromisoformat(created).isoformat() if created \
             else date.today().isoformat()
         slug = self._unique_slug(created_date, title)
+        # Only now is there a slug to check against: an entry elsewhere may
+        # already wait on it, and creating the item would close that cycle.
+        for ref, entry in zip(blockers or [], blocked_by):
+            self._check_new_blocker(slug, entry, ref)
 
         d = self.root / "backlog" / slug
 

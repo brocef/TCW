@@ -4088,36 +4088,88 @@ class WorkStore(ABC):
         return self._same_entry(entry, e) or (
             "slug" in entry and "external" in e and self._entry_for(e["external"]) == entry)
 
-    def _reaches(self, start: str, target: str, *,
-                 settled: frozenset[str] = frozenset()) -> bool:
-        """True if `start` (transitively, via blocked_by slugs) depends on `target`.
+    def _store_key(self) -> object:
+        """What makes two opens of this store one store, for walks that cross
+        stores. The object itself here; an adapter that can open the same store
+        twice says what the two opens share."""
+        return id(self)
 
-        `settled` items are not expanded: a caller that has already started the
-        walk from an item's *proposed* blockers passes it, so its stored ones —
-        which the edit is replacing — cannot be followed back in."""
-        seen: set[str] = set(settled)
+    def _blocker_target(self, entry: dict) -> "tuple[WorkStore, str] | None":
+        """Where a stored blocker entry points, if at a work item — the same
+        entries `external_blocker_state` settles against one, and no others.
+
+        Here: a slug, and an `external` text shaped like a slug, which settles
+        against this store's item of that name — including one not created yet,
+        since a slug is predictable and creating it would close any cycle the
+        entry is part of. A missing item is a dead end for the walk, not an
+        error. A store that can address other projects extends this for
+        `<project-id>/<slug>`."""
+        if not isinstance(entry, dict):            # hand-edited data: not followed
+            return None
+        if "slug" in entry:
+            return self, entry["slug"]
+        text = str(entry.get("external") or "").strip()
+        if re.fullmatch(r"[a-z0-9][a-z0-9-]*", text):
+            return self, text
+        return None
+
+    def _reaches(self, start: "tuple[WorkStore, str]", target: str, *,
+                 settled: frozenset[str] = frozenset()) -> bool:
+        """True if the item at `start` — a (store, slug) pair — depends,
+        transitively through its blockers, on this store's item `target`.
+
+        The walk follows every blocker `_blocker_target` resolves, into other
+        stores too, each item through its own store: a qualified blocker means
+        what it meant to the node that stored it. An item that cannot be read —
+        an interrupted claim, an ambiguous slug, in this store or another — is
+        not followed: the state of an item the edit does not name never fails
+        the edit.
+
+        `settled` items (slugs of this store) are not expanded: a caller that has
+        already started the walk from an item's *proposed* blockers passes it,
+        so its stored ones — which the edit is replacing — cannot be followed
+        back in."""
+        stores: dict[object, WorkStore] = {self._store_key(): self}
+        goal = (self._store_key(), target)
+        seen: set[tuple[object, str]] = {(self._store_key(), s) for s in settled}
         stack = [start]
         while stack:
-            cur = stack.pop()
-            if cur == target:
+            store, slug = stack.pop()
+            key = store._store_key()
+            store = stores.setdefault(key, store)     # first open of a store wins
+            node = (key, slug)
+            if node == goal:
                 return True
-            if cur in seen:
+            if node in seen:
                 continue
-            seen.add(cur)
-            item = self.get(cur)
+            seen.add(node)
+            try:
+                item = store.get(slug)
+            except Exception:
+                continue
             if item is None:
                 continue
-            stack += [b["slug"] for b in item.blocked_by if "slug" in b]
+            for entry in item.blocked_by:
+                try:
+                    found = store._blocker_target(entry)
+                except Exception:
+                    found = None
+                if found is not None:
+                    stack.append(found)
         return False
 
     def _check_new_blocker(self, slug: str, entry: dict, ref: str) -> None:
         """Refuse `entry` as a new blocker of `slug`: a self-block, or a cycle
-        through the blockers as stored. The one rule every blocker write uses."""
-        if "slug" in entry:
-            if entry["slug"] == slug:
-                raise ValueError("an item cannot block itself")
-            if self._reaches(entry["slug"], slug):
-                raise ValueError(f"{ref} → {slug} would create a blocking cycle")
+        through the blockers as stored — across stores when the entry names an
+        item in another one. The one rule every blocker write uses."""
+        found = self._blocker_target(entry)
+        if found is None:
+            return
+        store, target = found
+        if store._store_key() == self._store_key() and target == slug:
+            raise ValueError("an item cannot block itself")
+        if self._reaches(found, slug):
+            raise ValueError(f"{ref} → {slug} would create a blocking cycle")
 
     def add_blocker(self, slug: str, ref: str) -> None:
         item = self._require(slug)
@@ -4153,8 +4205,9 @@ class WorkStore(ABC):
             target = self._require(ref).slug
             if target == slug:
                 raise ValueError("an item cannot block itself")
-            if any(self._reaches(e["slug"], target, settled=frozenset({slug}))
-                   for e in proposed if "slug" in e):
+            if any(found is not None
+                   and self._reaches(found, target, settled=frozenset({slug}))
+                   for found in map(self._blocker_target, proposed)):
                 raise ValueError(f"{slug} → {ref} would create a blocking cycle")
 
     def remove_blocker(self, slug: str, ref: str) -> None:

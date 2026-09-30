@@ -26,12 +26,12 @@ removes the marks.
 
 - `WorkStore._store_key()` → `id(self)`.
 - `WorkStore._blocker_target(entry)` → `(self, slug)` for `{"slug": s}`; for
-  `{"external": t}` with no `/`, `(self, t)` when `self.get(t)` or
-  `self.tombstone(t)` finds it; otherwise `None`.
-- `_reaches(start, target, *, settled)` takes pairs: `start` a
-  `(store, slug)`, `target` a `(store, slug)`, `settled` a set of slugs local
-  to `self`. Keyed by `(store._store_key(), slug)`; stores met are kept in a
-  dict by key, first open wins; `get` on a store other than `self` is wrapped
+  `{"external": t}` shaped like a slug, `(self, t)` whether or not the item
+  exists (see the spec's corrected Design bullet); otherwise `None`.
+- `_reaches(start, target, *, settled)`: `start` a `(store, slug)` pair,
+  `target` and `settled` slugs of `self` (as shipped — the goal is always in
+  the store doing the edit). Keyed by `(store._store_key(), slug)`; stores met
+  are kept in a dict by key, first open wins; `get` on any store is wrapped
   — any exception means not followed.
 - `_check_new_blocker(slug, entry, ref)`: `target = self._blocker_target(entry)`;
   `None` → return; `target` equal to `(self, slug)` → self-block; `_reaches`
