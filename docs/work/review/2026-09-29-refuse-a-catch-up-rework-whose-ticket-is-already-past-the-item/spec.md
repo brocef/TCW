@@ -103,6 +103,14 @@ With the fake Jira of `tests/tracker_fake.py` and the fixtures of
 
 ## Risks
 
+- **A `sync` replay can now move a legacy binding's ticket back** *(added at
+  verify)*. A `sync` replaying a recorded move other than a start — say a
+  `submit` recorded while the item was in review, the item since back in
+  active, the ticket in review — used to be declined on a `catch-up` binding.
+  It now takes the plain binding's path: the ticket is put back to the item's
+  status and the output says so ("was in … and was put back to …"). Intended
+  (the same as any other binding) and rare: it needs a recorded move out of
+  step with the item.
 - **Moving a ticket someone advanced on purpose.** Only statuses inside the
   move's window reach the transition; a ticket beyond it is refused by
   `assess_move` and, under strict mode, by the gate first.
