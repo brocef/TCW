@@ -94,3 +94,18 @@ With an item `<slug>` whose `state.yaml` holds `key: [unclosed`:
 
 - Found reviewing
   `2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read`.
+
+## Amended after spec review (2026-09-30)
+
+An adversarial spec review ran before implementation. Accepted:
+
+- **A named stream loses PyYAML's source excerpt.** Handed a stream, PyYAML's
+  position lines drop the quoted line and the `^` caret (checked). Instead the
+  loader is built from the string and given the file's name
+  (`loader.name = path`), which keeps both the name and the excerpt.
+- **Goal 3 was wider than the design.** About twenty direct `yaml.safe_load` /
+  `yaml.load` calls bypass `load_yaml`, and duplicate-key errors carry no
+  position at all. Goal 3 is narrowed to: the three reads of a *named file* that
+  report parse errors to the user — `load_yaml`, the project config reader in
+  `tcw/store/project.py`, and `tcw validate`'s scan. The rest is recorded as a
+  follow-up, not done here.
