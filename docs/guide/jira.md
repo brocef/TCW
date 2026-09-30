@@ -699,8 +699,10 @@ commands, and writes nothing.
 
 A binding an earlier version's `--sync-status` wrote carries `catch-up: true`. TCW
 still reads it, and `sync` still walks such a ticket up through the statuses you
-mapped, one at a time, so nothing already linked that way is stranded. No command
-writes it any more.
+mapped, one at a time, so nothing already linked that way is stranded. A lifecycle
+move whose ticket is already where that move expects it — a `rework` of an item in
+review whose ticket is in review, or a `start` whose ticket is already further on —
+is carried exactly as on any other binding. No command writes it any more.
 
 **`tracker unlink <slug> --reason <text>`** removes a binding. It keeps a record
 of what was bound, when, and your reason, makes no call to Jira, and needs no

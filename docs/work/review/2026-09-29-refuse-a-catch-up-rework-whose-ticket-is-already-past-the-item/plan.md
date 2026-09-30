@@ -43,3 +43,14 @@ The fake tracker is the only tracker available without spending on a real
 site; the tests drive the real CLI against it. By hand: the rework case of
 criterion 1 through the CLI in a scratch node with the fake client, reading the
 output as a user would.
+
+## Notes from implementation
+
+- The tests went into a new file, `tests/test_tracker_catch_up_moves.py`,
+  importing the helpers of `test_tracker_strict_gate.py` and
+  `test_tracker_sync.py`, rather than into those files.
+- Review found goal 4 held only for a rework record: a start record (from the
+  old behavior, or an outage) was re-declined by every `sync`, since a
+  replayed start has no window. Fixed in this item: such a `sync`, with the
+  ticket held by this account above an active item and not done, ends held
+  and drops the record, as the live start does.
