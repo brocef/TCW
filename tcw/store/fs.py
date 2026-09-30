@@ -1135,7 +1135,21 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
     Fails closed. A `git` without `merge-tree --write-tree` (older than 2.38)
     exits non-zero, which reads as "not shown to be merged", the same as a
     conflict does. Never run against the store's repository: the branch belongs
-    to the code the node's checkout holds."""
+    to the code the node's checkout holds.
+
+    **A repository's own merge drivers do not get a say.** `merge-tree` runs
+    them, and one configured to keep `HEAD`'s side (`merge.<name>.driver=true`
+    under a `merge=<name>` attribute, from any attributes file) hides every
+    change the branch made to a file both sides touched — the trial then
+    produces `HEAD`'s tree and a branch that was never merged would be deleted.
+    Every configured driver is replaced by `false` for the trial, so any file one
+    would decide becomes a conflict. That refusal rests on the **exit code**, not
+    the tree: git keeps `HEAD`'s side when the driver fails, so the tree still
+    matches — comparing trees alone would reopen this. The cost: a squash merge
+    touching such a file on both sides is not confirmed, and the way out is the
+    one every refusal names. Passed with `-c`, last on the command line, because
+    that beats an inherited `GIT_CONFIG_PARAMETERS` — which git exports to hooks
+    run under `git -c` — where the `GIT_CONFIG_COUNT` variables do not."""
     if git_root(node_root) is None:
         return (f"the primary checkout at {node_root} is not in a git repository, "
                 f"so {branch} cannot be checked")
@@ -1160,7 +1174,13 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
     ref = f"refs/heads/{branch}"
     if run("merge-base", "--is-ancestor", ref, "HEAD").returncode == 0:
         return None
-    merged = run("merge-tree", "--write-tree", "HEAD", ref)
+    drivers, unusable = _merge_drivers(node_root)
+    if unusable:
+        return (f"{branch} cannot be checked against HEAD {head} ({current}): "
+                f"{unusable}. Pull the merge into this checkout, or merge {branch}, "
+                f"then re-run")
+    overrides = [a for name in drivers for a in ("-c", f"merge.{name}.driver=false")]
+    merged = run(*overrides, "merge-tree", "--write-tree", "HEAD", ref)
     tree = run("rev-parse", "HEAD^{tree}").stdout.strip()
     if merged.returncode == 0 and merged.stdout.split("\n", 1)[0].strip() == tree:
         return None
@@ -1170,9 +1190,36 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
         detail = (merged.stderr.strip().splitlines() or ["no output"])[0]
         return (f"git could not check whether {branch} is merged into HEAD {head} "
                 f"({detail}); `git merge-tree --write-tree` needs git 2.38 or newer")
+    because = (f" This repository defines its own merge drivers "
+               f"({', '.join(drivers)}), which this check does not let decide a "
+               f"file, so a squash merge touching a file one governs is not "
+               f"confirmed." if drivers else "")
     return (f"{branch} is not merged into this checkout's HEAD {head} ({current}): "
-            f"merging it would still change files. Pull the merge into this "
-            f"checkout, or merge {branch}, then re-run")
+            f"merging it would still change files.{because} Pull the merge into "
+            f"this checkout, or merge {branch}, then re-run")
+
+
+def _merge_drivers(node_root: Path) -> tuple[list[str], str | None]:
+    """The names of the custom merge drivers configured for the node's
+    repository — every scope, includes and the environment's too — and a reason
+    the trial merge cannot be trusted, or None.
+
+    A name holding `=` cannot be written as `-c merge.<name>.driver=false`, and
+    git failing to list them at all (a malformed config) leaves unknown what
+    would run; both fail closed."""
+    r = _git(["git", "-C", str(node_root), "config", "--null", "--name-only",
+              "--get-regexp", r"^merge\..+\.driver$"], capture_output=True, text=True)
+    if r.returncode == 1:
+        return [], None                                # none configured
+    if r.returncode != 0:
+        detail = (r.stderr.strip().splitlines() or ["no output"])[0]
+        return [], f"git could not list the repository's merge drivers ({detail})"
+    names = list(dict.fromkeys(key[len("merge."):-len(".driver")]
+                               for key in r.stdout.split("\0") if key))
+    if odd := [n for n in names if "=" in n]:
+        return names, (f"it configures a merge driver whose name holds '=' "
+                       f"({', '.join(odd)}), which this check cannot switch off")
+    return names, None
 
 
 UNBRANCHED_SHOWN = 10

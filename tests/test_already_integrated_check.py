@@ -221,3 +221,82 @@ def test_naming_the_recorded_branch_gets_the_recorded_branchs_advice(tcw_worktre
     assert complete("--branch", branch, slug=slug) == 1
     err = capsys.readouterr().err
     assert f"delete {branch}" in err and "without a worktree" not in err, err
+
+
+# ── a repository's own merge driver cannot vouch for a branch (spec:
+#    2026-09-30-stop-a-custom-merge-driver-from-making-already-integrated-pass-unmerged-work)
+
+from tcw.store.fs import branch_integration                     # noqa: E402
+
+KEEP_OURS = "* merge=ours\n"
+
+
+@pytest.fixture
+def repo(tmp_path):
+    """`main` and `work` both changed `f.txt`, lines far enough apart that git's
+    own merge takes both; `merge.ours.driver` keeps ours."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@t")
+    git(root, "config", "user.name", "t")
+    (root / "f.txt").write_text("a\nb\nc\nd\ne\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    git(root, "config", "merge.ours.driver", "true")
+    git(root, "switch", "-qc", "work")
+    (root / "f.txt").write_text("a\nb\nc\nWORK\ne\n")
+    git(root, "commit", "-qam", "work")
+    git(root, "switch", "-q", "main")
+    (root / "f.txt").write_text("MAIN\nb\nc\nd\ne\n")
+    git(root, "commit", "-qam", "main")
+    return root
+
+
+def test_a_driver_named_in_the_tree_cannot_hide_the_branch(repo):
+    (repo / ".gitattributes").write_text(KEEP_OURS)
+    git(repo, "add", ".gitattributes")
+    git(repo, "commit", "-qm", "attributes")
+    reason = branch_integration(repo, "work")
+    assert reason is not None
+    assert "merge driver" in reason and "ours" in reason, reason
+
+
+def test_a_driver_named_only_in_info_attributes_cannot_hide_it(repo):
+    (repo / ".git" / "info").mkdir(exist_ok=True)
+    (repo / ".git" / "info" / "attributes").write_text(KEEP_OURS)
+    assert branch_integration(repo, "work") is not None
+
+
+@pytest.mark.parametrize("inherited", [
+    {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "merge.ours.driver",
+     "GIT_CONFIG_VALUE_0": "true"},
+    # What git exports to a hook or alias run under `git -c merge.ours.driver=true`.
+    {"GIT_CONFIG_PARAMETERS": "'merge.ours.driver'='true'"},
+])
+def test_config_already_in_the_environment_does_not_reopen_it(repo, monkeypatch,
+                                                               inherited):
+    (repo / ".git" / "info").mkdir(exist_ok=True)
+    (repo / ".git" / "info" / "attributes").write_text(KEEP_OURS)
+    git(repo, "config", "--unset", "merge.ours.driver")    # only the environment's
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+    assert branch_integration(repo, "work") is not None
+
+
+def test_a_driver_name_that_cannot_be_overridden_is_not_trusted(repo):
+    """A name holding `=` cannot be written as `-c <name>=false`, so a squash
+    that would otherwise pass is not confirmed by the trial merge."""
+    git(repo, "merge", "-q", "--squash", "work")
+    git(repo, "commit", "-qm", "squash")
+    assert branch_integration(repo, "work") is None         # no odd name yet
+    git(repo, "config", "merge.a=b.driver", "true")
+    reason = branch_integration(repo, "work")
+    assert reason is not None and "merge driver" in reason, reason
+
+
+def test_a_merge_commit_still_passes_with_a_driver(repo):
+    (repo / ".git" / "info").mkdir(exist_ok=True)
+    (repo / ".git" / "info" / "attributes").write_text(KEEP_OURS)
+    git(repo, "merge", "-q", "--no-edit", "work")
+    assert branch_integration(repo, "work") is None
