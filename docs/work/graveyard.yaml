@@ -1130,6 +1130,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read:
+  location: 06c02c2a796f4a392d9779996e6b9dd1667b6a26
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree:
