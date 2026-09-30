@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-can-a-custom-merge-driver-make-already-integrated-pass-unmerged-work.md`
+
+## Inbox body
+
 # Can a custom merge driver make --already-integrated pass unmerged work?
 
 Open question from the adversarial review of #72

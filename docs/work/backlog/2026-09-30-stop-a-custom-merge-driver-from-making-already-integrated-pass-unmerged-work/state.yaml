@@ -1,0 +1,4 @@
+slug: 2026-09-30-stop-a-custom-merge-driver-from-making-already-integrated-pass-unmerged-work
+title: Stop a custom merge driver from making --already-integrated pass unmerged work
+created: '2026-09-30'
+resolution: null
