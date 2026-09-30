@@ -21,5 +21,4 @@ correct on both CI versions while changing the text on the two in between.
 
 - From the adversarial review of #69
   (`2026-09-29-suggest-what-was-meant-when-a-subcommand-or-stage-name-is-wrong`).
-- The title still says "3.12 or 3.13" from the entry; the decision is 3.12.
 - Reference material: asked; none provided beyond the entry.
