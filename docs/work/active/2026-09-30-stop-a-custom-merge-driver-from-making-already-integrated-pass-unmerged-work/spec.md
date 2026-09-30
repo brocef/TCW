@@ -94,3 +94,26 @@ shown to be merged".
 ## Notes
 
 - Open question raised by the adversarial review of #72; answered yes at spec.
+
+## Amended after spec review (2026-09-30)
+
+An adversarial spec review ran before implementation. Accepted:
+
+- **Environment variables lose to an inherited `GIT_CONFIG_PARAMETERS`.** Git
+  exports that variable to anything run under `git -c …` (a hook, an alias), and
+  its entries beat `GIT_CONFIG_COUNT` ones, re-opening the hole (checked: `-c` on
+  the command line wins, exit 1). The overrides are therefore passed as `-c
+  merge.<name>.driver=false`, last on the command line. A driver name containing
+  `=` cannot be written with `-c`; if one exists the trial merge is not trusted
+  at all (fail closed).
+- **`get-regexp` exiting with anything other than 0 or 1** (a malformed config)
+  fails closed too.
+- **The refusal depends on the exit code, not the tree.** With `false` as the
+  driver git keeps `HEAD`'s side, so the written tree still equals `HEAD`'s; only
+  exit 1 refuses. The docstring says so, so a later "compare trees only" change
+  does not silently re-open the hole.
+- **The non-goal was wrong about built-in names.** A user can redefine them
+  (`merge.union.driver=true`); the design already covers that, since every
+  configured name is overridden. Only the reasoning in Non-goals was wrong.
+- **Criterion 5 means any refusal** of the trial merge in a repository that
+  defines custom drivers; git cannot cheaply say which file a driver governed.
