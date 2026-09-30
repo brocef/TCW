@@ -1,7 +1,7 @@
 slug: 2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read
 title: See a blocker cycle that runs through an item whose state.yaml cannot be read
 created: '2026-09-29'
-resolution: null
+resolution: done
 tags:
 - bug
 owner: ''
