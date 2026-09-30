@@ -12,7 +12,8 @@ to produce with `tcw work stage prompt verify <slug>`.
 
 ## Produce
 
-`refined-outcome.md` or `rework.md`.
+`refined-outcome.md` or `rework.md`, in the item's folder where it is now —
+under `review/` since `submit`; `tcw work path <slug>` prints it.
 
 ## Steps
 

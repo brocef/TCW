@@ -108,6 +108,12 @@ The only reverse edge in the machine. Nothing leaves `completed` or `discarded`.
   accepted carries both files — so "refuse whenever `rework.md` exists" would
   refuse every one of those. Reaching `complete` is the verifier's decision to
   get right; the stage's own next-step line names both branches.
+- **From `review`, `--resolution done` needs `refined-outcome.md`.** `[gated]`
+  It is the verify stage's record that the work was accepted. The refusal names
+  `tcw work path <slug>`, where the file belongs, and any folder named like the
+  item but not it that holds files. That is where the file usually is: written
+  through a path noted before `submit` moved the item. `--force` overrides it.
+  A discard needs nothing, and completing from `active` skips verify on purpose.
 - Unresolved blockers refuse a shipment. `[gated]`
 - An epic refuses while initiative children are open. `[gated]`
 - An open item whose `state.yaml` cannot be read refuses every other

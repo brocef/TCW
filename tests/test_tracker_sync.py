@@ -275,6 +275,12 @@ def moved_to(root: Path, slug: str, local: str, resolution: str = "") -> None:
     assert st.get(slug).status == local
 
 
+def accepted(root: Path, slug: str) -> None:
+    """Write verify's acceptance record, which completing `done` out of review
+    requires. Left uncommitted, as verify leaves it."""
+    FsWorkStore.open(root).write_artifact(slug, "refined-outcome", "# Accepted\n")
+
+
 @pytest.fixture()
 def node(tmp_path, fake):
     return make_node(tmp_path, statuses=STATUSES)
@@ -306,6 +312,7 @@ def test_complete_from_review_with_review_unmapped_checks_against_active(tmp_pat
     st = FsWorkStore.open(root)
     st.start(slug, owner="a@example.test")
     st.submit(slug)
+    accepted(root, slug)
     st.complete(slug, "done", ["acked"])
     assert deliver_now(root, slug, move="complete", previous="review").state == "current"
     assert fake.tickets[TICKET_ID].status == "Done"
@@ -378,6 +385,7 @@ def test_a_hand_move_to_the_recorded_target_is_accepted(node, fake):
     assert deliver_now(node, slug, move="submit", previous="active").state == "pending"
     fake.down = False
     fake.tickets[TICKET_ID].status = "In Review"        # moved by hand, where TCW meant
+    accepted(node, slug)
     FsWorkStore.open(node).complete(slug, "done", ["acked"])
     assert deliver_now(node, slug, move="complete", previous="review").state == "current"
     assert fake.tickets[TICKET_ID].status == "Done"
@@ -747,6 +755,7 @@ def test_sync_all_visits_recorded_items_and_skips_another_owners(node, fake, mon
     claimed_ticket(fake, "In Review")
     st.start(mine, owner="a@example.test")
     st.submit(mine)
+    accepted(node, mine)
     st.complete(mine, "done", ["acked"])                  # retained: completed is kept
     with_record(node, mine, {**RECORD, "move": "complete", "since": "In Review"})
     st.start(plain, owner="a@example.test")
@@ -969,6 +978,7 @@ def test_clearing_a_record_does_not_block_removing_an_unretained_item(tmp_path, 
     fake.down = True
     assert cli(root, "work", "submit", slug)[0] == 1
     fake.down = False
+    accepted(root, slug)
     code, _out, err = cli(root, "work", "complete", slug, "--resolution", "done",
                           "--confirm")
     assert code == 0, err
@@ -1036,7 +1046,11 @@ def test_complete_of_a_worktree_item_names_a_staged_record(node, fake):
     assert code == 0, err
     tree = node / ".worktrees" / slug
     (tree / "code.txt").write_text("the change\n")
-    subprocess.run(["git", "-C", str(tree), "add", "code.txt"], check=True)
+    # Verify's acceptance record, in the branch's copy of the item — the one
+    # `complete` reads for a worktree item.
+    (tree / "docs" / "work" / "active" / slug / "refined-outcome.md").write_text(
+        "# Accepted\n")
+    subprocess.run(["git", "-C", str(tree), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(tree), "commit", "-qm", "code"], check=True)
     fake.down = True
     assert cli(node, "work", "submit", slug)[0] == 1
@@ -1100,6 +1114,8 @@ def test_the_whole_lifecycle_through_the_commands(node, fake):
     slug = bound_item(node)
     for argv, where in ((("start",), "In Progress"), (("submit",), "In Review"),
                         (("complete", "--resolution", "done", "--confirm"), "Done")):
+        if argv[0] == "complete":
+            accepted(node, slug)
         code, _out, err = cli(node, "work", argv[0], slug, *argv[1:])
         assert code == 0, (argv, err)
         assert fake.tickets[TICKET_ID].status == where
@@ -1251,6 +1267,7 @@ def test_a_hand_move_to_a_status_between_the_record_and_its_target_is_accepted(n
     fake.down = True
     assert deliver_now(node, slug, move="submit", previous="active").state == "pending"
     st = FsWorkStore.open(node)
+    accepted(node, slug)
     st.complete(slug, "done", ["acked"])
     assert deliver_now(node, slug, move="complete", previous="review").state == "pending"
     fake.down = False
@@ -1275,6 +1292,7 @@ def test_the_path_is_walked_rather_than_the_status_mapping_inverted(tmp_path, fa
     fake.down = True
     assert deliver_now(root, slug, move="submit", previous="active").state == "pending"
     st = FsWorkStore.open(root)
+    accepted(root, slug)
     st.complete(slug, "done", ["acked"])
     assert deliver_now(root, slug, move="complete", previous="review").state == "pending"
     fake.down = False
@@ -3046,6 +3064,7 @@ def completed_and_reopened(root: Path, fake, assignee: str | None, *,
     assert cli(root, "work", "start", slug)[0] == 0
     if resolution == "done":
         assert cli(root, "work", "submit", slug)[0] == 0
+        accepted(root, slug)
     code, _out, err = cli(root, "work", "complete", slug, "--resolution", resolution,
                           "--confirm")
     assert code == 0, err

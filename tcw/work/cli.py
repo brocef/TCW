@@ -16,7 +16,7 @@ from tcw.store.base import (
     WORK_RESOLUTIONS, WORK_STATUSES, _UNSET,
     IllegalTransition, InboxEntryNotFound, LIFECYCLE_STEPS, LIFECYCLE_STEPS_BY_ID, MultipleMatch,
     StoreNotProvisioned, TRANSITION_NEXT_STEPS, TransitionCommitError, WorkItem,
-    bound_value, normalize_tag, AlreadyClaimed, start_next_stage,
+    bound_value, normalize_tag, AlreadyClaimed, start_next_stage, refined_outcome_missing,
     normalize_work_level, resolution_status, StaleRevision, drop_refused_over_children,
 )
 from tcw.store.fs import (
@@ -159,7 +159,39 @@ def _resolve(slug: str, label: str, *,
     if resolved is None:
         print(f"tcw work {label}: {qualified_work_ref_problem(node, slug)}", file=sys.stderr)
         return None
+    store, bare = resolved
+    try:
+        gone = store.path(bare) is None
+    except MultipleMatch:
+        gone = False                                   # the caller reports it
+    if gone and (renamed := store.renamed(bare)):
+        # A read follows a rename; a change does not — acting on a name the user
+        # may not know is stale would be a quiet surprise.
+        new = slug[: -len(bare)] + renamed
+        if write:
+            print(f"tcw work {label}: {slug} was renamed to {new}; use the new slug.",
+                  file=sys.stderr)
+            return None
+        print(f"tcw work {label}: {slug} was renamed to {new}.", file=sys.stderr)
+        return store, renamed
     return resolved
+
+
+def _shown(st, slug: str) -> str | None:
+    """Where `slug`'s folder is, as it can be reached from here: relative to the
+    current directory when it is under it, else absolute. `locate` answers
+    relative to the item's own project, which from a parent project
+    (`kid/<slug>`) or from a subdirectory names a path that does not exist."""
+    path = st.path(slug)
+    return None if path is None else _relative(path)
+
+
+def _relative(path: Path) -> str:
+    path = path.resolve()
+    try:
+        return path.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _split(val: str | None) -> list[str]:
@@ -797,7 +829,7 @@ def _new(args: argparse.Namespace) -> int:
         print(f"tcw work new: {e}", file=sys.stderr)
         return 1
     print(item.slug)
-    if loc := st.locate(item.slug):
+    if loc := _shown(st, item.slug):
         print(f"→ created at {loc}", file=sys.stderr)
     body = st.body_path(item.slug)
     if body is not None:
@@ -996,7 +1028,7 @@ def _inbox_accept(args: argparse.Namespace) -> int:
                       f"{args.entry} is a raw inbox entry", file=sys.stderr)
                 return 1
             print(item.slug)
-            if loc := st.locate(item.slug):
+            if loc := _shown(st, item.slug):
                 print(f"→ now at {loc}", file=sys.stderr)
             _next_hint("new", item.slug)
             # A *raw* entry only. Accepting a ticket is `tracker import`, which
@@ -1649,7 +1681,7 @@ def _start(args: argparse.Namespace) -> int:
     after_start = "start:" + (start_next_stage(present) if present is not None
                               else "implement")
     if not args.worktree:
-        loc = st.locate(bare)
+        loc = _shown(st, bare)
         print(f"started {args.slug}" + (f" → {loc}" if loc else ""))
         _next_hint(after_start, args.slug)
         return _post_result(post_err, "start", args.slug) or min(delivered, 1)
@@ -1705,7 +1737,7 @@ def _start(args: argparse.Namespace) -> int:
     except subprocess.CalledProcessError as e:
         print(f"tcw work start: worktree setup failed: {e.stderr or e}", file=sys.stderr)
         return 1
-    loc = st.locate(bare)
+    loc = _shown(st, bare)
     print(f"started {args.slug} → {loc} (worktree {wt})" if loc
           else f"started {args.slug} → worktree {wt}")
     _next_hint(after_start, args.slug)
@@ -1738,7 +1770,7 @@ def _submit(args: argparse.Namespace) -> int:
     delivered = _deliver_after(st, bare, "submit", "submit", "active")
     # The folder, not the status: verify writes into it next, and a reader still
     # holding the `active` path would write beside the item rather than in it.
-    print(f"submitted {args.slug} → {st.locate(bare) or 'review'}")
+    print(f"submitted {args.slug} → {_shown(st, bare) or 'review'}")
     _next_hint("submit", args.slug)
     return _post_result(post_err, "submit", args.slug) or min(delivered, 1)
 
@@ -1767,7 +1799,7 @@ def _rework(args: argparse.Namespace) -> int:
     post_err = run_post(st.lifecycle_policy(), "rework", st.node_root, bare, "active",
                         st.get(bare), item_path=st.path(bare))
     delivered = _deliver_after(st, bare, "rework", "rework", "review")
-    print(f"reworking {args.slug} → {st.locate(bare) or 'active'}")
+    print(f"reworking {args.slug} → {_shown(st, bare) or 'active'}")
     _next_hint("rework", args.slug)
     return _post_result(post_err, "rework", args.slug) or min(delivered, 1)
 
@@ -2622,6 +2654,31 @@ def _lifecycle(args: argparse.Namespace) -> int:
         if i:
             print()
         print("\n".join(_lifecycle_lines(step, bindings_for)))
+    return 0
+
+
+def _rename(args: argparse.Namespace) -> int:
+    resolved = _resolve(args.slug, "rename")
+    if resolved is None:
+        return 1
+    st, bare = resolved
+    try:
+        item, notes = st.rename(bare, args.new_slug, owner=_local_owner(st))
+    except TransitionCommitError as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    except _ERRORS as e:
+        print(f"tcw work rename: {e}", file=sys.stderr)
+        return 1
+    loc = st.locate(item.slug)
+    print(f"renamed {bare} → {item.slug}" + (f" ({loc})" if loc else ""))
+    for note in notes:
+        print(f"tcw work rename: {note}", file=sys.stderr)
+    bound = bound_value(item.tracker) if item.tracker else None
+    ticket = (bound.get("ticket") or {}).get("key") if isinstance(bound, dict) else None
+    if ticket:
+        print(f"tcw work rename: ticket {ticket} was written naming {bare}; update "
+              f"any slug or link in its text yourself.", file=sys.stderr)
     return 0
 
 
@@ -4258,6 +4315,25 @@ def _complete(args: argparse.Namespace) -> int:
             print(f"tcw work complete: blocked by: {', '.join(blockers)} "
                   f"(use --force to override)", file=sys.stderr)
             return 1
+    # The store refuses this too, but only after the merge-back has run — too
+    # late for a refusal to leave the branch unmerged — and before the checklist,
+    # which is no use to acknowledge for a completion refused anyway. A worktree
+    # item has two copies: `submit` may have run in either, and verify may have
+    # written the file in either, so it is in review if either says so and
+    # accepted if either holds the file — which is what the merge will produce.
+    copies = [st] + ([branch_store] if branch_store is not None
+                     and branch_store.root.resolve() != st.root.resolve() else [])
+    stray = [f"{_relative(s)} ({', '.join(files)})"
+             for copy in copies for s, files in copy.stray_folders(bare)]
+    in_review = item.status == "review" or judged.status == "review"
+    if (shipping and in_review and not args.force and item.type != "epic"
+            and not any(a.name == "refined-outcome" and a.present
+                        for copy in copies for a in copy.artifacts(bare))):
+        where = (f"a folder named like it but not it holds {'; '.join(stray)} — "
+                 f"written through the item's old path, most likely" if stray else "")
+        print(f"tcw work complete: {refined_outcome_missing(args.slug, where)}",
+              file=sys.stderr)
+        return 1
     checklist = st.dod_checklist() if shipping else []
     # The unticked list is the prompt, so only the unconfirmed run shows it. A
     # confirmed run shows the list once the item has closed, as acknowledged:
@@ -4312,6 +4388,10 @@ def _complete(args: argparse.Namespace) -> int:
               f"with --worktree, or to a completion with --branch; {args.slug} has "
               f"no worktree.", file=sys.stderr)
         return 1
+    if stray:
+        print(f"tcw work complete: warning: a folder named like {bare} but not it — "
+              f"{'; '.join(stray)}. Move anything that belongs to the item into "
+              f"`tcw work path {bare}`, then remove it.", file=sys.stderr)
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none — and a completion is refused only for
@@ -4399,7 +4479,7 @@ def _complete(args: argparse.Namespace) -> int:
     # Before any removal: a record of what did not reach the tracker lives in the
     # item's folder, and removing the folder would lose it.
     delivered = _deliver_after(st, bare, "complete", transition_id, previous)
-    loc = st.locate(bare)
+    loc = _shown(st, bare)
     delete_code = 0
     if delivered == 1 and st.pending_deletion(bare):
         ticket = (st.get(bare).tracker or {}).get("ticket", {}).get("key", "its ticket")
@@ -5051,6 +5131,14 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="remove a tag (repeatable; a value may be a,b,c; a tag the "
                          "item holds is matched as written, even one that is not valid)")
     pe.set_defaults(func=_edit)
+
+    prn = g.add_parser("rename", help="change an open item's slug; what names it on "
+                                      "this board follows, and the old slug still "
+                                      "resolves")
+    prn.add_argument("slug", help=SLUG_HELP)
+    prn.add_argument("new_slug", metavar="new-slug",
+                     help="the new slug, or only the part after the item's date")
+    prn.set_defaults(func=_rename)
 
     pc = g.add_parser("complete", help="close an item: --resolution done → completed (DoD gate), anything else → discarded")
     pc.add_argument("slug", help=SLUG_HELP)

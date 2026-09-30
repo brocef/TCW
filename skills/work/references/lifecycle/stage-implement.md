@@ -13,7 +13,8 @@ pass.
 
 ## Produce
 
-`outcome.md` — and the code, which is not a lifecycle artifact.
+`outcome.md`, in the item's folder wherever it currently lives
+(`tcw work path <slug>`) — and the code, which is not a lifecycle artifact.
 
 ## Steps
 

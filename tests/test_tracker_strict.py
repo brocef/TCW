@@ -17,8 +17,8 @@ from tcw.store.base import STRICT_NEEDS_EXCLUSIVE_CLAIM, parse_tracker_config
 from tcw.store.fs import FsWorkStore
 from tcw.validate import validate
 from test_tracker_sync import (A, B, KEY, NAMED_START, SENTINEL, STATUSES,  # noqa: F401
-                               TICKET_ID, bound_item, claimed_ticket, cli, fake,
-                               make_node, record, status, with_record)
+                               TICKET_ID, accepted, bound_item, claimed_ticket, cli,
+                               fake, make_node, record, status, with_record)
 from tracker_fake import BASE_URL
 
 BASE = {
@@ -886,6 +886,8 @@ def test_complete_judges_the_ticket_from_the_worktree_s_copy(strict, fake):
     assert cli(tree, "work", "submit", slug)[0] == 0
     assert status(strict, slug) == "active"             # the stale copy
     assert status(tree, slug) == "review"               # the branch copy
+    accepted(tree, slug)                                # verify, on the branch
+    commit_all(tree)
     claimed_ticket(fake, "In Review", A)
 
     code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
@@ -921,6 +923,7 @@ def test_two_parts_held_in_progress_can_both_complete(strict, fake):
     for slug in (api, web):
         assert cli(strict, "work", "start", slug)[0] == 0
         assert cli(strict, "work", "submit", slug)[0] == 0
+        accepted(strict, slug)
     assert fake.tickets[TICKET_ID].status == "In Progress"       # held for the other part
     code, _out, err = cli(strict, "work", "complete", api, "--resolution", "done",
                           "--confirm")
@@ -1058,6 +1061,8 @@ def test_the_last_shared_part_completes_from_review_a_ticket_held_in_progress(no
         st.start(slug, owner="a@example.test")
         st.submit(slug)
     assert deliver_now(node, web, move="submit", previous="active").state == "held"
+    accepted(node, api)
+    accepted(node, web)
     st.complete(api, "done", ["acked"])
     st.complete(web, "done", ["acked"])
     assert deliver_now(node, web, move="complete", previous="review").state == "current"
@@ -1070,6 +1075,7 @@ def test_an_unshared_ticket_sent_back_from_review_is_not_carried_forward(node, f
     st = FsWorkStore.open(node)
     st.start(slug, owner="a@example.test")
     st.submit(slug)
+    accepted(node, slug)
     st.complete(slug, "done", ["acked"])
     assert deliver_now(node, slug, move="complete", previous="review").state == "conflicting"
     assert fake.writes() == []
@@ -1083,6 +1089,7 @@ def test_a_ticket_taken_again_after_a_discard_is_not_carried_forward(node, fake)
     claimed_ticket(fake, "In Progress", A)
     st.start(again, owner="a@example.test")
     st.submit(again)
+    accepted(node, again)
     st.complete(again, "done", ["acked"])
     assert deliver_now(node, again, move="complete", previous="review").state == "conflicting"
     assert fake.writes() == []
@@ -1095,6 +1102,7 @@ def test_complete_is_refused_when_a_reviewer_sent_the_ticket_back(strict, fake):
     slug = bound_item(strict)
     assert cli(strict, "work", "start", slug)[0] == 0
     assert cli(strict, "work", "submit", slug)[0] == 0
+    accepted(strict, slug)            # so the refusal is the tracker's, not verify's
     claimed_ticket(fake, "In Progress", A)
     code, _out, err = cli(strict, "work", "complete", slug, "--resolution", "done",
                           "--confirm")
@@ -1247,6 +1255,7 @@ def test_a_finished_held_item_keeps_the_record_that_can_still_deliver_its_move(
     st = FsWorkStore.open(root)
     st.start(api, owner="a@example.test")
     st.submit(api)
+    accepted(root, api)
     st.complete(api, "done", ["acked"])
     with_record(root, api, {**RECORD, "move": "complete", "since": "In Review"})
     web = bound_item(root, "Web", part="web")
@@ -1311,6 +1320,8 @@ def test_a_failed_recordless_sync_does_not_block_the_next_strict_move(tmp_path, 
     fake.down = True
     assert cli(root, "work", "tracker", "sync", slug)[0] == 1
     fake.down = False
+    if move == "complete":
+        accepted(root, slug)
     code, out, err = cli(root, "work", move, slug, *MOVE_ARGV[move])
     assert UNDELIVERED not in err
     assert code == 0, (out, err)
@@ -1341,6 +1352,8 @@ def test_a_reopened_ticket_closes_again_under_an_exclusive_claim_transition(tmp_
     slug = bound_item(root)
     for argv in (("start", slug), ("submit", slug),
                  ("complete", slug, "--resolution", "done", "--confirm")):
+        if argv[0] == "complete":
+            accepted(root, slug)
         assert cli(root, "work", *argv)[0] == 0
     claimed_ticket(fake, "In Progress", None)                 # reopened, unassigned
     code, out, err = cli(root, "work", "tracker", "sync", slug)
@@ -1432,6 +1445,8 @@ def test_a_node_that_is_not_strict_starts_and_finishes_with_no_transitions_block
     slug = bound_item(root)
     for argv in (("start", slug), ("submit", slug),
                  ("complete", slug, "--resolution", "done", "--confirm")):
+        if argv[0] == "complete":
+            accepted(root, slug)
         code, out, err = cli(root, "work", *argv)
         assert code == 0, (argv, out, err)
     assert fake.tickets[TICKET_ID].status == "Done"

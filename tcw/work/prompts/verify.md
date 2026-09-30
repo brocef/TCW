@@ -10,6 +10,9 @@ and the diff. Repository discovery is unrestricted.
 `refined-outcome.md` on acceptance — the decision, the evidence, deferred
 follow-ups, and the closeout choices — or `rework.md` on rejection, recording
 what the implementation still has to do. **Never both.** Optional `## Notes`.
+Write it in the item's folder wherever that folder currently lives, which
+`tcw work path <slug>` prints — `submit` moves it to `review/`, so a path
+noted before then no longer points at the item.
 
 ## Steps
 

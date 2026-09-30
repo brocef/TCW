@@ -329,9 +329,13 @@ tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity
 tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
                                        # flags combine in one edit; if any part is refused
                                        # (unknown tag, blocking cycle, …) nothing is changed
+tcw work rename "$slug" add-remove-or-step-down   # a new slug for an open item (the date is kept);
+                                       # references on this board follow, and the old slug
+                                       # keeps resolving — see "Renaming an item"
 
 tcw work complete "$slug" --resolution done --confirm
-tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, or unreconciled capabilities
+tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, unreconciled capabilities,
+                                                                # or (from review) a missing refined-outcome.md
 tcw work complete "$slug" --resolution done --confirm --already-integrated
                                        # the work branch was merged outside TCW (a merged PR):
                                        # checks it reached this checkout's HEAD (a merge,
@@ -609,6 +613,16 @@ read, no other item can be completed, discarded or dropped, because that item
 may be a child of it; the refusal names each file to fix. The damaged item
 itself can still be dropped.
 
+**Where an item's files go.** An item's folder moves with its status, so a path
+noted before a transition stops pointing at it: `submit` moves `active/<slug>/`
+to `review/<slug>/`, and a later write through the old path makes a new folder
+that nothing reads. Ask `tcw work path <slug>` where the folder is now.
+`tcw validate` reports each such stray folder — one named like an item, with
+no `state.yaml`, holding a file — and each slug that two item folders both
+hold, naming every folder. Completing an item in review as `done` needs its
+`refined-outcome.md`, and says so, naming any stray folder, when it is missing
+(an epic is exempt; `--force` overrides).
+
 Children made by versions before this sit inside their parent's folder and still
 move with it; one that is moved on its own keeps its parent and has its own
 status from then on. (Decomposing keeps any one item small; for work spanning
@@ -731,6 +745,33 @@ in `tcw work list` and in its rollup, and it may be completed **directly from
 `backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
 throwaway `start` just to close it (the Definition-of-Done and capability gates
 still apply).
+
+## Renaming an item
+
+An item's slug is its identity, so `tcw work edit --title` leaves it alone. When
+the scope has changed enough that the slug misleads, `tcw work rename <slug>
+<new-slug>` gives an open item a new one. Pass the whole slug or only the part
+after the date; the item keeps its original date either way.
+
+In one commit it moves the folder in place and rewrites everything on the board
+that names the item: other items' blockers, a child's `parent` and
+`initiative`, the `initiative` on resolved children's records, and a
+capability's `Planning doc:`. An epic's initiative children on other boards are
+repointed too, each committed in its own repository.
+
+The old slug is recorded in `docs/work/renames.yaml` and keeps working where
+nothing could rewrite it. `tcw work show` and `tcw work path` follow it and say
+so; a blocker naming it, from this project or another, reads the renamed item's
+real status; and no new item is ever given it. Commands that change an item
+refuse the old slug and name the new one, so you are never acting on a name you
+did not know was stale.
+
+A rename is refused, and nothing changes, for a completed or discarded item,
+an item with a worktree or branch (rename those by hand), an item someone else
+holds, a slug already taken, or a different date. It never rewrites prose, a
+tracker ticket's text, or commit messages; it lists the item's files that still
+mention the old slug. `tcw validate` checks `renames.yaml` for loops and for an
+old slug that an item holds again.
 
 ## Running an item in an isolated checkout
 

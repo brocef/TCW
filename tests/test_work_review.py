@@ -68,6 +68,7 @@ def test_an_item_can_round_trip_through_review_before_completing(tmp_path):
     assert st.submit(item.slug).status == "review"
     assert st.rework(item.slug).status == "active"
     assert st.submit(item.slug).status == "review"
+    st.write_artifact(item.slug, "refined-outcome", "# Accepted\n")
     assert st.complete(item.slug, "done", []).status == "completed"
 
 
@@ -161,6 +162,7 @@ def test_an_item_in_review_still_blocks_its_dependents(tmp_path):
     with pytest.raises(ValueError, match="blocked by"):
         st.start(target.slug)
 
+    st.write_artifact(blocker.slug, "refined-outcome", "# Accepted\n")
     st.complete(blocker.slug, "done", [])
     assert st.start(target.slug).status == "active"
 
@@ -242,6 +244,7 @@ def test_a_transition_creates_a_missing_status_folder(tmp_path):
 
     assert st.submit(item.slug).status == "review"
     assert (work / "review" / item.slug).is_dir()
+    st.write_artifact(item.slug, "refined-outcome", "# Accepted\n")
     assert st.complete(item.slug, "done", []).status == "completed"
     assert (work / "completed" / item.slug).is_dir()
 
@@ -362,6 +365,7 @@ def test_cli_complete_from_review_does_not_warn(tmp_path, monkeypatch, capsys):
     item = st.create("Task", created="2026-01-01")
     st.start(item.slug)
     st.submit(item.slug)
+    st.write_artifact(item.slug, "refined-outcome", "# Accepted\n")
     monkeypatch.chdir(root)
 
     assert main(["work", "complete", item.slug, "--resolution", "done", "--confirm"]) == 0

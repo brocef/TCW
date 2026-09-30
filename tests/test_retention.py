@@ -631,6 +631,7 @@ def test_every_transition_gives_a_hook_the_item_path(tmp_path, monkeypatch):
     assert main(["work", "submit", item.slug]) == 0
     assert main(["work", "rework", item.slug]) == 0
     assert main(["work", "submit", item.slug]) == 0
+    FsWorkStore.open(root).write_artifact(item.slug, "refined-outcome", "# Accepted\n")
     assert main(["work", "complete", item.slug,
                  "--resolution", "done", "--confirm"]) == 0
 
