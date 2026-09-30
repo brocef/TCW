@@ -12,7 +12,7 @@
 | start work               | `tcw work start <slug> [--worktree] [--force]`                                                                                                  |
 | submit for verification  | `tcw work submit <slug>`                                                                                                                        |
 | send back for rework     | `tcw work rework <slug>` (refused while `refined-outcome.md` exists)                                                                            |
-| finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated]`                                                                   |
+| finish work              | `tcw work complete <slug> --resolution done --confirm [--already-integrated [--branch <b>]]`                                                            |
 | close without shipping   | `tcw work complete <slug> --resolution wontfix\|duplicate\|superseded --confirm`                                                                |
 | delete a backlog item    | `tcw work drop <slug> --confirm` (no record kept)                                                                                               |
 | finish a pending removal | `tcw work delete <slug>` — for an item a `work.retain.<status>: false` node resolved but whose `auto-delete` archive failed; runs the same bindings, refuses a live or retained item |
@@ -501,5 +501,6 @@ work branch back in the node's repository, and refuses rather than completing
 if that repository is gone — a completion that skipped its merge-back would
 leave the branch stranded with nothing to say so. `--already-integrated` is the
 exception, and deliberately: the merge already happened, which it checks against
-the node repository's `HEAD` before going on, so there is no merge to protect
+the node repository's `HEAD` whenever the branch still exists, so there is no
+merge to protect
 and the worktree teardown is best-effort from there.

@@ -4052,6 +4052,11 @@ def _complete(args: argparse.Namespace) -> int:
         print("tcw work complete: --branch names the branch to check for "
               "--already-integrated, and means nothing without it.", file=sys.stderr)
         return 2
+    if args.branch and resolution_status(args.resolution) != "completed":
+        print("tcw work complete: --branch applies to a completion; a discard "
+              "merges nothing and deletes no branch, so there is nothing to "
+              "check.", file=sys.stderr)
+        return 2
     resolved = _resolve(args.slug, "complete")
     if resolved is None:
         return 1
@@ -4206,9 +4211,22 @@ def _complete(args: argparse.Namespace) -> int:
         # A recorded branch already gone passes: an external flow that merged
         # the pull request may have deleted it, and there is nothing left to lose.
         if exists and (reason := branch_integration(st.node_root, checked)):
-            print(f"tcw work complete: {reason}. {args.slug} was not changed.",
-                  file=sys.stderr)
+            way_out = (f"If its work landed some other way, complete without "
+                       f"--already-integrated: nothing is merged or deleted for an "
+                       f"item without a worktree." if args.branch else
+                       f"If its work landed some other way, delete {checked} "
+                       f"yourself and re-run: a recorded branch that no longer "
+                       f"exists is not checked.")
+            print(f"tcw work complete: {reason}. {args.slug} was not changed. "
+                  f"{way_out}", file=sys.stderr)
             return 1
+    elif args.already_integrated and not has_worktree:
+        # A discard merges nothing, and the flag only silences the warning about
+        # an unmerged branch — which an item without a worktree never prints.
+        print(f"tcw work complete: --already-integrated applies to an item started "
+              f"with --worktree, or to a completion with --branch; {args.slug} has "
+              f"no worktree.", file=sys.stderr)
+        return 1
     # Before the merge-back, which runs ahead of the `pre` hook: a refusal must leave
     # the item, its branch and its worktree exactly as they were. Discards are never
     # refused — abandoning work authorizes none — and a completion is refused only for

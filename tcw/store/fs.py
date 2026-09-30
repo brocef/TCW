@@ -1081,11 +1081,21 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
                 f"so {branch} cannot be checked")
     run = lambda *a: _git(["git", "-C", str(node_root), *a],   # noqa: E731
                           capture_output=True, text=True)
-    current = run("symbolic-ref", "--quiet", "--short", "HEAD").stdout.strip()
-    if current == branch:
+    # The full ref, not `--short`: that prints `heads/<b>` when a tag shares
+    # the branch's name, and the comparison below would then miss.
+    current = run("symbolic-ref", "--quiet", "HEAD").stdout.strip()
+    if current == f"refs/heads/{branch}":
         # Against itself any branch is "merged", so this is no evidence at all.
         return (f"{branch} is checked out here, so it cannot be checked against "
                 f"itself — run this from the checkout it was merged into")
+    if not current:
+        # Detached — typically inside a worktree parked at the branch's tip,
+        # where the tip is trivially an ancestor of HEAD and the completion
+        # would land on no branch at all.
+        return (f"HEAD is detached here, so there is no branch {branch} could "
+                f"have been merged into — run this from the checkout it was "
+                f"merged into, on its branch")
+    current = current.removeprefix("refs/heads/")
     head = run("rev-parse", "--short", "HEAD").stdout.strip() or "HEAD"
     ref = f"refs/heads/{branch}"
     if run("merge-base", "--is-ancestor", ref, "HEAD").returncode == 0:
@@ -1094,8 +1104,13 @@ def branch_integration(node_root: Path, branch: str) -> str | None:
     tree = run("rev-parse", "HEAD^{tree}").stdout.strip()
     if merged.returncode == 0 and merged.stdout.split("\n", 1)[0].strip() == tree:
         return None
-    where = f" ({current})" if current else ""
-    return (f"{branch} is not merged into this checkout's HEAD {head}{where}: "
+    if merged.returncode not in (0, 1):
+        # 1 is a conflict; anything else is git failing to answer at all — most
+        # often a git older than 2.38, which has no `--write-tree`.
+        detail = (merged.stderr.strip().splitlines() or ["no output"])[0]
+        return (f"git could not check whether {branch} is merged into HEAD {head} "
+                f"({detail}); `git merge-tree --write-tree` needs git 2.38 or newer")
+    return (f"{branch} is not merged into this checkout's HEAD {head} ({current}): "
             f"merging it would still change files. Pull the merge into this "
             f"checkout, or merge {branch}, then re-run")
 

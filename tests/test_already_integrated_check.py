@@ -161,3 +161,54 @@ def test_a_checkout_on_the_branch_itself_is_refused(hand_made, monkeypatch, caps
     assert complete("--branch", branch, slug=slug) == 1
     assert "checked out" in capsys.readouterr().err
     assert status(root, slug) == "active"
+
+
+# ── review follow-ups ────────────────────────────────────────────────────────
+
+def test_a_detached_head_at_the_branch_tip_is_refused(hand_made, monkeypatch, capsys):
+    """Inside a hand-made worktree parked at the branch's tip, the tip is
+    trivially an ancestor of HEAD — and the completion would land on no branch."""
+    root, slug, branch, wt = hand_made
+    git(wt, "checkout", "-q", "--detach")
+    monkeypatch.chdir(wt)
+    assert complete("--branch", branch, slug=slug) == 1
+    assert "detached" in capsys.readouterr().err
+    assert status(root, slug) == "active"
+
+
+def test_a_tag_named_like_the_branch_does_not_hide_it(hand_made, capsys):
+    root, slug, branch, wt = hand_made
+    git(wt, "checkout", "-q", "--detach")
+    git(root, "tag", branch, branch)
+    git(root, "checkout", "-q", branch)
+    assert complete("--branch", branch, slug=slug) == 1
+    assert "checked out" in capsys.readouterr().err
+
+
+def test_a_conflicting_branch_says_how_to_get_out(tcw_worktree, capsys):
+    """Squashed, then trunk edited the same lines: merging conflicts. The way
+    out when the work did land is deleting the branch, and the refusal says so."""
+    root, slug, branch = tcw_worktree
+    git(root, "merge", "-q", "--squash", branch)
+    git(root, "commit", "-qm", "squash")
+    (root / "only-on-the-branch.txt").write_text("changed on trunk")
+    git(root, "commit", "-qam", "trunk edit")
+    assert complete(slug=slug) == 1
+    err = capsys.readouterr().err
+    assert "would still change files" in err and f"delete {branch}" in err, err
+    assert branch_exists(root, branch)
+
+
+def test_branch_on_a_discard_is_a_usage_error(hand_made, capsys):
+    root, slug, branch, _ = hand_made
+    assert main(["work", "complete", slug, "--resolution", "wontfix", "--confirm",
+                 "--already-integrated", "--branch", branch]) == 2
+    assert status(root, slug) == "active"
+
+
+def test_already_integrated_on_a_discard_without_a_worktree_is_still_refused(
+        hand_made, capsys):
+    root, slug, _, _ = hand_made
+    assert main(["work", "complete", slug, "--resolution", "wontfix", "--confirm",
+                 "--already-integrated"]) == 1
+    assert status(root, slug) == "active"
