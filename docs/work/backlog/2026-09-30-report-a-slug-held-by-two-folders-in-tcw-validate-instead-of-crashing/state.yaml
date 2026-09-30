@@ -2,3 +2,7 @@ slug: 2026-09-30-report-a-slug-held-by-two-folders-in-tcw-validate-instead-of-cr
 title: Report a slug held by two folders in tcw validate instead of crashing
 created: '2026-09-30'
 resolution: null
+tags:
+- bug
+- cli
+- store

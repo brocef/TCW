@@ -3,3 +3,6 @@ title: Clear a plain tracker binding's stuck start record once its ticket has mo
   on
 created: '2026-09-30'
 resolution: null
+tags:
+- bug
+- work

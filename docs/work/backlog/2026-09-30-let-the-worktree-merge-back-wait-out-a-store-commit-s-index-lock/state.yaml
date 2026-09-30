@@ -2,3 +2,7 @@ slug: 2026-09-30-let-the-worktree-merge-back-wait-out-a-store-commit-s-index-loc
 title: Let the worktree merge-back wait out a store commit's index.lock
 created: '2026-09-30'
 resolution: null
+tags:
+- bug
+- work
+- tech-debt
