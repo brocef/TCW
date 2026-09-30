@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-30-a-detached-worktree-s-unbranched-commits-are-lost-at-teardown.md`
+
+## Inbox body
+
 # A detached worktree's commits on no branch are lost when complete tears it down
 
 Found by the adversarial review of
