@@ -6,3 +6,5 @@ tags:
 - bug
 owner: brocef@users.noreply.github.com
 started: '2026-09-30T02:06:56.362475Z'
+worktree: .worktrees/2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read
+branch: work/2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read
