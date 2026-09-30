@@ -35,7 +35,11 @@ instead.
    last two.
 3. The hint after `start` follows the work skill's "Finding your place" order
    (`start_next_stage`): no `initial-request.md` → `request`, then `spec`,
-   `plan`, and so on.
+   `plan`, and so on. The request counts as missing only while `spec.md` is
+   also unwritten. A spec supersedes the request's job of recording what was
+   asked, so an item that is already specified, planned or implemented is never
+   sent back to write its request. The same rule applies to goal 2's warning,
+   and to the skill's own line, which is reworded to match.
 4. A stage refused for the item's status adds one line saying how to go on:
    - the item is past the stage and in `review`, while the stage is legal in
      `active` (`request`, `spec`, `plan`, `implement`): send it back with
@@ -99,6 +103,10 @@ reads the same way.
 
 ## Notes
 
+- Revised at implementation. Read literally, the skill's order sends an item
+  with a spec, plan and outcome, but no request, back to the `request` stage.
+  That is the case this issue is about: work written up after it started. So
+  the request counts as missing only before a spec exists (goal 3).
 - No advisors were consulted. The question (legal, or only a better refusal)
   was settled by the accepted precedent `994727fb`, which made `spec` and
   `plan` legal in `active` for the same reason. Goal 4 answers the issue's
