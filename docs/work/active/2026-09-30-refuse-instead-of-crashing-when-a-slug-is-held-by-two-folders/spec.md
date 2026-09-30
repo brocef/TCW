@@ -97,3 +97,34 @@ In a scratch project where an item's folder is copied from `backlog/` into
   `2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read`.
 - Renamed at spec from `…-report-a-slug-held-by-two-folders-in-tcw-validate-instead-of-crashing`,
   since `validate` no longer crashes.
+
+## Amended after spec review (2026-09-30)
+
+An adversarial spec review ran before implementation, and reproduced a gap in
+this design: catching around the artifact read is not enough. Three more calls
+on the board path reach `_find` for the duplicated slug:
+
+- `st.unresolved_blockers(it)` on the row of **another** item blocked by the
+  duplicated slug (`tcw/store/base.py`, `unresolved_blockers`, catches only
+  `ValueError`);
+- `st.epic_completable(it)` for a duplicated epic;
+- `_render_descendant_boards`' initiative lookup under `--include-descendants`.
+
+Accepted design changes:
+
+- A blocker whose slug is held twice counts as **still blocking** and is shown
+  in the blocked item's row as usual. `unresolved_blockers` treats
+  `MultipleMatch` like an unreadable blocker, where the fix belongs, rather
+  than the board catching it.
+- A duplicated epic reads as **not** ready to close.
+- The descendant board treats a duplicated initiative holder as no holder.
+- **One row.** The board already merges the two folders into one row (its
+  ordering keys on the slug), so criterion 1 means: the slug's single row is
+  marked. Showing both folders as rows is not in scope.
+
+Added criteria:
+
+6. With a second item blocked by the duplicated slug, `tcw work list` exits 0,
+   prints that item's row with the blocker listed, and prints every other row.
+7. With the duplicated slug an epic that another item names as its initiative,
+   `tcw work list --include-descendants` exits 0.
