@@ -1117,6 +1117,9 @@
   location: ba208cce998e32934e1096563851d9e3e1d77164
   resolution: done
   resolved: '2026-09-29'
+2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-the-resolving-ones:
+  resolution: done
+  resolved: '2026-09-30'
 2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-parent-s-completion-gate:
   location: 60b386ac8f6080ad151e7675fbae218e5b7d5353
   resolution: done

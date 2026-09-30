@@ -2,7 +2,7 @@ slug: 2026-09-29-hold-one-lock-on-the-work-store-for-every-transition-not-only-t
 title: Hold one lock on the work store for every transition, not only the resolving
   ones
 created: '2026-09-29'
-resolution: null
+resolution: done
 tags:
 - store
 - work
