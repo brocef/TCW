@@ -401,3 +401,22 @@ def test_an_unqualified_external_blocker_follows_to_the_resolved_record(
     st.complete(NEW, "done", [])
     shutil.rmtree(st.root / "completed" / NEW, ignore_errors=True)   # another clone
     assert st.unresolved_blockers(st.get(other)) == []
+
+
+def test_an_undo_that_cannot_run_git_still_moves_the_folder_back(tmp_path, monkeypatch, capsys):
+    """Another git process holding the index mid-rename: the folder still goes
+    back, and the error says what was left."""
+    root = node(tmp_path)
+    item(root, "Remove a participant")
+    lock = root / ".git" / "index.lock"
+
+    def boom(*a, **k):
+        lock.write_text("")                         # git is busy from here on
+        raise ValueError("disk full")
+    monkeypatch.setattr(FsWorkStore, "_apply_reference_edits", boom)
+    code, _, err = rename(root, monkeypatch, capsys, OLD, "add-remove-or-step-down")
+    lock.unlink()
+    assert code == 1 and "disk full" in err, err
+    assert (root / "docs/work/backlog" / OLD / "state.yaml").exists()
+    assert not (root / "docs/work/backlog" / NEW).exists()
+    assert "undone except for" in err, err

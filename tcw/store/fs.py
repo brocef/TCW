@@ -6345,8 +6345,13 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 moved = True
                 written = self._apply_reference_edits(edits, slug, new, graveyard)
                 elsewhere = self._rewrite_capability_links(metas, slug, new)
-            except BaseException:
-                self._undo_rename(src, dst, moved, before)
+            except BaseException as error:
+                left = self._undo_rename(src, dst, moved, before)
+                if left and isinstance(error, Exception):
+                    raise ValueError(
+                        f"{error}\nThe rename was undone except for:\n  - "
+                        + "\n  - ".join(left)
+                        + "\nRestore these by hand (git status shows them).") from error
                 raise
             touched = [renames_path, src, dst, *written]
             notes = self._prose_mentions(dst, slug)
@@ -6358,7 +6363,9 @@ class FsWorkStore(FsTreeStore, WorkStore):
                 if err := git_commit_result(self.store_git_root,
                                             f"tcw work: rename {slug} → {new}", *rel):
                     raise TransitionCommitError(
-                        f"{slug} was renamed to {new}, but committing it failed:\n{err}")
+                        f"{slug} was renamed to {new}, but committing it failed:\n{err}\n"
+                        f"The rename is staged; commit it yourself. Use the new slug "
+                        f"from now on — the old one is recorded as renamed.")
                 for p in elsewhere:
                     if p not in mine and (root := git_root(p.parent)) is not None:
                         if err := git_commit_result(root, f"tcw work: rename {slug} → {new}",
@@ -6385,30 +6392,55 @@ class FsWorkStore(FsTreeStore, WorkStore):
         return doc
 
     def _undo_rename(self, src: Path, dst: Path, moved: bool,
-                     before: "dict[Path, bytes | None]") -> None:
-        """Put back what a failed rename changed. Every file it wrote was clean
-        when read, so its bytes then are the committed ones."""
+                     before: "dict[Path, bytes | None]") -> list[str]:
+        """Put back what a failed rename changed, returning what could not be.
+        Every file it wrote was clean when read, so its bytes then are the
+        committed ones. Each step runs whatever the one before did: a partial
+        undo that stops at the first git error leaves the worst state of all."""
+        left: list[str] = []
         if moved and dst.exists() and not src.exists():
-            subprocess.run(["git", "-C", str(self.store_git_root), "mv", "-k",
-                            str(dst), str(src)], capture_output=True,
-                           stdin=subprocess.DEVNULL)
-        for path, data in before.items():
+            back = subprocess.run(["git", "-C", str(self.store_git_root), "mv", "-k",
+                                   str(dst), str(src)], capture_output=True, text=True,
+                                  stdin=subprocess.DEVNULL)
+            if back.returncode != 0 or not src.exists():
+                try:
+                    dst.rename(src)       # the folder at least; the index is reset below
+                except OSError as e:
+                    left.append(f"the folder is still at {dst} ({e})")
+            if not src.exists():
+                return left + [f"not restored, since the folder did not move back: "
+                               f"{', '.join(str(p) for p in before)}"]
             subprocess.run(["git", "-C", str(self.store_git_root), "reset", "-q", "--",
-                            _literal(str(path.resolve().relative_to(
-                                self.store_git_root.resolve())))],
+                            _literal(str(dst.relative_to(self.store_git_root)))],
                            capture_output=True, stdin=subprocess.DEVNULL)
-            if data is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(data)
+        for path, data in before.items():
+            try:
+                repo = git_root(path.parent) or self.store_git_root
+                reset = subprocess.run(
+                    ["git", "-C", str(repo), "reset", "-q", "--",
+                     _literal(str(path.resolve().relative_to(repo.resolve())))],
+                    capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                if data is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_bytes(data)
+                if reset.returncode != 0:
+                    left.append(f"{path} is restored on disk but may still be staged: "
+                                f"{reset.stderr.strip()}")
+            except (OSError, ValueError) as e:
+                left.append(f"{path} could not be restored ({e})")
+        return left
 
     def _require_clean(self, path: Path) -> None:
         """Refuse when `path` has uncommitted changes and auto-commit is on: the
         commit about to be made would carry someone else's edit to it."""
         if not self.auto_commit_transitions() or not path.exists():
             return
-        rel = str(path.resolve().relative_to(self.store_git_root.resolve()))
-        out = subprocess.run(["git", "-C", str(self.store_git_root), "status",
+        # A capability file can be in the project's repository while the work
+        # store has its own, so ask the repository that holds the path.
+        repo = git_root(path if path.is_dir() else path.parent) or self.store_git_root
+        rel = str(path.resolve().relative_to(repo.resolve()))
+        out = subprocess.run(["git", "-C", str(repo), "status",
                               "--porcelain", "--", _literal(rel)],
                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if out.returncode == 0 and out.stdout.strip():
