@@ -16,8 +16,8 @@ from tcw.store.fs import FsWorkStore
 from tcw.validate import validate
 from test_tracker_strict import BASE, parsed, set_tracker_key
 from test_tracker_sync import (A, B, KEY, SENTINEL, STATUSES, TICKET_ID,  # noqa: F401
-                               bound_item, claimed_ticket, cli, fake, make_node,
-                               record, status)
+                               accepted, bound_item, claimed_ticket, cli, fake,
+                               make_node, record, status)
 
 
 # ── configuration ────────────────────────────────────────────────────────────
@@ -351,6 +351,8 @@ def test_comments_off_the_whole_lifecycle_sends_no_comment(tmp_path, fake):
     slug = bound_item(root)
     for argv in (("start", slug), ("submit", slug), ("rework", slug), ("submit", slug),
                  ("complete", slug, "--resolution", "done", "--confirm")):
+        if argv[0] == "complete":
+            accepted(root, slug)
         assert cli(root, "work", *argv)[0] == 0, argv
     assert not any("/comment" in path for _m, path, _a in fake.requests)
 
@@ -360,6 +362,8 @@ def test_the_whole_lifecycle_posts_five_comments(tmp_path, fake):
     slug = bound_item(root, "Checkout page")
     for argv in (("start", slug), ("submit", slug), ("rework", slug), ("submit", slug),
                  ("complete", slug, "--resolution", "done", "--confirm")):
+        if argv[0] == "complete":
+            accepted(root, slug)
         code, _out, err = cli(root, "work", *argv)
         assert code == 0, (argv, err)
     assert first_lines(fake) == [

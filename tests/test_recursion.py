@@ -717,6 +717,10 @@ def _submit_then_complete_a_worktree_item(root: Path, capsys) -> tuple[str, str]
     wt = root / ".worktrees" / slug
 
     (wt / "docs" / "work" / "active" / slug / "outcome.md").write_text("shipped\n")
+    # Verify's acceptance record, which completing `done` from review requires;
+    # the branch's copy is the one `complete` reads for a worktree item.
+    (wt / "docs" / "work" / "active" / slug / "refined-outcome.md").write_text(
+        "# Accepted\n")
     (wt / "feature.py").write_text("x = 1\n")             # code, outside the renamed dir
     subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(wt), "commit", "-q", "-m", "impl"], check=True)

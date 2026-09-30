@@ -603,13 +603,17 @@ def test_takeover_recovers_interrupted_private_claim(tmp_path):
     assert not private.exists()
 
 
-def _reviewed(tmp_path: Path) -> tuple[Path, FsWorkStore, str]:
+def _reviewed(tmp_path: Path, accepted: bool = True) -> tuple[Path, FsWorkStore, str]:
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     store = FsWorkStore.open(code)
     item = store.create("Race me", created="2026-08-08")
     store.start(item.slug, owner="me@example.com")
     store.submit(item.slug)
+    # Verify's acceptance record: completing `done` out of review requires it,
+    # and `rework` refuses while it is present.
+    if accepted:
+        store.write_artifact(item.slug, "refined-outcome", "# Accepted\n")
     return code, store, item.slug
 
 
@@ -763,7 +767,7 @@ def test_lost_submit_leaves_the_claim_intact(tmp_path, monkeypatch):
     either end of the move is `active`. A `submit` that loses the race used to
     blank them anyway — on the winner's item, since the write preceded the move.
     """
-    code, store, slug = _reviewed(tmp_path)
+    code, store, slug = _reviewed(tmp_path, accepted=False)
     store.rework(slug)                                # back to active, unowned
     store.start(slug, owner="me@example.com", take_over=True)
     real_find = FsWorkStore._find
@@ -805,6 +809,7 @@ def test_a_transition_that_wins_still_writes_its_fields(tmp_path):
     item = FsWorkStore.open(code).get(slug)
     assert item.owner == "" and item.started == ""    # cleared by the move
 
+    submitted.write_artifact(slug, "refined-outcome", "# Accepted\n")
     FsWorkStore.open(code).complete(slug, "done", dod_ack=[])
     done = FsWorkStore.open(code).get(slug)
     assert done.status == "completed" and done.resolution == "done"

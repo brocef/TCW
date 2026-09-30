@@ -685,6 +685,7 @@ def test_completing_into_the_ignored_default_is_silent(tmp_path, capsys, via_rev
     st.start(slug)
     if via_review:
         st.submit(slug)
+        st.write_artifact(slug, "refined-outcome", "# Accepted\n")
     capsys.readouterr()                       # discard the transitions' own output
     st.complete(slug, "done", [])
     assert ".gitignore" not in capsys.readouterr().err

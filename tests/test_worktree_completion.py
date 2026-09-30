@@ -92,6 +92,15 @@ def branch_commit(worktree_node: Path, name: str = "branch-work.txt") -> str:
     return head(top)
 
 
+def accept_on_branch(worktree_node: Path, slug: str) -> None:
+    """Write verify's acceptance record in the branch's copy of the item — the
+    copy `complete` reads for a worktree item — and commit it there. Completing
+    `done` out of review refuses without it."""
+    FsWorkStore.open(worktree_node).write_artifact(slug, "refined-outcome",
+                                                   "# Accepted\n")
+    commit_all(_top(worktree_node), "accepted")
+
+
 def refused_before_merge(root: Path, worktree_node: Path, slug: str, tip: str) -> None:
     """The item, its branch and its worktree are exactly as they were."""
     assert FsWorkStore.open(root).get(slug).status == "active"
@@ -116,6 +125,7 @@ def test_no_false_warning_when_the_branch_submitted_the_item(
     assert run_in(wt, monkeypatch, capsys, "work", "submit", slug)[0] == 0
     assert FsWorkStore.open(root).get(slug).status == "active"   # the stale copy
     assert FsWorkStore.open(wt).get(slug).status == "review"     # the branch copy
+    accept_on_branch(wt, slug)
 
     code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
                              "--resolution", "done", "--confirm")
@@ -169,6 +179,7 @@ def test_no_false_warning_when_submit_ran_in_the_primary_checkout(
     assert run_in(root, monkeypatch, capsys, "work", "submit", slug)[0] == 0
     assert FsWorkStore.open(root).get(slug).status == "review"
     assert FsWorkStore.open(wt).get(slug).status == "active"
+    accept_on_branch(wt, slug)
 
     code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
                              "--resolution", "done", "--confirm")
@@ -230,6 +241,7 @@ def test_a_nested_node_reads_its_own_copy_inside_the_worktree(
     assert wt != root / ".worktrees" / slug            # the nesting is real
     branch_commit(wt)
     assert run_in(wt, monkeypatch, capsys, "work", "submit", slug)[0] == 0
+    accept_on_branch(wt, slug)
 
     code, _out, err = run_in(root, monkeypatch, capsys, "work", "complete", slug,
                              "--resolution", "done", "--confirm")

@@ -411,8 +411,6 @@ def test_every_cli_write_refuses_with_one_wording_and_writes_nothing(
         ["work", "edit", backlog, "--title", "Renamed"],
         ["work", "rework", review],
         ["work", "submit", active],
-        ["work", "complete", review, "--resolution", "done", "--confirm"],
-        ["work", "complete", review, "--resolution", "wontfix", "--confirm"],
         ["work", "drop", backlog, "--confirm"],
         ["work", "tags", "add", "demo"],
         ["work", "tags", "rm", "demo"],
@@ -432,6 +430,26 @@ def test_every_cli_write_refuses_with_one_wording_and_writes_nothing(
     ]
     graph_before = manifest(parent.parent)
     for argv in commands:
+        assert main(argv) == 1, argv
+        err = capsys.readouterr().err
+        assert "Traceback" not in err, (argv, err)
+        assert [ln for ln in err.splitlines() if ln] == [
+            ln for ln in err.splitlines() if ln and REFUSAL.match(ln)], (argv, err)
+        assert manifest(parent.parent) == graph_before, argv
+
+    # `complete --resolution done` from review refuses without verify's
+    # acceptance record, and `rework` refuses with one, and both read the item
+    # before the repository guard answers. So the completions run with the
+    # record present, and the rework above ran without it: each command's
+    # subject stays the repository guard. Written by hand, since the store's
+    # own write is refused outside a repository.
+    (st.path(review) / "refined-outcome.md").write_text("# Accepted\n",
+                                                         encoding="utf-8")
+    graph_before = manifest(parent.parent)
+    for argv in (
+        ["work", "complete", review, "--resolution", "done", "--confirm"],
+        ["work", "complete", review, "--resolution", "wontfix", "--confirm"],
+    ):
         assert main(argv) == 1, argv
         err = capsys.readouterr().err
         assert "Traceback" not in err, (argv, err)

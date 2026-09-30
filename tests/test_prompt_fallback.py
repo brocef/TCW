@@ -30,6 +30,11 @@ byte-identical — so what this fixture still proves about the documentation
 substitution is intact. A prompt rewrite is the one reason to touch these bytes;
 a *substitution* changing them is the regression, and re-baselining to hide that
 is the thing the file exists to prevent.
+
+The `implement` and `verify` entries were re-baselined once more by issue #58,
+which added one sentence to each telling the agent to write in the item's folder
+wherever it currently lives (`tcw work path <slug>`). That sentence is the whole
+difference; every other stage stayed byte-identical.
 """
 
 import json
