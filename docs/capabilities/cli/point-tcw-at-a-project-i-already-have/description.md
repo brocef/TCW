@@ -49,3 +49,7 @@ disk, on whatever branch I have it on, and I push it myself. That last part is
 what makes this worth having rather than merely tidier. A fetched copy sits at
 the declared ref and pushes to it, so before this the remedy for a store TCW
 could not find would quietly move my work onto a branch I was not on.
+
+On a disk that ignores letter case, the path I give may spell the folder in any
+case: it is the same folder, from the primary checkout or from a linked git
+worktree alike.

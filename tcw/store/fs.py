@@ -63,7 +63,8 @@ from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
-from tcw.store.project import FsProjectRegistry, validate_project_id, worktree_anchors
+from tcw.store.project import (FsProjectRegistry, _below, validate_project_id,
+                               worktree_anchors)
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -964,14 +965,18 @@ def worktree_node_root(node_root: Path, worktree: str) -> Path | None:
     no configuration and no store, silently. `_complete` computes the inverse of
     this when it refuses to run from inside the item's own worktree.
 
-    None when the node is not in a git repository, which is the one case with no
-    answer to give: the worktree path is relative to the node, but the node's
-    offset within the checkout is a question only git can answer.
+    None when there is no answer to give: the node is not in a git repository —
+    the worktree path is relative to the node, but the node's offset within the
+    checkout is a question only git can answer — or it is not under the top
+    folder git reports, even compared by folder identity.
     """
     top = git_root(node_root)
     if top is None:
         return None
-    return node_root / worktree / node_root.resolve().relative_to(top.resolve())
+    offset = _below(node_root.resolve(), top.resolve())
+    if offset is None:
+        return None
+    return node_root / worktree / offset
 
 
 def uncommitted_paths(directory: Path) -> list[str]:
@@ -1804,8 +1809,9 @@ def anchor_configured_path(node_root: Path, value: Path) -> Path:
         return node_root
     top, main = anchors
     resolved = (node_root / value).resolve()
-    if node_root.is_relative_to(top) and not resolved.is_relative_to(top):
-        return main / node_root.relative_to(top)
+    inside = _below(node_root, top)
+    if inside is not None and _below(resolved, top) is None:
+        return main / inside
     return node_root
 
 

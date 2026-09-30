@@ -30,7 +30,7 @@ from tcw.store.fs import (
 )
 from tcw.harness import OTHER, ancestor_programs, detect
 from tcw.stdin import read_piped_stdin
-from tcw.store.project import FsProjectRegistry, worktree_anchors
+from tcw.store.project import FsProjectRegistry, _below, worktree_anchors
 from tcw.work.hooks import hook_env, run_bindings, run_post, run_pre
 from tcw.work.projection import work_item_json
 from tcw.work.resolve import (
@@ -4069,9 +4069,12 @@ def _complete(args: argparse.Namespace) -> int:
     # remove` deletes the worktree you are standing in, so completing from inside
     # is not a flow worth engineering. Completing from an *unrelated* worktree is
     # not this defect, hence the equality against this item's own path.
-    if has_worktree and (anchors := worktree_anchors(st.node_root)):
+    # The node's place under `top` by folder identity, not text: a project
+    # reached through an override spelled in other letter case is still there.
+    if (has_worktree and (anchors := worktree_anchors(st.node_root))
+            and (under := _below(st.node_root.resolve(), anchors[0])) is not None):
         top, main = anchors
-        own = (main / st.node_root.resolve().relative_to(top) / item.worktree).resolve()
+        own = (main / under / item.worktree).resolve()
         if top == own:
             print(f"tcw work complete: {args.slug} cannot be completed from inside its "
                   f"own worktree — the merge-back and teardown act on the primary "

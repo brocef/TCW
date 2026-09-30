@@ -115,7 +115,8 @@ and the declaration, because the case it exists for is a path that resolves to
 the *wrong* node — a workspace laid out flat where the config describes it
 nested, which is what makes `tcw provision` fetch a second copy of a project the
 machine already has. Reach for it before editing a shared config to match one
-machine. It reaches component stores too: a store whose
+machine. On a disk that ignores letter case (macOS, Windows) its value may spell
+the folder in any case, including from a linked git worktree. It reaches component stores too: a store whose
 declared repository is a project this variable located is read there. A variable naming a path that is not here is not an error and falls
 through to `repository`, so one set can serve a whole environment; one naming a
 directory that is present and wrong is refused — by `tcw provision` too, which
