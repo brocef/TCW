@@ -1,3 +1,9 @@
+## Inbox manifest
+
+- `2026-09-29-editing-a-damaged-item-gives-a-bare-yaml-error.md`
+
+## Inbox body
+
 # Editing an item whose state.yaml is damaged gives a bare YAML parser message
 
 Found reviewing `2026-09-29-see-a-blocker-cycle-that-runs-through-an-item-whose-state-yaml-cannot-be-read`.
