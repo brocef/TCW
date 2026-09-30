@@ -4339,7 +4339,8 @@ class WorkStore(ABC):
             remedies.append("Fix or replace each damaged state.yaml "
                             "(`tcw validate` lists them)")
         if any(reason == _HELD_TWICE for _, reason in found):
-            remedies.append("remove the extra folder of each slug held twice")
+            remedies.append("remove the extra folder of each slug held twice "
+                            "(`tcw validate` names both folders)")
         remedy = "; ".join(remedies)
         many = len(blockers) > 1
         raise self._unreadable_refusal(
@@ -4449,8 +4450,12 @@ class WorkStore(ABC):
         holds its epic open). Built on `initiative_children` (cross-node in
         adapters that override it), so the "all resolved" signal and the
         `complete` gate share one source of truth. An empty epic is not
-        completable (nothing resolved)."""
-        if not self.epic_children_all_resolved(item):
+        completable (nothing resolved). Nor is one whose slug two folders hold:
+        which of them would close cannot be known."""
+        try:
+            if not self.epic_children_all_resolved(item):
+                return False
+        except MultipleMatch:
             return False
         # `complete` refuses while anything beneath the epic by `parent` is open,
         # so calling it ready then would promise a close that cannot happen —
@@ -4557,10 +4562,11 @@ class WorkStore(ABC):
                     # reference the rename could not rewrite would unblock.
                     if blocker is None and (renamed := self.renamed(b["slug"])):
                         blocker = self.get(renamed)
-                except ValueError:
+                except (ValueError, MultipleMatch):
                     # An adapter can refuse to settle a blocker — a claim on it
-                    # was abandoned. That is still a blocker, and reporting it as
-                    # one keeps this item's caller reading about *this* item.
+                    # was abandoned, or two folders hold its slug. That is still
+                    # a blocker, and reporting it as one keeps this item's caller
+                    # reading about *this* item.
                     # Raising the blocker's error here would answer "why can't I
                     # start B?" with a message about A. Storage-neutral: any
                     # adapter may fail to resolve a reference.

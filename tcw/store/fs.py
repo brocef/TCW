@@ -4948,7 +4948,11 @@ class FsWorkStore(FsTreeStore, WorkStore):
             matches = [d for d in self._item_dirs() if d.name == slug]
             if len(matches) <= 1:
                 return matches[0] if matches else None
-        raise MultipleMatch(f"slug resolves to {len(matches)} items: {slug}")
+        raise MultipleMatch(
+            f"{slug} is held by {len(matches)} folders — "
+            f"{', '.join(self._shown_path(d) for d in sorted(matches))}. Keep the one "
+            f"whose state.yaml is right and remove the others; `tcw validate` lists "
+            f"every slug held twice")
 
     def _require_dir(self, slug: str) -> Path:
         d = self._find(slug)

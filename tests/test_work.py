@@ -2156,7 +2156,9 @@ def test_qualified_ambiguous_bare_surfaces_multiple_match(tmp_path, monkeypatch,
         (d / "state.yaml").write_text("slug: dup\n")
     monkeypatch.chdir(root)
     assert main(["work", "show", "project-a/dup"]) == 1
-    assert "resolves to 2 items" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "held by 2 folders" in err and "tcw validate" in err, err
+    assert "resolves to 2 items" not in err, err
 
 
 # ── discarded status ─────────────────────────────────────────────────────────

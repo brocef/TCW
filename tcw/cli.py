@@ -19,6 +19,7 @@ from tcw.store.fs import (
     FsWorkStore, declared_repository, find_node_root, git_root, init,
     provisioned_store_root,
 )
+from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
@@ -548,7 +549,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(_normalize(argv))
     try:
         return args.func(args)
-    except ValueError as error:
+    except (ValueError, MultipleMatch) as error:
+        # `MultipleMatch` is not a `ValueError`, so a verb that does not catch it
+        # itself — `start`, `submit` — printed a traceback for a slug two folders
+        # hold. Its message names both folders; this is only the safety net.
         print(f"tcw: {error}", file=sys.stderr)
         return 1
     except yaml.YAMLError as error:
@@ -557,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
         # twenty-odd `load_yaml` calls that do not catch it: refusing is already
         # the right answer at every one of them — `init` must not overwrite a
         # config it cannot read — and only the presentation was wrong. The
-        # loader's message names the file.
+        # loader's message names the file (`tcw.store.yaml_source.named`).
         print(f"tcw: {error}", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as error:

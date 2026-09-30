@@ -1072,10 +1072,20 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
         "rework": "W",
         "post-mortem": "M",
     }
-    present = {a.name for a in st.artifacts(it.slug) if a.present}
+    # A slug two folders hold cannot be resolved to its artifacts. Its row is
+    # still printed, marked, so one duplicate does not take the board down.
+    held = ""
+    try:
+        present = {a.name for a in st.artifacts(it.slug) if a.present}
+    except MultipleMatch:
+        present = set()
+        held = (f" | held by {len(st.duplicate_slugs().get(it.slug, [])) or 2} "
+                f"folders — see tcw validate")
     stages = "".join(letter for name, letter in labels.items() if name in present)
     # A name in the registry with no letter here must not vanish silently.
     stages += "?" * len(present - labels.keys())
+    if held:
+        stages = "!"
     blockers = st.unresolved_blockers(it)
     suffix = f" | blocked-by: {', '.join(blockers)}" if blockers else ""
     ready = " | ready-to-close" if it.type == "epic" and st.epic_completable(it) else ""
@@ -1089,7 +1099,7 @@ def _render_board_item(st: FsWorkStore, it: WorkItem, prefix: str, depth: int) -
     ticket = (f" | ticket: {_tracker_text(it.tracker, row=True)}"
               if it.tracker is not None else "")
     print(f"{'  ' * depth}{prefix}{it.slug} | {it.status} | {stages or '-'} | "
-          f"{pri} | {it.title}{tag_seg}{ready}{suffix}{claim}{ticket}")
+          f"{pri} | {it.title}{tag_seg}{ready}{suffix}{claim}{ticket}{held}")
 
 
 def _render_board(st: FsWorkStore, status: str | None, show_all: bool,
@@ -1146,7 +1156,12 @@ def _render_descendant_boards(anchor: FsWorkStore, status: str | None,
         elif item.initiative:
             # The store's own rule, so the list nests a slice where the gates
             # count it.
-            found = stores[root]._initiative_holder(item.initiative)
+            # An epic whose slug two folders hold owns nothing here: the row
+            # prints unnested rather than taking the board down.
+            try:
+                found = stores[root]._initiative_holder(item.initiative)
+            except MultipleMatch:
+                found = None
             if found is not None:
                 candidate_key = (found[0].node_root.resolve(), found[1])
                 candidate = by_key.get(candidate_key)

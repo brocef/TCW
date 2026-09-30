@@ -846,7 +846,9 @@ def test_delete_reports_an_ambiguous_slug_instead_of_crashing(tmp_path,
                     root / "docs" / "work" / "discarded" / item.slug)
     monkeypatch.chdir(root)
     assert main(["work", "delete", item.slug]) == 1
-    assert "resolves to 2 items" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "held by 2 folders" in err and "tcw validate" in err, err
+    assert "resolves to 2 items" not in err, err
 
 
 def test_a_first_attempt_does_not_sweep_someone_elses_graveyard_edit(
