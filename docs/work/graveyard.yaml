@@ -1106,6 +1106,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-detect-a-blocker-cycle-that-runs-across-nodes:
+  location: ba208cce998e32934e1096563851d9e3e1d77164
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-keep-a-child-whose-state-yaml-cannot-be-read-visible-to-its-parent-s-completion-gate:
