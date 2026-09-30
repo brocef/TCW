@@ -999,7 +999,8 @@ def test_a_refused_stage_keeps_what_already_existed(tmp_path, monkeypatch, capsy
     monkeypatch.chdir(root)
     assert main(["work", "new", "Task"]) == 0
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item"], check=True)
+    # `work new` commits its own files now; kept for a store where that is off.
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item", "--allow-empty"], check=True)
     slug = next(p.name for p in (root / "docs" / "work" / "backlog").iterdir()
                 if p.is_dir())
     state = root / "docs" / "work" / "backlog" / slug / "state.yaml"
@@ -1023,7 +1024,8 @@ def test_a_refused_stage_does_not_roll_back_a_move(tmp_path, monkeypatch, capsys
     slug = next(p.name for p in (root / "docs" / "work" / "backlog").iterdir()
                 if p.is_dir())
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item"], check=True)
+    # `work new` commits its own files now; kept for a store where that is off.
+    subprocess.run(["git", "-C", str(root), "commit", "-qm", "item", "--allow-empty"], check=True)
 
     with refusing(root):
         assert main(["work", "start", slug]) == 1
