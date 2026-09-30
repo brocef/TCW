@@ -92,3 +92,34 @@ def test_a_worktree_root_override_in_other_letter_case_reaches_its_parent(worksp
     monkeypatch.setenv("TCW_PROJECT_APP_REPO", str(_upper_app(wt, app)))
     out = _clean(validate(wt / "pkg-a"))
     assert "not reachable" not in out, out
+
+
+def test_completing_an_item_of_a_project_reached_in_other_letter_case(workspace, monkeypatch):  # noqa: F811
+    """`complete`'s guard against running inside the item's own worktree finds
+    the node's place under the checkout by folder identity too: the override
+    names this worktree's `pkg-b` in other letter case, and the item has a
+    worktree of its own."""
+    import subprocess
+    import sys
+
+    from tcw.store.fs import init
+    _app, wt = linked(workspace)
+    init(["work"], wt / "pkg-a", "pkg-a")
+    init(["work"], wt / "pkg-b", "pkg-b")
+    subprocess.run(["git", "-C", str(wt), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(wt), "commit", "-qm", "board"], check=True)
+    monkeypatch.setenv("TCW_PROJECT_PKG_B", str(_upper_app(wt / "pkg-b", _app)))
+
+    def tcw(*args):
+        return subprocess.run([sys.executable, "-m", "tcw.cli", "work", *args],
+                              cwd=wt / "pkg-a", capture_output=True, text=True, timeout=120)
+
+    made = subprocess.run([sys.executable, "-m", "tcw.cli", "work", "new", "Thing"],
+                          cwd=wt / "pkg-b", capture_output=True, text=True, timeout=120)
+    assert made.returncode == 0, made.stdout + made.stderr
+    slug = made.stdout.strip().splitlines()[-1]
+    started = tcw("start", f"pkg-b/{slug}", "--worktree")
+    assert started.returncode == 0, started.stdout + started.stderr
+    done = tcw("complete", f"pkg-b/{slug}", "--resolution", "done", "--confirm", "--force")
+    assert "is not in the subpath" not in done.stderr, done.stderr
+    assert done.returncode == 0, done.stdout + done.stderr

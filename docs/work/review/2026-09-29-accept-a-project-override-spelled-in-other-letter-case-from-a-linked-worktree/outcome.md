@@ -53,7 +53,9 @@
   the rule the codebase already uses in `_same_folder` and `_store_key`.
 - **Review, the Rule 1 test did not reach Rule 1.** Accepted; added the
   reviewer's scenario and confirmed its mutation goes red.
-- **Review, docstrings describing the old comparison.** Accepted and corrected.
+- **Review, docstrings describing the old comparison.** Accepted and corrected
+  in the tests' docstrings and the spec and plan; the `worktree_node_root`
+  docstring was missed and corrected at verify.
 - **Review, bound `_below` to a single `stat` call for speed.** Rejected: it
   runs only when the text comparison fails, which on a case-sensitive disk or
   with consistent spelling is never, and the ancestor walk is at most the

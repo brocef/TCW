@@ -965,9 +965,10 @@ def worktree_node_root(node_root: Path, worktree: str) -> Path | None:
     no configuration and no store, silently. `_complete` computes the inverse of
     this when it refuses to run from inside the item's own worktree.
 
-    None when the node is not in a git repository, which is the one case with no
-    answer to give: the worktree path is relative to the node, but the node's
-    offset within the checkout is a question only git can answer.
+    None when there is no answer to give: the node is not in a git repository —
+    the worktree path is relative to the node, but the node's offset within the
+    checkout is a question only git can answer — or it is not under the top
+    folder git reports, even compared by folder identity.
     """
     top = git_root(node_root)
     if top is None:
