@@ -79,7 +79,7 @@ def test_each_row_is_what_the_lifecycle_contract_says():
         # `inbox` branch in `_stage` is chosen by stage id; nothing reads this
         # emptiness as a rejection.
         "inbox": (),
-        "request": ("backlog",),
+        "request": ("backlog", "active"),
         # `active` too: nothing moves an item back to `backlog`, so an item
         # started before it was specified or planned would otherwise be stuck.
         "spec": ("backlog", "active"),
@@ -157,7 +157,7 @@ def test_the_transition_hint_table_covers_every_transition_that_prints_one():
     cannot read."""
     assert set(TRANSITION_NEXT_STEPS) == set(TRANSITION_LANDS_IN)
     starts = {k for k in TRANSITION_NEXT_STEPS if k.startswith("start")}
-    assert starts == {f"start:{s}" for s in ("spec", "plan", "implement", "verify")}
+    assert starts == {f"start:{s}" for s in ("request", "spec", "plan", "implement", "verify")}
     assert set(TRANSITION_NEXT_STEPS) - starts == {"new", "submit", "rework"}
 
 
@@ -189,7 +189,8 @@ def test_every_transition_hint_names_a_stage_legal_where_the_item_lands():
 
 
 @pytest.mark.parametrize("present, stage", [
-    (set(), "spec"),
+    (set(), "request"),
+    ({"intake"}, "request"),                    # an intake is not a request
     ({"intake", "initial-request"}, "spec"),
     ({"spec"}, "plan"),
     ({"spec", "plan"}, "implement"),

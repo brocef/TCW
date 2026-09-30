@@ -9,9 +9,6 @@ from tcw.store.fs import FsWorkStore
 
 from test_transition_hints import _item, _next_lines, _node, _tcw
 
-PENDING = pytest.mark.xfail(strict=True, reason="not implemented yet")
-
-
 def _started(root, *artifacts):
     slug = _item(root, *artifacts)
     out = _tcw(root, "start", slug)
@@ -21,7 +18,6 @@ def _started(root, *artifacts):
 
 # ── 1: request is legal on an active item ────────────────────────────────────
 
-@PENDING
 def test_the_request_gate_passes_on_an_active_item(tmp_path):
     root = _node(tmp_path)
     slug, _ = _started(root)
@@ -32,7 +28,6 @@ def test_the_request_gate_passes_on_an_active_item(tmp_path):
 
 # ── 2, 3: what start says ────────────────────────────────────────────────────
 
-@PENDING
 def test_start_without_a_request_warns_of_all_three_and_points_at_request(tmp_path):
     root = _node(tmp_path)
     slug, out = _started(root)
@@ -65,7 +60,6 @@ def test_a_specified_item_is_never_sent_back_for_its_request(artifacts, stage):
 
 # ── 4, 5: a refused stage says how to go on ──────────────────────────────────
 
-@PENDING
 def test_a_planning_stage_on_a_reviewed_item_names_rework_and_prompt(tmp_path):
     root = _node(tmp_path)
     slug = _item(root, "initial-request", "spec", "plan", "outcome")
@@ -78,7 +72,6 @@ def test_a_planning_stage_on_a_reviewed_item_names_rework_and_prompt(tmp_path):
     assert f"tcw work stage prompt spec {slug}" in out.stderr, out.stderr
 
 
-@PENDING
 def test_implement_on_a_backlog_item_names_start(tmp_path):
     root = _node(tmp_path)
     slug = _item(root, "initial-request", "spec", "plan")
@@ -87,7 +80,6 @@ def test_implement_on_a_backlog_item_names_start(tmp_path):
     assert f"tcw work start {slug}" in out.stderr, out.stderr
 
 
-@PENDING
 def test_a_resolved_item_is_told_nothing_runs_on_it(tmp_path):
     root = _node(tmp_path)
     slug = _item(root)
@@ -100,6 +92,5 @@ def test_a_resolved_item_is_told_nothing_runs_on_it(tmp_path):
 
 # ── 6: the model says so ─────────────────────────────────────────────────────
 
-@PENDING
 def test_request_is_legal_in_backlog_and_active():
     assert STAGE_STATUSES["request"] == ("backlog", "active")

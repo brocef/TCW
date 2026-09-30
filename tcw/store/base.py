@@ -2292,13 +2292,14 @@ LIFECYCLE_STEPS_BY_ID = {s.id: s for s in LIFECYCLE_STEPS}
 # * `spec` and `plan` include `active` because nothing moves an item back to
 #   `backlog`: an item started before it was specified or planned would
 #   otherwise never pass either gate again. `backlog` stays first — it is where
-#   they normally run.
+#   they normally run. `request` joined them in 2.8 for the same reason: work
+#   written up after it started had no gate for its request at all.
 #
 # `inbox` is empty: it runs before an item exists, so there is no status to be
 # legal in and no item to resolve a stage against.
 STAGE_STATUSES: dict[str, tuple[str, ...]] = {
     "inbox": (),
-    "request": ("backlog",),
+    "request": ("backlog", "active"),
     "spec": ("backlog", "active"),
     "plan": ("backlog", "active"),
     "implement": ("active",),
@@ -2360,6 +2361,7 @@ TRANSITION_NEXT_STEPS: dict[str, str] = {
     # `inbox accept` of a raw entry prints this too: both leave a backlog item
     # holding at most its intake.
     "new": "run `tcw work stage gate request <slug>`",
+    "start:request": "run `tcw work stage gate request <slug>`",
     "start:spec": "run `tcw work stage gate spec <slug>`",
     "start:plan": "run `tcw work stage gate plan <slug>`",
     "start:implement": "run `tcw work stage gate implement <slug>`",
@@ -2376,6 +2378,7 @@ TRANSITION_NEXT_STEPS: dict[str, str] = {
 # stage against. Nothing else reads it.
 TRANSITION_LANDS_IN: dict[str, str] = {
     "new": "backlog",
+    "start:request": "active",
     "start:spec": "active",
     "start:plan": "active",
     "start:implement": "active",
@@ -2391,10 +2394,15 @@ def start_next_stage(present: Collection[str]) -> str:
     Not always `implement`. An item can be started before it is specified or
     planned, and `start` also takes an item already `active` — with
     `--take-over`, or when nobody holds it — which may already have an outcome.
-    The order is the `work` skill's "Finding your place", restricted to stages
-    legal in `active` (so never `request`), with a reworked item sent back to
-    `implement` as `rework`'s own hint does.
+    The order is the `work` skill's "Finding your place", with a reworked item
+    sent back to `implement` as `rework`'s own hint does.
+
+    The request counts as missing only while the spec is too. A spec supersedes
+    its job of recording what was asked, so an item already specified — the
+    usual shape of work written up after it started — is never sent back for it.
     """
+    if "initial-request" not in present and "spec" not in present:
+        return "request"
     if "spec" not in present:
         return "spec"
     if "plan" not in present:

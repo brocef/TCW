@@ -1503,11 +1503,12 @@ def _present_artifacts(st, bare: str) -> set[str] | None:
     return {a.name for a in artifacts if a.present}
 
 
-def _unwritten_plan(present: set[str] | None, display: str) -> str:
-    """The sentence naming whichever of spec.md and plan.md is not written, or
-    "" when both are, or when the artifacts could not be read. A warning, never a
-    refusal: a project that skips planning small items is entitled to, and one
-    that is not binds a `pre` check.
+def _unwritten_planning(present: set[str] | None, display: str) -> str:
+    """The sentence naming whichever of initial-request.md, spec.md and plan.md
+    is not written, or "" when all are, or when the artifacts could not be read.
+    A warning, never a refusal: a project that skips planning small items is
+    entitled to, and one that is not binds a `pre` check. The request is named
+    only while the spec is missing too — the order `start_next_stage` follows.
 
     `display` is what the user typed and is the only name printed, since a bare
     slug in the advice would resolve in the wrong node for a qualified
@@ -1515,9 +1516,13 @@ def _unwritten_plan(present: set[str] | None, display: str) -> str:
     if present is None:
         return ""
     missing = [n for n in ("spec", "plan") if n not in present]
+    if "spec" in missing and "initial-request" not in present:
+        missing.insert(0, "initial-request")
     if not missing:
         return ""
-    gates = " and ".join(f"`tcw work stage gate {n} {display}`" for n in missing)
+    stage = {"initial-request": "request"}
+    gates = " and ".join(f"`tcw work stage gate {stage.get(n, n)} {display}`"
+                         for n in missing)
     return (f"{display} has no {' or '.join(f'{n}.md' for n in missing)}; "
             f"{'they' if len(missing) > 1 else 'it'} can still be written while "
             f"the item is active: {gates}")
@@ -1616,7 +1621,7 @@ def _start(args: argparse.Namespace) -> int:
                                say_claim=not claimed)
     # Read once, for the warning and the next step alike, on either path below.
     present = _present_artifacts(st, bare)
-    if missing := _unwritten_plan(present, args.slug):
+    if missing := _unwritten_planning(present, args.slug):
         print(f"tcw work start: warning: {missing}", file=sys.stderr)
     after_start = "start:" + (start_next_stage(present) if present is not None
                               else "implement")
@@ -2294,12 +2299,34 @@ def _stage(args: argparse.Namespace) -> int:
     if item.status not in legal:
         print(f"tcw work stage gate: '{step.id}' is not legal for an item in "
               f"'{item.status}'; it runs in {', '.join(legal)}", file=sys.stderr)
+        if hint := _illegal_stage_hint(step.id, item.status, legal, args.slug):
+            print(hint, file=sys.stderr)
         return 1
     if step.id == "implement" and (
-            missing := _unwritten_plan(_present_artifacts(st, bare), args.slug)):
+            missing := _unwritten_planning(_present_artifacts(st, bare), args.slug)):
         print(f"tcw work stage gate implement: warning: {missing}", file=sys.stderr)
 
     return _stage_gate(args, step, st, item, bare, item.status, args.slug)
+
+
+def _illegal_stage_hint(stage: str, status: str, legal: tuple[str, ...],
+                        display: str) -> str:
+    """How to go on from a stage refused for the item's status — the refusal
+    alone says where the stage runs, not how to get there. Only moves that exist
+    are named: `rework` back from review, `start` out of backlog."""
+    if status in RESOLVED_STATUSES:
+        also = (" except `postmortem`" if "completed" in STAGE_STATUSES["postmortem"]
+                and status == "completed" else "")
+        return f"{display} is {status}: no stage runs on it{also}."
+    said = []
+    if status == "review" and "active" in legal:
+        said.append(f"to run it, send the item back with `tcw work rework {display}`")
+    elif status == "backlog" and "active" in legal:
+        said.append(f"start the item first: `tcw work start {display}`")
+    said.append(f"`tcw work stage prompt {stage} {display}` prints its instructions "
+                f"without the gate, whose checks then do not run")
+    text = _sentence("; or ".join(said))
+    return text[0].upper() + text[1:]
 
 
 # Which stage writes each artifact, inverted from the one table that says so.

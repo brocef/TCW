@@ -94,7 +94,8 @@ def _committed(root: Path) -> None:
 
 @pytest.mark.parametrize("worktree", [False, True])
 @pytest.mark.parametrize("artifacts, stage", [
-    ((), "spec"),
+    ((), "request"),
+    (("initial-request",), "spec"),
     (("spec",), "plan"),
     (("spec", "plan"), "implement"),
 ])
