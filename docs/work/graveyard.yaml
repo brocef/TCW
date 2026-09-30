@@ -1102,6 +1102,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-accept-a-project-override-spelled-in-other-letter-case-from-a-linked-worktree:
+  location: c481ba8f79aaafb5ed7eb1bbfe600cb9d8020e8b
   resolution: done
   resolved: '2026-09-29'
 2026-09-29-ask-every-new-work-item-to-say-why-it-is-worth-doing:
