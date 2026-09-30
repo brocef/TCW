@@ -1133,6 +1133,9 @@
   location: e1590ca91ef04980f738534c746a0bbfb4bed6d3
   resolution: done
   resolved: '2026-09-30'
+? 2026-09-29-make-a-stale-item-path-fail-loudly-complete-checks-for-the-verify-artifact-validate-finds-a-slug-under-two-statuses-and
+: resolution: done
+  resolved: '2026-09-30'
 ? 2026-09-29-make-start-submit-rework-and-complete-print-the-true-next-step-the-item-s-new-folder-and-what-confirm-acknowledged
 : location: f14e660ad212437fe7f5b47a3753ab9148e6a9a7
   resolution: done
