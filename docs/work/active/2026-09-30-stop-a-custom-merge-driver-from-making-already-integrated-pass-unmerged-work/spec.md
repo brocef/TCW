@@ -117,3 +117,13 @@ An adversarial spec review ran before implementation. Accepted:
   configured name is overridden. Only the reasoning in Non-goals was wrong.
 - **Criterion 5 means any refusal** of the trial merge in a repository that
   defines custom drivers; git cannot cheaply say which file a driver governed.
+
+## Amended after code review (2026-09-30)
+
+- **The built-in `union` driver can hide a change too**, contrary to Non-goals
+  and the first amendment: a line the branch deleted and `HEAD` changed comes
+  back as `HEAD`'s, giving `HEAD`'s tree with exit 0 (confirmed). `union` is now
+  overridden to `false` whether configured or not. `binary`, `-merge` and `text`
+  remain safe (conflict, conflict, ordinary merge).
+- For a worktree item, the refusal's way out now says to remove the worktree
+  first: git will not delete a branch a worktree has checked out.
