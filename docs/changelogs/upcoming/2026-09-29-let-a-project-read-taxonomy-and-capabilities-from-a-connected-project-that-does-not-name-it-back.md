@@ -13,7 +13,7 @@
   `tcw/store/fs.py`. Every CLI verb that changes an item or runs its project's
   scripts resolves through the write form; `show`, `path` and `lifecycle` keep
   the reading form.
-- `tcw serve --include-descendants` answers 403 (`code: read-only-project`) on
+- `tcw serve` (which always serves descendants) answers 403 (`code: read-only-project`) on
   every changing route for an upstream item; reads are unchanged.
 - `tcw work nodes` prints an `upstream (read-only):` section — each upstream
   declared by the node or an ancestor, its declarer and location — only when

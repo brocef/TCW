@@ -83,7 +83,7 @@ project in the reader's family (its parents, children and their children):
   project's scripts, is refused with the reason and a pointer to run it in the
   upstream's own checkout: `start`, `edit`, `drop`, `submit`, the stage and
   procedure verbs, `delegate`, and every changing route of
-  `tcw serve --include-descendants`, which answers 403. The rule is that a
+  the local web app (`tcw serve`), which answers 403. The rule is that a
   project is writable from here only when it is reached through `parent` and
   `children` links alone.
 - **Not following it.** Only the upstream's own config is read. Its parent,

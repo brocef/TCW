@@ -707,3 +707,30 @@ def test_the_proposit_migration_passes_through_no_blocked_state(tmp_path):
     _assert_state(nodes, warned=set())
     out = _tcw(nodes["core"], "validate")
     assert "proposit-app" not in out.stdout + out.stderr, out.stdout
+
+
+# ── the CLI's view of an absent upstream, and of what lies beyond one ────────
+
+def test_an_absent_upstream_is_a_warning_and_extends_says_unreachable(tmp_path):
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})
+    out = _tcw(app, "validate")
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert "core" in out.stdout + out.stderr, out.stdout
+    added = _tcw(app, "taxonomy", "extends", "add", "core")
+    assert added.returncode != 0
+    assert "not reachable" in added.stderr, added.stderr
+
+
+def test_a_project_beyond_an_upstream_cannot_be_named(tmp_path):
+    core = _core_node(tmp_path / "core")
+    _edit(core, lambda c: c.update({"connected-projects": {"children": {"x": "x"}}}))
+    x = core / "x"
+    x.mkdir()
+    init(["taxonomy", "capabilities", "work"], x, "x")
+    _edit(x, lambda c: c.update({"connected-projects": {"parent": {"core": ".."}}}))
+    slug = _tcw(x, "work", "new", "Deep thing").stdout.strip()
+    assert slug
+    app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})
+    out = _tcw(app, "work", "show", f"x/{slug}")
+    assert out.returncode != 0
+    assert "no such project" in out.stderr, out.stderr

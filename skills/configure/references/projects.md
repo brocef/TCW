@@ -75,7 +75,7 @@ be named in the public project's files.
 - **Read-only from here.** Anything that changes an item or runs its project's
   scripts is refused for an upstream item — `start`, `edit`, `drop`, the stage
   and procedure verbs, `delegate`, and every changing route of
-  `tcw serve --include-descendants` (403). Change it from the upstream's own
+  `tcw serve` (403). Change it from the upstream's own
   checkout. The rule: a project is writable from here only when it is reached
   through `parent` and `children` links alone.
 - **Not part of the family.** Nothing beyond the upstream's own config is read:
