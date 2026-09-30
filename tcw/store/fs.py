@@ -1390,7 +1390,7 @@ _UniqueKeyLoader.add_constructor(
 #: which `write_sidecar` already enforces — so it is held to the contract like
 #: `state.yaml`.
 OWNED_YAML_NAMES = frozenset({
-    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml",
+    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml", "renames.yaml",
 })
 
 
