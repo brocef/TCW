@@ -131,6 +131,24 @@ _RUNG_ORDER = {"active": 0, "review": 1, "completed": 2, "discarded": 2}
 REASON_LIMIT = 400
 
 
+def catch_up_declines(statuses: dict, ticket_status: str, local: str,
+                      expected: tuple[str, ...], syncing: bool) -> bool:
+    """Whether a `catch-up` binding's delivery declines a ticket that is above
+    where its item now is, rather than carrying the move as any binding would.
+
+    Only a `sync` with no window of its own: a reconciliation that would have to
+    pull the ticket back, which TCW never does. A lifecycle move — or a `sync`
+    replaying a recorded one — brings the window the ticket is expected in, and a
+    ticket inside it is exactly where the move expects: a rework finds its ticket
+    one rung up every time it runs. Those take the path a binding without
+    `catch-up` takes, where `assess_move` refuses anything outside the window and
+    a start is held. One rule for `deliver` and the table test that pins it
+    against the strict gate's allowed statuses."""
+    rung = lowest_rung(statuses, ticket_status)
+    above = rung is not None and rung > _RUNG_ORDER.get(local, rung)
+    return above and syncing and not expected
+
+
 def ladder_steps(statuses: dict, local_target: str,
                  resolution: str | None) -> tuple[tuple[str, str], ...]:
     """The ladder as `(tracker status, the local status it stands for)`, in local
@@ -825,13 +843,18 @@ def deliver(store, slug: str, client, config, *, move: str | None,
         # a walk takes hops by the item's moves, and from there the first one could
         # only move it back.
         rung = lowest_rung(config.statuses, ticket.status)
-        if rung is not None and rung > _RUNG_ORDER.get(local, rung):
+        above = rung is not None and rung > _RUNG_ORDER.get(local, rung)
+        if catch_up_declines(config.statuses, ticket.status, local, expected, syncing):
             # Says nothing about the claim: this run may well have just taken the
             # ticket above, and what stops here is the walk, not the claim.
             return finish(CONFLICTING, (
                 f"{ticket.key} is in '{ticket.status}', which is past where its item "
                 f"is, so it was not moved back."))
-        return walk(ticket)
+        if not above:
+            return walk(ticket)
+        # Above the item, inside the move's window: not walk material — the walk
+        # hops by `MOVE_ONTO` and would take a rework back by the *start*
+        # transition. Carried below exactly as without `catch-up`.
     # Without a catch-up, delivery after a claim is the one transition it always was;
     # walking a ticket through several statuses is only ever asked for.
     #

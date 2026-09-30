@@ -22,7 +22,6 @@ def _clean_binding(root, slug) -> None:
 # ── 1, 2: rework applies its own transition and leaves nothing behind ────────
 
 @pytest.mark.parametrize("mode", ["strict", "node"])
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_a_catch_up_rework_moves_the_ticket_back(mode, request, fake):  # noqa: F811
     root = request.getfixturevalue(mode)
     slug = bound_item(root)
@@ -40,7 +39,6 @@ def test_a_catch_up_rework_moves_the_ticket_back(mode, request, fake):  # noqa: 
 # ── 3: a start whose ticket is already ahead is held, not a conflict ────────
 
 @pytest.mark.parametrize("mode", ["strict", "node"])
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_a_catch_up_start_of_a_ticket_already_ahead_is_held(mode, request, fake):  # noqa: F811
     root = request.getfixturevalue(mode)
     slug = bound_item(root)
@@ -55,7 +53,6 @@ def test_a_catch_up_start_of_a_ticket_already_ahead_is_held(mode, request, fake)
 
 # ── 4: a conflict the old behavior recorded clears on the next sync ──────────
 
-@pytest.mark.xfail(strict=True, reason="not implemented yet")
 def test_a_recorded_rework_conflict_clears_on_sync(node, fake):  # noqa: F811
     from tcw.tracker.sync import _now
     slug = bound_item(node)
@@ -97,3 +94,32 @@ def test_a_catch_up_completion_still_works(strict, fake):  # noqa: F811
     code, _out, err = cli(strict, "work", "complete", slug, *COMPLETE)
     assert code == 0, err
     assert fake.tickets[TICKET_ID].status == "Done"
+
+
+# ── 6: the table — no gated move is declined inside the gate's statuses ──────
+
+def _gated_cases():
+    from tcw.tracker.sync import _MOVED_FROM, MOVE_STATUS
+    from test_tracker_sync import STATUSES
+    for move, destination in MOVE_STATUS.items():
+        for previous in (_MOVED_FROM[move] or ("backlog",)):
+            yield move, previous, destination, STATUSES
+
+
+@pytest.mark.parametrize("move,previous,destination,statuses", list(_gated_cases()))
+def test_no_gated_move_is_declined_inside_its_window(move, previous, destination, statuses):
+    from tcw.tracker.sync import catch_up_declines, expected_statuses
+    window = expected_statuses(statuses, previous, None, None)
+    target = statuses.get(destination, "")
+    for ticket_status in {*window, target, *statuses.values()}:
+        if not ticket_status:
+            continue
+        assert not catch_up_declines(statuses, ticket_status, destination, window,
+                                     syncing=False), (move, ticket_status)
+
+
+def test_a_sync_with_no_window_still_declines_a_ticket_past_its_item():
+    from tcw.tracker.sync import catch_up_declines
+    from test_tracker_sync import STATUSES
+    assert catch_up_declines(STATUSES, "In Review", "active", (), syncing=True)
+    assert not catch_up_declines(STATUSES, "In Progress", "active", (), syncing=True)
