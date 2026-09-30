@@ -30,3 +30,5 @@ numeric suffix.
 Naming an upstream project is refused as read-only, with the reason: delegation
 writes only into child projects, and an upstream is changed from its own
 checkout.
+
+The request is committed in the child's repository, alone, under the child's own `work.auto-commit-transitions`. A refused commit leaves the file staged there and says so.

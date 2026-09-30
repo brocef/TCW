@@ -4118,8 +4118,9 @@ def _complete(args: argparse.Namespace) -> int:
         else (None, item))
     # What was judged just above came off the worktree's *working files*, while the
     # merge-back carries only what the branch committed. Uncommitted item files are
-    # an ordinary state — only transitions commit themselves, so a field edit, a
-    # blocker change or a verify artifact written in the worktree is at most staged
+    # an ordinary state — transitions and creation commit themselves, but a field
+    # edit, a blocker change or a verify artifact written in the worktree is at
+    # most staged
     # — so this is guidance, not an accusation.
     #
     # It runs regardless of `--force`, and that is the whole distinction: `--force`

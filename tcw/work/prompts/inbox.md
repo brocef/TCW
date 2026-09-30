@@ -34,7 +34,8 @@ so an accepted item has an intake and not yet a request.
    `## References` heading with one line of *why it matters* each.
 6. Do **not** ask for more detail here. Whoever filed this is usually an issue
    reporter or another node, not someone present to answer; `request` asks.
-7. Commit the new item.
+7. TCW committed the new item, with the entry's removal, unless
+   `work.auto-commit-transitions` is off; then commit them yourself.
 
 ## Exit badly
 

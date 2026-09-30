@@ -3,3 +3,5 @@ As a user, I run `tcw work new "<title>"` (with an optional piped body) to creat
 Under `work.tracker.strict: true` the command refuses, except for `--epic`, and points me at `tcw work tracker import <ticket>` (`work/require-tracker-backed-work`).
 
 A write that Git refuses — a lock another process holds, a hook that says no — no longer leaves a half-made object behind: whatever that save *created* is removed. A save that *changed* something already there is a different case and is not undone — the edit stays on disk, and re-saving once Git is happy is the fix.
+
+TCW commits the new item itself, as it commits a transition: one commit holding only the item's folder, including a tracker binding that filing wrote. If the commit is refused, the item still exists, the command still succeeds and says so, and the files are left staged for me to commit. `work.auto-commit-transitions: false` turns this off.

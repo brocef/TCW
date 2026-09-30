@@ -25,8 +25,8 @@ is guidance, not a transition gate.
 
 Commit each lifecycle artifact as you write it, in separate ordered commits —
 never one batched lifecycle commit. Inspect each diff and stage narrowly. TCW
-commits the `start`, `submit`, `rework`, and `complete` status moves itself; do
-not commit those by hand.
+commits the `start`, `submit`, `rework`, and `complete` status moves, and the
+items `new` and `inbox accept` create, itself; do not commit those by hand.
 
 Before implementation begins, run `tcw work start <slug>` if the item is not
 already active, and ask whether to run the remaining stages sequentially or

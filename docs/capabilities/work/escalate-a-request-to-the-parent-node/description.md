@@ -25,3 +25,5 @@ delegated request in my own inbox, and nothing about my local work waits on it.
 
 The parent decides what becomes of it, through
 [Manage the work inbox](tcw://C/work/manage-the-work-inbox).
+
+The request is committed in the parent's repository, alone, under the parent's own `work.auto-commit-transitions`. My own repository is not touched. A refused commit leaves the file staged there and says so.
