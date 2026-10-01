@@ -30,7 +30,9 @@ What each change says:
   tags and assignee, inherited entries marked, and work rows dated by creation.
   Its `Feature` field moves from `connected-project-registry` to
   `local-web-app`, the Feature that actually describes it
-  (`docs/taxonomy/local-web-app/meta.yaml`).
+  (`docs/taxonomy/local-web-app/meta.yaml`). TCW-73's spec plans to change the
+  same field to `project-registry` as part of its rename; since this slice
+  lands first, that line of TCW-73's has nothing left to do (Notes).
 - **`web/editing`** ("Edit TCW content in a local web app"). Today it describes
   sidecars, generated sidecars, the complete dialog with the Definition-of-Done
   checklist, plan-stage documents and git refusals
@@ -60,7 +62,10 @@ What each change says:
   sweep, not this slice.
 
 Records that mention `tcw serve` but describe 2.x behavior other slices remove,
-named so they are not missed: `work/configure-the-work-lifecycle`
+named so they are not missed. Each is a `docs/capabilities/work/` record, so
+TCW-70 decides its fate, TCW-71 takes the tracker ones TCW-70 leaves, and TCW-73
+owns later command-wording changes (epic decision 12):
+`work/configure-the-work-lifecycle`
 (`description.md:10`, "`tcw serve` runs no hooks"),
 `work/require-tracker-backed-work` (`:43-46`),
 `work/synchronize-external-tracker-work` (`:97`),
@@ -100,6 +105,9 @@ included, built from two runtimes. Six problems follow.
    hard-codes the 2.x statuses (`web/client/src/model/types.ts:5-11`), the 2.x
    document tabs (`web/client/src/ui/work-document-tabs.tsx:31-33`) and the
    `initiative` field (`content-views.tsx:916-921`). None of this exists in 3.0.
+   TCW-70 deletes these work routes before this slice starts (its Design 12.2),
+   so on the epic branch the viewer has no work board at all until this slice
+   rebuilds one.
 4. **It makes lifecycle moves that skip the lifecycle.** The API starts,
    completes and drops items (`__init__.py:1016-1088`, `:1552-1575`) and shows a
    Definition-of-Done checklist (`:858`), but runs no hooks
@@ -191,7 +199,9 @@ included, built from two runtimes. Six problems follow.
    stderr (TCW-73).
 4. **stdout carries only the URL** (`http://127.0.0.1:<port>/`), one line,
    flushed as soon as the socket is listening. Everything else goes to stderr.
-   Today it prints `Serving TCW at <url>` on stdout (`runtime.py:178`).
+   This is TCW-73's output rule for `serve` (epic decision 10); this slice
+   implements it, since TCW-73 leaves `tcw/serve/` alone. Today it prints
+   `Serving TCW at <url>` on stdout (`runtime.py:178`).
 5. Unless `--no-open`, it opens the URL in the default browser from a
    background thread (`webbrowser`, as `runtime.py:179-180` does today).
 6. Ctrl-C or `SIGTERM` stops it with exit 0 and one line on stderr.
@@ -290,7 +300,11 @@ Design 5 names its operation. In full:
 | One item | `backend.read`, rendered as `tcw work show --json` | TCW-69, TCW-73 |
 | Edit properties | `backend.update(folder, Changes)` | TCW-69 |
 | Add a comment | `backend.comment(folder, text)` | TCW-69 |
-| Request text, comments and ticket link | **proposed** `backend.record(folder)` (Design 4.2) | TCW-69 (change needed) |
+| Request text, when the request stage is external | `backend.read_request(folder)` | TCW-69 (epic decision 1); TCW-70, TCW-71 implement |
+| Comments | `backend.read_comments(folder, limit)` | TCW-69 (epic decision 1); TCW-70, TCW-71 implement |
+| The current user (filesystem mode) | `backend.current_user()` | TCW-69 (epic decisions 1, 17); TCW-70 implements |
+| Linked tickets that have no item | `Item.untracked` (keys), carried in the item's JSON document | TCW-69, TCW-71 (epic decision 16) |
+| The ticket link ("Open in Jira") | **proposed** Jira-only `ticket_link(folder)` next to `tickets list` (Design 4.3) | TCW-71 (change needed) |
 | Create an item | the function behind `tcw work new`, including `--project` delegation and `--stage inbox` | TCW-70, TCW-71, TCW-73 |
 | Inbox tickets, adopt | the functions behind `tcw work tickets list` and `tickets adopt` | TCW-71 |
 | A Jira key in a URL | `backend.lookup(name)` | TCW-69 |
@@ -300,8 +314,8 @@ Design 5 names its operation. In full:
 | The declaration file | TCW-69's `capabilities.yaml` parser (Design 7 of its spec) | TCW-69 |
 | Validation after a save | the per-object rules `tcw validate` applies | TCW-73 |
 | Taxonomy and capability records | `FsTaxonomyStore`, `FsCapabilitiesStore`, as today | unchanged |
-| `tcw://` links | `resolve_tcw_ref` (`tcw/refs.py`), as today (`__init__.py:1158-1221`) | TCW-73 (3.0 slug form, see Notes) |
-| Assignable Jira users | **proposed** Jira-only function next to `tickets list` | TCW-71 (change needed) |
+| `tcw://` links | `resolve_tcw_ref` (`tcw/refs.py`), as today (`__init__.py:1158-1221`) | TCW-70 (3.0 reference form, its Design 12.1) |
+| Assignable Jira users | **proposed** Jira-only `assignable_users(query)` next to `tickets list`, over the client call TCW-71 already adds (its Design 14) | TCW-71 (exposure needed) |
 
 1. **Who owns the item record.** **[Decision]** The viewer decides what is
    read-only from a backend fact, not a backend name: when the request stage is
@@ -310,26 +324,40 @@ Design 5 names its operation. In full:
    That is exactly TCW-71's Jira backend, which keeps the request and qa
    externally (TCW-69 Design 4.12). The filesystem backend has no external
    stages, so everything is editable but the stage.
-2. **The proposed `record` operation.** **[Decision, needs TCW-69 to change]**
-   The viewer must show the request, comments and a link to the ticket. TCW-69's
-   eight operations return none of them: `read` returns an `Item`, which has no
-   request text, comments or URL (TCW-69 Design 2.1, 5). This spec proposes a
-   ninth operation:
+2. **The reads beyond `read`.** TCW-69's interface has eleven operations
+   (epic decision 1). Three of them exist for what `read`'s `Item` does not
+   carry, and the viewer uses all three:
+   - `read_request(folder)` gives the request text. The viewer calls it only
+     when the request stage is external; otherwise the request is the
+     layout's document file, edited like any other (Design 5).
+   - `read_comments(folder, limit)` gives the comments. **[Decision]** The
+     viewer asks for at most 200 and shows them oldest first, by their time;
+     when exactly 200 come back it says "showing the newest 200". A
+     comment-heavy item is rare, and an unbounded read in Jira mode is one
+     request per page of comments.
+   - `current_user()` gives the identity the assignee filter and suggestions
+     offer as "me". It replaces TCW-72's `me()` (epic decision 17).
+     **[Decision]** The viewer offers "me" in both modes. TCW-69 Design 5.4
+     requires `current_user()` to be in the same form as `Item.assignee`
+     (filesystem: `user.name`; Jira: an account ID, shown through TCW-71's
+     `user_name` helper), so the comparison always works.
 
-   ```python
-   def record(self, folder: str) -> ItemRecord: ...
-   # ItemRecord(request: str | None,          # text when the request stage is external, else None
-   #            comments: tuple[Comment, ...], # oldest first; Comment(at: datetime, author: str | None, text: str)
-   #            link: Link | None)             # Link(label: str, url: str), e.g. ("Jira", "https://…/browse/TCW-77")
-   ```
-
-   The filesystem backend reads its comment files (TCW-70) and returns no
-   request (the request is the layout's `request/request.md`) and no link. The
-   Jira backend reads the ticket's description and comments and builds the
-   ticket URL. Both pass the litmus test. TCW-73's `show` and TCW-74's implement
-   prompt, which reads the latest qa rejection comment in Jira mode, need the
-   same reads. If the owner prefers another shape, only Design 5's
-   `GET /api/work/<folder>` route changes.
+   An item's `untracked` keys (epic decision 16: parent or blocker tickets
+   that have no item, always empty in filesystem mode) are shown as bare keys
+   on one line, "linked tickets with no item", as `show` prints them, with no
+   link. The field does not say which relation a key came from (TCW-71 Design
+   3.1), so the viewer does not either.
+   `priority` may be `None` (a Jira project without the field); the viewer
+   shows "none" and sorts such items after `lowest`.
+3. **The ticket link.** **[Decision, needs TCW-71 to add it]** None of the
+   eleven operations returns a link to the ticket, and the viewer must not
+   build one from a backend name or from `item.yaml` (backend storage, Design
+   5). It calls a Jira-only function beside `tickets list`,
+   `ticket_link(folder) -> (label, url)`, which needs no network: the key is
+   authoritative in the folder name and the site is `work.jira.site` (TCW-71's
+   Design 2). The label (for example "Jira") comes from that function, so the
+   client holds no backend name. In filesystem mode there is no link. Without
+   the function, "Open in Jira" is absent and everything else works.
 
 ### 5. The API
 
@@ -347,8 +375,11 @@ Design 11.
     `discard`;
   - `inboxItems`; `tags` (the registry); `scales` (priority and size names, in
     order, from TCW-69's `PRIORITIES` and `SIZES`);
-  - `user` (filesystem mode: TCW-72's `user.name`, or `null`);
-  - `projects`: connected project IDs, for the create form's target;
+  - `user`: in filesystem mode `current_user()`, or `null` when it gives
+    nothing; in Jira mode always `null` (Design 4.2);
+  - `projects`: connected project IDs, for the create form's target, each
+    marked `present: false` when the project is declared but not found on this
+    machine (epic decision 4);
   - `axes`: which of taxonomy, capabilities and work this project keeps.
     **[Decision]** An axis with no store shows "this project keeps no taxonomy"
     (or capabilities, or work) instead of an empty tree, so "nothing here" and
@@ -363,10 +394,14 @@ Design 11.
    JSON documents unchanged, keeping the promise in
    `work/read-a-work-item` (`description.md:22-23`) that the API and the CLI
    cannot drift.
-2. `GET /api/work/<folder>` → `{item, record, files, verdicts}`:
-   - `item`: `tcw work show --json`;
-   - `record`: Design 4.2's `ItemRecord`, or `{"unavailable": "<reason>"}` when
-     the backend is unreachable (Design 7);
+2. `GET /api/work/<folder>` → `{item, request, comments, link, files, verdicts}`:
+   - `item`: `tcw work show --json`, including `untracked` (Design 4.2);
+   - `request`: `read_request` when the request stage is external, else absent
+     (the request is then one of `files`);
+   - `comments`: `read_comments(folder, 200)`, oldest first;
+   - `link`: `ticket_link`'s label and URL, or `null` (Design 4.3);
+   - `request` and `comments` each become `{"unavailable": "<reason>"}` when
+     the operation fails as unreachable (Design 7), without failing the rest;
    - `files`: for each enabled, non-external stage whose artifact is not
      `none`, its document (path, revision, present) or its rounds and handoffs
      (each path and revision), plus the declaration file;
@@ -381,9 +416,16 @@ Design 11.
    `document`, `round`, `handoff` → `{path, template}`: the path `layout.path`
    gives (`stage`, `next=True`, or `handoff=True`) and the starting text. The
    file is created by the `PUT` that follows, so a page that is closed creates
-   nothing. **[Decision]** A round in a verdict stage starts with TCW-69's
-   front matter, `judges` filled in (the current highest round of the stage's
-   `on_reject` stage, Design 4.6 of TCW-69) and `verdict:` left empty. The
+   nothing. `kind: handoff` uses the same `layout.path(…, handoff=True)` that
+   `tcw work path --handoff` exposes (epic decision 18). **[Decision]** A
+   document, an implement round and a handoff start empty: there is no
+   template module any more (TCW-70 deletes `tcw/work/templates.py`, epic
+   decision 13), and starting text for agents comes from stage prompts, not
+   files. A round in a verdict stage starts with TCW-69's front matter,
+   `judges` filled in and `verdict:` left empty. `judges` is the highest round
+   number of the stage's `on_reject` stage, which is `next_round(on_reject) - 1`
+   with TCW-69's public `next_round` (its Design 4.5 and 4.6), so no new
+   function is needed. The
    verdict is a fixed choice above the editor (`accepted` or `rejected`) that
    writes that line; a round saved without one gets the validation notice that
    it is `invalid`.
@@ -397,7 +439,13 @@ Design 11.
    Refused (403) when the record owner is the backend.
 9. `POST /api/work` with `{title, properties, request, project?, stage?}` →
    the `new` function. Returns the CLI's stdout product as JSON: `{slug}`, or
-   `{ticket}` when delegation stopped at the target's inbox (TCW-71).
+   `{ticket}` when delegation stopped at the target's inbox (TCW-71). When the
+   operation raises `Refused` carrying a ticket key (epic decision 16: a ticket
+   was created but no item, for example when no single transition reaches the
+   request status), the answer is 409 `refused` with the message and
+   `ticket: <KEY>`, and the page shows the key so the ticket can be adopted
+   later. Creating into a project declared but not on this machine is refused
+   by delegation (exit 3, epic decision 4), so it is 409 too.
 10. `GET /api/tickets` and `POST /api/tickets/<KEY>/adopt` → TCW-71's functions.
     In filesystem mode both are 400, as the CLI's Jira-only commands are a usage
     error there (TCW-73).
@@ -475,7 +523,9 @@ labelled link that does not navigate.
    `shared-components.tsx:195-235`, `:255-290`).
 5. **Documents** open in today's editor with live preview
    (`shared-components.tsx:497-540`). Typing `tcw://` offers objects from all
-   three axes (Design 9).
+   three axes (Design 9). **[Decision]** Choosing a work item inserts TCW-70's
+   folder form (`tcw://W/<folder>`, its Design 12.1), never a Jira key, so a
+   link reads the same in both modes.
 6. **The declaration file** (`<item>/capabilities.yaml`). **[Decision]** It is
    edited through a form with TCW-69's full schema: capability `new`,
    `changed` and `removed` lists and taxonomy `new`, `changed` and `removed`
@@ -498,24 +548,33 @@ labelled link that does not navigate.
 9. **Creating.** A **New item** form: title, the request text, priority, effort,
    complexity, tags, assignee, parent, blocked-by, a target project (connected
    projects; default this one) and, where `inboxItems` is true, "start at
-   inbox". **[Decision]** In Jira mode the effort and complexity fields appear
-   only when TCW-71's field mapping configures them, since otherwise the CLI
-   refuses those flags.
+   inbox". **[Decision]** In Jira mode the priority, effort and complexity
+   fields appear only when the Jira project has them (TCW-71: priority when the
+   create metadata has a Priority field, effort and complexity when its field
+   mapping configures them), since otherwise the CLI refuses those flags.
 10. **Inbox tickets (Jira mode).** A **Tickets** view lists TCW-71's default
     inbox (or the configured `inbox-query`); **Adopt** runs TCW-71's adopt and
-    opens the new item.
+    opens the new item. When adopt refuses because Jira offers no single usable
+    transition to the request status (epic decision 5), the 409 message lists
+    the transitions, and the ticket stays in the list.
 
 ### 7. Jira mode at runtime
 
 1. **The board is one request to Jira**, TCW-71's batched `list`, not one per
    item.
 2. **Read-only content.** The request, comments, stage and properties come from
-   Jira and are read-only, each with "Open in Jira" (`record.link`). Property
-   fields appear only on the create form (Design 6.9).
+   Jira and are read-only, each with "Open in Jira" (`link`, Design 4.3).
+   Property fields appear only on the create form (Design 6.9). **[Decision]**
+   This is a viewer choice, not a limit of the backend: the CLI's `edit` and
+   `comment` do write these in Jira mode (TCW-71). The ticket asks for them
+   read-only here, and keeping them so leaves Jira's own screen as the one
+   place a person edits a ticket by hand, while the viewer stays an editor of
+   the files git owns.
 3. **Unreachable.** When an operation raises `Unreachable` (TCW-69 exit 5):
    - the item's files stay readable and editable; they are the layout's files on
      disk and need no network;
-   - `record` and properties show "Jira is unreachable" with **Retry**;
+   - the request, comments and properties show "Jira is unreachable" with
+     **Retry**;
    - **[Decision]** the board falls back to the item folders found under the work
      path, each shown by its folder name with its stage "unavailable", with a
      banner and **Retry**. Listing those folders is a layout read, not a backend
@@ -540,12 +599,14 @@ labelled link that does not navigate.
    absent and the server refuses a `PATCH` (403). An override is a deliberate
    act the CLI already offers (`capabilities/override-inherited`).
 3. **[Decision] Removed capability fields.** `Planning doc` and `Tracker` are
-   not offered by any form (`content-views.tsx:51-64`, `:1096`). They are still
-   in the ledger schema (`CAP_FIELDS`, `tcw/store/base.py:844-847`) and in many
-   records, so a record that carries one shows it read-only in the detail, and a
-   save never sends or clears it (today's `PATCH` sends only changed fields,
-   `web/client/src/ui/app.tsx:602-610`). Removing them from the schema is not
-   this slice's (Notes).
+   not offered by any form (`content-views.tsx:51-64`, `:1096`). TCW-73 removes
+   them from the ledger schema (`CAP_FIELDS`, `tcw/store/base.py:844-847`) and
+   the capabilities commands, and TCW-76 removes them from records during the
+   migration (epic decision 9). Until both have landed, a record that carries
+   one shows it read-only in the detail, and a save never sends or clears it
+   (today's `PATCH` sends only changed fields,
+   `web/client/src/ui/app.tsx:602-610`). The viewer adds no code that names
+   either field beyond that read-only display.
 
 ### 9. Autocomplete everywhere
 
@@ -591,8 +652,10 @@ field) or **allow**. Fixed sets are selects.
    mode, the server lists items in each connected project whose backend is
    filesystem and whose path resolves on this machine, by opening that project's
    backend and calling `list`. Connected Jira-mode projects are not queried:
-   that would need their credentials and the network for a suggestion. A slug
-   typed for them is accepted with the warning.
+   that would need their credentials and the network for a suggestion. A
+   project declared but not found on this machine (exit 5 in the CLI, epic
+   decision 4) is skipped too. A slug typed for either is accepted with the
+   warning.
 3. **Matching** stays today's ranking by name and identifier
    (`reference-search.ts:131-159`), ten results at most.
 
@@ -633,14 +696,16 @@ field) or **allow**. Fixed sets are selects.
 | `UsageError` (2), a malformed request, a value outside a "refused" list | 400 | `usage` |
 | Host/Origin check failed; a write to backend-owned content or an inherited entry | 403 | `forbidden`, `read-only` |
 | `NotFound` (4), an unknown route or file | 404 | `not-found` |
-| `Refused` (3), e.g. a name collision or delegation conditions | 409 | `refused` |
+| `Refused` (3), e.g. a name collision, delegation conditions, delegation into a project not on this machine (epic decision 4); carries `ticket` when the exception does (Design 5.9) | 409 | `refused` |
 | Stale edit | 409 | `stale-revision` |
 | Body over 1 MiB | 413 | `too-large` |
-| `Unreachable` (5) | 503 | `unreachable` |
+| `Unreachable` (5): Jira unreachable, or a declared project not on this machine (epic decision 4) | 503 | `unreachable` |
 | `BackendError` (1), any other failure | 500 | `error` |
 
 Every error body is `{"error": "<message>", "code": "<code>"}` and the message
-is the operation's own. A 500 never carries a Python traceback.
+is the operation's own. A 500 never carries a Python traceback. The server maps
+the exception classes in `tcw/errors.py` (epic decision 8), each of which
+carries its exit code, so the table follows the code rather than a second list.
 
 ### 12. Kept, cut and added
 
@@ -659,29 +724,42 @@ as a string literal, docstrings and comments excepted. Tabs, filters and file
 rules come from `/api/project`'s `stages`. A project-defined stage added later
 then appears in the viewer with no viewer change.
 
+TCW-73's "node" to "project" rename skips `tcw/serve/` because this slice
+rewrites it (epic decision 2). So the rewrite says "project" throughout: no
+Python string literal under `tcw/serve/`, and no sentence in the rewritten
+guide, uses "node" as a word (`tcw/cli.py:474`'s "no tcw node here" goes with
+TCW-73's message for running outside a project).
+
 ### 14. Documentation
 
 - `docs/guide/web-viewer.md` is rewritten (this slice owns it): one Python
   process, no Node; what can be read, edited and created; the Jira-mode rule;
   the autocomplete table in plain words; the security rules; no lifecycle
   actions, with the CLI command to use instead; contributor build notes.
-- **[Decision]** The two sentences that make Node a prerequisite of
-  `tcw serve` in the setup skill (`skills/setup/SKILL.md:8`,
-  `skills/setup/references/install.md:71-74`) are corrected here, because this
-  slice is what makes them false. TCW-74 rewrites that skill; whichever lands
-  second keeps the correction.
+- The two sentences that make Node a prerequisite of `tcw serve` in the setup
+  skill (`skills/setup/SKILL.md:8`, `skills/setup/references/install.md:71-74`)
+  are TCW-74's, which owns every skill but `configure` (epic decision 3). They
+  stay false on the epic branch between this slice and TCW-74, which nothing
+  releases.
 - `README.md`'s web app section (`README.md:768-805`) and install note
   (`:109-110`) are TCW-75's, per its ticket.
+- **The documented-surface allowance** (epic decision 6). This slice removes no
+  command or configuration key, so it adds nothing to TCW-70's temporary list.
+  The rewritten guide names only 3.0 commands; any list entry that only
+  `docs/guide/web-viewer.md` still needed (today it names
+  `tcw work list --include-descendants`, `docs/guide/web-viewer.md:40`) is
+  removed from the list in the same change.
 - A release-notes and a changelog entry under `upcoming/`, named by this item's
-  folder name.
+  folder name. Each starts with its first `##` heading; only TCW-75's
+  release-notes entry may carry text before one (epic decision 15).
 
 ## Abstraction litmus test
 
 | Operation | Verdict |
 | --- | --- |
 | Board, item, properties, comment, create, lookup | **Backend interface** (TCW-69). Both backends implement each. |
-| `record` (request text, comments, link) | **Backend interface**, proposed. Jira: issue description, comment list, browse URL. Filesystem: comment files, no request, no link. |
-| Tickets list, adopt, assignable users | **Jira-only functions** outside the interface, as TCW-69 already places `tickets` (Design 5.6). Filesystem mode answers 400 or derives the list. |
+| Request text, comments, current user, untracked keys | **Backend interface** (TCW-69's eleven operations and `Item.untracked`, epic decisions 1 and 16). Jira: issue description, comment list, the credentials' account. Filesystem: `request/request.md`, comment files, `user.name`, no untracked keys. |
+| Tickets list, adopt, assignable users, ticket link | **Jira-only functions** outside the interface, as TCW-69 already places `tickets` (Design 5.6). Filesystem mode answers 400, derives the list, or has no link. |
 | Documents, rounds, handoffs, declaration file | **Shared layout** (TCW-69). Git owns them in both modes; reading and writing them is a file operation in both. |
 | Board fallback while unreachable | **Shared layout** read of item folder names; needs a layout listing function (Notes). |
 | Stale-edit check on files | **Shared layout** (content hash). On properties: read-then-update over the interface, so any backend supports it. |
@@ -702,8 +780,9 @@ Python criteria are pytest tests in `tests/serve/`, which start the server on
 `--port 0` in a thread and send real HTTP requests. "Filesystem fixture" is a
 project built with the 3.0 CLI in a temporary directory. "Jira-mode fixture"
 uses TCW-69's in-memory backend (`tests/work/memory_backend.py`) configured
-with `external_stages = {request, qa}` and `inbox_items = False`, and a stub
-`record` that returns a request, two comments and a link. Browser criteria are
+with `external_stages = {request, qa}` and `inbox_items = False`, whose
+`read_request` returns a request and `read_comments` two comments, with a stub
+ticket-link function that returns a label and URL. Browser criteria are
 Playwright tests in `web/e2e/`.
 
 1. **One process, no Node.**
@@ -755,7 +834,10 @@ Playwright tests in `web/e2e/`.
    - `POST …/files {stage: review, kind: round}` returns
      `review/round-3.md` when rounds 1 and 2 exist, and the same path as
      `tcw work path <slug> review --next`. Its template has `judges:` equal to
-     the highest implement round.
+     the highest implement round, and `verdict:` empty.
+   - `POST …/files {stage: implement, kind: handoff}`, with the clock fixed,
+     returns the same path as `tcw work path <slug> implement --handoff`, and
+     an empty template.
    - `PUT` with `revision: null` creates the file; a second identical `PUT` is
      409 `stale-revision`.
    - `PUT` with a stale revision is 409 and the file is unchanged.
@@ -778,27 +860,41 @@ Playwright tests in `web/e2e/`.
    - A `PATCH` setting `tags: [unregistered]` is 400 and the item is unchanged.
    - A `PATCH` setting a `parent` that is not an item in this project is 400.
    - `POST …/comments` adds one comment, and `GET /api/work/<f>`'s
-     `record.comments` ends with it. There is no route that edits or removes a
+     `comments` ends with it. There is no route that edits or removes a
      comment.
+   - `GET /api/project`'s `user` is the configured `user.name`.
 9. **Jira mode (memory backend).**
    - `GET /api/project` says `recordOwner: "backend"`.
    - `PATCH /api/work/<f>` and `POST …/comments` are 403 `read-only`, and the
      backend records no `update` or `comment` call.
-   - `GET /api/work/<f>` carries `record.request`, both comments and
-     `record.link`.
-   - With the backend raising `Unreachable` on `list`, `read` and `record`:
-     `GET /api/work` answers 200 with `fallback: true` and one row per item
-     folder, each with stage `unavailable`; `GET`/`PUT` of `spec/spec.md` still
-     succeed; `GET /api/work/<f>` answers 200 with `record.unavailable` set.
+   - `GET /api/work/<f>` carries `request`, both comments oldest first, and
+     `link`; the backend records one `read_comments` call with limit 200 and no
+     `current_user` call; `GET /api/project`'s `user` is `null`.
+   - An item whose `untracked` is `("ABC-1",)` and whose `priority` is `None`
+     renders `ABC-1` as plain text, priority "none", and sorts after a
+     `lowest` item (Playwright).
+   - With the backend raising `Unreachable` on `list`, `read`, `read_request`
+     and `read_comments`: `GET /api/work` answers 200 with `fallback: true` and
+     one row per item folder, each with stage `unavailable`; `GET`/`PUT` of
+     `spec/spec.md` still succeed; `GET /api/work/<f>` answers 200 with
+     `request.unavailable` and `comments.unavailable` set.
    - `POST /api/work` creates through the backend's `create` with the request
      text, and `/api/tickets` routes are 400 in the filesystem fixture.
-10. **Jira mode in the browser.** Playwright runs against a fixture project whose
-    `work.jira.site` points at a stub Jira HTTP server started by the suite. It
-    checks that the request, comments and properties have no edit control and
-    each shows "Open in Jira" with the ticket URL; that the board loads with one
-    search request to the stub; that adopting a stub inbox ticket opens the new
-    item; and that stopping the stub shows "Jira is unreachable" with Retry while
-    `spec/spec.md` stays editable.
+   - With `create` raising `Refused` carrying `ABC-9`, `POST /api/work` is 409
+     `refused` with `ticket: "ABC-9"`.
+10. **Jira mode in the browser.** **[Decision]** Playwright runs against a
+    Jira-mode fixture project served by a test-only launcher under `tests/`,
+    which installs TCW-71's fake Jira (`tests/work/jira/fake.py`, its Design
+    15.1) in place of the client's request function and then runs the server.
+    No socket to Jira is opened and `work.jira.site` stays a valid `https://`
+    site (TCW-71 Design 1). The launcher appends one line per search the fake
+    answers to a file in the fixture, and fails every request as unreachable
+    while a marker file exists there. The test checks that the request,
+    comments and properties have no edit control and each shows "Open in Jira"
+    with the ticket URL; that the board loads with one search; that adopting a
+    fake inbox ticket opens the new item; and that creating the marker file
+    shows "Jira is unreachable" with Retry while `spec/spec.md` stays
+    editable.
 11. **Autocomplete (Playwright and client unit tests).**
     - Each "refused" field in Design 9's table will not commit an unknown value,
       and each server route answers 400 for it when sent by hand (pytest, one
@@ -834,7 +930,12 @@ Playwright tests in `web/e2e/`.
     Playwright tests "runs Work start and complete lifecycle controls" and
     "drops a backlog Work item through the confirmation modal"
     (`web/e2e/parity.spec.ts:632`, `:687`) and the `lifecycle-dialog` snapshot
-    are deleted. The full pytest suite passes.
+    do not exist. TCW-70 deletes the tests of the 2.x work routes (its Design
+    12.2); whichever of these remain are deleted here. The full pytest suite
+    passes.
+17. **Wording.** No Python string literal under `tcw/serve/`, and no line of
+    `docs/guide/web-viewer.md`, contains "node" as a whole word; the
+    release-notes and changelog entries each begin with a `##` heading.
 
 ### Coverage
 
@@ -851,19 +952,22 @@ Playwright tests in `web/e2e/`.
 | 9 Autocomplete | 11 |
 | 10 Saving, validation | 6, 8, 14 |
 | 11 Errors | 4, 6, 8, 9 |
-| 13 Stage names | 13 |
+| 13 Stage names, wording | 13, 17 |
+| 14 Documentation | 17 |
 
 ## Risks
 
-- **Built on four unfinished slices.** The viewer needs TCW-69's model, both
-  backends, TCW-72's `user.name` and TCW-73's JSON documents and validation.
-  Mitigation: the plan does the process change first (Design 1-3, against
-  today's API, which needs none of them), then the 3.0 item model once TCW-70
-  lands, then Jira mode once TCW-71 lands.
-- **The proposed `record` operation may not be accepted.** Without it the viewer
-  cannot show the Jira request or comments, nor filesystem comments. Mitigation:
-  it is raised as a cross-slice finding before planning; only one route depends
-  on its shape.
+- **Built on unfinished slices.** The viewer needs TCW-69's model and its
+  eleven operations, both backends (TCW-70, TCW-71), TCW-72's `user.name` behind
+  `current_user()`, and TCW-73's JSON documents and validation. Mitigation: the
+  plan does the process change first (Design 1-3, against today's API, which
+  needs none of them), then the 3.0 item model once TCW-70 lands, then Jira mode
+  once TCW-71 lands.
+- **Two Jira-only helpers are asks of TCW-71** (`ticket_link`,
+  `assignable_users`). Mitigation: without `ticket_link` the "Open in Jira" link
+  is absent and nothing else changes; without `assignable_users` the Jira create
+  form's assignee falls back to free text checked by `create` itself, which
+  refuses an unknown or ambiguous name (TCW-71 Design 4.2).
 - **Stale-edit protection on properties has a gap.** A CLI edit landing between
   the server's read and its update is overwritten for the properties the form
   changed. Mitigation: the lock closes the gap between viewer requests; only the
@@ -882,6 +986,7 @@ Playwright tests in `web/e2e/`.
 
 ## Notes
 
+- Reconciled with the epic's cross-slice decisions on 2026-10-01.
 - **Decisions made in this spec, for the owner to confirm.** Each is marked
   **[Decision]** above:
   1. No lifecycle control at all; the stage line names `tcw work advance` in plain
@@ -892,77 +997,100 @@ Playwright tests in `web/e2e/`.
   4. Configuration is read per request (1.8).
   5. The Host/Origin check applies to every request, static files included (3.2).
   6. What is read-only follows `external_stages`, not the backend's name (4.1).
-  7. A ninth backend operation, `record(folder)`, for request text, comments and
-     the ticket link (4.2), which needs TCW-69 to change.
-  8. Each axis without a store says so instead of showing an empty tree (5).
-  9. API item payloads are `list --json` and `show --json` unchanged (5.1).
-  10. A new verdict round starts with `judges` filled in and the verdict a fixed
-      choice (5.5).
-  11. `files/<path>` accepts only the paths the layout names (5).
-  12. A Jira key in a URL redirects to the folder (6.1).
-  13. Work rows show and sort by creation date (6.2).
-  14. The declaration form covers TCW-69's taxonomy lists too, and a malformed
+  7. Comments are read 200 at most, shown oldest first (4.2).
+  8. `current_user()` is used in filesystem mode only (4.2).
+  9. The ticket link comes from a Jira-only `ticket_link(folder)`, which needs
+     TCW-71 to add it (4.3).
+  10. Each axis without a store says so instead of showing an empty tree (5).
+  11. API item payloads are `list --json` and `show --json` unchanged (5.1).
+  12. A new verdict round starts with `judges` filled in from `next_round` and
+      the verdict a fixed choice; documents, implement rounds and handoffs start
+      empty (5.5).
+  13. `files/<path>` accepts only the paths the layout names (5).
+  14. A Jira key in a URL redirects to the folder (6.1).
+  15. Work rows show and sort by creation date (6.2). 3.0 items have no
+      modified time, so there is nothing else to show.
+  16. The declaration form covers TCW-69's taxonomy lists too, and a malformed
       file opens as plain text (6.6).
-  15. Jira-mode create form shows effort and complexity only when mapped (6.9).
-  16. While Jira is unreachable, the board falls back to folder names (7.3).
-  17. Missing Jira credentials do not stop the server (7.4).
-  18. Inherited entries are read-only (8.2).
-  19. `Planning doc` and `Tracker` leave the forms but stay visible and untouched
-      on records that carry them (8.3).
-  20. "Refused" is enforced by the server (9.1).
-  21. Cross-project suggestions come only from connected filesystem-mode projects
-      found locally (9.2).
-  22. Property edits carry the expected old values for a stale-edit check (10.3).
-  23. No stage-name literals in `tcw/serve/` or the client (13).
-  24. This slice corrects the setup skill's Node sentences (14).
-- **Answers to the ticket's implicit questions.** Lifecycle moves are absent from
-  the UI entirely, not hidden behind a setting (decision 1). The declaration file
-  is TCW-69's `<item>/capabilities.yaml`, not `spec/capabilities.yaml`
-  (decision 14).
-- **Changes other slices need** (nothing has been posted to their tickets):
-  - **TCW-69:** add `record(folder)` (or an equivalent read of the request,
-    comments and link); add a layout function listing the item folders under the
-    work path (TCW-71's `lookup` already implies one); expose the `judges` number
-    for a new verdict round as a public function (its spec's Risks say prompts
-    "get the number from `path` output", but `path` returns only a path).
-  - **TCW-71:** implement `record`; add a Jira-only `assignable_users(query)`
-    beside `tickets list`; accept an `http://127.0.0.1:<port>` site (or offer a
-    test seam) so the browser tests can use a stub Jira.
-  - **TCW-73:** keep a per-object entry point to `validate`'s rules (today
-    `ValidationTarget(axis, ref)`, `__init__.py:168-173`) that covers item files;
-    settle the 3.0 form of `tcw://W/…` references to `project/folder` slugs and
-    Jira keys, which no sibling ticket names and `tcw/refs.py` must change for.
-  - **TCW-74:** the setup skill's Node sentences (decision 24); its implement
-    prompt needs the same `record` read for Jira qa rejections.
+  17. The Jira-mode create form shows priority, effort and complexity only when
+      the Jira project has them (6.9).
+  18. Jira-owned content is read-only in the viewer although the CLI can edit
+      it (7.2).
+  19. While Jira is unreachable, the board falls back to folder names (7.3).
+  20. Missing Jira credentials do not stop the server (7.4).
+  21. Inherited entries are read-only; overriding one stays a CLI act (8.2).
+  22. "Refused" is enforced by the server (9.1).
+  23. Cross-project suggestions come only from connected filesystem-mode projects
+      found on this machine (9.2).
+  24. Property edits carry the expected old values for a stale-edit check (10.3).
+  25. No stage-name literals in `tcw/serve/` or the client (13).
+  26. The browser Jira test uses TCW-71's fake inside the server process, not
+      an HTTP stub (criterion 10).
+  27. The process change (Design 1-3) lands on the 3.0 epic branch only, as the
+      first phase of this item, not as a 2.x release: TCW-70 removes the 2.x
+      work routes on the same branch, so a 2.x port would be thrown away, and
+      the epic ships as one 3.0.0 release.
+  28. `tcw://` completion inserts the folder form of a work reference, never a
+      Jira key (6.5).
+- **How the epic's decisions settled this spec's earlier cross-slice findings:**
+  - The proposed ninth operation `record(folder)` is gone: the request,
+    comments and current user are TCW-69's `read_request`, `read_comments` and
+    `current_user` (epic decisions 1 and 17), and linked tickets with no item
+    are `Item.untracked` (16). The ticket link, which none of them returns, is
+    now the narrower `ticket_link` ask of TCW-71 below.
+  - The `judges` number needs no new TCW-69 function: it is
+    `next_round(on_reject) - 1` (Design 5.5).
+  - The handoff path is the one `tcw work path --handoff` exposes (18).
+  - The setup skill's Node sentences are TCW-74's (3), not this slice's.
+  - `Planning doc` and `Tracker`: TCW-73 removes them from the schema, TCW-76
+    from the records (9).
+  - `<item>/capabilities.yaml` is the declaration file in every spec (19); the
+    tickets that say `spec/capabilities.yaml` no longer matter.
+  - The 3.0 form of `tcw://W/…` work references is TCW-70's Design 12.1
+    (`tcw://W/<folder>`, `tcw://<project>/W/<folder>`); the editor inserts that
+    form (decision 28).
+  - `serve` prints the URL only, per TCW-73's output rules (10).
+  - TCW-73 keeps `validate`'s internal `target` selector because `tcw serve`
+    calls it (TCW-73 Design 6).
+- **Changes other slices still need** (nothing has been posted to their
+  tickets):
+  - **TCW-69:** a layout function listing the item folders under the work path,
+    for the unreachable-board fallback (Design 7.3). TCW-71's `lookup` already
+    scans the same folders.
+  - **TCW-71:** expose two Jira-only functions beside `tickets list`:
+    `ticket_link(folder)` (Design 4.3) and `assignable_users(query)` over the
+    client call it already adds (its Design 14).
+  - **TCW-73:** its per-object entry point to `validate`'s rules (today
+    `ValidationTarget(axis, ref)`, `tcw/serve/__init__.py:168-173`) must cover
+    item files: `tcw://` links, verdict rounds, the declaration file and the
+    reference checks (Design 10.4).
   - **TCW-75:** the README's web app section and install note are false once this
-    lands; both should ship in the same release.
-  - **TCW-76 / unowned:** the `Planning doc` and `Tracker` capability fields stay
-    in `CAP_FIELDS` (`base.py:844-847`). TCW-69 gave `Planning doc` to TCW-76;
-    no slice owns `Tracker`.
-- **Sibling tickets that disagree.** The TCW-77 ticket, and TCW-73's, TCW-74's and
-  TCW-75's tickets, still say `spec/capabilities.yaml`; TCW-69's confirmed spec
-  and TCW-76's update section say `<item>/capabilities.yaml`. This spec follows
-  TCW-69.
+    lands; both ship in the same 3.0.0 release.
+- **Conflicts with sibling specs that the decisions do not settle:**
+  - TCW-73's capability changes set `web/meta.yaml`'s `Feature` to
+    `project-registry`; this spec sets it to `local-web-app`, which describes
+    the viewer. TCW-73 lands after this slice and says this slice owns
+    everything else in `web/`, so its line should be dropped.
+  - The form of a person in Jira mode is settled: `Item.assignee`,
+    `current_user()` and comment authors are all account IDs (TCW-69 Design
+    5.4, TCW-71), with display names only on output.
 - **Open items this slice makes obsolete.**
   `docs/work/backlog/2026-09-19-aggregate-descendant-nodes-taxonomy-and-capabilities-in-tcw-serve`
   (no combined boards in 3.0) and the web-app part of
   `docs/work/inbox/2026-09-30-follow-renames-in-the-web-app-tracker-verbs-and-the-capability-drift-check.md`
   (3.0 keeps no rename aliases). Both should be discarded with a reason pointing
   here when this item completes.
-- **Questions only the owner can answer.**
-  - Is `record(folder)` the right way to add the missing reads, or should they
-    be separate operations or fields on `Item`?
-  - Should the process change (Design 1-3) land as its own early change against
-    today's API, possibly in a 2.x release, or only on the 3.0 branch?
-  - Is losing a modified time on work rows acceptable, given that 3.0 items have
-    none?
-  - Should inherited taxonomy and capability entries really be read-only here, or
-    should the viewer offer the CLI's override?
-  - Who removes `Planning doc` and `Tracker` from the capability schema?
+- **Questions only the owner can answer.** None remain open; decision 27 (land
+  the process change on the 3.0 branch only) is the one most worth a second
+  look, because a 2.x release without Node would help users sooner.
 - **Size.** This is one item, planned in phases: process and security first, the
   3.0 work views second, Jira mode third, autocomplete across all of them. The
   first phase can land before TCW-70.
 - **Assumption:** TCW-73 keeps `list --json` and `show --json` as stable JSON
-  documents suitable for the API; their exact fields are TCW-73's.
-- **Self-hosting.** This changes `tcw/` itself, so from implementation onwards the
-  repository's own board is driven by editing files, per `CLAUDE.md`.
+  documents suitable for the API; their exact fields are TCW-70's item record
+  (its Design 7.1), including `untracked`, which TCW-69 puts on `Item` (epic decision 16).
+- **Driving the board during this work** (epic decision 7). This changes `tcw/`
+  itself, so the repository's 2.x board is edited by hand, per `CLAUDE.md`, and
+  the TCW-77 Jira ticket is moved by hand when this item moves (In Progress, In
+  Review, Done). Read-only views of the board may use a released 2.8 `tcw`
+  installed outside the checkout.
