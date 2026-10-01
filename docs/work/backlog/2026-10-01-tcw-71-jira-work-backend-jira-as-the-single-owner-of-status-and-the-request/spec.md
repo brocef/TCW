@@ -1494,14 +1494,11 @@ records no write request and the work path is unchanged.
      Design 9.2, and the TCW Project and TCW Item fields: a Jira-administrator task.
      A team-managed scratch project as well? Recommended: reuse `TCWTEST`, and add a
      team-managed one only if creating it is cheap.
-  2. **Delegation into a Jira-mode project that is not on this machine.** The
-     ticket lets the target's Jira settings come from the delegator's
-     connected-project entry, and decision 4 says delegation into a project not on
-     this machine is exit 3; TCW-70's `open_delegation_target` applies decision 4
-     before any backend is consulted. Recommended: keep the fallback (Design 8 step
-     1), since without it the connected-project `jira` block has no use, and have
-     TCW-70 dispatch a Jira-mode declaration with such a block to this slice's
-     branch; decision 4's exit 3 then covers every case where TCW can create nothing.
+  2. **Settled by the owner on 2026-10-01:** delegation into a project not on
+     this machine uses the fallback (Design 8 step 1) when the connected-project
+     entry has a `jira` block. TCW-70's `open_delegation_target` checks for the
+     block first and hands it to this slice's adapter; exit 3 covers every case
+     where TCW can create nothing.
   3. **Should this slice be split into child items** along the plan order in Risks?
      Recommended: one item, with the plan's five steps each leaving the suite green;
      split only if review rounds become too large to read.

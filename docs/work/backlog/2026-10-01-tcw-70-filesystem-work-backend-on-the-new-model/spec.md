@@ -334,10 +334,18 @@ epic's decision 8). This slice adds no exception class of its own.
      reach, so "try again later" would mislead.
 3. `open_delegation_target(project_id, here) -> WorkBackend` opens another
    project for writing.
-   - The project is resolved as above, except that an unknown ID, or a
-     declared project not present on this machine, is the first delegation
-     condition failing: `Refused` (exit 3), as the ticket and the epic's
-     decision 4 require, not exit 4 or 5.
+   - The project is resolved as above, except that an unknown ID is the
+     first delegation condition failing: `Refused` (exit 3), as the ticket and
+     the epic's decision 4 require, not exit 4.
+   - A declared project not present on this machine is also `Refused`
+     (exit 3), **unless** its connected-project entry carries a `jira` block.
+     **[Decision, owner 2026-10-01]** In that case the function hands the
+     entry to TCW-71's Jira adapter, which opens the target's Jira project
+     from the block alone and creates the ticket in its inbox (TCW-71). This
+     check comes first, before any filesystem condition, because none of
+     them can be checked without the checkout. TCW-70 ships only the branch
+     point: until TCW-71 lands, an entry with a `jira` block is refused with
+     a message saying Jira delegation arrives with the Jira backend.
    - In filesystem mode it then checks the other two delegation conditions
      (Design 6). A failed condition raises `Refused` (exit 3) naming it.
    - Every rule specific to the filesystem lives in the filesystem adapter;
