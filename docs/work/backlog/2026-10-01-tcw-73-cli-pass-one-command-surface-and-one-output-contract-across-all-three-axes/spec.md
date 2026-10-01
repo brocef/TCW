@@ -47,7 +47,7 @@ changed:
   - work/inspect-the-lifecycle-contract                # 3.0 flags (Design 2)
   - work/run-a-lifecycle-stage                         # only `stage prompt` remains
   - work/run-a-procedure                               # `tcw work procedure <id>`
-  - work/tag-a-work-item                               # wording; `tags list` output
+  - work/tag-a-work-item                               # wording; `tags list` output; `list --tag` kept (repeatable, any match); `--tags`/`--untags` and comma-separated option values go (Design 2, decision 6)
   - work/read-a-work-item                              # `show` prints the request and comments; `--json` layout (TCW-70 writes the record first)
 removed:
   - cli/use-shorthand-to-read-an-item
@@ -443,7 +443,7 @@ is the behavior owner (Design 0).
 | `tcw work stage validate` | removed | 70 |
 | the hidden `tcw work stage <id>` parsers | removed | 73 |
 | `tcw work new <title> [--priority N] [--effort] [--complexity] [--blocked-by] [--tag] [--epic] [--parent] [--initiative]` | `tcw work new <title> [--project <id>] [--stage inbox] [--priority <name>] [--effort] [--complexity] [--tag] [--assignee] [--assign-me] [--parent] [--blocked-by]`, request on stdin | 70, 71 (identity: 72) |
-| `tcw work list [--status] [--tag] [--all] [-i]` | `tcw work list [--stage <stage>] [--parent <slug>] [--assignee <name>] [--mine] [--all] [--json]` | 70, 71 |
+| `tcw work list [--status] [--tag] [--all] [-i]` | `tcw work list [--stage <stage>] [--parent <slug>] [--assignee <name>] [--mine] [--tag <tag>]… [--all] [--json]` | 70, 71 (`--tag` filter: 70 over `item.yaml` tags, 71 as a JQL `labels` clause) |
 | `tcw work show <slug> [--json]` | unchanged | 70, 71 |
 | `tcw work path [<slug>]` | `tcw work path [<slug> [<stage> [--next / --handoff]]]` | 70 (`--handoff`: 73, epic decision 18) |
 | `tcw work edit <slug> …` (incl. `--initiative`, `--type`, integer `--priority`) | `tcw work edit <slug> [--title] [--priority <name>] [--effort] [--complexity] [--tag] [--untag] [--assignee] [--assign-me] [--parent] [--blocked-by] [--unblocked-by] [--blocks]` | 70, 71 |
@@ -476,9 +476,29 @@ Decisions in this table beyond the ticket, each **[Decision]**:
    (TCW-69 spec, Design 4.10) and the ticket's form has no way to ask for one.
    The owner confirmed `--handoff` as part of this slice's surface (epic
    decision 18).
-6. **`list` has no `--tag` filter**, following the ticket and TCW-69's `Query`,
-   which has no tag field. This is a reduction from 2.8 (`tcw/work/cli.py:4968`);
-   see Notes.
+6. **`list` keeps `--tag`, repeatable.** **[Decision, owner 2026-10-01]** 2.8's
+   filter (`tcw/work/cli.py:4967-4968`) stays in 3.0.0. Each use names one tag,
+   and the values become TCW-69's `Query.tags` (TCW-69 spec, Design 5.1): an item
+   is listed when it carries **any** of the given tags, as in 2.8. The filter
+   combines with `--stage`, `--parent`, `--assignee`, `--mine` and `--all`; an
+   item must pass all of them. TCW-70 implements the match over `item.yaml`'s
+   tags, TCW-71 as a JQL `labels` clause; this slice owns the option's shape:
+   - **One spelling, one tag per use** (Design 5.5): the `--tags` alias goes, and
+     comma-separated values are not split. Because a tag admits only `a-z`, `0-9`
+     and `-` (`normalize_tag`, `tcw/store/base.py:1059-1066`), a value containing
+     a comma is refused as a usage error (2) that says to repeat the option.
+     It is not normalized: 2.8 split commas precisely so that `--tag cli,docs`
+     could not silently become the single tag `cli-docs` (`tcw/work/cli.py:77-86`),
+     and refusing keeps that protection without splitting. The same rule applies
+     to `--tag` and `--untag` on `new` and `edit`.
+   - **A tag nobody registered still filters.** As in 2.8
+     (`tcw/work/cli.py:1190-1203`), items can keep a tag that was later
+     unregistered, and listing them is how they get cleaned up. So an
+     unregistered tag gives a `warning:` line on stderr naming it and the command
+     exits 0, printing whatever matches. It is not the "tag that does not exist"
+     case of Design 4's exit 4, which belongs to commands that act on one tag,
+     such as `tags rm`.
+   - **No match is an empty stdout and exit 0**, like any other filter.
 7. **Unknown stage, procedure or axis names** are usage errors (2) whose message
    lists the valid names. The 2.8 behavior of answering an artifact name with the
    stage that writes it goes with the 2.x artifact names.
@@ -816,7 +836,7 @@ never undoes the save).
 3. **"Project" replaces "node"** in the project sense, everywhere under `tcw/`
    except `tcw/serve/`:
    - the command (`tcw work nodes` becomes `tcw projects list`, Design 2);
-   - **[Decision]** the config key `connected-projects` becomes `projects`, with the
+   - **[Decision, owner 2026-10-01]** the config key `connected-projects` becomes `projects`, with the
      same `parent`, `children` and `upstream` entries, and the optional `jira`
      block TCW-71 adds to an entry (its Design 8 step 1). The old key is a config error
      (1) whose message names `docs/migration-guide-2.8-to-3.0.0.md`, as TCW-69 does
@@ -845,7 +865,7 @@ never undoes the save).
    same guard test. TCW-74 and TCW-75 shrink the list as they rewrite skills and guides, and
    TCW-76's "validate clean" step requires it to be empty before 3.0.0 is cut
    (epic decision 6).
-5. **Taxonomy.** **[Decision]** The `node` term is replaced by `project`
+5. **Taxonomy.** **[Decision, owner 2026-10-01]** The `node` term is replaced by `project`
    (vocabulary), and the `connected-project-registry` feature by `project-registry`.
    Every entry and capability citing either is updated (Capability changes).
 
@@ -952,6 +972,11 @@ spec, Design 15.1) where the case needs Jira's own answers.
      with `two` first; an item created with no stdin shows `request: none` and
      `"request": null`;
    - `tcw work list` prints full slugs only, one per line;
+   - with registered tags `a` and `b`, one item tagged `a`, one tagged `b` and
+     one untagged, `tcw work list --tag a --tag b` prints exactly the two tagged
+     slugs, and `tcw work list --tag a --stage spec` prints only those of them at
+     spec; `tcw work list --tag zzz` (not registered, carried by no item) prints
+     nothing on stdout, a `warning:` line naming `zzz` on stderr, and exits 0;
    - `tcw taxonomy add Widget` prints `widget`; `tcw capabilities add ns/do-a-thing`
      prints `ns/do-a-thing`;
    - `tcw taxonomy rm widget`, `tcw capabilities set ns/do-a-thing --status
@@ -967,6 +992,8 @@ spec, Design 15.1) where the case needs Jira's own answers.
       matching);
     - after `tcw work rename <slug> other`, `tcw work show <old slug>` → 4;
     - `tcw work advance <slug> --to nonsense` → 2;
+    - `tcw work list --tag a,b` → 2, and stderr says to repeat `--tag`;
+      `tcw work list --tags a` → 2;
     - a failing `pre` hook on spec → 3; a failing `post` hook → 6 with the stage on
       stdout; with `advance` run from a subfolder of the fixture, a `pre` hook
       records `TCW_SLUG` as `fx/<folder>` and its working directory as the
@@ -1072,7 +1099,7 @@ spec, Design 15.1) where the case needs Jira's own answers.
 | --- | --- |
 | 0 Boundary, sequencing | 1, 20 (the table names every command) |
 | 1 Output contract | 8, 9, 11, 13, 15 (stdout and stderr split) |
-| 2 Surface | 1, 2, 3, 19 |
+| 2 Surface | 1, 2, 3, 8 (`list --tag`), 10 (`--tag` shape), 19 |
 | 3 Naming an item, `TCW_SLUG` | 10, 11, 12 |
 | 4 Exit codes | 10, 11, 12, 16, 18 |
 | 5 Help | 4 |
@@ -1168,7 +1195,10 @@ spec, Design 15.1) where the case needs Jira's own answers.
   7. the `tcw <axis> <path>` shorthand is removed;
   8. `capabilities list --local-only` becomes `--local`;
   9. `lifecycle` drops its slug, `--directive`, `--phase` and `--transition`;
-  10. `work list` has no `--tag` filter (see the owner questions);
+  10. `work list` keeps `--tag`, repeatable, matching any given tag. Settled by
+      the owner on 2026-10-01 (Design 2, decision 6); the details beyond that
+      answer are this spec's: one tag per use with a comma refused, an
+      unregistered tag warning rather than exiting 4;
   11. unknown stage, procedure and axis names are usage errors listing the valid
       names;
   12. a Jira key is resolved first, in Jira mode only;
@@ -1186,11 +1216,12 @@ spec, Design 15.1) where the case needs Jira's own answers.
       network for its completed-work half;
   20. `provision --refresh` is removed;
   21. the git-word sweep's two exceptions (`.gitignore`, `provision` messages);
-  22. `connected-projects` becomes `projects` (see the owner questions for the
-      name);
+  22. `connected-projects` becomes `projects`. Settled by the owner on
+      2026-10-01 (Design 9.3);
   23. the tree sense of "node" becomes "entry";
   24. the `node` term becomes `project`, `connected-project-registry` becomes
-      `project-registry`, and capability paths that say "node" are renamed;
+      `project-registry` (the Feature rename settled by the owner on 2026-10-01),
+      and capability paths that say "node" are renamed;
   25. a record still carrying `Planning doc` or `Tracker` is accepted with a
       warning, not an error, until TCW-76 migrates it, because this repository's
       own configuration gates on `tcw validate`;
@@ -1214,16 +1245,13 @@ spec, Design 15.1) where the case needs Jira's own answers.
   record's new content is given in Design 7.6 (written by TCW-70); `validate` calls
   `records_problems(finished=False)` (Design 6.1.6, wired by TCW-70); the rename
   covers commands, the config key, `TCW_NODE_ROOT` and code (Design 9.3).
-- **Questions only the owner can answer.**
-  1. **`work list --tag`.** 2.8 can filter the list by tag
-     (`tcw/work/cli.py:4968`), and TCW-69's `Query` has no tag field, so 3.0
-     cannot. Recommendation: ship 3.0.0 without it and add a `tags` field to
-     `Query` later if it is missed, since both backends could support it (Jira
-     labels) and adding it is not a breaking change.
-  2. **Names.** `projects:` replaces the `connected-projects:` key, and
-     `project-registry` replaces the `connected-project-registry` Feature; every
-     user's config file changes. Recommendation: keep both names; they match the
-     word "project" used everywhere else in 3.0.
+- **Questions only the owner can answer.** None remain.
+  1. **`work list --tag`.** Settled by the owner on 2026-10-01: keep
+     `tcw work list --tag` (repeatable) in 3.0.0 through TCW-69's new
+     `Query.tags`; TCW-70 and TCW-71 implement the match (Design 2, decision 6).
+  2. **Names.** Settled by the owner on 2026-10-01: `connected-projects:` becomes
+     `projects:` and the Feature `connected-project-registry` becomes
+     `project-registry`; TCW-76's guide lists the rename (Design 9.3, 9.5).
 - **Conflicts with sibling specs that the decisions do not settle.** None
   remain. TCW-70's spec now gives an undeclared project ID exit 4 and a declared
   but absent one exit 5 (its Design 2.2), as Design 3.4 does, and TCW-71's spec
@@ -1237,9 +1265,11 @@ spec, Design 15.1) where the case needs Jira's own answers.
     `comment` and `rename` to Design 1–4, including `resolve_item` (Design 3);
     supply the
     filesystem backend's offline check as a module function; list in its
-    documented-surface allowance the commands it removes (already planned).
+    documented-surface allowance the commands it removes (already planned);
+    implement `Query.tags` over `item.yaml` tags for `list --tag` (Design 2,
+    decision 6).
   - **TCW-71:** add the key branch to `resolve_item`; supply the Jira backend's
-    offline check; remove `tracker_problems` from `tcw/validate.py`; use
+    offline check; implement `Query.tags` as a JQL `labels` clause; remove `tracker_problems` from `tcw/validate.py`; use
     "project", never "node", in new code.
   - **TCW-72:** its config errors exit 1 and its warnings use the `warning:` form;
     `init` writing `.gitignore` outside git relies on Design 8.3. It owns `--mine`
