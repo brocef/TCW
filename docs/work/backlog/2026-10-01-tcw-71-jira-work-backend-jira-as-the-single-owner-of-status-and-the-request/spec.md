@@ -40,7 +40,8 @@ capabilities commands and TCW-76 from the records (decision 9).
   owns status, the request, assignee, priority, estimates, labels, parent and
   blocking links, and the repository owns the technical record. It covers the
   stage-to-status mapping, `advance` as one workflow transition, QA on the ticket,
-  and `item.yaml` holding only the ticket link.
+  `item.yaml` holding only the ticket link, and `tcw work list --tag` answered by a
+  query on the ticket's labels.
 - `work/adopt-a-jira-ticket`: `tcw work tickets list` and `tcw work tickets adopt
   <KEY>`.
 - `work/check-a-jira-project-against-the-stage-mapping`: `tcw validate --remote`.
@@ -478,8 +479,33 @@ project = "<project>" AND cf[<TCW Project id>] ~ "<id>" AND cf[<TCW Item id>] IS
   [AND status NOT IN (...)]        # default: the completion and discard stages' statuses
   [AND parent = "<KEY>"]           # Query.parent
   [AND assignee = "<accountId>"]   # Query.assignee, resolved as in 4.2
+  [AND labels IN ("<tag>", ...)]   # Query.tags: the registered tags among them
 ORDER BY created ASC
 ```
+
+- **[Decision, owner 2026-10-01] `Query.tags` is a JQL `labels` clause.** TCW-69's
+  `Query` has `tags: set[str] | None`, and an item matches when it carries any of
+  the given tags. This keeps 2.8's `tcw work list --tag` in 3.0.0. In Jira mode:
+  - `None` adds no clause.
+  - An item's tags are the ticket's labels that are in the tag registry (Design 3).
+    So only the given tags that are in the registry go into the clause; a label
+    outside the registry can never be one of an item's tags, and matching it
+    would return items whose `tags` do not carry it.
+  - When none of the given tags is in the registry (including an empty set), the
+    result is an empty list, with no request; TCW-73's CLI still prints its
+    `warning:` line naming the unregistered tag and exits 0. This differs from
+    the filesystem backend on purpose: there an `item.yaml` can keep a tag that
+    was unregistered later, and `list --tag old` finds it for cleanup (TCW-70,
+    TCW-73). In Jira an unregistered label is never one of an item's tags, so
+    there is nothing to find through TCW, and such labels are cleaned up in
+    Jira itself.
+  - `labels IN (...)` matches a ticket carrying any of the listed labels, which is
+    the "any of them" rule. As with TCW Project, the exact match happens after the
+    search: TCW keeps only tickets whose mapped `tags` contain one of the given
+    tags exactly as written, so the result does not depend on how Jira compares
+    the case of labels.
+  - The tag clause combines with the status, parent and assignee clauses: a ticket
+    must pass all of them.
 
 - `Query(all=True)` drops the status clause. The default (TCW-69 Design 5.1) excludes
   only the two terminal statuses, so a ticket in an unmapped status, which has no
@@ -553,11 +579,39 @@ project = "<project>" AND status = "<inbox status>" AND cf[<item>] IS EMPTY
    the words taken from the summary.
 4. **Write the folder and `item.yaml`.**
 5. **Move to request** if the ticket was at the inbox status, and read the status back.
-6. **stdout** has the slug (TCW-73).
+6. **Run the request stage's `post` hooks** (below).
+7. **stdout** has the slug (TCW-73).
+
+**[Decision] `adopt` runs the request stage's `post` hooks, and no `pre` hooks or
+gates.** Adoption is the point where an existing ticket becomes an item at the
+request stage, so anything a project does on arriving at request (for example the
+commit-only git example committing the new folder) should happen for an adopted
+item as it does for one moved there. It does not call `advance`; it reuses the
+`post` step of TCW-69 Design 6 (step 8), so:
+- the bindings are the same ones a move into request runs, resolved through the
+  same layers (including TCW-72's personal replacement of `post`), with the same
+  environment and timeout: `TCW_SLUG` the new slug, `TCW_STAGE` = `request`,
+  `TCW_FROM_STAGE` = `inbox` when step 5 moved the ticket and empty when it was
+  already at request, `TCW_ITEM_PATH` the new folder, and `TCW_PROJECT_ROOT`;
+- they run once, after step 5's read-back reports request, whether or not step 5
+  had to move the ticket;
+- a failing `post` hook keeps the adoption and gives exit 6, with the slug still on
+  stdout, as for a move (TCW-69's exit 6, "the item moved, but something after the
+  move failed");
+- when step 5 is refused (exit 3) or reads back another status (exit 1), `post`
+  does not run, as for a move;
+- no `pre` hook or gate runs, because creating an item is not a move (TCW-69
+  Design 6), and a gate on request would have nothing to check that adoption has
+  not already checked in step 2;
+- a resumed adoption runs them at the end, like any other.
+
+This covers `adopt` only. `new` and delegation (Design 8) follow TCW-69 Design 6
+for creation and run no hooks. TCW-75's Jira guide and git example state this
+(TCW-75 Notes 11).
 
 **Resuming.** If TCW Item already names a slug of *this* project, that slug's key is
 `<KEY>`, and its folder does not exist here, `adopt` creates that exact folder and
-continues from step 5. It says so on stderr. This is how a run that stopped between
+continues from step 5, `post` hooks included. It says so on stderr. This is how a run that stopped between
 steps 3 and 5 is finished, without a check that would otherwise refuse it forever.
 **[Decision]** The ticket says to refuse whenever TCW Item is set; this exception
 applies only to TCW Item naming the very item `adopt` would create.
@@ -944,8 +998,11 @@ It can be told to:
 
 **Searches.** The fake evaluates JQL through a small parser for **exactly** the clause
 shapes `jql.py` emits: `=`, `~`, `IN`, `NOT IN`, `IS EMPTY`, `IS NOT EMPTY`, `AND`,
-`OR`, parentheses and `ORDER BY created`. A test builds every query `jql.py` can
-produce and asserts the fake parses each one, so the two cannot drift apart silently.
+`OR`, parentheses and `ORDER BY created`. `IN` on `labels`, a field with several
+values, matches a ticket carrying any of the listed labels, as Jira does; the fake
+compares labels exactly unless a test sets it to ignore case (criterion 11). A test
+builds every query `jql.py` can produce and asserts the fake parses each one, so the
+two cannot drift apart silently.
 A user's `inbox-query` is not parsed: the fake's tests use `inbox-query` values made
 only of those shapes.
 
@@ -977,7 +1034,8 @@ the tests above cover only what is Jira's own.
 
 One scripted scenario, `tests/work/jira/scenario.py`, drives the backend through:
 
-1. `new` with a request, a priority and a tag;
+1. `new` with a request, a priority and a tag, and `list` filtered by that tag
+   finding it;
 2. `advance` through every enabled stage to qa;
 3. a qa rejection back to implement, with a reason;
 4. a qa acceptance;
@@ -1009,6 +1067,28 @@ that run:
 
 **It must not run against the TCW Jira project:** TCW's own workflow is not migrated
 to 3.0 statuses until TCW-76, and throwaway tickets would clutter its board.
+
+**[Decision, owner 2026-10-01] The live check reuses `TCWTEST`** ("TCW Bridge Test"
+on proposit.atlassian.net, created 2026-09-12 for the 2.x claim experiment). The
+owner does the Jira administration by hand, from the checklist TCW-76 writes for
+TCW's own project, applied to `TCWTEST`:
+- every optional stage enabled, with the status names TCW's own project will use
+  (the owner's choice for TCW): spec at `Specifying`, plan at `Planning`, qa at
+  `In QA`, and the other stages at the statuses TCW-76's checklist names;
+- no `Start` or `Accept` transitions, and one global transition (one that can
+  start from any status) into each mapped status, so every move TCW needs has
+  exactly one candidate (Design 5 step 2);
+- one addition for this check only: the global transition into `Planning` has a
+  screen holding only the comment field, so the fifth question above (what
+  `expand=transitions.fields` shows for such a screen) has something to read. A
+  lone candidate is used whatever its screen shows, so this changes no move;
+- the TCW Project and TCW Item text fields, and the `Blocks` link type.
+
+The scenario's own configuration names those statuses, so it does not depend on
+the default status names. The choice rule's several-candidate cases are covered
+against the fake (criterion 9), since `TCWTEST` deliberately has none. A
+team-managed scratch project is not required; if one exists, the scenario runs
+there too.
 
 ### 16. Git
 
@@ -1164,9 +1244,25 @@ records no write request and the work path is unchanged.
     - With 250 matching tickets and pages of 100, all 250 are listed.
     - Listing 50 items whose parents and blockers are spread over 20 other tickets
       makes at most two search requests per page of results, and no per-item request.
+    - **Tags** (Design 6). With registered tags `ui` and `api`, and tickets A
+      (labels `ui`), B (`api`, `ui`), C (`api`), D (no labels) and E (only the
+      unregistered label `ui-old`), all at request:
+      - `list(Query(tags={"ui"}))` returns A and B, and the search request's JQL
+        contains `labels IN ("ui")`;
+      - `list(Query(tags={"ui", "api"}))` returns A, B and C, and not D or E;
+      - `list(Query(tags={"ui-old"}))` returns nothing and makes no request, and
+        so does `list(Query(tags=set()))`;
+      - `list(Query(tags={"ui", "ui-old"}))` sends only `"ui"` in the clause;
+      - a ticket labelled `UI` is absent from `list(Query(tags={"ui"}))`, even
+        when the fake is set to compare labels without regard to case;
+      - `list(Query(tags={"ui"}, all=True))` also returns a completed ticket
+        labelled `ui`, and the default query does not;
+      - `JiraBackend` and TCW-70's in-memory backend return the same items for
+        `Query(tags={"ui"})` over the same data (TCW-70's contract case).
 12. **JQL.**
     - A status name containing `"` is escaped.
-    - Every query `jql.py` can produce is parsed by the fake's evaluator.
+    - Every query `jql.py` can produce is parsed by the fake's evaluator, including
+      one with the `labels IN (...)` clause combined with every other clause.
     - Custom fields appear only as `cf[<id>]`.
 13. **`tickets list`.**
     - It lists a Triage ticket with neither TCW field set, and one with TCW Project =
@@ -1185,6 +1281,17 @@ records no write request and the work path is unchanged.
     - A ticket whose TCW Item names this project's slug with no folder here is resumed:
       the folder is created with that exact name.
     - In filesystem mode, `tickets list` and `tickets adopt` exit 2.
+    - **Hooks.** With a `post` hook on request that writes its environment to a
+      file, and a `pre` hook on request that fails:
+      - adopting from the inbox status succeeds (the `pre` hook does not run) and
+        the `post` hook runs once with `TCW_STAGE=request`, `TCW_FROM_STAGE=inbox`
+        and `TCW_SLUG` the new full slug;
+      - adopting a ticket already at request runs it with `TCW_FROM_STAGE` empty;
+      - a failing `post` hook gives exit 6, the slug on stdout, and the folder and
+        ticket fields kept;
+      - when the move to request is refused, the `post` hook does not run;
+      - a resumed adoption runs the `post` hook once;
+      - `new` and delegation run neither hook.
 15. **`rename`.**
     - It changes the words after the key and sets TCW Item to the new slug.
     - Asking to change the key is a usage error.
@@ -1242,8 +1349,10 @@ records no write request and the work path is unchanged.
     `rename` and `adopt` inside a temporary git repository, and asserts that
     `git rev-parse HEAD`, `git status --porcelain` and `git for-each-ref` show only the
     expected untracked files.
-23. **Live check.** The scenario (Design 15.4) passes against a real scratch Jira
-    Cloud project configured with one status per enabled stage. Its output is saved in
+23. **Live check.** The scenario (Design 15.4) passes against `TCWTEST`, configured
+    as Design 15.4 describes: every optional stage enabled with one status each
+    (spec `Specifying`, plan `Planning`, qa `In QA`), and one global transition into
+    each mapped status. Its output is saved in
     the implement round, and the recorded responses in `tests/work/jira/recorded/` come
     from that run. It records an answer to each of these five questions:
     - the direction of `Blocks` links;
@@ -1253,8 +1362,8 @@ records no write request and the work path is unchanged.
     - what `expand=transitions.fields` shows for a transition with no screen and
       for one whose screen holds only a comment.
 
-    If a team-managed scratch project is available, the scenario passes there too
-    (Notes, owner questions).
+    If a team-managed scratch project is available, the scenario passes there too;
+    one is not required (Design 15.4).
 24. **Shape agreement.** For every endpoint, the shape test (Design 15.2) passes, and
     no recorded file contains `@` or the real site's host.
 25. **The rest of the suite passes,** with the removed tests deleted rather than
@@ -1407,7 +1516,22 @@ records no write request and the work path is unchanged.
       The Jira client and fake are kept by content: moved by TCW-70, or restored
       from history here.
   26. The live check is part of acceptance and runs against a scratch project, not
-      TCW's.
+      TCW's (the owner chose `TCWTEST`; see below).
+  27. `tickets adopt` runs the request stage's `post` hooks, as a move into request
+      would, and no `pre` hooks or gates; `new` and delegation run none (Design
+      7.2). This answers TCW-75's question about adoption and hooks.
+- **Settled by the owner on 2026-10-01** (answers to the slice questions):
+  - `Query.tags` is kept, so `tcw work list --tag` stays in 3.0.0. This slice
+    implements it as a JQL `labels IN (...)` clause holding the registered tags
+    among those given, with an exact match after the search (Design 6, criterion 11).
+    Tags outside the registry match nothing here, because in Jira mode they are
+    never an item's tags; the filesystem backend differs (Design 6).
+  - The live check reuses `TCWTEST`, prepared by the owner from TCW-76's checklist:
+    every optional stage enabled (spec `Specifying`, plan `Planning`, qa `In QA`),
+    no `Start` or `Accept`, one global transition per mapped status (Design 15.4,
+    criterion 23).
+  - The superseded 2.x backlog items listed below are discarded at migration.
+  - `connected-projects:` is renamed `projects:` by TCW-73 (see TCW-73 below).
 - **Settled by the epic's cross-slice decisions** (2026-10-01):
   - The three reads and the untracked references TCW-69's interface lacked: the
     interface has eleven operations, with `read_request`, `read_comments` and
@@ -1455,8 +1579,10 @@ records no write request and the work path is unchanged.
     value is met (Design 1, criterion 1). Its text that `Item.assignee` is a display
     name in Jira mode is now out of date: under TCW-69 Design 5.4 both are account
     IDs (Design 10). Nothing breaks, since it never compares them itself.
-  - **TCW-73.** Keep the connected-project `jira` block through the
-    `connected-projects` rename. Its request that this slice add the Jira-key branch
+  - **TCW-73.** Keep the connected-project `jira` block through the rename the
+    owner settled on 2026-10-01: `connected-projects:` becomes `projects:`, and the
+    Feature `connected-project-registry` becomes `project-registry`. This slice
+    lands first and reads the block under `connected-projects:`; TCW-73 moves it. Its request that this slice add the Jira-key branch
     to `resolve_item` is moot under decision 2's order (TCW-73 lands after this
     slice and builds `resolve_item`); this slice supplies `lookup`.
   - **TCW-74.** The `setup` walkthrough should cover *unchecked* moves and offer
@@ -1475,7 +1601,9 @@ records no write request and the work path is unchanged.
     - It lists "update properties (filesystem mode)" and makes Jira properties
       read-only after creation, while the CLI's `edit` writes them in Jira mode. That
       is a viewer choice, not a contradiction, but its spec should say so.
-- **Superseded 2.x backlog items.** For the owner to discard, or merge into this item:
+- **Superseded 2.x backlog items.** Settled by the owner on 2026-10-01: all seven
+  below are on TCW-76's prune list and are discarded at migration with the reason
+  'subject removed by TCW 3.0 (TCW-68)'; none is merged into this item. They are:
   - `2026-09-15-check-the-tracker-s-workflow-against-the-statuses-mapping-in-tcw-validate`
     is absorbed into Design 9.2;
   - `2026-09-15-write-work-item-properties-to-mapped-tracker-fields` is absorbed into
@@ -1488,12 +1616,11 @@ records no write request and the work path is unchanged.
     `2026-09-24-give-a-strict-tracker-claim-past-the-active-status-a-way-forward-instead-of-a-transition-list`
     are moot with sync, claims and strict mode gone.
 - **Open questions only the owner can answer.**
-  1. **Which Jira project the live check uses, and who prepares it.** `TCWTEST`
-     ("TCW Bridge Test", created 2026-09-12 for the claim experiment) exists on
-     proposit.atlassian.net. It needs one status per enabled stage, the transitions in
-     Design 9.2, and the TCW Project and TCW Item fields: a Jira-administrator task.
-     A team-managed scratch project as well? Recommended: reuse `TCWTEST`, and add a
-     team-managed one only if creating it is cheap.
+  1. **Settled by the owner on 2026-10-01:** the live check reuses `TCWTEST`, which
+     the owner prepares by hand from TCW-76's checklist, with every optional stage
+     enabled (spec `Specifying`, plan `Planning`, qa `In QA`), no `Start` or
+     `Accept` transitions, and one global transition per mapped status (Design
+     15.4). A team-managed project stays optional.
   2. **Settled by the owner on 2026-10-01:** delegation into a project not on
      this machine uses the fallback (Design 8 step 1) when the connected-project
      entry has a `jira` block. TCW-70's `open_delegation_target` checks for the
