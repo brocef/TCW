@@ -32,3 +32,13 @@
 - The plan's advice "delete the branch yourself" does not work for a worktree
   item (git refuses while the worktree has it checked out); found by the code
   review, which reproduced a loop with the detached-worktree check.
+
+## Folded in at verify
+
+- `d61a543f`: the release note's way out now says to remove the item's
+  worktree before deleting the branch, as the refusal itself already did.
+- New `test_complete_refuses_a_branch_a_driver_would_hide` runs `tcw work
+  complete --already-integrated --branch` end to end, with the driver named in
+  `.gitattributes` and in `.git/info/attributes`: exit 1, the driver named, the
+  branch kept, the item still active. Both cases fail with the `-c` overrides
+  removed.

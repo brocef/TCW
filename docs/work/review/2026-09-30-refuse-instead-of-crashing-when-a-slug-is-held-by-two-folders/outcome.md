@@ -51,3 +51,15 @@
   error page for the one item.
 - Tests: `tests/test_serve*.py`, `test_duplicate_slug_refusals.py`,
   `test_work.py`, `test_retention.py` — 466 passed.
+
+## Folded in at verify (second round)
+
+- `d61a543f`: the refusal for a slug held twice, and the blocker-cycle refusal
+  that walks through one, now say to merge any files the kept folder lacks from
+  the others before removing them, as `tcw validate` already did. The shorter
+  advice could delete files that existed only in the other copy.
+- Tests: `test_the_refusal_names_both_folders` asserts the merge advice; new
+  `test_a_cycle_through_the_duplicate_points_at_validate` covers the
+  blocker-cycle wording, which had no test. Both fail with the fix removed.
+  `tests/test_blocker_cycles_through_unreadable_items.py` updated to the new
+  wording.

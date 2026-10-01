@@ -46,3 +46,16 @@
   message never includes the parser's text. The follow-up in Notes is done.
 - Tests: `tests/test_damaged_state_on_edit.py` 13 passed; the files touching
   those sites — 3321 passed, 3 skipped.
+
+## Folded in at verify (second round)
+
+- `d61a543f`: a `capabilities.yaml` read error names the file from the project
+  root (`docs/work/<status>/<slug>/capabilities.yaml`) rather than the bare
+  file name, so it says which item's file it is. `_read_capabilities_sidecar`
+  became an instance method to reach `_shown_path`.
+- The comment at `tcw/cli.py` naming `yaml_source.named` now names `load`.
+- The changelog entry no longer says the other `yaml.safe_load` calls are
+  unchanged in the bullet before the one that changes several of them.
+- Tests: `test_a_capabilities_file_names_itself` asserts the full path (fails
+  with the fix removed); `tests/test_unreadable_capabilities_sidecar.py`'s exact
+  message updated.
