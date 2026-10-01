@@ -338,18 +338,32 @@ meet; acceptance criterion 3 checks the mechanical ones.
 - **qa.** Product behavior against the request and the newest `QA plan` comment.
   With no QA plan, test against the request's Product changes and say so in the
   round.
-  - Filesystem passage: writes `qa/round-N.md` with the same front matter.
-    **[Decision]** The verdict is a person's (QA, product or the requester): the
-    agent runs the scenarios, presents the evidence, and stops for the decision,
-    as today's verify does (`tcw/work/prompts/verify.md:23-24`). With nobody to
-    decide, the item stays at qa. A project that works unattended replaces this
-    through its own `unattended-work` procedure.
+  - Filesystem passage. **[Decision, owner 2026-10-01]** By default the agent
+    records the verdict itself. It runs each scenario in the QA plan, judges the
+    product against the request's Product changes and the plan's expected
+    behavior, and writes `qa/round-N.md` through
+    `tcw work path <slug> qa --next`, with the same front matter as review
+    (`verdict`, and `judges` computed by the same rule). The round lists each
+    scenario as passed, failed or not run, with evidence, and the verdict is
+    `accepted` only when every scenario passed or the round says why a scenario
+    that was not run does not matter. This replaces today's rule that a person
+    decides (`tcw/work/prompts/verify.md:23-24`).
+    - **A project may require a person.** It does so through its own qa `prompt`
+      binding, in either of two ways TCW-69 and TCW-72 already provide: a list
+      without `inherit: true` replaces the built-in text entirely (TCW-72 spec,
+      Design 3.5), or a binding composed after the built-in text says the
+      verdict is a person's. For the second way, the built-in passage ends with
+      one sentence: if the project's instructions for this stage say a person
+      decides the verdict, run the scenarios, present the evidence, write no
+      round, and stop. No configuration key is added.
   - Jira passage: QA happens on the ticket. A person accepts with
     `tcw work advance <slug> --to completed --reason …` or by moving the ticket,
     and a rejection is `tcw work advance <slug> --to implement --reason …`, whose
     reason becomes the required comment (TCW-69 spec, Design 6.4). The agent may
-    run the scenarios and post its findings as a comment. **[Decision]** It never
-    records the verdict for a person.
+    run the scenarios and post its findings as a comment. **[Decision]** In Jira
+    mode it never records the verdict: qa is external there (TCW-69), so the
+    ticket's status, which people move, is the verdict. The owner's answer of
+    2026-10-01 covers the filesystem default only.
 - **postmortem.** Writes `postmortem/postmortem.md` through
   `tcw work path <slug> postmortem`. It reads the item backwards:
   - qa rounds, then review rounds, then implement rounds;
@@ -457,9 +471,9 @@ sentence works in both backends.
    | `documentation-sync` | keep | Outside the no-git rule; wording updated (Design 7) |
    | `create-work` | rewrite | Filing an idea; loses worktree checkout, inbox verbs, commits and strict tracker mode (`tcw/work/procedures/create-work.md:22-30`, `:122-143`) |
    | `audit-backlog` | rewrite | Reviewing unfinished items; reads 3.0 stages and folders, loses `state.yaml` and `git status` (`tcw/work/procedures/audit-backlog.md:8-11`, `:123`) |
-   | `search` | rewrite | `--status` becomes `--stage`; reads stage folders |
+   | `search` | rewrite | `--status` becomes `--stage`; reads stage folders. `--tag` (repeatable, an item matches any given tag) stays (`tcw/work/procedures/search.md:15`): **[Decision, owner 2026-10-01]** `tcw work list --tag` is kept in 3.0.0 (TCW-69's `Query.tags`, TCW-73's flag) |
    | `triage-issues` | rewrite | Creates items with `tcw work new`; loses its commit step (`tcw/work/procedures/triage-issues.md:136`) |
-   | `unattended-work` | rewrite | The checkpoint map names `submit`, `tcw work complete`, the verifier, and a local merge (`tcw/work/procedures/unattended-work.md:33-38`); it maps review and qa instead, with no git |
+   | `unattended-work` | rewrite | The checkpoint map names `submit`, `tcw work complete`, the verifier, and a local merge (`tcw/work/procedures/unattended-work.md:33-38`); it maps review and qa instead, with no git. Since the filesystem qa prompt already lets the agent record the verdict (Design 2, qa), its qa row covers only what unattended work adds: advisors consulted before the verdict, and what to do in Jira mode or when the project's qa prompt says a person decides (leave the item at qa and move on) |
    | `pause-work` | **new** | See item 3 |
    | `post-mortem` | delete | Merged into the postmortem stage prompt (Design 2) |
    | `consolidate-plans` | delete | Its safety rules are git checks (`skills/work/references/procedures/consolidate-plans.md:22-35`); without git there is no safe deletion rule, and moving outside plans into items is ordinary `tcw work new` |
@@ -550,7 +564,7 @@ The default verdict is delete; a kept file says why.
 | `skills/work/references/commands.md` | 528 | 36 | 199 | rewrite | The 3.0 command reference, from TCW-73's surface; the tracker, claim and strict-mode sections go |
 | `skills/work/references/transitions.md` | 248 | 53 | 68 | delete | `advance` is described in the work skill |
 | `skills/work/references/hooks.md` | 76 | 2 | 4 | delete | Bindings are documented once, in the configure skill's `references/work.md`, which TCW-75 writes (TCW-75 spec, Design 6.4); the work skill links to it (epic decision 3) |
-| `skills/work/references/tags.md` | 55 | 0 | 1 | keep | The tag registry is unchanged; "node" becomes "project" |
+| `skills/work/references/tags.md` | 55 | 0 | 1 | keep | The tag registry is unchanged; "node" becomes "project". Its `tcw work list --tag` example (`:20`) stays, since the owner kept that flag on 2026-10-01 |
 | `skills/work/references/epic-deltas.md` | 76 | 0 | 22 | delete | No epic type; a parent is an epic (TCW-69); one paragraph in the work skill |
 | `skills/work/references/cross-node-deltas.md` | 84 | 1 | 31 | delete | `delegate` and `escalate` go; `new --project` is one paragraph in the work skill |
 | `skills/work/references/lifecycle/stage-inbox.md` | 37 | 0 | 4 | delete | The prompt is the one source |
@@ -568,7 +582,7 @@ The default verdict is delete; a kept file says why.
 | `skills/work-stage/SKILL.md` | 63 | 0 | 8 | delete | **[Decision]** Duplicates `tcw work stage prompt`; its stage contract (`:28`) is deleted, and `stage validate` (`:18`) goes in TCW-73. Losing the one injected read is accepted for one source of stage text that works the same under Codex; the evals measure the cost (Design 11) |
 | `skills/commands-process-inbox/SKILL.md` | 35 | 3 | 14 | rewrite | Runs the inbox prompt over every arrival (filesystem: inbox-stage items; Jira: `tickets list`), then request for each accepted item |
 | `skills/commands-plan-work/SKILL.md` | 39 | 4 | 6 | rewrite | Runs request, spec and plan through `stage prompt`, advancing between them, and stops at plan |
-| `skills/commands-drive-work-to-completion/SKILL.md` | 38 | 5 | 8 | rewrite | Runs the current stage onwards through review and qa; stops at qa for the person's verdict; no "bounded stage documents" (a 2.x plan-stage concept, `:22-24`) |
+| `skills/commands-drive-work-to-completion/SKILL.md` | 38 | 5 | 8 | rewrite | Runs the current stage onwards through review and qa. **[Decision, owner 2026-10-01]** In filesystem mode with the built-in qa text, it runs qa, writes the qa round with its verdict and advances, so an accepted item reaches completed; it stops at qa for a person only in Jira mode or when the project's qa prompt says a person decides. Its description (today "stopping for user verification before closeout", `:3-4`) changes to match. No "bounded stage documents" (a 2.x plan-stage concept, `:22-24`) |
 | `skills/commands-verify-work/SKILL.md` | 33 | 1 | 9 | delete | Verify is gone; review and qa are stage prompts the work skill and `commands-drive-work-to-completion` reach |
 | `skills/commands-pause-work/SKILL.md` | 91 | 17 | 2 | rewrite | Resting point, handoff through the handoff form of `path` in the current stage's folder, report, stop; conduct from the `pause-work` procedure; no commit or push |
 | `skills/work-create/SKILL.md` | 41 | 1 | 1 | rewrite | Same outcomes; an unclear idea goes to an inbox-stage item (filesystem) or is returned (Jira, where the inbox is tickets) |
@@ -582,7 +596,7 @@ The default verdict is delete; a kept file says why.
 | `skills/setup/references/taxonomy.md` | 56 | 0 | 0 | keep | Unchanged |
 | `skills/setup/references/capabilities.md` | 32 | 0 | 0 | keep | Seeding a ledger records what exists, so `Missing` there is an acknowledged gap, which 3.0 keeps |
 | `skills/setup/references/jira.md` | — | — | — | **new** | Design 9 |
-| `skills/extras-autonomous-work/SKILL.md` | 97 | 4 | 3 | rewrite | **[Decision]** Kept in the plugin: it is generic (any project can work unattended) and its conduct is already replaceable through the `unattended-work` procedure. Advisors stand in for people at spec, plan and the qa verdict; the audit trail goes in the newest implement round, not `outcome.md` (`:75`); no `git merge` |
+| `skills/extras-autonomous-work/SKILL.md` | 97 | 4 | 3 | rewrite | **[Decision]** Kept in the plugin: it is generic (any project can work unattended) and its conduct is already replaceable through the `unattended-work` procedure. Advisors stand in for people at spec and plan, and are consulted before the agent records a filesystem qa verdict (which it may do by default, Design 2, qa); the audit trail goes in the newest implement round, not `outcome.md` (`:75`); no `git merge` |
 | `skills/extras-triage-issues/SKILL.md` | 71 | 1 | 7 | rewrite | **[Decision]** Kept in the plugin: it is generic and replaceable through the `triage-issues` procedure. GitHub triage into `tcw work new` items; `Bash(git *)` goes |
 | `skills/extras-report/SKILL.md` | 123 | 1 | 5 | keep | Reporting upstream is unchanged; the removed-verb examples and "tracker" wording are updated |
 | `skills/post-mortem/SKILL.md` | 55 | 0 | 7 | delete | The postmortem prompt is the one source; the work skill routes "which stage could have caught this" to it |
@@ -606,12 +620,16 @@ remain.
 skill states these, each once:
 - how to find your place: the item's stage from `tcw work show`, then the newest
   handoff, then `tcw work stage prompt <stage> <slug>`;
-- `advance` is never handed to a subagent, and request and qa are not dispatched
-  because they need a person (from
-  `skills/work/references/procedures/delegation.md:9-24`);
+- `advance` is never handed to a subagent, and request is not dispatched because
+  it asks the user (from `skills/work/references/procedures/delegation.md:9-24`).
+  qa is not dispatched when a person decides its verdict: in Jira mode, or when
+  the project's qa prompt says so. **[Decision, owner 2026-10-01]** In
+  filesystem mode with the built-in qa text the agent records the qa verdict, so
+  qa may be dispatched like review;
 - the backlog-audit approval rule and the search read-only rule (Design 5.2);
 - what the two exit codes for a missing connected project mean (epic decision
-  4): a command that reads a project declared in configuration but not present
+  4): a command that reads a project declared under `projects:` (renamed from
+  `connected-projects:` by TCW-73, owner 2026-10-01) but not present
   on this machine exits 5, and `tcw work new --project` into such a project is
   refused with exit 3. In both cases the agent reports it and suggests
   `tcw provision`; it does not retry;
@@ -719,8 +737,13 @@ rewritten, not retired, because that question stays open in 3.0.
   - cases A1-A3 and A5 (spec, plan, implement, postmortem) keep their nonces;
   - A4 (verify) becomes a review case asserting a `review/round-N.md` with valid
     front matter;
-  - a new qa case asserts a filesystem-mode qa round is not written without a
-    verdict from a person, since there is none in the run;
+  - **[Decision, owner 2026-10-01]** a new qa case, on a filesystem fixture with
+    a QA plan comment, asserts the agent writes `qa/round-N.md` with valid front
+    matter, `judges` equal to the newest implement round, and one line per QA plan
+    scenario;
+  - a second qa case, on the customized fixture with a qa `prompt` binding that
+    says a person decides, asserts no qa round is written and the item stays at
+    qa;
   - **[Decision]** with `work-stage` deleted there is no injection, so the
     injected / fallback provenance (`evals/grade.py:19-66`) and cases A6-A8,
     which read it, are removed. The question becomes whether the agent ran
@@ -845,9 +868,13 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
    - the jira-filtered inbox contains `tcw work tickets adopt` and no
      `--stage inbox`;
    - the filesystem-filtered inbox contains `tcw work advance` and no `tickets`;
-   - qa contains no instruction to `advance` on a person's behalf. This is
-     checked by reading: the jira-filtered qa names `--reason` only in text
-     addressed to the person deciding.
+   - the filesystem-filtered qa contains `tcw work path <slug> qa --next`,
+     `QA plan`, and the sentence that hands the verdict to a person when the
+     project's instructions say so, identified by the phrase
+     `a person decides` (Design 2, qa; owner 2026-10-01);
+   - the jira-filtered qa contains no `tcw work path <slug> qa` and no
+     `verdict:`, and names `--reason` only in text addressed to the person
+     deciding (this last part checked by reading).
 4. **Backend passages.** Through the filter function:
    - a `jira` passage is removed for `filesystem` and kept, without its markers,
      for `jira`;
@@ -910,7 +937,9 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
     - `python evals/seed_fixture.py --customized <dir>` and `--bare` succeed
       against the 3.0 CLI.
     - `python evals/coverage.py` reports no uncovered skill.
-    - `python -m evals.run_evals --axis a --dry-run` lists the rewritten cases.
+    - `python -m evals.run_evals --axis a --dry-run` lists the rewritten cases,
+      including both qa cases (Design 11): the default case, which expects a
+      qa round, and the person-decides case, which expects none.
     - `tests/test_eval_*.py` pass.
     - No case asserts a status flip from `Missing`.
 13. **The 3.0 product flow** (`tests/test_skill_flow.py`). `new`, then
@@ -928,7 +957,7 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
 | Design rule | Criteria |
 | --- | --- |
 | 1 Prompt set | 1, 2 |
-| 2 Prompt contents | 3, 13 |
+| 2 Prompt contents | 3, 12 (the two qa cases), 13 |
 | 3 Backend passages | 4 |
 | 4 Generated text | 5 |
 | 5 Procedures | 6 |
@@ -951,9 +980,12 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
   includes the request and comments (Notes). Mitigation: criterion 9 fails if a
   named command or flag does not exist, and criterion 3 is run against the real
   `show` output at implement, so a gap is found then, not by a user.
-- **The qa verdict needs a person.** A filesystem project with nobody to decide
-  leaves items at qa. That is the intended direction, the same as 2.x verify.
-  Unattended projects replace it through `unattended-work`.
+- **An agent's qa verdict can pass work a person would reject.** Since the
+  owner's answer of 2026-10-01, a filesystem item can reach completed with no
+  person involved. Mitigation: the qa round lists every QA plan scenario with
+  evidence, so the judgment can be read afterwards; a project that wants a
+  person says so through its qa `prompt` binding (Design 2, qa); and Jira mode
+  is unchanged, since there people move the ticket.
 - **Deleting `work-stage` changes how Claude users reach a stage.** One injected
   read becomes an explicit `tcw work stage prompt` call. The evals (Design 11)
   measure whether agents still make that call.
@@ -989,8 +1021,8 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
   - implement's "latest rejection" is every rejected review or qa round judging
     the newest implement round, plus the Jira qa rejection comment;
   - `judges` is the highest implement round number in the folder, or 0;
-  - an agent may write a review verdict, but never a qa verdict for a person,
-    in either backend;
+  - an agent may write a review verdict, and never records a qa verdict in
+    Jira mode. (The filesystem qa default is the owner's decision, below.)
   - the postmortem request-level comment is turned on by a project prompt
     binding, not a config key;
   - comments and the request are read through `tcw work show <slug>` in both
@@ -1058,13 +1090,17 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
   - **TCW-76 against the design record** (migrated `refined-outcome.md` and
     `rework.md` become qa rounds, not review rounds). Not this slice's to
     settle; recorded for TCW-76, which TCW-70 and TCW-75 also flag.
-- **Questions only the owner can answer:**
-  1. **May an agent record a filesystem-mode qa verdict when the project has
-     not said otherwise?** This decides whether filesystem items can finish
-     without a person. Recommended answer: no; qa is the product check against
-     the request, an agent's review verdict already covers the code, and a
-     project that wants unattended completion says so through its
-     `unattended-work` procedure.
+- **Questions for the owner:** none remain.
+  - Settled by the owner on 2026-10-01: an agent may record a filesystem-mode qa
+    verdict by default, and a project can require a person through its own qa
+    prompt binding (Q9; this reverses the spec's earlier recommendation). Design
+    2 (qa), Design 5 (`unattended-work`), Design 7 (the work skill,
+    `commands-drive-work-to-completion`, `extras-autonomous-work`), Design 11,
+    criteria 3 and 12, and Risks follow from it.
+  - Settled by the owner on 2026-10-01: the `connected-projects:` key becomes
+    `projects:` (Q11, TCW-73). The work skill's paragraph on a missing project
+    (Design 7) names the key as `projects:` when it links to the configure
+    reference.
 - **Inventory method.** Counts in Design 7 and Problem come from two regular
   expressions over each file, run on 2026-10-01 against this branch:
   - git: `\b(git|commit\w*|push\w*|pull\w*|worktrees?|trunk|branch\w*)\b`,
