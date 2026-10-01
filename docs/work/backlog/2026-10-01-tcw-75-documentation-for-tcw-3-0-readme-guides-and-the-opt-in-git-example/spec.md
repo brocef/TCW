@@ -363,7 +363,9 @@ The `##` sections, in order:
    - **Relationship to Capabilities and Taxonomy.** The chain: the request
      states product changes in prose; the item's `capabilities.yaml` declares
      them formally; implement changes the records; the records gate checks them
-     on the move out of implement; qa checks the product's behavior.
+     on the move out of implement; qa checks the product's behavior. In
+     filesystem mode the agent may record the qa verdict unless the project's
+     own qa prompt asks for a person (**[Decision, owner 2026-10-01]**).
    - **Stages.** A diagram and the stage table: name, purpose, what it writes,
      whether a project can turn it off. The data comes from TCW-69 Design 3.
      Postmortem is shown off to the side, since an item never moves into it.
@@ -409,7 +411,12 @@ The `##` sections, in order:
       3): which stages can be turned off, side stages, terminal stages.
    3. The item folder: stage folders, `<stage>/<stage>.md`,
       `<stage>/round-N.md`, verdicts and `judges`, what `stale` means and how it
-      arises, handoffs, comments, `<item>/capabilities.yaml`, and
+      arises. **[Decision, owner 2026-10-01]** Who records the qa verdict in
+      filesystem mode: by default the qa prompt lets the agent judge the result
+      against the request and write `qa/round-N.md` itself; a project that
+      wants a person to decide says so in its own `prompt` binding for qa
+      (TCW-74's qa prompt). Jira mode is unchanged: QA accepts or rejects on
+      the ticket (Design 5.2); handoffs, comments, `<item>/capabilities.yaml`, and
       `tcw work path`, including `--handoff`, which prints where the stage's
       handoff file goes (epic decision 18).
    4. Moving an item:
@@ -427,6 +434,11 @@ The `##` sections, in order:
       link to the Jira guide).
    6. Creating and editing: `new`, `edit`, `list`, `show`, tags, `blocked-by`
       and `blocks`, `parent` and epics, `rename`, `comment`.
+      **[Decision, owner 2026-10-01]** `tcw work list --tag` is documented as
+      kept: the flag can be repeated, and an item is listed when it carries
+      any of the given tags (TCW-69's `Query.tags`, TCW-73). In Jira mode
+      tags are the ticket's labels (TCW-71), and the Jira guide's "Who owns
+      what" section says so.
    7. References and what `tcw validate` warns about: a missing item, a
       reference to a project not on this machine, a stage ahead of its
       documents. A command that has to reach a declared project that is not on
@@ -454,7 +466,10 @@ The `##` sections, in order:
       turns on through its own `prompt` binding for the postmortem stage
       (TCW-74 Design 2, postmortem).
    3. **Setting up**: a minimal `work.jira` and `work.stages.<stage>.status`
-      example that links to the configure reference; the TCW Project and TCW
+      example that links to the configure reference. **[Decision, owner
+      2026-10-01]** Where the example shows status names, it uses the ones
+      TCW's own Jira project uses: every optional stage turned on, with
+      `spec` mapped to `Specifying`, `plan` to `Planning` and `qa` to `In QA`; the TCW Project and TCW
       Item fields; credentials named by environment variable.
    4. **Stages and statuses**: one status per enabled stage; how a move picks
       its transition (epic decision 5): when Jira offers exactly one
@@ -494,7 +509,10 @@ The `##` sections, in order:
    - what `tcw-config.yaml` holds, and that it is trusted like any other file
      in the repository (kept from `:3-6`);
    - the configuration layers (team file, user-wide file, per-project personal
-     file), in one paragraph that links to `personal.md`;
+     file), in one paragraph that links to `personal.md`, and that says a
+     personal `post` list replaces the team's for that stage unless it holds
+     `inherit: true`, while `pre` stays shared (**[Decision, owner
+     2026-10-01]**);
    - stage bindings (`prompt`, `pre`, `post`), binding kinds, `when:` and
      `inherit: true`, each shown by example and linked to `work.md` for the
      full rules;
@@ -524,6 +542,9 @@ The `##` sections, in order:
    - `upstream` projects;
    - where a project is on this machine: `TCW_PROJECT_<ID>`, which stays the
      only way to say it and is not personal configuration (TCW-72 Design 11);
+   - **[Decision, owner 2026-10-01]** the key is `projects:` and the Feature
+     is `project-registry` (TCW-73, renamed from `connected-projects:` and
+     `connected-project-registry`); the guide uses only the new names;
    - what happens when a project is declared but is not on this machine: a
      command that needs it exits 5 (epic decision 4);
    - slugs across projects;
@@ -607,11 +628,18 @@ documented.
    set it.` or `Overridable: personal configuration may set it.`
 3. **[Decision] The table.** `personal.md` holds one table of every
    configuration key path with its marking. The overridable rows are exactly
-   TCW-72's allowlist constant in `tcw/config.py` (TCW-72 Design 4.1):
+   TCW-72's allowlist constant, `tcw.config.PERSONAL_KEYS` (TCW-72 Design 4.1):
    `user.name`, `work.stages.*.prompt`, `work.stages.*.post`,
-   `work.procedures.*`, `work.jira.credentials.*`, and the same credentials
-   inside a connected-project entry. Every other row is shared, and the table
-   says that a key added later is shared unless it is added to the allowlist.
+   `work.procedures.*`, `work.jira.credentials.email-env` and
+   `work.jira.credentials.token-env`. Every other row is shared, including
+   everything inside a `projects:` entry (credential names there too, TCW-72
+   Design 4.1), and the table says that a key added later is shared unless it
+   is added to the allowlist.
+   **[Decision, owner 2026-10-01]** The table and `personal.md` state the
+   owner's answer plainly: a personal `post` list for a stage **replaces** the
+   team's `post` hooks for that stage unless it contains `inherit: true`
+   (TCW-72 Design 4.1), so one person can drop a team hook for themselves;
+   `pre` hooks are shared, so the team's gates always run.
    The table is this item's, because all of `skills/configure/` is (epic
    decision 3). TCW-72 lands first and its spec writes a first `personal.md`
    with the table and a test tying the table to the constant (TCW-72
@@ -814,6 +842,10 @@ can.
 5. **It can be personal.** `prompt` and `post` are overridable (TCW-72), so one
    person can put the same bindings in `tcw-config.local.yaml` without changing
    anything for the team. The guide says so and links to `personal.md`.
+   **[Decision, owner 2026-10-01]** It also says what that costs: a personal
+   `post` list replaces the team's `post` list for that stage, so a person
+   adding this hook for themselves writes `- inherit: true` in the list to keep
+   the team's hooks as well; `pre` hooks cannot be changed personally.
 
 ### 9. `docs/guide/cli.md`: output and exit codes
 
@@ -958,6 +990,7 @@ identical).
    | `graveyard`, `dod\.yaml`, `definition of done`, `renames\.yaml` | removed store files (TCW-70) |
    | `state\.yaml`, `tracker\.yaml`, `intake\.md`, `initial-request\.md`, `refined-outcome\.md`, `rework\.md`, `\boutcome\.md` | 2.x item files (TCW-70) |
    | `work\.lifecycle`, `work\.tracker`, `auto-commit-transitions`, `publish-transitions`, `trunk-branch`, `work\.retain`, `builtin: true` | removed keys (TCW-69, TCW-72) |
+   | `connected-projects`, `connected-project-registry` | renamed to `projects` and `project-registry` (TCW-73; owner, 2026-10-01) |
    | `TCW_NODE_ROOT`, `TCW_STATUS`, `TCW_TRANSITION`, `TCW_RESOLUTION`, `TCW_WORK_OWNER` | removed variables (TCW-69, TCW-72) |
    | `--worktree`, `--initiative`, `--epic`, `--resolution` | removed flags (TCW-73) |
    | `docs/work/(inbox\|backlog\|active\|review\|completed\|discarded)/` | status folders (TCW-70) |
@@ -1161,11 +1194,22 @@ identical).
       do" list (Design 8.4) names adoption next to creation if adoption runs
       no hooks. TCW-71 should say which.
   12. Terms this item depended on: settled. The connected-project key is
-      `projects` (TCW-73 Design 9, still open as TCW-73's own owner question
-      on the name); `TCW_PROJECT_<ID>` stays the only way to place a project
+      `projects` and its Feature `project-registry` (TCW-73 Design 9).
+      Settled by the owner on 2026-10-01: `connected-projects:` is renamed
+      `projects:`, and `connected-project-registry` is renamed
+      `project-registry`; `TCW_PROJECT_<ID>` stays the only way to place a project
       on this machine (TCW-72 Design 11); the request template's sections are
       TCW-74's (Design 2 there); the postmortem comment is turned on by a
       project's own `prompt` binding for postmortem (TCW-74 Design 2).
+- **Owner answers applied on 2026-10-01.** Q3 (status names in the Jira
+  guide's example, Design 5.2), Q8 (a personal `post` list replaces the
+  team's, `pre` stays shared; Designs 5.3, 6.3 and 8.5), Q9 (filesystem qa
+  verdict may be recorded by the agent; Designs 4.8 and 5.1), Q10
+  (`list --tag` kept and repeatable; Design 5.1) and Q11 (`projects:` and
+  `project-registry`; Design 5.4, criterion 2, cross-slice finding 12). While
+  applying Q8, Design 6.3's list of overridable keys was corrected to match
+  TCW-72's constant: the two credential keys are named one by one, and
+  credentials inside a `projects:` entry are shared.
 - **Open questions only the owner can answer.** None remain for this item.
   The five earlier questions were settled by epic decisions 3, 9, 15 and 6,
   and by the **[Decision]** to delete the inbox template (Design 5.7), which
