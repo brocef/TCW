@@ -1234,8 +1234,9 @@ is intact.
     3. the rewired surfaces;
     4. deletion;
     5. records.
-  - The owner may prefer it split into child items (Notes). Wiring and removal
-    cannot land separately without a period where `tcw work` reads two layouts.
+  - The owner decided on 2026-10-01 to keep it one item built in these phases,
+    not child items: wiring and removal cannot land separately without a period
+    where `tcw work` reads two layouts.
 - **The epic branch has known gaps until later slices land.** `tcw serve` has no
   board, documents and skills name removed commands, and `stage prompt review`
   fails. Mitigation: each gap has a named owner, the documentation allowance
@@ -1363,10 +1364,8 @@ is intact.
   - Exception classes live in `tcw/errors.py` (decision 8). TCW-73's draft
     still names `tcw/work/errors.py`.
 - **Open questions only the owner can answer:**
-  1. Keep TCW-70 as one item, or split it into child items: backend and
-     wiring, then removal (Risks)? Wiring and removal cannot land separately
-     without a period where `tcw work` reads two layouts, so a split would be
-     by review size, not by independent value.
+  1. Settled by the owner on 2026-10-01: TCW-70 stays one item, built in the
+     five phases under Risks.
 - **The ticket's own open questions.** The ticket lists none. The questions this
   spec answers are the ones its scope raised: the boundary with TCW-73
   (Design 1), how it is tested while the board is 2.x (Design 15), and which

@@ -1087,13 +1087,13 @@ spec, Design 15.1) where the case needs Jira's own answers.
 
 - **This is large for one item.** It touches every command, the tree stores' write
   path, the surface of `validate` and drift, the project registry, the shell
-  scenarios and about 40 ledger records. Mitigation: the plan stage should split it
-  into child items in this order: (a) contract, help standard, exit-code mapping,
+  scenarios and about 40 ledger records. Mitigation: the plan builds it in three phases,
+  each leaving the test suite passing, in this order: (a) contract, help standard, exit-code mapping,
   `resolve_item` checks and the contract test; (b) the taxonomy and capabilities
   pass, including removing staging, and the top-level commands (`init`,
   `provision`, `validate`, `projects list`); (c) the "node" sweep with the taxonomy
-  and ledger renames. **[Decision]** The plan stage makes this split, in this
-  order, because each part can be verified on its own and (c) is mostly
+  and ledger renames. **[Decision, owner 2026-10-01: phases of one item, not child items]** The plan
+  uses these phases, in this order, because each part can be verified on its own and (c) is mostly
   mechanical churn that is easiest to review alone.
 - **Other slices build to a contract they do not own.** If TCW-70 or TCW-71
   deviates, this slice finds out late. Mitigation: their specs cite Design 1–4 of
@@ -1196,7 +1196,8 @@ spec, Design 15.1) where the case needs Jira's own answers.
       own configuration gates on `tcw validate`;
   26. each scenario under `tests/cli/scenarios/` defaults to deletion unless the
       plan finds it covers something the contract test does not;
-  27. the plan splits this item into the three children named under Risks;
+  27. the plan builds this item in the three phases named under Risks (one item,
+      not child items: owner, 2026-10-01);
   28. `tcw work show`'s text and `--json` layout for the request and comments
       (Design 1.9), with no limit option, and `list --json` without them;
   29. `validate`'s one-object selector covers work items with the offline checks

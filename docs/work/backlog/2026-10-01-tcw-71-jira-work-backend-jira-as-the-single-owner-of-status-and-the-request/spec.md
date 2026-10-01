@@ -1349,8 +1349,8 @@ records no write request and the work path is unchanged.
   4. `validate --remote`;
   5. removal.
 
-  Each step leaves the suite green. Splitting it into child items is the owner's call
-  (Notes).
+  Each step leaves the suite green. The owner decided on 2026-10-01 to keep this
+  one item built in these steps, not child items.
 
 ## Notes
 
@@ -1499,9 +1499,8 @@ records no write request and the work path is unchanged.
      entry has a `jira` block. TCW-70's `open_delegation_target` checks for the
      block first and hands it to this slice's adapter; exit 3 covers every case
      where TCW can create nothing.
-  3. **Should this slice be split into child items** along the plan order in Risks?
-     Recommended: one item, with the plan's five steps each leaving the suite green;
-     split only if review rounds become too large to read.
+  3. **Settled by the owner on 2026-10-01:** one item, built in the plan's five
+     steps, each leaving the suite green.
 - **Removed from the open questions.** Whether `current_user`, `read_request` and
   `read_comments` join the interface is settled (decision 1). Whether the TCW Jira
   project is company-managed or team-managed no longer matters to this slice, which
