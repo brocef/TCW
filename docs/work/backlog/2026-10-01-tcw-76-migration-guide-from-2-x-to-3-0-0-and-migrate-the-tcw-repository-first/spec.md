@@ -195,7 +195,8 @@ migrates the board.
 - **Rewriting history.** Old slugs in changelogs, release notes and finished
   documents are left as they are.
 - **Deciding which backlog items still matter.** The guide offers a prune step
-  (Design 2, step 1); the decisions are the owner's.
+  (Design 2, step 1); the decisions are the project owner's. For TCW they are
+  already made (Design 2, step 1, "TCW's prune list").
 - **The eval harness.** `evals/seed_fixture.py` builds 2.x boards; updating it is
   TCW-74's (epic decision 14).
 - **Other slices' documents.** The `upcoming/README.md` files, the README, the
@@ -267,6 +268,8 @@ that configuration.
    validate` should be clean; anything it reports is fixed under 2.8 first, where
    the tools for it still exist. Find untracked item folders hidden by
    `.gitignore` (`git status --ignored -- docs/work`) and list them.
+   **[Decision, owner 2026-10-01]** For TCW, the list is shown at the survey and
+   none of them is kept unless the owner names it (Design 3.1).
 1. **Survey, then Stop and ask.** The agent reads the whole board and config
    (and in Jira mode the tickets) and presents one plan:
    - the backend, and which optional stages to enable;
@@ -286,11 +289,57 @@ that configuration.
      (Design 3.8).
 
    **Check:** the user's approval, recorded verbatim in the migration log.
+
+   **TCW's prune list. [Decision, owner 2026-10-01]** Every candidate is
+   discarded at the migration with the reason `subject removed by TCW 3.0
+   (TCW-68)`:
+   - the bound items TCW-33 (`scaffold`), TCW-10 (tracker workflow against
+     `statuses`), TCW-40 (claim exclusivity), TCW-26 (mapped tracker fields) and
+     TCW-54 (aggregating child boards in `tcw serve`): each ticket is moved to
+     `Won't Do` with the reason as its comment (Design 4.3);
+   - the four unbound tracker and start items
+     `2026-09-21-two-tracker-create-runs-…`,
+     `2026-09-22-let-a-leftover-start-record-…`,
+     `2026-09-22-refuse-an-unconfigured-start-…` and
+     `2026-09-24-give-a-strict-tracker-claim-…`;
+   - five inbox entries, named one by one in the question the owner answered on
+     2026-10-01: `2026-09-29-a-plain-binding-s-stuck-start-record-never-clears`,
+     `2026-09-29-store-git-root-compared-by-text-with-node-paths` (3.0's stores
+     run no git),
+     `2026-09-30-a-detached-worktree-s-unbranched-commits-are-lost-at-teardown`,
+     `2026-09-30-can-a-custom-merge-driver-make-already-integrated-pass-unmerged-work`
+     and `2026-09-30-let-the-worktree-merge-back-wait-out-a-store-commit-s-index-lock`.
+     The sixth entry in that question is closed as done, below.
+
+   An unbound item or inbox entry has no ticket, and a Jira-mode item without one
+   is not legal (TCW-71), so each pruned one is created as a ticket and moved
+   straight to `Won't Do` with the reason as a comment (the "yes" route of
+   Design 4.1, with discarded as the target stage). The discard is then recorded
+   in Jira, where 3.0 reads it, and not only in git history.
+
+   The inbox entry `2026-09-30-keep-an-item-s-folder-in-one-place-and-its-status-only-in-state-yaml`
+   is not pruned but **closed as done by the epic** [Decision, owner
+   2026-10-01]: 3.0 never moves a folder and has no `state.yaml`. It is created
+   as a ticket and moved straight to `Done` with the comment `Delivered by the
+   TCW 3.0 redesign (TCW-68)`.
+
+   The other four inbox entries (`editing-a-damaged-item-gives-a-bare-yaml-error`,
+   `tcw-validate-crashes-on-a-duplicate-slug`, `follow-renames-in-the-web-app-…`
+   and `run-ci-on-python-3-12-or-3-13`) are migrated as ordinary inbox items;
+   the survey notes that the first two describe 2.x code and may no longer
+   reproduce, for the owner to decide then. Entries added to the board before the
+   migration starts go through the survey like any other.
 2. **Jira mode: prepare Jira.** Add one status per enabled stage that has none,
    the transitions `advance` needs, and the TCW Project, TCW Item, effort and
    complexity fields (TCW-71 defines their types). **Stop and ask** for anything the
    agent cannot do itself. **Check:** deferred to the end of step 3, since the
    check reads the new configuration.
+
+   **For TCW, [Decision, owner 2026-10-01]** the owner does all of this Jira
+   administration by hand, from a checklist the agent writes into the TCW-76
+   implement round (Design 6.2, "The Jira checklist"). The agent makes no
+   workflow, status or field change itself; it stops here until the owner says
+   the checklist is done.
 3. **Rewrite the configuration**, key by key (Design 3.5). **Check:**
    `grep -nE '^\s*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true' tcw-config.yaml`
    prints nothing. **[Decision]** In Jira mode the agent then copies the new
@@ -361,7 +410,9 @@ picks is disabled in the new config, the item takes the next enabled flow stage.
 
 **[Decision] Ignored discarded folders** (Problem 2.4) are listed in the
 consolidated plan. Kept ones become tracked `discarded` items, since 3.0 no longer
-has a folder to ignore; the `.gitignore` rule is removed in step 10.
+has a folder to ignore; the `.gitignore` rule is removed in step 10. **[Decision,
+owner 2026-10-01]** For TCW none is kept unless the owner names it at the survey;
+the rest stay untracked on that machine and are never migrated.
 
 #### 3.2 Item fields (`state.yaml` and `tracker.yaml` to `item.yaml`)
 
@@ -474,7 +525,7 @@ for renamed project keys).
 | `work.trunk-branch` | removed |
 | `work.tags`, `work.documentation`, `work.path`, `work.repository` | kept; `documentation` entries are reviewed for 2.x wording |
 | `work.procedures.<id>` | kept for procedures TCW-74 keeps (TCW-74 Design 5.1: `documentation-sync`, `create-work`, `audit-backlog`, `search`, `triage-issues` and `unattended-work` survive, all but the first rewritten, and `pause-work` is new; `post-mortem`, `consolidate-plans`, `decompose` and `delegation` are deleted); a binding for a procedure TCW-74 deletes is removed and its text reviewed |
-| `connected-projects` | `projects`, with the same `parent`, `children` and `upstream` entries (TCW-73 Design 9.3; the name is still among TCW-73's owner questions). The other renamed commands and flags, such as `tcw work nodes`, `provision --refresh` and `validate --no-recurse`, come from TCW-73's old-to-new command table (TCW-73 Design 2), which the guide copies |
+| `connected-projects` | `projects`, with the same `parent`, `children` and `upstream` entries (TCW-73 Design 9.3; **[Decision, owner 2026-10-01]** the name `projects` is settled). The Feature `connected-project-registry` becomes `project-registry` (TCW-73), so a project whose own capability records or taxonomy link to that Feature renames the link. The other renamed commands and flags, such as `tcw work nodes`, `provision --refresh` and `validate --no-recurse`, come from TCW-73's old-to-new command table (TCW-73 Design 2), which the guide copies |
 
 #### 3.6 Hook variables
 
@@ -680,16 +731,16 @@ no `post` (TCW-69 Design 8).
 
 #### 6.2 Stages and statuses
 
-- **[Decision] Every optional stage is enabled** (spec, plan, review, qa,
-  postmortem). The repository already works spec and plan for every item, runs
+- **[Decision, owner 2026-10-01] Every optional stage is enabled** (spec, plan,
+  review, qa, postmortem). The repository already works spec and plan for every item, runs
   code reviews, and has the owner accept the result, which are review and qa.
-- **[Decision] Statuses:** inbox `Triage`, request `To Do`, implement
+- **[Decision, owner 2026-10-01] Statuses:** inbox `Triage`, request `To Do`, implement
   `In Progress`, completed `Done` and discarded `Won't Do` keep the statuses 2.x
   mapped to them (`tcw-config.yaml:14-21`, statuses and `pre-backlog`). `In Review` maps to 3.0 **review**,
   which its name describes; 2.x `review` items move to the new qa status. Three new
   statuses: `Specifying`, `Planning` (TCW-71's sketch uses `Specifying`) and
   `In QA`.
-- **[Decision] A global transition into each mapped status.** When several
+- **[Decision, owner 2026-10-01] A global transition into each mapped status.** When several
   transitions lead to the target's status, `advance` takes the one whose screen
   asks for nothing but a comment, and refuses with exit 3 only when that still
   leaves more than one, or none (epic decision 5; TCW-71 Design 5). TCW's workflow
@@ -698,14 +749,32 @@ no `post` (TCW-69 Design 8).
   and every forced skip has a route. A global transition and an older transition
   into the same status, both without screen fields, would be two equal candidates
   and `advance` would refuse, so the older ones (2.x's `Start` and `Accept`,
-  `tcw-config.yaml:12-13`, `:20-21`) are removed, unless the owner prefers to keep
-  one and give it a screen (Notes, question 2). The compatibility check (Design 2,
-  step 3) confirms no move is left with two candidates.
+  `tcw-config.yaml:12-13`, `:20-21`) are removed, leaving exactly one transition
+  into each mapped status. The compatibility check (Design 2, step 3) confirms no
+  move is left with two candidates.
+- **The Jira checklist. [Decision, owner 2026-10-01]** The owner makes the Jira
+  changes by hand (Design 2, step 2). The agent writes the checklist into the
+  TCW-76 implement round before the migration's step 2, one line per change, each
+  with how to confirm it was made:
+  - add the statuses `Specifying`, `Planning` and `In QA` to the TCW workflow;
+  - add one global transition, with no screen fields, into each of `Triage`,
+    `To Do`, `Specifying`, `Planning`, `In Progress`, `In Review`, `In QA`,
+    `Done` and `Won't Do`;
+  - remove the `Start` and `Accept` transitions;
+  - create whichever of the TCW Project, TCW Item, Effort and Complexity fields
+    do not exist yet, with the types TCW-71 defines, and add them to the TCW
+    project's screens;
+  - if TCW-68's Epic issue type uses a different workflow, make the same status
+    and transition changes there.
+
+  Only the `TCW` project is in the checklist. TCW-71's live tests run against the
+  separate `TCWTEST` project, which TCW-71 prepares and keeps using (owner answer
+  of 2026-10-01); nothing here changes it.
 
 #### 6.3 The Definition of Done becomes a gate and prompt text
 
-**[Decision]** Each `dod.yaml` entry (`docs/work/dod.yaml`) goes where 3.0 can
-enforce or state it:
+**[Decision, owner 2026-10-01]** Each `dod.yaml` entry (`docs/work/dod.yaml`)
+goes where 3.0 can enforce or state it:
 
 | `dod.yaml` entry | 3.0 |
 | --- | --- |
@@ -741,13 +810,13 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
 - pulling is prompt text: the example's `blob` asking for `git pull --ff-only`,
   at the head of every stage's `prompt` list;
 - committing is a `post` hook on every stage an item can be moved into (request to
-  discarded). **[Decision]** TCW binds TCW-75's script where it is,
+  discarded). **[Decision, owner 2026-10-01]** TCW binds TCW-75's script where it is,
   `command: sh docs/guide/examples/commit-item-after-move.sh`, rather than
   copying it into `scripts/`, so the example TCW documents is the one it runs. The
   script works from `TCW_ITEM_PATH`, commits only the item's folder, and succeeds
   when there is nothing to commit, as is usual in Jira mode where a move changes no
   file;
-- **[Decision] no push hook.** The owner pushes, as today
+- **[Decision, owner 2026-10-01] No push hook.** The owner pushes, as today
   (`CLAUDE.md:150`: publishing stays a human step). TCW-75's optional push entry
   is left out; the owner can add it later without any other change.
 
@@ -841,7 +910,7 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
 
 ## Acceptance criteria
 
-Criteria 1 to 10 are checked by reading the guide; criteria 11 to 26, 28 and 29
+Criteria 1 to 10 are checked by reading the guide; criteria 11 to 26 and 28 to 30
 on the epic branch after the migration commit; 27 on the epic branch before it.
 
 **The guide**
@@ -918,7 +987,9 @@ on the epic branch after the migration commit; 27 on the epic branch before it.
 23. `git diff --stat <freeze commit>..HEAD -- tcw skills agents web` prints nothing
     for the migration's commits.
 24. The implement round records the approved plan verbatim, every Jira write, and
-    every amendment made to the guide during the run.
+    every amendment made to the guide during the run; and the Jira checklist of
+    Design 6.2 with the owner's confirmation that each line was done, written
+    before step 3 ran.
 25. The implement round records the filesystem rehearsal of Design 5.2: the 2.8
     commands that built it, and a clean `tcw validate` at the end.
 26. TCW-76's first move after the migration, `tcw work advance <TCW-76 slug>` to
@@ -938,21 +1009,27 @@ on the epic branch after the migration commit; 27 on the epic branch before it.
     `docs/migration-guide-2.8-to-3.0.0.md`; bare `pytest` still passes.
 29. This item's two `upcoming/` entry files are named by its folder name and have
     no text before their first `##` heading.
+30. Every entry on TCW's prune list (Design 2, step 1), as fixed by the approved
+    plan, has a folder whose ticket is at `Won't Do` with a comment containing
+    `subject removed by TCW 3.0 (TCW-68)`; the ticket for "keep an item's folder in
+    one place" is at `Done` with a comment naming TCW-68; and `tcw work list
+    --json` (open items only) shows none of them. Checked by reading each ticket
+    once, recorded in the implement round.
 
 ### Coverage
 
 | Design | Criteria |
 | --- | --- |
 | 1 The guide's form | 1, 3, 9 |
-| 2 Steps | 2, 3 |
+| 2 Steps | 2, 3, 24, 30 |
 | 3.1–3.4 Stages, fields, documents, store root | 4, 8, 11, 12, 13, 14 |
 | 3.5 Configuration | 4, 6, 16 |
 | 3.6 Hook variables | 4, 5 |
 | 3.7 Capability records | 17, 22 |
 | 3.8–3.9 Project files, references | 7, 18, 19 |
-| 4 Jira binding | 12, 14, 15, 24 |
+| 4 Jira binding | 12, 14, 15, 24, 30 |
 | 5 Proving | 10, 24, 25 |
-| 6 TCW's configuration | 16, 26 |
+| 6 TCW's configuration | 16, 24, 26 |
 | 7 TCW's files | 18, 19, 20, 21, 28, 29 |
 | 8 Sequencing | 23, 26, 27, 28 |
 
@@ -974,7 +1051,8 @@ on the epic branch after the migration commit; 27 on the epic branch before it.
 - **Replacing existing transitions with global ones** (Design 6.2) changes how
   people move tickets by hand in Jira. With epic decision 5, an old transition
   only has to go when it competes with a global one on equal terms. Mitigation:
-  it is an owner question (Notes, question 2).
+  the owner chose to remove `Start` and `Accept` (owner answer of 2026-10-01) and
+  makes every Jira change by hand from the checklist (Design 6.2).
 - **Board changes on `main` during the freeze** would be lost or need a second
   pass. Mitigation: merge first, freeze `main`'s board, re-merge if it must change
   (Design 8.5).
@@ -989,8 +1067,10 @@ on the epic branch after the migration commit; 27 on the epic branch before it.
   `changed:` paths such as `work/customize-the-definition-of-done`, which a 3.0
   slice may remove. Unless that slice declares the removal, drift reports it.
   Mitigation: criterion 22.
-- **A large one-off ticket creation.** TCW needs up to 18 new tickets (8 items, 10
-  inbox entries) unless the prune step removes some.
+- **A large one-off ticket creation.** TCW needs up to 18 new tickets (8 unbound
+  items, 10 inbox entries). The prune does not reduce that number, since pruned
+  entries are recorded as `Won't Do` tickets (Design 2, step 1), but only 8 of the
+  18 stay open: 4 items and 4 inbox entries.
 
 ## Notes
 
@@ -1003,11 +1083,13 @@ Each is marked **[Decision]** above:
 - checks are read-only shell commands; the CLI is used only at the end (1.4);
 - three kinds of stop only (1.5);
 - Jira writes have REST forms (1.7) and are safe to repeat and logged (1.8);
-- a survey step with one consolidated plan, including a prune list (2.1);
+- a survey step with one consolidated plan, including a prune list (2.1); TCW's
+  prune list confirmed by the owner on 2026-10-01;
 - the Jira compatibility check runs in a scratch folder after the config rewrite
   (2.3);
 - Jira mode writes a full `item.yaml` first and reduces it at binding (2.4);
-- ignored discarded folders are listed and, if kept, tracked (3.1);
+- ignored discarded folders are listed and, if kept, tracked (3.1); for TCW none
+  is kept unless named (confirmed 2026-10-01);
 - `initial-request.md` wins over `intake.md`, which is appended when different
   (3.3);
 - acceptance history maps to `qa` rounds, `judges: 1`, rework before acceptance
@@ -1021,16 +1103,20 @@ Each is marked **[Decision]** above:
 - request text goes to an empty body, otherwise to a comment (4.4);
 - a filesystem-mode rehearsal proves the rest of the guide (5.2);
 - TCW enables every optional stage, with `Specifying`, `Planning` and `In QA` as
-  new statuses and `In Review` as review (6.2);
-- one global transition into each mapped status, with the older competing ones
-  removed (6.2);
+  new statuses and `In Review` as review (6.2; confirmed 2026-10-01);
+- one global transition into each mapped status, with `Start` and `Accept`
+  removed (6.2; confirmed 2026-10-01);
+- the owner does TCW's Jira administration from a checklist in the implement
+  round (2.2, 6.2; confirmed 2026-10-01);
 - the Definition of Done splits into the built-in gates, `tcw validate` as the
   project gate, and `docs/lifecycle/review.md`: "tests pass" and "docs synced" are
   review-stage instructions, not gates, because the suite outlasts the 300-second
-  hook limit and documentation-sync is a skill, which `pre` cannot run (6.3);
+  hook limit and documentation-sync is a skill, which `pre` cannot run (6.3;
+  confirmed 2026-10-01);
 - `Tracker-Change` becomes `Jira-Change`; upcoming files are named by folder
   (6.4);
-- TCW binds TCW-75's commit script where it is, and has no push hook (6.5);
+- TCW binds TCW-75's commit script where it is, and has no push hook (6.5;
+  confirmed 2026-10-01);
 - the documentation allowance module and its guard test are deleted once empty
   (7);
 - completed epic items are kept, not deleted (8.3);
@@ -1094,6 +1180,9 @@ now settled:
     reported as unchecked findings (TCW-71 Design 9.2; epic decision 10).
   - Two routes into one status: settled by epic decision 5; TCW's own workflow is
     handled in Design 6.2.
+  - Live tests: settled by the owner on 2026-10-01; TCW-71's live tests keep
+    using the `TCWTEST` project, so this slice's Jira checklist covers only `TCW`
+    (Design 6.2).
   - Creating completed tickets: TCW-71 notes that TCW cannot create a ticket
     directly at a later status; the guide uses REST writes for it and never
     `tcw work new` (Design 4.1).
@@ -1103,9 +1192,10 @@ now settled:
 - **TCW-73.**
   - `Planning doc` and `Tracker` in `CAP_FIELDS`: settled by epic decision 9.
   - `spec/capabilities.yaml` in its ticket: settled by epic decision 19.
-  - The "node" key names: `connected-projects` becomes `projects` (TCW-73
-    Design 9.3), which the guide follows; the name is still among TCW-73's owner
-    questions.
+  - The "node" key names: settled by the owner on 2026-10-01:
+    `connected-projects` becomes `projects` and the Feature
+    `connected-project-registry` becomes `project-registry` (TCW-73), and the
+    guide's configuration table lists both (Design 3.5).
 - **TCW-74.**
   - `spec/capabilities.yaml`: settled by epic decision 19.
   - Whether `create-work` survives: settled; it is rewritten (TCW-74 Design 5.1),
@@ -1126,34 +1216,25 @@ now settled:
 
 ### Questions only the owner can answer
 
-1. **Status names and stages.** TCW needs three new Jira statuses for the stages it
-   enables. Are `Specifying`, `Planning` and `In QA` the names you want, and should
-   every optional stage be enabled for TCW? Recommended: yes to both, since the
-   repository already works each of those stages.
-2. **The TCW Jira workflow.** Design 6.2 adds a global transition into each mapped
-   status and removes `Start` and `Accept`, which would otherwise compete with them.
-   Does anyone else move TCW tickets by hand in a way that depends on those two, is
-   the project company-managed or team-managed, and does TCW-68's Epic issue type
-   use a different workflow? Recommended: remove both, unless someone relies on
-   them, in which case keep them behind a screen.
-3. **Jira administration.** Do the TCW Project, TCW Item, Effort and Complexity
-   fields exist, and can the agent create fields, statuses and transitions, or does
-   the owner do step 2? Recommended: the owner does step 2 from the plan's list,
-   since workflow changes affect the shared project.
-4. **The prune list.** Candidates on today's board whose subject 3.0 removes: TCW-33
-   (`scaffold`), TCW-10 (tracker workflow vs `statuses`), TCW-40 (claim
-   exclusivity), TCW-26 (mapped tracker fields), TCW-54 (aggregating child
-   boards in `tcw serve`); unbound `2026-09-21-two-tracker-create-runs-…`,
-   `2026-09-22-let-a-leftover-start-record-…`,
-   `2026-09-22-refuse-an-unconfigured-start-…` and
-   `2026-09-24-give-a-strict-tracker-claim-…`; and inbox entries about start
-   records, worktrees, the merge-back, `state.yaml` and status folders. TCW-71's
-   Notes reach the same conclusion for TCW-10, TCW-26, TCW-40 and the four unbound
-   items. Which go? Recommended: discard all of these rather than migrate them.
-5. **Untracked discarded items.** Are there discarded items on the machine that
-   will run the migration that git never saw (ignored by `.gitignore:29`), and
-   should they be kept? Recommended: list them at step 0 and keep none unless you
-   name one.
+All five questions this spec asked were settled by the owner on 2026-10-01:
+
+1. Status names and stages. Settled by the owner on 2026-10-01: every optional
+   stage is enabled, with spec `Specifying`, plan `Planning` and qa `In QA`
+   (Design 6.2).
+2. The TCW Jira workflow. Settled by the owner on 2026-10-01: `Start` and
+   `Accept` are removed, leaving one global transition per mapped status
+   (Design 6.2).
+3. Jira administration. Settled by the owner on 2026-10-01: the owner does it by
+   hand from a checklist this slice writes; TCW-71's live tests reuse `TCWTEST`
+   (Design 2, step 2; Design 6.2).
+4. The prune list. Settled by the owner on 2026-10-01: the whole list is
+   discarded with the reason `subject removed by TCW 3.0 (TCW-68)`, and "keep an
+   item's folder in one place" is closed as done by the epic (Design 2, step 1).
+5. Untracked discarded items. Settled by the owner on 2026-10-01: they are
+   listed at the survey and none is kept unless the owner names it (Design 3.1).
+
+The inbox entries in the prune list are the six the owner's question named
+(Design 2, step 1): five discarded, one closed as done.
 
 ### Other notes
 
