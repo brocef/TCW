@@ -618,7 +618,7 @@ The binding lists:
   error, because TCW cannot run a skill and a gate that is only reported
   would always pass.
 - `post` takes `command` and `skill` bindings; a skill is reported, not run.
-- `when:` takes `tags` and `not-tags`. **[Decision]** `when: {type: …}` is an
+- `when:` takes `tags` and `not_tags`, spelled as today. **[Decision]** `when: {type: …}` is an
   error, because 3.0 items have no type.
 
 The checks:
@@ -912,7 +912,7 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
 
 ## Notes
 
-- **Decisions made in this spec, for the owner to confirm.** Each is marked
+- **Decisions made in this spec, confirmed by the owner on 2026-10-01.** Each is marked
   **[Decision]** in the design:
   - the model lands as a library and TCW-70 wires it in;
   - implement rounds carry no verdict;
@@ -957,8 +957,8 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
   rejection, checked the discard reason after the move, returned "not moved"
   exit codes after a move, reused 2.x hook code that does not fit 3.0 items,
   and tied the records gate to the optional spec stage. This version
-  addresses each. **`plan.md` was written against the first version and must
-  be revised before implementation.**
+  addresses each. The owner confirmed every **[Decision]** above on
+  2026-10-01, and `plan.md` was rewritten against this version.
 - **Driving this item.** This item's implementation edits `tcw/`. From
   `implement` onwards, the repository's board is driven by editing files, per
   `CLAUDE.md`.
