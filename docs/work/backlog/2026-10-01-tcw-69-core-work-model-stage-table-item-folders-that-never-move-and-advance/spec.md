@@ -369,6 +369,10 @@ class WorkBackend(Protocol):
    - `stages`: a set of stage names, or `None` for the default;
    - `parent`;
    - `assignee`;
+   - `tags`: a set of tags, or `None`; an item matches when it carries any
+     of them. **[Decision, owner 2026-10-01]** This keeps 2.8's
+     `tcw work list --tag` in 3.0.0 (filesystem: the item's tags; Jira: a
+     `labels` clause);
    - `all`: include every item whatever its stage.
 
    The default (`stages=None`, `all=False`) is every item at a non-terminal

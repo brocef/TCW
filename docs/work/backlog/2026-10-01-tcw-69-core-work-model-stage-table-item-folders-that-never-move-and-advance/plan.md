@@ -237,7 +237,7 @@ imported. In particular, `resolve.select` and the 2.x binding parser
 ## Task 6: Backend interface and the memory backend (spec Design 5)
 
 - **Create** `tcw/work/backend.py` with:
-  - `Query`, a frozen dataclass (`stages`, `parent`, `assignee`, `all`), and
+  - `Query`, a frozen dataclass (`stages`, `parent`, `assignee`, `tags`, `all`), and
     `default_includes(item_stage) -> bool`, the default rule: a non-terminal
     stage or no stage;
   - `Comment`, a frozen dataclass (`at`, `author`, `text`);
@@ -269,7 +269,7 @@ imported. In particular, `resolve.select` and the 2.x binding parser
     only that the names exist, which is all a protocol check can prove);
   - that the default `list` includes an item with no stage and hides
     terminal ones;
-  - that `all` shows terminal items, and `parent` filters;
+  - that `all` shows terminal items, and `parent` and `tags` filter (an item matches when it carries any of the given tags);
   - that `lookup("TCW-6")` does not match a folder `TCW-67-x`;
   - AC 21: the three reads (request text, comments newest first and limited,
     the current user).
