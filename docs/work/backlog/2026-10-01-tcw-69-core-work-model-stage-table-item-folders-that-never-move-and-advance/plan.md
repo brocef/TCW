@@ -53,11 +53,14 @@ imported. In particular, `resolve.select` and the 2.x binding parser
 
 - **Create** `tcw/exit.py` with the code constants `OK=0`, `ERROR=1`,
   `USAGE=2`, `REFUSED=3`, `NOT_FOUND=4`, `UNREACHABLE=5`, `MOVED_WITH_PROBLEM=6`.
-- **Create** `tcw/work/errors.py` with a base `WorkError(Exception)` carrying a
+- **Create** `tcw/errors.py` with a base `TcwError(Exception)` carrying a
   `code` attribute, and its subclasses `UsageError` (2), `Refused` (3),
   `NotFound` (4), `Unreachable` (5), `MovedWithoutNote` (6) and
-  `BackendError` (1). The errors live in their own module so that `model.py`
-  and `backend.py` can both raise them without importing each other.
+  `BackendError` (1). `Refused` takes an optional `name` (a backend name such
+  as a Jira ticket key) for a refusal after the backend created a record. The
+  errors live at the top of the package so that `model.py` and `backend.py`
+  can both raise them without importing each other, and so that the taxonomy
+  and capabilities commands can use them later (TCW-73).
 - **Create** `tests/work/test_errors.py`: each error carries its code, and the
   codes equal the `tcw/exit.py` constants. (TCW-73's table is not in the
   repository, so the test pins the numbers the spec states.)
@@ -237,7 +240,8 @@ imported. In particular, `resolve.select` and the 2.x binding parser
   - `Query`, a frozen dataclass (`stages`, `parent`, `assignee`, `all`), and
     `default_includes(item_stage) -> bool`, the default rule: a non-terminal
     stage or no stage;
-  - `WorkBackend`, a `runtime_checkable` `typing.Protocol` with the eight
+  - `Comment`, a frozen dataclass (`at`, `author`, `text`);
+  - `WorkBackend`, a `runtime_checkable` `typing.Protocol` with the eleven
     operations and the attributes `project`, `external_stages` and
     `inbox_items`.
 - **Create** `tests/work/memory_backend.py`. Its `MemoryBackend`:
@@ -254,14 +258,21 @@ imported. In particular, `resolve.select` and the 2.x binding parser
   - in `lookup`, matches a name only when a folder is exactly that name
     followed by `-`;
   - in `list`, applies `Query` and raises `UsageError` for `stages` with
-    `all`.
+    `all`;
+  - keeps the request text given to `create` for `read_request`, keeps every
+    comment (including trace notes from `set_stage`) with a timestamp for
+    `read_comments`, and returns a constructor-given user name (or `None`)
+    from `current_user`. The three reads are not recorded as writes in
+    `calls`.
 - **Create** `tests/work/test_memory_backend.py`. It checks:
   - that the memory backend satisfies the protocol (`isinstance`; this proves
     only that the names exist, which is all a protocol check can prove);
   - that the default `list` includes an item with no stage and hides
     terminal ones;
   - that `all` shows terminal items, and `parent` filters;
-  - that `lookup("TCW-6")` does not match a folder `TCW-67-x`.
+  - that `lookup("TCW-6")` does not match a folder `TCW-67-x`;
+  - AC 21: the three reads (request text, comments newest first and limited,
+    the current user).
 
   The later tasks rely on these behaviors, so they are pinned here.
 - **Proof:** `pytest tests/work -q`.
@@ -341,7 +352,8 @@ backend it composes, so every input is already tested.
   (`base.py:1194-1210`) without `type`.
 - **Running hooks.** The environment is `os.environ` plus the spec's
   variables, built by a local `_hook_env` (the 2.x `hooks.hook_env` is not
-  changed or used). Each binding is run by calling `run_bindings([binding],
+  changed or used). `TCW_SLUG` is the full `project/folder` slug, and the
+  working directory is the project root. Each binding is run by calling `run_bindings([binding],
   project_root, env, config.hooks.timeout, label)`, one binding at a time.
   Without `force`, the first failure stops the loop and refuses the move.
   With `force`, every binding runs and each failure is collected into
@@ -383,8 +395,8 @@ backend it composes, so every input is already tested.
 ## Task 10: Structural guards (AC 5, AC 19)
 
 - **Create** `tests/work/test_model_guards.py`. It uses `ast` to walk the new
-  modules (`errors`, `advance`, `gates`, `layout`, `backend`, `references`,
-  `config`, `model`) and `tcw/exit.py`.
+  modules (`advance`, `gates`, `layout`, `backend`, `references`, `config`,
+  `model`), `tcw/exit.py` and `tcw/errors.py`.
 - **AC 5.** Every string constant that is not a docstring is checked for a
   stage name as a whole word (`\b<name>\b`). In `model.py`, stage names may
   appear only inside the `STAGES` assignment. String pieces of f-strings and
@@ -478,6 +490,7 @@ Then:
   - AC 16: Task 4;
   - AC 17: Task 9;
   - AC 19: Task 10;
-  - AC 20: Tasks 7 and 11.
+  - AC 20: Tasks 7 and 11;
+  - AC 21: Task 6.
 
   Task 1 and Task 6 are infrastructure for these.

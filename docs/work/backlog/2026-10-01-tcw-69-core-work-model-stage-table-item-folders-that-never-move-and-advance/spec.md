@@ -9,16 +9,22 @@ lifecycle, `advance`, the `node`, `transition` and `definition-of-done` taxonomy
 terms) change in the slices that ship the behavior: TCW-70 wires the model into
 the CLI with the filesystem backend, and TCW-73 finishes the command surface.
 
-Two existing records will need attention in those slices, and this spec names
-them so they are not missed:
+Existing records that need attention in those slices, named here so they are
+not missed:
 
-- `work/archive-a-resolved-item-before-it-is-deleted`, the ledger's one `work/`
-  capability today. TCW-70 removes it, because 3.0 never deletes item folders.
+- **The 46 records under `docs/capabilities/work/`.** Most describe 2.x
+  behavior this redesign removes (status directories, `start`, `submit`,
+  `complete`, the tracker, the Definition of Done, archiving before deletion).
+  TCW-70, which removes the 2.x work store, decides the fate of each one; TCW-71
+  takes the tracker records if TCW-70 leaves them, and TCW-73 adjusts command
+  wording afterwards. (An earlier version of this spec said the ledger had one
+  `work/` record. That was wrong.)
 - `capabilities/detect-capability-drift`. It promises that drift "never makes
   the capabilities axis depend on the work axis", and works by following each
   capability's `Planning doc` field. The 3.0 drift rule (Design 7) reads
-  completed work items instead. TCW-73, which wires `capabilities drift`, rewrites
-  that record; TCW-76 decides what happens to the `Planning doc` field.
+  completed work items instead. TCW-70, which wires `capabilities drift`,
+  rewrites that record. TCW-73 removes the `Planning doc` and `Tracker` fields
+  from the capability schema, and TCW-76 removes them from existing records.
 
 ## Problem
 
@@ -79,9 +85,10 @@ throughout ~30,000 lines. Five problems follow.
 5. **A shared item-folder layout.** Item folders never move. Each stage's files
    sit in a stage folder: a revised document, or numbered rounds with
    verdicts, plus timestamped handoffs. Paths are computed in one place.
-6. **An eight-operation backend interface** that both TCW-70 and TCW-71 can
+6. **An eleven-operation backend interface** that both TCW-70 and TCW-71 can
    implement: create, read, list, update properties, set stage, comment,
-   rename, and look up a backend name (such as a Jira key).
+   rename, look up a backend name (such as a Jira key), read the request,
+   read comments, and name the current user.
 7. **The `work.*` configuration shape** is parsed and validated, and unknown or
    removed keys are errors.
 8. **No git state changes** anywhere in the new code.
@@ -124,8 +131,6 @@ throughout ~30,000 lines. Five problems follow.
 The new code lives in `tcw/work/` beside the 2.x modules, under names that do
 not collide:
 
-- `errors.py`: the exception classes, so that `model.py` and `backend.py` can
-  both raise them without importing each other;
 - `model.py`: identity, properties, the stage table;
 - `config.py`: `work.*` parsing;
 - `layout.py`: item-folder paths and round verdicts;
@@ -134,7 +139,13 @@ not collide:
 - `advance.py`: the move operation;
 - `references.py`: reference checks for `validate`.
 
-Exit codes go in `tcw/exit.py` because all three axes use them.
+Two modules go at the top of the package because all three axes use them:
+
+- `tcw/exit.py`: the exit codes;
+- `tcw/errors.py`: the exception classes, each carrying its exit code. They
+  sit outside `tcw/work/` so that `model.py` and `backend.py` can both raise
+  them without importing each other, and so that the taxonomy and
+  capabilities commands can use them too (TCW-73).
 
 ### 1. Identity (`model.py`)
 
@@ -169,15 +180,22 @@ Exit codes go in `tcw/exit.py` because all three axes use them.
    - `title`;
    - `stage: str | None` (`None` means the backend reports no stage);
    - `created: date`;
-   - `priority`;
-   - `effort` and `complexity`;
+   - `priority: str | None`;
+   - `effort` and `complexity` (each `str | None`);
    - `tags: tuple[str, ...]`;
    - `assignee: str | None`;
    - `parent: Slug | None`;
-   - `blocked_by: tuple[Slug, ...]`.
+   - `blocked_by: tuple[Slug, ...]`;
+   - `untracked: tuple[str, ...]`: the backend names of linked parent or
+     blocker records that have no item (in Jira, ticket keys such as
+     `TCW-12`). It is always empty in filesystem mode, where every reference
+     is an item. `show` prints them as bare keys (TCW-71).
 
    There is no history, resolution, type, initiative, owner, worktree, branch,
-   schema version or stored slug.
+   schema version or stored slug. **[Decision]** `priority` may be `None` when
+   the backend has no priority to report (a Jira project without the Priority
+   field, TCW-71); the filesystem backend always has one, because `new`
+   defaults it to `medium`.
 2. The scales are named and ordered:
    - `PRIORITIES = (highest, high, medium, low, lowest)`;
    - `SIZES = (low, medium, high, very-high)`, used for both effort and
@@ -342,6 +360,9 @@ class WorkBackend(Protocol):
     def comment(self, folder: str, text: str) -> None: ...
     def rename(self, folder: str, title_words: str) -> Item: ...
     def lookup(self, name: str) -> str | None: ...
+    def read_request(self, folder: str) -> str | None: ...
+    def read_comments(self, folder: str, limit: int | None = None) -> list[Comment]: ...
+    def current_user(self) -> str | None: ...
 ```
 
 1. `Query` fields are:
@@ -359,8 +380,11 @@ class WorkBackend(Protocol):
    allows it (Jira: one transition request carrying the comment; filesystem:
    write the stage, then the comment file). It returns the stage the backend
    reports after the move (Jira re-reads the status). It raises:
-   - `Refused` when the backend cannot make this move (Jira: no single
-     transition offered to the target's status), having changed nothing;
+   - `Refused` when the backend cannot make this move, having changed
+     nothing. In Jira that means no usable transition into the target's
+     status: when several are offered, TCW-71 picks the one with no screen
+     fields other than a comment, and refuses only if that still leaves more
+     than one, or none;
    - `MovedWithoutNote` when the stage changed but the note could not be
      recorded.
 
@@ -372,16 +396,36 @@ class WorkBackend(Protocol):
    folder name; it is not prefix matching of slugs, which TCW-73 forbids.
    **[Decision]** This is the eighth operation; the ticket listed seven, but
    TCW-73's slug input accepts a Jira key and nothing else could resolve it.
-4. Errors are exception classes in `errors.py`, each carrying an exit code:
+4. **The three reads.** **[Decision, owner 2026-10-01]** Operations nine to
+   eleven exist because several slices need to read what only the backend
+   holds: the implement prompt reads the latest Jira qa rejection (TCW-74),
+   `show` prints the request and comments (TCW-73), the web viewer displays
+   them (TCW-77), and `list --mine` and `--assign-me` need to know who is
+   asking (TCW-71, TCW-72).
+   - `read_request(folder)` returns the request text, or `None` when the item
+     has none yet. Filesystem: `request/request.md`. Jira: the ticket body,
+     converted to plain text.
+   - `read_comments(folder, limit)` returns comments newest first, at most
+     `limit` of them (all when `None`). A `Comment` holds `at` (a UTC
+     timestamp), `author` (`str | None`) and `text`. Filesystem: the files in
+     `comments/` (TCW-70). Jira: the ticket's comments.
+   - `current_user()` returns the name `assignee` is compared with, or `None`
+     when no identity is configured. Filesystem: `user.name` from personal
+     configuration (TCW-72). Jira: the account the credentials belong to.
+   They change nothing, and each is safe to call any number of times.
+5. Errors are exception classes in `tcw/errors.py`, each carrying an exit code:
    - `UsageError` (2);
-   - `Refused` (3);
+   - `Refused` (3), which may also carry a backend name (in Jira, a ticket
+     key) when a refusal happens after the backend created a record, such as
+     `new` stopping after the ticket exists but before the folder does
+     (TCW-71);
    - `NotFound` (4);
    - `Unreachable` (5);
    - `MovedWithoutNote` (6);
    - `BackendError` (1).
-5. Each operation is atomic as far as the backend allows, and changes only
+6. Each operation is atomic as far as the backend allows, and changes only
    what it names. `create` makes the folder.
-6. **Not in the interface:**
+7. **Not in the interface:**
    - layout, paths and artifacts, which are shared files;
    - Jira-only ticket commands (`tickets list`, `tickets adopt`), TCW-71;
    - DoD, graveyard, retention, claims, plan stages, sidecars, the inbox
@@ -444,11 +488,18 @@ every other result, including refusals, is returned as an `Outcome`** whose
    A `reason` given on any other move is accepted and recorded.
 5. **Gates.** These run only for the target, built-in gates first, then its
    configured `pre` bindings whose `when:` matches the item (Design 8). Hooks
-   run with these environment variables added to the caller's environment:
-   `TCW_SLUG`, `TCW_STAGE` (the target), `TCW_FROM_STAGE` (empty when there is
-   none), `TCW_ITEM_PATH`, `TCW_PROJECT_ROOT`, and `TCW_FORCED` and
-   `TCW_REASON` when forced. Each hook runs under the configured timeout
-   (`work.hooks.timeout`).
+   run with the project root as their working directory, as 2.x hooks do
+   (`tcw/work/hooks.py:94`), and with these environment variables added to
+   the caller's environment:
+   - `TCW_SLUG`: the full slug, `project/folder` (2.x passed the bare folder
+     name);
+   - `TCW_STAGE`: the target stage;
+   - `TCW_FROM_STAGE`: the current stage, empty when there is none;
+   - `TCW_ITEM_PATH`: the item folder;
+   - `TCW_PROJECT_ROOT`: the project root;
+   - `TCW_FORCED` and `TCW_REASON`, only when forced.
+
+   Each hook runs under the configured timeout (`work.hooks.timeout`).
    - Without `force`, gates run in order and stop at the first failure, which
      refuses the move (exit 3).
    - With `force`, every gate runs and every failure is collected. Each is
@@ -547,7 +598,7 @@ reading but reports only what is wrong at any point in the work: an unreadable
 or malformed file, an unknown key, an unchecked answer, and an `inherited`
 removal. It does not report changes that are simply not made yet. This
 replaces today's `capability_gate(in_progress=True)` call in `tcw validate`
-(`tcw/validate.py:268-295`); TCW-73 wires it in.
+(`tcw/validate.py:268-295`); TCW-70 wires it in.
 
 **The completion gate.** For each enabled verdict stage that is not in
 `backend.external_stages`, `current_verdict` must be `accepted`. `none`,
@@ -575,7 +626,7 @@ declarations against the records today.
 This replaces `_shipped_but_missing` (`tcw/capabilities/cli.py:200-254`), which
 follows `Planning doc` fields instead. Items completed before 3.0 kept no
 declaration file in a folder (most are now graveyard records), so 3.0 drift
-does not cover them; see Capability changes. TCW-73 wires it into
+does not cover them; see Capability changes. TCW-70 wires it into
 `capabilities drift`.
 
 **No Definition of Done.** No gate reads `dod.yaml`.
@@ -677,7 +728,7 @@ runner. The new modules write only the files they name.
 
 | Operation | Verdict |
 | --- | --- |
-| create, read, list, update, set stage, comment, rename, lookup | **Backend interface.** Jira implements each one: issue create, get, JQL, edit, transition with an optional comment, comment, a local folder rename plus a TCW Item field update, and a key-to-folder match. |
+| create, read, list, update, set stage, comment, rename, lookup, read request, read comments, current user | **Backend interface.** Jira implements each one: issue create, get, JQL, edit, transition with an optional comment, comment, a local folder rename plus a TCW Item field update, a key-to-folder match, the issue body, the issue's comments, and the account the credentials belong to. The filesystem implements each over files and personal configuration. |
 | `advance`, gates, `discard` | **Model.** Built only on the interface, the layout and the records reader. |
 | Item-folder layout, rounds, handoffs, `path` | **Shared layout**, not an interface operation. Git owns technical artifacts in both modes, so the files exist in both. |
 | `external_stages`, `inbox_items` | **Backend facts.** These are declared, not detected. |
@@ -717,8 +768,8 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
 4. **Blocks are derived.** After `edit --blocks` semantics (updating B's
    `blocked_by` with A), `blocks_of(A)` returns `[B]`, and A's own record is
    unchanged.
-5. **No literal stage names.** A test scans `tcw/work/{errors,advance,gates,
-   layout,backend,references,config}.py` and `tcw/exit.py`. No string constant
+5. **No literal stage names.** A test scans `tcw/work/{advance,gates,
+   layout,backend,references,config}.py`, `tcw/exit.py` and `tcw/errors.py`. No string constant
    in them contains a stage name as a whole word (so `"spec/capabilities.yaml"`
    fails and `"specification"` passes), docstrings excepted. In `model.py`,
    stage names appear only inside `STAGES`.
@@ -859,6 +910,15 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
     a temporary git repository and asserts that `git rev-parse HEAD`,
     `git status --porcelain` and `git for-each-ref` are unchanged.
 20. **2.x untouched.** The full existing test suite passes unchanged.
+21. **The three reads, on the memory backend.**
+    - `read_request` returns the text given to `create`, and `None` for an
+      item created without one.
+    - After three `comment` calls, `read_comments(folder)` returns them newest
+      first, and `read_comments(folder, limit=1)` returns only the newest.
+    - A forced `advance` adds its trace note to what `read_comments` returns.
+    - `current_user()` returns the name the backend was constructed with, and
+      `None` when it was given none.
+    - None of the three changes what `calls` records as a write.
 
 ### Coverage
 
@@ -868,7 +928,7 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
 | 2 Properties | 3, 4 |
 | 3 Stage table | 5, 6, 8 (side stage, discard column) |
 | 4 Layout, verdicts | 7 (stale), 14, 15 |
-| 5 Backend interface | 8, 10 (`set_stage` note and errors), 7–14 through the memory backend. Atomicity is per backend; TCW-70 and TCW-71 own it. `lookup` is exercised by TCW-71. |
+| 5 Backend interface | 8, 10 (`set_stage` note and errors), 21 (the three reads), 7–14 through the memory backend. Atomicity is per backend; TCW-70 and TCW-71 own it. `lookup` is exercised by TCW-71. |
 | 6.1 Usage | 8 |
 | 6.2 Read | 7 (`NotFound`), 12 |
 | 6.3 Target | 7, 8 (inbox) |
@@ -924,7 +984,8 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
   - `capabilities.yaml` lives at the item root, not under `spec/` (the
     ticket and TCW-73's ticket say `spec/capabilities.yaml`; both need
     updating);
-  - `lookup` is an eighth backend operation;
+  - `lookup` is an eighth backend operation (later joined by three reads;
+    see the cross-slice decisions below);
   - `set_stage` records the trace note as part of the move and returns the
     reported stage;
   - exit 6 also covers a missing trace (TCW-73's table needs widening);
@@ -940,15 +1001,32 @@ criterion names a helper, it is checked **through `advance`** (or `discard`).
     items only;
   - the "node" sweep, including config keys and `TCW_NODE_ROOT`, goes to
     TCW-73 (its ticket needs widening).
-- **Changes other tickets need.** TCW-73: exit 6's meaning, the "node" sweep
-  scope, `capabilities drift` reading `<item>/capabilities.yaml`, and the
-  `detect-capability-drift` record. TCW-71: `set_stage` with a note and a
-  reported stage, `lookup`, the qa reason rules. TCW-72: the failed `post`
-  hook's layer in the outcome. TCW-76: the hook variable renames
-  (`TCW_STATUS`, `TCW_TRANSITION`, `TCW_NODE_ROOT` and `TCW_RESOLUTION` become
-  `TCW_STAGE`, `TCW_FROM_STAGE` and `TCW_PROJECT_ROOT`, and the resolution
-  goes), the `artifacts` move, and `Planning doc`. Nothing has been posted to
-  those tickets.
+- **Changes other tickets need.** These were posted to the tickets on
+  2026-10-01, except where noted:
+  - TCW-73: exit 6's meaning, the "node" sweep scope, `capabilities drift`
+    reading `<item>/capabilities.yaml`.
+  - TCW-71: `set_stage` with a note and a reported stage, `lookup`, the qa
+    reason rules.
+  - TCW-72: the failed `post` hook's layer in the outcome.
+  - TCW-76: the hook variable renames, the `artifacts` move, and
+    `Planning doc`. The renames map by meaning, not by position: in 2.x
+    `TCW_STATUS` is the source status in a `pre` hook and the destination in
+    a `post` hook (`tcw/work/cli.py:1616`, `:1672`), so it becomes
+    `TCW_FROM_STAGE` in `pre` hooks and `TCW_STAGE` in `post` hooks;
+    `TCW_TRANSITION` becomes `TCW_STAGE`; `TCW_NODE_ROOT` becomes
+    `TCW_PROJECT_ROOT`; `TCW_RESOLUTION` goes.
+- **Cross-slice decisions, owner 2026-10-01** (after all nine slices were
+  specced). These changed this spec:
+  - three read operations join the interface, making eleven: `read_request`,
+    `read_comments`, `current_user` (Design 5.4);
+  - `Item` gains `untracked`, `priority` may be `None`, and `Refused` may
+    carry a ticket key (Design 2.1, 5.5);
+  - the exception classes live in `tcw/errors.py`, not `tcw/work/errors.py`;
+  - `TCW_SLUG` is the full slug and hooks run from the project root
+    (Design 6.5);
+  - TCW-70, not TCW-73, rewrites the `detect-capability-drift` record and
+    wires drift and the mid-work records check into commands; TCW-73 removes
+    the `Planning doc` and `Tracker` capability fields.
 - **The ticket's open questions** are answered in Design 7 (the
   `capabilities.yaml` schema) and Design 9 (stage ahead of artifacts).
 - **Review.** A multi review on 2026-10-01 (four Claude reviewers and the
