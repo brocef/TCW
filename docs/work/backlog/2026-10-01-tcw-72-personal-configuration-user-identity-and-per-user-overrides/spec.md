@@ -23,29 +23,36 @@ Planned ledger changes. No records are written at this stage.
   refusal when a personal file sets a shared key.
 - `cli/show-the-effective-configuration`: `tcw config show [--origin]`.
 - `work/tell-tcw-who-i-am`: `user.name` in filesystem mode, the Jira
-  credentials in Jira mode, `list --mine` and `--assign-me`, and the message
-  when no identity is set.
+  credentials in Jira mode (both answered through the backend's
+  `current_user()`), `list --mine` and `--assign-me`, and the message when no
+  identity is set.
 
 **Capabilities, changed:**
 
 - `work/configure-the-work-lifecycle`, `work/configure-procedures`,
   `work/run-a-lifecycle-stage` and `work/run-a-procedure`: each describes
   `builtin: true`, which this slice replaces with `inherit: true`.
-  `run-a-lifecycle-stage` also gains the stderr note when personal layers
-  changed a prompt. TCW-70 rewrites the same records for the 3.0 `work.stages`
-  shape; whichever slice lands second reconciles the text.
+  `run-a-lifecycle-stage` and `run-a-procedure` also gain the stderr note when
+  personal layers changed the resolved list. TCW-70 decides whether each
+  `docs/capabilities/work/` record survives and rewrites it for the 3.0
+  `work.stages` shape (epic decision 12); this slice edits only the sentences
+  about `builtin`/`inherit` and the personal note in the records as TCW-70
+  leaves them, and TCW-73 later owns any change to their command wording.
 - `cli/validate-a-node`: warns when `tcw-config.local.yaml` is tracked, and
-  reports problems in personal files.
+  reports problems in personal files. (TCW-73 renames the record for the
+  "node" to "project" sweep; this slice edits whichever name it has then.)
 - `cli/scaffold-the-doc-trees` (`tcw init`): adds `tcw-config.local.yaml` to
   `.gitignore`.
-- `skills/configure`: the configure skill now covers personal configuration
-  and holds the shared/overridable table.
+
+**Not this slice's:** `skills/configure`. Every file under `skills/configure/`,
+and the record describing that skill, belong to TCW-75 (epic decision 3),
+including the shared/overridable table (Design 12).
 
 **Checked and unchanged:** `cli/point-tcw-at-a-project-i-already-have`
 (`TCW_PROJECT_<ID>`). Design 11 keeps that variable as the only way to say
 where a project lives on this machine. `work/start-a-work-item` describes
-`TCW_WORK_OWNER`, but the `start` verb and its record go in TCW-70 and TCW-73,
-so this slice does not edit it.
+`TCW_WORK_OWNER`, but the `start` verb and its record are removed by TCW-70
+(epic decisions 2 and 12), so this slice does not edit it.
 
 ## Problem
 
@@ -113,14 +120,21 @@ so this slice does not edit it.
 - **The model and the `work.*` shape.** TCW-69 defines them. This slice changes
   TCW-69's parser only where the ticket says (`builtin` becomes `inherit`) and
   where Notes lists a cross-slice change.
-- **Command names and the exit-code table.** TCW-73 names `tcw config show`,
-  `list --mine` and `--assign-me` and fixes the table. This slice implements
-  their behavior, using TCW-73's codes (1 for a configuration problem, 2 for a
-  usage mistake).
-- **The Jira backend.** How TCW-71 authenticates, and how it turns its
-  credentials into an identity, is TCW-71's. This slice fixes only the
-  interface member it answers through (Design 9.2) and which credential keys a
-  person may override.
+- **Command names, output format and the exit-code table.** TCW-73 owns the
+  surface of every command (epic decision 2): it names `tcw config show`,
+  `list --mine` and `--assign-me`, fixes the table, and sets the output rules
+  (epic decision 10: one identifier per stdout line, details through `--json`,
+  warnings in the `warning:` form). This slice implements their behavior
+  inside those rules, using TCW-73's codes (1 for a configuration problem, 2
+  for a usage mistake). `config show` is in TCW-73's per-command table as a
+  command that prints "its text", like `stage prompt`.
+- **The Jira backend.** How TCW-71 authenticates, how it answers
+  `current_user()`, and how it parses `work.jira` (including the shape of a
+  credential variable name) are TCW-71's. This slice decides only which
+  credential keys a person may override.
+- **The backend interface.** TCW-69 defines its eleven operations (epic
+  decision 1), including `current_user()`, which this slice's identity rule
+  calls (Design 9). This slice adds no member.
 - **Where a project lives on this machine.** It stays `TCW_PROJECT_<ID>`
   (Design 11). No personal-config key for it is added.
 - **Display preferences**, or any personal key not on the allowlist. The
@@ -128,11 +142,13 @@ so this slice does not edit it.
   them.
 - **A `--json` form of `config show`**, and any command that writes a personal
   file. Personal files are edited by hand.
-- **User guides** (TCW-75) and **the migration guide** (TCW-76). This slice
-  writes only the shared/overridable table in the configure skill's references,
-  which the ticket makes canonical.
+- **User guides and the configure skill** (TCW-75), **every other skill and
+  prompt** (TCW-74), and **the migration guide** (TCW-76). The ticket puts the
+  shared/overridable table in the configure skill's references; that folder is
+  TCW-75's (epic decision 3), so TCW-75 writes the table and this slice
+  supplies the allowlist constant it is checked against (Design 12).
 - **Validating the shape of `taxonomy`, `capabilities` and `connected-projects`**
-  in `tcw-config.yaml`. Their parsers stay where they are; this slice only
+  (`projects` after TCW-73's rename) in `tcw-config.yaml`. Their parsers stay where they are; this slice only
   decides whether a personal layer may set them (it may not).
 
 ## Design
@@ -207,7 +223,12 @@ Four terms used below:
    (`fs.py:1465-1481`, `project.py:26-43`) become one.
 3. The result is computed once per command. A command that loads config and
    gets problems exits 1 before doing anything else, except
-   `tcw config show --origin` (Design 8).
+   `tcw config show --origin` (Design 8). `load_config` itself returns its
+   problems rather than raising, so `config show --origin` and `tcw validate`
+   can print them all. **[Decision]** The CLI turns a non-empty `problems` into
+   one exception, `ConfigError`, carrying exit 1, which this slice adds to
+   `tcw/errors.py` beside TCW-69's classes (epic decision 8), so the
+   taxonomy and capabilities commands stop on it the same way.
 4. Commands that **do not** load the acting project's configuration: `tcw
    --version`, `--help` on any command, and `tcw init`, which reads and edits
    only `tcw-config.yaml` (Design 10). Every other command loads it.
@@ -277,9 +298,11 @@ Four terms used below:
 
 ### 4. What a personal layer may set
 
-1. **The allowlist.** One constant in `tcw/config.py` lists the key paths a
-   personal layer may set. `*` stands for exactly one key. Anything not on it
-   is **shared**. A key added to TCW later is shared unless it is added here.
+1. **The allowlist.** One constant, `tcw.config.PERSONAL_KEYS`, lists the key
+   paths a personal layer may set. `*` stands for exactly one key. Anything
+   not on it is **shared**. A key added to TCW later is shared unless it is
+   added here. It is a public name because TCW-75's documentation test
+   imports it to check the shared/overridable table (Design 12).
 
    | Key path | Layers |
    | --- | --- |
@@ -287,25 +310,38 @@ Four terms used below:
    | `work.stages.*.prompt` | all |
    | `work.stages.*.post` | all |
    | `work.procedures.*` | all |
-   | `work.jira.credentials.*` | all |
-   | `connected-projects.*.jira.credentials.*` | all |
+   | `work.jira.credentials.email-env` | all |
+   | `work.jira.credentials.token-env` | all |
 
-   - `work.jira.credentials.*` are the credential variable-name keys TCW-71
-     defines (TCW 2.8's are `email-env` and `token-env`,
-     `tcw/store/base.py:1620-1621`). Their exact names are TCW-71's.
-   - **[Decision]** Credential variable names inside a connected-project entry
-     are overridable too. The ticket lists connected-project entries as shared
-     and credential variable names as overridable; TCW-71 lets a delegator's
-     connected-project entry carry a target's credential variable names, which
-     falls under both. The variable names a person's shell exports are a
-     personal fact, so the narrower rule wins. The entry's other keys stay
-     shared. The key path follows TCW-73's rename of `connected-projects`.
+   - The two credential keys are the ones TCW-71's `work.jira` parser defines
+     (TCW-71 Design 1), the same names as TCW 2.8's
+     (`tcw/store/base.py:1620-1621`). They are listed by name rather than as
+     `credentials.*`, so a key TCW-71 adds to `credentials` later is shared
+     until it is added here.
+   - **[Decision] Credential variable names inside a connected-project entry
+     are shared**, like the rest of that entry. This reverses this spec's
+     earlier draft, to agree with TCW-71. When a project delegates into a Jira
+     target, TCW-71 reads the target's own `tcw-config.yaml` (with no personal
+     layers) and falls back to the delegator's connected-project `jira` block
+     only when it cannot, and it requires the site and the credential names to
+     come from the same file, so that a token is never sent to a site another
+     file named (TCW-71 Design 8, its decision on delegation settings). A
+     personal override there would either do nothing (the target's file was
+     read) or break that rule (the site from the team's file, the names from a
+     personal one). A person whose shell uses other variable names exports the
+     names the target's file gives.
+   - The acting project's own credential names may come from a personal file
+     while `work.jira.site` comes from `tcw-config.yaml`. That does not break
+     TCW-71's same-file rule, which is about delegation: here the person
+     chooses which of their own tokens is sent to the team's site.
 2. **Shared**, among others: `id`, `work.backend`, `work.path`,
-   `work.repository`, the Jira site and project, every stage's `enabled`,
-   `status` and `pre`, field and priority mappings, the inbox query,
-   `work.tags`, `work.documentation`, `taxonomy.*` and `capabilities.*`
-   (including `extends`), and connected-project entries apart from their
-   credential variable names.
+   `work.repository`, `work.jira.site`, `work.jira.project`, and every other
+   `work.jira` key outside the two credential names (`fields`, `priorities`,
+   `issue-type`, `inbox-query`, `timeout`), every stage's `enabled`, `status`
+   and `pre`, `work.tags`, `work.documentation`, `taxonomy.*` and
+   `capabilities.*` (including `extends`), and every connected-project entry
+   (`connected-projects`, `projects` after TCW-73's rename), including its
+   `jira` block.
 3. **[Decision] `work.hooks.timeout` and `work.hooks.output-cap` are shared.**
    They bound the team's `pre` gates as well as `post` hooks and `generate`
    prompts, so a personal value could change whether a shared gate passes (a
@@ -331,10 +367,14 @@ Four terms used below:
    when the effective `work.backend` is `jira`; otherwise it is recorded in
    `skipped` and listed by `config show --origin`. TCW-69's rule still applies
    to `tcw-config.yaml`.
-7. **Credential variable names are names.** **[Decision]** Each must match
-   `^[A-Za-z_][A-Za-z0-9_]*$`, in every layer. A value that does not is a
-   problem whose message names the key and does **not** print the value, so a
-   token pasted by mistake is not echoed to a terminal or a log.
+7. **Credential variable names are names.** Their shape is TCW-71's to check
+   (`^[A-Z_][A-Z0-9_]*$`, TCW-71 Design 1), on the merged mapping, so a name
+   from a personal file is checked exactly like one from `tcw-config.yaml` and
+   the problem is reported against the file it came from (Design 5.1). This
+   slice adds one requirement on that message, which TCW-71's parser must meet
+   (Notes): it names the key and does **not** print the value, so a token
+   pasted by mistake into a personal file is not echoed to a terminal or a
+   log.
 
 ### 5. Problems and exit codes
 
@@ -362,11 +402,16 @@ Four terms used below:
 2. **`generate:` and `command:` values are command lines, not paths.** TCW
    cannot tell which words in them are paths, so it does not rewrite them.
    They run with the project root as the working directory, as today
-   (`tcw/work/generate.py:107-111`). **[Decision]** Each one runs with
+   (`tcw/work/generate.py:107-111`) and as epic decision 11 fixes for 3.0,
+   whichever layer declared them. **[Decision]** Each one runs with
    `TCW_CONFIG_DIR` set to the declaring file's folder (the project root for
    `project`), so a personal hook can reach its own script as
    `"$TCW_CONFIG_DIR/scripts/x.sh"`. This adds one variable to the hook
-   environment TCW-69 Design 6.5 lists.
+   environment TCW-69 lists (Design 6, step 5: `TCW_SLUG`, which is the full
+   slug `<project>/<folder>` per epic decision 11, `TCW_STAGE`,
+   `TCW_FROM_STAGE`, `TCW_ITEM_PATH`, `TCW_PROJECT_ROOT`, and `TCW_FORCED` and
+   `TCW_REASON` when forced). It is new in 3.0 and has no 2.x counterpart, so
+   TCW-76's variable mapping lists it as new.
 3. The trust model is unchanged: configuration is the user's own file, and
    hooks run as the user (`tcw/work/hooks.py:11-14`). A personal file is, if
    anything, more the user's own than the team's file.
@@ -382,7 +427,8 @@ Four terms used below:
    each says which hook failed, why, and the file it came from, for example:
    "post hook `./notify.sh` from /home/a/.config/tcw/config.yaml failed (exit
    1)". The exit code is TCW-69's 6. `pre` gates need no origin, because they
-   can only come from `tcw-config.yaml`.
+   can only come from `tcw-config.yaml`. These messages go to stderr; stdout
+   stays the reported stage, as TCW-73's table says for `advance`.
 3. **`stage prompt` and `procedure` note personal changes.** When either
    personal layer sets the list being resolved (`work.stages.<stage>.prompt`,
    or `work.procedures.<id>`), the command writes one line to stderr naming
@@ -396,7 +442,10 @@ Four terms used below:
 1. **Plain.** Prints the effective configuration (`values`) to stdout as YAML,
    with every key, including built-in defaults and the built-in chain entries
    (Design 3.4), in the order of the built-in key list and then file order.
-   Problems: exit 1, nothing on stdout.
+   Problems: exit 1, nothing on stdout. This is the "its text" row of TCW-73's
+   per-command stdout table, and the command adds its row to TCW-73's contract
+   test (`tests/test_cli_contract.py`), which fails for a command registered
+   without one.
 2. **`--origin`.** Prints the same YAML with a comment after each scalar and
    each list entry naming its origin: `# built-in`, `# project`,
    `# user: <path>` or `# local: <path>`. The output still parses as YAML to the
@@ -418,37 +467,70 @@ Four terms used below:
 1. **Filesystem mode** uses `user.name` from the effective configuration (so
    only from a personal layer, Design 4.5). It is compared with an item's
    `assignee` exactly: same characters, same case.
-2. **The backend answers.** **[Decision]** Identity is a ninth member of
-   TCW-69's backend interface: `me() -> str`. It returns the identity in the
-   same form the backend uses for `Item.assignee`, or raises an error with
-   exit 1 whose message says how to set one.
-   - The filesystem backend is constructed with `user.name` and returns it.
-     With none, the message names both personal files: "no identity: set
-     `user.name` in `<user-wide path>` or in `tcw-config.local.yaml`".
-   - The Jira backend answers from its credentials (TCW-71), and its message
-     names the credential variables when they are not set.
+2. **The backend answers, through `current_user()`.** Identity is TCW-69's
+   eleventh backend operation, `current_user() -> str | None` (epic decisions
+   1 and 17; TCW-69 Design 5, "the three reads"). It returns the value the
+   backend compares `Query.assignee` with, or `None` when no identity is
+   configured.
+   - The filesystem backend is constructed with `user.name` from the effective
+     configuration and returns it, or `None` when it is not set.
+   - The Jira backend answers with the account its credentials belong to
+     (TCW-71 Design 10). Unset or rejected credentials raise TCW-71's
+     `BackendError` naming the credential variables (exit 1), before `None`
+     could be returned.
+   - **[Decision]** When `current_user()` returns `None`, the command raises
+     `ConfigError` (exit 1, Design 2.3) with: "no identity: set `user.name` in
+     `<user-wide path>` or in `tcw-config.local.yaml`". The message names a
+     configuration key and the two personal files; it does not depend on
+     which backend answered, so the CLI never branches on the backend kind.
 
    A non-filesystem store can answer "who is calling" (Jira's own
-   current-user lookup), so this passes the litmus test, and the CLI never
-   branches on which backend it has.
+   current-user lookup), so this passes the litmus test.
 3. **Commands that use it:**
-   - `list --mine` is `Query(assignee=backend.me())`;
-   - `--assign-me` on `new` and `edit` sets `assignee` to `backend.me()`;
+   - `list --mine` is `Query(assignee=backend.current_user())`;
+   - `--assign-me` on `new` and `edit` sets `assignee` to
+     `backend.current_user()` through `Changes`;
    - `--mine` together with `--assignee`, and `--assign-me` together with
      `--assignee`, are usage errors (exit 2).
 
-   `me()` is called only by these, so no other command ever needs an identity.
-4. **No fallback.** `TCW_WORK_OWNER`, `--owner`, and git's `user.name` and
+   The CLI hands the value to the backend and never compares it with
+   `Item.assignee` itself. TCW-69 Design 5.4 requires both to be in the same
+   form (in Jira mode, both are account IDs, TCW-71), but the backend stays the
+   one place that knows that form. `list --mine` prints what `list` prints, one full
+   slug per line (TCW-73). `current_user()` is called only by these, so no
+   other command ever needs an identity.
+4. **[Decision] A comment records no author in filesystem mode.** TCW-70
+   leaves this question here (its Notes). The filesystem backend's
+   `read_comments` returns `author=None`, and `comment` writes only the text,
+   as TCW-70 specifies. Recording `user.name` would make every comment,
+   including the trace note `advance` writes with each move, depend on an
+   optional personal setting; git already records who committed the comment
+   file; and Jira records the author itself.
+5. **No fallback.** `TCW_WORK_OWNER`, `--owner`, and git's `user.name` and
    `user.email` are never read for identity. Every use in code 3.0 keeps is
    deleted, along with every message that tells a user to set or use them.
    Today these are `_local_owner` and its callers (`tcw/work/cli.py:1447-1458`,
    `:1620-1624`, `:2666`, `:3154`, `:3399`, `:3647`, `:3760-3764`, `:4015`,
    `:4922`, `:4990`), `tcw/store/base.py:3495`, `tcw/tracker/sync.py:1062` and
-   `tcw/serve/__init__.py:1040-1046`. Most go with the 2.x code TCW-70 and
-   TCW-73 delete (claims, `start`, the tracker verbs); whatever is still there
-   when this slice is implemented is removed by it. The docstring of
-   `override_variable` (`tcw/store/project.py:69-71`), which cites
-   `TCW_WORK_OWNER` as the precedent for `TCW_PROJECT_<ID>`, is reworded.
+   `tcw/serve/__init__.py:1040-1046`. Most go with the 2.x code TCW-70
+   deletes, since it removes every command the 2.x store built (claims,
+   `start`, the tracker verbs, and the 2.x web routes; epic decision 2);
+   whatever is still there when this slice is implemented is removed by it.
+   The docstring of `override_variable` (`tcw/store/project.py:69-71`), which
+   cites `TCW_WORK_OWNER` as the precedent for `TCW_PROJECT_<ID>`, is
+   reworded.
+6. **[Decision] Nothing for the documentation allowance list.** Epic decision
+   6 gives `tests/test_documented_cli_surface.py` a temporary list of removed
+   commands and keys that documents may still name. The only flag this rule
+   removes, `--owner`, belongs to `start` (`tcw/work/cli.py:4990`), which
+   TCW-70 removes and lists itself. What this slice removes is a variable
+   (`TCW_WORK_OWNER`) and an input form (`builtin:`), which today's test does
+   not parse. If the list has grown to cover keys and variables by the time
+   this slice is implemented, it adds `TCW_WORK_OWNER` and `builtin: true`
+   there, each with the guard that checks the entry really is gone. The
+   documents that still name them (`skills/work/references/commands.md`,
+   `docs/guide/work.md`, `docs/guide/jira.md`) are rewritten by TCW-74 and
+   TCW-75, whose own check (TCW-75 criterion 2) refuses both names.
 
 ### 10. Writing configuration, and keeping the local file untracked
 
@@ -463,12 +545,17 @@ Four terms used below:
    (today's `ensure_ignored`, `tcw/store/fs.py:982-994`, does exactly this
    check). The leading `/` limits the rule to that folder. Outside a git
    repository it writes no `.gitignore` and prints a notice on stderr saying
-   why. It stages nothing; TCW never changes git state.
+   why (TCW-73 Design 8.3 makes `init` work outside git). It stages nothing;
+   TCW never changes git state. Which `init` form runs this (`tcw init`, or
+   TCW-73's `tcw init <axis>` for the work axis) is TCW-73's surface; the
+   line is written whenever `init` creates or finds `tcw-config.yaml`.
 3. **`tcw validate`** warns (exit 0 if nothing else is wrong) when
    `tcw-config.local.yaml` is tracked by git in the acting project, reading git
-   to find out. Outside a git repository there is nothing to check.
+   to find out. The warning uses TCW-73's `warning:` form and its `warning`
+   level ("a tracked personal file", TCW-73 Design 6.2). Outside a git
+   repository there is nothing to check.
 4. **Secrets** never go in configuration: configuration names environment
-   variables (Design 4.7 enforces the shape of those names).
+   variables (TCW-71's parser enforces the shape of those names, Design 4.7).
 
 ### 11. Where a project lives on this machine (the ticket's open question)
 
@@ -491,29 +578,41 @@ configuration gets no key for a project's location. Reasons:
    who wants a permanent setting exports it in their shell profile.
 
 `TCW_PROJECT_<ID>` is read whether or not `TCW_NO_PERSONAL_CONFIG` is set: it
-is not configuration.
+is not configuration. A declared project that is not on this machine is exit
+5, and delegation into it exit 3 (epic decision 4); personal files cannot
+change either, because they hold no location.
 
 ### 12. Documentation this slice writes
 
-- `skills/configure/references/personal.md`: the two personal files, the
-  chain, identity, `config show`, and **the shared/overridable table**, which
-  the ticket makes canonical and TCW-75 links to. The table is generated from
-  the allowlist constant by a test that fails when they differ (AC 15).
-- `skills/configure/SKILL.md`: one line routing personal configuration to it.
-- The release-note and changelog entry files under `upcoming/`, as the project's
-  documentation entries require.
+- The release-note and changelog entry files under `upcoming/`, named by this
+  item's folder, as the project's documentation entries require. **The
+  release-notes entry starts with its first `##` heading**, with no text
+  before it: only TCW-75's entry may carry the 3.0.0 introduction (epic
+  decision 15).
+- The capability and taxonomy records in Capability changes.
+- `tcw.config.PERSONAL_KEYS` (Design 4.1), as the single source the
+  documentation is checked against.
 
-User guides (`docs/guide/`) are TCW-75's; the migration steps (`builtin: true`
-to `inherit: true`, `TCW_WORK_OWNER` to `user.name`, ignoring the local file in
-existing projects) are TCW-76's.
+**Not written here:** the configure skill, including
+`skills/configure/references/personal.md` with **the shared/overridable
+table** the ticket makes canonical, and the router line in
+`skills/configure/SKILL.md`. Every file under `skills/configure/` is TCW-75's
+(epic decision 3). TCW-75 writes the table and its criterion 7 checks that the
+overridable rows are exactly `PERSONAL_KEYS`, so the table cannot drift from
+the code. This slice's ticket said to write the table; the epic decision moves
+it. Other skills that mention identity or `builtin` are TCW-74's. User guides
+(`docs/guide/`) are TCW-75's; the migration steps (`builtin: true` to
+`inherit: true`, `TCW_WORK_OWNER` to `user.name`, ignoring the local file in
+existing projects, the new `TCW_CONFIG_DIR`) are TCW-76's.
 
 ## Abstraction litmus test
 
 | Operation | Verdict |
 | --- | --- |
 | Loading and merging layers, the allowlist, `config show` | **Not a store operation.** Configuration is files in the repository and the user's home in both backends; nothing here touches a work store. |
-| `me()` | **Backend interface.** Jira answers from the authenticated account; the filesystem backend from `user.name`. A third store would answer from its own login. |
-| `list --mine`, `--assign-me` | **Model**, over `me()`, `Query` and `Changes`. |
+| `current_user()` | **Backend interface** (TCW-69's eleventh operation; this slice calls it and adds nothing). Jira answers from the authenticated account; the filesystem backend from `user.name`. A third store would answer from its own login. |
+| `list --mine`, `--assign-me` | **Model**, over `current_user()`, `Query` and `Changes`. The CLI never compares the identity with `Item.assignee` itself, so a store whose assignee is shown in a different form from its user identifier still works. |
+| Comment author | **Backend interface**, through `read_comments`' `Comment.author`: `None` in filesystem mode (Design 9.4), the ticket comment's author in Jira. |
 | `post` hook origin | **Model**: a field on `advance`'s outcome. |
 | `.gitignore` line, tracked-file warning | **Filesystem-local**, about the configuration file rather than the work store, and the same in both backends. |
 
@@ -570,12 +669,14 @@ function, with a temporary project.
    `work.path`, `work.tags`, `work.documentation`, `work.hooks.timeout`,
    `work.hooks.output-cap`, `work.stages.spec.enabled`,
    `work.stages.spec.pre`, `work.stages.spec.status`, `taxonomy.extends`,
-   `capabilities.extends`, `connected-projects.x.path`, and an unknown key
-   `display`. A local file setting `work.stages: [a]` gives a problem that
+   `capabilities.extends`, `connected-projects.x.path` (`projects.x.path` after
+   TCW-73's rename), `connected-projects.x.jira.credentials.email-env`,
+   `work.jira.site`, `work.jira.timeout`, and an unknown key `display`. A local file setting `work.stages: [a]` gives a problem that
    `work.stages` must be a mapping. A local file setting `user.name`,
    `work.stages.spec.prompt`, `work.stages.spec.post`,
    `work.procedures.<a real procedure id>` and
-   `work.jira.credentials.<a TCW-71 key>` (in a Jira-mode project) gives none.
+   `work.jira.credentials.email-env` and `work.jira.credentials.token-env` (in
+   a Jira-mode project) gives none.
 7. **`user` is personal.** `user: {name: a}` in `tcw-config.yaml` is a
    problem. `user.name: " a"`, `user.name: ""` and `user.email: a` in a
    personal file are each a problem. `null` anywhere in a personal file is a
@@ -611,7 +712,7 @@ function, with a temporary project.
       `--origin` exits 1, its stdout contains `# refused: shared key`, and
       every other value is printed.
     - In a filesystem-mode project, a user-wide
-      `work.jira.credentials.<key>` produces no problem, is absent from the
+      `work.jira.credentials.email-env` produces no problem, is absent from the
       effective configuration, and is listed as skipped by `--origin`.
 13. **Identity, filesystem mode.** With `user.name: Brian`:
     - `list --mine` lists an item with `assignee: Brian` and not one with
@@ -620,14 +721,24 @@ function, with a temporary project.
     - `list --mine --assignee x` exits 2.
 
     With no `user.name`, `TCW_WORK_OWNER=Brian` set and git's `user.name` and
-    `user.email` configured in the repository, `list --mine` exits 1 and
-    stderr names the user-wide path and `tcw-config.local.yaml`.
-14. **No fallback left.** A test asserts that no file under `tcw/` or
-    `skills/` contains `TCW_WORK_OWNER`, and that no module under `tcw/` passes
-    `user.name` or `user.email` to `git config`.
-15. **The table matches the allowlist.** A test reads the table in
-    `skills/configure/references/personal.md` and asserts that its overridable
-    rows are exactly the allowlist constant's paths.
+    `user.email` configured in the repository, the filesystem backend's
+    `current_user()` returns `None`, and `list --mine` exits 1 with stderr
+    naming `user.name`, the user-wide path and `tcw-config.local.yaml`.
+
+    **Identity, through the interface.** Against TCW-69's in-memory test
+    backend with `current_user()` returning `"acct-1"` and items whose
+    `assignee` is displayed as `"A. Person"`, `list --mine` passes
+    `Query(assignee="acct-1")` to the backend, and `new --assign-me` passes
+    `Changes(assignee="acct-1")`; the CLI makes no comparison of its own.
+    The Jira behavior itself is TCW-71's to test.
+14. **No fallback left.** A test asserts that no Python module under `tcw/`
+    contains `TCW_WORK_OWNER`, and that none passes `user.name` or
+    `user.email` to `git config`. Skills and guides are left to TCW-74 and
+    TCW-75 (Design 9.6), whose criterion 2 refuses the name.
+15. **The allowlist is importable.** `from tcw.config import PERSONAL_KEYS`
+    gives exactly the six paths in Design 4.1's table, as a tuple of strings
+    in that order. Comparing it with `personal.md`'s table is TCW-75's
+    criterion 7, not this slice's.
 16. **Writers.** With a local file present, `tcw work tags add x` leaves the
     local file byte-for-byte unchanged and changes `tcw-config.yaml` only in
     `work.tags`. A user-wide `post` hook does not appear in `tcw-config.yaml`
@@ -640,8 +751,12 @@ function, with a temporary project.
       notice on stderr.
     - After `git add -f tcw-config.local.yaml`, `tcw validate` prints a warning
       naming the file and exits 0; with the file untracked, no warning.
-18. **Secrets.** A local `work.jira.credentials.<key>: "abc def/123"` gives a
-    problem whose text does not contain `abc def/123`.
+18. **Secrets.** In a Jira-mode project, a local
+    `work.jira.credentials.token-env: "abc def/123"` gives one problem naming
+    `tcw-config.local.yaml` and `work.jira.credentials.token-env`, whose text
+    does not contain `abc def/123`. (The shape check is TCW-71's parser; this
+    criterion checks the file attribution of Design 5.1 and the requirement on
+    the message.)
 19. **Test isolation.** `tests/conftest.py` has an autouse fixture, beside the
     existing `TCW_PROJECT_*` guard (`tests/conftest.py:187-188`) and cache
     guard (`:207`), that sets `TCW_NO_PERSONAL_CONFIG=1` and points
@@ -661,10 +776,10 @@ function, with a temporary project.
 | 6 Paths and commands | 10 |
 | 7 Origins | 3, 4, 11 |
 | 8 `config show` | 12 |
-| 9 Identity | 13, 14 |
+| 9 Identity | 13, 14 (9.6: none needed, nothing is added) |
 | 10 Writing, `.gitignore` | 16, 17 |
 | 11 `TCW_PROJECT_<ID>` | none needed: no behavior changes |
-| 12 Documentation | 15 |
+| 12 Documentation | 15 (the table itself: TCW-75 criterion 7) |
 
 ## Risks
 
@@ -684,8 +799,9 @@ function, with a temporary project.
   fixture (AC 19) and `TCW_NO_PERSONAL_CONFIG=1`.
 - **A linked git worktree has no local file**, because the file is untracked
   and a new worktree starts with only tracked files. Commands run in the
-  worktree see only the user-wide file. Mitigation: documented in
-  `personal.md`; the user-wide file covers settings meant for every checkout.
+  worktree see only the user-wide file. Mitigation: TCW-75 documents it in
+  `personal.md` (Notes); the user-wide file covers settings meant for every
+  checkout.
 - **Removing `TCW_WORK_OWNER` breaks anything that sets it**, including
   scripts and cloud environments. Mitigation: 3.0 is a breaking release; the
   migration guide (TCW-76) maps it to `user.name`, and the missing-identity
@@ -693,76 +809,108 @@ function, with a temporary project.
 - **A merged list can hold the same file twice** (Design 3.7). It is visible in
   `config show --origin` and harmless beyond repeated text.
 - **Sequencing.** This slice needs TCW-69's library and TCW-70's CLI wiring.
-  If TCW-73 lands later and reshapes `list`, `new` and `edit`, it must keep
-  `--mine` and `--assign-me` calling `me()`. AC 13 guards the behavior through
-  the commands.
+  TCW-73 lands after TCW-70 and TCW-71 (epic decision 2); if it lands after
+  this slice too and reshapes `list`, `new` and `edit`, it must keep `--mine`
+  and `--assign-me` calling `current_user()`. AC 13 guards the behavior
+  through the commands. TCW-75's table test needs `PERSONAL_KEYS`, so TCW-75
+  lands after this slice.
 
 ## Notes
 
+- Reconciled with the epic's cross-slice decisions on 2026-10-01.
 - **Decisions made in this spec, for the owner to confirm.** Each is marked
   **[Decision]** above:
   - a relative `XDG_CONFIG_HOME` is ignored (1.3);
   - `TCW_NO_PERSONAL_CONFIG` with a value other than `1` or empty is an error
     (1.6);
+  - configuration problems stop a command through one `ConfigError` (exit 1)
+    in `tcw/errors.py` (2.3);
   - `builtin:` in any file is an error; built-in entries are internal and
     displayed only (3.4);
   - an empty chain list is allowed and means "nothing from here down" (3.6);
   - duplicates are checked per layer, not after merging (3.7);
   - `null` in a personal layer is an error (3.9);
   - credential variable names inside connected-project entries are
-    overridable (4.1);
+    **shared**, reversing the earlier draft to agree with TCW-71's same-file
+    rule for delegation (4.1);
   - `work.hooks.timeout` and `work.hooks.output-cap` are shared (4.3);
   - personal Jira credential names are skipped outside Jira mode (4.6);
-  - credential variable names must look like variable names, and a bad one is
-    never printed (4.7);
   - `file:` bindings are confined to the declaring file's folder (6.1);
   - hooks and `generate` scripts get `TCW_CONFIG_DIR` (6.2);
   - `procedure` gets the personal-change note, as `stage prompt` does (7.3);
-  - identity is a ninth backend member, `me()` (9.2);
+  - a `None` identity is one backend-neutral message naming `user.name` and
+    both personal files (9.2);
+  - a filesystem comment records no author (9.4);
+  - this slice adds nothing to the documentation allowance list unless it has
+    grown to cover keys and variables (9.6);
   - `TCW_PROJECT_<ID>` stays the only way to say where a project lives (11),
     which answers the ticket's open question.
+- **Cross-slice findings settled by the epic decisions.**
+  - The ninth backend member `me()` this spec proposed is replaced by
+    TCW-69's `current_user()`, one of eleven operations (decisions 1 and 17).
+    The owner question about a ninth member is closed.
+  - The shared/overridable table and the configure skill are TCW-75's
+    (decision 3); this slice supplies `PERSONAL_KEYS` (Design 12), which is
+    the constant TCW-75's Notes asked this spec to name.
+  - `config show`, `--mine` and `--assign-me` are named by TCW-73 and follow
+    its output rules (decisions 2 and 10). TCW-73's surface now lists
+    `--assign-me` on both `new` and `edit`, so the disagreement this spec
+    noted is gone.
+  - Exception classes live in `tcw/errors.py` (decision 8).
+  - Hooks run from the project root, and `TCW_SLUG` is the full slug
+    (decision 11).
+  - The `docs/capabilities/work/` records are TCW-70's to keep or remove
+    (decision 12), and `start` with its record is removed by TCW-70
+    (decision 2).
+  - Release notes start at their first `##` (decision 15).
+  - TCW-71 answered its own open points: its credential keys are
+    `work.jira.credentials.email-env` and `token-env`, and `work.jira` is not
+    inherited from parent projects (TCW-71 Capability changes), so personal
+    layers are 3.0's only layering of configuration.
 - **Changes other slices need.** Nothing has been posted to those tickets.
   - **TCW-69:** `builtin: true` becomes `inherit: true` (the ticket already
     says so); `Binding` gains `origin`; `Outcome` gains `post_failures`;
-    `TCW_CONFIG_DIR` joins the hook environment (Design 6.5 there); the
-    backend interface gains `me()`, a ninth member after the owner confirmed
-    eight; the empty-list refusal for `prompt` and procedures is dropped; and
-    `parse_work_config` is called on the merged mapping, with its problems
-    mapped back to files by key path.
-  - **TCW-71:** must name its credential variable keys under `work.jira`
-    (this spec assumes `work.jira.credentials.*`), implement `me()` in the
-    same form as `Item.assignee`, and say whether `work.jira` inherits from
-    parent projects as 2.8's `work.tracker` does (capability
-    `work/inherit-tracker-settings-from-parent-nodes`). If it does, that is a
-    second way of layering configuration, and personal layers sit on top of
-    its result.
-  - **TCW-73:** its `new` flags omit `--assign-me`, which this ticket puts on
-    `new` as well as `edit`; the two tickets disagree and TCW-73's list needs
-    it. Its rename of `connected-projects` fixes the key path of
-    Design 4.1's second credential row.
+    `TCW_CONFIG_DIR` joins the hook environment (Design 6, step 5 there);
+    `tcw/errors.py` gains `ConfigError` (exit 1); the empty-list refusal for
+    `prompt` and procedures is dropped; and `parse_work_config` is called on
+    the merged mapping, with its problems mapped back to files by key path.
+  - **TCW-71:** its `work.jira` parser's message for a malformed credential
+    variable name must name the key and not print the value (Design 4.7,
+    criterion 18), because that value may come from a personal file and may
+    be a token pasted by mistake. Its notes and Design 10 still describe
+    `current_user()` as "outside TCW-69's eight operations"; under decision 1
+    it is one of the eleven.
+  - **TCW-73:** add `config show`'s row to the contract test (Design 8.1),
+    and keep the two credential paths in `PERSONAL_KEYS` correct through its
+    `connected-projects` to `projects` rename (only `work.jira.*` paths are
+    on the list, so the rename changes none of them).
+  - **TCW-75:** writes `personal.md`, the table and the router line, and
+    documents that a linked git worktree has no local file (Risks). Its
+    table's `user.*` row should read `user.name`, the only key under `user`.
   - **TCW-76:** the migration guide must also map `TCW_WORK_OWNER` (and the
-    git identity fallback) to `user.name`, and add `/tcw-config.local.yaml`
-    to `.gitignore` in existing projects, since `tcw init` does that only for
-    new ones.
-  - **TCW-75:** links to `skills/configure/references/personal.md` for the
-    table, as its ticket already says.
+    git identity fallback) to `user.name`, list `TCW_CONFIG_DIR` as a new hook
+    variable, and add `/tcw-config.local.yaml` to `.gitignore` in existing
+    projects, since `tcw init` does that only for new ones.
+  - **TCW-77:** its project endpoint's `user` field ("filesystem mode:
+    TCW-72's `user.name`, or `null`") can come from `current_user()` in both
+    modes, so the viewer does not read configuration for it.
 - **Questions only the owner can answer.**
   - Should a person be able to replace the team's `post` hooks at all, or
     only add to them (that is, should a personal `post` list be required to
     contain `inherit: true`)? The ticket says replace; this spec follows it.
-  - Is a ninth backend member acceptable, given the owner confirmed eight for
-    TCW-69? The alternative is for the CLI to branch on the backend kind,
-    which the abstraction test argues against.
 - **Assumptions.**
   - This slice is implemented after TCW-70 has wired TCW-69's model into the
     CLI, so `advance`, `stage prompt`, `list`, `new` and `edit` exist as 3.0
     commands. The criteria that run commands depend on that.
-  - The shape of `work.jira` beyond its credential names is TCW-71's and is
-    passed through unparsed, as TCW-69 does.
+  - The shape of `work.jira` beyond its credential names is TCW-71's; the
+    loader passes the merged block to TCW-71's parser.
   - Problem 3's count of readers is of TCW 2.8.1 as checked out on
     2026-10-01; by the time this is implemented, TCW-70 will have removed
     several of them.
 - **Request.** `initial-request.md` was written by an agent from the ticket,
   with no user to ask; its assumptions are listed in its own Notes.
-- **Driving this item.** Its implementation edits `tcw/`. From `implement`
-  onwards, the repository's board is driven by editing files, per `CLAUDE.md`.
+- **Driving this item.** Its implementation edits `tcw/`. For the whole epic
+  (TCW-70 to TCW-77) the 2.x board is edited by hand, and this item's Jira
+  ticket, TCW-72, is moved by hand to In Progress, In Review and Done as the
+  item moves (epic decision 7). Read-only views of the board may use a
+  released 2.8 `tcw` installed outside this checkout.
