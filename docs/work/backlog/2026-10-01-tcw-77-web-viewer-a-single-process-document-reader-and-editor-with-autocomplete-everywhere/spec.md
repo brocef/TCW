@@ -388,9 +388,13 @@ Design 11.
 
 **Work**
 
-1. `GET /api/work[?all=1]` → the board: TCW-73's `tcw work list --json`
+1. `GET /api/work[?all=1][&tag=<name>…]` → the board: TCW-73's `tcw work list --json`
    document for `Query()` (unfinished items and items with no stage), or for
-   `Query(all=True)` with `all=1`. **[Decision]** Item payloads are the CLI's
+   `Query(all=True)` with `all=1`. Each `tag` parameter (repeatable) adds to
+   `Query.tags`, so `?tag=a&tag=b` is `Query(tags={"a", "b"})` and answers
+   exactly what `tcw work list --tag a --tag b --json` prints: the items
+   carrying any of the tags (**[Decision]**, following the owner's 2026-10-01
+   answer that TCW-69's `Query` gains `tags` and `list --tag` stays). **[Decision]** Item payloads are the CLI's
    JSON documents unchanged, keeping the promise in
    `work/read-a-work-item` (`description.md:22-23`) that the API and the CLI
    cannot drift.
@@ -500,7 +504,12 @@ labelled link that does not navigate.
      can report one; finished stages unselected by default, as `list` hides
      them), tags (the registry), assignee (names on the loaded items, plus
      `user`). Unticking every finished stage uses `Query()`; ticking one loads
-     `Query(all=True)`.
+     `Query(all=True)`. **[Decision]** The tags filter is a backend query, not
+     a filter over the loaded rows: ticking tags reloads the board with one
+     `tag` parameter each (Design 5.1), so an item shows when it carries any
+     ticked tag, the same rule as `tcw work list --tag`. In Jira mode that is
+     TCW-71's `labels` clause, so the viewer and the CLI cannot disagree about
+     which items match. Stage and assignee stay filters over the loaded rows.
    - **[Decision] Dates.** Work rows show and sort by creation date. 3.0 items
      have `created` and no modified time (TCW-69 Design 2.1); a Jira item's
      "updated" field is not part of the model. Taxonomy and capability rows keep
@@ -863,8 +872,14 @@ Playwright tests in `web/e2e/`.
      `comments` ends with it. There is no route that edits or removes a
      comment.
    - `GET /api/project`'s `user` is the configured `user.name`.
+   - With items tagged `a`, `b`, both and neither, `GET /api/work?tag=a&tag=b`
+     returns exactly the three tagged items, and its `items` list equals
+     `tcw work list --tag a --tag b --json`'s for the same fixture. Ticking
+     tags `a` and `b` in the board's filter sends that request (Playwright).
 9. **Jira mode (memory backend).**
    - `GET /api/project` says `recordOwner: "backend"`.
+   - `GET /api/work?tag=a` records one `list` call whose `Query.tags` is
+     `{"a"}`.
    - `PATCH /api/work/<f>` and `POST …/comments` are 403 `read-only`, and the
      backend records no `update` or `comment` call.
    - `GET /api/work/<f>` carries `request`, both comments oldest first, and
@@ -946,7 +961,7 @@ Playwright tests in `web/e2e/`.
 | 3 Security | 4 |
 | 4 Operations, ownership | 5, 9 |
 | 5 API, file rules | 6, 7, 8, 9 |
-| 6 Client (work) | 5, 6, 7, 11 |
+| 6 Client (work) | 5, 6, 7, 8, 11 |
 | 7 Jira at runtime | 9, 10 |
 | 8 Taxonomy, capabilities | 11, 12 |
 | 9 Autocomplete | 11 |
@@ -1026,10 +1041,13 @@ Playwright tests in `web/e2e/`.
   25. No stage-name literals in `tcw/serve/` or the client (13).
   26. The browser Jira test uses TCW-71's fake inside the server process, not
       an HTTP stub (criterion 10).
-  27. The process change (Design 1-3) lands on the 3.0 epic branch only, as the
-      first phase of this item, not as a 2.x release: TCW-70 removes the 2.x
-      work routes on the same branch, so a 2.x port would be thrown away, and
-      the epic ships as one 3.0.0 release.
+  27. **[Decision, owner 2026-10-01]** The process change (Design 1-3) lands
+      on the 3.0 epic branch only, as the first phase of this item, not as a
+      2.x release: TCW-70 removes the 2.x work routes on the same branch, so a
+      2.x port would be thrown away, and the epic ships as one 3.0.0 release.
+  29. The board's tags filter queries the backend through `Query.tags`
+      (Design 5.1, 6.2), following the owner's 2026-10-01 answer that `Query`
+      gains `tags`.
   28. `tcw://` completion inserts the folder form of a work reference, never a
       Jira key (6.5).
 - **How the epic's decisions settled this spec's earlier cross-slice findings:**
@@ -1080,9 +1098,13 @@ Playwright tests in `web/e2e/`.
   `docs/work/inbox/2026-09-30-follow-renames-in-the-web-app-tracker-verbs-and-the-capability-drift-check.md`
   (3.0 keeps no rename aliases). Both should be discarded with a reason pointing
   here when this item completes.
-- **Questions only the owner can answer.** None remain open; decision 27 (land
-  the process change on the 3.0 branch only) is the one most worth a second
-  look, because a 2.x release without Node would help users sooner.
+- **Questions only the owner can answer.** None remain open. Settled by the
+  owner on 2026-10-01: the single-process viewer is 3.0-only, with no 2.x
+  release without Node (decision 27). The owner's 2026-10-01 rename of
+  `connected-projects:` to `projects:` and of the Feature
+  `connected-project-registry` to `project-registry` (TCW-73) changes nothing
+  here: this slice sets `web`'s `Feature` to `local-web-app`, so TCW-73's line
+  for `web/meta.yaml` should still be dropped (Conflicts, above).
 - **Size.** This is one item, planned in phases: process and security first, the
   3.0 work views second, Jira mode third, autocomplete across all of them. The
   first phase can land before TCW-70.
