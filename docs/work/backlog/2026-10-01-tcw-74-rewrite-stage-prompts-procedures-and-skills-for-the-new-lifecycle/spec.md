@@ -14,7 +14,6 @@ removed:
 changed:
   - skills/work
   - skills/capabilities           # the reversal: records change during implement
-  - skills/configure
   - skills/setup                  # gains the Jira workflow walkthrough
   - skills/commands-process-inbox
   - skills/commands-plan-work
@@ -40,14 +39,19 @@ behavior this slice changes: for example
 `docs/capabilities/skills/capabilities/description.md` promises "setting each
 capability's status as the work completes". Records for the `extras-report`,
 `taxonomy` and `documentation-sync` skills describe nothing this slice changes and
-stay as they are.
+stay as they are. The `skills/configure` record and the `configure-skill` Feature
+are TCW-75's, because TCW-75 owns all of `skills/configure/` (epic decision 3).
 
 Records for the 2.x work commands (`work/start-a-work-item`,
 `work/submit-a-work-item-for-review`, the `tracker` records and the rest of the 46
-records under `docs/capabilities/work/`) belong to the slices that remove those
-commands (TCW-70, TCW-71, TCW-73). `work/run-a-lifecycle-stage` also describes
-`stage gate` and `stage validate`, which TCW-73 removes; because this slice lands
-after TCW-73 (Design 13), it rewrites that record whole.
+records under `docs/capabilities/work/`) are not this slice's: TCW-70 decides each
+one, TCW-71 owns the tracker records TCW-70 leaves, and TCW-73 owns later
+command-surface wording (epic decision 12). `work/run-a-lifecycle-stage` and
+`work/run-a-procedure` are edited twice in sequence: TCW-73 first rewrites their
+command-surface wording (only `stage prompt` remains; `procedure prompt <id>`
+becomes `procedure <id>`), and this slice, which lands after TCW-73 (Design 13),
+then rewrites what they say the text does (eight prompts, backend passages, the
+new header and footer, the new procedure set).
 
 ## Problem
 
@@ -135,8 +139,10 @@ the exact practice this slice reverses.
 4. **One source for each text**: no stage document beside a prompt, one file per
    procedure, no artifact templates.
 5. **No git in built-in text**, enforced by a test.
-6. **Every skill, reference, agent and procedure has a verdict**, recorded in
-   `skills/README.md` and carried out.
+6. **Every skill, reference, agent and procedure this slice owns has a
+   verdict**, recorded in `skills/README.md` and carried out. The `configure`
+   skill is TCW-75's (epic decision 3); its row in `skills/README.md` stays as
+   TCW-75 leaves it.
 7. **Every `tcw` command the shipped text names exists** in the 3.0 command
    parser, enforced by a test.
 8. **The eval harness measures 3.0**: it seeds a 3.0 project and its cases name
@@ -150,9 +156,21 @@ the exact practice this slice reverses.
   rather than diverging.
 - **Command names and output.** The command surface and the stdout/stderr
   contract are TCW-73's, including removing `stage gate`, `stage validate` and
-  `scaffold`. Git-related strings in the Python code are TCW-73's.
+  `scaffold`. Git-related strings in the Python code are TCW-73's. The output
+  rules are TCW-73's too (epic decision 10): one identifier per stdout line,
+  details through `--json`. The prompts follow them rather than restating them.
 - **User documentation** (README, `docs/guide/`, `docs/lifecycle/abstraction.md`,
   `implementation.md`, `harness.md`): TCW-75.
+- **The `configure` skill**, its `SKILL.md` and every file under
+  `skills/configure/references/`: TCW-75 (epic decision 3). This slice owns every
+  other skill and every agent; where a skill here needs a configuration fact, it
+  links to the configure reference instead of restating it.
+- **Deleting `tcw/work/templates.py` and `scaffold`**: TCW-70 (epic decision 13),
+  because TCW-69's parser refuses the `work.lifecycle.artifacts` key `scaffold`
+  reads. This slice moves the request template's sections into the request
+  prompt (Design 2) and checks the module is gone (criterion 5).
+- **`tests/cli/scenarios/`**: TCW-73 (epic decision 14). The `evals/` harness is
+  this slice's (Design 11).
 - **This repository's own bindings, procedure files and opt-in git example**
   (`tcw-config.yaml`, `docs/lifecycle/*.md`, `docs/procedures/create-work.md`,
   `scripts/require_artifact.py`): TCW-76. Nothing found in this spec moves them
@@ -161,10 +179,12 @@ the exact practice this slice reverses.
   `tcw/work/procedures/documentation-sync.md` keep their commit and tag steps.
   Only their 2.x work-axis wording changes (Design 7).
 - **Porting the resolver onto the 3.0 model.** `tcw/work/resolve.py` takes 2.x
-  types (`WorkItem`, `LifecyclePolicy`, `tcw/work/resolve.py:20-24`). Whichever
-  slice wires `stage prompt` and `procedure` onto TCW-69's model (TCW-70 or
-  TCW-73; see Notes) does that. This slice changes only the text-processing steps
-  inside it (Design 3 and 4).
+  types (`WorkItem`, `LifecyclePolicy`, `tcw/work/resolve.py:20-24`). TCW-70
+  re-points `stage prompt` and `procedure` at TCW-69's configuration and deletes
+  the parts of `resolve.py` that take 2.x types (TCW-70 spec, Design 9; TCW-73
+  spec, the ownership table in Design 0), and TCW-73 then fixes their final
+  surface. This slice changes only the text-processing steps inside the ported
+  resolver (Design 3 and 4).
 
 ## Design
 
@@ -214,15 +234,22 @@ meet; acceptance criterion 3 checks the mechanical ones.
     through `tcw work path <slug> request`; accept with `tcw work advance <slug>`;
     turn away with `tcw work discard <slug> --reason …`; split one arrival into
     several with `tcw work new` for each extra piece.
-  - Jira passage: `tcw work tickets list`, then `tcw work tickets adopt <KEY>`,
-    which creates the item and moves it to request (TCW-71).
+  - Jira passage: `tcw work tickets list --json`, whose entries carry each
+    ticket's key, summary, status, reporter and link (TCW-71 spec, Design 7.1;
+    plain `tickets list` prints only keys, epic decision 10), then
+    `tcw work tickets adopt <KEY>`, which creates the item and moves it to
+    request (TCW-71). **[Decision]** The agent decides from the summary and,
+    where it can, the ticket at its link. When that is not enough it leaves the
+    ticket in the inbox and says so for a person, rather than adopting a ticket
+    to read it: in Jira the inbox is people's ground, and an adoption cannot be
+    taken back without a discard.
   - Both: choose tags from `tcw work tags list`; do not ask the filer for more;
     an arrival already tracked is recorded on the existing item, not accepted
     twice.
 - **request.** What to build at a product level, written for any reader, light
   on code references unless the work is technical by nature. The template lives
-  in this prompt (the request template at `tcw/work/templates.py:20-33` goes,
-  Design 4), with these sections:
+  in this prompt (the request template at `tcw/work/templates.py:20-33` is
+  deleted with that module by TCW-70, epic decision 13), with these sections:
   - **What and why.**
   - **Product changes**: what users will be able to do differently, and what the
     change adds, changes or removes. "None" is a valid answer and is written as
@@ -345,11 +372,12 @@ meet; acceptance criterion 3 checks the mechanical ones.
 
 **Comments are read with `tcw work show <slug>`.** **[Decision]** Implement, qa
 and postmortem read comments, and in Jira mode request reads the ticket
-description, through `tcw work show <slug>`, in both backends. TCW-69's backend
-interface writes comments but has no operation that reads them (TCW-69 spec,
-Design 5), and TCW-73's `show` prints "the item's record" without saying it
-includes comments or the request text. Both are listed as cross-slice findings
-in Notes.
+description, through `tcw work show <slug>`, in both backends. `show` prints the
+request and the comments from the backend operations `read_request(folder)` and
+`read_comments(folder, limit)`, two of TCW-69's eleven (epic decision 1; TCW-69
+spec, Design 5.4, which assigns printing them to TCW-73's `show`). No prompt reads
+`request/request.md` or the `comments/` folder directly for this, so the same
+sentence works in both backends.
 
 ### 3. Backend passages
 
@@ -367,7 +395,9 @@ in Notes.
      and a stray closing marker are all errors.
    - In built-in text, a test finds them before release (criterion 4).
    - In a project's text, `stage prompt` and `procedure` exit 1 and name the
-     binding.
+     binding. The error is raised as one of the exception classes in
+     `tcw/errors.py` that carries exit 1 (epic decision 8), not as a new local
+     class.
 4. **Where it applies.** Filtering applies to each resolved binding's text before
    composition: built-in, `file`, `blob` and `generate` output, for stage prompts
    and procedures alike. That is how "project and personal prompt files get the
@@ -381,8 +411,11 @@ in Notes.
 1. **The header and footer.** `bookend` (`tcw/work/resolve.py:399-439`) and
    `STAGE_NEXT_STEPS` (`tcw/store/base.py:2325-2345`) are replaced.
    **[Decision]** This slice owns that generated text, because it is part of what
-   an agent reads with every prompt and must agree with the prompts. The text is
-   derived from the stage table's columns and contains no stage name:
+   an agent reads with every prompt and must agree with the prompts. TCW-70
+   changes the header only far enough to name `advance --dry-run` instead of
+   `stage gate` when it ports the resolver (TCW-70 spec, Design 7.2); this slice
+   writes the final text. The text is derived from the stage table's columns and
+   contains no stage name:
    - **header** (every stage): this text ran no checks; gates run when an item
      moves, and `tcw work advance <slug> --dry-run` reports whether the next move
      would pass;
@@ -397,19 +430,23 @@ in Notes.
 2. **`<slug>`.** With a work item reference, `stage prompt` replaces every
    literal `<slug>` in the composed text, header and footer with the item's full
    slug. Today only the footer is substituted (`tcw/work/resolve.py:435`).
-   Without a reference, `<slug>` stays literal.
+   Without a reference, `<slug>` stays literal. The full slug is
+   `<project>/<folder>`, the same value hooks receive as `TCW_SLUG` (epic
+   decision 11), so a prompt and a hook name an item identically.
 3. **`{{tcw:body}}` goes.** It resolved "the item's body artifact" from
    `BODY_ORDER = ("initial-request", "intake")` (`tcw/store/base.py:3109`). In
    3.0 the request's place is fixed per backend and stated in the prompts'
    backend passages. `substitute_body` and `resolved_body`
-   (`tcw/work/resolve.py:307-384`) are deleted.
+   (`tcw/work/resolve.py:307-384`) are deleted, by this slice if TCW-70's port
+   has not already removed them with the 2.x types they read.
 4. **`{{tcw:documentation}}` stays**, in plan and implement, unchanged.
-5. **Artifact templates go.** `tcw/work/templates.py` is deleted, as are
+5. **Artifact templates are gone before this slice starts.** TCW-70 deletes
+   `tcw/work/templates.py` and `scaffold` (epic decision 13), and with them
    `resolve_artifact` (`tcw/work/resolve.py:514-541`) and
-   `Builtins.artifact_templates`. TCW-73 removes the `scaffold` verb, which was
-   their only reader, and TCW-69 makes `work.lifecycle.artifacts` a config error.
-   A per-tag template becomes a conditional `file` binding in a stage's `prompt`
-   list (TCW-69 spec, Design 8).
+   `Builtins.artifact_templates`, which only `scaffold` read. TCW-69 makes
+   `work.lifecycle.artifacts` a config error. This slice only checks that they
+   are gone (criterion 5). A per-tag template becomes a conditional `file`
+   binding in a stage's `prompt` list (TCW-69 spec, Design 8).
 
 ### 5. Procedures
 
@@ -450,7 +487,9 @@ in Notes.
    The skill keeps the fixed parts: the handoff's location and name, and stopping
    afterwards.
 4. The id set lives wherever TCW-69's configuration parser validates
-   `work.procedures` ids. Today it is `PROCEDURE_IDS` (`tcw/store/base.py:1143-1145`).
+   `work.procedures` ids. Today it is `PROCEDURE_IDS` (`tcw/store/base.py:1143-1145`),
+   which TCW-70 moves out of `base.py` (TCW-70 spec, Design 8); this slice edits
+   it wherever it then lives.
 
 ### 6. No git in shipped text
 
@@ -460,7 +499,14 @@ in Notes.
    procedure are exempt (the ticket's exception). Python strings are TCW-73's.
 2. **The check.** A test scans every `.md` file under `skills/`, `agents/`,
    `tcw/work/prompts/` and `tcw/work/procedures/`, except the exempt ones, for
-   these whole words, case-insensitively:
+   these whole words, case-insensitively (the list follows).
+
+   **[Decision] `skills/configure/` is excluded until TCW-75 rewrites it.** It is
+   TCW-75's (epic decision 3), and TCW-75 lands after this slice (TCW-75 spec,
+   Design 1.1), so scanning it here would leave the suite red for text this slice
+   may not touch. The exclusion is one named entry in the test, with its reason
+   naming TCW-75, and TCW-75 deletes it when it rewrites the skill. The words
+   are:
    - `git`;
    - `commit`, `commits`, `committed`, `committing`;
    - `push…` and `pull…`;
@@ -468,19 +514,21 @@ in Notes.
    - `trunk`;
    - `branch…`.
 3. **[Decision] A short allowlist** of exact phrases, each with its reason in the
-   test, covers configuration facts that are not instructions:
-   - a store's `repository: {url: …}` example and "another repository" in the
-     configure skill's store and project references, since TCW-69 keeps
-     `work.repository` and TCW-70 keeps `provision`;
-   - the `taxonomy rm` refusal on files git does not track
-     (`skills/taxonomy/SKILL.md:122`), which describes TCW reading git, which is
-     allowed.
+   test, covers configuration facts that are not instructions. This slice adds
+   one entry: the `taxonomy rm` refusal on files git does not track
+   (`skills/taxonomy/SKILL.md:122`), which describes TCW reading git, which is
+   allowed. The configure skill's store and project references will need
+   entries of the same kind (a store's `repository: {url: …}` example, "another
+   repository"), since TCW-69 keeps `work.repository` and TCW-70 keeps
+   `provision`; TCW-75 adds those when it removes the exclusion above.
 
    Anything else needs a new entry with its reason, so a reviewer sees every
    exception.
-4. **`allowed-tools: Bash(git *)`** is removed from every skill's frontmatter.
-   Nine skills carry it today (the list is in Notes); `extras-autonomous-work`
-   carries `Bash(git merge *)` (`skills/extras-autonomous-work/SKILL.md:4`).
+4. **`allowed-tools: Bash(git *)`** is removed from the frontmatter of every
+   skill this slice owns: eight of the nine that carry it today (the list is in
+   Notes; the ninth, `configure`, is TCW-75's). `extras-autonomous-work` carries
+   `Bash(git merge *)` (`skills/extras-autonomous-work/SKILL.md:4`), which goes
+   too.
 
 ### 7. Disposition of every skill, reference, agent and procedure
 
@@ -501,7 +549,7 @@ The default verdict is delete; a kept file says why.
 | `skills/work/SKILL.md` | 70 | 5 | 17 | rewrite | The work axis in 3.0: `stage prompt`, `advance`, `path`, rounds and `judges`, handoffs, comments, `capabilities.yaml`, epics as parents, `new --project`, the backend differences, and the fixed rules moved from procedures |
 | `skills/work/references/commands.md` | 528 | 36 | 199 | rewrite | The 3.0 command reference, from TCW-73's surface; the tracker, claim and strict-mode sections go |
 | `skills/work/references/transitions.md` | 248 | 53 | 68 | delete | `advance` is described in the work skill |
-| `skills/work/references/hooks.md` | 76 | 2 | 4 | delete | Bindings are documented once, in the configure skill's `work.md` |
+| `skills/work/references/hooks.md` | 76 | 2 | 4 | delete | Bindings are documented once, in the configure skill's `references/work.md`, which TCW-75 writes (TCW-75 spec, Design 6.4); the work skill links to it (epic decision 3) |
 | `skills/work/references/tags.md` | 55 | 0 | 1 | keep | The tag registry is unchanged; "node" becomes "project" |
 | `skills/work/references/epic-deltas.md` | 76 | 0 | 22 | delete | No epic type; a parent is an epic (TCW-69); one paragraph in the work skill |
 | `skills/work/references/cross-node-deltas.md` | 84 | 1 | 31 | delete | `delegate` and `escalate` go; `new --project` is one paragraph in the work skill |
@@ -517,7 +565,7 @@ The default verdict is delete; a kept file says why.
 | `skills/work/references/procedures/decompose.md` | 35 | 0 | 10 | delete | Procedure deleted |
 | `skills/work/references/procedures/delegation.md` | 51 | 0 | 8 | delete | Procedure deleted; its rule moves to the work skill |
 | `skills/work/references/procedures/search.md` | 10 | 0 | 0 | delete | Rule moves to the work skill |
-| `skills/work-stage/SKILL.md` | 63 | 0 | 8 | delete | Duplicates `tcw work stage prompt`; its stage contract (`:28`) is deleted, and `stage validate` (`:18`) goes in TCW-73 |
+| `skills/work-stage/SKILL.md` | 63 | 0 | 8 | delete | **[Decision]** Duplicates `tcw work stage prompt`; its stage contract (`:28`) is deleted, and `stage validate` (`:18`) goes in TCW-73. Losing the one injected read is accepted for one source of stage text that works the same under Codex; the evals measure the cost (Design 11) |
 | `skills/commands-process-inbox/SKILL.md` | 35 | 3 | 14 | rewrite | Runs the inbox prompt over every arrival (filesystem: inbox-stage items; Jira: `tickets list`), then request for each accepted item |
 | `skills/commands-plan-work/SKILL.md` | 39 | 4 | 6 | rewrite | Runs request, spec and plan through `stage prompt`, advancing between them, and stops at plan |
 | `skills/commands-drive-work-to-completion/SKILL.md` | 38 | 5 | 8 | rewrite | Runs the current stage onwards through review and qa; stops at qa for the person's verdict; no "bounded stage documents" (a 2.x plan-stage concept, `:22-24`) |
@@ -527,25 +575,20 @@ The default verdict is delete; a kept file says why.
 | `skills/work-create/references/find-overlap.md` | 69 | 0 | 4 | rewrite | Searches unfinished items, including inbox-stage ones, by stage instead of status |
 | `skills/capabilities/SKILL.md` | 145 | 1 | 14 | rewrite | The reversal (Design 8) |
 | `skills/taxonomy/SKILL.md` | 122 | 2 | 5 | rewrite | Taxonomy terms change during implement in the same change as the code; "node" becomes "project"; `:33` reworded without git |
-| `skills/configure/SKILL.md` | 42 | 3 | 6 | rewrite | Routing for 3.0 keys: `work.stages`, `work.hooks`, `work.procedures`, `work.backend`, `work.jira`; no DoD, `artifacts`, `trunk-branch` or commit rows |
-| `skills/configure/references/work.md` | 186 | 11 | 14 | rewrite | `work.stages.<stage>.{enabled, prompt, pre, post}`, `work.hooks`, `work.procedures`, backend passages; DoD, `artifacts` and commit sections (`:39`, `:119`, `:144`) go |
-| `skills/configure/references/tracker.md` | 303 | 1 | 96 | delete | Replaced by `references/jira.md`: `work.backend: jira`, `work.jira.*`, per-stage `status` |
-| `skills/configure/references/projects.md` | 169 | 3 | 6 | rewrite | "project" throughout; `connected-projects` keys as TCW-73 renames them |
-| `skills/configure/references/stores.md` | 103 | 7 | 0 | rewrite | Store locations; "pushes each transition back" (`:70`) goes |
-| `skills/configure/references/docs-sync.md` | 60 | 0 | 3 | keep | Documentation entries are unchanged; wording only |
+| `skills/configure/` (`SKILL.md` and 5 references) | — | — | — | TCW-75's | Epic decision 3. Not edited here; excluded from this slice's scans until TCW-75 rewrites it (Design 6.2, Design 10) |
 | `skills/setup/SKILL.md` | 44 | 0 | 4 | rewrite | Routes the Jira walkthrough; drops DoD and tracker rows |
 | `skills/setup/references/install.md` | 74 | 0 | 1 | keep | Installing the CLI is unchanged |
 | `skills/setup/references/project.md` | 77 | 4 | 1 | rewrite | `tcw init` without git requirements (`:26`, `:36`, `:44-45`) |
 | `skills/setup/references/taxonomy.md` | 56 | 0 | 0 | keep | Unchanged |
 | `skills/setup/references/capabilities.md` | 32 | 0 | 0 | keep | Seeding a ledger records what exists, so `Missing` there is an acknowledged gap, which 3.0 keeps |
 | `skills/setup/references/jira.md` | — | — | — | **new** | Design 9 |
-| `skills/extras-autonomous-work/SKILL.md` | 97 | 4 | 3 | rewrite | Advisors stand in for people at spec, plan and the qa verdict; the audit trail goes in the newest implement round, not `outcome.md` (`:75`); no `git merge` |
-| `skills/extras-triage-issues/SKILL.md` | 71 | 1 | 7 | rewrite | GitHub triage into `tcw work new` items; `Bash(git *)` goes |
+| `skills/extras-autonomous-work/SKILL.md` | 97 | 4 | 3 | rewrite | **[Decision]** Kept in the plugin: it is generic (any project can work unattended) and its conduct is already replaceable through the `unattended-work` procedure. Advisors stand in for people at spec, plan and the qa verdict; the audit trail goes in the newest implement round, not `outcome.md` (`:75`); no `git merge` |
+| `skills/extras-triage-issues/SKILL.md` | 71 | 1 | 7 | rewrite | **[Decision]** Kept in the plugin: it is generic and replaceable through the `triage-issues` procedure. GitHub triage into `tcw work new` items; `Bash(git *)` goes |
 | `skills/extras-report/SKILL.md` | 123 | 1 | 5 | keep | Reporting upstream is unchanged; the removed-verb examples and "tracker" wording are updated |
 | `skills/post-mortem/SKILL.md` | 55 | 0 | 7 | delete | The postmortem prompt is the one source; the work skill routes "which stage could have caught this" to it |
 | `skills/documentation-sync/SKILL.md` | 77 | 1 | 7 | keep | Exempt from the no-git rule; 2.x work words (`outcome.md`, "node") updated, and `upcoming/` files named by folder name (TCW-75) |
 | `skills/documentation-sync/references/cut-version.md` | 189 | 27 | 1 | keep | Release flow, exempt |
-| `skills/documentation-sync/references/release-notes-and-changelogs.md` | 128 | 6 | 0 | keep | Exempt |
+| `skills/documentation-sync/references/release-notes-and-changelogs.md` | 128 | 6 | 0 | keep | Exempt from the no-git rule; `<work-item-slug>.md` (`:16`, `:21`, `:31`, `:126`) becomes the item's folder name, matching TCW-75's `upcoming/README.md` change (TCW-75 spec, Design 10.5) |
 | `agents/verifier.md` | 52 | 0 | 8 | rewrite, renamed `agents/reviewer.md` | Read-only assessment for the review stage: criterion by criterion, records against code, suite result; recommends a verdict and the dispatching session writes the round. It is kept because a reviewer that did not write the code, and cannot edit it, is worth a separate context |
 | `agents/backlog-auditor.md` | 59 | 2 | 12 | rewrite | Per-item fan-out for `audit-backlog`, reading `tcw work procedure audit-backlog`; no `git log`, `state.yaml` or removed verbs |
 | `agents/post-mortem.md` | 47 | 3 | 6 | delete | Needs no tool set or independence the coordinating session lacks, and its output is a document that session writes anyway; it also restates the prompt |
@@ -566,7 +609,14 @@ skill states these, each once:
 - `advance` is never handed to a subagent, and request and qa are not dispatched
   because they need a person (from
   `skills/work/references/procedures/delegation.md:9-24`);
-- the backlog-audit approval rule and the search read-only rule (Design 5.2).
+- the backlog-audit approval rule and the search read-only rule (Design 5.2);
+- what the two exit codes for a missing connected project mean (epic decision
+  4): a command that reads a project declared in configuration but not present
+  on this machine exits 5, and `tcw work new --project` into such a project is
+  refused with exit 3. In both cases the agent reports it and suggests
+  `tcw provision`; it does not retry;
+- a link to the configure skill's references for every configuration key it
+  mentions, with no key documentation of its own (epic decision 3).
 
 ### 8. The capabilities skill reversal
 
@@ -574,7 +624,11 @@ The rewritten `skills/capabilities/SKILL.md` states, explicitly:
 
 - **No `Missing` records at planning.** The spec declares new, changed and
   removed paths in `<item>/capabilities.yaml` and writes no records.
-- **No planning-document pointers.** No `Planning doc` field is written.
+- **No planning-document pointers.** The skill does not mention a
+  `Planning doc` field at all: TCW-73 removes it from the capability fields and
+  the capabilities commands, and TCW-76 removes it from existing records during
+  migration (epic decision 9). The item's own `capabilities.yaml` is the link
+  from work to capability.
 - **No flipping at completion.** Implement adds, edits or removes the records in
   the same change as the code. The records gate on the stage after implement
   checks they are there, and review checks they are right.
@@ -596,15 +650,33 @@ change:
 
 1. Choose the stages to enable, and one distinct Jira status for each (TCW-71).
 2. Write `work.backend: jira`, `work.jira.*` and each stage's `status`.
-3. Run `tcw validate --remote`. It reports missing statuses, transitions
-   `advance` needs, and missing custom fields (TCW-71).
-4. For each problem, explain what TCW needs and why, and work with the user to
+3. Run `tcw validate --remote`. Its stdout is findings only, one per line;
+   checks that passed are narration on stderr (epic decision 10). It reports
+   missing statuses, transitions `advance` needs, transition screens that
+   require a field other than the comment, and missing custom fields (TCW-71
+   spec, Design 9 and 13).
+4. For each finding, explain what TCW needs and why, and work with the user to
    change the Jira workflow in Jira's own settings. TCW changes nothing in Jira's
-   configuration.
-5. Re-run until clean.
+   configuration. Three kinds of finding need their own explanation:
+   - **An unchecked move.** A move `validate --remote` could not check (often on
+     a new project with no tickets, or without permission to read the workflow)
+     is a finding, not a pass (epic decision 10). **[Decision]** The walkthrough
+     offers to create one sample ticket per status with the user's agreement, so
+     the next run can check those moves (TCW-71 spec, Risks), and says what was
+     created so the user can delete the tickets afterwards.
+   - **More than one transition into a stage's status.** `advance` prefers the
+     one whose screen asks for nothing but a comment; if more than one such
+     transition remains, every such move is refused with exit 3, listing them
+     (epic decision 5). The walkthrough explains this and helps the user remove
+     or restrict the extra transitions.
+   - **A required screen field.** TCW never fills one in; the walkthrough
+     suggests setting the value in a workflow post function instead (TCW-71
+     spec, Design 13).
+5. Re-run until there are no findings.
 
-The configure skill's `references/jira.md` documents the keys; the setup
-reference links to it rather than repeating them.
+The configure skill's Jira reference (`skills/configure/references/jira.md`,
+TCW-75's, replacing `tracker.md`; TCW-75 spec, Design 6) documents the keys; the
+setup reference links to it rather than repeating them.
 
 ### 10. Commands named in shipped text exist
 
@@ -616,11 +688,25 @@ checks every `--flag` named directly after such a command against that
 subcommand. This replaces lists of removed verbs: anything removed, misspelled or
 renamed fails it.
 
+**[Decision] The shared allowance list.** TCW-70 keeps a temporary list of
+removed commands and keys that documents may still name, with a guard test that
+each entry really is removed; TCW-71 and TCW-73 add to it, and TCW-74 and TCW-75
+shrink it (epic decision 6). This slice's command test accepts an entry on that
+list only in `skills/configure/`, which is TCW-75's and is not yet rewritten.
+Everywhere else in the shipped text a removed command fails, list or not. This
+slice also removes every entry from the list that only its own files named,
+and records any entry it leaves, with the file that still needs it and that
+file's owner (TCW-75 for `README.md`, `docs/guide/` and `skills/configure/`;
+TCW-76 for `tcw-config.yaml`, `AGENTS.md` and `docs/procedures/`), in its
+implement round.
+TCW-76's "validate clean" step requires the list to be empty before 3.0.0 is
+cut.
+
 ### 11. The eval harness
 
 `evals/` answers whether lifecycle instructions reach an agent and what the
-skills add. **[Decision]** It is rewritten, not retired, because that question
-stays open in 3.0.
+skills add. It is this slice's (epic decision 14). **[Decision]** It is
+rewritten, not retired, because that question stays open in 3.0.
 
 - **Seeding.** `evals/seed_fixture.py` seeds a 3.0 project:
   - items created with `tcw work new` and moved with `tcw work advance`;
@@ -651,7 +737,9 @@ stays open in 3.0.
   for the deleted skills.
 
 The harness depends on the 3.0 CLI, so it is rewritten after TCW-70 and TCW-73
-land (Design 13).
+land (Design 13). TCW-70 removes the 2.x commands the harness calls, and skips
+the harness's tests until then with a reason naming this slice (TCW-70 spec,
+Design 9, Tests); Design 12 removes those skips.
 
 ### 12. Tests this slice rewrites or removes
 
@@ -667,14 +755,32 @@ land (Design 13).
 | `tests/test_skill_flow.py` | Rewritten as the 3.0 product-first flow the skills prescribe: new, through implement with records added, into review with the records gate passing |
 | `tests/test_eval_*.py` | Updated with the harness |
 | `tests/test_resolve.py`, `tests/test_resolve_procedure.py`, `tests/test_procedure_config.py`, `tests/test_procedure_verb.py` | Updated for the id set, backend filtering and the removed body token |
+| `tests/test_documented_cli_surface.py` | **[Decision]** The exemption for `Missing` capabilities (`_declares_a_missing_capability` and its use, `:70-99`) is deleted. It exists only because planning seeded `Missing` records whose text names verbs not yet built, which this slice ends (Design 8); no record in `docs/capabilities/` is `Missing` today. The shared allowance list shrinks as Design 10 says |
+| `tests/test_configuration_text_home.py` | Only `test_tcw_work_keeps_only_the_runtime_tracker_text` (`:50-55`), which reads `skills/work/references/commands.md`, is deleted here, because this slice rewrites that file first; the rest of the file is TCW-75's (TCW-75 spec, Design 1.5) |
+
+`tests/test_skill_flow.py`, `tests/test_prompt_fallback.py` and the five
+`tests/test_eval_*.py` files arrive here with the module-level skip TCW-70 adds
+(TCW-70 spec, Design 9, Tests); this slice removes each skip as it rewrites the
+file, and no skip naming TCW-74 remains when it is done (criterion 14).
 
 ### 13. Sequencing
 
 **[Decision]** This slice lands after TCW-70 (the filesystem backend wired into the
-CLI) and TCW-73 (the command surface), because its text names their commands and
-criterion 9 checks them against the real parser. It lands before TCW-76, whose
-migration of this repository reviews project text against these prompts. It can
-land in parallel with TCW-75.
+CLI), TCW-71 (the Jira backend and the `tickets` commands) and TCW-73 (the command
+surface), because its text names their commands and criterion 9 checks them
+against the real parser. TCW-73 itself lands after TCW-70 and TCW-71 (epic
+decision 2), so this is the order TCW-70, TCW-71, TCW-73, then this slice. It
+lands before TCW-75, which writes the guides and the `configure` skill against
+these skills (TCW-75 spec, Design 1.1), and before TCW-76, whose migration of
+this repository reviews project text against these prompts.
+
+### 14. This slice's changelog and release-notes entries
+
+The slice writes its own entry files in `docs/changelogs/upcoming/` and
+`docs/release-notes/upcoming/`, named by the item's folder name (TCW-75 spec,
+Design 10.5). Each starts with a `##` heading and has no text before it: only
+TCW-75's release-notes entry may carry leading text, the 3.0.0 introduction
+(epic decision 15).
 
 ## Abstraction litmus test
 
@@ -682,7 +788,7 @@ land in parallel with TCW-75.
 | --- | --- |
 | Backend passages | **Model-level text processing.** Keyed on the configured backend's name, not on how a backend stores anything. A third backend gets its own passages; text outside passages applies to every backend. |
 | Prompts reading paths through `path` | **Shared layout** (TCW-69): the technical record is files in both modes. |
-| Reading comments and the request through `tcw work show` | **Backend interface.** Jira can list a ticket's comments and description; the filesystem backend reads its comment files. This needs the interface change listed in Notes, not a filesystem shortcut such as globbing `comments/`. |
+| Reading comments and the request through `tcw work show` | **Backend interface**: `read_request` and `read_comments` (epic decision 1). Jira reads a ticket's description and comments; the filesystem backend reads `request/request.md` and its comment files. No prompt uses a filesystem shortcut such as globbing `comments/`. |
 | The QA plan as a comment | **Backend interface** (`comment`), the same in both modes. |
 | Header and footer | **Derived from stage table columns.** No stage name and no backend assumption. |
 | `judges` from the implement folder | **Shared layout.** Implement is never an external stage, so its folder exists in both modes. |
@@ -770,8 +876,9 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
    - `skills/work/references/procedures/` does not exist.
    - `work.procedures.delegation` is a config error naming the known ids.
 7. **Skills, references and agents match the disposition table.**
-   - The set of files under `skills/` and `agents/` is exactly the table's kept,
-     rewritten and new files.
+   - The set of files under `skills/` and `agents/`, leaving out
+     `skills/configure/` (TCW-75's), is exactly the table's kept, rewritten and
+     new files.
    - `skills/README.md` has a row for each, and `test_dynamic_skill_marker.py`
      passes.
    - Every skill that contains a `` !` `` injection has a `## Document command
@@ -779,14 +886,17 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
    - `.codex-plugin/plugin.json` names no deleted skill, and the number of skills
      it states equals the number of `skills/*/SKILL.md` files.
 8. **No git** (Design 6).
-   - The scan finds no match outside the exempt files and the allowlist.
-   - No skill's `allowed-tools` contains `git`.
+   - The scan finds no match outside the exempt files, the allowlist and the
+     one named `skills/configure/` exclusion.
+   - No `allowed-tools` of a skill this slice owns contains `git`.
    - Mutation check, run once at implement and recorded in the round: adding the
      word "commit" to `tcw/work/prompts/plan.md` makes the test fail and name the
      file and line.
 9. **Commands exist** (Design 10).
    - The extractor finds every `tcw` command in the shipped text, and each
-     resolves in the 3.0 parser.
+     resolves in the 3.0 parser, except an entry of the shared allowance list
+     named in `skills/configure/` (Design 10).
+   - No entry of the allowance list is named only by files this slice owns.
    - Mutation check, recorded the same way: adding `tcw work start <slug>` to the
      work skill makes it fail and name the file.
 10. **The capabilities skill reversal.** `skills/capabilities/SKILL.md` contains
@@ -809,6 +919,9 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
     a bare `advance` into review exits 0, with no `--force`. The same flow with
     the record still `Missing` is refused (exit 3).
 14. **The full suite passes.**
+15. **Entries** (checked by reading at review). This slice's two `upcoming/`
+    entry files exist, are named by the item's folder name, and each starts
+    with a `##` heading.
 
 ### Coverage
 
@@ -826,14 +939,18 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
 | 10 Commands exist | 9 |
 | 11 Evals | 12 |
 | 12 Tests | 14 |
+| 13 Sequencing | (none; a plan ordering) |
+| 14 Entries | 15 |
 
 ## Risks
 
-- **Prompts depend on commands siblings have not specified.** Reading comments
-  and the Jira request through `tcw work show`, the handoff form of `path`, and
-  `tickets list` showing enough to triage are not in TCW-69's or TCW-73's specs
-  yet (Notes). Mitigation: criterion 9 fails if a named command or flag does not
-  exist, so a gap is found at implement, not by a user.
+- **Prompts depend on sibling behavior that is decided but not yet built.**
+  `show` printing the request and comments (TCW-69 spec, Design 5.4, assigned to
+  TCW-73), `path --handoff` (epic decision 18) and `tickets list --json` (TCW-71)
+  are settled in the specs, but TCW-73's surface table does not yet say `show`
+  includes the request and comments (Notes). Mitigation: criterion 9 fails if a
+  named command or flag does not exist, and criterion 3 is run against the real
+  `show` output at implement, so a gap is found then, not by a user.
 - **The qa verdict needs a person.** A filesystem project with nobody to decide
   leaves items at qa. That is the intended direction, the same as 2.x verify.
   Unattended projects replace it through `unattended-work`.
@@ -844,7 +961,7 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
   verdict `stale`, which blocks rather than lets work through (TCW-69 spec,
   Risks). The prompt states the rule in one sentence and names the folder to
   read.
-- **Breadth.** This slice touches about 70 shipped files and a dozen test files.
+- **Breadth.** This slice touches about 65 shipped files and a dozen test files.
   Mitigation: the plan orders the work by mechanism (loader and filter, then
   prompts, then procedures, then skills, then evals), each step with its own
   green suite.
@@ -855,6 +972,7 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
 
 ## Notes
 
+- Reconciled with the epic's cross-slice decisions on 2026-10-01.
 - **Decisions made in this spec, for the owner to confirm.** Each is marked
   **[Decision]** above:
   - the prompt ceiling is 60 lines after filtering;
@@ -862,6 +980,8 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
     stages with no folder have none;
   - the Jira request prompt never rewrites the ticket description and proposes
     changes as a comment;
+  - the Jira inbox decides from `tickets list --json` and the ticket's link, and
+    leaves a ticket it cannot decide on for a person instead of adopting it;
   - the QA plan comment's first line is `QA plan`; a revised spec posts a new
     one; it is posted even when there are no product changes;
   - plan writes `capabilities.yaml` and posts a QA plan when no earlier stage
@@ -873,81 +993,78 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
     in either backend;
   - the postmortem request-level comment is turned on by a project prompt
     binding, not a config key;
-  - comments and the Jira request are read through `tcw work show <slug>`;
+  - comments and the request are read through `tcw work show <slug>` in both
+    backends;
   - backend passages use an explicit closing marker, apply to every binding
     kind, and run before documentation substitution;
-  - this slice owns the generated header and footer, which are derived from
-    table columns; `<slug>` is substituted through the whole output;
-  - `{{tcw:body}}`, `tcw/work/templates.py` and `resolve_artifact` are deleted;
+  - this slice owns the final generated header and footer, which are derived
+    from table columns; `<slug>` is substituted through the whole output;
+  - `{{tcw:body}}` is deleted (by this slice if TCW-70's port has not already);
   - procedures: keep or rewrite six, add `pause-work`, delete `post-mortem`,
     `consolidate-plans`, `decompose` and `delegation`; one file each, with the
     fixed rules moved into the invoking skill; "delegation" means
-    `new --project` only;
-  - the no-git test has a short, reasoned allowlist for configuration facts;
-  - a test checks every named `tcw` command against the parser;
+    `new --project` only. `consolidate-plans` is deleted because its only
+    safety rules are git checks, and moving an outside plan into an item is
+    ordinary `tcw work new`;
+  - the no-git test has a short, reasoned allowlist, and one named exclusion
+    for `skills/configure/` that TCW-75 removes;
+  - a test checks every named `tcw` command against the parser, accepting the
+    shared allowance list only inside `skills/configure/`;
   - skill verdicts as in Design 7: `work-stage`, `commands-verify-work` and
     `post-mortem` deleted; `verifier` renamed `reviewer`; the `post-mortem`
-    agent deleted; `backlog-auditor` kept;
-  - this slice owns every file under `skills/`, including the configure
-    references;
+    agent deleted; `backlog-auditor` kept; `extras-triage-issues` and
+    `extras-autonomous-work` kept in the plugin;
+  - the setup walkthrough offers sample tickets for unchecked moves;
+  - the `Missing` exemption in `tests/test_documented_cli_surface.py` is
+    deleted;
   - the eval harness is rewritten; injection provenance and cases A6-A8 go;
-  - sequencing: after TCW-70 and TCW-73, before TCW-76.
-- **Cross-slice findings** (nothing has been posted to those tickets):
-  - **TCW-69 / TCW-73: reading comments.** The backend interface has `comment`
-    (write) but no read (TCW-69 spec, Design 5). Implement (Jira qa rejection),
-    qa (the QA plan) and postmortem must read comments in both backends. This
-    needs either `read` to return comments or a ninth operation, and TCW-73's
-    `show` to print them.
-  - **TCW-73 / TCW-71: the Jira request text.** `show` must print the ticket
-    description in Jira mode, or the request and spec prompts have no way to read
-    the request.
-  - **TCW-73 / TCW-71: triaging tickets.** `tickets list` must show enough of each
-    ticket (at least its description, or offer a `--json` that includes it) for
-    the inbox prompt to decide without adopting first.
-  - **TCW-73: `path --handoff`.** TCW-69 defines a handoff form of `path`
-    (Design 4.10), but TCW-73's surface lists only
-    `path <slug> [<stage> [--next]]`.
-  - **TCW-73: who ports `stage prompt` and `procedure`.** The resolver takes 2.x
-    types (`tcw/work/resolve.py:20-24`). The port onto TCW-69's model is assigned
-    to no slice. This spec assumes TCW-73 does it, since it owns those commands.
-  - **TCW-73: generated header and footer.** TCW-74's ticket says "strings in the
-    Python code belong to TCW-73"; this spec takes the prompt header and footer
-    (Design 4.1) because they are prompt text. TCW-73 should not also rewrite them.
-  - **TCW-70: tests that break when the 2.x CLI goes.** `tests/test_skill_flow.py`,
-    `tests/test_prompt_fallback.py` and `tests/test_eval_*.py` drive the 2.x CLI.
-    TCW-70 removes it before this slice can rewrite them. TCW-70 should delete or
-    skip them, with a reason naming TCW-74, so CI does not stay red in between.
-  - **TCW-75: the configure skill's references.** TCW-75's ticket makes
-    `skills/configure/references/` "the canonical home of each key's
-    documentation" and rewrites `tracker.md` and `projects.md`. TCW-74's ticket
-    rewrites the configure skill. This spec gives every file under `skills/` to
-    TCW-74, because the no-git and command checks cover the whole plugin, and
-    leaves TCW-75 to link to them. The shared/overridable table is TCW-72's
-    content placed there.
-  - **TCW-74's own ticket** says spec writes `spec/capabilities.yaml`. TCW-69's
-    confirmed decision puts it at `<item>/capabilities.yaml`, which this spec
-    follows. The ticket has no "Update from TCW-69's spec" section and needs one.
-  - **TCW-69's Capability changes** calls `work/archive-a-resolved-item-before-it-is-deleted`
-    "the ledger's one `work/` capability today". The ledger has 46 records under
-    `docs/capabilities/work/`, all `Supported`, many describing commands 3.0
-    removes (`start-a-work-item`, `submit-a-work-item-for-review`,
-    `drop-a-work-item`, the tracker records). TCW-70, TCW-71 and TCW-73 need to
-    own them explicitly.
-  - **TCW-76 against the design record.** The record maps `refined-outcome.md`
-    and `rework.md` to `review/round-N.md`; TCW-76's ticket maps them to
-    `qa/round-N.md`, which is newer and consistent with "old verify was the
-    user's acceptance". TCW-76's artifact table also still says
-    `spec/capabilities.yaml`, corrected only in its update section.
+  - sequencing: after TCW-70, TCW-71 and TCW-73; before TCW-75 and TCW-76.
+- **Cross-slice findings, and how each was settled.** Nothing has been posted
+  to any ticket.
+  - **Reading comments and the request.** Settled by epic decision 1:
+    `read_request` and `read_comments` join TCW-69's interface (now eleven
+    operations), and TCW-69 spec, Design 5.4, has `show` print both.
+    **Still open for TCW-73:** its surface table says `show` prints "the item's
+    record" (TCW-73 spec, Design 1, the output table); it should say the record
+    includes the request text and the comments, since the request, spec,
+    implement, qa and postmortem prompts depend on it.
+  - **Triaging Jira tickets.** Settled by epic decision 10 (`tickets list`
+    prints keys; details through `--json`). TCW-71's `--json` carries no
+    description; this spec works around it (Design 2, inbox). Adding an
+    optional `description` to that JSON would let the inbox prompt decide
+    without opening the ticket; that is a suggestion to TCW-71, not a blocker.
+  - **`path --handoff`.** Settled by epic decision 18.
+  - **Who ports `stage prompt` and `procedure`.** Settled: TCW-70 re-points
+    them at TCW-69's configuration and TCW-73 fixes their final surface
+    (TCW-73 spec, the ownership table in Design 0; epic decision 2).
+  - **Generated header and footer.** Settled by the same table, which gives
+    `stage prompt`'s text to this slice; TCW-70 changes only the header's
+    `stage gate` mention (TCW-70 spec, Design 7.2).
+  - **The configure skill.** Settled by epic decision 3: TCW-75 owns all of
+    `skills/configure/`; this slice owns every other skill and agent, and the
+    work skill links to the configure references.
+  - **`tcw/work/templates.py` and `scaffold`.** Settled by epic decision 13:
+    TCW-70 deletes them.
+  - **`spec/capabilities.yaml` in this slice's ticket.** Settled by epic
+    decision 19: every spec uses `<item>/capabilities.yaml`. The ticket text
+    is not edited.
+  - **The 46 `docs/capabilities/work/` records.** Settled by epic decision 12.
+  - **`evals/` ownership.** Settled by epic decision 14 (this slice).
+  - **Tests that break when the 2.x CLI goes.** Settled in TCW-70's spec
+    (Design 9, Tests): `tests/test_skill_flow.py`, `tests/test_prompt_fallback.py`
+    and the five `tests/test_eval_*.py` files get a module-level skip whose
+    reason names TCW-74, and this slice removes each skip when it rewrites the
+    file (Design 12).
+  - **TCW-76 against the design record** (migrated `refined-outcome.md` and
+    `rework.md` become qa rounds, not review rounds). Not this slice's to
+    settle; recorded for TCW-76, which TCW-70 and TCW-75 also flag.
 - **Questions only the owner can answer:**
-  1. Should a filesystem-mode qa verdict really require a person, or may an agent
-     record it when the project has not said otherwise? This spec says a person.
-  2. Is deleting `work-stage` acceptable, given it is the one skill that hands a
-     Claude user the stage text without a tool call?
-  3. Keep `extras-triage-issues` and `extras-autonomous-work` in the plugin, or
-     move them out as this repository's own skills? This spec keeps both.
-  4. Should `consolidate-plans` survive without its git-based safety rules?
-     This spec deletes it.
-  5. Confirm the boundary with TCW-75 over `skills/configure/references/`.
+  1. **May an agent record a filesystem-mode qa verdict when the project has
+     not said otherwise?** This decides whether filesystem items can finish
+     without a person. Recommended answer: no; qa is the product check against
+     the request, an agent's review verdict already covers the code, and a
+     project that wants unattended completion says so through its
+     `unattended-work` procedure.
 - **Inventory method.** Counts in Design 7 and Problem come from two regular
   expressions over each file, run on 2026-10-01 against this branch:
   - git: `\b(git|commit\w*|push\w*|pull\w*|worktrees?|trunk|branch\w*)\b`,
@@ -958,10 +1075,12 @@ composed output of `tcw work stage prompt <stage> <slug>` on a project with
   The 2.x count over-matches words like "complete" in ordinary prose and is a
   measure of how much rewriting a file needs, not a defect count. The 41-file
   git figure matches the ticket's "about 41 files".
-- **Skills granting `Bash(git *)` today:** `work`, `work-create`, `configure`,
-  `commands-drive-work-to-completion`, `commands-pause-work`,
+- **Skills granting `Bash(git *)` today:** `work`, `work-create`, `configure`
+  (TCW-75's), `commands-drive-work-to-completion`, `commands-pause-work`,
   `commands-plan-work`, `commands-process-inbox`, `commands-verify-work`,
   `extras-triage-issues`; and `extras-autonomous-work` grants `Bash(git merge *)`.
-- **Driving this item.** Implementation edits `tcw/work/resolve.py` and the
-  procedure id set, so from implement onwards this repository's board is driven
-  by editing files, as `CLAUDE.md` requires.
+- **Driving this item.** For the whole epic (TCW-70 to TCW-77) this
+  repository's board is edited by hand, and this item's Jira ticket, TCW-74, is
+  moved by hand to In Progress, In Review and Done as the item moves (epic
+  decision 7). Read-only views of the board may use a released 2.8 `tcw`
+  installed outside this checkout.
