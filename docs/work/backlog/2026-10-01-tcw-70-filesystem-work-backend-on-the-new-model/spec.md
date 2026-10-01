@@ -69,8 +69,10 @@ file or behavior that changes here:
 - `read-a-work-item` (`show`, `show --json`, `path <slug> [<stage>]`);
 - `rename-a-work-item` (Design 5);
 - `retitle-a-work-item` (names `initial-request.md`);
-- `tag-a-work-item` (names `state.yaml`);
-- `view-the-board` (`list` flags; no status columns, no descendant boards).
+- `tag-a-work-item` (names `state.yaml`; `list --tag` stays, filtering on
+  `item.yaml` tags, the owner's answer of 2026-10-01);
+- `view-the-board` (`list` flags, `--tag` kept; no status columns, no
+  descendant boards).
 
 Eight elsewhere:
 
@@ -451,7 +453,16 @@ Jira and are inert here:
      and then name.
    - Directories that are not item folders and plain files are not items, and
      are skipped.
-   - **[Decision]** If any item folder is unreadable, `list` raises
+   - **[Decision, owner 2026-10-01]** `Query.tags` (TCW-69's Query, item 1) is
+     matched against the `tags` list of each `item.yaml`: when it is not
+     `None`, an item is returned only if it carries at least one of the given
+     tags. The given tags are compared with the item's tags as read (3.2),
+     both in the canonical form `normalize_tag` gives, as 2.8 does. There is
+     no lookup in the tag registry, because an item may carry a tag the registry no
+     longer has (3.2). An item with no `tags` key matches no tag filter. The
+     tag filter combines with the stage, parent and assignee filters (an item
+     must pass all of them).
+   - **[Decision, owner 2026-10-01]** If any item folder is unreadable, `list` raises
      `BackendError` naming every unreadable `item.yaml`. It does not hide part
      of the board. `tcw validate` reports the same files with the key at fault
      (Design 10).
@@ -613,6 +624,8 @@ has no status folders to look for. The same test serves:
    nothing uncommitted, and the files are left uncommitted for a person in
    that repository to review. One rule ("any project you can reach") is simpler
    than a rule that depends on the direction of the declaration.
+   **[Decision, owner 2026-10-01]** The owner confirmed that delegation may
+   write into the target's checkout once the three conditions below pass.
 3. **The three conditions**, checked in this order. The first failure refuses
    (exit 3) with a message naming it, and nothing is written:
    1. **The project's path resolves.** An undeclared ID and a project declared
@@ -649,7 +662,7 @@ prefix matching. In the stdout column, "slug" always means the full slug.
 | Command | stdout | Notes |
 | --- | --- | --- |
 | `new "<title>" [props] [--stage inbox] [--project <id>]` | the slug | Reads request text from stdin when stdin is not a terminal. `--stage` accepts only the first flow stage. |
-| `list [--stage <s>]… [--parent <slug>] [--assignee <a>] [--all] [--json]` | one slug per line, or the records of 7.1 with `--json` | `--stage` and `--all` together are a usage error (TCW-69). `--stage` repeats. |
+| `list [--stage <s>]… [--tag <t>]… [--parent <slug>] [--assignee <a>] [--all] [--json]` | one slug per line, or the records of 7.1 with `--json` | `--stage` and `--all` together are a usage error (TCW-69). `--stage` repeats. **[Decision, owner 2026-10-01]** `--tag` stays and fills `Query.tags`: it repeats, and an item carrying any of the given tags matches. Its value is parsed as 2.8 parses it today (`tcw/work/cli.py:4968-4969`: the `--tags` alias and a comma-separated value), so nothing about the flag changes in this slice; TCW-73 owns its final spelling. `--tag` combines with `--stage` and with `--all`. |
 | `show <slug> [--json]` | the record | See 7.1. |
 | `path [<slug> [<stage> [--next \| --handoff]]]` | one absolute path | TCW-69's `path`, including its handoff form behind `--handoff` (the epic's decision 18). `--next` and `--handoff` together are a usage error (exit 2). **[Decision]** With no slug it prints the work store folder, as today, so a script can still find the store. |
 | `edit <slug> [props] [--blocks <slug>]…` | nothing | Property flags as TCW-73 lists, minus `--assign-me`. An empty value clears an optional property (`--assignee ""`). |
@@ -879,7 +892,7 @@ and the reason. About 119 of the 159 test files touch the work axis today.
    deleted by TCW. A project that is declared but not on this machine is
    reported as unresolved, and one no declaration names as missing, matching
    `validate` (Design 10.1).
-2. **`tcw serve`.** **[Decision]** The 2.x work routes are removed from
+2. **`tcw serve`.** **[Decision, owner 2026-10-01]** The 2.x work routes are removed from
    `tcw/serve/__init__.py`, with their tests and Playwright specs.
    - Requests to `/api/work…` answer 404.
    - The taxonomy and capabilities routes keep working.
@@ -887,7 +900,8 @@ and the reason. About 119 of the 159 test files touch the work axis today.
 
    Porting the 2.x routes onto the backend first would be thrown away by
    TCW-77's rewrite. Nothing on the epic branch ships before 3.0.0, so the gap
-   is never released.
+   is never released. The owner confirmed on 2026-10-01 that no work pages are
+   served between this slice and TCW-77.
 
 ### 13. No stage names outside the table
 
@@ -1039,6 +1053,18 @@ streams and exit codes as a shell sees them.
    - A directory `notes/` in the work path, and a file `README.md`, do not
      appear and do not fail `list`.
    - One unreadable `item.yaml` makes `list` exit 1 naming that file.
+   - **Tag filter.** With items A (`tags: [ui]`), B (`tags: [api, ui]`), C
+     (`tags: [api]`) and D (no tags), all at request:
+     - `list --tag ui` prints A and B only;
+     - `list --tag ui --tag api` and `list --tag ui,api` each print A, B and
+       C, and not D;
+     - `list --tag nosuch` prints nothing and exits 0, including when
+       `nosuch` is not in the tag registry;
+     - `list --tag ui --all` also prints a completed item tagged `ui`, and
+       `list --tag ui` without `--all` does not;
+     - the `FsWorkBackend` contract case for `list(Query(tags={"ui"}))`
+       returns the same items as `MemoryBackend` for the same data
+       (criterion 1).
 6. **Comments.**
    - `echo hi | tcw work comment <slug>` writes one file matching
      `comments/\d{8}T\d{6}Z\.md` containing `hi\n`, and prints nothing on stdout.
@@ -1278,10 +1304,9 @@ is intact.
   6. Piped text goes to the request document even for inbox items. There is no
      `intake.md` (3.3). This answers TCW-76's question of where an inbox
      item's text is stored.
-  7. `list` fails on any unreadable item rather than hiding it (3.3). This was
-     an owner question; it is kept as a decision because it follows the
-     epic's rule of no hidden logic, the failure names the file, and git can
-     restore it.
+  7. `list` fails on any unreadable item rather than hiding it (3.3).
+     Settled by the owner on 2026-10-01: `list` fails on an unreadable
+     `item.yaml`.
   8. A comment name collision moves to the next free second (3.3).
   9. `read_request` reads the request file rather than returning `None`, so
      callers never branch on the backend (3.3.9).
@@ -1295,9 +1320,8 @@ is intact.
       searches only the work path for other mentions, and does not roll back
       (Design 5).
   15. Delegation reaches any project the registry locates, upstream projects
-      included. This was an owner question; one rule is simpler, and the
-      three conditions and the uncommitted files already protect the target
-      (6.2). A store outside git fails the uncommitted-changes condition, and
+      included (6.2). Settled by the owner on 2026-10-01: delegation may write
+      into the target's checkout after its three conditions pass. A store outside git fails the uncommitted-changes condition, and
       that check is a shared function TCW-71 also calls (6.3).
   16. `tcw work path` with no slug still prints the store folder (Design 7).
   17. Where TCW-73 still owns a command's output layout, this slice's tests
@@ -1319,10 +1343,9 @@ is intact.
   24. A reference into a project no declaration names is "missing", and one
       into a declared but absent project is "unresolved" (10.1).
   25. `validate` warnings and unresolved lines exit 0 (10.2).
-  26. `tcw serve`'s 2.x work routes are removed, not ported (12.2). This was an
-      owner question; it is kept as a decision because nothing on the epic
-      branch is released before 3.0.0, so the gap never reaches a user, and
-      porting would be thrown away by TCW-77.
+  26. `tcw serve`'s 2.x work routes are removed, not ported (12.2). Settled by
+      the owner on 2026-10-01: no `tcw serve` work pages between this slice
+      and TCW-77.
   27. The no-stage-literals rule extends to the new modules (Design 13).
   28. Documentation beyond the changelog, release notes and records is
       deferred (Design 14).
@@ -1330,6 +1353,9 @@ is intact.
       include a new path for delegation, removing the start/submit/rework/
       complete records in favor of one `advance` record, and three new
       vocabulary terms.
+  30. Settled by the owner on 2026-10-01: `tcw work list --tag` stays in
+      3.0.0. This slice implements TCW-69's `Query.tags` over `item.yaml`
+      tags, any given tag matching (3.3.3, Design 7, criterion 5).
 - **Cross-slice findings, and how each was settled.** Nothing has been posted
   to any ticket.
   - TCW-69's spec counted one `work/` capability record; there are 46. Settled
@@ -1361,6 +1387,10 @@ is intact.
     also replaces TCW-75's "smallest edit" proposal.
   - Exit 4 or 5 for a project declared but not on this machine (TCW-73's
     draft said 4). Settled by decision 4: exit 5.
+  - TCW-73 renames the config key `connected-projects:` to `projects:`
+    (owner answer of 2026-10-01). This slice reads the key under its current
+    name through `tcw/store/project.py`; the rename and its effect on
+    Design 2 are TCW-73's.
   - Exception classes live in `tcw/errors.py` (decision 8). TCW-73's draft
     still names `tcw/work/errors.py`.
 - **Open questions only the owner can answer:**
