@@ -7,20 +7,24 @@
 changed: [skills/configure]
 ```
 
-- **`skills/configure` (cap-97192e), changed.** Under Design 1.2 this item owns
-  the whole `configure` skill. The record says the skill points to a document
+- **`skills/configure` (cap-97192e), changed.** This item owns the whole
+  `configure` skill (epic decision 3, Design 1.2), so it owns the skill's
+  record too. The record says the skill points to a document
   for, among other things, "the Definition of Done, whether transitions commit
   and publish themselves, the trunk branch, deleting resolved items"
   (`docs/capabilities/skills/configure/description.md:1`). 3.0 removes all of
   those settings (TCW-69 Design 8.4). It also adds settings the record does not
   list: stages and hooks, the Jira backend, and personal configuration. The
   description is rewritten to list the areas in Design 6. Its status stays
-  `Supported`. Its `Planning doc` field is handled however TCW-76 decides for
-  every record (see Notes, owner question 2).
+  `Supported`. Its `Planning doc` field is not this item's to touch: TCW-73
+  removes the field from the capabilities commands, and TCW-76 removes it from
+  every record during the migration (epic decision 9).
 - **No other capability record changes.** Documentation does not change what a
   user can do with TCW. Each behavior is recorded by the item that ships it:
-  TCW-69 to TCW-73 and TCW-77, as the ticket says, plus TCW-74 for the skills
-  it deletes or rewrites (see Notes, cross-slice finding 3).
+  TCW-69 to TCW-73 and TCW-77, as the ticket says, plus TCW-74 for every other
+  skill it deletes or rewrites (epic decision 3). The 46 records under
+  `docs/capabilities/work/` are TCW-70's, with TCW-71 and TCW-73 as epic
+  decision 12 says.
 - **No taxonomy changes.** The `configure-skill` taxonomy entry names the terms
   `node` and `work-item/definition-of-done`
   (`docs/taxonomy/configure-skill/meta.yaml`). Those terms are renamed or
@@ -108,10 +112,13 @@ treats as errors. Seven problems follow.
    flag named in any live Markdown file exists
    (`tests/test_documented_cli_surface.py:1-21`, scope at `:36-46`).
    `tests/test_configuration_text_home.py` asserts sentences in `tracker.md`
-   (`:22-55`). `tests/test_repo_lifecycle.py` asserts two phrases in
-   `abstraction.md` (`:76-84`). When TCW-70, TCW-71 and TCW-73 remove commands
-   and keys, the documents still name them, and those tests fail before this
-   item runs.
+   (`:22-47`) and in the `work` skill's `commands.md` (`:50-55`), a file
+   TCW-74 rewrites.
+   `tests/test_repo_lifecycle.py` asserts two phrases in `abstraction.md`
+   (`:76-84`), but TCW-70 deletes that file with the 2.x parser it guards
+   (TCW-70 Design 15.1), so those two phrases lose their only check. When
+   TCW-70, TCW-71 and TCW-73 remove commands and keys, the documents still
+   name them, and the documented-surface test fails before this item runs.
 
 ## Goals
 
@@ -144,12 +151,12 @@ treats as errors. Seven problems follow.
 
 - **Sibling items' documents.**
   - `docs/guide/web-viewer.md`: TCW-77.
-  - Built-in prompts (`tcw/work/prompts/`), procedures, agents, and every skill
-    except `configure`: TCW-74. This includes the request template's text,
-    which lives in the request prompt.
+  - Built-in prompts (`tcw/work/prompts/`), procedures, agents, `evals/`, and
+    every skill except `configure` (epic decisions 3 and 14): TCW-74. This
+    includes the request template's text, which lives in the request prompt.
   - The migration guide, TCW's own `tcw-config.yaml`, `docs/procedures/`,
-    `docs/lifecycle/templates/`, and every part of `AGENTS.md` except its
-    worktree section: TCW-76.
+    `docs/lifecycle/templates/`, and every part of `CLAUDE.md` and `AGENTS.md`
+    except their worktree section: TCW-76.
   - Python help and message strings: TCW-73.
 - **Capability and taxonomy records** other than `skills/configure` (see
   Capability changes).
@@ -162,7 +169,7 @@ treats as errors. Seven problems follow.
 - **`tests/cli/scenarios/`** are contributor test scripts, not user
   documentation. Several of them describe 2.x behavior
   (`09-worktree-isolation-and-merge-back.md`, `11-scaffold-and-artifact-templates.md`).
-  No ticket owns them; see Notes, cross-slice finding 8.
+  They are TCW-73's (epic decision 14).
 - **Generating documentation from the records.** The README mentions it as a
   possibility only.
 
@@ -184,21 +191,31 @@ treats as errors. Seven problems follow.
    | `docs/guide/web-viewer.md` | TCW-77 |
    | `docs/lifecycle/{abstraction,implementation,harness}.md` | this item |
    | `docs/work-inbox-template.md` | this item (deleted) |
-   | `skills/configure/` (its `SKILL.md` and `references/`) | this item |
-   | every other skill, `agents/`, `tcw/work/prompts/`, procedures | TCW-74 |
-   | `AGENTS.md`, worktree section only (`AGENTS.md:80-101`) | this item |
-   | `AGENTS.md`, everything else; `tcw-config.yaml`; `docs/procedures/`; `docs/lifecycle/templates/` | TCW-76 |
+   | `skills/configure/` (its `SKILL.md` and every file in `references/`, including `personal.md`) and the `skills/configure` capability record | this item |
+   | every other skill, `agents/`, `tcw/work/prompts/`, procedures, `evals/` | TCW-74 |
+   | worktree section only of `CLAUDE.md` and `AGENTS.md` (`:80-101` in each; the two files are identical) | this item |
+   | `CLAUDE.md` and `AGENTS.md`, everything else; `tcw-config.yaml`; `docs/procedures/`; `docs/lifecycle/templates/` | TCW-76 |
    | `docs/migration-guide-2.8-to-3.0.0.md` | TCW-76 |
    | `docs/{changelogs,release-notes}/upcoming/README.md` | this item |
    | this item's own `upcoming/` entry files | this item |
 
-   The `configure` skill moves here from TCW-74's list ("the work,
-   capabilities, taxonomy, configure and setup skills are rewritten"). The
-   skill is a router table plus the reference documents it routes to. If two
-   items each wrote one half, the table and the files could disagree, and
-   `tests/test_configuration_text_home.py:58-62` already checks the two
-   against each other. This needs TCW-74's ticket to drop `configure` (see
-   Notes).
+   The `configure` skill is this item's (epic decision 3). The skill is a
+   router table plus the reference documents it routes to. If two items each
+   wrote one half, the table and the files could disagree, and
+   `tests/test_configuration_text_home.py:58-61` already checks the two
+   against each other. The `work` skill, which TCW-74 rewrites, links to the
+   configure references for every configuration fact.
+
+   **[Decision]** Code items that land earlier may need a configure reference
+   to exist before this item runs (TCW-72's spec writes `personal.md` and a
+   router line for it, TCW-72 Design 12). They may write a first version,
+   because a feature should not ship undocumented, but this item owns the
+   final text and restructures it to Design 6. Whatever they write is input,
+   not a constraint.
+
+   **[Decision]** The worktree section is the same text in `CLAUDE.md` and
+   `AGENTS.md`, because the two files are kept identical (TCW-76 Design 7
+   keeps them so). This item rewrites it in both, in the same change.
 3. **The boundary with TCW-74.** Built-in prompts and skills tell an agent what
    to do at a stage. This item's documents tell a reader how TCW works and how to
    configure it. Where a skill needs a configuration fact, it links to the
@@ -209,15 +226,32 @@ treats as errors. Seven problems follow.
    phrased as a difference from 2.x ("no longer", "replaces", "since 3.0")
    belongs in the migration guide or the release notes. The README and the
    documentation index link to the migration guide; nothing else refers to 2.x.
-5. **Keeping the suite passing in the meantime.** **[Decision]** Each code item
-   that removes a command, flag or key keeps `tests/test_documented_cli_surface.py`
-   and `tests/test_configuration_text_home.py` passing by the smallest edit
-   that does so: it deletes the line naming the removed thing, or the sentence
-   around it. This item does the full rewrite. This needs agreement from
-   TCW-70, TCW-71 and TCW-73 (see Notes). The other choices were worse:
-   marking the tests as expected failures hides real problems for the length of
-   the epic, and writing all the documentation first describes code that does
-   not exist yet.
+5. **Keeping the suite passing in the meantime** follows epic decision 6.
+   TCW-70 adds a temporary allowance list to
+   `tests/test_documented_cli_surface.py`: the commands and keys it removes,
+   with a guard test asserting that each entry really is gone from the CLI.
+   TCW-71 and TCW-73 add their removals to it. TCW-74 and this item shrink it
+   as they rewrite text, and TCW-76's "validate clean" step requires it to be
+   empty before 3.0.0 is cut.
+   - **[Decision]** After this item's rewrite, no owned document names any
+     allowance entry. This item then removes every entry that no live
+     document names any more. An entry still named by a document someone else
+     owns stays in the list, and is named, with that file, in this item's
+     implement round, so TCW-74 or TCW-76 knows it is theirs. Criterion 4
+     checks the owned documents.
+   - TCW-74's two new skill tests (no git words in shipped text, and every
+     named command exists) skip `skills/configure/` through one named
+     exclusion entry whose reason names this item (TCW-74 Design 6.2). This
+     item deletes that entry when it rewrites the skill, so both tests then
+     scan `skills/configure/` too. Any wording in the git example that
+     legitimately says "git" or "another repository" is added to those tests'
+     own allowlists, with its reason.
+   - **[Decision]** `tests/test_configuration_text_home.py` is not covered by
+     the allowance. It reads only `tracker.md`, `commands.md` and the router,
+     whose text no code item changes, so it keeps passing until this item and
+     TCW-74 change those files. This item replaces it (Design 6.6); if TCW-74
+     rewrites `commands.md` first, TCW-74 deletes the one test that reads it
+     (`:50-55`).
 
 ### 2. Writing rules for every document this item writes
 
@@ -259,7 +293,7 @@ treats as errors. Seven problems follow.
 | `skills/configure/references/stores.md` | edit | Design 6 |
 | `skills/configure/references/docs-sync.md` | edit | Design 6 |
 | `skills/configure/references/personal.md` | **new** | Design 6 |
-| `AGENTS.md` worktree section (`:80-101`) | rewrite | Design 7.4 |
+| `CLAUDE.md` and `AGENTS.md` worktree section (`:80-101` in each) | rewrite | Design 7.4 |
 | `docs/{changelogs,release-notes}/upcoming/README.md` | edit | Design 10 |
 | `docs/releasing.md` | keep | release flow; see Non-goals |
 
@@ -367,12 +401,17 @@ The `##` sections, in order:
 1. **`docs/guide/work.md`, the main lifecycle guide.** Rewritten in this order:
    1. What a work item is: a folder that never moves and is never deleted by
       TCW; its slug; its properties and their scales; `item.yaml` in
-      filesystem mode, and the ticket in Jira mode.
+      filesystem mode, and the ticket in Jira mode. Two Jira-only cases are
+      explained here (epic decision 16): priority can be empty when the Jira
+      project has no priority field, and a linked parent or blocking ticket
+      that has no item is listed as "untracked" rather than dropped.
    2. The stage table, with every column explained in words (TCW-69 Design
       3): which stages can be turned off, side stages, terminal stages.
    3. The item folder: stage folders, `<stage>/<stage>.md`,
       `<stage>/round-N.md`, verdicts and `judges`, what `stale` means and how it
-      arises, handoffs, comments, `capabilities.yaml`, and `tcw work path`.
+      arises, handoffs, comments, `<item>/capabilities.yaml`, and
+      `tcw work path`, including `--handoff`, which prints where the stage's
+      handoff file goes (epic decision 18).
    4. Moving an item:
       - a bare `advance` and how its target is chosen;
       - `--to`, and what counts as a skip;
@@ -390,7 +429,9 @@ The `##` sections, in order:
       and `blocks`, `parent` and epics, `rename`, `comment`.
    7. References and what `tcw validate` warns about: a missing item, a
       reference to a project not on this machine, a stage ahead of its
-      documents.
+      documents. A command that has to reach a declared project that is not on
+      this machine exits 5 (epic decision 4); this section says so and links
+      to the exit-code table in `docs/guide/cli.md`.
    8. Stage instructions and procedures: `stage prompt`, `lifecycle`,
       `procedure`, `docs`.
    9. "TCW does not run git": one paragraph that links to the example in the
@@ -404,33 +445,47 @@ The `##` sections, in order:
       rounds, handoffs, taxonomy and capabilities. Nothing is copied between
       them.
    2. **For people outside engineering**: writing a ticket in plain language;
-      the request template's sections, including "Product changes" ("none" is
-      a valid answer); following progress (the ticket's status is the stage);
-      where the QA plan appears (a comment posted at spec); how QA accepts or
-      rejects on the ticket (a rejection needs a comment saying why); the
-      optional postmortem comment.
+      the request template's sections, which are TCW-74's (What and why,
+      Product changes, Out of scope, Constraints, References; "none" is a
+      valid answer for Product changes); following progress (the ticket's
+      status is the stage); where the QA plan appears (a comment posted at
+      spec); how QA accepts or rejects on the ticket (a rejection needs a
+      comment saying why); the optional postmortem comment, which a project
+      turns on through its own `prompt` binding for the postmortem stage
+      (TCW-74 Design 2, postmortem).
    3. **Setting up**: a minimal `work.jira` and `work.stages.<stage>.status`
       example that links to the configure reference; the TCW Project and TCW
       Item fields; credentials named by environment variable.
-   4. **Stages and statuses**: one status per enabled stage; a move uses the
-      one transition Jira offers to the target status, and is refused when
-      there is none or several; a ticket in a status with no stage; a ticket
-      moved by hand in Jira counts as a forced move with no reason recorded.
-   5. **Checking the workflow**: `tcw validate --remote` and what it reports;
-      the `setup` skill walks through fixing the workflow with the user; TCW
-      changes nothing in Jira's workflow itself.
+   4. **Stages and statuses**: one status per enabled stage; how a move picks
+      its transition (epic decision 5): when Jira offers exactly one
+      transition to the target status, that one; when it offers several, the
+      one whose screen asks for nothing except a comment; when that still
+      leaves none or more than one, the move is refused with exit 3 and the
+      message lists the candidates. A ticket in a status with no stage; a
+      ticket moved by hand in Jira counts as a forced move with no reason
+      recorded.
+   5. **Checking the workflow**: `tcw validate --remote` and what it reports.
+      It prints findings only, one per line, and a move it could not check is
+      itself a finding (epic decision 10). The `setup` skill walks through
+      fixing the workflow with the user; TCW changes nothing in Jira's
+      workflow itself.
    6. **Adopting tickets**: the default inbox query, `inbox-query`,
-      `tcw work tickets list`, `tcw work tickets adopt`.
+      `tcw work tickets list` (one ticket key per line, details with
+      `--json`, epic decision 10), `tcw work tickets adopt`, and which
+      statuses a ticket may be adopted from (TCW-71 Design 7.2).
    7. **QA on the ticket**: `advance --to completed --reason …` and
       `advance --to implement --reason …`; why a bare `advance` from qa is
       refused.
    8. **Delegating** with `tcw work new --project`: what stdout prints (a slug,
-      or a ticket key when the item could not be created).
+      or the ticket key when TCW stopped after creating the ticket, epic
+      decision 16), and that delegating into a project that is declared but
+      not on this machine is refused with exit 3 (epic decision 4).
    9. **What needs the network**, and what `tcw validate` without `--remote`
       checks offline.
    10. **Limits**: Jira Cloud only; two people adopting the same ticket at the
-       same moment; the answers TCW-71's spec gives to team-managed projects
-       and to transition screens with required fields.
+       same moment; team-managed projects, where priority may be missing
+       (TCW-71 Design 12); TCW never fills in a transition screen field other
+       than the comment (TCW-71 Design 13).
 
    The request template's section names are those of TCW-74's request
    prompt. The guide lists them with one line each and says that
@@ -451,24 +506,32 @@ The `##` sections, in order:
        hands this sentence to this item (TCW-69 `spec.md:467-469`);
      - `post` hooks run after the move, and a failure keeps the move and exits
        6;
-     - the environment variables (`TCW_SLUG`, `TCW_STAGE`, `TCW_FROM_STAGE`,
+     - the working directory: hooks run with the project root as their
+       working directory (epic decision 11);
+     - the environment variables (`TCW_SLUG`, which is the full slug
+       `project/folder` (epic decision 11), `TCW_STAGE`, `TCW_FROM_STAGE`,
        `TCW_ITEM_PATH`, `TCW_PROJECT_ROOT`, and `TCW_FORCED` and `TCW_REASON`
-       on a forced move);
+       on a forced move). Only the 3.0 names appear here; how 2.x variables
+       map to them, by meaning, is the migration guide's (TCW-76);
      - the timeout and the output cap;
    - documentation entries (kept from `:198-248`; its `<slug>` example
      placeholders become `<folder>`, per Design 10);
    - **the git example** (Design 8).
 4. **`docs/guide/multi-repo.md`.** Rewritten around "project":
    - project IDs, and the fact that paths only say where a project is;
-   - connecting projects, using TCW-73's renamed keys;
+   - connecting projects, using TCW-73's renamed key (`projects`, with its
+     `parent`, `children` and `upstream` entries; TCW-73 Design 9);
    - `upstream` projects;
-   - where a project is on this machine (`TCW_PROJECT_<ID>`, or personal
-     configuration, depending on how TCW-72 answers its open question);
+   - where a project is on this machine: `TCW_PROJECT_<ID>`, which stays the
+     only way to say it and is not personal configuration (TCW-72 Design 11);
+   - what happens when a project is declared but is not on this machine: a
+     command that needs it exits 5 (epic decision 4);
    - slugs across projects;
    - delegating with `tcw work new --project`: the three conditions (path
      resolved, work store present, no uncommitted changes in it), what happens
-     in each backend, and that files written in another repository are left
-     uncommitted;
+     in each backend, that delegating into a project not on this machine is
+     refused with exit 3 (epic decision 4), and that files written in another
+     repository are left uncommitted;
    - `tcw projects list`;
    - stores in another repository, and `tcw provision`; keeping them up to date
      is the project's job, with a link to the git example;
@@ -484,16 +547,17 @@ The `##` sections, in order:
      one stage at a time, as in the README (Design 4.8). It shows the
      `<item>/capabilities.yaml` schema from TCW-69 Design 7: `new`, `changed`,
      `removed` and `taxonomy.{new,changed,removed}`. It does **not** use
-     `spec/capabilities.yaml`; see Notes, cross-slice finding 1.
+     `spec/capabilities.yaml` (epic decision 19).
    - **Drift** is described by the 3.0 rule (TCW-69 Design 7): the newest
      declaration from a completed item wins; two items created the same day
      that disagree are reported as ambiguous; and drift also reports inherited
      capabilities nobody has reviewed.
    - `check` (`:7`, `:89`) is replaced by `tcw validate`.
-   - `Planning doc` (`:78`, `:94`) is described according to TCW-76's decision
-     (owner question 2). Until that decision, the guide says that work items
-     point at capabilities through `capabilities.yaml`, and does not describe
-     `Planning doc` as a pointer.
+   - `Planning doc` (`:78`, `:94`) is removed from the guide's field list.
+     TCW-73 removes it and the `Tracker` field from the capabilities commands, and
+     TCW-76 removes them from the records (epic decision 9). The guide says
+     that work items point at capabilities through `<item>/capabilities.yaml`,
+     and that a record never points back at a work item.
    - The child-ledger example (`:111-121`) keeps the path-prefix rule and
      drops "completion checks" and `set … --status Supported`.
 6. **`docs/guide/linking-and-validation.md`.** Edited:
@@ -531,7 +595,7 @@ documented.
 | --- | --- |
 | `work.md` | `work.path`, `work.repository`, `work.backend`, `work.tags`, `work.stages.<stage>` (`enabled`, `status`, `prompt`, `pre`, `post`), binding kinds and `when:`, `inherit: true`, `work.hooks` (`timeout`, `output-cap`), how hooks run, `work.procedures` |
 | `jira.md` (replaces `tracker.md`) | `work.jira.*`: site, project, credentials, fields, priorities, `inbox-query`; how stages map to statuses; required custom fields; `tcw validate --remote` |
-| `projects.md` | the connected-project keys (TCW-73's names), `upstream`, `TCW_PROJECT_<ID>`, `extends`, where a delegation target's Jira settings come from |
+| `projects.md` | the connected-project key (`projects`, TCW-73), `upstream`, `TCW_PROJECT_<ID>`, a declared project that is not on this machine (exit 5; delegation into it exit 3, epic decision 4), `extends`, where a delegation target's Jira settings come from (each project states its own `work.jira`; it is not inherited, TCW-71) |
 | `stores.md` | `<component>.path`, `<component>.repository`, `tcw provision`, keeping a separate store up to date (a link to the git example) |
 | `docs-sync.md` | `work.documentation` entries |
 | `personal.md` (**new**) | the layers and their order, `XDG_CONFIG_HOME`, `TCW_NO_PERSONAL_CONFIG`, how mappings and lists merge, `inherit: true`, `user.name`, `tcw config show --origin`, **the shared/overridable table** |
@@ -543,50 +607,71 @@ documented.
    set it.` or `Overridable: personal configuration may set it.`
 3. **[Decision] The table.** `personal.md` holds one table of every
    configuration key path with its marking. The overridable rows are exactly
-   TCW-72's allowlist: stage `prompt` and `post`, `procedures`, credential
-   variable names, and `user.*`. Every other row is shared, and the table says
-   that a key added later is shared unless it is added to the allowlist.
-   **This item writes the table.** TCW-72's ticket says the configure
-   references are its home and that "TCW-75 links to it", which leaves the
-   writing to nobody. The table is tied to TCW-72's allowlist in code by
-   criterion 7, so it cannot drift away from it.
+   TCW-72's allowlist constant in `tcw/config.py` (TCW-72 Design 4.1):
+   `user.name`, `work.stages.*.prompt`, `work.stages.*.post`,
+   `work.procedures.*`, `work.jira.credentials.*`, and the same credentials
+   inside a connected-project entry. Every other row is shared, and the table
+   says that a key added later is shared unless it is added to the allowlist.
+   The table is this item's, because all of `skills/configure/` is (epic
+   decision 3). TCW-72 lands first and its spec writes a first `personal.md`
+   with the table and a test tying the table to the constant (TCW-72
+   Design 12, its criterion 15). **[Decision]** This item keeps that test,
+   whichever file it lives in, and extends it to the shared rows (criterion
+   7) rather than writing a second test that checks the same thing.
 4. **[Decision] The binding rules move here.** The table of which binding kinds
    each position allows currently lives in the `work` skill's `hooks.md`
-   (`skills/configure/references/work.md:26-28`). It moves into `work.md` here,
-   and TCW-74's `hooks.md` links to it.
+   (`skills/configure/references/work.md:26-28`). It moves into `work.md` here.
+   TCW-74 deletes `hooks.md` (TCW-74 Design 7, its file table), and the
+   `work` skill links to `work.md` for the rules.
 5. **The router** (`skills/configure/SKILL.md:24-35`) gets one row per
    reference in the table above. Its `description` and `when_to_use` name 3.0
    areas only, with no `work.lifecycle`, `dod.yaml`, `work.tracker`,
    `work.retain` or commit keys. Its `allowed-tools` drops `Bash(git *)`,
    since nothing in it runs git.
 6. **The text test is replaced.** `tests/test_configuration_text_home.py` checks
-   2.x tracker-inheritance sentences (`:22-55`). It is replaced with tests that
+   2.x tracker-inheritance sentences (`:22-47`, `:58-61`) and a sentence in
+   the `work` skill's `commands.md` (`:50-55`). It is replaced with tests that
    every reference is linked from the router and every router link resolves
-   (criterion 6). Whether the 2.x tracker-inheritance behavior survives at all
-   is TCW-71's to decide; `jira.md` documents whatever TCW-71 ships.
+   (criterion 6). TCW-71 drops inheritance of Jira settings between projects
+   (TCW-71 Capability changes, `work/inherit-tracker-settings-from-parent-nodes`), so `jira.md` says each project states
+   its own `work.jira` block, and the inheritance sentences go with
+   `tracker.md`.
 
-### 7. Lifecycle documents and `AGENTS.md`
+### 7. Lifecycle documents, and the worktree section of `CLAUDE.md` and `AGENTS.md`
 
 1. **`docs/lifecycle/abstraction.md`.** **[Decision]** Rewritten on this premise:
 
-   > TCW's model sits on a small backend interface (create, read, list, update
-   > properties, set stage, comment, rename, look up a backend name), which the
-   > filesystem and Jira backends both implement. The technical record (stage
+   > TCW's model sits on a small backend interface of eleven operations
+   > (create, read, list, update properties, set stage, comment, rename, look
+   > up a backend name, read the request, read comments, and name the current
+   > user), which the filesystem and Jira backends both implement. The
+   > technical record (stage
    > documents, rounds, handoffs, the declared record changes, taxonomy and
    > capabilities) is files in the repository in both modes, so the model may
    > read item folders directly. What a backend owns (properties, stage,
    > request, comments) it reaches only through the interface.
 
+   - The interface is TCW-69's eight operations plus the three reads epic
+     decision 1 adds (`read_request`, `read_comments`, `current_user`). The
+     document names the operations as plain verbs and does not repeat their
+     signatures, which live in `tcw/work/backend.py`; it also says that an
+     item can carry the keys of linked tickets that have no item
+     ("untracked"), and that a property such as priority can be empty when a
+     backend has no place for it (epic decision 16), since both are how an
+     honest backend reports what it cannot map.
    - The question "Could a non-filesystem store implement this operation, even
      if less elegantly?" stays word for word. Module docstrings cite it
-     (`tcw/store/base.py:3`), and `tests/test_repo_lifecycle.py:80-81` asserts
-     it. It now governs **operations on what a backend owns**.
+     (`tcw/store/base.py:3`), and `tests/test_repo_lifecycle.py:81` asserts
+     it today. That test file is deleted by TCW-70 (Design 15.1 there), so
+     this item's own test asserts the phrase instead (criterion 9). It now
+     governs **operations on what a backend owns**.
    - A second question is added for everything else: **"Who owns this fact:
      the backend, or the repository?"** A fact the repository owns may be read
      as a file in both modes. This is not a failure of the litmus test,
      because it is true in both backends.
    - The heading "Abstract spine, filesystem leverage" stays
-     (`tests/test_repo_lifecycle.py:82`). Its vocabulary becomes: item, stage,
+     (asserted today at `tests/test_repo_lifecycle.py:82`, and by criterion 9
+     once that file is gone). Its vocabulary becomes: item, stage,
      move (`advance`), slug, reference, project relation, query, properties,
      request, comments, and the item folder's named files.
    - "Use freely" keeps documents next to code, one commit carrying a code
@@ -626,8 +711,9 @@ documented.
    hooks)". In 3.0 the word "hooks" means TCW's stage hooks, which the `tcw`
    CLI runs identically under both harnesses. Read the old way, the sentence
    would wrongly call TCW's stage hooks Claude-only.
-4. **`AGENTS.md` worktree section** (`AGENTS.md:80-101`). Rewritten as
-   "Working in a git worktree":
+4. **The worktree section of `CLAUDE.md` and `AGENTS.md`** (`:80-101` in
+   each). Rewritten as "Working in a git worktree", with the same text in
+   both files (Design 1.2):
    - TCW does not create worktrees. A contributor who makes one with
      `git worktree add` finds that the editable install still runs the primary
      checkout's source. The reason stays as written: the import hook takes
@@ -666,11 +752,14 @@ can.
    git commit --quiet -m "Move $TCW_SLUG to $TCW_STAGE" -- .
    ```
 
-   - It works from `TCW_ITEM_PATH`, not the project root. A work store kept in
-     another repository is then committed in that repository, because git finds
-     the repository from the current folder. TCW-69 does not say which folder
-     hooks run in (2.x runs them in the project root, `tcw/work/hooks.py:94`), so
-     the script does not depend on it.
+   - It works from `TCW_ITEM_PATH`, not the project root. Hooks run with the
+     project root as their working directory (epic decision 11), but a work
+     store kept in another repository has to be committed in that repository,
+     and git finds the repository from the current folder. Changing to the
+     item folder first makes the script right in both layouts.
+   - The commit message uses `TCW_SLUG`, which is the full slug
+     `project/folder` (epic decision 11), so a commit names the project as
+     well as the item.
    - It commits only the item's folder. The pathspec `-- .` limits both the
      staging and the commit, so other changes, staged or not, are left alone.
    - It succeeds with no commit when nothing in the folder changed.
@@ -732,15 +821,26 @@ can.
 level. It covers:
 
 - naming (`tcw noun [child-noun] verb`) and `--help`;
-- stdout carries only the command's product, with TCW-73's per-command list;
+- stdout carries only the command's product, with TCW-73's per-command list.
+  The format rules are TCW-73's (epic decision 10): one identifier per line
+  (a slug, a ticket key, a qualified path or a project ID), and details only
+  through `--json`, where a command offers it. `tcw work tickets list` prints
+  keys; `tcw validate --remote` prints findings only, and a move it could not
+  check is a finding;
 - stderr carries the narration and names every file written or removed;
 - commands never prompt;
 - long text is read from stdin;
 - the slug forms accepted (full slug, bare folder in the current project, Jira
   key in Jira mode), and no prefix matching;
-- the exit-code table, with exit 6 meaning "the item moved, but something after
-  the move failed: a `post` hook, or recording the trace comment" (TCW-69
-  Design 6);
+- the exit-code table, with one row per code in `tcw/exit.py` and the meanings
+  and examples from TCW-73 Design 4. Exit 5 covers both an unreachable Jira and
+  a project that is declared but not on this machine, while delegating into
+  such a project is a refusal, exit 3 (epic decision 4). Exit 6 means "the
+  item moved, but something after the move failed: a `post` hook, or
+  recording the trace comment" (TCW-69 Design 6). The guide names the
+  exception classes only to say that each one carries its code; they live in
+  `tcw/errors.py` (epic decision 8), and the guide does not depend on their
+  names;
 - two short examples of using the contract from a script
   (`SLUG=$(tcw work new … )`, and branching on `$?`).
 
@@ -759,9 +859,9 @@ level. It covers:
    - that existing projects move over by following
      `docs/migration-guide-2.8-to-3.0.0.md` with an agent.
 
-   It is the only `upcoming/` entry with leading text. Sibling items put
-   everything under `##` headings, so the introduction stays first (see Notes,
-   cross-slice finding 9).
+   It is the only `upcoming/` entry with leading text: every sibling item puts
+   everything under `##` headings (epic decision 15), so the introduction
+   stays first. Criterion 11 checks it.
 3. **The rest of the release-notes entry** goes under `## Documentation`, a
    short list of the rewritten and new guides.
 4. **Changelog entry**: `## Added` (`docs/guide/cli.md`,
@@ -782,16 +882,22 @@ New or changed tests, all run by bare `pytest` as CI does
 (`.github/workflows/test.yml:76`):
 
 - `tests/test_docs_describe_3_0.py` (new): the 2.x-vocabulary scan
-  (criterion 2), link resolution (criterion 3), and the README structure
-  (criterion 1).
+  (criterion 2), link resolution (criterion 3), the README structure
+  (criterion 1), and the lifecycle-document phrases (criterion 9).
 - `tests/test_git_example.py` (new): criterion 5.
 - `tests/test_configuration_text_home.py` (replaced): criteria 6 and 7.
 - `tests/test_cli_guide.py` (new): criterion 8.
-- `tests/test_repo_lifecycle.py`: unchanged. Its two `abstraction.md` phrases
-  survive (Design 7.1), and its `implementation.md` and `harness.md` phrases
-  ("don't pre-abstract", "Agentskills specification") are kept.
-- `tests/test_documented_cli_surface.py`: unchanged, and it must pass
-  (criterion 4).
+- `tests/test_repo_lifecycle.py`: not this item's. TCW-70 deletes it with the
+  2.x parser it guards (TCW-70 Design 15.1), and TCW-76 writes a 3.0
+  replacement for the parts about TCW's own configuration (TCW-76 Design 7).
+  **[Decision]** The four phrases its `test_the_moved_rules_are_reachable`
+  checks (`:76-86`: the litmus question and the "Abstract spine, filesystem
+  leverage" heading in `abstraction.md`, "don't pre-abstract" in
+  `implementation.md`, "Agentskills specification" in `harness.md`) move into
+  `tests/test_docs_describe_3_0.py`. They guard documents this item owns, so
+  this item keeps them checked whatever happens to that file.
+- `tests/test_documented_cli_surface.py`: it must pass (criterion 4). Its
+  only change is that this item removes allowance entries (Design 1.5).
 
 ## Abstraction litmus test
 
@@ -799,7 +905,7 @@ This item adds no operation and changes none. Two parts of it touch the model:
 
 | Part | Verdict |
 | --- | --- |
-| The rewritten `abstraction.md` | Restates the rule for two backends. It keeps the litmus question and adds the ownership question (Design 7.1); every 3.0 operation TCW-69 lists passes both. |
+| The rewritten `abstraction.md` | Restates the rule for two backends. It keeps the litmus question and adds the ownership question (Design 7.1); each of the eleven backend operations (TCW-69's eight and epic decision 1's three reads) passes both. |
 | The git example | Uses only stage prompts and `post` hooks, which `advance` runs the same way in both backends. It tolerates a move that changed no file, which is the normal case in Jira mode. |
 
 ## Harness compatibility
@@ -822,8 +928,9 @@ Unless a criterion says otherwise, it is checked by a pytest test that runs unde
 bare `pytest`. **"Owned documents"** means: `README.md`; `docs/guide/*.md`
 except `web-viewer.md`; `docs/lifecycle/{abstraction,implementation,harness}.md`;
 `skills/configure/SKILL.md` and `skills/configure/references/*.md`; and the
-section of `AGENTS.md` from `### Working in a git worktree` to the next `## `
-heading.
+section of `CLAUDE.md` and of `AGENTS.md` from `### Working in a git worktree`
+to the next `## ` heading (the two sections are also checked to be
+identical).
 
 1. **README structure.**
    - The `##` heading right after `## Overview` is exactly
@@ -867,7 +974,11 @@ heading.
    `docs/migration-guide-2.8-to-3.0.0.md`. It is named in a single constant in
    the test, with a comment saying TCW-76 removes it when the guide exists.
 4. **No phantom commands.** `tests/test_documented_cli_surface.py` passes
-   unchanged against the 3.0 CLI.
+   against the 3.0 CLI, and no entry left in its temporary allowance
+   (epic decision 6) is named by any owned document: a test fails when an
+   owned document names an allowance entry. Entries still named by other
+   documents are listed in the implement round with the file that names them
+   (Design 1.5).
 5. **The git example works.** In a temporary git repository with a work item
    folder `docs/work/x/`, running `docs/guide/examples/commit-item-after-move.sh`
    with `TCW_ITEM_PATH`, `TCW_SLUG` and `TCW_STAGE` set:
@@ -893,17 +1004,22 @@ heading.
      starting `Shared:` or `Overridable:` before its first code block.
 7. **The override table matches the code.** The keys marked `Overridable` in
    `personal.md`'s table are exactly the key paths in TCW-72's allowlist
-   constant. Every key path accepted by the 3.0 work config parser (TCW-69
-   Design 8: `work.path`, `repository`, `backend`, `tags`, `documentation`,
-   `procedures`, `stages.<stage>.{enabled,status,prompt,pre,post}`,
-   `hooks.{timeout,output-cap}`, `jira`) has a row.
+   constant in `tcw/config.py`. Every key path accepted by the 3.0 work config
+   parser (TCW-69 Design 8: `work.path`, `repository`, `backend`, `tags`,
+   `documentation`, `procedures`, `stages.<stage>.{enabled,status,prompt,pre,post}`,
+   `hooks.{timeout,output-cap}`, `jira`), and the top-level `projects` and
+   `user.name` keys, has a row. This is one test: TCW-72's table test,
+   extended (Design 6.3).
 8. **The exit-code table matches the code.** The table in `docs/guide/cli.md`
    has one row per exit code constant in `tcw/exit.py`, with the same numbers,
    and no other rows.
-9. **The abstraction document.** `tests/test_repo_lifecycle.py` passes
-   unchanged. `docs/lifecycle/abstraction.md` contains the ownership question
-   from Design 7.1, names each of the eight backend operations, and does not
-   contain `mv`.
+9. **The lifecycle documents.** `tests/test_docs_describe_3_0.py` asserts the
+   four phrases listed in Design 11 (the litmus question and the "Abstract
+   spine, filesystem leverage" heading in `abstraction.md`, "don't
+   pre-abstract" in `implementation.md`, "Agentskills specification" in
+   `harness.md`). `docs/lifecycle/abstraction.md` also contains the ownership
+   question from Design 7.1, names each of the eleven backend operations
+   (epic decision 1), and does not contain `mv`.
 10. **Inventory carried out.** `docs/work-inbox-template.md` and
     `skills/configure/references/tracker.md` do not exist.
     `docs/guide/cli.md`, `docs/guide/examples/commit-item-after-move.sh` and
@@ -927,7 +1043,7 @@ heading.
 | 4 README | 1, 2, 3 |
 | 5 Guides | 2, 3, 10 |
 | 6 Configure | 6, 7 |
-| 7 Lifecycle documents, `AGENTS.md` | 2, 9 |
+| 7 Lifecycle documents, `CLAUDE.md` and `AGENTS.md` worktree section | 2, 9 |
 | 8 Git example | 5 |
 | 9 CLI guide | 8 |
 | 10 Release notes | 11 |
@@ -939,10 +1055,11 @@ heading.
   this item lands after the code items (Design 1.1); criteria 2, 4, 7 and 8 tie
   the documents to the code, so a later change turns the suite red rather than
   leaving a silent mismatch.
-- **The interim test failures need every code item to cooperate** (Design
-  1.5). If one does not, the suite is red on the epic branch until this item
-  lands. Mitigation: the rule is stated as a cross-slice finding for TCW-70,
-  TCW-71 and TCW-73 to accept before they are implemented.
+- **The temporary allowance could outlive the epic** (Design 1.5). An entry
+  left in it lets a document name a removed command. Mitigation: TCW-70's
+  guard test proves each entry really is removed; criterion 4 proves no owned
+  document names one; and TCW-76's "validate clean" step requires the list to
+  be empty before 3.0.0 is cut (epic decision 6).
 - **The vocabulary scan can reject legitimate text.** "No longer" may be the
   natural phrase for something unrelated to 2.x, and "node" may be needed for a
   third-party term. Mitigation: the scan is limited to owned documents. The
@@ -955,115 +1072,106 @@ heading.
   when this item lands. Mitigation: one named exception in criterion 3, removed
   by TCW-76. Both land on the epic branch before 3.0.0 is cut, so no released
   version carries the dangling link.
-- **Taking over the `configure` skill from TCW-74** could leave it edited by
-  both items if TCW-74's ticket is not updated. Mitigation: a cross-slice
-  finding, and criterion 6 fails if the router and references disagree.
+- **Earlier items write first versions of configure references** (TCW-72's
+  `personal.md`), so the skill is touched by more than one item over the
+  epic. Mitigation: epic decision 3 makes this item the owner of the final
+  text (Design 1.2), and criterion 6 fails if the router and references
+  disagree.
 
 ## Notes
 
+- Reconciled with the epic's cross-slice decisions on 2026-10-01.
 - **Decisions made in this spec, for the owner to confirm.** Each is marked
   **[Decision]** above:
   1. This item lands after TCW-69 to TCW-74 and TCW-77, and before TCW-76
      (Design 1.1).
-  2. The file ownership table, including that this item owns all of
-     `skills/configure/` and only the worktree section of `AGENTS.md`
-     (Design 1.2).
-  3. Until this item lands, each code item keeps the documentation tests
-     passing with the smallest edit that does so (Design 1.5).
-  4. `docs/work-inbox-template.md` is deleted (Design 5.7).
+  2. The file ownership table (Design 1.2). That this item owns all of
+     `skills/configure/` is the owner's epic decision 3; the decisions here
+     are that earlier items may write first versions of configure references
+     that this item then owns, and that the worktree section is rewritten in
+     both `CLAUDE.md` and `AGENTS.md`, which are kept identical.
+  3. Under the temporary documentation allowance (epic decision 6), this item
+     removes every entry its own documents no longer name and lists the rest
+     with the file that still names them; `tests/test_configuration_text_home.py`
+     needs no allowance (Design 1.5).
+  4. `docs/work-inbox-template.md` is deleted, and writing a request for
+     people outside engineering is covered in the Jira guide (Design 5.7).
   5. `skills/configure/references/tracker.md` is replaced by `jira.md`
      (Design 6.1).
   6. Each key carries a `Shared:` or `Overridable:` line (Design 6.2).
-  7. This item writes the shared/overridable table, in a new `personal.md`
-     (Design 6.3).
-  8. The binding rules move from the `work` skill's `hooks.md` into the
-     configure reference (Design 6.4).
+  7. The shared/overridable table is this item's, and this item keeps and
+     extends TCW-72's table test rather than adding a second one (Design 6.3).
+  8. The binding rules move from the `work` skill's `hooks.md`, which TCW-74
+     deletes, into the configure reference `work.md` (Design 6.4).
   9. The rewrite of `abstraction.md`: the litmus question kept word for word,
-     an ownership question added, and git operations kept out of the model
-     (Design 7.1).
+     an ownership question added, the eleven operations named, and git
+     operations kept out of the model (Design 7.1).
   10. "Beginning implementation" is deleted from `implementation.md`
       (Design 7.2).
   11. The git example's commit hook ships as a tested file,
       `docs/guide/examples/commit-item-after-move.sh`, and works from
       `TCW_ITEM_PATH` (Design 8.1).
   12. The output contract gets its own guide, `docs/guide/cli.md` (Design 9).
-  13. Entry files are named by the folder name, and the 3.0.0 introduction is
-      this item's leading text in the release notes (Design 10.1, 10.2).
-- **Cross-slice findings.** Nothing has been posted to any ticket.
-  1. **`spec/capabilities.yaml` is still written in four tickets** after the
-     owner confirmed `<item>/capabilities.yaml`: TCW-75's own ticket ("Add the
-     `spec/capabilities.yaml` chain"), TCW-74 (the spec prompt "writes
-     `spec/spec.md` and `spec/capabilities.yaml`"), TCW-77 (the
-     `capabilities.yaml` form, its autocomplete row, and "work items point at
-     capabilities through `spec/capabilities.yaml`"), and TCW-76's artifact
-     table (corrected only in its update section). TCW-73's body also says it
-     but its update section corrects it. This spec uses the confirmed location.
-  2. **TCW-76 contradicts the design record on migrated verdicts.** It maps
-     `refined-outcome.md` and `rework.md` to `qa/round-N.md`; the design record
-     maps them to `review/round-N.md`. Either way, TCW-76 must also say what
-     `judges` value a migrated verdict gets, or every migrated verdict reads as
-     `stale` or `invalid` (TCW-69 Design 4.6-4.8).
-  3. **Capability record owners omit TCW-74.** This ticket's "Who owns the
-     rest" names TCW-69 to TCW-73 and TCW-77. TCW-74 deletes and rewrites
-     skills that have records under `docs/capabilities/skills/`, so it must
-     own those records too.
-  4. **The `configure` skill is claimed by both TCW-74 and TCW-75.** This spec
-     takes all of it (Design 1.2). TCW-74's ticket should drop `configure`
-     from its list of rewritten skills, and its `hooks.md` should link to the
-     configure reference for the binding rules (Design 6.4).
-  5. **The shared/overridable table is left to nobody.** TCW-72 says the
-     configure references are its home and that "TCW-75 links to it"; TCW-75
-     says the references are the home "(TCW-72)". This spec has TCW-75 write
-     it and TCW-72 provide the allowlist as a code constant that criterion 7
-     can import. TCW-72 should name that constant in its spec.
-  6. **Tests guarding the documentation fail mid-epic** (Problem 7). TCW-70,
-     TCW-71 and TCW-73 need to accept the smallest-edit rule (Design 1.5).
-     Separately, the exemption in `tests/test_documented_cli_surface.py:70-99`
-     exists only because planning seeded `Missing` capabilities, which TCW-74
-     reverses. TCW-74 should remove that exemption.
-  7. **TCW-69's spec does not say which folder hooks run in.** 2.x uses the
-     project root (`tcw/work/hooks.py:94`). The hook documentation has to state
-     it, so TCW-69, or TCW-70 where the runner is wired, should fix it. The git
-     example is written not to depend on it.
-  8. **Nobody owns `tests/cli/scenarios/`.** Several scenarios describe 2.x
-     behavior (`09-worktree-isolation-and-merge-back.md`,
-     `10-cross-node-epics-and-nesting.md`,
-     `11-scaffold-and-artifact-templates.md`). Suggested owner: TCW-73, since
-     they drive the CLI surface.
-  9. **Release-note leading text.** Only this item's release-notes entry may
-     have text before its first `##` heading, or the 3.0.0 introduction stops
-     being first. The rule should reach every sibling item.
-  10. **Entry file naming crosses three items.** This item changes the
-      `upcoming/README.md` files and the configure reference (Design 10.5).
-      TCW-74 must change the `documentation-sync` skill's `<work-item-slug>`
+  13. Entry files are named by the folder name (Design 10.1).
+  14. The four lifecycle-document phrases that `tests/test_repo_lifecycle.py`
+      checks move into this item's own test, since TCW-70 deletes that file
+      (Design 11).
+- **Cross-slice findings, and how each was settled.** Nothing has been posted
+  to any ticket.
+  1. `spec/capabilities.yaml` in four tickets: settled by epic decision 19;
+     every spec uses `<item>/capabilities.yaml`.
+  2. TCW-76's mapping of migrated verdicts (`refined-outcome.md` and
+     `rework.md` to `qa/round-N.md` against the design record's
+     `review/round-N.md`, and the `judges` value a migrated verdict gets): not
+     settled by the decisions, and not this item's. It is TCW-76's to answer;
+     this item documents only 3.0 and never describes migrated items.
+  3. Who owns the skill capability records: settled by epic decision 3.
+     TCW-74 owns every skill's record except `skills/configure`, which is
+     this item's.
+  4. The `configure` skill claimed by TCW-74 and TCW-75: settled by epic
+     decision 3 (TCW-75). TCW-74's spec deletes `hooks.md` and links to the
+     configure references.
+  5. The shared/overridable table left to nobody: settled by epic decision 3
+     (this item owns the table); TCW-72 supplies the constant in
+     `tcw/config.py` and a first version with its test (Design 6.3).
+  6. Documentation tests failing mid-epic: settled by epic decision 6 (the
+     temporary allowance). Still open: the `Status: Missing` exemption in
+     `tests/test_documented_cli_surface.py:71-99` exists only because 2.x
+     planning seeded `Missing` capabilities, which TCW-74 reverses. No spec
+     removes it. Suggested owner: TCW-74, which removes the practice.
+  7. Which folder hooks run in: settled by epic decision 11 (the project
+     root). The git example still changes to `TCW_ITEM_PATH` so that a work
+     store in another repository is committed there (Design 8.1).
+  8. Nobody owns `tests/cli/scenarios/`: settled by epic decision 14 (TCW-73).
+  9. Release-note leading text: settled by epic decision 15 (only this item's
+     entry has it).
+  10. Entry file naming across three items: unchanged. This item changes the
+      `upcoming/README.md` files and the configure reference (Design 10.5);
+      TCW-74 changes the `documentation-sync` skill's `<work-item-slug>`
       wording
       (`skills/documentation-sync/references/release-notes-and-changelogs.md:16`,
-      `:21`, `:31`). TCW-76 changes TCW's `tcw-config.yaml` entries and the
-      `AGENTS.md` Versioning section.
-  11. **Does adopting a Jira ticket run `post` hooks?** TCW-71's adopt ends with
-      "move to request". If that is an `advance`, the git example commits the
-      new folder; if not, it does not. TCW-71's spec should say which, and the
-      Jira guide will document the answer.
-  12. **Terms this item depends on are still open**: TCW-73's new names for the
-      connected-project keys, TCW-72's answer on `TCW_PROJECT_<ID>`, TCW-74's
-      request-template section names, and TCW-74's switch for the optional
-      postmortem comment (TCW-74 says it is "off by default" but not how it is
-      turned on).
-- **Open questions only the owner can answer.**
-  1. Confirm that TCW-75 owns all of `skills/configure/` (Design 1.2) rather
-     than sharing it with TCW-74.
-  2. What happens to the `Planning doc` capability field? TCW-76 is assigned
-     this decision but lands after this item, while this item's
-     taxonomy-and-capabilities guide and `README.md` must describe the field
-     either way. Deciding it before this item is implemented avoids
-     documenting it twice.
-  3. Delete `docs/work-inbox-template.md`, or keep a 3.0 version as a guide to
-     writing a request for people outside engineering? This spec deletes it
-     and covers the subject in the Jira guide.
-  4. Should the 3.0.0 introduction in the release notes be this item's
-     (as decided here) or TCW-76's?
-  5. Accept the smallest-edit rule for code items (Design 1.5), or let the
-     epic branch carry failing documentation tests until this item lands?
+      `:21`, `:31`), which its file table already plans; TCW-76 changes TCW's
+      `tcw-config.yaml` entries and the Versioning section of `CLAUDE.md` and
+      `AGENTS.md`.
+  11. Does adopting a Jira ticket run `post` hooks? Still open. TCW-71's
+      `tickets adopt` ends with "Move to request" (TCW-71 Design 7.2, step 5)
+      without saying whether that runs `advance`, and so the request stage's
+      `post` hooks. **[Decision]** The Jira guide and the git example state
+      whatever TCW-71 ships, and the git example's "What the example does not
+      do" list (Design 8.4) names adoption next to creation if adoption runs
+      no hooks. TCW-71 should say which.
+  12. Terms this item depended on: settled. The connected-project key is
+      `projects` (TCW-73 Design 9, still open as TCW-73's own owner question
+      on the name); `TCW_PROJECT_<ID>` stays the only way to place a project
+      on this machine (TCW-72 Design 11); the request template's sections are
+      TCW-74's (Design 2 there); the postmortem comment is turned on by a
+      project's own `prompt` binding for postmortem (TCW-74 Design 2).
+- **Open questions only the owner can answer.** None remain for this item.
+  The five earlier questions were settled by epic decisions 3, 9, 15 and 6,
+  and by the **[Decision]** to delete the inbox template (Design 5.7), which
+  the owner can reverse at no cost to the rest of the design.
 - **Driving this item.** It edits no code under `tcw/`, but it lands while the
-  epic is changing `tcw/`, so the repository's own board is driven by editing
-  files, as `CLAUDE.md` requires.
+  epic is changing `tcw/`. Per epic decision 7, the repository's 2.x board is
+  edited by hand for this item, and its Jira ticket (TCW-75) is moved by hand
+  to In Progress, In Review and Done as the item moves. A read-only view of
+  the board may use a released 2.8 `tcw` installed outside the checkout.
