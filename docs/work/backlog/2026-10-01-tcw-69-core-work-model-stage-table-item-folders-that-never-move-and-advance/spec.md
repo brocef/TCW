@@ -628,7 +628,7 @@ The checks:
 3. A side stage accepts only `enabled` and `prompt`; `pre`, `post` and
    `status` on it are errors, because nothing ever moves into it.
 4. The removed 2.x keys are errors that name the migration guide
-   (`docs/migration-guide-2.X-to-3.0.0.md`, the name TCW-76 uses):
+   (`docs/migration-guide-2.8-to-3.0.0.md`, the name TCW-76 fixes):
    - `work.lifecycle`, including its `artifacts` templates. **[Decision]**
      A per-tag document template becomes a `file` binding with a `when:`
      condition in that stage's `prompt` list. This repository's `spec-bug.md`

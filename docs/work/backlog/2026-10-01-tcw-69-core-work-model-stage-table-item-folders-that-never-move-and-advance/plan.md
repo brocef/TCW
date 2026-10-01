@@ -165,7 +165,7 @@ imported. In particular, `resolve.select` and the 2.x binding parser
     `HookLimits` (`timeout=300`, `output_cap=65536`) and `WorkConfig`
     (`backend`, `path`, `repository`, `tags`, `documentation`, `procedures`,
     `stages`, `hooks`, `jira`), with `WorkConfig.enabled` as a property;
-  - `MIGRATION_GUIDE = "docs/migration-guide-2.X-to-3.0.0.md"`;
+  - `MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"`;
   - `parse_work_config(mapping) -> tuple[WorkConfig, list[str]]`, which never
     raises.
 - **What the parser reuses.** `documentation` goes through
