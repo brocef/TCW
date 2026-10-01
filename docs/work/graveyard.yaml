@@ -1169,6 +1169,9 @@
   location: f470f8071b5b45f655ff2fe3efe22a6a62049023
   resolution: done
   resolved: '2026-09-29'
+2026-09-30-refuse-instead-of-crashing-when-a-slug-is-held-by-two-folders:
+  resolution: done
+  resolved: '2026-10-01'
 2026-09-30-refuse-to-tear-down-a-detached-worktree-whose-commits-are-on-no-branch:
   location: b52aeea89dbf9a7cfa68ea565ef1267c6817cd06
   resolution: done
