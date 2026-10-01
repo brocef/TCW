@@ -57,6 +57,8 @@ def test_the_refusal_names_both_folders(project):
     assert f"docs/work/backlog/{twice}" in out.stderr, out.stderr
     assert "tcw validate" in out.stderr, out.stderr
     assert OLD not in out.stderr, out.stderr
+    # Removing a copy before merging in what only it holds would lose files.
+    assert "merge any files it lacks" in out.stderr, out.stderr
 
 
 def test_a_blocker_on_the_duplicate_points_at_validate(project):
@@ -124,3 +126,14 @@ def test_a_blocker_held_twice_says_so(blocked_by_the_duplicate):
     assert f"{twice} (held by more than one folder)" in row, row
     out = tcw(root, "start", waiting)
     assert out.returncode == 1 and f"{twice} (held by more than one folder)" in out.stderr, out.stderr
+
+
+def test_a_cycle_through_the_duplicate_points_at_validate(blocked_by_the_duplicate):
+    """Checking `other` blocked by `waiting` for a cycle walks through `twice`,
+    which cannot be read while two folders hold it."""
+    root, twice, waiting, other = blocked_by_the_duplicate
+    out = tcw(root, "edit", other, "--blocked-by", waiting)
+    refused(out)
+    assert twice in out.stderr, out.stderr
+    assert "merge any files it lacks" in out.stderr, out.stderr
+    assert "`tcw validate` names both folders" in out.stderr, out.stderr

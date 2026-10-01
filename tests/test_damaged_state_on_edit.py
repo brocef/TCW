@@ -106,7 +106,9 @@ def test_a_capabilities_file_names_itself(project):
     root, st, _, other = project
     (root / "docs/work/backlog" / other / "capabilities.yaml").write_text("new: [\n")
     problem = str(st.get(other).capabilities.get("_tcw_parse_error"))
-    assert "capabilities.yaml" in problem and BARE not in problem, problem
+    # The path from the project root, so the error says which item's file it is.
+    assert f"docs/work/backlog/{other}/capabilities.yaml" in problem, problem
+    assert BARE not in problem, problem
 
 
 def test_writing_a_sidecar_that_does_not_parse_names_it(project):

@@ -4339,7 +4339,8 @@ class WorkStore(ABC):
             remedies.append("Fix or replace each damaged state.yaml "
                             "(`tcw validate` lists them)")
         if any(reason == _HELD_TWICE for _, reason in found):
-            remedies.append("remove the extra folder of each slug held twice "
+            remedies.append("keep one folder of each slug held twice, merge any "
+                            "files it lacks from the others, and remove them "
                             "(`tcw validate` names both folders)")
         remedy = "; ".join(remedies)
         many = len(blockers) > 1

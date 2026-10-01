@@ -563,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
         # twenty-odd `load_yaml` calls that do not catch it: refusing is already
         # the right answer at every one of them — `init` must not overwrite a
         # config it cannot read — and only the presentation was wrong. The
-        # loader's message names the file (`tcw.store.yaml_source.named`).
+        # loader's message names the file (`tcw.store.yaml_source.load`).
         print(f"tcw: {error}", file=sys.stderr)
         return 1
     except subprocess.CalledProcessError as error:

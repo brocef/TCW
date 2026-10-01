@@ -111,7 +111,7 @@ def test_an_ambiguous_slug_on_the_path_refuses_the_edit(graph):
     out = tcw(graph / "pa", "edit", z, "--blocked-by", x)
     assert out.returncode != 0, out.stdout
     assert y in out.stderr and "more than one folder" in out.stderr, out.stderr
-    assert "remove the extra folder" in out.stderr.lower(), out.stderr
+    assert "merge any files it lacks" in out.stderr.lower(), out.stderr
     assert "state.yaml" not in out.stderr, out.stderr       # nothing to fix there
 
 

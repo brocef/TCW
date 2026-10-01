@@ -5062,8 +5062,8 @@ class FsWorkStore(FsTreeStore, WorkStore):
         raise MultipleMatch(
             f"{slug} is held by {len(matches)} folders — "
             f"{', '.join(self._shown_path(d) for d in sorted(matches))}. Keep the one "
-            f"whose state.yaml is right and remove the others; `tcw validate` lists "
-            f"every slug held twice")
+            f"whose state.yaml is right, merge any files it lacks from the others, "
+            f"and remove them; `tcw validate` lists every slug held twice")
 
     def _require_dir(self, slug: str) -> Path:
         d = self._find(slug)
@@ -5422,27 +5422,28 @@ class FsWorkStore(FsTreeStore, WorkStore):
             return None
         return item if (d / "state.yaml").exists() else None
 
-    @staticmethod
-    def _read_capabilities_sidecar(caps: Path) -> object:
+    def _read_capabilities_sidecar(self, caps: Path) -> object:
         """The parsed sidecar, `None` if it went away, or the `_tcw_parse_error`
         value for anything that cannot be read: one item's bad file must list as
         that item's problem, never take down the board or hang a projection.
         `is_file()` comes first because no exception rescues a read that blocks
-        on a named pipe."""
+        on a named pipe. Problems name the file from the project root, so a
+        parse error says which item's sidecar it is."""
+        shown = self._shown_path(caps)
         problem = None
         try:
             if not caps.is_file():
-                return ({"_tcw_parse_error": f"{caps.name} is not a regular file"}
+                return ({"_tcw_parse_error": f"{shown} is not a regular file"}
                         if caps.exists() else None)
             if caps.stat().st_size > SIDECAR_MAX_BYTES:
-                problem = f"{caps.name} is larger than {SIDECAR_MAX_BYTES} bytes"
+                problem = f"{shown} is larger than {SIDECAR_MAX_BYTES} bytes"
             else:
-                parsed = _load_named_yaml(caps.read_text(encoding="utf-8"), caps.name)
+                parsed = _load_named_yaml(caps.read_text(encoding="utf-8"), shown)
                 problem = sidecar_value_problem(parsed)
         except FileNotFoundError:
             return None
         except UnicodeDecodeError:
-            problem = f"{caps.name} is not valid UTF-8"
+            problem = f"{shown} is not valid UTF-8"
         except (OSError, ValueError, yaml.YAMLError, RecursionError) as e:
             problem = str(e)
         if problem is not None:

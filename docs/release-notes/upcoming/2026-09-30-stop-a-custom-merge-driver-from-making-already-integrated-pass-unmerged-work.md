@@ -5,4 +5,6 @@
   some files, including git's own "union" rule. It no longer lets those rules
   decide. In such a repository, a
   branch merged by squashing that changed one of those files may now be refused;
-  delete the branch yourself and run the command again.
+  delete the branch yourself and run the command again. If the item has its own
+  worktree, remove that worktree first: git will not delete a branch a worktree
+  is using. The refusal prints the command for it.

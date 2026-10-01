@@ -330,3 +330,36 @@ def test_way_out_for_a_worktree_item_says_to_remove_the_worktree_first(tcw_workt
     assert complete(slug=slug) == 1
     err = capsys.readouterr().err
     assert "git worktree remove" in err and branch in err, err
+
+
+@pytest.mark.parametrize("where", [".gitattributes", ".git/info/attributes"])
+def test_complete_refuses_a_branch_a_driver_would_hide(tmp_path, monkeypatch, capsys,
+                                                        where):
+    """The whole command, not only `branch_integration`: the item stays active
+    and the branch is kept."""
+    root = node(tmp_path)
+    slug = make_item(root)
+    monkeypatch.chdir(root)
+    assert main(["work", "start", slug]) == 0
+    trunk = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    (root / "f.txt").write_text("a\nb\nc\nd\ne\n")
+    git(root, "add", "f.txt")
+    git(root, "commit", "-qm", "base")
+    git(root, "config", "merge.ours.driver", "true")
+    (root / where).parent.mkdir(exist_ok=True)
+    (root / where).write_text(KEEP_OURS)
+    if where == ".gitattributes":
+        git(root, "add", where)
+        git(root, "commit", "-qm", "attributes")
+    git(root, "switch", "-qc", "feature/x")
+    (root / "f.txt").write_text("a\nb\nc\nWORK\ne\n")
+    git(root, "commit", "-qam", "work")
+    git(root, "switch", "-q", trunk)
+    (root / "f.txt").write_text("MAIN\nb\nc\nd\ne\n")
+    git(root, "commit", "-qam", "main")
+    capsys.readouterr()
+    assert complete("--branch", "feature/x", slug=slug) == 1
+    err = capsys.readouterr().err
+    assert "merge driver" in err and "ours" in err, err
+    assert branch_exists(root, "feature/x")
+    assert status(root, slug) == "active"

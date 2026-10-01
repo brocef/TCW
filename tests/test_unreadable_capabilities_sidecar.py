@@ -156,7 +156,8 @@ def test_an_unreadable_sidecar_still_refuses_completion(node):
     with pytest.raises(SidecarError):
         declared_capabilities(item.capabilities)
     assert capability_gate(st, item) == [
-        "capabilities.yaml is unreadable: capabilities.yaml is not valid UTF-8"]
+        f"capabilities.yaml is unreadable: docs/work/backlog/{slug}/capabilities.yaml "
+        f"is not valid UTF-8"]
 
 
 # ── criterion 6: the web detail ──────────────────────────────────────────────
