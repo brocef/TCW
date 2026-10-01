@@ -1170,6 +1170,7 @@
   resolution: done
   resolved: '2026-09-29'
 2026-09-30-name-the-item-and-file-when-editing-an-item-whose-state-yaml-cannot-be-read:
+  location: 3c223e46ad261f36f29c47f4f89b60b978cb7f2e
   resolution: done
   resolved: '2026-10-01'
 2026-09-30-refuse-instead-of-crashing-when-a-slug-is-held-by-two-folders:
