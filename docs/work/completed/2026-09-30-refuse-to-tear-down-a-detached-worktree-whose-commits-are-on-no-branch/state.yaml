@@ -1,7 +1,7 @@
 slug: 2026-09-30-refuse-to-tear-down-a-detached-worktree-whose-commits-are-on-no-branch
 title: Refuse to tear down a detached worktree whose commits are on no branch
 created: '2026-09-30'
-resolution: null
+resolution: done
 tags:
 - bug
 - work
