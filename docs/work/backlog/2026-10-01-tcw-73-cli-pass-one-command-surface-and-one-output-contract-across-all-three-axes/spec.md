@@ -31,7 +31,7 @@ changed:
   - taxonomy/remove-a-local-term                       # `tcw validate` replaces the check commands; no git
   - taxonomy/search-terms                              # one path per line, --json
   - taxonomy/validate-the-taxonomy                     # runs as part of `tcw validate`
-  - capabilities/add-a-capability                      # long flags, no git, prints the path
+  - capabilities/add-a-capability                      # long flags, no git, prints the path; no Planning doc or Tracker field
   - capabilities/browse-capabilities-by-status         # one path per line, --local, --json
   - capabilities/configure-the-capabilities-store-location  # writes no longer commit or stage; Subject node -> project
   - capabilities/declare-the-capabilities-stores-home-repository  # Subject node -> project
@@ -41,13 +41,14 @@ changed:
   - capabilities/remove-a-capability                   # no staging; records gate, not completion
   - capabilities/reset-an-override                     # wording
   - capabilities/search-capabilities                   # one path per line, --json
-  - capabilities/set-a-capabilitys-status              # no git paragraph; `tcw validate`
+  - capabilities/set-a-capabilitys-status              # no git paragraph; `tcw validate`; fields list without Planning doc and Tracker
   - capabilities/validate-capabilities                 # runs as part of `tcw validate`
   - work/declare-which-documents-track-which-changes   # Subject node -> project
   - work/inspect-the-lifecycle-contract                # 3.0 flags (Design 2)
   - work/run-a-lifecycle-stage                         # only `stage prompt` remains
   - work/run-a-procedure                               # `tcw work procedure <id>`
   - work/tag-a-work-item                               # wording; `tags list` output
+  - work/read-a-work-item                              # `show` prints the request and comments; `--json` layout (TCW-70 writes the record first)
 removed:
   - cli/use-shorthand-to-read-an-item
   - cli/validate-a-node
@@ -65,7 +66,7 @@ taxonomy:
   removed: [node, connected-project-registry]
 ```
 
-Three groups of records are touched only by the "node" to "project" sweep and are
+Two groups of records are touched only by the "node" to "project" sweep and are
 not listed path by path, because which of them survive is decided by TCW-70 and
 TCW-77 before this slice runs (Design 0):
 
@@ -79,27 +80,39 @@ TCW-77 before this slice runs (Design 0):
   says "node" is renamed to say "project". The implement stage lists them by
   `grep -rliw node docs/capabilities/work` and records the result in the
   declaration file.
-- `web/meta.yaml`, whose `Feature: connected-project-registry` becomes
-  `project-registry` (TCW-77 owns everything else in `web/`).
 - The taxonomy entries `configurable-work-lifecycle` and `work-item/lifecycle-hook`,
   whose descriptions say "node", if TCW-70 keeps them.
 
 Records owned elsewhere are deliberately absent: `skills/` and `plugin/` (TCW-74),
-`web/` beyond the one field above (TCW-77), and every `work/` record for a command
-TCW-70 or TCW-71 builds or removes (Design 0).
+everything in `web/` (TCW-77), and every `work/` record for a command TCW-70 or
+TCW-71 builds or removes (Design 0).
+
+**`web/meta.yaml` cites `Feature: connected-project-registry` today, and that
+value is TCW-77's.** TCW-77 sets it to `local-web-app`, the Feature that
+describes the viewer, and plans to land before this slice. Removing the
+`connected-project-registry` entry depends on that change, because a capability
+citing a removed Feature fails `tcw validate`. **[Decision]** If this slice is
+implemented first after all, it writes TCW-77's value, `local-web-app`, to that
+one field and nothing else in `web/`, so the field never takes a value its owner
+did not choose.
 
 **`capabilities/detect-capability-drift` is not listed.** The ticket gives its
-rewrite to this slice, but TCW-70's draft spec takes it, together with the drift
-wiring it describes (TCW-70's Decision 17, awaiting the owner). This spec accepts
-that move (Design 0). If the owner keeps the rewrite here, the record returns to
-`changed:` with the content given in Design 7.6.
+rewrite to this slice, but the owner moved it to TCW-70, together with the drift
+wiring it describes (epic decision 2). Design 7.6 gives the content this slice's
+surface expects the record to describe.
 
-**Records both slices change.** TCW-70's draft also changes
+**Which `work/` records survive is not this slice's call.** TCW-70 decides each of
+the 46 records under `docs/capabilities/work/`, and TCW-71 takes the tracker ones
+if TCW-70 leaves them (epic decision 12). This slice then changes only the
+command-surface wording of whichever survive, which is what the `work/` rows above
+and the sweep below do.
+
+**Records both slices change.** TCW-70's spec also changes
 `cli/locate-tcw-storage-folders`, `cli/provision-declared-stores`,
 `cli/scaffold-the-doc-trees`, `cli/get-a-suggestion-for-a-mistyped-command`,
 `cli/reference-a-tcw-object`, `cli/validate-a-node`,
 `work/run-a-lifecycle-stage`, `work/inspect-the-lifecycle-contract`,
-`work/run-a-procedure` and `work/tag-a-work-item`, each for the behavior it
+`work/run-a-procedure`, `work/tag-a-work-item` and `work/read-a-work-item`, each for the behavior it
 changes. The edits are sequential, not competing: TCW-70 lands first (Design 0),
 and this slice then changes each record again for the surface it changes, so the
 text after this slice describes the final command.
@@ -178,7 +191,10 @@ Six problems follow.
    follows each capability's `Planning doc` field into the 2.x work store and its
    tombstones (`_shipped_but_missing`, `tcw/capabilities/cli.py:200-254`), which
    the `detect-capability-drift` record describes as never making the
-   capabilities axis depend on the work axis. `tcw validate` runs the 2.x
+   capabilities axis depend on the work axis. The capability schema still accepts
+   `Planning doc` and `Tracker` (`CAP_FIELDS`, `tcw/store/base.py:844-847`), two
+   fields that point from the ledger into 2.x work items and tracker tickets.
+   `tcw validate` runs the 2.x
    `capability_gate(in_progress=True)` over items in three status folders
    (`tcw/validate.py:268-294`), and has no notion of a warning: any problem is
    exit 1 (`tcw/cli.py:460-464`).
@@ -197,7 +213,8 @@ Six problems follow.
    owns its behavior.
 5. **A `--help` standard** that a test checks on every command.
 6. **Taxonomy and capabilities on the same contract,** writing files only, with
-   their check commands folded into `tcw validate`.
+   their check commands folded into `tcw validate`, and without the `Planning doc`
+   and `Tracker` capability fields.
 7. **`tcw validate` with one shape**: findings graded by severity and printed as
    the product, the taxonomy and capabilities checks inside it, one project per
    run, and `--remote`.
@@ -235,13 +252,19 @@ Six problems follow.
 
 ### 0. Boundary with the sibling slices
 
-The tickets do not say who builds each command. This spec draws the line once.
+The tickets do not say who builds each command. The owner settled the split
+between this slice and TCW-70 (epic decision 2): TCW-70 removes every command
+built on the 2.x store, wires `validate`'s work checks and drift, and rewrites
+`detect-capability-drift`; this slice owns the surface of every command, the
+taxonomy and capabilities commands, `tcw init <axis>`, `tcw projects list`, git
+wording, and the "node" to "project" rename. This section applies that split.
 
-**[Decision] A command's _behavior_ belongs to the slice that gives it its 3.0
+**A command's _behavior_ belongs to the slice that gives it its 3.0
 meaning; its _surface_ — name, arguments, help, stdout, stderr, exit codes —
-belongs to this slice for every command.** Design 1–4 are the contract the other
-slices build to. This slice enforces it with one table-driven test over every
-command (Design 10), and fixes any deviation in the command itself.
+belongs to this slice for every command** (epic decision 2). Design 1–4 are the
+contract the other slices build to. This slice enforces it with one table-driven
+test over every command (Design 10), and fixes any deviation in the command
+itself.
 
 | Area | Behavior owner |
 | --- | --- |
@@ -249,33 +272,41 @@ command (Design 10), and fixes any deviation in the command itself.
 | `tcw work tickets list`, `tickets adopt` | TCW-71 |
 | Removing the 2.x work commands that exist only on the 2.x work store (`inbox *`, `start`, `submit`, `rework`, `complete`, `drop`, `delete`, `tombstone add`, `scaffold`, `reconcile`, `delegate`, `escalate`, `stage gate`, `stage validate`) | TCW-70 |
 | Re-pointing `stage prompt`, `procedure prompt`, `lifecycle`, `docs` and `tags` at TCW-69's configuration, keeping their current flags | TCW-70 |
-| `validate`'s work checks (`reference_problems`, `stage_problems`, `records_problems(finished=False)`, the backend's own checks) and `capabilities drift`'s completed-work half (`drift_problems`), with the `detect-capability-drift` record | TCW-70 (its Decision 17, moved from this slice; awaiting the owner) |
+| `validate`'s work checks (`reference_problems`, `stage_problems`, `records_problems(finished=False)`, the backend's own checks) and `capabilities drift`'s completed-work half (`drift_problems`), with the `detect-capability-drift` record | TCW-70 (epic decision 2) |
 | Removing `tracker *` | TCW-71 |
-| `tcw config show` | TCW-72 |
+| `tcw config show`; identity for `--mine` and `--assign-me` (through the backend's `current_user()` in Jira mode, epic decisions 1 and 17) | TCW-72 |
 | `tcw serve` | TCW-77 |
-| Everything else: `init`, `provision`, `validate`'s scope, severity and output, `projects list`, every `taxonomy` and `capabilities` command, and the final surface of the `tcw work` readers `stage prompt`, `lifecycle`, `docs`, `procedure`, `tags` | **TCW-73** |
+| `tests/cli/scenarios/` | **TCW-73** (epic decision 14) |
+| `evals/` | TCW-74 (epic decision 14) |
+| Everything else: `init` (including `init <axis>`), `provision`, `validate`'s scope, severity and output, `projects list`, every `taxonomy` and `capabilities` command (including dropping the `Planning doc` and `Tracker` fields, epic decision 9), the final surface of the `tcw work` readers `stage prompt`, `lifecycle`, `docs`, `procedure`, `tags`, and `work path --handoff` (epic decision 18) | **TCW-73** |
 
-**[Decision] Sequencing.** This slice is implemented after TCW-70 and TCW-71. Done
-earlier, its rename sweep would rename hundreds of "node" mentions in 2.x code that
-TCW-70 then deletes (`tcw/store/fs.py` alone has 185 such lines, most in the 2.x
-work store), and its contract test would have no 3.0 item commands to
-check.
+**Sequencing.** This slice is implemented after TCW-70 and TCW-71 (epic
+decision 2). Done earlier, its rename sweep would rename hundreds of "node"
+mentions in 2.x code that TCW-70 then deletes (`tcw/store/fs.py` alone has 185
+such lines, most in the 2.x work store), and its contract test would have no 3.0
+item commands to check.
 
-**[Decision] The checks built on the 2.x store move to TCW-70.** The ticket gives
-this slice `validate`'s call to `records_problems` and `capabilities drift`'s use
-of `drift_problems`. TCW-70's draft spec takes both, and the
-`detect-capability-drift` record, because the code they replace
-(`_open_sidecar_problems`, `tcw/validate.py:268-294`; `_shipped_but_missing`,
-`tcw/capabilities/cli.py:200-254`) reads the store TCW-70 deletes. Leaving them
-here would leave `validate` and `drift` without their work checks between the
-two slices. This spec accepts the move; it is TCW-70's open question 6 for the
-owner. What stays here is the surface of both commands: scope, severity, where
-findings are printed, and the exit codes (Design 6, 7). TCW-71 removes
-`tracker_problems` (`tcw/validate.py:384`) and adds the Jira checks.
+**The checks built on the 2.x store are TCW-70's** (epic decision 2). The ticket
+gave this slice `validate`'s call to `records_problems` and `capabilities drift`'s
+use of `drift_problems`; both, and the `detect-capability-drift` record, are
+TCW-70's, because the code they replace (`_open_sidecar_problems`,
+`tcw/validate.py:268-294`; `_shipped_but_missing`,
+`tcw/capabilities/cli.py:200-254`) reads the store TCW-70 deletes. What stays here
+is the surface of both commands: scope, severity, where findings are printed, and
+the exit codes (Design 6, 7). TCW-71 removes `tracker_problems`
+(`tcw/validate.py:384`) and adds the Jira checks.
 
 **Ledger ownership follows behavior.** TCW-70 and TCW-71 update or remove the
-records of the commands they build or remove. This slice rewrites the records in
-Capability changes, and sweeps "node" out of every record that survives.
+records of the commands they build or remove, and TCW-70 decides each of the 46
+`work/` records (epic decision 12). This slice rewrites the records in
+Capability changes, changes the command-surface wording of every surviving
+record, and sweeps "node" out of every record that survives. `tcw/work/templates.py`
+and `tcw work scaffold` are deleted by TCW-70 (epic decision 13), so nothing here
+touches them.
+
+**Skills, agents and guides are not this slice's** (epic decision 3): TCW-75 owns
+all of `skills/configure/`, TCW-74 every other skill and agent. Where this slice
+renames a command, those slices update the text that names it (Design 9.4).
 
 ### 1. The output contract
 
@@ -303,17 +334,25 @@ Capability changes, and sweeps "node" out of every record that survives.
    one JSON object with a top-level `"schema": 1`, and nothing else; a list is an
    array under a named key (`"items"`, `"terms"`, `"capabilities"`,
    `"projects"`, `"findings"`). The field set of a work item is TCW-70's, built
-   from TCW-69's `Item` with `blocked-by` spelled as in `item.yaml`.
+   from TCW-69's `Item` with `blocked-by` spelled as in `item.yaml`. Two fields
+   follow from epic decision 16: `"priority"` is `null` when the Jira project has
+   no priority field, and `"untracked"` is the list of linked parent or blocker
+   ticket keys that have no item (always `[]` in filesystem mode).
+   **[Decision]** The text form of `show` prints an `untracked:` line only when
+   the list is not empty, so filesystem-mode output is unchanged by the field.
 7. **Per-command stdout.** The table repeats the ticket's rows for the work
    commands as written, and adds the rest. **[Decision]** The added rows, and the
-   `--dry-run` and `tags` details, are this spec's:
+   `--dry-run` and `tags` details, are this spec's. The owner's output rule (epic
+   decision 10) is that a list prints one identifier per stdout line, with details
+   only through `--json`:
 
 | Command | stdout |
 | --- | --- |
-| `work new`, `work tickets adopt`, `work rename` | the full slug (`new` delegating with `--project` prints the ticket key when it stopped at the target's inbox) |
+| `work new`, `work tickets adopt`, `work rename` | the full slug; `new` prints a ticket key instead when it stopped after creating a ticket (rule 8) |
 | `work advance`, `work discard` | the stage the backend reported after the move; with `--dry-run`, the target stage when the move would be allowed, nothing when refused |
-| `work list`, `work tickets list` | one full slug (or ticket key) per line, or `--json` |
-| `work show` | the item's record, or `--json` |
+| `work list` | one full slug per line, or `--json` |
+| `work tickets list` | one ticket key per line, or `--json` (epic decision 10) |
+| `work show` | the item's properties, its request text and its comments, newest first (rule 9), or `--json` |
 | `work path` | the path |
 | `work stage prompt`, `work procedure`, `work lifecycle`, `work docs`, `config show` | their text (`lifecycle`, `docs`: or `--json`) |
 | `work edit`, `work comment`, `work tags add`, `work tags rm` | nothing |
@@ -328,6 +367,38 @@ Capability changes, and sweeps "node" out of every record that survives.
 | `init`, `provision` | nothing (`provision` narrates its plan and every remote on stderr, `--dry-run` included) |
 | `serve` | the URL |
 | `--version` | `tcw <version>` |
+
+8. **A command that stops after creating something still names it.** A refusal
+   prints nothing on stdout, with one exception: when a `Refused` error carries a
+   ticket key (epic decision 16), the command prints that key on stdout and then
+   exits 3. This happens when `new` has created a Jira ticket but finds no single
+   route to the request status (TCW-71's spec, Design 4.1 step 3), or when
+   delegation into a Jira project cannot place the new ticket at the target's
+   inbox (its Design 8 step 3), so the caller learns the name of what now exists.
+   Delegation that does land at the target's inbox but stops there is not a
+   refusal: it prints the ticket key and exits 0, as the ticket's exit-code table
+   says (TCW-71's Design 8 step 4).
+9. **`tcw work show` prints the whole item an agent needs to read**: its
+   properties, its request, and its comments. The properties are TCW-70's item
+   record (TCW-70 spec, Design 7.1), which deliberately leaves out the request
+   and the comments; `show` adds them through the backend's `read_request` and
+   `read_comments` (TCW-69 spec, Design 5.4), so it reads the same way in both
+   modes. The stage prompts rely on this: five of TCW-74's prompts read the
+   request or the latest comment through `show`.
+   - **[Decision] Text form**, in this order: one `key: value` line per record
+     field (`untracked:` only when not empty, rule 6); a blank line and a line
+     `request:` followed by the request text indented by two spaces, or `request: none` when
+     `read_request` returns `None`; then, when there are comments, a blank line
+     and `comments:`, followed by each comment newest first as a line
+     `- <at> <author>` (the author left out when `None`, `<at>` in
+     `YYYY-MM-DDTHH:MM:SSZ`) and its text indented by two spaces. All comments
+     are printed: there is no limit option, because the newest comes first and
+     a caller that wants only it reads up to the second unindented `- ` line.
+   - **[Decision] `--json`**: `{"schema": 1, "item": <record>, "request":
+     <text or null>, "comments": [{"at": …, "author": … or null, "text": …}, …]}`,
+     comments newest first. `list --json` carries records only, under `"items"`,
+     without request or comments, so listing never makes one request per item
+     to read comments in Jira mode.
 
 ### 2. The command surface
 
@@ -374,7 +445,7 @@ is the behavior owner (Design 0).
 | `tcw work new <title> [--priority N] [--effort] [--complexity] [--blocked-by] [--tag] [--epic] [--parent] [--initiative]` | `tcw work new <title> [--project <id>] [--stage inbox] [--priority <name>] [--effort] [--complexity] [--tag] [--assignee] [--assign-me] [--parent] [--blocked-by]`, request on stdin | 70, 71 (identity: 72) |
 | `tcw work list [--status] [--tag] [--all] [-i]` | `tcw work list [--stage <stage>] [--parent <slug>] [--assignee <name>] [--mine] [--all] [--json]` | 70, 71 |
 | `tcw work show <slug> [--json]` | unchanged | 70, 71 |
-| `tcw work path [<slug>]` | `tcw work path [<slug> [<stage> [--next / --handoff]]]` | 70 |
+| `tcw work path [<slug>]` | `tcw work path [<slug> [<stage> [--next / --handoff]]]` | 70 (`--handoff`: 73, epic decision 18) |
 | `tcw work edit <slug> …` (incl. `--initiative`, `--type`, integer `--priority`) | `tcw work edit <slug> [--title] [--priority <name>] [--effort] [--complexity] [--tag] [--untag] [--assignee] [--assign-me] [--parent] [--blocked-by] [--unblocked-by] [--blocks]` | 70, 71 |
 | `tcw work rename <slug> <new-slug>` | `tcw work rename <slug> <new-name>` (the part after the date or key) | 70, 71 |
 | — | `tcw work comment <slug>`, text on stdin | 70, 71 |
@@ -403,6 +474,8 @@ Decisions in this table beyond the ticket, each **[Decision]**:
    `path` commands match (`cli/locate-tcw-storage-folders`). It gains
    **`--handoff`**, because TCW-69's `path` returns a handoff path
    (TCW-69 spec, Design 4.10) and the ticket's form has no way to ask for one.
+   The owner confirmed `--handoff` as part of this slice's surface (epic
+   decision 18).
 6. **`list` has no `--tag` filter**, following the ticket and TCW-69's `Query`,
    which has no tag field. This is a reduction from 2.8 (`tcw/work/cli.py:4968`);
    see Notes.
@@ -431,14 +504,23 @@ the values of `--parent`, `--blocked-by`, `--unblocked-by` and `--blocks`.
 4. **Another project.** **[Decision]** A full slug naming another project is
    resolved through the project registry (`ProjectRegistry`,
    `tcw/store/base.py:191`), the same way 2.8 reaches a project today. An unknown
-   project ID is not found (4). A known project not present on this machine is not
-   found (4), and the message names `tcw provision`. Reading (`show`, `path`) works
+   project ID, one no registry entry declares, is not found (4). A project that is
+   declared but not present on this machine is exit 5, and the message names
+   `tcw provision`; delegating into such a project (`new --project`,
+   `edit --blocks`) is refused (3), because it is the first delegation condition
+   failing (epic decision 4). Reading (`show`, `path`) works
    across projects. **Writing another project's item is refused (3)** and the
    message says to run the command in that project, except where a slice defines
    the write: `new --project` and `edit --blocks` (TCW-70's delegation
    conditions). A value given to `--parent` or `--blocked-by` is a reference stored
    on _this_ item, so it may name another project.
-5. **Printing.** Every slug TCW prints is the full `project/folder` form.
+5. **Printing.** Every slug TCW prints is the full `project/folder` form. The same
+   holds for the slug handed to hooks: `TCW_SLUG` is the full slug, and hooks and
+   generate scripts run with the project root as their working directory (epic
+   decision 11). TCW-69 sets both, including the `generate` binding environment
+   (TCW-69 spec, Design 6.5 and Design 8's binding lists); this slice only checks
+   the result. How 2.x hook variables map onto 3.0's
+   is by meaning, not by position, and is TCW-76's mapping.
 
 The function is specified here and built by TCW-70, which is the first slice whose
 commands take items; TCW-71 adds the key branch. Design 10's tests check it across
@@ -447,11 +529,11 @@ every command.
 ### 4. Exit codes
 
 TCW-69 puts the codes in `tcw/exit.py` and their exception classes in
-`tcw/work/errors.py` (`UsageError` 2, `Refused` 3, `NotFound` 4, `Unreachable` 5,
-`MovedWithoutNote` 6, `BackendError` 1). **[Decision]** This slice moves the
-exception classes to `tcw/errors.py`, beside `tcw/exit.py`, because the taxonomy
-and capabilities commands raise them too and must not import from `tcw/work/`.
-`tcw/work/errors.py` is deleted rather than kept as a re-export.
+`tcw/errors.py` (`UsageError` 2, `Refused` 3, `NotFound` 4, `Unreachable` 5,
+`MovedWithoutNote` 6, `BackendError` 1), outside `tcw/work/` from the start so
+that the taxonomy and capabilities commands can raise them without importing from
+`tcw/work/` (epic decision 8; TCW-69 spec, Design, module list). This slice only
+uses them. `Refused` may carry a ticket key (epic decision 16; Design 1.8).
 
 The top-level handler (`tcw/cli.py:546-578`) catches these classes, prints
 `tcw <command words>: <message>` and returns the class's code. A bare `ValueError`
@@ -467,9 +549,9 @@ The final table:
 | 0 | ok | `validate` with only warnings or unresolved lines; delegation that stopped at the target's inbox; a `--dry-run` that would succeed |
 | 1 | error | config errors (including a personal file setting a shared key, TCW-72); no TCW project here; a port already in use; Jira errors other than not-found; `validate` findings at error level; any `capabilities drift` finding; any `provision` failure |
 | 2 | usage | argparse errors; an unknown stage, procedure or axis name; a malformed slug; a value outside its scale or registry; an ambiguous reference; a Jira-only command or option in filesystem mode, and a filesystem-only option in Jira mode; empty stdin where text is required |
-| 3 | refused | a gate; no stage; a name collision; delegation conditions; a transition Jira does not offer; a write to another project's item; a removal something still references; `capabilities reset` with no override to drop |
-| 4 | not found | an item, term, capability, project, tag or ticket that does not exist |
-| 5 | remote unreachable | the Jira backend could not be reached |
+| 3 | refused | a gate; no stage; a name collision; delegation conditions, including delegating into a declared project that is not on this machine; a move Jira's workflow does not offer, or several transitions into the target status that TCW cannot narrow to one (it prefers the one whose screen has no field other than a comment, and otherwise refuses and lists them; epic decision 5, built by TCW-71); an explicit priority in a Jira project with no priority field; a ticket created but not placed (Design 1.8); a write to another project's item; a removal something still references; `capabilities reset` with no override to drop |
+| 4 | not found | an item, term, capability, tag or ticket that does not exist; a project ID nothing declares |
+| 5 | unreachable | the Jira backend could not be reached; a project that is declared but not present on this machine (epic decision 4) |
 | 6 | the item moved, but something after the move failed | a `post` hook, or recording the trace comment (TCW-69 spec, Design 6) |
 
 **[Decision]** The rows beyond the ticket:
@@ -480,9 +562,14 @@ The final table:
   (a bad value), and removing a term another term still names is 3.
 - **`validate --remote` in filesystem mode is 2**, as a Jira-only option, and
   `new --stage inbox` in Jira mode is 2, as a filesystem-only one.
-- **`provision` failures are 1**, whatever the cause. Code 5 is reserved for the
-  work backend, because telling a network failure from refused authentication in
-  a cloning tool's output means parsing its text.
+- **`provision` failures are 1**, whatever the cause. Code 5 is kept for the work
+  backend and for a declared project missing from this machine, because telling a
+  network failure from refused authentication in a cloning tool's output means
+  parsing its text.
+- **`validate` does not exit 5 for a missing project.** A declared project that is
+  not on this machine is an `unresolved` finding (Design 6.2), because `validate`
+  reports what it could not check rather than stopping at it. Exit 5 applies to a
+  command that needs to read that project to do its job.
 - **Check commands exit 1 on a finding.** `validate` grades its findings
   (Design 6); every `drift` finding counts, as today
   (`tcw/capabilities/cli.py:192-195`).
@@ -517,7 +604,8 @@ and with them the walk over descendant projects (`tcw/cli.py:452-459`). 3.0 show
 one project at a time (TCW-77 serves one project; `list` has no
 `--include-descendants`), and a reference into another project is already checked
 by resolving it (6.1.6). `validate`'s internal `target` selector stays, because
-`tcw serve` calls it (`tcw/serve/__init__.py:171`).
+`tcw serve` calls it (`tcw/serve/__init__.py:171`), and it gains work items
+(6.4).
 
 #### 6.1 What runs
 
@@ -539,9 +627,9 @@ Offline (plain `tcw validate`), in this order. Nothing here touches the network.
 5. **Work, from the backend** (wired by TCW-70 and TCW-71). Each backend supplies
    one offline check over what it keeps locally (TCW-70: `item.yaml` shape and
    folder names; TCW-71: the key in the folder name against `item.yaml`'s
-   `ticket`). **[Decision]** It is a function of the backend module, not a ninth
-   operation on `WorkBackend`, because only `validate` calls it and it reads only
-   local files.
+   `ticket`). **[Decision]** It is a function of the backend module, not a twelfth
+   operation on `WorkBackend` (whose eleven are fixed by epic decision 1), because
+   only `validate` calls it and it reads only local files.
 6. **Work, from the model** (wired by TCW-70, Design 0), in filesystem mode:
    - `reference_problems` over every item (`Query(all=True)`) (TCW-69 spec,
      Design 9);
@@ -552,10 +640,20 @@ Offline (plain `tcw validate`), in this order. Nothing here touches the network.
 
    In Jira mode these three need each item's stage or links, which live in Jira,
    so they run under `--remote` instead.
+7. **Verdict rounds.** **[Decision]** Added by this slice: each verdict stage of
+   each item whose latest round is `invalid` (`current_verdict`, TCW-69 spec,
+   Design 4.7-4.8) gives a warning naming the round file. Rounds are files in
+   both modes, so this runs offline in Jira mode too. Older rounds are history and
+   are not checked. `advance` already refuses on an invalid latest round; the
+   warning says so before anyone tries, and it is what the viewer shows after
+   saving a round (6.4).
 
 With `--remote` (Jira mode only; 2 in filesystem mode): everything above, plus the
 three model checks of 6.1.6, plus TCW-71's workflow-compatibility and field checks.
-A network failure is exit 5.
+A network failure is exit 5. Its output follows 6.3 like every other check: only
+findings are printed, never a line per passed check, and a move TCW could not
+check (no sample ticket in its source status) is itself a `warning` finding
+(epic decision 10). A closing line on stderr may count what was checked.
 
 The 2.x checks for retention (`tcw/validate.py:370-371`) and tracker configuration
 (`:384`) are gone by the time this slice runs (Design 0).
@@ -565,7 +663,7 @@ The 2.x checks for retention (`tcw/validate.py:370-371`) and tracker configurati
 | Severity | Examples | Exit |
 | --- | --- | --- |
 | `error` | malformed YAML; a broken `tcw://` link; a taxonomy or capabilities check problem; a config problem; a records problem (TCW-69's mid-work check reports only real faults) | 1 |
-| `warning` | a reference to a missing item in this project; a stage ahead of its artifacts; a registry warning; a tracked personal file | 0 |
+| `warning` | an invalid latest verdict round; a reference to a missing item, or to a project nothing declares (TCW-70 spec, Design 10); a stage ahead of its artifacts; a registry warning; a tracked personal file; a `--remote` move that could not be checked; a capability record still carrying `Planning doc` or `Tracker` (Design 8.6) | 0 |
 | `unresolved` | a reference into a project not reachable here; a declared project not present here | 0 |
 
 #### 6.3 Output
@@ -576,6 +674,36 @@ per line, as `<severity>: <where>: <message>`, where `<where>` is a file path (w
 carries the narration (overrides in effect) and a closing count, for example
 `2 errors, 1 warning, 0 unresolved`. `--json` is not offered; the line form is
 stable and easy to split.
+
+#### 6.4 Validating one object (for `tcw serve`)
+
+Today the internal selector `ValidationTarget(axis, ref)` runs `validate`'s rules
+for one taxonomy entry or capability (`tcw/validate.py:311-319`, `:351-355`), and
+`tcw serve` calls it after each save (`tcw/serve/__init__.py:168-173`). TCW-77
+needs it for item files too. There is no command-line form; it is a library
+entry point.
+
+**[Decision]** With `axis="work"` and `ref` an item folder, it runs, for that
+item only, the checks of 6.1 that need no network in either mode:
+
+- YAML well-formedness of the item's files, and `tcw://` links in its Markdown
+  files (6.1.3);
+- the backend's offline check for that folder (6.1.5);
+- an invalid latest round in any of its verdict stages (6.1.7);
+- the records check on its `capabilities.yaml`, `records_problems(...,
+  finished=False)`, when its stage is not terminal (6.1.6);
+- the reference check on its `parent` and `blocked-by`, for references within
+  this project only (6.1.6).
+
+The stage and references are what the caller passes: the selector takes an
+optional `Item`, which the viewer already holds from the read or update it has
+just made. Without one, filesystem mode reads `item.yaml`, and Jira mode skips
+the two stage- and link-dependent checks and returns an `unresolved` finding
+saying so, so that the selector itself never contacts Jira. References into
+other projects are left to a full `tcw validate`, because resolving them can need
+another project's backend, and so the network. Findings come back as 6.3's lines,
+graded as in 6.2; the caller decides what to do with them (TCW-77 shows them and
+never undoes the save).
 
 ### 7. `tcw capabilities drift`
 
@@ -589,15 +717,20 @@ stable and easy to split.
      `list` and each item's `<item>/capabilities.yaml`. It reports `drift`,
      `ambiguous` and `unchecked` findings.
 2. **Behavior is TCW-70's** (Design 0): it replaces `_shipped_but_missing` and the
-   `Planning doc` lookup with `drift_problems`. What happens to the field itself is
-   TCW-76's. The rest of this section is the surface this slice fixes.
+   `Planning doc` lookup with `drift_problems`. This slice removes the field from
+   the capability schema (Design 8.6) and TCW-76 removes it from existing records
+   (epic decision 9). The rest of this section is the surface this slice fixes.
 3. **Output**: one finding per line, `<kind>: <path or term>: <message>`, with
    `<kind>` one of `unreviewed`, `drift`, `ambiguous`, `unchecked`. Clean prints
    nothing on stdout. Any finding exits 1.
 4. **A project with no work component** reports only the unreviewed kind, and says
    on stderr that completed-work drift was not checked.
 5. **Jira mode** reads the completed items from Jira, so it needs the network; an
-   unreachable Jira is exit 5. The record says so.
+   unreachable Jira is exit 5. The record says so. **[Decision]** This is
+   accepted rather than worked around: in Jira mode Jira alone knows which items
+   are completed, and keeping a local copy of that would give the fact a second
+   owner. The unreviewed half needs no network, so it is still reported, on
+   stdout, before the exit 5.
 6. **The `detect-capability-drift` record** (rewritten by TCW-70, Design 0) should
    say: drift compares the
    ledger with the record changes that completed work items declared, newest
@@ -634,6 +767,38 @@ stable and easy to split.
    names it as the one thing `provision` still does.
 5. **Messages say "files".** "The deletion is staged, not committed" and similar
    sentences in records and messages are rewritten.
+6. **The `Planning doc` and `Tracker` capability fields go** (epic decision 9).
+   Both point from the ledger into the work axis: `Planning doc` at a 2.x work
+   item, which drift followed (Problem 6), and `Tracker` at a tracker ticket,
+   which 3.0 replaces with the Jira backend. 3.0 links a capability to work the
+   other way, through `<item>/capabilities.yaml` (epic decision 19).
+   - Both leave `CAP_FIELDS` (`tcw/store/base.py:844-847`), so
+     `capabilities add` and `capabilities set --field` refuse them as unknown
+     fields, a usage error (2), through `_validate_fields`
+     (`tcw/store/fs.py:3314-3318`). No help text or record names them as
+     settable.
+   - **[Decision]** `CapabilitiesStore.check` reports a record that still carries
+     either field as a **warning**, naming `docs/migration-guide-2.8-to-3.0.0.md`,
+     instead of the "unknown field" error every other key outside `CAP_FIELDS`
+     gets (`tcw/store/fs.py:3530-3532`). TCW-76 removes the fields from records
+     (epic decision 9), and 65 records in this repository carry one today
+     (`grep -rlE "^(Planning doc|Tracker):" docs/capabilities`, all
+     `meta.yaml`). An error would turn `tcw validate` red in this repository, and
+     in every user's, from this slice until each runs the migration. That is not
+     only cosmetic here: this repository's own configuration runs `tcw validate`
+     as a gate (`tcw-config.yaml:111-114`, the 2.x `complete` transition's `pre`
+     command, which TCW-76 carries into 3.0). No test validates this
+     repository's own records (the suite builds fixtures in temporary
+     folders), so the gate is the thing that would break. A warning keeps it at
+     exit 0 and still names every record. So the two fields are **accepted and
+     warned about** until TCW-76 removes them, never errors.
+   - Reading a record with either field works as before: only writes
+     (`_validate_fields`) and `check` consult `CAP_FIELDS`, and a write of other
+     fields leaves an existing `Planning doc` or `Tracker` line in place for
+     TCW-76 to remove, because `set` merges the given fields into the record's
+     existing ones (`_merge_meta`, `tcw/store/fs.py:3420-3428`). After TCW-76 there is nothing left to warn about.
+   - `tcw/serve/__init__.py:22` imports `CAP_FIELDS`; TCW-77, which rewrites
+     `tcw/serve/`, follows the smaller set.
 
 ### 9. Git words and "node" in the code
 
@@ -652,7 +817,8 @@ stable and easy to split.
    except `tcw/serve/`:
    - the command (`tcw work nodes` becomes `tcw projects list`, Design 2);
    - **[Decision]** the config key `connected-projects` becomes `projects`, with the
-     same `parent`, `children` and `upstream` entries. The old key is a config error
+     same `parent`, `children` and `upstream` entries, and the optional `jira`
+     block TCW-71 adds to an entry (its Design 8 step 1). The old key is a config error
      (1) whose message names `docs/migration-guide-2.8-to-3.0.0.md`, as TCW-69 does
      for removed `work` keys;
    - the hook variable: no `TCW_NODE_ROOT` remains (TCW-69's runner sets
@@ -666,15 +832,19 @@ stable and easy to split.
      (`tcw/store/fs.py:2284-2290`); those become "entry", so that a search for
      "node" under `tcw/` finds nothing.
 4. **The documented-surface test stays honest.** `tests/test_documented_cli_surface.py`
-   fails when live Markdown names a command that does not exist. TCW-70's draft
-   gives it a temporary allowance: a named list of removed commands, with a second
-   test asserting each entry really is absent from the CLI (TCW-70 spec,
-   Design 14). **[Decision]** This slice adds its own removals and renames to that
-   list (`taxonomy check`, `capabilities check`, the three `<axis> init`,
-   `work nodes`, `procedure prompt`, `capabilities extends <id> --rm`, the
-   `tcw <axis> <path>` shorthand) rather than editing other slices' text. TCW-74
-   and TCW-75 empty the list as they rewrite skills and guides; it must be empty
-   before 3.0.0 is cut.
+   fails when live Markdown names a command, or a flag of one, that does not
+   exist (`tests/test_documented_cli_surface.py:1`, `:215-217`). TCW-70 gives it
+   a temporary allowance: a named list of removed commands and keys, with a guard
+   test asserting each entry really is removed (TCW-70 spec, Design 14; epic
+   decision 6). This slice adds its own removals and renames to that list rather
+   than editing other slices' text: `taxonomy check`, `capabilities check`, the
+   three `<axis> init`, `work nodes`, `procedure prompt`,
+   `capabilities extends <id> --rm`, `capabilities list --local-only`,
+   `provision --refresh`, `validate --no-recurse`, the `tcw <axis> <path>`
+   shorthand, and the `connected-projects` key. Each new entry falls under the
+   same guard test. TCW-74 and TCW-75 shrink the list as they rewrite skills and guides, and
+   TCW-76's "validate clean" step requires it to be empty before 3.0.0 is cut
+   (epic decision 6).
 5. **Taxonomy.** **[Decision]** The `node` term is replaced by `project`
    (vocabulary), and the `connected-project-registry` feature by `project-registry`.
    Every entry and capability citing either is updated (Capability changes).
@@ -689,25 +859,41 @@ Jira-only commands. A command registered without a row fails the test, so a
 command added later (TCW-72's `config show`, TCW-77's changes to `serve`) must
 add its row.
 
-**[Decision] `tests/cli/scenarios/` belongs to this slice.** It holds 14
+**`tests/cli/scenarios/` belongs to this slice** (epic decision 14). It holds 14
 reviewed but unimplemented black-box scenario specifications whose subject is
 exactly this contract: exit codes, which stream a message lands on, and
 composing commands in a shell (`tests/cli/README.md`). Most describe 2.x
-behavior (status folders, worktree merge-back, cross-node epics). No ticket owns
-them; TCW-70's draft names this slice as the natural owner. The plan gives each
-scenario a disposition (rewrite to 3.0, or delete), defaulting to delete where
-the contract test already covers it or 3.0 removes its subject.
+behavior (status folders, worktree merge-back, cross-node epics). **[Decision]**
+The plan gives each scenario a disposition (rewrite to 3.0, or delete),
+defaulting to delete where the contract test already covers it or 3.0 removes
+its subject. `evals/` is TCW-74's (the same decision), including its use of
+commands this slice renames.
+
+### 12. Release notes and changelog
+
+This slice adds its own `docs/release-notes/upcoming/<slug>.md` and
+`docs/changelogs/upcoming/<slug>.md`, as every change does (`CLAUDE.md`,
+Versioning). Each starts with a `##` heading and has no text before it: only
+TCW-75's release-notes entry may open with text before its first `##`, because it
+is the 3.0.0 introduction (epic decision 15). The entries say what a 2.8 user
+notices: the renamed and removed commands (pointing at the migration guide for the
+full table), findings on stdout, the exit-code table, taxonomy and capability
+edits no longer staged, `provision --refresh` gone, `connected-projects` renamed
+to `projects`, and the two retired capability fields.
 
 ### 11. Abstraction litmus test and harness compatibility
 
 | Operation | Verdict |
 | --- | --- |
 | Output contract, exit codes, `--help` | **CLI layer.** No storage involved. |
-| `resolve_item` | **Model plus backend.** `Slug.parse` is the model's; the key branch is the backend's `lookup`, one of the eight operations. A non-filesystem store implements both. |
+| `resolve_item` | **Model plus backend.** `Slug.parse` is the model's; the key branch is the backend's `lookup`, one of the eleven operations (epic decision 1). A non-filesystem store implements both. |
+| `--mine`, `--assign-me` | **Backend**: `current_user()`, one of the eleven operations (epic decisions 1 and 17), behind TCW-72's identity resolution. |
+| Retired capability fields | **Abstract**: a change to `CAP_FIELDS` and `CapabilitiesStore.check`, which any store implements. |
 | Cross-project resolution | **Through `ProjectRegistry`** (`tcw/store/base.py:191`), the existing abstract interface. |
 | `validate` 6.1.4 | **Abstract**: `TaxonomyStore.check` and `CapabilitiesStore.check`. |
 | `validate` 6.1.5 | **Per backend**, offline. Jira implements it over local folders; a future backend supplies its own. |
-| `validate` 6.1.6, drift | **Model** over the backend's `list` and TCW-69's `RecordsReader`. |
+| `validate` 6.1.6, 6.1.7, drift | **Model** over the backend's `list` and TCW-69's `RecordsReader`; rounds are shared layout files in both modes. |
+| `validate` 6.4 (one object) | **Model plus shared layout**, given the `Item` by its caller, so no backend-specific code and no network in either mode. |
 | `validate` 6.1.3 (YAML, `tcw://` scan) | **Filesystem adapter**, as today: the taxonomy and capabilities stores are filesystem-only, and git owns the technical record in both work modes. |
 | Removing staging from tree stores | **Filesystem adapter** detail. |
 
@@ -719,7 +905,9 @@ context or a slash command.
 
 All criteria are pytest tests unless they name a command. "Fixture project" means a
 temporary directory initialised with `tcw init --id fx` in filesystem mode; Jira
-cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
+cases use a stubbed backend whose `lookup`, `list`, `read`, `create` and
+`set_stage` are scripted, or TCW-71's fake Jira (`tests/work/jira/fake.py`, TCW-71
+spec, Design 15.1) where the case needs Jira's own answers.
 
 1. **Surface.** Walking `build_parser()` finds exactly the 43 leaf commands of
    Design 2's 3.0 column, and none of these: any `<axis> init`, `taxonomy check`,
@@ -757,6 +945,12 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
      refused, it prints nothing and exits 3;
    - `tcw work edit <slug> --priority high` and `echo hi | tcw work comment <slug>`
      print nothing;
+   - after `printf 'Need X\n' | tcw work new "A b"` and two comments `one` then
+     `two`, `tcw work show <slug>` prints the record lines, then `request:` with
+     `Need X`, then `comments:` with `two` before `one`; `tcw work show <slug>
+     --json` has a `"request"` containing `Need X` and `"comments"`
+     with `two` first; an item created with no stdin shows `request: none` and
+     `"request": null`;
    - `tcw work list` prints full slugs only, one per line;
    - `tcw taxonomy add Widget` prints `widget`; `tcw capabilities add ns/do-a-thing`
      prints `ns/do-a-thing`;
@@ -774,7 +968,9 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
     - after `tcw work rename <slug> other`, `tcw work show <old slug>` → 4;
     - `tcw work advance <slug> --to nonsense` → 2;
     - a failing `pre` hook on spec → 3; a failing `post` hook → 6 with the stage on
-      stdout;
+      stdout; with `advance` run from a subfolder of the fixture, a `pre` hook
+      records `TCW_SLUG` as `fx/<folder>` and its working directory as the
+      fixture root;
     - `tcw taxonomy add Widget` twice → 3 the second time;
     - `tcw taxonomy show nosuch` → 4; `tcw capabilities show nosuch` → 4;
     - removing a term another term names in `relatesTo` → 3;
@@ -784,13 +980,25 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
     - `tcw work comment <slug>` with empty stdin → 2;
     - any command run in a directory with no `tcw-config.yaml` above it → 1;
     - with the stubbed Jira backend raising `Unreachable`, `tcw work list` → 5, and
-      `tcw work new "x" --stage inbox` → 2.
-11. **Slug input in Jira mode.** With the stub's `lookup("TCW-9")` returning
-    `TCW-9-a-thing`, `tcw work show TCW-9` succeeds and any slug it prints is
-    `fx/TCW-9-a-thing`; `tcw work show TCW-10` (lookup returns `None`) → 4.
-12. **Cross-project.** In a two-project fixture, `tcw work show other/<folder>`
-    succeeds from the first project; `tcw work advance other/<folder>` → 3 and the
-    message names the other project; `tcw work show ghost/x` (unknown project) → 4.
+      `tcw work new "x" --stage inbox` → 2;
+    - `tcw capabilities set ns/do-a-thing --field "Planning doc=x"` → 2, and the
+      same with `Tracker=x` → 2.
+11. **Slug input and Jira-mode output.** With the stub's `lookup("TCW-9")`
+    returning `TCW-9-a-thing`, `tcw work show TCW-9` succeeds and any slug it
+    prints is `fx/TCW-9-a-thing`; `tcw work show TCW-10` (lookup returns `None`)
+    → 4. With the stub's `create` raising `Refused` that carries the key `TCW-11`,
+    `tcw work new "x"` prints exactly `TCW-11` on stdout and exits 3. With the
+    stub's item having no priority and one untracked blocker `EXT-4`,
+    `tcw work show TCW-9 --json` has `"priority": null` and
+    `"untracked": ["EXT-4"]`; in filesystem mode `"untracked"` is `[]`.
+    Against TCW-71's fake Jira, `tcw work tickets list` prints one ticket key per
+    line and nothing else.
+12. **Cross-project.** In a fixture with two projects present and a third
+    declared but absent, `tcw work show other/<folder>` succeeds from the first
+    project; `tcw work advance other/<folder>` → 3 and the message names the other
+    project; `tcw work show ghost/x` (a project nothing declares) → 4;
+    `tcw work show absent/x` → 5 and the message names `tcw provision`;
+    `tcw work new "x" --project absent` → 3.
 13. **Nothing prompts.** No `.py` file under `tcw/` other than `tcw/stdin.py` calls
     `input(` or reads `sys.stdin`.
 14. **Folding.** `tcw validate` in a fixture whose taxonomy has a dangling
@@ -806,6 +1014,16 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
     - An item at spec declaring a `new:` path that does not exist yet gives no line.
     - A completed item whose `capabilities.yaml` is malformed YAML is reported by the
       file scan, and not by the records check.
+    - A declared project absent from this machine gives an `unresolved:` line and
+      exit 0, not exit 5.
+    - An item at review whose latest round has no `judges` gives a `warning:` line
+      naming the round file, and exit 0; an older invalid round under a newer
+      valid one gives no line.
+    - A capability record carrying `Planning doc:` or `Tracker:` gives a `warning:`
+      line naming the record and `docs/migration-guide-2.8-to-3.0.0.md`, and exit 0.
+    - In Jira mode against TCW-71's fake Jira, `tcw validate --remote` prints no
+      line for a passed check, and a needed move whose source status has no sample
+      ticket gives a `warning:` line; exit 0 when that is the only finding.
     - The closing count is on stderr, not stdout.
 16. **Drift.**
     - A completed item declaring `new: [x/y]` while `x/y` is absent prints
@@ -838,22 +1056,32 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
     removed entry (`grep -rnwE "node|connected-project-registry"
     docs/capabilities --include=meta.yaml` prints nothing).
 22. **The documented-surface test passes**, and the full test suite passes.
+23. **Release notes.** This slice's files under `docs/release-notes/upcoming/` and
+    `docs/changelogs/upcoming/` exist, and the first non-blank line of each starts
+    with `## `.
+24. **Validating one item.** `validate(root, target=ValidationTarget("work",
+    <folder>))` on a fixture item at spec returns a finding for a broken `tcw://` link in
+    its spec, for an invalid latest review round, and for an unknown key in its
+    `capabilities.yaml`, and none for a problem in another item. With a Jira-mode
+    configuration and no `Item` passed, it returns an `unresolved` finding for the
+    skipped checks and contacts nothing (the stub records no call).
 
 ### Coverage
 
 | Design rule | Criteria |
 | --- | --- |
 | 0 Boundary, sequencing | 1, 20 (the table names every command) |
-| 1 Output contract | 8, 9, 13, 15 (stdout and stderr split) |
+| 1 Output contract | 8, 9, 11, 13, 15 (stdout and stderr split) |
 | 2 Surface | 1, 2, 3, 19 |
-| 3 Naming an item | 10, 11, 12 |
+| 3 Naming an item, `TCW_SLUG` | 10, 11, 12 |
 | 4 Exit codes | 10, 11, 12, 16, 18 |
 | 5 Help | 4 |
-| 6 Validate | 7, 14, 15 |
+| 6 Validate | 7, 14, 15, 24 |
 | 7 Drift | 16 |
-| 8 No git in taxonomy and capabilities | 17, 18 |
+| 8 No git in taxonomy and capabilities; retired fields | 10, 15, 17, 18 |
 | 9 Git words, node, docs test, taxonomy | 5, 6, 7, 21, 22 |
 | 10 Contract test | 20 |
+| 12 Release notes | 23 |
 
 ## Risks
 
@@ -864,7 +1092,9 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
   `resolve_item` checks and the contract test; (b) the taxonomy and capabilities
   pass, including removing staging, and the top-level commands (`init`,
   `provision`, `validate`, `projects list`); (c) the "node" sweep with the taxonomy
-  and ledger renames. See Notes; the owner decides.
+  and ledger renames. **[Decision]** The plan stage makes this split, in this
+  order, because each part can be verified on its own and (c) is mostly
+  mechanical churn that is easiest to review alone.
 - **Other slices build to a contract they do not own.** If TCW-70 or TCW-71
   deviates, this slice finds out late. Mitigation: their specs cite Design 1–4 of
   this one, and the contract test (Design 10) catches any deviation before this
@@ -880,8 +1110,7 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
   shows a `post` hook that commits.
 - **Dropping recursion from `validate`** means a monorepo root no longer checks
   every child project in one run. Mitigation: each child is validated in its own
-  directory; cross-project references are still checked by resolving them. Owner
-  confirms (Notes).
+  directory; cross-project references are still checked by resolving them.
 - **Renaming taxonomy entries and the config key churns many files** and breaks any
   external `tcw://` link to `cli/validate-a-node` or `work/inspect-the-node-topology`.
   Mitigation: `tcw validate` reports every broken link; TCW-76's guide covers
@@ -892,47 +1121,92 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
 
 ## Notes
 
+- Reconciled with the epic's cross-slice decisions on 2026-10-01.
+- **Settled by the owner's cross-slice decisions** (numbers refer to the epic's
+  decisions record of 2026-10-01):
+  - the boundary with TCW-70, the sequencing after TCW-70 and TCW-71, and the move
+    of `validate`'s work checks, the drift wiring and the
+    `detect-capability-drift` record to TCW-70 (decision 2; Design 0);
+  - the backend interface has eleven operations, including `current_user()` for
+    `--mine` and `--assign-me`, so `validate`'s offline backend check stays a
+    module function (decisions 1 and 17; Design 6.1.5, 11);
+  - a declared project not on this machine is exit 5, and delegating into one is
+    exit 3 (decision 4; Design 3.4, 4). This was the conflict with TCW-70's
+    Decision 2;
+  - the exception classes are in `tcw/errors.py` from TCW-69 on (decision 8;
+    Design 4);
+  - this slice removes `Planning doc` and `Tracker` from the schema, TCW-76 from
+    records (decision 9; Design 8.6);
+  - output rules are this slice's: `tickets list` prints keys, `validate --remote`
+    prints findings only and an unchecked move is a finding, and every finding of
+    `validate` is on stdout (decision 10; Design 1.7, 6.1, 6.3). This settles the
+    three output conflicts with the TCW-70 and TCW-71 drafts;
+  - `TCW_SLUG` is the full slug and hooks run in the project root (decision 11;
+    Design 3.5);
+  - `tests/cli/scenarios/` is this slice's and `evals/` is TCW-74's
+    (decision 14; Design 10);
+  - only TCW-75's release-notes entry opens with text before its first `##`
+    (decision 15; Design 12);
+  - `Item.untracked`, a `priority` that may be `None`, and `Refused` carrying a
+    ticket key (decision 16; Design 1.6, 1.8);
+  - `work path --handoff` is this slice's surface (decision 18; Design 2);
+  - every spec uses `<item>/capabilities.yaml` whatever a ticket says
+    (decision 19). This settles the sibling tickets that said
+    `spec/capabilities.yaml`;
+  - the documented-surface allowance list, its guard test, and who shrinks it
+    (decision 6; Design 9.4).
 - **Decisions made in this spec, for the owner to confirm.** Each is marked
   **[Decision]** above:
-  1. behavior belongs to the slice that gives a command its 3.0 meaning, surface to
-     this slice; the ownership table in Design 0;
-  2. this slice is implemented after TCW-70 and TCW-71;
-  3. the `validate` work checks, the drift wiring and the `detect-capability-drift`
-     record move to TCW-70, as TCW-70's draft proposes (Design 0);
-  4. error lines start `tcw <command words>: `, warnings `warning: `;
-  5. `taxonomy add` takes its description from stdin only;
-  6. every `--json` output is one object with `"schema": 1`;
-  7. the stdout rows beyond the ticket (Design 1.7), including findings on stdout
-     for `validate` and `drift`, and `advance --dry-run` printing the would-be
-     stage;
-  8. no hidden parsers for removed commands; `start`, `submit`, `rework` and
+  1. error lines start `tcw <command words>: `, warnings `warning: `;
+  2. `taxonomy add` takes its description from stdin only;
+  3. every `--json` output is one object with `"schema": 1`;
+  4. the stdout rows beyond the ticket (Design 1.7), including `advance --dry-run`
+     printing the would-be stage;
+  5. `show`'s text form prints `untracked:` only when it is not empty;
+  6. no hidden parsers for removed commands; `start`, `submit`, `rework` and
      `complete` suggest `advance`;
-  9. the `tcw <axis> <path>` shorthand is removed;
-  10. `capabilities list --local-only` becomes `--local`;
-  11. `lifecycle` drops its slug, `--directive`, `--phase` and `--transition`;
-  12. `work path` keeps its no-slug form and gains `--handoff`;
-  13. `work list` has no `--tag` filter;
-  14. unknown stage, procedure and axis names are usage errors listing the valid
+  7. the `tcw <axis> <path>` shorthand is removed;
+  8. `capabilities list --local-only` becomes `--local`;
+  9. `lifecycle` drops its slug, `--directive`, `--phase` and `--transition`;
+  10. `work list` has no `--tag` filter (see the owner questions);
+  11. unknown stage, procedure and axis names are usage errors listing the valid
       names;
-  15. a Jira key is resolved first, in Jira mode only;
-  16. another project's item can be read but not written, except `new --project`
+  12. a Jira key is resolved first, in Jira mode only;
+  13. another project's item can be read but not written, except `new --project`
       and `edit --blocks`;
-  17. the exception classes move to `tcw/errors.py`;
-  18. the exit-code rows beyond the ticket (Design 4);
-  19. options are long-form only with one spelling each;
-  20. `validate` checks the current project only;
-  21. each backend's offline check is a module function, not a ninth operation;
-  22. `validate`'s findings are graded error / warning / unresolved and printed on
-      stdout;
-  23. drift keeps the unreviewed-inherited kind;
-  24. `provision --refresh` is removed;
-  25. the git-word sweep's two exceptions (`.gitignore`, `provision` messages);
-  26. `connected-projects` becomes `projects`;
-  27. the tree sense of "node" becomes "entry";
-  28. the `node` term becomes `project`, `connected-project-registry` becomes
+  14. the exit-code rows beyond the ticket (Design 4), including `validate`
+      reporting a missing project as `unresolved` rather than exiting 5;
+  15. options are long-form only with one spelling each;
+  16. `validate` checks the current project only. A monorepo root validates each
+      child in its own directory; this keeps one project per run, as everywhere
+      else in 3.0;
+  17. each backend's offline check is a module function, not a twelfth operation;
+  18. `validate`'s findings are graded error / warning / unresolved;
+  19. drift keeps the unreviewed-inherited kind, and in Jira mode needs the
+      network for its completed-work half;
+  20. `provision --refresh` is removed;
+  21. the git-word sweep's two exceptions (`.gitignore`, `provision` messages);
+  22. `connected-projects` becomes `projects` (see the owner questions for the
+      name);
+  23. the tree sense of "node" becomes "entry";
+  24. the `node` term becomes `project`, `connected-project-registry` becomes
       `project-registry`, and capability paths that say "node" are renamed;
-  29. this slice's removals join TCW-70's temporary documented-surface allowance;
-  30. this slice owns `tests/cli/scenarios/`.
+  25. a record still carrying `Planning doc` or `Tracker` is accepted with a
+      warning, not an error, until TCW-76 migrates it, because this repository's
+      own configuration gates on `tcw validate`;
+  26. each scenario under `tests/cli/scenarios/` defaults to deletion unless the
+      plan finds it covers something the contract test does not;
+  27. the plan splits this item into the three children named under Risks;
+  28. `tcw work show`'s text and `--json` layout for the request and comments
+      (Design 1.9), with no limit option, and `list --json` without them;
+  29. `validate`'s one-object selector covers work items with the offline checks
+      listed in Design 6.4, takes the `Item` from its caller, and leaves
+      cross-project references to the full run (asked for by TCW-77);
+  30. a new offline check: an invalid latest verdict round is a warning
+      (Design 6.1.7);
+  31. if this slice lands before TCW-77, it writes TCW-77's chosen `Feature`
+      value, `local-web-app`, to `web/meta.yaml` and touches nothing else in
+      `web/` (Capability changes).
 - **The ticket's own points**, answered: exit 6 is widened as TCW-69 decided
   (Design 4); `capabilities drift` reads `<item>/capabilities.yaml`, through TCW-69's
   `drift_problems` (Design 7, wired by TCW-70); the `detect-capability-drift`
@@ -940,79 +1214,65 @@ cases use a stubbed backend whose `lookup`, `list` and `set_stage` are scripted.
   `records_problems(finished=False)` (Design 6.1.6, wired by TCW-70); the rename
   covers commands, the config key, `TCW_NODE_ROOT` and code (Design 9.3).
 - **Questions only the owner can answer.**
-  1. Confirm moving the `validate` and `drift` wiring and the
-     `detect-capability-drift` record from this slice to TCW-70 (TCW-70's open
-     question 6).
-  2. Is dropping `validate`'s walk over child projects acceptable, or should
-     `tcw validate` keep a way to check a whole project graph in one run?
-  3. Should this item be split into the three children named under Risks?
-  4. `work list` loses `--tag`. Should TCW-69's `Query` gain a `tags` field instead?
-  5. Is it acceptable that `capabilities drift` needs the network in Jira mode?
-  6. Are `projects:` (for `connected-projects:`) and `project-registry` the names
-     wanted?
-  7. A full slug naming a project that is declared but not on this machine: exit 4
-     (this spec) or exit 5 (TCW-70's draft)? See the conflicts below.
-- **Conflicts with the sibling drafts written alongside this one** (TCW-70 and
-  TCW-71 specs in this branch's working tree, not yet reviewed). Each needs one
-  answer before either slice is planned:
-  - **Project not on this machine.** TCW-70's Decision 2 makes reading a project
-    that cannot be located exit 5. This spec (Design 3.4) makes it 4: nothing remote
-    was contacted, and 5 tells a caller to retry later, which will not help. The
-    ticket's table defines 5 as "remote unreachable".
-  - **Where `validate`'s findings go.** TCW-70's Design 10.2 keeps `warning:` and
-    `unresolved:` lines in today's stream (stderr). This spec puts every finding on
-    stdout (Design 6.3). Sequenced as in Design 0 this is not a clash, only a change
-    TCW-70's tests must survive (Risks).
-  - **`tickets list` stdout.** TCW-71's draft prints `KEY<TAB>status<TAB>summary`
-    per line and says this contract does not yet name the command. This spec
-    (Design 1.7) gives every list one identifier per line, with details in `--json`.
-    One must give way; this spec's rule keeps every list command the same shape.
-  - **`validate --remote` report.** TCW-71's draft lists every check as passed,
-    failed or unchecked. Under Design 6.3 only findings are the product: passed
-    checks belong on stderr as narration, and an unchecked one is a finding.
+  1. **`work list --tag`.** 2.8 can filter the list by tag
+     (`tcw/work/cli.py:4968`), and TCW-69's `Query` has no tag field, so 3.0
+     cannot. Recommendation: ship 3.0.0 without it and add a `tags` field to
+     `Query` later if it is missed, since both backends could support it (Jira
+     labels) and adding it is not a breaking change.
+  2. **Names.** `projects:` replaces the `connected-projects:` key, and
+     `project-registry` replaces the `connected-project-registry` Feature; every
+     user's config file changes. Recommendation: keep both names; they match the
+     word "project" used everywhere else in 3.0.
+- **Conflicts with sibling specs that the decisions do not settle.** None
+  remain. TCW-70's spec now gives an undeclared project ID exit 4 and a declared
+  but absent one exit 5 (its Design 2.2), as Design 3.4 does, and TCW-71's spec
+  now prints `tickets list` keys and `validate --remote` findings only. One
+  sequencing note:
   - **`procedure prompt`.** TCW-70 keeps today's spelling; this slice renames it to
     `procedure` afterwards. Not a clash, but TCW-70 should not write new docs or
     tests that name `procedure prompt`.
 - **Changes other slices need** (nothing has been posted to their tickets):
-  - **TCW-69:** move the exception classes to `tcw/errors.py` (or accept this slice
-    moving them, Design 4). Its spec says
-    `work/archive-a-resolved-item-before-it-is-deleted` is "the ledger's one `work/`
-    capability today"; the ledger holds 46 `work/` records (TCW-70's draft found the
-    same). It does not say who wires `reference_problems` and `stage_problems` into
-    `validate`; TCW-70's draft does.
   - **TCW-70:** build `new`, `list`, `show`, `path`, `edit`, `advance`, `discard`,
-    `comment` and `rename` to Design 1–4, including `resolve_item` (Design 3) and
-    `path --handoff`; supply the filesystem backend's offline check as a module
-    function; list in its documented-surface allowance the commands it removes
-    (already planned).
+    `comment` and `rename` to Design 1–4, including `resolve_item` (Design 3);
+    supply the
+    filesystem backend's offline check as a module function; list in its
+    documented-surface allowance the commands it removes (already planned).
   - **TCW-71:** add the key branch to `resolve_item`; supply the Jira backend's
-    offline check; remove `tracker_problems` from `tcw/validate.py`; use "project",
-    never "node", in new code; settle the two conflicts above.
+    offline check; remove `tracker_problems` from `tcw/validate.py`; use
+    "project", never "node", in new code.
   - **TCW-72:** its config errors exit 1 and its warnings use the `warning:` form;
     `init` writing `.gitignore` outside git relies on Design 8.3. It owns `--mine`
-    and `--assign-me`, which the ticket lists without saying so.
-  - **TCW-74:** skills and prompts name the 3.0 commands in Design 2, and shrink the
-    documented-surface allowance.
-  - **TCW-75:** documents the contract from Design 1, 4 and 5, and shrinks the
-    allowance.
+    and `--assign-me`, through `current_user()` in Jira mode.
+  - **TCW-74:** skills, agents, prompts and `evals/` name the 3.0 commands in
+    Design 2, and shrink the documented-surface allowance. Prompts that need the
+    request or the latest comment read them from `tcw work show` (Design 1.9),
+    where the newest comment comes first.
+  - **TCW-75:** documents the contract from Design 1, 4 and 5, owns everything in
+    `skills/configure/`, and shrinks the allowance.
   - **TCW-76:** the migration guide carries Design 2's old-to-new table, the
-    `connected-projects` key, `TCW_NODE_ROOT`, `provision --refresh`, and
-    `validate [path] --no-recurse`; its "validate clean" step is where the
-    allowance must be empty.
+    `connected-projects` key, `TCW_NODE_ROOT`, `provision --refresh`,
+    `validate [path] --no-recurse`, and removing `Planning doc` and `Tracker` from
+    capability records; its "validate clean" step is where the allowance must be
+    empty.
   - **TCW-77:** `tcw/serve/` is excluded from the sweep, so its rewrite must say
     "project" only; `validate`'s `target` selector stays for it; `serve` follows
-    Design 1 and 4.
-- **Sibling tickets that contradict TCW-69's confirmed decision** that
-  `capabilities.yaml` lives at the item root: TCW-73's own command list, TCW-74
-  ("Writes `spec/spec.md` and `spec/capabilities.yaml`"), TCW-75 ("Add the
-  `spec/capabilities.yaml` chain"), TCW-76's artifact table (its update section
-  corrects it) and TCW-77 (the "`spec/capabilities.yaml` form").
+    Design 1 and 4, and its import of `CAP_FIELDS` (`tcw/serve/__init__.py:22`)
+    follows the smaller set. It owns all of `docs/capabilities/web/`, including
+    `web/meta.yaml`'s `Feature`, which it sets to `local-web-app`; this slice
+    removes the `connected-project-registry` entry only once that is done. It
+    calls the one-object selector of Design 6.4 for item files, passing the
+    `Item` it holds.
 - **Related backlog item.**
   `2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes`
   asked for graded exit codes; Design 6.2 grades findings so that a missing
   reference no longer fails the run. Its suppression ask is untouched.
 - **Grounding.** Every `file:line` above was read on the epic branch at commit
-  `c6f3ef49`. TCW-69's modules (`tcw/work/model.py` and the rest) are not in the
+  `c6f3ef49`, and re-checked at `ec698d46`, which changes nothing under `tcw/` or
+  `tests/`. TCW-69's modules (`tcw/work/model.py` and the rest) are not in the
   tree yet; claims about them cite TCW-69's spec, not code.
 - **Driving this item.** This item's implementation edits `tcw/`. From `implement`
   onwards, the repository's board is driven by editing files, per `CLAUDE.md`.
+  While TCW-70 to TCW-77 are in flight the 2.x board is edited by hand, and this
+  slice's Jira ticket is moved by hand to In Progress, In Review and Done as its
+  item moves; read-only views may use a released 2.8 `tcw` installed outside the
+  checkout (epic decision 7).
