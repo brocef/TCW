@@ -409,9 +409,14 @@ class WorkBackend(Protocol):
      `limit` of them (all when `None`). A `Comment` holds `at` (a UTC
      timestamp), `author` (`str | None`) and `text`. Filesystem: the files in
      `comments/` (TCW-70). Jira: the ticket's comments.
-   - `current_user()` returns the name `assignee` is compared with, or `None`
-     when no identity is configured. Filesystem: `user.name` from personal
-     configuration (TCW-72). Jira: the account the credentials belong to.
+   - `current_user()` returns the current user in **the same form the
+     backend uses for `Item.assignee`**, so a caller can compare the two
+     directly, or `None` when no identity is configured. Filesystem:
+     `user.name` from personal configuration (TCW-72). Jira: the account the
+     credentials belong to, in whatever form TCW-71 chooses for `assignee`.
+     Callers still pass the value to `Query` and `Changes` rather than
+     comparing it themselves, so the backend stays the one place that knows
+     the form.
    They change nothing, and each is safe to call any number of times.
 5. Errors are exception classes in `tcw/errors.py`, each carrying an exit code:
    - `UsageError` (2);
@@ -664,7 +669,13 @@ Each `work.stages.<stage>` takes:
 The binding lists:
 
 - `prompt` takes `blob`, `file`, `generate`, `builtin` and `skill` bindings,
-  as today.
+  as today. **[Decision]** A `generate` binding runs like a hook: from the
+  project root, under `work.hooks.timeout` and `output-cap`, with the hook
+  variables of Design 6.5 (with `TCW_STAGE` set to the stage whose prompt is
+  being composed and `TCW_FROM_STAGE`, `TCW_FORCED` and `TCW_REASON` absent),
+  plus the four variables 2.x already gives it, unchanged: `TCW_HOOK_ROLE`,
+  `TCW_HOOK_KIND`, `TCW_HOOK_ID` and `TCW_HOOK_PHASE`
+  (`tcw/work/resolve.py:191-196`).
 - `pre` takes `command` bindings only. **[Decision]** A `skill` in `pre` is an
   error, because TCW cannot run a skill and a gate that is only reported
   would always pass.
