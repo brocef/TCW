@@ -313,6 +313,11 @@ Four terms used below:
    | `work.jira.credentials.email-env` | all |
    | `work.jira.credentials.token-env` | all |
 
+   - **[Decision, owner 2026-10-01] A personal `post` list may replace the
+     team's `post` hooks**, as the ticket asks: like any chain list, it
+     replaces what the layer below resolved unless it contains
+     `inherit: true` (Design 3.2). `pre` is not on this list, so the team's
+     gates stay shared.
    - The two credential keys are the ones TCW-71's `work.jira` parser defines
      (TCW-71 Design 1), the same names as TCW 2.8's
      (`tcw/store/base.py:1620-1621`). They are listed by name rather than as
@@ -786,7 +791,8 @@ function, with a temporary project.
 - **A person's override can quietly drop the team's rules.** A personal
   `prompt` list without `inherit` replaces the team's text, and a personal
   `post` list replaces the team's hooks (for example a hook that publishes a
-  stage change). That is what the ticket asks for. Mitigation: `pre` gates are
+  stage change). That is what the ticket asks for, and the owner confirmed it
+  on 2026-10-01. Mitigation: `pre` gates are
   shared and cannot be touched; `stage prompt` notes the change on every run;
   `config show --origin` shows exactly what replaced what.
 - **The user-wide file is read in every project.** A mistake there, or a key
@@ -894,10 +900,9 @@ function, with a temporary project.
   - **TCW-77:** its project endpoint's `user` field ("filesystem mode:
     TCW-72's `user.name`, or `null`") can come from `current_user()` in both
     modes, so the viewer does not read configuration for it.
-- **Questions only the owner can answer.**
-  - Should a person be able to replace the team's `post` hooks at all, or
-    only add to them (that is, should a personal `post` list be required to
-    contain `inherit: true`)? The ticket says replace; this spec follows it.
+- **Questions only the owner can answer.** None remain.
+  - Settled by the owner on 2026-10-01: personal configuration may replace the
+    team's `post` hooks, as the ticket says; `pre` stays shared (Design 4.1).
 - **Assumptions.**
   - This slice is implemented after TCW-70 has wired TCW-69's model into the
     CLI, so `advance`, `stage prompt`, `list`, `new` and `edit` exist as 3.0
