@@ -539,3 +539,186 @@ def resolve_artifact(policy: LifecyclePolicy, artifact: str,
         res.text = text
         won = True
     return res
+
+
+# ---------------------------------------------------------------------------
+# TCW 3.0 composition. Beside the 2.x functions above until TCW-70 deletes
+# them; these read TCW-69's configuration and item model only.
+
+import os  # noqa: E402
+
+from tcw.errors import BackendError  # noqa: E402
+
+REQUEST_OPEN = "{{tcw:request}}"
+REQUEST_CLOSE = "{{/tcw:request}}"
+PACKAGED_KINDS = ("prompts", "procedures")
+
+
+def packaged_text(kind: str, name: str) -> str:
+    """TCW's own text for a stage (`prompts`) or a procedure (`procedures`),
+    read from the installed package. A missing file is an error naming it."""
+    if kind not in PACKAGED_KINDS:
+        raise ValueError(f"unknown packaged text kind {kind!r}")
+    rel = f"tcw/work/{kind}/{name}.md"
+    try:
+        return (files("tcw.work") / kind / f"{name}.md").read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        raise BackendError(f"TCW's built-in text {rel} is missing from the "
+                           f"installed package") from None
+
+
+def substitute_request(text: str, request: str | None) -> str:
+    """Replace each `{{tcw:request}}…{{/tcw:request}}` span with the item's
+    request text, or with the span's own inner text when there is none.
+
+    Inline, like the 2.x body span it replaces: no newline is added. An
+    unterminated open token is left as written. `{{tcw:body}}` is not touched.
+    """
+    value = request.strip() if request and request.strip() else None
+    out: list[str] = []
+    rest = text
+    while True:
+        start = rest.find(REQUEST_OPEN)
+        if start < 0:
+            out.append(rest)
+            break
+        end = rest.find(REQUEST_CLOSE, start)
+        if end < 0:
+            out.append(rest)
+            break
+        out.append(rest[:start])
+        fallback = rest[start + len(REQUEST_OPEN):end]
+        out.append(value if value is not None else fallback)
+        rest = rest[end + len(REQUEST_CLOSE):]
+    return "".join(out)
+
+
+def generate_payload(record: dict | None, request: str | None, role: str,
+                     kind: str, hook_id: str, phase: str,
+                     cap: int = BODY_CAP) -> tuple[str, bool]:
+    """The one JSON object a `generate:` binding reads on stdin, and whether
+    the request was cut. The cap is bytes of UTF-8, cut at a character
+    boundary; the key `body_truncated` keeps its 2.x name."""
+    truncated = False
+    if request is not None:
+        raw = request.encode("utf-8")
+        if len(raw) > cap:
+            request = raw[:cap].decode("utf-8", errors="ignore")
+            truncated = True
+    payload = {
+        "schema": 1,
+        "item": record,
+        "request": request,
+        "hook": {"role": role, "kind": kind, "id": hook_id, "phase": phase,
+                 "body_truncated": truncated},
+    }
+    return json.dumps(payload), truncated
+
+
+def _prompt_env(item, stage: str | None, layout, project_root: Path) -> dict:
+    """TCW-69's hook variables for a composed prompt: `TCW_STAGE` is the stage
+    being composed, and the move-only variables are absent."""
+    from tcw.work.advance import hook_env
+    if item is not None and stage is not None and layout is not None:
+        env = hook_env(item, stage, layout, project_root)
+        env.pop("TCW_FROM_STAGE", None)
+        return env
+    env = dict(os.environ)
+    for name in ("TCW_SLUG", "TCW_STAGE", "TCW_FROM_STAGE", "TCW_ITEM_PATH",
+                 "TCW_FORCED", "TCW_REASON"):
+        env.pop(name, None)
+    env["TCW_PROJECT_ROOT"] = str(project_root)
+    if stage is not None:
+        env["TCW_STAGE"] = stage
+    if item is not None:
+        env["TCW_SLUG"] = str(item.slug)
+        if layout is not None:
+            env["TCW_ITEM_PATH"] = str(layout.item_dir(item.slug))
+    return env
+
+
+def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
+            record: dict | None, request: str | None, project_root: Path,
+            config, documentation, env: dict, execute: bool = True) -> Resolution:
+    """Every binding that applies to `item`, in order, joined, then the
+    documentation and request spans substituted. With `execute` false, nothing
+    is read or run: the plan says what would be."""
+    from tcw.work.advance import binding_applies
+    res = Resolution()
+    parts: list[str] = []
+    for b in bindings:
+        if not binding_applies(b, item):
+            res.plan.append(PlanEntry(b.kind, b.ref, False))
+            continue
+        ran = False
+        if b.kind == "blob":
+            text = b.value
+        elif b.kind == "skill":
+            text = f"Invoke the {b.value} skill."
+        elif b.kind == "builtin":
+            text = packaged_text(builtin_kind, hook_id)
+        elif b.kind == "file":
+            text = _read_file(project_root, b.value) if execute else ""
+        elif b.kind == "generate":
+            text = ""
+            if execute:
+                stdin_text, _ = generate_payload(record, request, role, b.kind,
+                                                 hook_id, "prompt")
+                try:
+                    result = run_generate(
+                        b.value, project_root,
+                        _hook_env(env, role, b.kind, hook_id, "prompt"),
+                        stdin_text, config.hooks.timeout, config.hooks.output_cap)
+                except GenerateError as error:
+                    raise ResolveError(str(error))
+                text, ran = result.text, True
+        else:
+            raise ResolveError(f"cannot resolve a '{b.kind}' binding in a "
+                               f"{role} position")
+        res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
+        parts.append(text)
+    res.text = substitute_request(
+        substitute_documentation(_join(parts), documentation), request)
+    return res
+
+
+def stage_prompt(config, stage: str, *, item=None, record=None, request=None,
+                 layout=None, project_root: Path, execute: bool = True
+                 ) -> Resolution:
+    """A stage's prompt: exactly `work.stages.<stage>.prompt`, which is TCW's
+    own text when the key is not written, and nothing for an empty list."""
+    bindings = config.stage(stage).prompt
+    if bindings is None:
+        from tcw.work.config import Binding as Binding3
+        bindings = (Binding3("builtin", ""),)
+    return compose(bindings, role="prompt", hook_id=stage, builtin_kind="prompts",
+                   item=item, record=record, request=request,
+                   project_root=project_root, config=config,
+                   documentation=config.documentation,
+                   env=_prompt_env(item, stage, layout, project_root),
+                   execute=execute)
+
+
+def procedure_prompt(config, procedure_id: str, *, item=None, record=None,
+                     request=None, layout=None, project_root: Path,
+                     execute: bool = True) -> Resolution:
+    """A procedure's text, composed exactly as a stage's prompt is."""
+    bindings = config.procedures.get(procedure_id)
+    if bindings is None:
+        from tcw.work.config import Binding as Binding3
+        bindings = (Binding3("builtin", ""),)
+    return compose(bindings, role="procedure", hook_id=procedure_id,
+                   builtin_kind="procedures", item=item, record=record,
+                   request=request, project_root=project_root, config=config,
+                   documentation=config.documentation,
+                   env=_prompt_env(item, None, layout, project_root),
+                   execute=execute)
+
+
+def stage_header(stage: str, target: str) -> str:
+    """The line printed above a stage's prompt: reading instructions checks
+    nothing, and `advance --dry-run` is what does."""
+    return (f"> **This text ran no checks.** `tcw work stage prompt {stage}` "
+            f"resolves instructions and gates nothing. Run "
+            f"`tcw work advance {target} --dry-run` to see whether the item may "
+            f"move on, and what would stop it.")

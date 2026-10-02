@@ -146,20 +146,20 @@ def _check_direction(item: Item, target: str, force: bool, reason: str | None,
 
 # -- 6.5 gates -------------------------------------------------------------------
 
-def _applies(binding: Binding, item: Item) -> bool:
+def binding_applies(binding: Binding, item: Item | None) -> bool:
     """No `when`, or the item carries one of `when.tags` (any, when none are
     listed) and none of `when.not_tags`."""
     when = binding.when
     if when is None:
         return True
-    tags = set(item.tags)
+    tags = set(item.tags) if item is not None else set()
     if when.tags and not tags.intersection(when.tags):
         return False
     return not tags.intersection(when.not_tags)
 
 
-def _hook_env(item: Item, target: str, layout: Layout, project_root: Path,
-              force: bool, reason: str | None) -> dict[str, str]:
+def hook_env(item: Item, target: str, layout: Layout, project_root: Path,
+             force: bool = False, reason: str | None = None) -> dict[str, str]:
     env = dict(os.environ)
     env.update({
         "TCW_SLUG": str(item.slug),
@@ -177,7 +177,7 @@ def _hook_env(item: Item, target: str, layout: Layout, project_root: Path,
 
 
 def _bindings(bindings: tuple[Binding, ...] | None, item: Item) -> list[Binding]:
-    return [b for b in bindings or () if _applies(b, item)]
+    return [b for b in bindings or () if binding_applies(b, item)]
 
 
 def _run_gates(item: Item, target: str, force: bool, config: WorkConfig,
@@ -246,7 +246,7 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
     if refusal:
         return refusal
 
-    env = _hook_env(item, target, layout, project_root, force, reason)
+    env = hook_env(item, target, layout, project_root, force, reason)
     gated = _run_gates(item, target, force, config, layout, reader,  # 6.5
                        project_root, env)
     if isinstance(gated, Outcome):
