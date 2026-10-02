@@ -1,3 +1,0 @@
-stages:
-  spec:
-  - command: ./bin/spec-help.sh

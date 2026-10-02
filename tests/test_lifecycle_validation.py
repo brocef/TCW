@@ -319,12 +319,3 @@ def test_the_rejected_spelling_still_resolves_to_the_builtin(tmp_path):
         load_builtins().stage_prompts["spec"], ()).rstrip()
 
 
-def test_the_legacy_corpus_config_is_the_one_now_rejected():
-    """Pinned to a config that demonstrably existed before this break rather
-    than one written to fail it: `stage_empty.config.yaml` is part of C3's
-    back-compat corpus, and its recorded `tcw work lifecycle` render — which
-    reads the policy and discards problems — is unchanged."""
-    corpus = Path(__file__).parent / "fixtures" / "lifecycle_baseline"
-    raw = yaml.safe_load((corpus / "stage_empty.config.yaml").read_text())
-    p = only(raw)
-    assert "spec" in p

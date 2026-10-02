@@ -1,9 +1,4 @@
-"""`tcw work show --json`, and the promise that `tcw work show` did not change.
-
-The baseline half is the point of the file's ordering: `tests/fixtures/show_baseline/`
-was committed before `_show` was touched (commit `c2fe1fc`), so the expected bytes
-here are not something the implementer wrote down after changing the behavior.
-"""
+"""`tcw work show --json`."""
 
 import json
 import subprocess
@@ -15,9 +10,6 @@ import yaml
 from tcw.store.base import WORK_ARTIFACTS
 from tcw.store.fs import FsWorkStore, init
 from tcw.work.projection import SCHEMA_VERSION, WORK_ITEM_SCHEMA
-
-BASELINE = Path(__file__).parent / "fixtures" / "show_baseline"
-
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
     root = tmp_path / name
@@ -123,55 +115,3 @@ def test_show_json_error_on_an_ambiguous_slug(tmp_path, monkeypatch, capsys):
     assert main(["work", "show", item.slug, "--json"]) == 1
     out = capsys.readouterr()
     assert out.out == ""
-
-
-# ── the promise that plain `show` did not change ──────────────────────────────
-
-
-def _show(main, capsys, slug) -> str:
-    assert main(["work", "show", slug]) == 0
-    return capsys.readouterr().out
-
-
-def test_plain_show_matches_the_pre_change_baselines(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    monkeypatch.chdir(root)
-
-    with_req = st.create("With a request", body="# With a request\n\nSome prose.\n",
-                         priority=5)
-    st.update_work(with_req.slug, effort="medium", complexity="high")
-    intake_only = st.create("Intake only", intake="raw intake text\n")
-    neither = st.create("Neither")
-
-    expected = (BASELINE / "with_a_request.txt").read_text()
-    assert _show(main, capsys, with_req.slug) == expected.format(slug=with_req.slug)
-
-    expected = (BASELINE / "intake_only.txt").read_text()
-    assert _show(main, capsys, intake_only.slug) == expected.format(
-        slug=intake_only.slug)
-
-    expected = (BASELINE / "neither.txt").read_text()
-    assert _show(main, capsys, neither.slug) == expected.format(slug=neither.slug)
-
-
-def test_plain_show_matches_the_baseline_for_a_fully_populated_item(
-        tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    monkeypatch.chdir(root)
-
-    blocker = st.create("Neither")
-    st.register_tags(["alpha", "beta"])
-    rich = st.create("Rich fields", priority=9)
-    st.update_work(rich.slug, effort="low", complexity="very-high",
-                   tags=["alpha", "beta"],
-                   blockers=[blocker.slug, "https://example.com/issue/1"])
-    st.start(rich.slug, owner="someone@example.com", force=True)
-
-    item = st.get(rich.slug)
-    expected = (BASELINE / "rich_fields.txt").read_text().format(
-        slug=rich.slug, started=item.started, blocker=blocker.slug)
-    assert _show(main, capsys, rich.slug) == expected

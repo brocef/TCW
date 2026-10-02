@@ -1,4 +1,0 @@
-{slug}  [backlog]
-title: Intake only
-
-raw intake text

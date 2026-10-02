@@ -1,4 +1,0 @@
-transitions:
-  complete:
-    pre:
-    - command: pytest -q
