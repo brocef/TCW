@@ -642,8 +642,15 @@ does not cover them; see Capability changes. TCW-70 wires it into
 
 ### 8. Configuration (`config.py`)
 
-`parse_work_config(mapping) -> (WorkConfig, problems)` accepts exactly these
-keys under `work`:
+`parse_work_config(mapping, origins=None) -> (WorkConfig, problems)` accepts
+exactly these keys under `work`. **[Decision, 2026-10-02 review]** Each problem
+is a `ConfigProblem(key_path, message)` (a problem about two keys names the first),
+so TCW-72 can say which file a bad value came from; `origins`, a map from key
+path to an origin label, is copied onto each `Binding` built under that path.
+A `builtin: true` entry in the mapping is accepted as before; TCW-72's loader
+is what refuses `builtin:` written in a file, before it merges the layers and
+inserts the built-in entries itself. Duplicate bindings in one list are
+allowed, because a merged list may legitimately repeat one:
 
 - `path`;
 - `repository`;

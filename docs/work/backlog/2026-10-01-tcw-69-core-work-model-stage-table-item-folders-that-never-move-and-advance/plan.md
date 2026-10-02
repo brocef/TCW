@@ -144,8 +144,10 @@ imported. In particular, `resolve.select` and the 2.x binding parser
 ## Task 4: Configuration (spec Design 8; AC 6 config part, AC 16)
 
 - **Create** `tcw/work/config.py` with:
-  - `When(tags, not_tags)` and `Binding(kind, value, when)`, both frozen, with
-    a `ref` property returning `value` (what `run_bindings` reads);
+  - `When(tags, not_tags)` and `Binding(kind, value, when, origin=None)`, both
+    frozen, with a `ref` property returning `value` (what `run_bindings`
+    reads); `origin` is an opaque label TCW-72 uses to say which file a
+    binding came from;
   - `parse_bindings(raw, where, role, problems) -> list[Binding]`, written for
     3.0 rather than reusing `_parse_binding_list`. Its rules:
     - each binding is a mapping with exactly one kind key and an optional
@@ -160,24 +162,29 @@ imported. In particular, `resolve.select` and the 2.x binding parser
       list of non-blank strings without commas, normalized with
       `normalize_tag`. `type` gets its own message saying 3.0 items have no
       type;
-    - duplicates (same kind, value and `when`) are refused.
+    - duplicates (same kind, value and `when`) are allowed, unlike today's
+      parser: after TCW-72 merges a person's list with the team's, the same
+      binding may legitimately appear twice.
 
     These rules match today's parser (`base.py:2459-2630`) except for the
-    two refusals, so a 2.x config that uses neither parses the same way.
+    two refusals and the duplicates rule.
   - `StageConfig` (`enabled`, `status`, `prompt`, `pre`, `post`),
     `HookLimits` (`timeout=300`, `output_cap=65536`) and `WorkConfig`
     (`backend`, `path`, `repository`, `tags`, `documentation`, `procedures`,
     `stages`, `hooks`, `jira`), with `WorkConfig.enabled` as a property;
   - `MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"`;
-  - `parse_work_config(mapping) -> tuple[WorkConfig, list[str]]`, which never
-    raises.
+  - `parse_work_config(mapping, origins=None) -> tuple[WorkConfig,
+    list[ConfigProblem]]`, which never raises. `ConfigProblem` is a frozen
+    `(key_path: tuple[str, ...], message: str)`; a problem about two keys
+    names the first. `origins` maps a key path to an origin label, and each
+    `Binding` built from a list under that path carries the label.
 - **What the parser reuses.** `documentation` goes through
   `parse_documentation_entries` (`base.py:2880`). `procedures` is parsed here,
   with the procedure ids from `PROCEDURE_IDS` (`base.py:1143`) and the same
   "an empty list is not an opt-out" rule as `parse_procedures`
   (`base.py:3063`), but through `parse_bindings`, so `when.type` is refused
   there too.
-- **What the parser refuses**, each as one problem string:
+- **What the parser refuses**, each as one `ConfigProblem` naming its key path:
   - the removed keys (`lifecycle`, `tracker`, `auto-commit-transitions`,
     `publish-transitions`, `trunk-branch`, `retain`), each naming
     `MIGRATION_GUIDE`; `lifecycle`'s message also says that `artifacts`
