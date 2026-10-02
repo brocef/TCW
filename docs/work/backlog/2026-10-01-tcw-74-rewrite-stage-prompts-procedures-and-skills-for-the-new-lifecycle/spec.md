@@ -160,8 +160,8 @@ the exact practice this slice reverses.
   sibling's command surface to change, Notes lists it as a cross-slice finding
   rather than diverging.
 - **Command names and output.** The command surface and the stdout/stderr
-  contract are TCW-73's, including removing `stage gate`, `stage validate` and
-  `scaffold`. Git-related strings in the Python code are TCW-73's. The output
+  contract are TCW-73's. Removing `stage gate`, `stage validate` and
+  `scaffold` is TCW-70's (epic decision 2). Git-related strings in the Python code are TCW-73's. The output
   rules are TCW-73's too (epic decision 10): one identifier per stdout line,
   details through `--json`. The prompts follow them rather than restating them.
 - **User documentation** (README, `docs/guide/`, `docs/lifecycle/abstraction.md`,

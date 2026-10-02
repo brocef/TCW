@@ -117,7 +117,8 @@ kept; Design 10.1).
   - the features `work-inbox` and `configurable-work-lifecycle`;
   - the skill features `configure-skill`, `extras-triage-issues-skill`,
     `commands-process-inbox-skill` and `work-create-skill`, **only** to drop
-    their references to the removed terms below. Their text is TCW-74's.
+    their references to the removed terms below. Their text is TCW-74's,
+    except `configure-skill`, whose text is TCW-75's (epic decision 3).
 - **Removed:**
   - `work-item/definition-of-done`;
   - `work-item/intake`;
@@ -1413,6 +1414,14 @@ criterion pipes text.
       `tcw/store/fs.py` (`:4099`) may run `clone`, `checkout` and `fetch`,
       for `tcw provision` (Design 4.2, R4). The allowance names the class,
       not the file, so the same verbs anywhere else in `fs.py` fail.
+    - **[Decision]** One temporary allowance, removed by TCW-73 (its Design
+      8.1): the taxonomy and capabilities stores' write helpers in
+      `tcw/store/fs.py` (`git_stage`, `git_rm` and `git_mv` at `fs.py:779-860`,
+      and their callers in the taxonomy and capabilities store classes,
+      `fs.py:2210-2282`) may
+      still run `add`, `rm` and `mv`, because those stores keep staging until
+      TCW-73 (R10, R1). The allowance names those functions; the tag helpers
+      and every work-store path are not covered.
     - It is mutation-checked twice: adding
       `["git", "-C", str(root), "add", "x"]` to `tcw/work/open.py`, and the
       same call to a function of `tcw/store/fs.py` outside

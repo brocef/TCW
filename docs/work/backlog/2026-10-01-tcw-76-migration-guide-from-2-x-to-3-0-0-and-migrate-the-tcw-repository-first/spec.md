@@ -876,8 +876,8 @@ no `post` (TCW-69 Design 8).
   removed, all eight of the table's rows after `Create`, which is the
   ticket-creation step and not a move. This carries out the owner's stated aim,
   "one global transition per mapped status" (owner answer of 2026-10-01), which
-  naming only `Start` and `Accept` would not achieve; the owner confirms it at
-  the checklist (Notes, "Questions only the owner can answer").
+  naming only `Start` and `Accept` would not achieve. The owner confirmed it on
+  2026-10-02 (Notes, "Questions only the owner can answer", item 6).
 - **From step 2 on, the released 2.8 CLI can no longer move TCW tickets** the
   way 2.x expects (its `start` names `Start`, and its other moves find the
   route by target status, which the global transitions change). That is
@@ -1448,14 +1448,10 @@ The inbox entries in the prune list are the six the owner's question named
 
 One new question, raised by the 2026-10-02 review (Jira administration):
 
-6. **Removing all eight directed transitions.** The live `TCW work` workflow
-   (read 2026-10-02) has `Submit`, `Complete`, `Rework`, `Cancel`, `Stop` and
-   `Reopen` as well as `Start` and `Accept`, all without screens, so each would
-   tie with a new global transition and `advance` would refuse with exit 3. This
-   spec removes all eight to reach the owner's "one global transition per mapped
-   status" (Design 6.2). The owner confirms that, or chooses another way to break
-   the ties (for example, giving the old transitions a screen with a field, so
-   that epic decision 5 prefers the global one and they stay usable by hand).
+6. Removing all eight directed transitions. Settled by the owner on
+   2026-10-02: `Accept`, `Start`, `Submit`, `Complete`, `Rework`, `Cancel`,
+   `Stop` and `Reopen` are all removed, keeping `Create` plus one global
+   transition per mapped status, named after its status (Design 6.2).
 
 ### Other notes
 
