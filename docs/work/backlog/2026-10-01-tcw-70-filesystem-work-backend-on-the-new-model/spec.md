@@ -42,7 +42,7 @@ records come back with TCW-71, written for its own model.
 | `work/comment-on-a-work-item` | `tcw work comment <slug>` reads text from stdin and records it; in filesystem mode it is a file under `comments/`. Forced moves and discards leave their reason the same way. |
 | `work/delegate-a-work-item-to-another-project` | `tcw work new --project <id>` and `edit --blocks` into another filesystem-mode project, its conditions, the inbox landing, and files left uncommitted. An upstream project is refused, so `cli/read-from-an-upstream-project` stays true. Replaces the two removed delegation records; a new path because the old ones say "child" and "parent". |
 
-**Changed (29).** Twenty under `work/`, each because its text names a command,
+**Changed (34).** Twenty-one under `work/`, each because its text names a command,
 file or behavior that changes here:
 
 - `configure-the-work-lifecycle` (`work.lifecycle` becomes `work.stages` and
@@ -61,6 +61,11 @@ file or behavior that changes here:
 - `decompose-a-work-item-into-children` (no status folders; `list --parent`);
 - `discard-a-work-item` (`tcw work discard <slug> --reason`);
 - `estimate-a-work-items-effort-and-complexity` (the `L/M/H/VH` shorthand goes);
+- `inspect-the-node-topology` (its `description.md:22-26` links to the removed
+  `delegate-a-request-to-a-child-node` and `reconcile-an-epic-rollup` and
+  names `list --include-descendants`; the delegation link points at the new
+  `delegate-a-work-item-to-another-project` record, and the rest goes.
+  TCW-73 still renames the record);
 - `manage-blocking-relations` (`item.yaml`; blockers are always items; only
   parent cycles are refused);
 - `manage-the-work-inbox` (inbox-stage items);
@@ -75,7 +80,25 @@ file or behavior that changes here:
 - `view-the-board` (`list` flags, `--tag` kept; no status columns, no
   descendant boards).
 
-Nine elsewhere:
+Thirteen elsewhere. The last four were found at the plan stage: each links,
+with a `tcw://C/work/…` reference that `tcw validate` resolves, to a record this
+slice removes, and each says something the removal makes false:
+
+- `capabilities/remove-a-capability` (`description.md:23` links to
+  `complete-a-work-item`; the link points at `advance-a-work-item`);
+- `cli/run-from-a-git-worktree` (`description.md:31-34` says completing the
+  item a worktree belongs to is refused there, linking to
+  `complete-a-work-item`; the worktree commands go, so the paragraph goes);
+- `cli/point-tcw-at-a-project-i-already-have` (`description.md:46-51` says a
+  store found that way does not publish, linking to
+  `publish-store-writes-to-the-remote`; TCW never publishes, so the paragraph
+  goes);
+- `skills/extras-triage-issues` (`description.md:4` links to
+  `complete-a-work-item` and `customize-the-definition-of-done`), **only** to
+  drop those two links, as with the skill features under Taxonomy below. Its
+  text is TCW-74's.
+
+The nine named before the plan stage:
 
 - `taxonomy/declare-the-taxonomy-stores-home-repository` (its
   `description.md:15-16` says a work store "names six status folders, and TCW
@@ -92,9 +115,8 @@ Nine elsewhere:
 - `web/editing` (work items are no longer shown or editable in `tcw serve`
   until TCW-77; Design 12).
 
-**Unchanged (3):** `work/configure-procedures`,
-`work/declare-which-documents-track-which-changes`, and
-`work/inspect-the-node-topology`, which TCW-73 renames.
+**Unchanged (2):** `work/configure-procedures` and
+`work/declare-which-documents-track-which-changes`.
 
 Two records outside `work/` are checked and stay true, so they are not changed:
 `cli/read-from-an-upstream-project` (upstream projects stay read-only; Design
