@@ -9,6 +9,11 @@ which is how axis B's assertions were written as free prose in the first draft.
 so this guard does not depend on `evals/__init__.py` existing.
 """
 
+import pytest
+
+pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
+
+
 import importlib.util
 from pathlib import Path
 

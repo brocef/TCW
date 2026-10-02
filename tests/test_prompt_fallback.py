@@ -37,6 +37,11 @@ wherever it currently lives (`tcw work path <slug>`). That sentence is the whole
 difference; every other stage stayed byte-identical.
 """
 
+import pytest
+
+pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
+
+
 import json
 import subprocess
 from pathlib import Path

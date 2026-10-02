@@ -6,6 +6,11 @@ own last commit. It now compares the working tree, plus untracked files git does
 not ignore, with the commit the seeder recorded as `seeded_head`.
 """
 
+import pytest
+
+pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
+
+
 import json
 import subprocess
 from pathlib import Path

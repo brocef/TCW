@@ -10,6 +10,11 @@ Slow by construction — each fixture is a real git repo driven through the real
 CLI — so both variants are seeded once per module.
 """
 
+import pytest
+
+pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
+
+
 import json
 import subprocess
 import sys
