@@ -5,3 +5,5 @@ resolution: null
 parent: 2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend
 blocked_by:
 - slug: 2026-10-01-tcw-69-core-work-model-stage-table-item-folders-that-never-move-and-advance
+owner: brocef@users.noreply.github.com
+started: '2026-10-02T20:34:03.397194Z'
