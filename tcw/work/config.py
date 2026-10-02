@@ -273,7 +273,10 @@ def _positive_number(value: Any, integer: bool) -> bool:
     if isinstance(value, bool):
         return False
     kinds = (int,) if integer else (int, float)
-    return isinstance(value, kinds) and math.isfinite(value) and value > 0
+    if not isinstance(value, kinds):
+        return False
+    # An int is always finite, and isfinite would overflow converting a huge one.
+    return (isinstance(value, int) or math.isfinite(value)) and value > 0
 
 
 def _parse_hooks(raw: Any, problems: _Problems) -> HookLimits:

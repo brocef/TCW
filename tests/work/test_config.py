@@ -211,6 +211,13 @@ def test_hook_limits_must_be_positive(hooks, key):
     assert paths(problems_of({"hooks": hooks})) == [("work", "hooks", key)]
 
 
+def test_a_huge_whole_number_is_read_not_raised():
+    # math.isfinite converts an int to float, which overflows past ~10**308.
+    config, problems = parse_work_config({"hooks": {"timeout": 10**400,
+                                                    "output-cap": 10**400}})
+    assert problems == []
+
+
 def test_hook_limits_are_read():
     config, problems = parse_work_config({"hooks": {"timeout": 2.5,
                                                     "output-cap": 1024}})
