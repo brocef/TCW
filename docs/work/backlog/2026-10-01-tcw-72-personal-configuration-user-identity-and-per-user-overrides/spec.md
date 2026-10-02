@@ -204,34 +204,77 @@ Four terms used below:
 
 1. `load_config(project_root, *, personal=True) -> Config` reads the layers,
    checks them (Design 4 and 5), merges them (Design 3) and returns:
-   - `values`: the effective configuration as a plain mapping;
-   - `origins`: the origin of every scalar and every list entry, keyed by key
-     path (`work.stages.spec.prompt[2]`);
-   - `work`: TCW-69's parsed `WorkConfig`, from `parse_work_config(values)`;
+   - `values`: the effective configuration as a plain mapping, including the
+     built-in chain entries, each written `{builtin: true}` (Design 3.4);
+   - `origins`: the origin of every scalar, every list and every list entry,
+     keyed by key path. A key path is a tuple of keys, with a list index as
+     an `int`: `("work", "stages", "spec", "prompt", 2)`. This is the form of
+     TCW-69's `Problem.key_path` and of the `origins` argument of
+     `parse_work_config` (review decision R8);
+   - `work`: TCW-69's parsed `WorkConfig`, from
+     `parse_work_config(values, origins)`;
    - `problems`: every problem found, each naming the file and key it came
      from (Design 5);
-   - `skipped`: personal values that were read but not applied (Design 4.5).
+   - `skipped`: personal values that were read but not applied (Design 4.6);
+   - `refused`: personal values that were read but refused as shared keys
+     (Design 4.4), kept so that `config show --origin` can list them.
 
-   `personal=False` reads `built-in` and `project` only. The project registry
-   uses it for every project, including the acting one, because it reads only
-   shared keys (`id`, `connected-projects`).
-2. Every 3.0 reader of `tcw-config.yaml` goes through this function. The five
-   readers in Problem 3 are either deleted with the 2.x code they serve
-   (TCW-70 removes the 2.x work store, which owns most of them) or changed to
-   call the loader. The YAML read itself, with its duplicate-key refusal,
-   exists once, in the loader; the two copies of the duplicate-key loader
-   (`fs.py:1465-1481`, `project.py:26-43`) become one.
+   `personal=False` reads `built-in` and `project` only. It is what TCW-70's
+   `open_project` and the opening of a delegation target (TCW-70's
+   `delegate`, review decision R5) use for another project (Design 1.7).
+2. **Every reader of a project's whole configuration goes through this
+   function**, and the YAML read itself exists once. The loader module also
+   offers `read_project_file(project_root) -> (mapping, problems)`: the single
+   read of one `tcw-config.yaml`, with the duplicate-key refusal, and nothing
+   else (no layers, no allowlist, no `parse_work_config`). The two copies of
+   the duplicate-key loader (`fs.py:1465-1481`, `project.py:26-43`) become
+   this one function. Who uses which:
+   - **`load_config`**: every command that acts on the acting project's
+     configuration (Design 2.4), and TCW-70's `open_backend`, `open_project`
+     and the delegation target (Design 2.5).
+   - **`read_project_file`**, keeping today's tolerance: readers that look
+     only at the shared graph keys (`id`, `connected-projects`, `projects`
+     after TCW-73's rename, `work.repository`) and must still answer for a
+     project graph that cannot be fully loaded. These are the project
+     registry (`tcw/store/project.py:571` and `:1035`; it already tolerates
+     problems in an upstream project's connections, `project.py:595-597`),
+     and `provision`'s two readers, `declared_repository` and
+     `declared_connected_projects` (`tcw/store/fs.py:4034`, `:4056`, called
+     from `tcw/cli.py:136` and `:228`), which deliberately skip the refusing
+     loader (`fs.py:1567-1570`). They never read a personal file and never
+     run `parse_work_config`, so a project still on a 2.x `work.lifecycle`, or
+     a broken personal file, does not stop `provision` or a walk of the
+     project graph. Each keeps its own rule for which of its problems it
+     reports.
+
+   The other readers in Problem 3 are either deleted with the 2.x code they
+   serve (TCW-70 removes the 2.x work store, which owns most of them) or
+   changed to call one of these two functions.
 3. The result is computed once per command. A command that loads config and
    gets problems exits 1 before doing anything else, except
-   `tcw config show --origin` (Design 8). `load_config` itself returns its
-   problems rather than raising, so `config show --origin` and `tcw validate`
+   `tcw config show --origin` (Design 8) and `tcw validate` (Design 5.5).
+   `load_config` itself returns its problems rather than raising, so those two
    can print them all. **[Decision]** The CLI turns a non-empty `problems` into
    one exception, `ConfigError`, carrying exit 1, which this slice adds to
    `tcw/errors.py` beside TCW-69's classes (epic decision 8), so the
    taxonomy and capabilities commands stop on it the same way.
-4. Commands that **do not** load the acting project's configuration: `tcw
-   --version`, `--help` on any command, and `tcw init`, which reads and edits
-   only `tcw-config.yaml` (Design 10). Every other command loads it.
+4. Commands that **do not** call `load_config` for the acting project: `tcw
+   --version`, `--help` on any command, `tcw init`, which reads and edits
+   only `tcw-config.yaml` (Design 10), and `tcw provision`, which reads only
+   the shared graph keys through `read_project_file` (Design 2.2). Every
+   other command loads it.
+5. **Where this meets TCW-70's code.** TCW-70's `open_backend(project_root)`
+   reads `tcw-config.yaml` through `parse_work_config` itself and raises
+   `BackendError` for a configuration problem (TCW-70 Design 2.1). This slice
+   changes it to:
+   - call `load_config(project_root)` once and raise `ConfigError` (exit 1,
+     the same code) when `problems` is not empty;
+   - build `FsWorkBackend` with `user_name` set to the effective `user.name`,
+     or none when it is not set (Design 9.2).
+
+   `open_project` and the delegation target call
+   `load_config(root, personal=False)` instead, so their backend is built
+   with no `user_name` even when the person has one.
 
 ### 3. Merging, and the `inherit` chain
 
@@ -263,35 +306,50 @@ Four terms used below:
    bindings, and they run before configured `pre` bindings whatever the lists
    say. So at the `project` layer, `inherit: true` in a `prompt` list is the
    built-in prompt, and in a `pre` list it adds nothing.
-4. **Built-in entries are internal.** They are bindings of kind `builtin`,
-   produced only by the `built-in` layer. **[Decision]** Writing `builtin:` in
-   any file is an error that says to use `inherit: true` and names TCW-69's
-   migration guide (`docs/migration-guide-2.8-to-3.0.0.md`). `config show`
-   prints a built-in entry as `builtin: <packaged file>` so it can be seen, but
-   that form is never accepted as input.
-5. **The `inherit` entry's rules.** Each is an error:
+4. **Built-in entries are internal** (review decision R8). In `values` a
+   built-in entry is the mapping `{builtin: true}`, the form TCW-69's parser
+   already accepts, and its origin is `built-in`. Only the loader inserts it.
+   **[Decision]** Writing `builtin:` in any file is an error, found in that
+   file before the layers are merged, that says to use `inherit: true` and
+   names TCW-69's migration guide (`docs/migration-guide-2.8-to-3.0.0.md`).
+   So the parser never has to tell a file's entry from a built-in one: by the
+   time it runs, every `builtin` entry came from the built-in layer.
+   `config show` prints a built-in entry as `- builtin: true  # <packaged
+   file>` (Design 8), which parses back to the same mapping, but a file that
+   copies that line is refused like any other `builtin:`.
+5. **The packaged text reaches a prompt only through the list.** `stage
+   prompt` and `procedure` compose exactly the resolved list. No code adds
+   the packaged text on its own, and the 2.x fallback that treats an empty
+   list as `[builtin]` (`tcw/work/resolve.py:456`,
+   `or [Binding(kind="builtin")]`) must not survive into 3.0: a stage the
+   person sets to `[]` gets no packaged text. A project that wants the
+   packaged text and its own writes `inherit: true` in its list.
+6. **The `inherit` entry's rules.** Each is an error:
    - `inherit:` with any value other than `true` (there is no
      `inherit: false`; leaving the entry out means replace);
    - `inherit` together with `when:` or any other key in the same entry;
    - more than one `inherit` entry in one list;
    - `inherit` in any list other than the four chain lists.
-6. **[Decision] An empty list is allowed in every chain list** and means
+7. **[Decision] An empty list is allowed in every chain list** and means
    "nothing from here down". TCW 2.8 refuses an empty `prompt` or `procedures`
    list (`tcw/store/base.py:2664-2690`, `:3084-3089`) because, after parsing,
    it cannot be told apart from an absent key, which falls back to the
    built-in text. The chain is decided before parsing, where "set to `[]`" and
    "not set" are different, so the reason no longer holds. `[{blob: ""}]` still
-   works. This changes TCW-69's parser rule, which keeps the 2.8 refusal (see
-   Notes).
-7. **[Decision] Duplicates** (same kind, value and `when:`) are refused within
-   one layer's list as written, as TCW-69's parser does. They are not removed
-   after merging: if a person's list and the team's both name the same file and
-   the person inherits, the file appears twice, and `config show --origin`
-   shows both entries with their layers.
-8. **Every other list is replaced whole** by a layer that sets it. Among
+   works. This changes TCW-69's parser, whose plan still keeps the 2.8
+   refusal for procedures ("an empty list is not an opt-out", TCW-69
+   plan.md:184); the change is listed in Notes.
+8. **[Decision] Duplicates** (same kind, value and `when:`) are refused by the
+   loader within one layer's list as written, before merging: one problem
+   naming that file and the list's key path. TCW-69's parser no longer refuses
+   duplicates (review decision R8; TCW-69 plan.md:165-167), so the merged
+   list is never checked for them. If a person's list and the team's both
+   name the same file and the person inherits, the file appears twice, and
+   `config show --origin` shows both entries with their layers.
+9. **Every other list is replaced whole** by a layer that sets it. Among
    overridable keys none is a list, so this matters only for `project` over
    `built-in` (for example `work.tags`).
-9. **[Decision] `null`** in a personal layer is an error. A personal layer
+10. **[Decision] `null`** in a personal layer is an error. A personal layer
    cannot remove a value, only replace it, so a `null` there has no meaning to
    give it. `null` in `tcw-config.yaml` keeps whatever meaning that key's
    parser gives it today.
@@ -358,7 +416,8 @@ Four terms used below:
    (`work`, `work.stages`, `work.stages.spec`) is walked into and must be a
    mapping; any other value there, and any key that leads to no allowlisted
    path, is a problem: "`<file>`: `<key path>` is shared and cannot be set in a
-   personal file". This covers unknown keys too.
+   personal file". This covers unknown keys too. A refused value is not
+   merged; it is recorded in `refused` with its file and key path.
 5. **`user.*` is personal only.** `user` in `tcw-config.yaml` is a problem:
    "`user.*` is personal; set it in `<user-wide path>` or
    `tcw-config.local.yaml`". `user` takes only `name`, a string that is not
@@ -375,7 +434,7 @@ Four terms used below:
 7. **Credential variable names are names.** Their shape is TCW-71's to check
    (`^[A-Z_][A-Z0-9_]*$`, TCW-71 Design 1), on the merged mapping, so a name
    from a personal file is checked exactly like one from `tcw-config.yaml` and
-   the problem is reported against the file it came from (Design 5.1). This
+   the problem is reported against the file it came from (Design 5.2). This
    slice adds one requirement on that message, which TCW-71's parser must meet
    (Notes): it names the key and does **not** print the value, so a token
    pasted by mistake into a personal file is not echoed to a terminal or a
@@ -384,14 +443,34 @@ Four terms used below:
 ### 5. Problems and exit codes
 
 1. Every problem names the file and the key path: `<file>: <key path>:
-   <message>`. A problem found by TCW-69's parser on the merged mapping is
-   given the file of the value's origin, so a bad binding in a personal file is
-   reported against that file, not against `tcw-config.yaml`.
-2. Problems in any layer (unreadable YAML, a duplicate key, a shared key, a bad
+   <message>`, with the key path written with dots and list indexes in
+   brackets (`work.stages.spec.prompt[2]`).
+2. **Mapping a parser problem back to a file** (review decision R8). The
+   loader calls `parse_work_config(values, origins)`, which copies each
+   origin onto the `Binding` built at that key path and returns each problem
+   as a `Problem(key_path, message)`; a problem that involves two keys (for
+   example two stages sharing one `status`) names the first. The loader then
+   picks the problem's file:
+   - the origin recorded for the problem's key path, if there is one;
+   - otherwise the origin of the longest prefix of that key path that has
+     one (a problem about a list entry's `when` gets the entry's origin);
+   - otherwise, for a key path that names a mapping several layers wrote
+     into, the highest layer that wrote any key under it;
+   - otherwise `tcw-config.yaml`.
+
+   So a bad binding in a personal file is reported against that file, not
+   against `tcw-config.yaml`, and a built-in entry can never be blamed on a
+   file.
+3. Problems in any layer (unreadable YAML, a duplicate key, a shared key, a bad
    binding, a `TCW_NO_PERSONAL_CONFIG` value) make every command that loads
    config exit 1, writing the problems to stderr and nothing to stdout.
-3. The exception is `tcw config show --origin` (Design 8.3).
-4. `tcw validate` reports these problems the same way and exits 1. A project's
+4. The exceptions are `tcw config show --origin` (Design 8.3) and
+   `tcw validate`.
+5. `tcw validate` reports each problem as an error-level `Finding` (TCW-73's
+   `Finding(severity, where, message)`, review decision R14) whose `where` is
+   the file and whose message starts with the key path, so it prints on
+   stdout, in TCW-73's finding line form (TCW-73 Design 6.3), as
+   `error: <file>: <key path>: <message>`, and exits 1. A project's
    continuous-integration run is not affected by a developer's personal files,
    because it has none (or sets `TCW_NO_PERSONAL_CONFIG=1`).
 
@@ -403,7 +482,11 @@ Four terms used below:
    `tcw/work/resolve.py:123-137`). **[Decision]** The same check applies with
    the declaring file's folder as the root: the project root for `project` and
    `local`, and `~/.config/tcw/` (or `$XDG_CONFIG_HOME/tcw/`) for `user`. A
-   person keeps their own prompt files under that folder.
+   person keeps their own prompt files under that folder. **[Decision]** The
+   confinement is checked when the configuration loads, so a `file:` that
+   leaves its folder is a problem from `load_config` (exit 1 for every
+   command, Design 5.3); whether the file exists is still checked when the
+   prompt is composed, as today.
 2. **`generate:` and `command:` values are command lines, not paths.** TCW
    cannot tell which words in them are paths, so it does not rewrite them.
    They run with the project root as the working directory, as today
@@ -415,7 +498,9 @@ Four terms used below:
    environment TCW-69 lists (Design 6, step 5: `TCW_SLUG`, which is the full
    slug `<project>/<folder>` per epic decision 11, `TCW_STAGE`,
    `TCW_FROM_STAGE`, `TCW_ITEM_PATH`, `TCW_PROJECT_ROOT`, and `TCW_FORCED` and
-   `TCW_REASON` when forced). It is new in 3.0 and has no 2.x counterpart, so
+   `TCW_REASON` when forced), and to the `generate` binding environment
+   TCW-69 Design 8 gives (review decision R13; this slice does not change
+   what a `generate` binding receives on stdin). It is new in 3.0 and has no 2.x counterpart, so
    TCW-76's variable mapping lists it as new.
 3. The trust model is unchanged: configuration is the user's own file, and
    hooks run as the user (`tcw/work/hooks.py:11-14`). A personal file is, if
@@ -423,9 +508,11 @@ Four terms used below:
 
 ### 7. Origins in results
 
-1. **Bindings carry their origin.** TCW-69's `Binding(kind, value, when)`
-   (TCW-69 plan, Task 4) gains `origin` (the layer name and file). The `file:`
-   root (Design 6.1) and `TCW_CONFIG_DIR` (Design 6.2) are read from it.
+1. **Bindings carry their origin.** TCW-69's `Binding(kind, value, when,
+   origin=None)` (TCW-69 plan, Task 4, review decision R8) already has the
+   field; this slice fills it, through `parse_work_config`'s `origins`
+   argument (Design 5.2), with the layer name and file. The `file:` root
+   (Design 6.1) and `TCW_CONFIG_DIR` (Design 6.2) are read from it.
 2. **`advance` names the layer of a failed `post` hook.** TCW-69's `Outcome`
    (`code`, `stage`, `messages`, `overridden`) gains `post_failures`, a tuple of
    `(binding, origin, detail)`, one per failed `post` binding. The message for
@@ -445,21 +532,32 @@ Four terms used below:
 ### 8. `tcw config show [--origin]`
 
 1. **Plain.** Prints the effective configuration (`values`) to stdout as YAML,
-   with every key, including built-in defaults and the built-in chain entries
-   (Design 3.4), in the order of the built-in key list and then file order.
+   with every key, including built-in defaults and the built-in chain
+   entries, each printed `- builtin: true  # <packaged file>` (Design 3.4).
+   **[Decision] Key order** is the order the merge produces: the merge walks
+   the layers from `built-in` upwards and a key keeps the position where the
+   lowest layer that has it put it, so built-in keys come first, in the order
+   `tcw/config.py`'s built-in mapping lists them (TCW-69 Design 8's key order
+   under `work`, stages in stage-table order), and keys no lower layer has
+   follow in file order. The order is fixed so that the output is the same on
+   every run; nothing parses it.
    Problems: exit 1, nothing on stdout. This is the "its text" row of TCW-73's
    per-command stdout table, and the command adds its row to TCW-73's contract
    test (`tests/test_cli_contract.py`), which fails for a command registered
    without one.
 2. **`--origin`.** Prints the same YAML with a comment after each scalar and
-   each list entry naming its origin: `# built-in`, `# project`,
-   `# user: <path>` or `# local: <path>`. The output still parses as YAML to the
-   same mapping. Personal values that were `skipped` (Design 4.6) are listed
-   after the configuration in a comment block, each with its file and reason.
+   each list entry naming its origin: `# built-in` (with the packaged file
+   for a built-in entry), `# project`, `# user: <path>` or `# local: <path>`.
+   The output parses as YAML to exactly `values`, because every addition is a
+   comment. After the configuration, a comment block lists each `skipped`
+   value (Design 4.6) and each `refused` value (Design 4.4), one comment line
+   each, giving its file, key path, value and reason, for example
+   `# refused: id: other (shared key, tcw-config.local.yaml)`.
 3. **`--origin` still runs with problems.** It prints what it can and exits 1,
    with the problems on stderr:
-   - a shared key set in a personal file is shown where it was written,
-     marked `# refused: shared key (<file>)`, and is not merged;
+   - a shared key set in a personal file is not merged and appears only in
+     the trailing comment block, marked `# refused:` (Design 8.2), so the
+     output never holds the same key twice;
    - a personal file that cannot be read at all (bad YAML) is named on stderr
      and contributes nothing.
 
@@ -477,17 +575,22 @@ Four terms used below:
    1 and 17; TCW-69 Design 5, "the three reads"). It returns the value the
    backend compares `Query.assignee` with, or `None` when no identity is
    configured.
+   **It never raises for a missing identity** (review decision R3): `None` is
+   the answer in every backend, and the CLI turns it into its own message.
    - The filesystem backend is constructed with `user.name` from the effective
-     configuration and returns it, or `None` when it is not set.
-   - The Jira backend answers with the account its credentials belong to
-     (TCW-71 Design 10). Unset or rejected credentials raise TCW-71's
-     `BackendError` naming the credential variables (exit 1), before `None`
-     could be returned.
+     configuration (Design 2.5) and returns it, or `None` when it is not set.
+     This replaces TCW-70's rule that it raises `BackendError` when built with
+     no `user_name` (TCW-70 Design 3.3, item 11), listed in Notes.
+   - The Jira backend answers with the account ID its credentials belong to
+     (TCW-71 Design 10), and `None` when its credential variables are unset
+     (R3). An error talking to Jira (credentials rejected, Jira unreachable)
+     is not "no identity"; TCW-71 reports it as for any other operation.
    - **[Decision]** When `current_user()` returns `None`, the command raises
-     `ConfigError` (exit 1, Design 2.3) with: "no identity: set `user.name` in
-     `<user-wide path>` or in `tcw-config.local.yaml`". The message names a
-     configuration key and the two personal files; it does not depend on
-     which backend answered, so the CLI never branches on the backend kind.
+     `ConfigError` (exit 1, Design 2.3) with one message: "no identity is
+     configured: set `user.name` in `<user-wide path>` or in
+     `tcw-config.local.yaml`, or, in a Jira project, set the environment
+     variables named by `work.jira.credentials`". It names both remedies, so
+     the CLI never branches on the backend kind.
 
    A non-filesystem store can answer "who is calling" (Jira's own
    current-user lookup), so this passes the litmus test.
@@ -497,6 +600,19 @@ Four terms used below:
      `backend.current_user()` through `Changes`;
    - `--mine` together with `--assignee`, and `--assign-me` together with
      `--assignee`, are usage errors (exit 2).
+   - **Identity is always the acting project's.** `current_user()` is asked
+     of the acting project's backend, the only one built with personal
+     layers (Design 1.7, 2.5).
+   - **[Decision] `--assign-me` with `new --project <id>` naming another
+     project is a usage error (exit 2)**, saying the target project assigns
+     its own items. Delegation is TCW-70's `delegate(project_id, title,
+     request, priority)`, which takes no assignee (review decision R5), and
+     the acting project's identity may not even be in the target's form (a
+     filesystem name sent to a Jira target that expects an account ID,
+     TCW-71 Design 10). `edit` of an item in another project is already
+     refused (exit 3) by TCW-73's rule that another project's item is written
+     only through `new --project` and `edit --blocks` (TCW-73 Design 3.4), so
+     `edit <other project's slug> --assign-me` needs no rule of its own.
 
    The CLI hands the value to the backend and never compares it with
    `Item.assignee` itself. TCW-69 Design 5.4 requires both to be in the same
@@ -546,19 +662,40 @@ Four terms used below:
    `tcw/store/fs.py:2183-2210`); 3.0's writers (`tags add|rm`, the `extends`
    subcommands, `init`) keep that. No command writes a personal file.
 2. **`tcw init`** adds the line `/tcw-config.local.yaml` to the `.gitignore` in
-   the folder holding `tcw-config.yaml`, if that line is not already there
-   (today's `ensure_ignored`, `tcw/store/fs.py:982-994`, does exactly this
-   check). The leading `/` limits the rule to that folder. Outside a git
-   repository it writes no `.gitignore` and prints a notice on stderr saying
-   why (TCW-73 Design 8.3 makes `init` work outside git). It stages nothing;
-   TCW never changes git state. Which `init` form runs this (`tcw init`, or
-   TCW-73's `tcw init <axis>` for the work axis) is TCW-73's surface; the
-   line is written whenever `init` creates or finds `tcw-config.yaml`.
+   the folder holding `tcw-config.yaml`, unless that file already has a line
+   that is exactly `/tcw-config.local.yaml` or `tcw-config.local.yaml`.
+   **[Decision]** Either spelling counts as present, so a person who wrote the
+   rule without the `/` does not get a second one; today's `ensure_ignored`
+   (`tcw/store/fs.py:982-994`) compares whole lines exactly and would add it,
+   so `init` checks both spellings before calling it. The leading `/` limits
+   the rule to that folder. It writes the file and stages nothing: TCW never
+   changes git state (review decision R4). Which `init` form runs this
+   (`tcw init`, or TCW-73's `tcw init <axis>` for the work axis) is TCW-73's
+   surface; the line is written whenever `init` creates or finds
+   `tcw-config.yaml`.
+   - **Outside a repository** (TCW-73 Design 8.3 makes `init` work there)
+     it writes no `.gitignore` and prints exactly this notice on stderr,
+     exit 0: `tcw init: not inside a repository, so no ignore rule was
+     written; keep tcw-config.local.yaml out of version control yourself`.
+     Whether the folder is inside a repository is found by the read that
+     finds the repository root, which review decision R4 allows.
+   - **[Decision] Fixed wording, no git words.** Both this notice and the
+     warning in 10.3 avoid every word on TCW-73's git word list (TCW-73
+     Design 9.1) apart from the filename `.gitignore`, which that test
+     already exempts, so neither needs an exemption of its own.
 3. **`tcw validate`** warns (exit 0 if nothing else is wrong) when
-   `tcw-config.local.yaml` is tracked by git in the acting project, reading git
-   to find out. The warning uses TCW-73's `warning:` form and its `warning`
-   level ("a tracked personal file", TCW-73 Design 6.2). Outside a git
-   repository there is nothing to check.
+   `tcw-config.local.yaml` is tracked in the acting project. It finds out by
+   reading only: `git --no-optional-locks status --porcelain --ignored --
+   tcw-config.local.yaml`, the same read-only status command review decision
+   R4 allows for the uncommitted-changes check, limited to that one file. The
+   file is tracked when it exists and that command reports it neither as
+   untracked (`??`) nor as ignored (`!!`). The warning is a `warning`-level
+   `Finding` ("a tracked personal file", TCW-73 Design 6.2; review decision
+   R14), printed as a finding line on stdout (TCW-73 Design 6.3) with exactly
+   this text: `warning: tcw-config.local.yaml: tracked; personal
+   configuration should stay out of version control (stop tracking it and
+   list it in .gitignore)`.
+   Outside a repository there is nothing to check and nothing is printed.
 4. **Secrets** never go in configuration: configuration names environment
    variables (TCW-71's parser enforces the shape of those names, Design 4.7).
 
@@ -668,7 +805,15 @@ function, with a temporary project.
    file and key: `inherit: false`; `{inherit: true, when: {tags: [bug]}}`; two
    `inherit` entries in one list; `inherit: true` under `work.tags`; and
    `builtin: true` in any layer, whose message contains `inherit: true` and
-   `docs/migration-guide-2.8-to-3.0.0.md`.
+   `docs/migration-guide-2.8-to-3.0.0.md`. Two identical `{file: a.md}`
+   entries in one `tcw-config.yaml` list are one problem naming
+   `tcw-config.yaml`; the same `{file: a.md}` in the project's list and in a
+   local list `[inherit, {file: a.md}]` is no problem, and the resolved list
+   holds it twice, with origins `project` and `local`.
+   **Built-in entries.** With no personal files and no `prompt` set for spec,
+   `values["work"]["stages"]["spec"]["prompt"] == [{"builtin": True}]`, its
+   origin is `built-in`, and `load_config` has no problems (so
+   `parse_work_config` accepted it).
 6. **The allowlist.** A local file setting each of these gives one problem
    naming `tcw-config.local.yaml` and the key: `id`, `work.backend`,
    `work.path`, `work.tags`, `work.documentation`, `work.hooks.timeout`,
@@ -689,16 +834,31 @@ function, with a temporary project.
 8. **Every command that loads config refuses.** With a local file setting
    `id: other`, each of these exits 1 with stderr naming `tcw-config.local.yaml`
    and `id`, and prints nothing on stdout: `tcw work list`,
-   `tcw work stage prompt spec`, `tcw validate`, `tcw config show`, one
-   read-only `tcw taxonomy` command and one read-only `tcw capabilities`
-   command. `tcw --version` exits 0.
-9. **Other projects ignore personal layers.** In a two-project graph whose
-   child has a `tcw-config.local.yaml` setting `id: wrong`, `tcw validate` run
-   in the parent reports nothing about that file. A user-wide file setting a
-   `post` hook on review is not run when an item in a delegation target is
-   created (`new --project`).
+   `tcw work stage prompt spec`, `tcw config show`, one read-only
+   `tcw taxonomy` command and one read-only `tcw capabilities` command.
+   `tcw validate` exits 1 with a stdout line starting
+   `error: tcw-config.local.yaml: id`. `tcw --version` exits 0.
+9. **Other projects ignore personal layers.** In a two-project graph
+   (parent and child, both filesystem mode, on this machine):
+   - with the child's `tcw-config.local.yaml` setting `id: wrong`,
+     `tcw validate` run in the parent reports nothing about that file, and
+     `tcw work new --project <child> "x"` run in the parent exits 0 and
+     creates the item in the child;
+   - with a user-wide `user.name: Brian`, the backend from `open_backend`
+     on the parent answers `current_user() == "Brian"`, and the backend from
+     `open_project` for the child answers `None`;
+   - `tcw work new --project <child> --assign-me "x"` exits 2 and creates
+     nothing.
+   **Graph readers tolerate what `load_config` refuses.** With the child's
+   `tcw-config.yaml` also holding a 2.x `work.lifecycle` block, and with the
+   parent's own `tcw-config.local.yaml` holding invalid YAML, `tcw provision`
+   in the parent exits as it does with neither problem present, and TCW-73's
+   project listing (`tcw projects list`) with `TCW_NO_PERSONAL_CONFIG=1`
+   still lists the child.
 10. **Paths and commands.** A user-wide `file: prompts/spec.md` reads
-    `$XDG_CONFIG_HOME/tcw/prompts/spec.md`; `file: ../x.md` there is refused.
+    `$XDG_CONFIG_HOME/tcw/prompts/spec.md`. A user-wide `file: ../x.md` is a
+    problem from `load_config` naming the user-wide file, whether or not
+    `../x.md` exists, so `tcw work list` exits 1 on it.
     A `post` command from the local file runs with the project root as its
     working directory and `TCW_CONFIG_DIR` set to the project root; one from
     the user-wide file gets `TCW_CONFIG_DIR` set to `$XDG_CONFIG_HOME/tcw`.
@@ -708,14 +868,26 @@ function, with a temporary project.
     user-wide file's path. `tcw work stage prompt spec` writes the personal
     note on stderr when the local file sets `work.stages.spec.prompt` and not
     otherwise, and its stdout is the same either way when the local list is
-    `[inherit]`.
+    `[inherit]`. **The packaged text only through the list:** with a local
+    `work.stages.spec.prompt: []`, `stage prompt spec` exits 0 and its stdout
+    contains no line of the packaged `tcw/work/prompts/spec.md`; with a
+    project list `[{blob: house}]` and no `inherit`, its stdout contains
+    `house` and no line of the packaged file; with `[{inherit: true},
+    {blob: house}]`, it contains both, packaged text first.
 12. **`config show`.**
     - With no personal files, `yaml.safe_load` of its stdout equals
-      `load_config(...).values`, and every `--origin` comment is `built-in` or
-      `project`.
-    - With a local file setting `id`, plain `show` exits 1 with empty stdout;
-      `--origin` exits 1, its stdout contains `# refused: shared key`, and
-      every other value is printed.
+      `load_config(...).values`, which contains `{"builtin": True}` entries;
+      a stdout line for a built-in entry reads `- builtin: true  #
+      tcw/work/prompts/<stage>.md`; and every `--origin` comment is
+      `built-in` or `project`.
+    - Run twice, both forms print byte-for-byte the same output.
+    - With a local file setting `id: other` and `work.stages.spec.prompt:
+      [{blob: x}]`: plain `show` exits 1 with empty stdout; `--origin` exits
+      1, `yaml.safe_load` of its stdout equals `load_config(...).values`
+      (so the refused `id` is not printed as a key), its stdout has a line
+      starting `# refused:` that contains `id`, `other` and
+      `tcw-config.local.yaml`, and the `blob: x` entry carries a
+      `# local:` comment.
     - In a filesystem-mode project, a user-wide
       `work.jira.credentials.email-env` produces no problem, is absent from the
       effective configuration, and is listed as skipped by `--origin`.
@@ -727,15 +899,19 @@ function, with a temporary project.
 
     With no `user.name`, `TCW_WORK_OWNER=Brian` set and git's `user.name` and
     `user.email` configured in the repository, the filesystem backend's
-    `current_user()` returns `None`, and `list --mine` exits 1 with stderr
-    naming `user.name`, the user-wide path and `tcw-config.local.yaml`.
+    `current_user()` returns `None` without raising, and `list --mine` and
+    `new --assign-me "x"` each exit 1 with stderr naming `user.name`, the
+    user-wide path, `tcw-config.local.yaml` and `work.jira.credentials`;
+    `new` creates nothing.
 
-    **Identity, through the interface.** Against TCW-69's in-memory test
-    backend with `current_user()` returning `"acct-1"` and items whose
-    `assignee` is displayed as `"A. Person"`, `list --mine` passes
-    `Query(assignee="acct-1")` to the backend, and `new --assign-me` passes
-    `Changes(assignee="acct-1")`; the CLI makes no comparison of its own.
-    The Jira behavior itself is TCW-71's to test.
+    **Identity, through the interface.** Against a recording test backend
+    built on TCW-69's in-memory backend, whose `current_user()` returns
+    `"acct-1"`, `list --mine` passes `Query(assignee="acct-1")` to the
+    backend and prints what the backend returns, and `new --assign-me`
+    passes `Changes(assignee="acct-1")`; the CLI never reads `Item.assignee`
+    to decide what to print. With `current_user()` returning `None`,
+    `list --mine` exits 1 with the same message as above. The Jira behavior
+    itself is TCW-71's to test.
 14. **No fallback left.** A test asserts that no Python module under `tcw/`
     contains `TCW_WORK_OWNER`, and that none passes `user.name` or
     `user.email` to `git config`. Skills and guides are left to TCW-74 and
@@ -751,38 +927,57 @@ function, with a temporary project.
 17. **`init` and `validate`.**
     - `tcw init` in a git repository adds `/tcw-config.local.yaml` to the
       `.gitignore` beside `tcw-config.yaml`, once; running it again does not
-      add it twice; `git status --porcelain` shows nothing staged.
-    - `tcw init` outside a git repository writes no `.gitignore` and prints a
-      notice on stderr.
-    - After `git add -f tcw-config.local.yaml`, `tcw validate` prints a warning
-      naming the file and exits 0; with the file untracked, no warning.
+      add it twice; with a `.gitignore` that already has the line
+      `tcw-config.local.yaml` (no `/`), it adds nothing; and
+      `git status --porcelain` shows nothing staged (no line whose first
+      column is not a space or `?`).
+    - `tcw init` outside a git repository exits 0, writes no `.gitignore`,
+      and prints exactly the notice of Design 10.2 on stderr.
+    - After `git add -f tcw-config.local.yaml`, `tcw validate` prints exactly
+      the warning line of Design 10.3 on stdout and exits 0; with the file untracked and
+      ignored, and with it untracked and not ignored, no warning; outside a
+      git repository, no warning.
 18. **Secrets.** In a Jira-mode project, a local
     `work.jira.credentials.token-env: "abc def/123"` gives one problem naming
     `tcw-config.local.yaml` and `work.jira.credentials.token-env`, whose text
     does not contain `abc def/123`. (The shape check is TCW-71's parser; this
-    criterion checks the file attribution of Design 5.1 and the requirement on
+    criterion checks the file attribution of Design 5.2 and the requirement on
     the message.)
 19. **Test isolation.** `tests/conftest.py` has an autouse fixture, beside the
     existing `TCW_PROJECT_*` guard (`tests/conftest.py:187-188`) and cache
     guard (`:207`), that sets `TCW_NO_PERSONAL_CONFIG=1` and points
     `XDG_CONFIG_HOME` into the test's temporary folder. A test asserts both are
     set in an ordinary test; personal-layer tests remove the first explicitly.
-20. **Nothing else changes.** The full test suite passes.
+20. **Nothing else changes.** The full test suite passes. The only earlier
+    criteria this slice changes on purpose are TCW-70's, which exist when it
+    lands (review decision R1), and each change is made in the same commit as
+    the behavior: TCW-70's `init` test asserts only that no status-folder
+    ignore rule is added, not that `.gitignore` is untouched (TCW-70
+    criterion 18); TCW-70's contract test expects `current_user()` to return
+    `None`, not raise, for a backend built with no `user_name` (TCW-70
+    criterion 1); and TCW-70's `stage prompt` fixtures write `inherit: true`
+    where they wrote `builtin: true` (TCW-70 criterion 21).
+21. **`open_backend` uses the loader.** On a project whose local file sets
+    `id: other`, TCW-70's `open_backend` raises `ConfigError` with exit code
+    1, and the message names `tcw-config.local.yaml` and `id`. With
+    `TCW_NO_PERSONAL_CONFIG=1` and the same file, it opens. With a local
+    `user.name: Brian`, the backend it returns answers `current_user() ==
+    "Brian"`.
 
 ### Coverage
 
 | Design rule | Criteria |
 | --- | --- |
 | 1 Layers | 1, 2, 9 |
-| 2 One loader | 8, 9 |
-| 3 Merging and the chain | 3, 4, 5, 7 |
+| 2 One loader | 8, 9, 21 |
+| 3 Merging and the chain | 3, 4, 5, 7, 11 |
 | 4 Allowlist | 6, 7, 12, 18 |
-| 5 Problems | 5–8 |
+| 5 Problems | 5–8, 10, 18 |
 | 6 Paths and commands | 10 |
 | 7 Origins | 3, 4, 11 |
 | 8 `config show` | 12 |
-| 9 Identity | 13, 14 (9.6: none needed, nothing is added) |
-| 10 Writing, `.gitignore` | 16, 17 |
+| 9 Identity | 9, 13, 14, 21 (9.6: none needed, nothing is added) |
+| 10 Writing, `.gitignore` | 16, 17, 20 |
 | 11 `TCW_PROJECT_<ID>` | none needed: no behavior changes |
 | 12 Documentation | 15 (the table itself: TCW-75 criterion 7) |
 
@@ -812,14 +1007,18 @@ function, with a temporary project.
   scripts and cloud environments. Mitigation: 3.0 is a breaking release; the
   migration guide (TCW-76) maps it to `user.name`, and the missing-identity
   message says exactly what to set.
-- **A merged list can hold the same file twice** (Design 3.7). It is visible in
+- **A merged list can hold the same file twice** (Design 3.8). It is visible in
   `config show --origin` and harmless beyond repeated text.
-- **Sequencing.** This slice needs TCW-69's library and TCW-70's CLI wiring.
-  TCW-73 lands after TCW-70 and TCW-71 (epic decision 2); if it lands after
-  this slice too and reshapes `list`, `new` and `edit`, it must keep `--mine`
-  and `--assign-me` calling `current_user()`. AC 13 guards the behavior
-  through the commands. TCW-75's table test needs `PERSONAL_KEYS`, so TCW-75
-  lands after this slice.
+- **Sequencing.** The order is fixed (review decision R1): 69 → 70 → 71 →
+  73 → 72 → {74, 77} → 75 → 76, and this slice's direct blocker is TCW-73.
+  So when it is implemented, TCW-70's CLI wiring and `open_backend`, TCW-71's
+  Jira backend and `work.jira` parser (needed by criteria 6 and 18 and by
+  Design 4.7), and TCW-73's surface (`init` outside a repository, the
+  `warning:` and finding forms, the contract test, `--mine` and
+  `--assign-me` flags) all exist. The risk is the reverse one: this slice
+  edits code and tests those slices just wrote, listed in criterion 20.
+  TCW-74, TCW-77 and then TCW-75 come after it, so TCW-75's table test can
+  import `PERSONAL_KEYS`.
 
 ## Notes
 
@@ -831,21 +1030,28 @@ function, with a temporary project.
     (1.6);
   - configuration problems stop a command through one `ConfigError` (exit 1)
     in `tcw/errors.py` (2.3);
-  - `builtin:` in any file is an error; built-in entries are internal and
-    displayed only (3.4);
-  - an empty chain list is allowed and means "nothing from here down" (3.6);
-  - duplicates are checked per layer, not after merging (3.7);
-  - `null` in a personal layer is an error (3.9);
+  - `builtin:` in any file is an error; built-in entries are inserted only by
+    the loader, as `{builtin: true}` (3.4, review decision R8);
+  - an empty chain list is allowed and means "nothing from here down" (3.7);
+  - duplicates are checked per layer by the loader, not after merging (3.8);
+  - `null` in a personal layer is an error (3.10);
   - credential variable names inside connected-project entries are
     **shared**, reversing the earlier draft to agree with TCW-71's same-file
     rule for delegation (4.1);
   - `work.hooks.timeout` and `work.hooks.output-cap` are shared (4.3);
   - personal Jira credential names are skipped outside Jira mode (4.6);
-  - `file:` bindings are confined to the declaring file's folder (6.1);
+  - `file:` bindings are confined to the declaring file's folder, checked
+    when the configuration loads (6.1);
   - hooks and `generate` scripts get `TCW_CONFIG_DIR` (6.2);
   - `procedure` gets the personal-change note, as `stage prompt` does (7.3);
-  - a `None` identity is one backend-neutral message naming `user.name` and
-    both personal files (9.2);
+  - a `None` identity is one backend-neutral message naming `user.name`, both
+    personal files and the Jira credential variables (9.2);
+  - `--assign-me` with `new --project` naming another project is exit 2
+    (9.3);
+  - `config show`'s key order is the merge order (8.1);
+  - either spelling of the local file's ignore line counts as present, and
+    the `init` notice and `validate` warning have fixed wording with no git
+    words (10.2, 10.3);
   - a filesystem comment records no author (9.4);
   - this slice adds nothing to the documentation allowance list unless it has
     grown to cover keys and variables (9.6);
@@ -874,29 +1080,50 @@ function, with a temporary project.
     inherited from parent projects (TCW-71 Capability changes), so personal
     layers are 3.0's only layering of configuration.
 - **Changes other slices need.** Nothing has been posted to those tickets.
-  - **TCW-69:** `builtin: true` becomes `inherit: true` (the ticket already
-    says so); `Binding` gains `origin`; `Outcome` gains `post_failures`;
-    `TCW_CONFIG_DIR` joins the hook environment (Design 6, step 5 there);
-    `tcw/errors.py` gains `ConfigError` (exit 1); the empty-list refusal for
-    `prompt` and procedures is dropped; and `parse_work_config` is called on
-    the merged mapping, with its problems mapped back to files by key path.
-  - **TCW-71:** its `work.jira` parser's message for a malformed credential
-    variable name must name the key and not print the value (Design 4.7,
-    criterion 18), because that value may come from a personal file and may
-    be a token pasted by mistake. Its notes and Design 10 still describe
-    `current_user()` as "outside TCW-69's eight operations"; under decision 1
-    it is one of the eleven.
-  - **TCW-73:** add `config show`'s row to the contract test (Design 8.1),
-    and keep the two credential paths in `PERSONAL_KEYS` correct through its
+  - **TCW-69:** already made in its 2026-10-02 revision under review decision
+    R8: `Binding` has `origin`, `parse_work_config` takes `origins` and
+    returns `Problem(key_path, message)`, `builtin: true` stays accepted, and
+    duplicates are allowed. Still needed: `Outcome` gains `post_failures`;
+    `TCW_CONFIG_DIR` joins the hook and `generate` environments; and the
+    empty-list refusal for procedures ("an empty list is not an opt-out",
+    TCW-69 plan.md:184) is dropped, with no empty-list refusal for `prompt`
+    either (Design 3.7). `tcw/errors.py` gains `ConfigError` (exit 1), added
+    by this slice.
+  - **TCW-70:** `current_user()` returns `None` rather than raising
+    `BackendError` when built with no `user_name` (its Design 3.3 item 11 and
+    criterion 1; review decision R3). Its criterion 18 should say that
+    `init` adds no status-folder ignore rule, not that it adds no line to
+    `.gitignore`, because this slice later adds `/tcw-config.local.yaml`
+    there. Its Design 7.2 should say that `stage prompt` composes the
+    resolved `prompt` list, which holds the packaged prompt only where a
+    `builtin` (later `inherit`) entry or the built-in default puts it, not
+    that it always adds the packaged file. `open_backend` is changed by this
+    slice as Design 2.5 says. If TCW-70 does not make these edits, this
+    slice makes them to TCW-70's tests (criterion 20).
+  - **TCW-71:** its Design 10 says the Jira `current_user()` never returns
+    `None` and raises `BackendError` for unset credential variables. Review
+    decision R3 says it returns `None` and never raises for a missing
+    identity, so TCW-71 must return `None` there (Design 9.2). Its message
+    rule for a malformed credential name (name the key, never the value) is
+    already in TCW-71 Design 1.
+  - **TCW-73:** add `config show`'s row to the contract test (Design 8.1).
+    The `init` notice and `validate` warning (Design 10.2, 10.3) avoid every
+    git word, so its git-word test needs no exemption for them. Keep the two
+    credential paths in `PERSONAL_KEYS` correct through the
     `connected-projects` to `projects` rename (only `work.jira.*` paths are
     on the list, so the rename changes none of them).
   - **TCW-75:** writes `personal.md`, the table and the router line, and
-    documents that a linked git worktree has no local file (Risks). Its
+    documents that a linked git worktree has no local file (Risks). This
+    slice writes **no** first `personal.md` and **no** table test, so
+    TCW-75 writes the test tying the table to `PERSONAL_KEYS` from scratch
+    rather than extending one (its Design 6.3 and Notes say otherwise). Its
     table's `user.*` row should read `user.name`, the only key under `user`.
   - **TCW-76:** the migration guide must also map `TCW_WORK_OWNER` (and the
-    git identity fallback) to `user.name`, list `TCW_CONFIG_DIR` as a new hook
-    variable, and add `/tcw-config.local.yaml` to `.gitignore` in existing
-    projects, since `tcw init` does that only for new ones.
+    git identity fallback) to `user.name`, map `builtin: true` to
+    `inherit: true` (and explain that a list without it replaces the
+    packaged text), list `TCW_CONFIG_DIR` as a new hook variable, and add
+    `/tcw-config.local.yaml` to `.gitignore` in existing projects, since
+    `tcw init` does that only for new ones.
   - **TCW-77:** its project endpoint's `user` field ("filesystem mode:
     TCW-72's `user.name`, or `null`") can come from `current_user()` in both
     modes, so the viewer does not read configuration for it.
@@ -904,9 +1131,10 @@ function, with a temporary project.
   - Settled by the owner on 2026-10-01: personal configuration may replace the
     team's `post` hooks, as the ticket says; `pre` stays shared (Design 4.1).
 - **Assumptions.**
-  - This slice is implemented after TCW-70 has wired TCW-69's model into the
-    CLI, so `advance`, `stage prompt`, `list`, `new` and `edit` exist as 3.0
-    commands. The criteria that run commands depend on that.
+  - This slice is implemented after TCW-69, TCW-70, TCW-71 and TCW-73
+    (review decision R1), so `advance`, `stage prompt`, `list`, `new`,
+    `edit`, `open_backend`, the Jira backend and TCW-73's surface exist as
+    3.0 code. The criteria that run commands depend on that.
   - The shape of `work.jira` beyond its credential names is TCW-71's; the
     loader passes the merged block to TCW-71's parser.
   - Problem 3's count of readers is of TCW 2.8.1 as checked out on
@@ -919,3 +1147,60 @@ function, with a temporary project.
   ticket, TCW-72, is moved by hand to In Progress, In Review and Done as the
   item moves (epic decision 7). Read-only views of the board may use a
   released 2.8 `tcw` installed outside this checkout.
+
+### Review 2026-10-02
+
+Findings of the 2026-10-02 review, each checked against the repository and
+the sibling specs; review decisions R1 to R20 applied where they touch this
+slice (R1, R3, R4, R5, R8, R13, R14).
+
+1. ACCEPTED. Settled by R3: `current_user()` returns `None` and never raises
+   for a missing identity; Design 9.2 says so for both backends, and Notes
+   now asks TCW-70 (Design 3.3 item 11, criterion 1) and TCW-71 (Design 10)
+   to change.
+2. ACCEPTED. Settled by R8: a built-in entry is `{builtin: true}` in
+   `values`, inserted only by the loader, which refuses `builtin:` in a file
+   before merging (Design 2.1, 3.4); new check in criterion 5.
+3. ACCEPTED. Settled by R8: TCW-69's parser allows duplicates (its plan
+   already says so); the per-layer refusal is the loader's (Design 3.8),
+   and criterion 5 now tests both halves.
+4. ACCEPTED. Settled by R8: `origins` is passed to `parse_work_config`,
+   problems come back as `Problem(key_path, message)`, and Design 5.2 gives
+   the rule for picking a problem's file.
+5. ACCEPTED. Settled by R1 (73 → 72): TCW-71 and TCW-73 land first; Risks
+   and Assumptions rewritten, `state.yaml` already lists TCW-73 as the
+   blocker.
+6. ACCEPTED. TCW-70 criterion 18 forbids any `.gitignore` line; criterion 20
+   now names it as a test this slice narrows, and Notes asks TCW-70 to
+   narrow it first.
+7. ACCEPTED. Design 3.5 says the packaged text reaches a prompt only through
+   the resolved list and the 2.x fallback (`tcw/work/resolve.py:456`) must
+   go; criterion 11 checks `[]`, a list without `inherit` and one with it
+   through `stage prompt`; Notes asks TCW-70 to reword its Design 7.2.
+8. ACCEPTED. Design 9.3: identity is always the acting project's;
+   `--assign-me` with `new --project` is exit 2 (`delegate` takes no
+   assignee, R5); `edit` of another project's item is already refused by
+   TCW-73 Design 3.4. Tested in criterion 9.
+9. ACCEPTED. Criterion 9 no longer relies on a hook that creation never
+   runs; it checks `open_project`'s `current_user()` and that `new --project`
+   ignores the target's broken local file.
+10. ACCEPTED. Refused values move to the trailing comment block (Design
+    8.2, 8.3), and criterion 12 now requires `--origin` output to parse to
+    exactly `values`.
+11. ACCEPTED. Design 2.2 adds `read_project_file` for the registry and
+    `provision`'s two readers, keeping their tolerance
+    (`tcw/store/fs.py:1567-1570`, `tcw/store/project.py:595-597`); criterion
+    9 tests it.
+12. ACCEPTED. The `init` notice and `validate` warning have fixed wording
+    with no git words (Design 10.2, 10.3), applying R4; the tracked check
+    uses R4's read-only status command.
+13. ACCEPTED. Design 2.5 names `open_backend`, `open_project` and the
+    delegation target, what each calls, and the switch to `ConfigError`;
+    criterion 21 tests it.
+14. ACCEPTED. The stale TCW-71 note is removed; criterion 13's interface
+    test no longer speaks of a displayed assignee.
+15. ACCEPTED. Notes tells TCW-75 to write its table test from scratch.
+16. ACCEPTED. Key order defined (Design 8.1); `file:` confinement is
+    checked when the configuration loads (Design 6.1, criterion 10); both
+    spellings of the ignore line count as present (Design 10.2, criterion
+    17).
