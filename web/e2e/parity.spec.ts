@@ -37,27 +37,6 @@ test.beforeAll(async () => {
         encoding: "utf8",
     })
     if (initialized.status !== 0) throw new Error(initialized.stderr)
-    const registeredTag = spawnSync("tcw", ["work", "tags", "add", "browser"], {
-        cwd: nodeRoot,
-        encoding: "utf8",
-    })
-    if (registeredTag.status !== 0) throw new Error(registeredTag.stderr)
-    const created = spawnSync(
-        "tcw",
-        [
-            "work",
-            "new",
-            "Browser parity fixture",
-            "--effort",
-            "low",
-            "--complexity",
-            "low",
-            "--tag",
-            "browser",
-        ],
-        { cwd: nodeRoot, encoding: "utf8" }
-    )
-    if (created.status !== 0) throw new Error(created.stderr)
     server = spawn(
         "tcw",
         ["serve", "--no-open", "--port", String(PUBLIC_PORT)],
@@ -102,25 +81,8 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
             .getByRole("tree", { name: "Objects" })
             .evaluate((element) => getComputedStyle(element).overflowY)
     ).toBe("auto")
-    await expect(
-        page.getByText("Browser parity fixture", { exact: true })
-    ).toBeVisible()
-
-    const workItem = page.getByRole("treeitem", {
-        name: /Browser parity fixture/,
-    })
-    await expect(workItem.locator(".modified-at")).toContainText("Modified at")
-    await workItem.click()
-    await expect(page.locator(".detail-head .modified-at")).toContainText(
-        "Modified at"
-    )
-    await workItem.hover()
-    await page.getByRole("button", { name: "Copy slug to clipboard" }).hover()
-    await expect(page.getByRole("tooltip")).toHaveText("Copy slug")
-    const tooltipSize = await page
-        .getByRole("tooltip")
-        .evaluate((element) => element.getBoundingClientRect())
-    expect(tooltipSize.width).toBeGreaterThan(tooltipSize.height)
+    // The work board is empty until TCW-77 rebuilds the work routes.
+    await expect(page.getByRole("treeitem")).toHaveCount(0)
 
     await page.getByRole("button", { name: "Taxonomy" }).click()
     await expect(page).toHaveURL(`${baseUrl}/taxonomy`)
@@ -139,9 +101,7 @@ test("applies and persists light, dark, and live system preferences before React
     await expect
         .poll(() => page.evaluate(() => document.documentElement.className))
         .toContain("dark")
-    // The work list loads after the page does; overwriting its times before it
-    // renders would leave the real time in the screenshot.
-    await expect(page.locator("time.modified-at").first()).toBeVisible()
+    await expect(page.getByRole("tree", { name: "Objects" })).toBeVisible()
     await stableScreenshot(page, "shell-system-dark.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -149,7 +109,7 @@ test("applies and persists light, dark, and live system preferences before React
     await expect(page.locator("html")).toHaveClass(/light/)
     await page.reload()
     await expect(page.locator("html")).toHaveClass(/light/)
-    await expect(page.locator("time.modified-at").first()).toBeVisible()
+    await expect(page.getByRole("tree", { name: "Objects" })).toBeVisible()
     await stableScreenshot(page, "shell-explicit-light.png")
 
     await page.getByRole("button", { name: "Settings" }).click()
@@ -178,83 +138,12 @@ test("applies and persists light, dark, and live system preferences before React
     await page.keyboard.press("Escape")
 })
 
-test("filters work without losing the established tree interaction", async ({
-    page,
-}) => {
-    await page.goto(`${baseUrl}/work`)
-    const filter = page.getByPlaceholder("Filter")
-    await filter.fill("Browser parity")
-    await expect(
-        page.getByText("Browser parity fixture", { exact: true })
-    ).toBeVisible()
-    await filter.fill("no such work item")
-    await expect(
-        page.getByText("Browser parity fixture", { exact: true })
-    ).toBeHidden()
-    await expect(
-        page.getByRole("button", { name: "Clear filter" })
-    ).toBeVisible()
-    await page.getByRole("button", { name: "Clear filter" }).click()
-    await expect(filter).toHaveValue("")
-    await expect(
-        page.getByRole("button", { name: "Clear filter" })
-    ).toHaveCount(0)
-})
-
 test("keeps API and SPA routing separate", async ({ request }) => {
     const unknownApi = await request.get(`${baseUrl}/api/not-a-route`)
     expect(unknownApi.status()).toBe(404)
     const deepLink = await request.get(`${baseUrl}/work/browser-parity-fixture`)
     expect(deepLink.status()).toBe(200)
     expect(await deepLink.text()).toContain('<div id="root"></div>')
-})
-
-test("creates and edits Work with live Markdown and dirty navigation protection", async ({
-    page,
-}) => {
-    await page.goto(`${baseUrl}/work`)
-    await page.getByRole("button", { name: "+ Create Work" }).click()
-    await page.getByLabel("Title").fill("React-created work")
-    await page
-        .getByLabel("Markdown", { exact: true })
-        .fill("# Native preview\n\nReact owns this draft.")
-    await expect(
-        page
-            .locator(".md-preview")
-            .getByRole("heading", { name: "Native preview" })
-    ).toBeVisible()
-
-    page.once("dialog", async (dialog) => dialog.dismiss())
-    await page.getByRole("button", { name: "Taxonomy" }).click()
-    await expect(page).toHaveURL(`${baseUrl}/work`)
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(
-        page.getByText("React-created work", { exact: true })
-    ).toBeVisible()
-
-    await page.getByText("React-created work", { exact: true }).click()
-    await page.locator(".edit-btn").click()
-    await page.getByLabel("Title").fill("React-edited work")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(
-        page.getByRole("heading", { name: "React-edited work" })
-    ).toBeVisible()
-})
-
-test("shows validation errors without dropping a Work draft", async ({
-    page,
-}) => {
-    await page.goto(`${baseUrl}/work`)
-    await page.getByRole("button", { name: "+ Create Work" }).click()
-    await page.getByLabel("Markdown", { exact: true }).fill("draft stays here")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(page.getByText("Title is required")).toBeVisible()
-    await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue(
-        "draft stays here"
-    )
-    await stableScreenshot(page, "validation-editor.png")
-    page.once("dialog", async (dialog) => dialog.accept())
-    await page.getByRole("button", { name: "Cancel" }).click()
 })
 
 test("creates and edits Taxonomy and Capability objects", async ({ page }) => {
@@ -410,34 +299,8 @@ test("searches references and surfaces targeted validation warnings", async ({
 test("applies axis-specific facets and browser history navigation", async ({
     page,
 }) => {
+    // The Work facets are gone with the work routes until TCW-77.
     await page.goto(`${baseUrl}/work`)
-    await page.getByRole("button", { name: "Status (2)" }).click()
-    await expect(page.getByRole("checkbox", { name: "Backlog" })).toBeChecked()
-    await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked()
-    await expect(
-        page.getByRole("checkbox", { name: "Completed" })
-    ).not.toBeChecked()
-    await stableScreenshot(page, "status-filter-popover.png")
-    await page.keyboard.press("Escape")
-    const sort = page.getByRole("combobox", { name: "Sort work items" })
-    await expect(sort).toContainText("Name")
-    await page.getByRole("button", { name: "Sort descending" }).click()
-    await expect(
-        page.getByRole("button", { name: "Sort ascending" })
-    ).toBeVisible()
-    await sort.click()
-    await page.getByRole("option", { name: "Modified" }).click()
-    await expect(sort).toContainText("Modified")
-    await page.getByRole("button", { name: "Tags" }).click()
-    await page.getByRole("checkbox", { name: "browser" }).click()
-    await stableScreenshot(page, "filters-popover.png")
-    await expect(
-        page.getByText("Browser parity fixture", { exact: true })
-    ).toBeVisible()
-    await expect(
-        page.getByText("React-edited work", { exact: true })
-    ).toBeHidden()
-
     await page.getByRole("button", { name: "Taxonomy" }).click()
     await page.getByRole("button", { name: "Kind" }).click()
     await page.getByRole("checkbox", { name: "Vocabulary" }).click()
@@ -449,309 +312,4 @@ test("applies axis-specific facets and browser history navigation", async ({
     await expect(page).toHaveURL(`${baseUrl}/taxonomy`)
     await page.goForward()
     await expect(page).toHaveURL(`${baseUrl}/capabilities`)
-})
-
-test("handles missing lifecycle document tabs and resets them across work items", async ({
-    page,
-    request,
-}) => {
-    const work = await request.get(`${baseUrl}/api/work`)
-    const fixture = (
-        (await work.json()) as Array<{ slug: string; title: string }>
-    ).find((item) => item.title === "Browser parity fixture")!
-    const resetTargetResponse = await request.post(`${baseUrl}/api/work`, {
-        data: {
-            title: "Tab reset fixture",
-            body: "# Reset target request\n",
-        },
-    })
-    expect(resetTargetResponse.ok()).toBeTruthy()
-
-    await page.goto(`${baseUrl}/work/${fixture.slug}`)
-    const workTabs = page.getByRole("tablist", { name: "Work content" })
-    await expect(workTabs.getByRole("tab")).toHaveText([
-        /Initial Request/,
-        /Spec/,
-        /Implementation Plan/,
-    ])
-
-    await workTabs.getByRole("tab", { name: "Spec" }).click()
-    await expect(page.getByText("Spec is not yet present.")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Edit Spec" })).toHaveCount(0)
-
-    await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
-    await expect(
-        page.getByText("Implementation Plan is not yet present.")
-    ).toBeVisible()
-    await expect(
-        page.getByRole("button", { name: "Edit Implementation Plan" })
-    ).toHaveCount(0)
-
-    await workTabs.getByRole("tab", { name: "Initial Request" }).click()
-    // A created item has no request until someone writes one, so the tab says so
-    // rather than rendering whatever `body` resolved to under the request's name.
-    await expect(
-        page.getByText("Initial Request is not yet present.")
-    ).toBeVisible()
-    await page.getByRole("button", { name: "Edit Initial Request" }).click()
-    await page
-        .getByLabel("Markdown", { exact: true })
-        .fill("# Updated initial request\n")
-    await page.getByRole("button", { name: "Save" }).click()
-    // The save created the request. Nothing else in the view would say so.
-    await expect(
-        page.getByText("Saved — Initial Request created")
-    ).toBeVisible()
-    const updatedFixture = await (
-        await request.get(`${baseUrl}/api/work/${fixture.slug}`)
-    ).json()
-    expect(updatedFixture.item.body).toContain("Updated initial request")
-
-    await workTabs.getByRole("tab", { name: "Spec" }).click()
-    await expect(page.getByText("Spec is not yet present.")).toBeVisible()
-    await page.reload()
-    await page.getByRole("treeitem", { name: /Tab reset fixture/ }).click()
-    await expect(
-        page.getByRole("heading", { name: "Tab reset fixture", level: 2 })
-    ).toBeVisible()
-    await expect(
-        page
-            .getByRole("tablist", { name: "Work content" })
-            .getByRole("tab", { name: "Initial Request" })
-    ).toHaveAttribute("aria-selected", "true")
-    await expect(
-        page.getByRole("heading", { name: "Reset target request" })
-    ).toBeVisible()
-    await expect(page.getByText("Spec is not yet present.")).toHaveCount(0)
-})
-
-test("edits lifecycle artifacts and preserves a draft across a stale write", async ({
-    page,
-    request,
-}) => {
-    const work = await request.get(`${baseUrl}/api/work`)
-    const fixture = (
-        (await work.json()) as Array<{ slug: string; title: string }>
-    ).find((item) => item.title === "Browser parity fixture")!
-    for (const name of ["spec", "plan"]) {
-        const response = await request.put(
-            `${baseUrl}/api/work/${fixture.slug}/artifacts/${name}`,
-            {
-                data: {
-                    name,
-                    content: `# ${name}\n`,
-                    mediaType: "text/markdown",
-                },
-            }
-        )
-        expect(response.ok()).toBeTruthy()
-    }
-    const sidecar = await request.put(
-        `${baseUrl}/api/work/${fixture.slug}/sidecars/capabilities.yaml`,
-        {
-            data: {
-                name: "capabilities.yaml",
-                content: "changed: []\n",
-                mediaType: "application/yaml",
-            },
-        }
-    )
-    expect(sidecar.ok()).toBeTruthy()
-    // Save resolves in the page, not here, so read the stored copy until the
-    // write lands rather than racing it.
-    const savedContent = async (path: string) =>
-        (
-            await (
-                await request.get(`${baseUrl}/api/work/${fixture.slug}/${path}`)
-            ).json()
-        ).content as string
-
-    await page.goto(`${baseUrl}/work/${fixture.slug}`)
-    await expect(
-        page.getByRole("heading", { name: "Browser parity fixture", level: 2 })
-    ).toBeVisible()
-    const workTabs = page.getByRole("tablist", { name: "Work content" })
-    await expect(workTabs.getByRole("tab")).toHaveText([
-        /Initial Request/,
-        /Spec/,
-        /Implementation Plan/,
-    ])
-    await expect(
-        workTabs.getByRole("tab", { name: "Initial Request" })
-    ).toHaveAttribute("aria-selected", "true")
-    await workTabs.getByRole("tab", { name: "Spec" }).click()
-    await expect(page.getByRole("heading", { name: "spec" })).toBeVisible()
-    await page.getByRole("button", { name: "Edit Spec" }).click()
-    await page
-        .getByLabel("Markdown", { exact: true })
-        .fill("# Updated specification\n")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect
-        .poll(() => savedContent(`artifacts/spec`))
-        .toContain("Updated specification")
-
-    await workTabs.getByRole("tab", { name: "Implementation Plan" }).click()
-    await expect(page.getByRole("heading", { name: "plan" })).toBeVisible()
-    await page.getByRole("button", { name: "Edit Implementation Plan" }).click()
-    await page
-        .getByLabel("Markdown", { exact: true })
-        .fill("# Updated implementation plan\n")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect
-        .poll(() => savedContent(`artifacts/plan`))
-        .toContain("Updated implementation plan")
-
-    await page.locator(".sidecar-edit-btn").click()
-    await page.getByLabel("Markdown", { exact: true }).fill("changed:\n- web\n")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect
-        .poll(() => savedContent(`sidecars/capabilities.yaml`))
-        .toContain("- web")
-
-    await page.locator(".edit-btn").click()
-    await page.getByLabel("Title").fill("Local stale draft")
-    const detail = await (
-        await request.get(`${baseUrl}/api/work/${fixture.slug}`)
-    ).json()
-    const external = await request.patch(
-        `${baseUrl}/api/work/${fixture.slug}`,
-        {
-            data: { revision: detail.coreRevision, fields: { priority: 77 } },
-        }
-    )
-    expect(external.ok()).toBeTruthy()
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(page.getByText("Stale write detected")).toBeVisible()
-    await expect(page.getByLabel("Title")).toHaveValue("Local stale draft")
-    await stableScreenshot(page, "stale-write-conflict.png")
-    page.once("dialog", async (dialog) => dialog.accept())
-    await page.getByRole("button", { name: "Refresh from server" }).click()
-    await expect(page.locator(".fields")).toContainText("77")
-})
-
-test("runs Work start and complete lifecycle controls", async ({
-    page,
-    request,
-}) => {
-    const work = await request.get(`${baseUrl}/api/work`)
-    const fixture = (
-        (await work.json()) as Array<{ slug: string; title: string }>
-    ).find((item) => item.title === "Browser parity fixture")!
-    await page.goto(`${baseUrl}/work/${fixture.slug}`)
-    await page.getByRole("button", { name: "Start", exact: true }).click()
-    await page
-        .locator(".modal-box")
-        .getByRole("button", { name: "Start", exact: true })
-        .click()
-    await expect(
-        page.getByRole("button", { name: "Complete", exact: true })
-    ).toBeVisible()
-
-    const outcome = await request.put(
-        `${baseUrl}/api/work/${fixture.slug}/artifacts/outcome`,
-        {
-            data: {
-                name: "outcome",
-                content: "# Outcome\n\nVerified.\n",
-                mediaType: "text/markdown",
-            },
-        }
-    )
-    expect(outcome.ok()).toBeTruthy()
-    await page.locator(".action-btn.complete").click()
-    await expect(
-        page
-            .locator(".modal-box")
-            .getByRole("heading", { name: "Complete Work Item" })
-    ).toBeVisible()
-    await expect(
-        page.locator(".modal-box .reconciliation-reminder")
-    ).toContainText("Reconcile the capabilities ledger before completing.")
-    await stableScreenshot(page, "lifecycle-dialog.png")
-    await page.getByLabel("Resolution").click()
-    await page.getByRole("option", { name: "done" }).click()
-    for (const checkbox of await page
-        .getByRole("dialog")
-        .getByRole("checkbox")
-        .all())
-        await checkbox.click()
-    await page
-        .locator(".modal-box")
-        .getByRole("button", { name: "Complete", exact: true })
-        .click()
-    await expect(
-        page.getByText("completed", { exact: true }).first()
-    ).toBeVisible()
-})
-
-test("drops a backlog Work item through the confirmation modal", async ({
-    page,
-}) => {
-    await page.goto(`${baseUrl}/work`)
-    await page.getByText("React-edited work", { exact: true }).click()
-    await page.getByRole("button", { name: "Drop" }).click()
-    await page
-        .locator(".modal-box")
-        .getByRole("button", { name: "Drop" })
-        .click()
-    await expect(
-        page.getByText("React-edited work", { exact: true })
-    ).toHaveCount(0)
-})
-
-// Last, deliberately: it adds a work item, and every screenshot baseline above
-// encodes the tree as it stands at that point.
-test("writes a request without copying the intake it replaces", async ({
-    page,
-    request,
-}) => {
-    // Piped stdin is the only way to get an item whose body resolves to intake.
-    const created = spawnSync("tcw", ["work", "new", "Intake only fixture"], {
-        cwd: nodeRoot,
-        encoding: "utf8",
-        input: "the exporter times out on big files\n",
-    })
-    if (created.status !== 0) throw new Error(created.stderr)
-    const fixture = (
-        (await (await request.get(`${baseUrl}/api/work`)).json()) as Array<{
-            slug: string
-            title: string
-        }>
-    ).find((item) => item.title === "Intake only fixture")!
-
-    await page.goto(`${baseUrl}/work/${fixture.slug}`)
-    // The tab names the request, so it must not render the intake under it.
-    await expect(
-        page.getByText("Initial Request is not yet present.")
-    ).toBeVisible()
-    await expect(
-        page.getByText("the exporter times out on big files")
-    ).toHaveCount(0)
-    // Reachable, under its own name.
-    await expect(
-        page.getByRole("button", { name: "intake", exact: true })
-    ).toBeVisible()
-
-    await page.getByRole("button", { name: "Edit Initial Request" }).click()
-    // Seeded from the intake, saving would copy it into the request.
-    await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue("")
-    await page
-        .getByLabel("Markdown", { exact: true })
-        .fill("# Written up properly\n")
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(
-        page.getByText("Saved \u2014 Initial Request created")
-    ).toBeVisible()
-
-    const detail = (await (
-        await request.get(`${baseUrl}/api/work/${fixture.slug}`)
-    ).json()) as { item: { body: string } }
-    expect(detail.item.body).toBe("# Written up properly\n")
-    // Raw input that quietly changes is not raw input any more.
-    const intake = (await (
-        await request.get(
-            `${baseUrl}/api/work/${fixture.slug}/artifacts/intake`
-        )
-    ).json()) as { content: string }
-    expect(intake.content).toBe("the exporter times out on big files\n")
 })

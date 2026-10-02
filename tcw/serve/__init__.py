@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import json
 import hmac
-import os
 import re
-import subprocess
-import sys
 import threading
 import webbrowser
 from dataclasses import asdict, is_dataclass
@@ -17,16 +14,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from tcw.work.projection import work_item_json
 from tcw.store.base import (
-    CAP_FIELDS, CAP_STATUSES, WORK_ARTIFACTS, WORK_SIDECARS, _UNSET,
-    IllegalTransition, MultipleMatch, PublicationError, RefError, StaleRevision,
-    TransitionCommitError,
+    CAP_FIELDS, CAP_STATUSES, _UNSET,
+    IllegalTransition, MultipleMatch, RefError, StaleRevision,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, descendant_nodes,
-    find_node_root, heading_slug, registered_project_id, qualified_work_ref_read_only,
-    resolve_qualified_work_ref,
+    FsCapabilitiesStore, FsTaxonomyStore, descendant_nodes,
+    find_node_root, heading_slug, registered_project_id,
 )
 from tcw.refs import resolve_tcw_ref
 from tcw.validate import ValidationTarget, validate
@@ -69,42 +63,9 @@ def _json_bytes(value) -> bytes:
     return json.dumps(_jsonable(value), default=str).encode("utf-8")
 
 
-def _item_payload(work, slug: str, item, qslug: str | None = None) -> dict:
-    """The one work-item projection, for every response that carries an item.
-
-    `_jsonable` stays for taxonomy and capabilities; work items go through the
-    versioned DTO so the CLI, the API, and (in C3) `generate` hooks cannot drift
-    apart. `qslug` echoes the *qualified* slug back to a UI that derives
-    subresource URLs from `item.slug` — the payload is built from the bare slug
-    the store knows, then relabelled.
-    """
-    data = work_item_json(item, work.artifacts(slug))
-    if qslug:
-        data["slug"] = qslug
-    # A `work.retain: false` node leaves an item resolved here and *not* removed:
-    # this surface runs no hooks (see `tcw/work/hooks.py`), and deleting without
-    # the archive someone configured is the one destructive thing it could do.
-    # Saying so in the payload would mean a new key in a versioned DTO whose
-    # every property is required and whose key set the CLI shares — a change out
-    # of proportion to this note, and its own item. Until then the pending
-    # removal is visible through `tcw work list`, where the item still appears.
-    return data
-
-
 def _valid_sidecar_token(supplied: str, expected: str | None) -> bool:
     """Validate the private sidecar credential without timing-sensitive equality."""
     return expected is None or hmac.compare_digest(supplied, expected)
-
-
-def _open_locator(locator: str) -> dict | None:
-    if locator.startswith(("http://", "https://")):
-        return {"url": locator}
-    if os.name == "nt":
-        os.startfile(locator)  # type: ignore[attr-defined]
-        return None
-    opener = "open" if sys.platform == "darwin" else "xdg-open"
-    subprocess.Popen([opener, locator], stdin=subprocess.DEVNULL)
-    return None
 
 
 # ── Route parsing helpers ─────────────────────────────────────────────────────
@@ -129,21 +90,6 @@ def _decode_path_param(param: str) -> str:
     Handles single-segment refs that contain / and # encoded as %2F and %23.
     """
     return unquote(param)
-
-
-def _parse_ref_param(path: str, prefix: str) -> str | None:
-    """Extract and decode a ref from `path` after `prefix`.
-
-    The ref is a single URL path segment (everything after the prefix up to
-    the next / or end-of-string). Percent-encoded characters are decoded once.
-    Returns None if there is nothing after the prefix.
-    """
-    rest = path[len(prefix):]
-    if not rest:
-        return None
-    # Split on first literal '/' to get a single path segment
-    segment = rest.split("/", 1)[0]
-    return _decode_path_param(segment)
 
 
 # ── Response helpers ──────────────────────────────────────────────────────────
@@ -182,109 +128,6 @@ def _with_warnings(response: dict, node_root: Path, axis: str, ref: str) -> dict
 
 
 # ── Exception mapping ─────────────────────────────────────────────────────────
-
-
-def _transition_ok(work, slug: str, run):
-    """Run a transition, treating a refused auto-commit as success.
-
-    The item **moved** — that is what `TransitionCommitError` means — so
-    reporting an error status would make the UI re-render the old status and
-    invite the user to retry a transition that already happened. The commit is a
-    repository-level concern the browser cannot act on anyway.
-
-    It is not swallowed: the failure goes to the server's stderr, where the
-    operator running `tcw serve` sees it and can commit by hand.
-
-    `PublicationError` is a subclass and is **not** the same news, which is why
-    it is logged apart. "The browser cannot act on it anyway" is true of a local
-    commit and false of a failed publication: that one means the work exists only
-    on this machine's disk, and if this server is a container the work is one
-    reclamation away from gone. The transition still happened, so the response is
-    still the moved item — but the operator log has to say which of the two it
-    was, in words that do not read as routine.
-    """
-    try:
-        return run()
-    except PublicationError as e:
-        print(f"tcw serve: NOT PUBLISHED — this work exists only on this "
-              f"machine: {e}", file=sys.stderr)
-        return work.get(slug)
-    except TransitionCommitError as e:
-        print(f"tcw serve: {e}", file=sys.stderr)
-        return work.get(slug)
-
-
-def _strict_refuses(work, action: str, slug: str = "", body: dict | None = None) -> str | None:
-    """Why strict tracker mode refuses a web app change, or `None`.
-
-    The web app runs no tracker code, so it cannot claim or check a ticket; under
-    strict mode each change that needs one is sent to the `tcw work` command that
-    does. Epics and discards are not gated, as on the command line.
-    """
-    # Asked first, and not a strict-mode rule: see `created_but_unbound_refusal`.
-    # The CLI offers two ways out of this and the web app used to offer one — the
-    # one that makes the item permanently undroppable — so both now say the same
-    # words, from the same place.
-    from tcw.tracker.intake import created_but_unbound_refusal
-    if action == "drop" and slug:
-        if refusal := created_but_unbound_refusal(work, slug):
-            return refusal
-    if not work.tracker_strict():
-        return None
-    body = body or {}
-    # An interrupted claim is read as the item it was: an ordinary read of one
-    # raises, and this runs before any route's error handling.
-    item = (next((c for c in work.interrupted_claims() if c.slug == slug), None)
-            or work.get(slug)) if slug else None
-    epic = (body.get("type") == "epic") if action == "create" else (
-        item is not None and item.type == "epic")
-    from tcw.tracker.intake import drop_refusal
-    lead = "refused under strict tracker mode, which the web app cannot check; "
-    if action == "create" and not epic:
-        return lead + "create work from a ticket with `tcw work tracker import <ticket>`."
-    if action == "start" and not epic:
-        take_over = " --take-over" if body.get("recover") else ""
-        return lead + f"use `tcw work start {slug}{take_over}`, which claims the ticket."
-    if action == "complete" and not epic and body.get("resolution") == "done":
-        return lead + f"use `tcw work complete {slug}`, which checks the ticket."
-    if action == "drop" and (refusal := drop_refusal(work, slug)):
-        return lead + refusal
-    return None
-
-
-def _owe_ticket_if_configured(work, slug: str) -> bool:
-    """Record that a web-filed item is owed a ticket, when the project wants one.
-
-    Returns whether anything was written, so the caller knows to re-read.
-
-    `work.tracker.create.on-new` says filing an item makes its ticket. The web
-    app deliberately runs no tracker code — no credentials, no network, no page
-    render waiting on Jira — so it cannot make it. What it can do is leave the
-    debt where the board and `tcw work tracker create --all` will find it, which
-    is what the owed record is for.
-
-    Nothing here may fail the creation that just succeeded. The item exists and
-    the response is about to be sent; an item the user never sees because
-    recording a note failed is worse than a note that is missing.
-    """
-    from contextlib import suppress
-    from datetime import date
-
-    from tcw.tracker.intake import record_owed
-
-    # Reading the configuration is inside the guard too. It fails closed today,
-    # returning None rather than raising, but the promise above is "nothing here
-    # may fail the creation that just succeeded" — and a promise that holds only
-    # because of what another function happens to do is not the promise.
-    with suppress(Exception):                # see the docstring
-        config = work.tracker_config()
-        if config is None or config.create is None or not config.create.on_new:
-            return False
-        record_owed(work, slug, since=date.today().isoformat(),
-                    reason="filed in the web app, which does not reach the "
-                           "tracker; `tcw work tracker create` makes it")
-        return True
-    return False
 
 
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
@@ -493,39 +336,12 @@ class TcwHandler(BaseHTTPRequestHandler):
         self._send_err(HTTPStatus.FORBIDDEN, "sidecar authentication required")
         return False
 
-    def _stores(self) -> tuple[FsWorkStore, FsTaxonomyStore, FsCapabilitiesStore]:
+    def _stores(self) -> tuple[FsTaxonomyStore, FsCapabilitiesStore]:
         root = self.server.node_root
         return (
-            FsWorkStore.open(root),
             FsTaxonomyStore.open(root),
             FsCapabilitiesStore.open(root),
         )
-
-    def _resolve_work(self, slug: str) -> "tuple[FsWorkStore, str] | None":
-        """(store, bare_slug) for a work slug — gated on --include-descendants.
-
-        Flag off: always (anchor store, slug), so a bare slug works as before and a
-        '/'-bearing slug matches no folder name → 404 (serve byte-for-byte
-        unchanged, no descendant read or mutated). Flag on: resolve sub/proj/<slug>
-        to the descendant store; None (unknown/traversal) → the caller sends 404."""
-        if self.server.include_descendants:
-            return resolve_qualified_work_ref(self.server.node_root, slug)
-        return FsWorkStore.open(self.server.node_root), slug
-
-    def _refused_read_only(self, slug: str) -> bool:
-        """Answer 403 and return True when `slug` names an item in a project this
-        node reads but may not write — an upstream project, or one reached only
-        through one. Every route that changes an item or runs its project's
-        scripts asks this first; reads do not, so the board can still show it."""
-        if not self.server.include_descendants:
-            return False
-        reason = qualified_work_ref_read_only(self.server.node_root, slug)
-        if reason is None:
-            return False
-        self._send_err(HTTPStatus.FORBIDDEN,
-                       f"{reason}; change it from that project itself",
-                       code="read-only-project")
-        return True
 
     def _hosted_projects(self) -> set[str]:
         """Project IDs whose items this server actually serves — the descendants it
@@ -541,50 +357,20 @@ class TcwHandler(BaseHTTPRequestHandler):
         anchor = self.server.node_root.resolve()
         return {registered_project_id(anchor, root) for root in descendant_nodes(anchor)}
 
-    def _board(self) -> list:
-        """The board; with --include-descendants, the anchor plus every descendant
-        node's board, each descendant item's slug qualified (`sub/proj/<slug>`).
-
-        Rows go through the same versioned projection as every other work-item
-        payload. That costs one `artifacts()` call per row, which the CLI's own
-        `list` already pays (`work/cli.py:331`); the alternative is a board whose
-        items are shaped differently from the items every other route returns,
-        which is the drift the projection exists to prevent.
-        """
-        items = []
-        for root, prefix in self._board_roots():
-            work = FsWorkStore.open(root)
-            for it in work.board():
-                try:
-                    items.append(_item_payload(work, it.slug, it,
-                                               f"{prefix}{it.slug}" if prefix else None))
-                except MultipleMatch:
-                    # Two folders hold the slug, so its artifacts cannot be
-                    # read. Listed with none, so one duplicate does not take the
-                    # board down; the item's own route says why.
-                    data = work_item_json(it, [])
-                    if prefix:
-                        data["slug"] = f"{prefix}{it.slug}"
-                    items.append(data)
-        return items
-
-    def _board_roots(self) -> list[tuple[Path, str]]:
-        """The nodes the board shows, each with the prefix its slugs carry."""
-        anchor = self.server.node_root.resolve()
-        roots = [anchor]
-        if self.server.include_descendants:
-            roots += descendant_nodes(anchor)
-        return [(root, "" if root == anchor
-                 else f"{registered_project_id(anchor, root)}/") for root in roots]
-
-    def _interrupted_claims(self) -> list[dict]:
-        """Interrupted starts on every node the board shows, slugs qualified as
-        the board's are, so Recover addresses the node that holds the claim."""
-        claims = []
-        for root, prefix in self._board_roots():
-            claims += [{"slug": f"{prefix}{c.slug}", "title": c.title}
-                       for c in FsWorkStore.open(root).interrupted_claims()]
-        return claims
+    def _work_stub(self) -> bool:
+        """Answer every `/api/work…` request until TCW-77 rebuilds the work
+        routes on the 3.0 backend: `GET /api/work` and `GET /api/work/tags`
+        give an empty list, so the client still loads taxonomy and
+        capabilities beside an empty board, and everything else is 404.
+        Returns True when the request was answered."""
+        path = urlparse(self.path).path
+        if path != "/api/work" and not path.startswith("/api/work/"):
+            return False
+        if self.command == "GET" and path in ("/api/work", "/api/work/tags"):
+            self._send_json(HTTPStatus.OK, [])
+        else:
+            self._send(HTTPStatus.NOT_FOUND, b"not found")
+        return True
 
     # ── HTTP method dispatchers ───────────────────────────────────────────
 
@@ -592,7 +378,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            self._get()
+            if not self._work_stub():
+                self._get()
         except MultipleMatch as e:
             self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
@@ -602,7 +389,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            self._post()
+            if not self._work_stub():
+                self._post()
         except MultipleMatch as e:
             self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
@@ -612,7 +400,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            self._patch()
+            if not self._work_stub():
+                self._patch()
         except MultipleMatch as e:
             self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
@@ -622,7 +411,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            self._put()
+            if not self._work_stub():
+                self._put()
         except MultipleMatch as e:
             self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
@@ -632,7 +422,8 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             return
         try:
-            self._delete()
+            if not self._work_stub():
+                self._delete()
         except MultipleMatch as e:
             self._send(HTTPStatus.CONFLICT, str(e).encode("utf-8"))
         except Exception as e:
@@ -643,244 +434,7 @@ class TcwHandler(BaseHTTPRequestHandler):
     def _get(self) -> None:
         path = urlparse(self.path).path
 
-        work, taxonomy, capabilities = self._stores()
-
-        # ── Work routes ──
-
-        if path == "/api/work":
-            self._send_json(HTTPStatus.OK, self._board())
-            return
-
-        # Subresource routes for work must be matched BEFORE the catch-all
-        # work-detail route.
-
-        # GET /api/work/<slug>/artifacts/<name>
-        m = re.match(r"^/api/work/([^/]+)/artifacts/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            name = _decode_path_param(m.group(2))
-            if name not in WORK_ARTIFACTS:
-                self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            item = work.get(slug)
-            if item is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            try:
-                resource = work.read_artifact(slug, name)
-            except UnicodeDecodeError:
-                # Before ValueError, which it is: the decoder's own message names
-                # a byte offset, not the file.
-                self._send(HTTPStatus.BAD_REQUEST,
-                           f"{name} is not valid UTF-8; fix or replace the file".encode("utf-8"))
-                return
-            except ValueError as e:
-                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
-                return
-            if resource is None:
-                self._send(HTTPStatus.NOT_FOUND, b"artifact not present")
-                return
-            self._send_json(HTTPStatus.OK, {
-                "name": resource.name,
-                "content": resource.content,
-                "mediaType": resource.media_type,
-                "revision": resource.revision,
-            })
-            return
-
-        # GET /api/work/<slug>/plan-stages/<id>
-        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            stage_id = _decode_path_param(m.group(2))
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            try:
-                resource = work.read_plan_stage(slug, stage_id)
-            except ValueError as e:
-                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
-                return
-            if resource is None:
-                self._send(HTTPStatus.NOT_FOUND, b"plan stage not present")
-                return
-            self._send_json(HTTPStatus.OK, {
-                "name": resource.id, "content": resource.content,
-                "mediaType": resource.media_type, "revision": resource.revision,
-            })
-            return
-
-        # GET /api/work/<slug>/sidecars/<name>
-        m = re.match(r"^/api/work/([^/]+)/sidecars/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            name = _decode_path_param(m.group(2))
-            if name not in WORK_SIDECARS:
-                self._send(HTTPStatus.BAD_REQUEST, b"unknown sidecar")
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            item = work.get(slug)
-            if item is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            try:
-                resource = work.read_sidecar(slug, name)
-            except OSError as e:
-                # Something is at the name but it is not a readable file. Only a
-                # message TCW wrote (no errno) is shown: the system's own names
-                # an absolute path on the server.
-                reason = str(e) if e.errno is None else f"{name} cannot be read"
-                self._send(HTTPStatus.BAD_REQUEST, reason.encode("utf-8"))
-                return
-            except UnicodeDecodeError:
-                # Before ValueError, which it is: the decoder's own message names
-                # a byte offset, not the file.
-                self._send(HTTPStatus.BAD_REQUEST,
-                           f"{name} is not valid UTF-8; fix or replace the file".encode("utf-8"))
-                return
-            except ValueError as e:
-                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
-                return
-            if resource is None:
-                self._send(HTTPStatus.NOT_FOUND, b"sidecar not present")
-                return
-            self._send_json(HTTPStatus.OK, {
-                "name": resource.name,
-                "content": resource.content,
-                "mediaType": resource.media_type,
-                "revision": resource.revision,
-            })
-            return
-
-        # GET /api/work/<slug>/sidecars (discovery endpoint)
-        m = re.match(r"^/api/work/([^/]+)/sidecars$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            item = work.get(slug)
-            if item is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            detail = work.get_detail(slug)
-            # Build discovery list from registry
-            sidecars = []
-            for sc_name, sc_info in WORK_SIDECARS.items():
-                present = False
-                revision = ""
-                if detail and sc_name in detail.sidecar_revisions:
-                    present = True
-                    revision = detail.sidecar_revisions[sc_name]
-                sidecars.append({
-                    "name": sc_name,
-                    "mediaType": sc_info["media_type"],
-                    "present": present,
-                    "revision": revision,
-                    "generated": bool(sc_info.get("generated")),
-                })
-            self._send_json(HTTPStatus.OK, sidecars)
-            return
-
-        # GET /api/work/tags — the node's registered tag set (read-only).
-        # Placed before the catch-all so "tags" isn't parsed as a slug.
-        if path == "/api/work/tags":
-            self._send_json(HTTPStatus.OK, {"tags": work.registered_tags()})
-            return
-
-        # GET /api/work/interrupted-claims — starts whose claimant died mid-move.
-        # They are on no board (they are in no status), so without this the web
-        # app could neither show one nor offer to recover it.
-        if path == "/api/work/interrupted-claims":
-            self._send_json(HTTPStatus.OK, self._interrupted_claims())
-            return
-
-        # Catch-all work detail: /api/work/<slug>
-        if path.startswith("/api/work/"):
-            slug = _parse_ref_param(path, "/api/work/")
-            if not slug:
-                self._send(HTTPStatus.NOT_FOUND, b"not found")
-                return
-            qslug = slug                          # preserve the addressed (qualified) slug
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            detail = work.get_detail(slug)
-            if detail is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            # Build response with revision-bearing detail. Echo the *qualified*
-            # slug so the (unchanged) web UI keeps addressing this descendant item
-            # when it derives artifact/sidecar/action URLs from item.slug.
-            item_data = _item_payload(work, slug, detail.item, qslug)
-            # `present` is the **lifecycle** rule — `artifacts()`, the same one
-            # `_item_payload` and the `/open` gate use. `read_artifact` answers a
-            # different question (is there a resource at this name), and mixing
-            # the two put both answers in one payload: a whitespace-only artifact
-            # read `present: true` here and `false` in `item.artifacts`, so the
-            # client drew an Open button whose handler then refused it with 404.
-            # `read_artifact` still supplies revision and media type, so a blank
-            # artifact stays loadable and safely editable.
-            lifecycle_present = {a.name for a in work.artifacts(slug) if a.present}
-            artifacts_list = []
-            for name in WORK_ARTIFACTS:
-                try:
-                    res = work.read_artifact(slug, name)
-                    if res is not None:
-                        artifacts_list.append({
-                            "name": res.name,
-                            "present": name in lifecycle_present,
-                            "revision": res.revision,
-                            "mediaType": res.media_type,
-                        })
-                    else:
-                        artifacts_list.append({"name": name, "present": False})
-                except UnicodeDecodeError:
-                    # Not valid UTF-8: listed with the snapshot's revision, so a
-                    # guarded save can replace it; opening it names the file.
-                    artifacts_list.append({
-                        "name": name,
-                        "present": name in lifecycle_present,
-                        "revision": detail.artifact_revisions.get(name, ""),
-                        "mediaType": "text/markdown",
-                    })
-                except ValueError:
-                    pass
-            # Sidecar discovery in detail
-            sidecars = []
-            for sc_name, sc_info in WORK_SIDECARS.items():
-                present = sc_name in detail.sidecar_revisions
-                sidecars.append({
-                    "name": sc_name,
-                    "mediaType": sc_info["media_type"],
-                    "present": present,
-                    "revision": detail.sidecar_revisions.get(sc_name, ""),
-                    "generated": bool(sc_info.get("generated")),
-                })
-            self._send_json(HTTPStatus.OK, {
-                "item": item_data,
-                "artifacts": artifacts_list,
-                "planStages": [_jsonable(stage) for stage in work.plan_stages(slug)],
-                "sidecars": sidecars,
-                "coreRevision": detail.core_revision,
-                "dodChecklist": work.dod_checklist(),
-            })
-            return
+        taxonomy, capabilities = self._stores()
 
         # ── Taxonomy routes ──
 
@@ -948,167 +502,12 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send(reject[0], reject[1], "application/json; charset=utf-8")
             return
 
-        # ── Legacy: artifact open endpoint ──
-        # POST /api/work/<slug>/artifacts/<name>/open
-        prefix = "/api/work/"
-        suffix = "/open"
-        marker = "/artifacts/"
-        if (path.startswith(prefix) and path.endswith(suffix)
-                and marker in path):
-            self._handle_open(path)
-            return
-
-        marker = "/plan-stages/"
-        if path.startswith(prefix) and path.endswith(suffix) and marker in path:
-            self._handle_plan_stage_open(path)
-            return
-
         body, err = _read_json_body(self)
         if err:
             self._send(err[0], err[1], "application/json; charset=utf-8")
             return
 
-        work, taxonomy, capabilities = self._stores()
-
-        # ── POST /api/work — create work item ──
-        if path == "/api/work":
-            if refusal := _strict_refuses(work, "create", body=body):
-                self._send_err(HTTPStatus.CONFLICT, refusal)
-                return
-            try:
-                title = body.get("title", "")
-                if not title:
-                    self._send_err(HTTPStatus.BAD_REQUEST, "title is required")
-                    return
-                created = body.get("created")
-                body_text = body.get("body", "")
-                priority = body.get("priority")
-                effort = body.get("effort", "")
-                complexity = body.get("complexity", "")
-                blockers = body.get("blockers")
-                parent = body.get("parent")
-                initiative = body.get("initiative", "")
-                type_val = body.get("type", "")
-                tags = body.get("tags") or None
-                work.refresh_for_creation()
-                detail = work.create_work(
-                    title=title,
-                    created=created,
-                    body=body_text,
-                    priority=priority,
-                    effort=effort if effort else "",
-                    complexity=complexity if complexity else "",
-                    blockers=blockers,
-                    parent=parent,
-                    initiative=initiative if initiative else "",
-                    type=type_val if type_val else "",
-                    tags=tags,
-                )
-                if _owe_ticket_if_configured(work, detail.item.slug):
-                    # Re-read: `detail` predates the owed record, so the
-                    # response would say `tracker: null` for an item that just
-                    # got one, and carry a `tracker.yaml` revision already
-                    # stale — which the next sidecar write from the page would
-                    # be rejected on.
-                    detail = work.get_detail(detail.item.slug) or detail
-                # After the owed record, so it is in the same commit. A refusal
-                # is logged, not returned: the item exists, and an error here
-                # would invite the browser to create it a second time.
-                folder = work.path(detail.item.slug)
-                if folder is not None and (reason := work.commit_writes(
-                        f"tcw work: new {detail.item.slug}", folder)):
-                    print(f"tcw serve: created {detail.item.slug}, but {reason}",
-                          file=sys.stderr)
-                response = {
-                    "item": _item_payload(work, detail.item.slug, detail.item),
-                    "coreRevision": detail.core_revision,
-                    "artifactRevisions": detail.artifact_revisions,
-                    "sidecarRevisions": detail.sidecar_revisions,
-                }
-                self._send_json(HTTPStatus.CREATED, _with_warnings(
-                    response, work.node_root, "work", detail.item.slug))
-            except (ValueError, StaleRevision, RefError, IllegalTransition) as e:
-                status_code, body_bytes = _map_store_error(e)
-                self._send(status_code, body_bytes, "application/json; charset=utf-8")
-            except Exception as e:
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                           f"server error: {e}".encode("utf-8"))
-            return
-
-        # ── POST /api/work/<slug>/actions/<action> ──
-        m = re.match(r"^/api/work/([^/]+)/actions/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            action = _decode_path_param(m.group(2))
-            qslug = slug                          # preserve the addressed (qualified) slug
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            if refusal := _strict_refuses(work, action, slug, body):
-                self._send_err(HTTPStatus.CONFLICT, refusal)
-                return
-            if action == "start":
-                force = bool(body.get("force", False))
-                start = lambda: work.start(slug, force=force)  # noqa: E731
-                if body.get("recover"):
-                    # Recovery only. `take_over` also takes an *active* item from
-                    # its owner, which a browser must not do without the CLI's
-                    # explicit `--take-over`; so the slug has to be an
-                    # interrupted claim, and the claim goes to this server's own
-                    # identity, found the way the CLI finds one.
-                    from tcw.work.cli import _local_owner
-                    owner = _local_owner(work)
-                    if not owner:
-                        self._send_err(HTTPStatus.CONFLICT,
-                                       "no claimant identity for this server; set "
-                                       "TCW_WORK_OWNER or git user.email and restart it")
-                        return
-                    start = lambda: work.start(slug, owner=owner, recover=True)  # noqa: E731
-                try:
-                    item = _transition_ok(work, slug, start)
-                    # Payload built from the bare slug the store knows, then
-                    # relabelled with the qualified one the UI addresses by.
-                    self._send_json(HTTPStatus.OK,
-                                    _item_payload(work, slug, item, qslug))
-                except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
-                    sc, bb = _map_store_error(e)
-                    self._send(sc, bb, "application/json; charset=utf-8")
-                except Exception as e:
-                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                               f"server error: {e}".encode("utf-8"))
-                return
-            elif action == "complete":
-                resolution = body.get("resolution")
-                dod_ack = body.get("dod_ack") or body.get("dodAck")
-                force = bool(body.get("force", False))
-                if not resolution:
-                    self._send_err(HTTPStatus.BAD_REQUEST,
-                                   "resolution is required")
-                    return
-                if not isinstance(dod_ack, list):
-                    dod_ack = []
-                try:
-                    item = _transition_ok(
-                        work, slug,
-                        lambda: work.complete(slug, resolution, dod_ack, force=force))
-                    # Payload built from the bare slug the store knows, then
-                    # relabelled with the qualified one the UI addresses by.
-                    self._send_json(HTTPStatus.OK,
-                                    _item_payload(work, slug, item, qslug))
-                except (ValueError, StaleRevision, IllegalTransition, RefError) as e:
-                    sc, bb = _map_store_error(e)
-                    self._send(sc, bb, "application/json; charset=utf-8")
-                except Exception as e:
-                    self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                               f"server error: {e}".encode("utf-8"))
-                return
-            else:
-                self._send(HTTPStatus.BAD_REQUEST, b"unknown action")
-                return
+        taxonomy, capabilities = self._stores()
 
         # ── POST /api/taxonomy — create taxonomy term ──
         if path == "/api/taxonomy":
@@ -1259,64 +658,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             self._send(err[0], err[1], "application/json; charset=utf-8")
             return
 
-        work, taxonomy, capabilities = self._stores()
-
-        # ── PATCH /api/work/<slug> ──
-        m = re.match(r"^/api/work/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            qslug = slug                          # preserve the addressed (qualified) slug
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            core_revision = body.get("revision")
-            fields = body.get("fields", {})
-            body_text = body.get("body")
-
-            # Build keyword args: only pass keys that are present in fields
-            kw: dict[str, Any] = {}
-            work_field_keys = {
-                "title", "priority", "effort", "complexity",
-                "blockers", "initiative", "parent", "tags",
-            }
-            for k, v in fields.items():
-                if k not in work_field_keys:
-                    self._send_err(HTTPStatus.BAD_REQUEST,
-                                   f"unknown work field '{k}'")
-                    return
-                kw[k] = v
-            # Handle body separately
-            if "body" in body:
-                kw["body"] = body_text
-            if core_revision is not None:
-                kw["core_revision"] = core_revision
-
-            try:
-                detail = work.update_work(slug, **kw)
-                item_data = _item_payload(work, slug, detail.item, qslug)
-                response = {
-                    "item": item_data,
-                    "coreRevision": detail.core_revision,
-                    "artifactRevisions": detail.artifact_revisions,
-                    "sidecarRevisions": detail.sidecar_revisions,
-                    # An edit that created the request on an intake-only item is
-                    # a promotion; the UI says so rather than letting it look
-                    # like an ordinary body save.
-                    "promoted": detail.promoted,
-                }
-                self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, work.node_root, "work", slug))
-            except (ValueError, StaleRevision, RefError) as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            except Exception as e:
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                           f"server error: {e}".encode("utf-8"))
-            return
+        taxonomy, capabilities = self._stores()
 
         # ── PATCH /api/taxonomy/<ref> ──
         m = _RE_TAXONOMY_REF.match(path)
@@ -1399,274 +741,22 @@ class TcwHandler(BaseHTTPRequestHandler):
     # ── PUT routes ────────────────────────────────────────────────────────
 
     def _put(self) -> None:
-        path = urlparse(self.path).path
-
-        # All PUT routes require CSRF + JSON validation
+        # No PUT route is left: the work routes went with the 2.x store, and
+        # TCW-77 rebuilds them. The CSRF check still answers first.
         reject = _validate_mutating_request(self)
         if reject:
             self._send(reject[0], reject[1], "application/json; charset=utf-8")
             return
-
-        body, err = _read_json_body(self)
-        if err:
-            self._send(err[0], err[1], "application/json; charset=utf-8")
-            return
-
-        work, taxonomy, capabilities = self._stores()
-
-        # ── PUT /api/work/<slug>/artifacts/<name> ──
-        m = re.match(r"^/api/work/([^/]+)/artifacts/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            name = _decode_path_param(m.group(2))
-            if name not in WORK_ARTIFACTS:
-                self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
-                return
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            item = work.get(slug)
-            if item is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            content = body.get("content")
-            if content is None:
-                self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
-                return
-            revision = body.get("revision")
-            try:
-                resource = work.write_artifact(slug, name, content,
-                                               revision=revision)
-                response = {
-                    "name": resource.name,
-                    "content": resource.content,
-                    "mediaType": resource.media_type,
-                    "revision": resource.revision,
-                }
-                self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, work.node_root, "work", slug))
-            except (ValueError, StaleRevision) as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            except Exception as e:
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                           f"server error: {e}".encode("utf-8"))
-            return
-
-        # ── PUT /api/work/<slug>/plan-stages/<id> ──
-        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            stage_id = _decode_path_param(m.group(2))
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            content = body.get("content")
-            if not isinstance(content, str):
-                self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
-                return
-            try:
-                resource = work.write_plan_stage(slug, stage_id, content, body.get("revision"))
-                response = {"name": resource.id, "content": resource.content,
-                            "mediaType": resource.media_type, "revision": resource.revision}
-                self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, work.node_root, "work", slug))
-            except StaleRevision as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            except ValueError as e:
-                self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
-            return
-
-        # ── PUT /api/work/<slug>/sidecars/<name> ──
-        m = re.match(r"^/api/work/([^/]+)/sidecars/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            name = _decode_path_param(m.group(2))
-            if name not in WORK_SIDECARS:
-                self._send(HTTPStatus.BAD_REQUEST, b"unknown sidecar")
-                return
-            if (owner := WORK_SIDECARS[name].get("generated")):
-                self._send_err(HTTPStatus.CONFLICT,
-                               f"{name} is written by `{owner}`, not edited; "
-                               f"run that command instead.")
-                return
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            item = work.get(slug)
-            if item is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            content = body.get("content")
-            if content is None:
-                self._send_err(HTTPStatus.BAD_REQUEST, "content is required")
-                return
-            media_type = body.get("mediaType")
-            revision = body.get("revision")
-            try:
-                resource = work.write_sidecar(slug, name, content,
-                                              media_type=media_type,
-                                              revision=revision)
-                response = {
-                    "name": resource.name,
-                    "content": resource.content,
-                    "mediaType": resource.media_type,
-                    "revision": resource.revision,
-                }
-                self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, work.node_root, "work", slug))
-            except (ValueError, StaleRevision) as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            except Exception as e:
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                           f"server error: {e}".encode("utf-8"))
-            return
-
         self._send(HTTPStatus.NOT_FOUND, b"not found")
 
     # ── DELETE routes ────────────────────────────────────────────────────
 
     def _delete(self) -> None:
-        path = urlparse(self.path).path
-
-        # All DELETE routes require CSRF validation (no body needed)
         reject = _validate_mutating_request(self)
         if reject:
             self._send(reject[0], reject[1], "application/json; charset=utf-8")
             return
-
-        work, taxonomy, capabilities = self._stores()
-
-        # ── DELETE /api/work/<slug>/plan-stages/<id> ──
-        m = re.match(r"^/api/work/([^/]+)/plan-stages/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            stage_id = _decode_path_param(m.group(2))
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            try:
-                work.delete_plan_stage(slug, stage_id, self.headers.get("X-TCW-Revision"))
-                self._send(HTTPStatus.NO_CONTENT)
-            except (ValueError, StaleRevision) as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            return
-
-        # ── DELETE /api/work/<slug> ──
-        m = re.match(r"^/api/work/([^/]+)$", path)
-        if m:
-            slug = _decode_path_param(m.group(1))
-            if self._refused_read_only(slug):
-                return
-            resolved = self._resolve_work(slug)
-            if resolved is None:
-                self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-                return
-            work, slug = resolved
-            if refusal := _strict_refuses(work, "drop", slug):
-                self._send_err(HTTPStatus.CONFLICT, refusal)
-                return
-            try:
-                work.drop(slug)
-                self._send(HTTPStatus.NO_CONTENT)
-            except (ValueError, IllegalTransition) as e:
-                sc, bb = _map_store_error(e)
-                self._send(sc, bb, "application/json; charset=utf-8")
-            except Exception as e:
-                self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
-                           f"server error: {e}".encode("utf-8"))
-            return
-
         self._send(HTTPStatus.NOT_FOUND, b"not found")
-
-    # ── Legacy: artifact open handler ────────────────────────────────────
-
-    def _handle_open(self, path: str) -> None:
-        prefix = "/api/work/"
-        suffix = "/open"
-        marker = "/artifacts/"
-        if not (path.startswith(prefix) and path.endswith(suffix) and marker in path):
-            self._send(HTTPStatus.NOT_FOUND, b"not found")
-            return
-        middle = path[len(prefix):-len(suffix)]
-        slug_q, _, name_q = middle.partition(marker)
-        slug = _decode_path_param(slug_q)
-        name = _decode_path_param(name_q)
-        if not slug or "/" in slug or "\\" in slug or slug in {".", ".."}:
-            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-            return
-        if name not in WORK_ARTIFACTS:
-            self._send(HTTPStatus.BAD_REQUEST, b"unknown artifact")
-            return
-
-        resolved = self._resolve_work(slug)
-        if resolved is None:
-            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-            return
-        work, slug = resolved
-        item = work.get(slug)
-        if item is None:
-            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-            return
-        present = {a.name for a in work.artifacts(slug) if a.present}
-        if name not in present:
-            self._send(HTTPStatus.NOT_FOUND, b"artifact is not present")
-            return
-        locator = work.artifact_locator(slug, name)
-        if locator is None:
-            self._send(HTTPStatus.NOT_FOUND, b"artifact is not available")
-            return
-        opened = _open_locator(locator)
-        if opened:
-            self._send_json(HTTPStatus.OK, opened)
-            return
-        self._send(HTTPStatus.NO_CONTENT)
-
-    def _handle_plan_stage_open(self, path: str) -> None:
-        middle = path[len("/api/work/"):-len("/open")]
-        slug_q, _, stage_q = middle.partition("/plan-stages/")
-        slug = _decode_path_param(slug_q)
-        stage_id = _decode_path_param(stage_q)
-        if self._refused_read_only(slug):
-            return
-        resolved = self._resolve_work(slug)
-        if resolved is None:
-            self._send(HTTPStatus.NOT_FOUND, b"no such work item")
-            return
-        work, slug = resolved
-        try:
-            resource = work.read_plan_stage(slug, stage_id)
-        except ValueError as e:
-            self._send(HTTPStatus.BAD_REQUEST, str(e).encode("utf-8"))
-            return
-        if resource is None:
-            self._send(HTTPStatus.NOT_FOUND, b"plan stage not present")
-            return
-        locator = work.plan_stage_locator(slug, stage_id)
-        opened = _open_locator(locator) if locator else None
-        if opened:
-            self._send_json(HTTPStatus.OK, opened)
-            return
-        self._send(HTTPStatus.NO_CONTENT)
 
 
 # Import AmbiguousRef at module level (used in _get but defined in base)

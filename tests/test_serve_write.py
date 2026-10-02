@@ -16,12 +16,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from tcw.serve import HOST, MAX_BODY_BYTES, TcwServer
-from tcw.store.base import (
-    WORK_ARTIFACTS, WORK_SIDECARS, StaleRevision,
-)
-from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore, init,
-)
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,24 +28,17 @@ def _node(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    init(["taxonomy", "capabilities", "work"], root)
+    init(["taxonomy", "capabilities"], root)
     return root
 
 
 def _seed(root: Path):
-    """Create a seeded work item, taxonomy term, and capability."""
-    work = FsWorkStore.open(root)
-    item = work.create("Build viewer", created="2026-01-01")
-    d = work.path(item.slug)
-    (d / "initial-request.md").write_text("# Request\n\nBrowse TCW.\n", encoding="utf-8")
-    (d / "spec.md").write_text("spec content\n", encoding="utf-8")
-    (d / "capabilities.yaml").write_text("links:\n- web\n", encoding="utf-8")
-    work.set_field(item.slug, "blocked_by", [{"external": "vendor"}])
-
+    """Seed a taxonomy term and a capability. The work routes are gone until
+    TCW-77, so nothing here touches work."""
     FsTaxonomyStore.open(root).add("Work Item", slug="work-item")
     FsTaxonomyStore.open(root).add("Admin", slug="admin")
     FsCapabilitiesStore.open(root).add("web", "Browse TCW content", status="Missing")
-    return item.slug
+    return None
 
 
 def _start_server(root: Path):
@@ -140,611 +128,19 @@ def bare(tmp_path):
 # ── Tests: Revision-bearing detail reads ─────────────────────────────────────
 
 
-class TestDetailReads:
-    """Read work/taxonomy/capability detail payloads carrying revision tokens."""
-
-    def test_work_detail_has_revision(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        assert "coreRevision" in detail
-        assert len(detail["coreRevision"]) == 16
-        assert detail["item"]["slug"] == slug
-        # Artifacts include revisions
-        arts = {a["name"]: a for a in detail["artifacts"]}
-        assert arts["initial-request"]["present"] is True
-        assert "revision" in arts["initial-request"]
-        assert arts["spec"]["present"] is True
-
-    def test_work_detail_has_sidecars(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        sidecars = detail["sidecars"]
-        assert len(sidecars) >= 1
-        cap_sc = next(s for s in sidecars if s["name"] == "capabilities.yaml")
-        assert cap_sc["present"] is True
-        assert cap_sc["revision"] != ""
-        assert cap_sc["mediaType"] == "application/yaml"
-        # The client hides its Edit affordance on this flag, so the payload has
-        # to carry it — and has to carry it as False for an authored sidecar.
-        assert cap_sc["generated"] is False
-        rollup_sc = next(s for s in sidecars if s["name"] == "rollup.md")
-        assert rollup_sc["generated"] is True
-
-    def test_taxonomy_detail_has_revision(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, "/api/taxonomy/work-item")
-        assert "coreRevision" in detail
-        assert detail["term"]["slug"] == "work-item"
-
-    def test_capability_detail_has_revision(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, "/api/capabilities/web")
-        assert "coreRevision" in detail
-        assert detail["capability"]["path"] == "web"
-
-    def test_work_detail_404_unknown(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "GET", "/api/work/nonexistent")
-        assert status == HTTPStatus.NOT_FOUND
-
-    def test_taxonomy_detail_404_unknown(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "GET", "/api/taxonomy/nonexistent")
-        assert status == HTTPStatus.NOT_FOUND
-
-
 # ── Tests: Create work ───────────────────────────────────────────────────────
-
-
-class TestCreateWork:
-    """Create work items through POST /api/work."""
-
-    def test_create_basic(self, bare):
-        root, base = bare
-        status, body = _req(base, "POST", "/api/work", {
-            "title": "My new feature",
-        })
-        assert status == HTTPStatus.CREATED
-        assert body["item"]["title"] == "My new feature"
-        assert "coreRevision" in body
-        # Verify via GET
-        slug = body["item"]["slug"]
-        detail = _get_json(base, f"/api/work/{slug}")
-        assert detail["item"]["slug"] == slug
-
-    def test_create_records_the_owed_ticket_when_filing_is_meant_to_make_one(
-            self, bare):
-        """`work.tracker.create.on-new` says filing an item makes its ticket.
-
-        The web app runs no tracker code, so it cannot make it — but it must
-        leave the debt behind. Without this, an item filed here in a project
-        that expects a ticket is indistinguishable from one filed in a project
-        that does not, which is the quiet accumulation the owed record exists to
-        prevent.
-        """
-        import yaml
-
-        root, base = bare
-        (root / "tcw-config.yaml").write_text(yaml.safe_dump({
-            "id": "probe",
-            "work": {"tracker": {
-                "provider": "jira-cloud",
-                "base-url": "https://example.invalid",
-                "candidate-query": "assignee = currentUser()",
-                "credentials": {"email-env": "TCW_PROBE_EMAIL",
-                                "token-env": "TCW_PROBE_TOKEN"},
-                "transitions": {"start": "Start Progress"},
-                "statuses": {"backlog": "To Do", "active": "In Progress"},
-                "create": {"project": "PROBE", "issue-type": "Task",
-                           "on-new": True},
-            }},
-        }, sort_keys=False), encoding="utf-8")
-
-        status, body = _req(base, "POST", "/api/work", {"title": "Filed on the web"})
-        assert status == HTTPStatus.CREATED
-        slug = body["item"]["slug"]
-
-        # The response itself, not just a later read: it was built from a
-        # snapshot taken before the owed record was written, so it said
-        # `tracker: null` for an item that had just been given one, and carried
-        # a `tracker.yaml` revision already stale — which the next sidecar write
-        # from the page would have been rejected on.
-        # Not built out of the actual value: an expected value that indexes the
-        # actual one raises inside its own expression on a regression instead of
-        # failing the assertion, and checks nothing.
-        tracker = body["item"]["tracker"]
-        assert set(tracker) == {"owed"}, tracker
-        assert set(tracker["owed"]) == {"since", "reason"}, tracker
-        assert "tcw work tracker create" in tracker["owed"]["reason"], tracker
-        assert "tracker.yaml" in body["sidecarRevisions"], body["sidecarRevisions"]
-
-        owed = FsWorkStore.open(root).get(slug).tracker
-        assert owed is not None, "the item carries no tracker state at all"
-        assert body["sidecarRevisions"]["tracker.yaml"], body["sidecarRevisions"]
-        assert "owed" in owed, owed
-        assert "tcw work tracker create" in owed["owed"]["reason"], owed
-        # Unbound, not bound: an owed record is a debt, never a binding.
-        assert "ticket" not in owed, owed
-
-    def test_create_without_on_new_leaves_no_tracker_state(self, bare):
-        """The other half: a project with a create block but no `on-new` must
-        get nothing, or every web-filed item would carry a debt nobody asked
-        for."""
-        import yaml
-
-        root, base = bare
-        (root / "tcw-config.yaml").write_text(yaml.safe_dump({
-            "id": "probe",
-            "work": {"tracker": {
-                "provider": "jira-cloud",
-                "base-url": "https://example.invalid",
-                "candidate-query": "assignee = currentUser()",
-                "credentials": {"email-env": "TCW_PROBE_EMAIL",
-                                "token-env": "TCW_PROBE_TOKEN"},
-                "transitions": {"start": "Start Progress"},
-                "statuses": {"backlog": "To Do", "active": "In Progress"},
-                "create": {"project": "PROBE", "issue-type": "Task"},
-            }},
-        }, sort_keys=False), encoding="utf-8")
-
-        status, body = _req(base, "POST", "/api/work", {"title": "Filed quietly"})
-        assert status == HTTPStatus.CREATED
-        assert FsWorkStore.open(root).get(body["item"]["slug"]).tracker is None
-
-    def test_create_with_fields(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "POST", "/api/work", {
-            "title": "Full feature",
-            "body": "Some details",
-            "priority": 5,
-            "effort": "high",
-            "complexity": "medium",
-            "initiative": "my-epic",
-        })
-        assert status == HTTPStatus.CREATED
-        item = body["item"]
-        assert item["priority"] == 5
-        assert item["effort"] == "high"
-        assert item["complexity"] == "medium"
-        assert item["initiative"] == "my-epic"
-
-    def test_create_read_back_lost_is_not_a_500(self, bare, monkeypatch):
-        """`create_work` ends in a read-back that a concurrent move can lose. It
-        used to return `None` through a `-> WorkDetail` signature, so the route
-        dereferenced it and the bare `except Exception` rendered
-        `500 server error: 'NoneType' object has no attribute 'item'`. It is a
-        handled store error now, and the item's slug is in the message."""
-        root, base = bare
-        monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-        status, body = _req(base, "POST", "/api/work", {"title": "Raced"})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-        assert "could not be read back" in json.dumps(body)
-
-    def test_create_missing_title(self, bare):
-        root, base = bare
-        status, body = _req(base, "POST", "/api/work", {})
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_create_invalid_effort(self, bare):
-        root, base = bare
-        status, body = _req(base, "POST", "/api/work", {
-            "title": "Bad effort",
-            "effort": "super-high",
-        })
-        assert status in (HTTPStatus.UNPROCESSABLE_ENTITY, HTTPStatus.BAD_REQUEST)
-
-    def test_create_invalid_parent(self, bare):
-        root, base = bare
-        status, body = _req(base, "POST", "/api/work", {
-            "title": "Bad parent",
-            "parent": "does-not-exist",
-        })
-        # "no such parent work item" maps to 404 via _map_store_error
-        assert status in (HTTPStatus.UNPROCESSABLE_ENTITY, HTTPStatus.BAD_REQUEST,
-                          HTTPStatus.NOT_FOUND)
-
-    def test_create_with_parent(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "POST", "/api/work", {
-            "title": "Child item",
-            "parent": slug,
-        })
-        assert status == HTTPStatus.CREATED
-        assert body["item"]["slug"] is not None
 
 
 # ── Tests: Update work ───────────────────────────────────────────────────────
 
 
-class TestUpdateWork:
-    """Update work items through PATCH /api/work/<slug>."""
-
-    def test_update_fields(self, seeded):
-        root, base, slug = seeded
-        # Read current revision
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        # Update title via fields
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"title": "Updated title"},
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["title"] == "Updated title"
-        # New revision returned
-        assert body["coreRevision"] != rev
-
-    def test_update_body(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "body": "# Updated body\n\nNew content.",
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["body"] == "# Updated body\n\nNew content."
-
-    def test_body_edit_on_intake_only_item_promotes_and_preserves_intake(self, seeded):
-        """The web editor shares update_work, so the write contract has to hold
-        here too: the request is created, the raw intake is untouched, and the
-        response says a promotion happened rather than letting it look routine."""
-        root, base, _ = seeded
-        work = FsWorkStore.open(root)
-        item = work.create("Piped in", created="2026-01-02", intake="raw text\n")
-        d = work.path(item.slug)
-        intake_before = (d / "intake.md").read_bytes()
-
-        detail = _get_json(base, f"/api/work/{item.slug}")
-        assert detail["item"]["body"] == "raw text\n"          # intake is the body surface
-
-        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
-            "revision": detail["coreRevision"],
-            "body": "# The request\n",
-        })
-        assert status == HTTPStatus.OK
-        assert body["promoted"] is True
-        assert (d / "initial-request.md").read_text() == "# The request\n"
-        assert (d / "intake.md").read_bytes() == intake_before
-
-        # A second body edit is an ordinary save, not another promotion.
-        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
-            "revision": body["coreRevision"],
-            "body": "# Revised\n",
-        })
-        assert status == HTTPStatus.OK
-        assert body["promoted"] is False
-
-    def test_promoting_identical_text_still_changes_the_revision(self, seeded):
-        """Same bytes, different editable resource. A guarded write must not
-        survive the move from intake to request."""
-        root, base, _ = seeded
-        work = FsWorkStore.open(root)
-        item = work.create("Same text", created="2026-01-02", intake="same\n")
-
-        before = _get_json(base, f"/api/work/{item.slug}")["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{item.slug}", {
-            "revision": before,
-            "body": "same\n",
-        })
-        assert status == HTTPStatus.OK
-        assert body["promoted"] is True
-        assert body["coreRevision"] != before
-
-    def test_update_fields_and_body(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"title": "Both", "priority": 10},
-            "body": "# Both updated",
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["title"] == "Both"
-        assert body["item"]["priority"] == 10
-
-    def test_update_null_clears_field(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"priority": None},
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["priority"] is None
-
-    def test_update_empty_string_preserved(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"effort": ""},
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["effort"] == ""
-
-    def test_update_omitted_key_unchanged(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        old_priority = detail["item"]["priority"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"title": "Only title"},
-        })
-        assert status == HTTPStatus.OK
-        # Priority should be unchanged
-        assert body["item"]["priority"] == old_priority
-
-    def test_update_stale_revision_409(self, seeded):
-        root, base, slug = seeded
-        detail1 = _get_json(base, f"/api/work/{slug}")
-        old_rev = detail1["coreRevision"]
-        # Modify via store (simulate concurrent edit)
-        work = FsWorkStore.open(root)
-        work.set_field(slug, "title", "Concurrent change")
-        # Now the old revision is stale
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": old_rev,
-            "fields": {"title": "My update"},
-        })
-        assert status == HTTPStatus.CONFLICT
-        # Marked, so the web app can tell a stale write from any other 409.
-        assert body["code"] == "stale-revision"
-
-    def test_update_unknown_field_rejected(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"bogus_field": "value"},
-        })
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_update_404_unknown_slug(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "PATCH", "/api/work/nonexistent", {
-            "fields": {"title": "nope"},
-        })
-        assert status == HTTPStatus.NOT_FOUND
-
-    def test_update_no_revision_allowed(self, seeded):
-        """PATCH without revision should still work (revision is optional)."""
-        root, base, slug = seeded
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "fields": {"title": "No revision check"},
-        })
-        assert status == HTTPStatus.OK
-        assert body["item"]["title"] == "No revision check"
-
-
 # ── Tests: Artifact read/write ──────────────────────────────────────────────
-
-
-class TestArtifactReadWrite:
-    """Read and write lifecycle artifacts via GET/PUT /api/work/<slug>/artifacts/<name>."""
-
-    def test_read_artifact(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        assert detail["name"] == "spec"
-        assert detail["content"] == "spec content\n"
-        assert detail["mediaType"] == "text/markdown"
-        assert "revision" in detail
-
-    def test_read_missing_artifact_404(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "GET", f"/api/work/{slug}/artifacts/plan")
-        assert status == HTTPStatus.NOT_FOUND
-
-    def test_read_unknown_artifact_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "GET", f"/api/work/{slug}/artifacts/nonexistent")
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_write_artifact(self, seeded):
-        root, base, slug = seeded
-        # First read to get revision (plan doesn't exist, so no revision)
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/plan", {
-            "content": "# Plan\n\nNew plan content.\n",
-        })
-        assert status == HTTPStatus.OK
-        assert body["name"] == "plan"
-        assert body["content"] == "# Plan\n\nNew plan content.\n"
-        assert body["revision"] != ""
-
-    def test_write_artifact_existing(self, seeded):
-        root, base, slug = seeded
-        # Read existing spec
-        read = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        old_rev = read["revision"]
-        # Write with revision
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "content": "updated spec\n",
-            "revision": old_rev,
-        })
-        assert status == HTTPStatus.OK
-        assert body["revision"] != old_rev
-
-    def test_write_artifact_stale_409(self, seeded):
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        old_rev = read["revision"]
-        # Modify via store (simulate concurrent edit)
-        work = FsWorkStore.open(root)
-        d = work.path(slug)
-        (d / "spec.md").write_text("concurrent edit\n", encoding="utf-8")
-        # Old revision is now stale
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "content": "my update\n",
-            "revision": old_rev,
-        })
-        assert status == HTTPStatus.CONFLICT
-        assert body["code"] == "stale-revision"
-
-    def test_write_artifact_unknown_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/fake", {
-            "content": "nope",
-        })
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_write_artifact_no_content_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "revision": "abc",
-        })
-        assert status == HTTPStatus.BAD_REQUEST
 
 
 # ── Tests: Declared plan-stage read/write/delete ───────────────────────────
 
 
-class TestPlanStageReadWrite:
-    def _declare(self, root: Path, slug: str) -> None:
-        FsWorkStore.open(root).write_artifact(slug, "plan", """---
-stages:
-  - id: api
-    title: Add API
-    depends_on: []
----
-
-## Overview
-
-Add the API.
-
-## Stage ordering
-
-The API stage is independent.
-""")
-
-    def test_detail_and_stage_crud(self, seeded):
-        root, base, slug = seeded
-        self._declare(root, slug)
-        detail = _get_json(base, f"/api/work/{slug}")
-        assert detail["planStages"][0]["id"] == "api"
-        assert detail["planStages"][0]["present"] is False
-        content = """## Objective
-
-Expose it.
-
-## Pre-stage checks
-
-Check routes.
-
-## Implementation
-
-Add routes.
-
-## Post-stage checks
-
-Test routes.
-"""
-        status, written = _req(base, "PUT", f"/api/work/{slug}/plan-stages/api",
-                               {"content": content, "revision": ""})
-        assert status == HTTPStatus.OK
-        read = _get_json(base, f"/api/work/{slug}/plan-stages/api")
-        assert read["content"] == content
-        status, _ = _req(base, "PUT", f"/api/work/{slug}/plan-stages/api",
-                         {"content": "changed", "revision": "stale"})
-        assert status == HTTPStatus.CONFLICT
-        status, _ = _req(base, "DELETE", f"/api/work/{slug}/plan-stages/api",
-                         headers={"X-TCW-Revision": written["revision"]})
-        assert status == HTTPStatus.NO_CONTENT
-
-    def test_undeclared_stage_is_rejected(self, seeded):
-        root, base, slug = seeded
-        self._declare(root, slug)
-        status, _ = _req(base, "PUT", f"/api/work/{slug}/plan-stages/other",
-                         {"content": "no", "revision": ""})
-        assert status == HTTPStatus.BAD_REQUEST
-
-
 # ── Tests: Sidecar read/write ───────────────────────────────────────────────
-
-
-class TestSidecarReadWrite:
-    """Read and write bounded sidecars via GET/PUT /api/work/<slug>/sidecars/<name>."""
-
-    def test_read_sidecar(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        assert detail["name"] == "capabilities.yaml"
-        assert "links" in detail["content"]
-        assert detail["mediaType"] == "application/yaml"
-        assert "revision" in detail
-
-    def test_read_missing_sidecar_404(self, seeded):
-        root, base, slug = seeded
-        # Create a work item without a sidecar
-        status, body = _req(base, "POST", "/api/work", {"title": "No sidecar"})
-        new_slug = body["item"]["slug"]
-        status, body = _req(base, "GET", f"/api/work/{new_slug}/sidecars/capabilities.yaml")
-        assert status == HTTPStatus.NOT_FOUND
-
-    def test_write_sidecar(self, seeded):
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        rev = read["revision"]
-        new_content = "capabilities:\n- name: web\n"
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/capabilities.yaml", {
-            "content": new_content,
-            "revision": rev,
-        })
-        assert status == HTTPStatus.OK
-        assert body["revision"] != rev
-
-    def test_write_sidecar_invalid_yaml_422(self, seeded):
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        rev = read["revision"]
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/capabilities.yaml", {
-            "content": "{{invalid: yaml: [",
-            "revision": rev,
-        })
-        assert status in (HTTPStatus.UNPROCESSABLE_ENTITY, HTTPStatus.BAD_REQUEST)
-
-    def test_write_sidecar_unknown_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/fake.yaml", {
-            "content": "nope",
-        })
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_sidecar_discovery(self, seeded):
-        root, base, slug = seeded
-        sidecars = _get_json(base, f"/api/work/{slug}/sidecars")
-        assert isinstance(sidecars, list)
-        assert len(sidecars) >= 1
-        cap_sc = next(s for s in sidecars if s["name"] == "capabilities.yaml")
-        assert cap_sc["present"] is True
-        assert cap_sc["mediaType"] == "application/yaml"
-        assert "revision" in cap_sc
-
-    @pytest.mark.parametrize("name, owner", [
-        ("rollup.md", "tcw work reconcile"),
-        ("tracker.yaml", "tcw work tracker"),
-    ])
-    def test_write_generated_sidecar_refused(self, seeded, name, owner):
-        """A sidecar a command writes is refused, naming that command."""
-        root, base, slug = seeded
-        folder = FsWorkStore.open(root).path(slug)
-        before = {p.name: p.read_bytes() for p in folder.iterdir()}
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/{name}", {
-            "content": "ticket: X-1\n" if name == "tracker.yaml" else "# edited\n",
-        })
-        assert status == HTTPStatus.CONFLICT
-        assert name in body["error"] and owner in body["error"]
-        assert "code" not in body              # not a stale write: the app shows the message
-        assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
-        generated = {s["name"]: s["generated"]
-                     for s in _get_json(base, f"/api/work/{slug}/sidecars")}
-        assert generated == {"capabilities.yaml": False, "rollup.md": True,
-                             "tracker.yaml": True}
 
 
 # ── Tests: Oversized body rejection ─────────────────────────────────────────
@@ -758,8 +154,8 @@ class TestOversizedBody:
         # Set Content-Length to a huge value; server should reject before reading
         large_size = MAX_BODY_BYTES + 1000
         req = Request(
-            f"{base}/api/work",
-            data=b'{"title": "x"}',
+            f"{base}/api/taxonomy",
+            data=b'{"name": "x"}',
             headers={
                 "Content-Type": "application/json",
                 "Content-Length": str(large_size),
@@ -777,10 +173,10 @@ class TestOversizedBody:
         # client side. This is correct behavior — the server refuses to consume
         # the oversized payload.
         from urllib.error import URLError
-        big = {"title": "x", "body": "A" * (MAX_BODY_BYTES + 100)}
+        big = {"name": "x", "description": "A" * (MAX_BODY_BYTES + 100)}
         data = json.dumps(big).encode("utf-8")
         try:
-            status, raw = _raw_http(base, "POST", "/api/work",
+            status, raw = _raw_http(base, "POST", "/api/taxonomy",
                                     body=data,
                                     headers={"Content-Type": "application/json"})
             assert status == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
@@ -792,8 +188,8 @@ class TestOversizedBody:
         root, base, slug = seeded
         # Missing Content-Length with a small body — should work
         req = Request(
-            f"{base}/api/work",
-            data=b'{"title": "no length"}',
+            f"{base}/api/taxonomy",
+            data=b'{"name": "No length"}',
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -803,8 +199,8 @@ class TestOversizedBody:
     def test_malformed_content_length(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
-            data=b'{"title": "x"}',
+            f"{base}/api/taxonomy",
+            data=b'{"name": "x"}',
             headers={
                 "Content-Type": "application/json",
                 "Content-Length": "not-a-number",
@@ -1098,121 +494,6 @@ class TestEncodedRefs:
 # ── Tests: Lifecycle actions ────────────────────────────────────────────────
 
 
-class TestLifecycleActions:
-    """Run work start/complete/drop through the API and assert guarded failure."""
-
-    def test_start_work(self, seeded):
-        root, base, slug = seeded
-        # Seed creates blocked work item — use force to start
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {
-            "force": True,
-        })
-        assert status == HTTPStatus.OK
-        assert body["status"] == "active"
-
-    def test_start_blocked_work(self, seeded):
-        root, base, slug = seeded
-        # Seed creates a work item with blocked_by external:vendor
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {})
-        # Should fail due to blockers — 422 for validation, 400 if request parsing fails
-        assert status in (HTTPStatus.UNPROCESSABLE_ENTITY, HTTPStatus.BAD_REQUEST)
-        if isinstance(body, dict):
-            assert "blocked" in body.get("error", "").lower() or \
-                   "blocker" in body.get("error", "").lower()
-
-    def test_start_with_force(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {
-            "force": True,
-        })
-        assert status == HTTPStatus.OK
-        assert body["status"] == "active"
-
-    def test_start_already_active_422(self, seeded):
-        root, base, slug = seeded
-        # Start first
-        _req(base, "POST", f"/api/work/{slug}/actions/start", {"force": True})
-        # Try again — illegal transition
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {"force": True})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_complete_work(self, seeded):
-        root, base, slug = seeded
-        # Start first
-        _req(base, "POST", f"/api/work/{slug}/actions/start", {"force": True})
-        # Complete
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
-            "resolution": "done",
-            "dod_ack": ["tests pass", "docs synced", "capabilities reconciled",
-                         "reviewed"],
-            "force": True,
-        })
-        assert status == HTTPStatus.OK
-        assert body["status"] == "completed"
-
-    def test_complete_missing_resolution_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {})
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_complete_invalid_resolution_422(self, seeded):
-        root, base, slug = seeded
-        _req(base, "POST", f"/api/work/{slug}/actions/start", {"force": True})
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
-            "resolution": "invalid-value",
-            "dod_ack": [],
-        })
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_complete_non_done_resolution_discards(self, seeded):
-        """The API delegates destination choice to the model, so a discard needs
-        no separate endpoint — and needs no start, no force, either: the seeded
-        item carries an external blocker, which does not gate a discard."""
-        root, base, slug = seeded
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
-            "resolution": "superseded",
-            "dod_ack": [],
-        })
-        assert status == HTTPStatus.OK, body
-        assert body["status"] == "discarded"
-
-    def test_complete_from_inbox_422(self, seeded):
-        root, base, slug = seeded
-        # Item is in backlog by default — cannot complete from backlog
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/complete", {
-            "resolution": "done",
-            "dod_ack": [],
-        })
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_drop_work(self, seeded):
-        root, base, slug = seeded
-        # Item is in backlog — can be dropped
-        status, body = _req(base, "DELETE", f"/api/work/{slug}")
-        assert status == HTTPStatus.NO_CONTENT
-        # Verify it's gone
-        status2, body2 = _req(base, "GET", f"/api/work/{slug}")
-        assert status2 == HTTPStatus.NOT_FOUND
-
-    def test_drop_active_work_422(self, seeded):
-        root, base, slug = seeded
-        # Start the item — now it's active
-        _req(base, "POST", f"/api/work/{slug}/actions/start", {"force": True})
-        # Cannot drop active
-        status, body = _req(base, "DELETE", f"/api/work/{slug}")
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_drop_nonexistent_404(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "DELETE", "/api/work/nonexistent")
-        assert status == HTTPStatus.NOT_FOUND
-
-    def test_unknown_action_400(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/unknown", {})
-        assert status == HTTPStatus.BAD_REQUEST
-
-
 # ── Tests: CSRF / origin defense ────────────────────────────────────────────
 
 
@@ -1222,8 +503,8 @@ class TestCSRFDefense:
     def test_reject_non_json_content_type(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
-            data=b"title=test",
+            f"{base}/api/taxonomy",
+            data=b"name=test",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             method="POST",
         )
@@ -1234,8 +515,8 @@ class TestCSRFDefense:
     def test_reject_no_content_type(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
-            data=b'{"title": "x"}',
+            f"{base}/api/taxonomy",
+            data=b'{"name": "x"}',
             method="POST",
         )
         with pytest.raises(HTTPError) as exc:
@@ -1245,8 +526,8 @@ class TestCSRFDefense:
     def test_reject_non_loopback_origin(self, seeded):
         root, base, slug = seeded
         # Use raw HTTP to ensure Origin header is actually sent
-        status, raw = _raw_http(base, "POST", "/api/work",
-                                body=b'{"title": "x"}',
+        status, raw = _raw_http(base, "POST", "/api/taxonomy",
+                                body=b'{"name": "x"}',
                                 headers={
                                     "Content-Type": "application/json",
                                     "Origin": "https://evil.example.com",
@@ -1256,8 +537,8 @@ class TestCSRFDefense:
     def test_reject_non_loopback_host(self, seeded):
         root, base, slug = seeded
         # Use raw HTTP to ensure Host header is actually sent
-        status, raw = _raw_http(base, "POST", "/api/work",
-                                body=b'{"title": "x"}',
+        status, raw = _raw_http(base, "POST", "/api/taxonomy",
+                                body=b'{"name": "x"}',
                                 headers={
                                     "Content-Type": "application/json",
                                     "Host": "evil.example.com",
@@ -1267,8 +548,8 @@ class TestCSRFDefense:
     def test_allow_loopback_origin(self, seeded):
         root, base, slug = seeded
         # Loopback origin should pass — use raw HTTP to ensure Origin is sent
-        status, raw = _raw_http(base, "POST", "/api/work",
-                                body=b'{"title": "Local"}',
+        status, raw = _raw_http(base, "POST", "/api/taxonomy",
+                                body=b'{"name": "Local"}',
                                 headers={
                                     "Content-Type": "application/json",
                                     "Origin": "http://localhost:8765",
@@ -1279,14 +560,14 @@ class TestCSRFDefense:
         """GET requests should not require Content-Type or Origin checks."""
         root, base, slug = seeded
         # GET should work without JSON headers
-        req = Request(f"{base}/api/work", method="GET")
+        req = Request(f"{base}/api/taxonomy", method="GET")
         with urlopen(req) as res:
             assert res.status == HTTPStatus.OK
 
     def test_delete_requires_json_ct(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work/{slug}",
+            f"{base}/api/taxonomy/work-item",
             method="DELETE",
         )
         with pytest.raises(HTTPError) as exc:
@@ -1296,7 +577,7 @@ class TestCSRFDefense:
     def test_patch_requires_json_ct(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work/{slug}",
+            f"{base}/api/taxonomy/work-item",
             data=b'{}',
             method="PATCH",
         )
@@ -1307,7 +588,7 @@ class TestCSRFDefense:
     def test_put_requires_json_ct(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work/{slug}/artifacts/spec",
+            f"{base}/api/taxonomy/work-item",
             data=b'{}',
             method="PUT",
         )
@@ -1319,83 +600,7 @@ class TestCSRFDefense:
 # ── Tests: Idempotency and retry ────────────────────────────────────────────
 
 
-class TestIdempotency:
-    """Retry stale PUT/PATCH and duplicate POST creates without duplicate writes."""
-
-    def test_retry_stale_patch_409(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        rev = detail["coreRevision"]
-        # First update
-        status1, body1 = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"title": "First"},
-        })
-        assert status1 == HTTPStatus.OK
-        # Retry with same revision → stale
-        status2, body2 = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {"title": "Second"},
-        })
-        assert status2 == HTTPStatus.CONFLICT
-
-    def test_retry_stale_put_409(self, seeded):
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        rev = read["revision"]
-        # First write
-        _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "content": "first\n",
-            "revision": rev,
-        })
-        # Retry with same revision → stale
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "content": "second\n",
-            "revision": rev,
-        })
-        assert status == HTTPStatus.CONFLICT
-
-    def test_duplicate_post_no_duplicate(self, seeded):
-        root, base, slug = seeded
-        # Create first
-        _req(base, "POST", "/api/work", {"title": "Unique Title"})
-        # Create again with same title — gets a different slug (auto-dedup)
-        status2, body2 = _req(base, "POST", "/api/work", {"title": "Unique Title"})
-        assert status2 == HTTPStatus.CREATED
-        # The slug differs (auto-numbered)
-        work = FsWorkStore.open(root)
-        items = work.query()
-        unique = [i for i in items if "unique-title" in i.slug]
-        assert len(unique) == 2  # two items created, different slugs
-
-
 # ── Tests: Partial multi-field writes ───────────────────────────────────────
-
-
-class TestPartialWrites:
-    """Reject partial multi-field writes with NO intermediate persistence."""
-
-    def test_update_no_intermediate_state(self, seeded):
-        """If an update fails validation, no field should be persisted."""
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        old_priority = detail["item"]["priority"]
-        old_effort = detail["item"]["effort"]
-        rev = detail["coreRevision"]
-        # Send update with invalid effort — should fail entirely
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": rev,
-            "fields": {
-                "title": "Should not apply",
-                "effort": "super-invalid",
-            },
-        })
-        assert status in (HTTPStatus.UNPROCESSABLE_ENTITY, HTTPStatus.BAD_REQUEST)
-        # Verify no partial persistence
-        detail2 = _get_json(base, f"/api/work/{slug}")
-        assert detail2["item"]["title"] == "Build viewer"  # unchanged
-        assert detail2["item"]["priority"] == old_priority
-        assert detail2["item"]["effort"] == old_effort
 
 
 # ── Tests: Malformed JSON ───────────────────────────────────────────────────
@@ -1407,7 +612,7 @@ class TestMalformedInput:
     def test_malformed_json_400(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
+            f"{base}/api/taxonomy",
             data=b"{not valid json}",
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -1419,7 +624,7 @@ class TestMalformedInput:
     def test_empty_body_400(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
+            f"{base}/api/taxonomy",
             data=b"",
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -1431,7 +636,7 @@ class TestMalformedInput:
     def test_non_object_json_400(self, seeded):
         root, base, slug = seeded
         req = Request(
-            f"{base}/api/work",
+            f"{base}/api/taxonomy",
             data=b'["not", "an", "object"]',
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -1440,119 +645,16 @@ class TestMalformedInput:
             urlopen(req)
         assert exc.value.code == HTTPStatus.BAD_REQUEST
 
-    def test_malformed_yaml_sidecar(self, seeded):
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        rev = read["revision"]
-        # Truly invalid YAML — unmatched bracket causes parse error
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/capabilities.yaml", {
-            "content": "{invalid: [unclosed",
-            "revision": rev,
-        })
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_sidecar_not_yaml_mapping(self, seeded):
-        """Sidecar content must be a YAML mapping, not a list or scalar."""
-        root, base, slug = seeded
-        read = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        rev = read["revision"]
-        status, body = _req(base, "PUT", f"/api/work/{slug}/sidecars/capabilities.yaml", {
-            "content": "- item1\n- item2\n",  # YAML list, not mapping
-            "revision": rev,
-        })
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-
 # ── Tests: Route matching ───────────────────────────────────────────────────
-
-
-class TestRouteMatching:
-    """Subresource routes matched before catch-all work-detail route."""
-
-    def test_artifact_route_before_detail(self, seeded):
-        root, base, slug = seeded
-        # This should match the artifact route, not the detail route
-        detail = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        assert "content" in detail
-        assert "revision" in detail
-
-    def test_sidecar_route_before_detail(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}/sidecars/capabilities.yaml")
-        assert "content" in detail
-
-    def test_sidecar_discovery_route(self, seeded):
-        root, base, slug = seeded
-        sidecars = _get_json(base, f"/api/work/{slug}/sidecars")
-        assert isinstance(sidecars, list)
-
-    def test_actions_route(self, seeded):
-        root, base, slug = seeded
-        # POST to actions route should not 404
-        status, body = _req(base, "POST", f"/api/work/{slug}/actions/start", {
-            "force": True,
-        })
-        assert status == HTTPStatus.OK
 
 
 # ── Tests: Fresh stores per request ─────────────────────────────────────────
 
 
-class TestFreshStores:
-    """Every request opens fresh stores from the startup node root."""
-
-    def test_external_change_visible(self, seeded):
-        """A store change outside the server should be visible on next request."""
-        root, base, slug = seeded
-        # Create a work item externally
-        work = FsWorkStore.open(root)
-        item = work.create("External item", created="2026-02-01")
-        # Next request should see it
-        board = _get_json(base, "/api/work")
-        slugs = [i["slug"] for i in board]
-        assert item.slug in slugs
-
-
 # ── Tests: Invalid artifact names ───────────────────────────────────────────
 
 
-class TestInvalidArtifactNames:
-    """Reject unknown artifact names."""
-
-    def test_get_unknown_artifact(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "GET", f"/api/work/{slug}/artifacts/fake-artifact")
-        assert status == HTTPStatus.BAD_REQUEST
-
-    def test_put_unknown_artifact(self, seeded):
-        root, base, slug = seeded
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/fake-artifact", {
-            "content": "nope",
-        })
-        assert status == HTTPStatus.BAD_REQUEST
-
-
 # ── Tests: Backend addition A — DoD checklist ────────────────────────────────
-
-
-class TestDoDChecklist:
-    """Work detail payload includes dodChecklist for the complete modal."""
-
-    def test_work_detail_has_dod_checklist(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        assert "dodChecklist" in detail
-        checklist = detail["dodChecklist"]
-        assert isinstance(checklist, list)
-        # DEFAULT_DOD is used when no dod.yaml exists
-        assert len(checklist) >= 1
-
-    def test_dod_checklist_is_string_list(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        checklist = detail["dodChecklist"]
-        for item in checklist:
-            assert isinstance(item, str)
 
 
 # ── Tests: Backend addition B — post-write check warnings ────────────────────
@@ -1625,29 +727,14 @@ class TestTargetedPostWriteWarnings:
         assert status == HTTPStatus.UNPROCESSABLE_ENTITY
         assert not (root / "docs" / "taxonomy" / "broken-feature").exists()
 
-    def test_work_and_resource_saves_receive_targeted_warnings(self, seeded):
-        root, base, slug = seeded
-        detail = _get_json(base, f"/api/work/{slug}")
-        status, body = _req(base, "PATCH", f"/api/work/{slug}", {
-            "revision": detail["coreRevision"], "body": "[bad](tcw://C/missing)",
-        })
-        assert status == HTTPStatus.OK
-        assert any("tcw://" in warning for warning in body["warnings"])
-        artifact = _get_json(base, f"/api/work/{slug}/artifacts/spec")
-        status, body = _req(base, "PUT", f"/api/work/{slug}/artifacts/spec", {
-            "revision": artifact["revision"], "content": "[bad](tcw://T/missing)",
-        })
-        assert status == HTTPStatus.OK
-        assert any("tcw://" in warning for warning in body["warnings"])
-
     def test_validation_exception_does_not_falsely_fail_save(self, seeded, monkeypatch):
         import tcw.serve as serve_module
 
         monkeypatch.setattr(serve_module, "validate", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
         root, base, slug = seeded
-        status, body = _req(base, "POST", "/api/work", {"title": "Committed"})
+        status, body = _req(base, "POST", "/api/taxonomy", {"name": "Committed"})
         assert status == HTTPStatus.CREATED
-        assert body["item"]["title"] == "Committed"
+        assert body["term"]["name"] == "Committed"
         assert body["warnings"] == ["validation could not complete: boom"]
 
     def test_update_capability_includes_warnings(self, seeded):
@@ -1663,46 +750,6 @@ class TestTargetedPostWriteWarnings:
 
 
 # ── Tests: work tags (registry endpoint + create/update validation) ──────────
-
-
-class TestWorkTags:
-    """Registered-tag endpoint plus fail-closed create/update over HTTP."""
-
-    def test_get_registered_tags(self, seeded):
-        root, base, slug = seeded
-        FsWorkStore.open(root).register_tags(["bug", "urgent"])
-        _status, body = _req(base, "GET", "/api/work/tags")
-        assert body == {"tags": ["bug", "urgent"]}
-
-    def test_create_with_registered_tag(self, seeded):
-        root, base, slug = seeded
-        FsWorkStore.open(root).register_tags(["bug"])
-        status, body = _req(base, "POST", "/api/work",
-                            {"title": "Tagged", "tags": ["bug"]})
-        assert status == HTTPStatus.CREATED
-        assert body["item"]["tags"] == ["bug"]
-
-    def test_create_with_unregistered_tag_422(self, seeded):
-        root, base, slug = seeded
-        status, _body = _req(base, "POST", "/api/work",
-                             {"title": "Bad", "tags": ["ghost"]})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-
-    def test_patch_tags(self, seeded):
-        root, base, slug = seeded
-        FsWorkStore.open(root).register_tags(["bug"])
-        rev = _get_json(base, f"/api/work/{slug}")["coreRevision"]
-        status, body = _req(base, "PATCH", f"/api/work/{slug}",
-                            {"revision": rev, "fields": {"tags": ["bug"]}})
-        assert status == HTTPStatus.OK
-        assert body["item"]["tags"] == ["bug"]
-
-    def test_patch_unregistered_tag_422(self, seeded):
-        root, base, slug = seeded
-        rev = _get_json(base, f"/api/work/{slug}")["coreRevision"]
-        status, _body = _req(base, "PATCH", f"/api/work/{slug}",
-                             {"revision": rev, "fields": {"tags": ["ghost"]}})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 # ── Non-git node: every write route refuses, nothing lands ───────────────────
@@ -1728,25 +775,14 @@ def test_every_write_route_refuses_outside_a_repository(tmp_path):
     import shutil
 
     root = _node(tmp_path)
-    slug = _seed(root)
+    _seed(root)
     shutil.rmtree(root / ".git")
     httpd, base = _start_server(root)
     before = _manifest(root)
     try:
         calls = [
-            ("POST", "/api/work", {"title": "New"}),
-            ("POST", f"/api/work/{slug}/actions/start", {}),
             ("POST", "/api/taxonomy", {"name": "Gadget", "slug": "gadget"}),
             ("POST", "/api/capabilities", {"path": "a/b", "name": "Thing"}),
-            ("PATCH", f"/api/work/{slug}", {"fields": {"title": "Renamed"}}),
-            ("PUT", f"/api/work/{slug}/artifacts/spec", {"content": "# New\n"}),
-            ("PUT", f"/api/work/{slug}/sidecars/capabilities.yaml",
-             {"content": "changed: []\n"}),
-            ("PUT", f"/api/work/{slug}/plan-stages/one", {"content": "# Stage\n"}),
-            # No plan-stage DELETE row: it refuses an undeclared stage before
-            # any git path, and declaring one needs a plan manifest. Its `_rm`
-            # is the same Tier-1 guard the work DELETE below exercises.
-            ("DELETE", f"/api/work/{slug}", None),          # drop → _delete → _rm
         ]
         for method, path, body in calls:
             # Raw bytes, not parsed JSON: the routes disagree about whether an
@@ -1764,43 +800,3 @@ def test_every_write_route_refuses_outside_a_repository(tmp_path):
 
 
 # ── A child's parent and status through the web app ──────────────────────────
-
-class TestChildParent:
-    """Re-parenting is a field write; closing refuses over an open child."""
-
-    def _parent_and_item(self, root: Path) -> tuple[str, str]:
-        work = FsWorkStore.open(root)
-        parent = work.create("Parent", created="2026-01-01").slug
-        work.start(parent, owner="x")
-        item = work.create("Loose", created="2026-01-02").slug
-        return parent, item
-
-    def test_patch_parent_keeps_the_items_status(self, bare):
-        root, base = bare
-        parent, item = self._parent_and_item(root)
-        status, body = _req(base, "PATCH", f"/api/work/{item}",
-                            {"fields": {"parent": parent}})
-        assert status == HTTPStatus.OK, body
-        assert body["item"]["parent"] == parent
-        assert body["item"]["status"] == "backlog"
-
-    def test_patch_parent_refuses_a_cycle(self, bare):
-        root, base = bare
-        parent, item = self._parent_and_item(root)
-        FsWorkStore.open(root).update_work(item, parent=parent)
-        status, body = _req(base, "PATCH", f"/api/work/{parent}",
-                            {"fields": {"parent": item}})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-        assert "itself or a descendant" in body["error"]
-
-    def test_complete_is_refused_over_an_open_child(self, bare):
-        root, base = bare
-        work = FsWorkStore.open(root)
-        parent = work.create("Parent", created="2026-01-01").slug
-        work.start(parent, owner="x")
-        child = work.create("Child", created="2026-01-02", parent=parent).slug
-        status, body = _req(base, "POST", f"/api/work/{parent}/actions/complete", {
-            "resolution": "done", "dod_ack": [], "force": True})
-        assert status == HTTPStatus.UNPROCESSABLE_ENTITY
-        assert child in body["error"]
-        assert FsWorkStore.open(root).get(parent).status == "active"

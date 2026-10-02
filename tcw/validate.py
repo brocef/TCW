@@ -47,7 +47,7 @@ _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
 class ValidationTarget:
     """Storage-neutral identity of one object to validate."""
 
-    axis: Literal["taxonomy", "capabilities", "work"]
+    axis: Literal["taxonomy", "capabilities"]
     ref: str
 
 
@@ -316,7 +316,7 @@ def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
     elif target.axis == "capabilities":
         store = FsCapabilitiesStore.open(node_root)
     else:
-        store = FsWorkStore.open(node_root)
+        raise ValueError(f"validate cannot target the {target.axis!r} axis")
     return store._validation_resources(target.ref)
 
 
