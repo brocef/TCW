@@ -2047,6 +2047,10 @@ class ConnectedProject:
     id: str
     locator: str | None = None
     repository: "RepositoryDeclaration | None" = None
+    # The entry's optional `jira` block, kept unparsed: the store layer imports
+    # nothing from `tcw.work`, and the Jira backend checks its shape when
+    # delegation reads it (TCW-71).
+    jira: Any = field(default=None, compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -2815,7 +2819,7 @@ def parse_connected_entry(
         return None, [f"{where}: expected a locator string or a mapping, "
                       f"got {type(raw).__name__}"]
 
-    known = {"path", "repository"}
+    known = {"path", "repository", "jira"}
     unknown = set(raw) - known
     if unknown:
         problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
@@ -2837,7 +2841,7 @@ def parse_connected_entry(
     if problems:
         return None, problems
     return ConnectedProject(id=project_id, locator=locator,
-                            repository=declaration), problems
+                            repository=declaration, jira=raw.get("jira")), problems
 
 
 def parse_retention(raw: Any) -> tuple[dict[str, bool], list[str]]:

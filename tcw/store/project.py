@@ -365,7 +365,14 @@ class FsProjectRegistry(ProjectRegistry):
                          from_id: str | None = None) -> str | None:
         self._load_graph()
         if project_id not in self._by_id:
-            return None
+            # Not on this machine: still answerable from the declarations, so
+            # an absent upstream project is refused as upstream rather than
+            # treated as any other missing project.
+            reader = self._upstream_reader(project_id)
+            if reader is None:
+                return None
+            return (f"'{project_id}' is a read-only upstream project here "
+                    f"(reached through '{reader}')")
         start = self._config_for(from_id)
         if start is None:
             return None
@@ -388,6 +395,16 @@ class FsProjectRegistry(ProjectRegistry):
                     f"parent or child")
         return (f"'{project_id}' is a read-only upstream project here (reached "
                 f"through '{declarer}')")
+
+    def entry(self, project_id: str) -> ConnectedProject | None:
+        """The first `connected-projects` entry in this graph naming
+        `project_id`, whether or not that project is on this machine."""
+        self._load_graph()
+        for cfg in self._cache.values():
+            for entries in (cfg.parent, cfg.children, cfg.upstream):
+                if project_id in entries:
+                    return entries[project_id]
+        return None
 
     def overrides(self) -> list[ProjectOverride]:
         """The `TCW_PROJECT_*` locators that took effect in this graph.
