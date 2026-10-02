@@ -84,7 +84,7 @@ class MemoryBackend:
                     created=self.today, priority=DEFAULT_PRIORITY, effort=None,
                     complexity=None, tags=(), assignee=None, parent=None,
                     blocked_by=())
-        if request is not None:
+        if request:  # an empty request is no request, as in every backend
             self.requests[folder] = request
         return self._put(apply_changes(base, props))
 
