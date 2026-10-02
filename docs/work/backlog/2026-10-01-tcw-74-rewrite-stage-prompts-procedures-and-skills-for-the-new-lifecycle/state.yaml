@@ -1,0 +1,7 @@
+slug: 2026-10-01-tcw-74-rewrite-stage-prompts-procedures-and-skills-for-the-new-lifecycle
+title: TCW-74 — Rewrite stage prompts, procedures and skills for the new lifecycle
+created: '2026-10-01'
+resolution: null
+parent: 2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend
+blocked_by:
+- slug: 2026-10-01-tcw-72-personal-configuration-user-identity-and-per-user-overrides

@@ -1,0 +1,8 @@
+slug: 2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first
+title: TCW-76 — Migration guide from 2.x to 3.0.0, and migrate the TCW repository
+  first
+created: '2026-10-01'
+resolution: null
+parent: 2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend
+blocked_by:
+- slug: 2026-10-01-tcw-75-documentation-for-tcw-3-0-readme-guides-and-the-opt-in-git-example
