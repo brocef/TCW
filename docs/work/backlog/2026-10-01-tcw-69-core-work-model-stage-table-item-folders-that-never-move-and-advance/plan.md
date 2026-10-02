@@ -180,10 +180,11 @@ imported. In particular, `resolve.select` and the 2.x binding parser
     `Binding` built from a list under that path carries the label.
 - **What the parser reuses.** `documentation` goes through
   `parse_documentation_entries` (`base.py:2880`). `procedures` is parsed here,
-  with the procedure ids from `PROCEDURE_IDS` (`base.py:1143`) and the same
-  "an empty list is not an opt-out" rule as `parse_procedures`
-  (`base.py:3063`), but through `parse_bindings`, so `when.type` is refused
-  there too.
+  with the procedure ids from `PROCEDURE_IDS` (`base.py:1143`), through
+  `parse_bindings`, so `when.type` is refused there too. Unlike
+  `parse_procedures` (`base.py:3063`), an empty list is accepted in every
+  `prompt`, `pre`, `post` and procedure list: TCW-72 gives it the meaning
+  "nothing from here down" (2026-10-02 review).
 - **What the parser refuses**, each as one `ConfigProblem` naming its key path:
   - the removed keys (`lifecycle`, `tracker`, `auto-commit-transitions`,
     `publish-transitions`, `trunk-branch`, `retain`), each naming
