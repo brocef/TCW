@@ -58,11 +58,13 @@ class Slug:
             raise UsageError(
                 f"{text!r} is not a work item slug: use `project/folder` or a "
                 f"bare folder name")
-        if not PROJECT_ID_PATTERN.match(project):
+        # fullmatch, not match: `$` also matches before a final newline, which
+        # would let a slug read from a file keep its line ending.
+        if not PROJECT_ID_PATTERN.fullmatch(project):
             raise UsageError(
                 f"{text!r} is not a work item slug: {project!r} is not a "
                 f"project id (lowercase letters and digits joined by `-`)")
-        if len(folder) > FOLDER_LIMIT or not FOLDER_PATTERN.match(folder):
+        if len(folder) > FOLDER_LIMIT or not FOLDER_PATTERN.fullmatch(folder):
             raise UsageError(
                 f"{text!r} is not a work item slug: a folder name is letters, "
                 f"digits and `-`, starts with a letter or digit, and is at "

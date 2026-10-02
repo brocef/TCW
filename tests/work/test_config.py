@@ -203,6 +203,7 @@ def test_a_disabled_stage_needs_no_status():
 @pytest.mark.parametrize("hooks, key", [
     ({"timeout": 0}, "timeout"), ({"timeout": -1}, "timeout"),
     ({"timeout": True}, "timeout"), ({"timeout": "60"}, "timeout"),
+    ({"timeout": float("inf")}, "timeout"), ({"timeout": float("nan")}, "timeout"),
     ({"output-cap": 0}, "output-cap"), ({"output-cap": 1.5}, "output-cap"),
     ({"output-cap": True}, "output-cap"),
 ])

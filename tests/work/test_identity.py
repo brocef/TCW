@@ -24,6 +24,9 @@ def test_a_bare_folder_belongs_to_the_current_project():
     "has space",
     "Upper/f",
     "tcw/-leading-dash",
+    "tcw/f\n",
+    "tcw\n/f",
+    "f\n",
     "tcw/" + "x" * (FOLDER_LIMIT + 1),
 ])
 def test_anything_else_is_a_usage_error(text):

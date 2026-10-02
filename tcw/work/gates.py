@@ -278,13 +278,15 @@ def drift_problems(layout: Layout, items: Iterable[Item],
                   if created == newest]
         kinds = {kind for kind, _ in latest}
         label = name if what == "capability" else f"term {name}"
-        by = ", ".join(sorted(str(slug) for _, slug in latest))
+        by = ", ".join(sorted({str(slug) for _, slug in latest}))
         if "removed" in kinds and kinds & _PRESENT_KINDS:
-            problems.append(f"{label}: ambiguous — items created the same day "
-                            f"({by}) declare it both kept and removed")
+            who = (f"items created the same day ({by}) declare"
+                   if len({slug for _, slug in latest}) > 1 else f"{by} declares")
+            problems.append(f"{label}: ambiguous — {who} it both kept and removed")
             continue
+        # A `new` among the newest declarations keeps the Missing check.
         kind = "removed" if "removed" in kinds else (
-            "new" if kinds == {"new"} else "changed")
+            "new" if "new" in kinds else "changed")
         if what == "capability":
             problem = _capability_problem(kind, name, reader, finished=True)
         else:

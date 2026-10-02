@@ -12,6 +12,7 @@ gate, and refuses duplicates that a merged list may legitimately repeat.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
@@ -272,7 +273,7 @@ def _positive_number(value: Any, integer: bool) -> bool:
     if isinstance(value, bool):
         return False
     kinds = (int,) if integer else (int, float)
-    return isinstance(value, kinds) and value > 0
+    return isinstance(value, kinds) and math.isfinite(value) and value > 0
 
 
 def _parse_hooks(raw: Any, problems: _Problems) -> HookLimits:

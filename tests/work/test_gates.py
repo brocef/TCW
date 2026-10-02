@@ -139,6 +139,8 @@ def test_completion_gate_names_the_round_to_write(layout):
 
 def test_an_external_verdict_stage_is_not_checked(tmp_path):
     layout = Layout(tmp_path, ALL, frozenset({"request", "qa"}))
+    [problem] = completion_gate(layout, SLUG)      # review is still checked
+    assert problem.startswith("review:")
     write_round(layout, "review", 1, verdict("accepted", 0))
     assert completion_gate(layout, SLUG) == []
 
@@ -187,6 +189,21 @@ def test_a_changed_path_that_is_missing_is_not_drift(layout):
     assert drift_problems(layout, [a], FakeReader({"x/y": Present("Missing")})) == []
     declare(layout, "new: [x/y]\n", a.slug)
     assert drift_problems(layout, [a], FakeReader({"x/y": Present("Missing")}))
+
+
+def test_a_new_among_the_newest_declarations_keeps_the_missing_check(layout):
+    a, b = item("1-a", date(2026, 1, 1)), item("2-b", date(2026, 1, 1))
+    declare(layout, "new: [x/y]\n", a.slug)
+    declare(layout, "changed: [x/y]\n", b.slug)
+    assert drift_problems(layout, [a, b], FakeReader({"x/y": Present("Missing")}))
+
+
+def test_one_item_declaring_both_ways_is_not_called_two_items(layout):
+    a = item("1-a", date(2026, 1, 1))
+    declare(layout, "new: [x/y]\nremoved: [x/y]\n", a.slug)
+    [problem] = drift_problems(layout, [a], FakeReader())
+    assert "ambiguous" in problem and "same day" not in problem
+    assert "tcw/1-a" in problem
 
 
 def test_drift_covers_removals_terms_and_unchecked(layout):

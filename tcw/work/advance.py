@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import MovedWithoutNote, Refused, UsageError
+from tcw.errors import MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.work.backend import WorkBackend
 from tcw.work.config import Binding, WorkConfig
 from tcw.work.gates import RecordsReader, completion_gate, records_gate
@@ -227,8 +227,16 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
             reader: RecordsReader, project_root: Path, slug: Slug, *,
             to: str | None = None, force: bool = False, reason: str | None = None,
             dry_run: bool = False) -> Outcome:
+    if layout.enabled != config.enabled \
+            or layout.external != backend.external_stages:
+        # The layout answers for verdicts and the completion gate, the config
+        # and backend for everything else; built apart, they would disagree.
+        raise ValueError("the layout must be built from config.enabled and "
+                         "backend.external_stages")
     _check_usage(config, to, force, reason)                         # 6.1
-    item = backend.read(slug.folder)                                # 6.2
+    if slug.project != backend.project:                             # 6.2
+        raise NotFound(f"{slug} is not an item of project {backend.project}")
+    item = backend.read(slug.folder)
 
     target = _choose_target(item, to, backend, config, layout)      # 6.3
     if isinstance(target, Outcome):

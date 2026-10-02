@@ -143,7 +143,7 @@ def test_a_review_accepted_before_a_newer_implementation_is_stale(world):
     world.round(slug, "implement", 1)
     world.round(slug, "review", 1, verdict("accepted", 1))
     world.round(slug, "implement", 2)
-    refused(world.advance(slug), "stale", "round-2.md")
+    refused(world.advance(slug), "stale", "review/round-2.md")
 
 
 def test_a_rejected_qa_goes_back_to_implement(world):
@@ -168,6 +168,24 @@ def test_no_bare_advance_from_a_terminal_stage_or_from_no_stage(world, stage):
 def test_an_unknown_item_is_not_found(world):
     with pytest.raises(NotFound):
         world.advance(Slug("tcw", "nope"))
+
+
+def test_a_slug_in_another_project_is_not_found_here(world):
+    slug = world.item("request")
+    with pytest.raises(NotFound):
+        world.advance(Slug("elsewhere", slug.folder))
+    assert world.stage(slug) == "request"
+    assert world.backend.calls == []
+
+
+def test_a_layout_that_disagrees_with_the_backend_is_a_bug(tmp_path):
+    w = World(tmp_path, external=JIRA_LIKE)
+    w.layout = Layout(tmp_path / "work", w.config.enabled, frozenset())
+    with pytest.raises(ValueError):
+        w.advance(w.item("qa"), to="completed", reason="QA ok")
+    w.layout = Layout(tmp_path / "work", w.config.enabled - {"plan"}, JIRA_LIKE)
+    with pytest.raises(ValueError):
+        w.advance(w.item("qa"), to="completed", reason="QA ok")
 
 
 # -- AC 8: skips, reasons and backward moves -----------------------------------
