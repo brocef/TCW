@@ -13,27 +13,10 @@ from tcw.work.gates import (
 from tcw.work.layout import Layout
 from tcw.work.model import STAGES, Item, Slug
 from tests.test_capabilities_rm import repo, write_cap
+from tests.work.fake_reader import FakeReader
 
 ALL = frozenset(s.name for s in STAGES)
 SLUG = Slug("tcw", "1-thing")
-
-
-class FakeReader:
-    """Answers from tables; anything not listed is absent, or removed."""
-
-    def __init__(self, capabilities=None, removals=None, terms=None):
-        self.capabilities = capabilities or {}
-        self.removals = removals or {}
-        self.terms = terms or {}
-
-    def capability(self, path):
-        return self.capabilities.get(path, ABSENT)
-
-    def removal(self, path):
-        return self.removals.get(path, REMOVED)
-
-    def term(self, term):
-        return self.terms.get(term, ABSENT)
 
 
 @pytest.fixture
