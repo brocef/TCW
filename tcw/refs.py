@@ -169,3 +169,39 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
         return ResolveResult(True, "W", f"{project}/{bare}", "", project)
     except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False
         return ResolveResult(False, parsed.axis, None, str(e))
+
+
+def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveResult:
+    """A 3.0 work reference: the item read through its project's backend. Found
+    at any stage is OK; `NotFound` is missing; a project declared but not on
+    this machine is unresolved (TCW-70 Design 12.1)."""
+    from tcw.errors import BackendError, NotFound, Unreachable
+    from tcw.work.open import open_backend, open_project
+
+    if namespace is None and "/" in ref:
+        namespace, ref = ref.split("/", 1)
+    try:
+        if namespace is None:
+            backend = open_backend(node_root)
+        else:
+            backend = open_project(namespace, node_root)
+            if backend.project == _current_project(node_root):
+                namespace = None
+        item = backend.read(ref)
+    except Unreachable as error:
+        return ResolveResult(False, "W", None, f"unresolved: {error}")
+    except NotFound as error:
+        return ResolveResult(False, "W", None, str(error))
+    except BackendError as error:
+        return ResolveResult(False, "W", None, str(error))
+    if namespace is None:
+        return ResolveResult(True, "W", item.slug.folder, "")
+    return ResolveResult(True, "W", str(item.slug), "", namespace)
+
+
+def _current_project(node_root: Path) -> str | None:
+    from tcw.store.fs import FsProjectRegistry
+    try:
+        return FsProjectRegistry.open(node_root).current.id
+    except ValueError:
+        return None

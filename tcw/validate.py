@@ -468,3 +468,109 @@ def validate(node_root: Path, path: Path | None = None, *,
             problems += [f"{comp} check: {p}" for p in store._legacy_config_problems()]
 
     return problems
+
+
+# ---------------------------------------------------------------------------
+# TCW 3.0 work checks (TCW-70 Design 10.1). Beside the 2.x checks above until
+# TCW-70 switches `validate` over to them.
+
+
+def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
+    """Every work finding for a filesystem-mode project, and a note for stderr
+    naming the files whose references could not be checked, or None.
+
+    Unreadable items do not stop the checks: they come from `read_all`, each
+    is one error, and every other check runs over the readable items."""
+    from tcw.errors import BackendError, NotFound, Unreachable
+    from tcw.findings import Finding
+    from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
+    from tcw.work.gates import project_reader, records_problems
+    from tcw.work.model import TERMINAL, stage as table_stage
+    from tcw.work.open import open_backend, open_project
+    from tcw.work.references import FOUND, MISSING, UNRESOLVED, reference_problems, \
+        stage_problems
+
+    try:
+        backend = open_backend(project_root)
+    except BackendError as error:
+        return [Finding("error", str(project_root / "tcw-config.yaml"), str(error))], None
+    if not isinstance(backend, FsWorkBackend):
+        return [], None                      # the Jira backend checks its own (TCW-71)
+    layout = backend.layout
+    findings = list(work_store_problems(backend.work_path, backend.project,
+                                        backend.config))
+    items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
+
+    def item_file(slug) -> str:
+        return str(layout.item_dir(slug) / "item.yaml")
+
+    opened: dict[str, object] = {}
+
+    def resolve(ref) -> str:
+        if ref.project not in opened:
+            try:
+                opened[ref.project] = open_project(ref.project, project_root)
+            except NotFound:
+                opened[ref.project] = MISSING
+            except (Unreachable, BackendError):
+                opened[ref.project] = UNRESOLVED
+        other = opened[ref.project]
+        if isinstance(other, str):
+            return other
+        try:
+            other.read(ref.folder)
+        except NotFound:
+            return MISSING
+        except BackendError:
+            return UNRESOLVED
+        return FOUND
+
+    for problem in reference_problems(items, backend.project, resolve):
+        findings.append(Finding(problem.level, item_file(problem.slug), problem.message))
+    for problem in stage_problems(items, layout):
+        findings.append(Finding(problem.level, item_file(problem.slug),
+                                f"stage {problem.message}"))
+    reader = None
+    for item in items:
+        if item.stage is None or table_stage(item.stage).kind == TERMINAL:
+            continue
+        path = layout.capabilities_file(item.slug)
+        if not path.exists():
+            continue
+        if reader is None:
+            reader = project_reader(project_root, registry)
+        for message in records_problems(layout, item.slug, reader, finished=False):
+            findings.append(Finding("error", str(path), message))
+    note = None
+    if unreadable:
+        note = ("references in these files were not checked, because the files "
+                "could not be read: " + ", ".join(str(u.path) for u in unreadable))
+    return findings, note
+
+
+def _shared_work_paths(registry) -> list[str]:
+    """Two filesystem-mode projects in the graph whose work paths are the same
+    folder, named with both IDs and the path."""
+    from tcw.store.fs import SENTINEL, load_config
+    from tcw.work.open import work_path
+
+    seen: dict[Path, str] = {}
+    for project in [registry.current, *registry.ancestors(), *registry.descendants()]:
+        root = Path(project.locator)
+        try:
+            raw = load_config(root / SENTINEL)
+        except ValueError:
+            continue
+        work = raw.get("work") if isinstance(raw, dict) else None
+        if isinstance(work, dict) and work.get("backend", "filesystem") != "filesystem":
+            continue
+        try:
+            path = work_path(root)
+        except ValueError:
+            continue
+        previous = seen.get(path)
+        if previous is not None and previous != project.id:
+            return [f"project graph: projects '{previous}' and '{project.id}' "
+                    f"resolve to the same work path: {path}"]
+        seen[path] = project.id
+    return []

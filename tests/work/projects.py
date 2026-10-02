@@ -53,3 +53,12 @@ def connect(a: Path, b: Path, relation: str) -> None:
 def commit_all(root: Path, message: str = "fixture") -> None:
     git(root, "add", "-A")
     git(root, "commit", "-qm", message, "--allow-empty")
+
+
+def write_item(root: Path, folder: str, data: "dict | str") -> Path:
+    """A hand-written item folder in the project's work path."""
+    path = root / WORK_PATH / folder
+    path.mkdir(parents=True, exist_ok=True)
+    text = data if isinstance(data, str) else yaml.safe_dump(data, sort_keys=False)
+    (path / "item.yaml").write_text(text)
+    return path

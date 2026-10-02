@@ -254,6 +254,36 @@ def _shipped_but_missing(node, st) -> list[tuple[str, str]]:
     return out
 
 
+def _completed_but_missing(node, st) -> list[str]:
+    """TCW 3.0 drift: what the finished items declared in `capabilities.yaml`
+    that today's records no longer show, through TCW-69's `drift_problems`,
+    plus one finding per unreadable `item.yaml`. It never reads a
+    `Planning doc` field. `st` is accepted for the caller's symmetry with
+    `_shipped_but_missing`; the reader opens the project's stores itself."""
+    from tcw.errors import BackendError
+    from tcw.store.fs import FsProjectRegistry
+    from tcw.work.fs_backend import FsWorkBackend, read_all
+    from tcw.work.gates import drift_problems, project_reader
+    from tcw.work.model import completion_stage
+    from tcw.work.open import open_backend
+
+    try:
+        backend = open_backend(node)
+    except BackendError as error:
+        return [str(error)]
+    if not isinstance(backend, FsWorkBackend):
+        return []
+    items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
+    finished = [i for i in items if i.stage == completion_stage()]
+    problems = [f"{u.path}: cannot be read, so its declarations were not "
+                f"checked: {u.message}" for u in unreadable]
+    if finished:
+        registry = FsProjectRegistry.open(node)
+        problems += drift_problems(backend.layout, finished,
+                                   project_reader(node, registry))
+    return problems
+
+
 def _check(args: argparse.Namespace) -> int:
     node = find_node(NAME)
     if node is None:

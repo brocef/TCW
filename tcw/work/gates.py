@@ -24,7 +24,7 @@ from typing import Callable, Iterable, NamedTuple, Protocol
 import yaml
 
 from tcw.store.base import RefError
-from tcw.store.fs import FsCapabilitiesStore
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, unreachable_project_note
 from tcw.work.layout import ACCEPTED, Layout
 from tcw.work.model import STAGES, Item, Slug
 
@@ -429,3 +429,40 @@ def ledger_reader(own: FsCapabilitiesStore | None, registry, project_id: str,
     (`own`, None when it keeps none), its child projects' ledgers
     (`open_child`) and its taxonomy store (None when it keeps none)."""
     return _LedgerReader(own, registry, project_id, open_child, taxonomy)
+
+
+def _open_or_reason(store_cls, root: Path):
+    """A project's store: `(store, None)`, `(None, None)` when it keeps none,
+    or `(None, reason)` when it cannot be opened."""
+    try:
+        store = store_cls.open(root)
+    except (ValueError, yaml.YAMLError) as error:
+        return None, str(error)
+    return (store, None) if store.root.is_dir() else (None, None)
+
+
+def project_reader(project_root: Path, registry) -> RecordsReader:
+    """`ledger_reader` for the project at `project_root`: its own capabilities
+    ledger and taxonomy, and each child project's ledger opened on demand.
+    A store that cannot be opened turns every question routed to it into an
+    `Unchecked` answer naming why, never an exception."""
+    own, reason = _open_or_reason(FsCapabilitiesStore, Path(project_root))
+    taxonomy, _ = _open_or_reason(FsTaxonomyStore, Path(project_root))
+    children: dict[str, tuple] = {}
+
+    def open_child(project_id: str) -> "FsCapabilitiesStore | str":
+        if project_id not in children:
+            project = registry.get(project_id)
+            children[project_id] = (
+                _open_or_reason(FsCapabilitiesStore, Path(project.locator))
+                if project is not None
+                else (None, unreachable_project_note(registry, project_id)
+                      or f"project '{project_id}' is declared but not on this "
+                         f"machine"))
+        store, why = children[project_id]
+        if why is not None:
+            return why
+        return store if store is not None else \
+            f"project '{project_id}' keeps no capabilities ledger"
+
+    return ledger_reader(own, registry, registry.current.id, open_child, taxonomy)
