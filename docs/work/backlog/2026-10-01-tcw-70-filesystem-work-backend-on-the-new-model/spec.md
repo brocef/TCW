@@ -39,9 +39,10 @@ records come back with TCW-71, written for its own model.
 | Record | What it says |
 | --- | --- |
 | `work/advance-a-work-item` | `tcw work advance <slug> [--to] [--force --reason] [--dry-run]`: the one move command, its gates, reasons and exit codes, as TCW-69 defines them. |
-| `work/comment-on-a-work-item` | `tcw work comment <slug>` reads text from stdin and records it; in filesystem mode it is a file under `comments/`. Forced moves and discards leave their reason the same way. || `work/delegate-a-work-item-to-another-project` | `tcw work new --project <id>` and `edit --blocks` into another filesystem-mode project, its three conditions, the inbox landing, and files left uncommitted. Replaces the two removed delegation records; a new path because the old ones say "child" and "parent". |
+| `work/comment-on-a-work-item` | `tcw work comment <slug>` reads text from stdin and records it; in filesystem mode it is a file under `comments/`. Forced moves and discards leave their reason the same way. |
+| `work/delegate-a-work-item-to-another-project` | `tcw work new --project <id>` and `edit --blocks` into another filesystem-mode project, its conditions, the inbox landing, and files left uncommitted. An upstream project is refused, so `cli/read-from-an-upstream-project` stays true. Replaces the two removed delegation records; a new path because the old ones say "child" and "parent". |
 
-**Changed (28).** Twenty under `work/`, each because its text names a command,
+**Changed (29).** Twenty under `work/`, each because its text names a command,
 file or behavior that changes here:
 
 - `configure-the-work-lifecycle` (`work.lifecycle` becomes `work.stages` and
@@ -74,8 +75,11 @@ file or behavior that changes here:
 - `view-the-board` (`list` flags, `--tag` kept; no status columns, no
   descendant boards).
 
-Eight elsewhere:
+Nine elsewhere:
 
+- `taxonomy/declare-the-taxonomy-stores-home-repository` (its
+  `description.md:15-16` says a work store "names six status folders, and TCW
+  checks them", which Design 3.5 makes false);
 - `cli/locate-tcw-storage-folders` (`tcw work inbox path` goes);
 - `cli/reference-a-tcw-object` (no resolved-item records);
 - `cli/validate-a-node` (the work checks of Design 10);
@@ -85,12 +89,17 @@ Eight elsewhere:
   commands);
 - `capabilities/detect-capability-drift` (Design 10.3; the epic's decision 2
   gives this rewrite to this slice);
-- `web/editing` (work items are no longer editable in `tcw serve` until TCW-77;
-  Design 12).
+- `web/editing` (work items are no longer shown or editable in `tcw serve`
+  until TCW-77; Design 12).
 
 **Unchanged (3):** `work/configure-procedures`,
 `work/declare-which-documents-track-which-changes`, and
 `work/inspect-the-node-topology`, which TCW-73 renames.
+
+Two records outside `work/` are checked and stay true, so they are not changed:
+`cli/read-from-an-upstream-project` (upstream projects stay read-only; Design
+6.2) and `cli/host-multiple-projects-in-one-repo` (the same-work-path check is
+kept; Design 10.1).
 
 ### Taxonomy
 
@@ -151,8 +160,12 @@ reachable.
    TCW-71 replaces it with a Jira backend built on TCW-69's interface.
 4. **Other surfaces read the 2.x store directly**, so removing the store breaks
    them unless they are rewired:
-   - `tcw validate` opens `FsWorkStore` in five places
-     (`tcw/validate.py:32`, `:125`, `:162`, `:185`, `:253`), checks retention
+   - `tcw validate` names `FsWorkStore` in eight places
+     (`tcw/validate.py:32`, `:125`, `:162`, `:185`, `:253`, `:268`, `:318`,
+     `:344`), including `_target_roots`, which `tcw serve` reaches through
+     `validate(..., target=...)` (`tcw/serve/__init__.py:168-173`), and the
+     check that two projects resolve to the same `work.path`
+     (`validate.py:340-350`). It also checks retention
      and tracker settings (`validate.py:366-384`), and runs the 2.x capability
      gate over open items (`validate.py:268-295`);
    - `tcw capabilities drift` follows `Planning doc` fields into the work store
@@ -202,24 +215,27 @@ reachable.
 5. **Every surface that read the 2.x store reads the backend**, or is removed
    with a named owner who rebuilds it: `validate`, `drift`, `tcw://` references,
    `init`, `provision`, and `serve`.
-6. **No git state changes** from any command this slice touches.
+6. **TCW never changes git state** from any command this slice touches,
+   including tag edits. Git is still read where Design 4.2 says.
 7. **A test suite that never needs this repository's board**, green on the epic
    branch while the repository's own config and board are still 2.x.
 
 ## Non-goals
 
-- **The Jira backend** (TCW-71). This slice leaves two branches for it:
+- **The Jira backend** (TCW-71, the next slice in the order of work). This
+  slice leaves two branches for it:
   - opening a project whose `work.backend` is `jira`;
-  - delegating into one.
+  - delegating into a project that is declared but not on this machine and
+    whose project entry carries a `jira` block (Design 6.3).
 
-  Until TCW-71 lands, both fail with exit 1 and a message saying the Jira
-  backend is not part of this build. `lookup` and the `tickets` commands are
-  TCW-71's.
+  Until TCW-71 lands, both fail with exit 1 and a message saying they arrive
+  with the Jira backend. `lookup`, the Jira-key branch of `resolve_item`, and
+  the `tickets` commands are TCW-71's.
 - **Personal configuration and identity** (TCW-72): `list --mine`,
   `--assign-me`, `user.name`, `inherit`, `config show`, and recording a comment's
   author. This slice implements the filesystem backend's `current_user`
-  operation (Design 3.3), but nothing in this slice calls it, and the value it
-  answers with comes from TCW-72's personal configuration.
+  operation (Design 3.3), which answers `None` until TCW-72 supplies a name;
+  nothing in this slice calls it.
 - **The rest of the command surface** (TCW-73). This includes:
   - `--help` text;
   - the `tcw noun verb` naming pass;
@@ -245,8 +261,9 @@ reachable.
   following them (Design 10.3).
 - **Migrating this repository** (TCW-76): its `tcw-config.yaml`, its board, its
   `dod.yaml` and `graveyard.yaml`, and `scripts/require_artifact.py`.
-- **The web viewer** (TCW-77). This slice removes the 2.x work routes and does
-  not build new ones.
+- **The web viewer** (TCW-77). This slice removes the 2.x work routes and
+  leaves a two-route stub so the existing client still loads (Design 12.2). It
+  does not change or rebuild the client.
 - **The `evals/` harness**, which seeds and grades fixtures with 2.x commands.
   The epic's decision 14 gives it to TCW-74. This slice only keeps its tests
   from failing in the meantime (Design 9).
@@ -334,24 +351,31 @@ epic's decision 8). This slice adds no exception class of its own.
    - **[Decision]** An ID that no declaration names at all raises `NotFound`
      (exit 4), as TCW-73's spec has it (its Design 3.4): there is nothing to
      reach, so "try again later" would mislead.
-3. `open_delegation_target(project_id, here) -> WorkBackend` opens another
-   project for writing.
-   - The project is resolved as above, except that an unknown ID is the
-     first delegation condition failing: `Refused` (exit 3), as the ticket and
-     the epic's decision 4 require, not exit 4.
-   - A declared project not present on this machine is also `Refused`
-     (exit 3), **unless** its connected-project entry carries a `jira` block.
-     **[Decision, owner 2026-10-01]** In that case the function hands the
-     entry to TCW-71's Jira adapter, which opens the target's Jira project
-     from the block alone and creates the ticket in its inbox (TCW-71). This
-     check comes first, before any filesystem condition, because none of
-     them can be checked without the checkout. TCW-70 ships only the branch
-     point: until TCW-71 lands, an entry with a `jira` block is refused with
-     a message saying Jira delegation arrives with the Jira backend.
-   - In filesystem mode it then checks the other two delegation conditions
-     (Design 6). A failed condition raises `Refused` (exit 3) naming it.
+3. **Delegation is its own operation, not a way of opening a project**
+   (review decision R5). Two functions, both in `tcw/work/open.py`:
+   - `delegate(project_id, title, request, priority, *, here) -> str` creates
+     an item in another project and returns what it created: a full slug in
+     the target project, or, for a Jira target that is not on this machine, a
+     ticket key. The signature is R5's; `here` (the current project root) is
+     added as a keyword because the registry is resolved from it.
+     **[Decision]**
+   - `open_for_update(project_id, here) -> WorkBackend` opens another
+     project's backend so `edit --blocks` can change an existing item there.
+     It never creates anything.
+   - Both check the conditions of Design 6.3 in the same order, and both
+     raise `Refused` (exit 3) naming the first that fails. They differ in one
+     case only: a project declared but not on this machine whose project
+     entry carries a `jira` block. `delegate` hands it to TCW-71's Jira
+     adapter, which creates the ticket in the target's inbox from the block
+     alone and returns the key (exit 0; owner answer Q1). `open_for_update`
+     refuses it (exit 3), because there is no checkout to edit and `--blocks`
+     never creates a ticket.
+   - TCW-70 ships only the branch point for the `jira` block: until TCW-71
+     lands, `delegate` fails there with `BackendError` (exit 1) and the
+     message "Jira delegation arrives with the Jira backend".
    - Every rule specific to the filesystem lives in the filesystem adapter;
-     the caller sees only "here is a backend" or "refused, because …".
+     the caller sees only "here is what was created", "here is a backend", or
+     "refused, because …".
 
 ### 3. The filesystem backend (`tcw/work/fs_backend.py`)
 
@@ -408,6 +432,12 @@ Jira and are inert here:
    - Writes go to a temporary file in the same folder, which then replaces
      `item.yaml` in one step. A reader therefore never sees a half-written
      file.
+   - **A write keeps what it does not change** (review decision R12). Only
+     `set_stage` writes a new `stage`. Every other write (`update`, and the
+     reference rewrite of a rename, Design 5) writes back the raw `stage`
+     string it read from the file, even when that value reads as no stage
+     (3.2.3). So `edit` on an item holding `stage: verify` keeps
+     `stage: verify`; it never drops the key or replaces the value.
 3. **Reading.** **[Decision]** Strict, with one exception.
    - An `item.yaml` that is unreadable, not a mapping, has an unknown key, lacks
      `title` or `stage`, or holds a value outside its scale or type, makes the
@@ -439,8 +469,13 @@ Jira and are inert here:
      place TCW removes a folder, and only one it created in the same call.
    - It writes `item.yaml` with `title`, `stage`, `priority` (default `medium`)
      and the given properties.
-   - When `request` is given, it writes the text **verbatim** to the request
-     document, whatever the starting stage. **[Decision]** That includes an
+   - When `request` is given and is not empty, it writes the text
+     **verbatim** to the request document, whatever the starting stage.
+     **[Decision]** An empty string is the same as no request: no request
+     document and no `request/` folder are written. A command run with a
+     stdin that is not a terminal but sends nothing (common in a subprocess)
+     gets `""` from `read_piped_stdin` (`tcw/stdin.py:71-81`), and that must
+     not leave an empty request file behind. **[Decision]** That includes an
      inbox item: piped text is the request's first draft, and the request
      stage revises it in place. There is no `intake.md`. The path comes from
      TCW-69's `layout.path` for the first flow stage whose artifact is a
@@ -466,8 +501,25 @@ Jira and are inert here:
      `BackendError` naming every unreadable `item.yaml`. It does not hide part
      of the board. `tcw validate` reports the same files with the key at fault
      (Design 10).
+   - **What else an unreadable item affects** (review decision R11). Only
+     `list` fails outright. The other callers that need every item read the
+     folders one by one and set the unreadable ones aside, through a plain
+     function of the adapter module, `read_all(work_path) -> (items,
+     unreadable)` **[Decision]**, which `list` also uses before it raises:
+     - `show` of a readable item still succeeds. Its `blocks` and `children`
+       (7.1) are computed from the readable items only, and stderr carries one
+       warning naming every unreadable `item.yaml`.
+     - `validate` and `drift` report each unreadable item as a finding and
+       carry on with the rest (Design 10).
+     - `rename` refuses, as Design 5 says, because it could miss a reference.
 4. **`update(folder, changes)`.** Reads, applies TCW-69's `Changes` and checks,
    and writes. Stage is not part of `Changes`.
+   - The tag check covers only the tags this change **adds** (review decision
+     R12), as 2.x's `_validate_tags` does with its `held` argument
+     (`tcw/store/fs.py:7621`). A tag the item already carries that the
+     registry no longer has is kept and not refused, so an item holding one
+     can still be edited. Removing such a tag is always allowed.
+   - The raw `stage` is written back unchanged (3.2.2).
 5. **`set_stage(folder, stage, note)`**
    - It writes the new `stage` to `item.yaml` and then, when `note` is given,
      writes the note as a comment (3.3.6).
@@ -507,13 +559,13 @@ Jira and are inert here:
       of 3.2.
     - No `comments/` folder means no comments, not an error.
 11. **`current_user()`.** Returns `user_name` when the backend was built with
-    one. Otherwise it raises `BackendError` (exit 1) saying no identity is
-    configured. **[Decision]** This slice always builds the backend with no
-    `user_name`, because the only source TCW-72 allows is `user.name` in
-    personal configuration, which TCW-72 adds; TCW-72 passes the value in
-    `open_backend` and writes the final message text (its Design 9). No
-    command in this slice calls `current_user`; the contract tests cover both
-    answers.
+    one, and `None` otherwise. It never raises (review decision R3, matching
+    TCW-69's Design 5.4 and its criterion for `current_user`). **[Decision]**
+    This slice always builds the backend with no `user_name`, because the only
+    source TCW-72 allows is `user.name` in personal configuration, which
+    TCW-72 adds and passes in through `open_backend`. TCW-72's CLI turns
+    `None` into its own message (exit 1). No command in this slice calls
+    `current_user`; the contract tests cover both answers.
 
 #### 3.4 Where the work path is
 
@@ -545,16 +597,25 @@ has no status folders to look for. The same test serves:
 1. **Each branch carries its own `stage`**, as the ticket says. There is no
    history list, so two branches conflict only when both changed the same
    `item.yaml`.
-2. **TCW never changes git state.**
+2. **TCW never changes git state** (review decision R4). The rule is worded
+   that way, never as "TCW never runs git", because TCW still reads git.
    - No module this slice adds or keeps runs `git add`, `commit`, `mv`, `rm`,
-     `reset`, `checkout`, `merge`, `worktree`, `push`, `pull` or `fetch`. One
-     exception is not a write: `tcw provision` clones a declared store. Its
-     `--refresh` fetch and checkout stay as they are, because they act on the
-     clone TCW made, never on the project's own repository; TCW-73 reviews them
-     with the rest of the git wording.
-   - Git is otherwise only read: to find a repository root and re-anchor
-     paths inside a worktree (as today), and to run `git status --porcelain`
-     for the delegation check.
+     `reset`, `checkout`, `merge`, `worktree add`, `worktree remove`, `push`,
+     `pull`, `fetch`, `stash` or `tag`. That includes tag edits (Design 7).
+   - The one exception is `tcw provision`, which may clone a declared store.
+     Its `--refresh` fetch and checkout (`tcw/store/fs.py:4256-4276`, in
+     `FsStoreProvisioner`) stay as they are in this slice, because they act
+     on the clone TCW made, never on the project's own repository; TCW-73
+     settles `provision`'s surface and the wording of its messages.
+   - Git is otherwise only read:
+     - to find a repository root and re-anchor paths inside a linked
+       worktree (as today, `tcw/store/project.py:134-145`);
+     - for the delegation check, run as
+       `git --no-optional-locks status --porcelain`, so it never refreshes the
+       index or takes `index.lock` in a repository someone else is working in.
+   - TCW-73's test that messages carry no git wording exempts the messages of
+     these read-only checks and of `provision` (R4). Their wording is fixed in
+     Design 6.3.
 3. **The 2.x machinery that existed only to commit goes.** That is:
    - the auto-commit of transitions;
    - publishing to a remote;
@@ -594,7 +655,9 @@ has no status folders to look for. The same test serves:
         exit 1), naming it. An item that cannot be read might hold a reference
         that would then be missed.
    3. Move the folder with one filesystem rename (never `git mv`).
-   4. Rewrite each referencing `item.yaml`, writing the new slug in full.
+   4. Rewrite each referencing `item.yaml`, writing the new slug in full and
+      changing nothing else, including a raw `stage` that reads as no stage
+      (3.2.2).
    5. Search the text files inside this project's work path for the old folder
       name, and print each match as `path:line` on stderr, as "not rewritten".
       **[Decision]** The search covers only the work path. Changelogs, code and
@@ -606,51 +669,89 @@ has no status folders to look for. The same test serves:
    stale reference is then a `validate` warning that names it.
 5. There is no `renames.yaml`, no alias for the old name, and no lock.
 
-### 6. Delegation into another filesystem-mode project
+### 6. Delegation into another project
 
 1. **Entry points.**
-   - `tcw work new "<title>" --project <id>` creates the item in project `<id>`.
-   - `edit <slug> --blocks <other-project>/<folder>` updates the other
-     project's item's `blocked-by`.
-   - Both open the target with `open_delegation_target` (Design 2.3).
+   - `tcw work new "<title>" [--priority <p>] --project <id>` creates an item
+     in project `<id>` through `delegate` (Design 2.3), with the piped request
+     text if there is any.
+   - **[Decision]** With `--project`, the only property flag accepted is
+     `--priority`, because R5's `delegate(project_id, title, request,
+     priority)` carries nothing else; a Jira target is created from its
+     project entry alone and could not honor the rest. Any other property
+     flag together with `--project` is a usage error (exit 2) whose message
+     says to set it in the target project afterwards.
+   - `edit <slug> --blocks <other-project>/<folder>` adds `<slug>` to the
+     other project's item's `blocked-by`, through `open_for_update`
+     (Design 2.3). It never creates an item.
    - Any other write to another project's item is refused (exit 3), with a
      message saying to run the command in that project, as TCW-73's
      Design 3.4 states.
-2. **Which projects.** **[Decision]** Any project the registry can locate from
-   here by ID. That is the same set a cross-project reference resolves against.
-   There is no longer a "child" verb and a "parent" verb. This includes an
-   upstream project (one that does not name this project): the three
-   conditions already make sure the target exists, has a store, and has
-   nothing uncommitted, and the files are left uncommitted for a person in
-   that repository to review. One rule ("any project you can reach") is simpler
-   than a rule that depends on the direction of the declaration.
-   **[Decision, owner 2026-10-01]** The owner confirmed that delegation may
-   write into the target's checkout once the three conditions below pass.
-3. **The three conditions**, checked in this order. The first failure refuses
-   (exit 3) with a message naming it, and nothing is written:
-   1. **The project's path resolves.** An undeclared ID and a project declared
-      but not present on this machine both fail here (the epic's decision 4).
-   2. **Its work store is present** (Design 3.5).
-   3. **The store has no uncommitted changes.**
-      - `git status --porcelain --untracked-files=all -- <work path>`, run in
-        the repository that holds the store, prints nothing. Ignored files do
-        not count.
+2. **Which projects.** Any project the registry can locate from here by ID,
+   **except an upstream one** (review decision R2, the owner's answer).
+   - An upstream project is one reached through an `upstream` link and not
+     only through parent and child links. The registry already answers this
+     with `read_only_reason` (`tcw/store/project.py:363`), which stays, as do
+     its other callers (`tcw/cli.py:218`, `tcw/store/fs.py:684-694`).
+   - **[Decision]** Whether a project is upstream is decided from the
+     declarations, which can be read without the target's checkout. Today
+     `read_only_reason` answers `None` for an ID the registry has not loaded
+     (`tcw/store/project.py:366-367`), which may include a declared but absent
+     project; the plan makes it answer for that case too rather than letting
+     an absent upstream project through to the `jira` branch below.
+   - Delegation into it, and `edit --blocks` into it, are refused (exit 3),
+     and the message names the rule: an upstream project is read-only from
+     here. The record `cli/read-from-an-upstream-project` therefore stays
+     true unchanged.
+   - There is no longer a "child" verb and a "parent" verb: a parent and a
+     child are both reachable, in either direction.
+   - **[Decision, owner 2026-10-01]** Delegation may write into the target's
+     checkout once the conditions below pass (owner answer Q12b).
+3. **The conditions**, checked in this order. The first failure stops the
+   command with nothing written. The exit codes are R5's:
+   1. **The ID is declared.** An ID no declaration names: `Refused`, exit 3.
+   2. **The project is not upstream** (6.2): `Refused`, exit 3.
+   3. **The project is present on this machine.** If it is declared but its
+      checkout is absent:
+      - with no `jira` block in its project entry: `Refused`, exit 3;
+      - with a `jira` block: `delegate` hands it to TCW-71 and prints the
+        ticket key, exit 0. Until TCW-71 lands this is `BackendError`, exit 1,
+        "Jira delegation arrives with the Jira backend" (Non-goals).
+        `open_for_update` refuses it, exit 3, because `--blocks` never
+        creates a ticket (R5).
+   4. **Its work store is present** (Design 3.5): `Refused`, exit 3.
+   5. **The store has no uncommitted changes.**
+      - `git --no-optional-locks status --porcelain --untracked-files=all --
+        <work path>`, run in the repository that holds the store, prints
+        nothing. Ignored files do not count. `--no-optional-locks` keeps the
+        check from refreshing the index or taking `index.lock` (R4).
       - **[Decision]** A store that is not inside a git repository fails this
         condition, because it cannot be checked.
+      - The refusal message is fixed here, so TCW-73's no-git-wording test can
+        exempt it (R4): "`<id>`'s work store has uncommitted changes:
+        `<path>`, … — commit or remove them in that project first", or, for a
+        store outside git, "`<id>`'s work store is not in a git repository, so
+        TCW cannot check it for uncommitted changes".
       - **[Decision]** This check is a plain function in `tcw/work/open.py`,
         `uncommitted_changes(path) -> list[str]`, not part of the filesystem
         adapter, because TCW-71's delegation into a Jira-mode project checks
         the same thing for the item folders it keeps in git (TCW-71 asked for
         it to be callable). It only reads git.
+
+   Reading another project is unchanged by this list: `show` of an item in a
+   project no declaration names is exit 4, and in one declared but absent is
+   exit 5 (Design 2.2, R5).
 4. **The created item.**
    - It lands at the target's first flow stage (inbox).
-   - It is validated against the **target's** tag registry and properties.
-   - `parent` and `blocked-by` may name items in any project.
+   - Its priority is validated against TCW-69's scale; no tag is set, so the
+     target's tag registry is never consulted.
    - stdout prints the target slug (`<id>/<folder>`). stderr names each file
      written and says it is uncommitted in the target's repository. The exit
      code is 0 (TCW-73's exit table lists "delegation that stopped at the
      target's inbox" under 0).
-5. **A Jira-mode target** refuses with exit 1 until TCW-71 (Non-goals).
+5. **A target whose own `work.backend` is `jira` and whose checkout is
+   present** is opened through `open_backend`, which fails with exit 1 until
+   TCW-71 (Non-goals).
 
 ### 7. The `tcw work` commands
 
@@ -661,18 +762,18 @@ prefix matching. In the stdout column, "slug" always means the full slug.
 
 | Command | stdout | Notes |
 | --- | --- | --- |
-| `new "<title>" [props] [--stage inbox] [--project <id>]` | the slug | Reads request text from stdin when stdin is not a terminal. `--stage` accepts only the first flow stage. |
-| `list [--stage <s>]… [--tag <t>]… [--parent <slug>] [--assignee <a>] [--all] [--json]` | one slug per line, or the records of 7.1 with `--json` | `--stage` and `--all` together are a usage error (TCW-69). `--stage` repeats. **[Decision, owner 2026-10-01]** `--tag` stays and fills `Query.tags`: it repeats, and an item carrying any of the given tags matches. Its value is parsed as 2.8 parses it today (`tcw/work/cli.py:4968-4969`: the `--tags` alias and a comma-separated value), so nothing about the flag changes in this slice; TCW-73 owns its final spelling. `--tag` combines with `--stage` and with `--all`. |
+| `new "<title>" [props] [--stage inbox] [--project <id>]` | the slug, or a ticket key for a Jira delegation (from TCW-71) | Reads request text from stdin when stdin is not a terminal; empty text is no request (3.3.1). `--stage` accepts only the first flow stage. With `--project`, only `--priority` is accepted (6.1). |
+| `list [--stage <s>]… [--tag <t>]… [--parent <slug>] [--assignee <a>] [--all] [--json]` | one slug per line, or the records of 7.1 with `--json` | `--stage` and `--all` together are a usage error (TCW-69). `--stage` repeats. **[Decision, owner 2026-10-01]** `--tag` stays and fills `Query.tags`: it repeats, and an item carrying any of the given tags matches. Its value is parsed as 2.8 parses it today (`tcw/work/cli.py:4968-4969`: the `--tags` alias and a comma-separated value), so nothing about the flag changes in this slice; TCW-73 owns its final spelling. `--tag` combines with `--stage` and with `--all`. **[Decision]** The 2.8 warning stays (`tcw/work/cli.py:1189-1203`): a `--tag` value not in this project's registry still filters, prints one `warning:` line on stderr naming it, and exits 0, as TCW-73's Design 2.6 keeps it. |
 | `show <slug> [--json]` | the record | See 7.1. |
 | `path [<slug> [<stage> [--next \| --handoff]]]` | one absolute path | TCW-69's `path`, including its handoff form behind `--handoff` (the epic's decision 18). `--next` and `--handoff` together are a usage error (exit 2). **[Decision]** With no slug it prints the work store folder, as today, so a script can still find the store. |
 | `edit <slug> [props] [--blocks <slug>]…` | nothing | Property flags as TCW-73 lists, minus `--assign-me`. An empty value clears an optional property (`--assignee ""`). |
-| `advance <slug> [--to <s>] [--force --reason <r>] [--dry-run]` | the stage | Calls TCW-69's `advance`. Exit code is the outcome's. |
+| `advance <slug> [--to <s>] [--force --reason <r>] [--dry-run]` | the stage the backend reported after the move; with `--dry-run`, the target stage when the move would be allowed and nothing when it is refused | Calls TCW-69's `advance`. Exit code is the outcome's. The `--dry-run` stdout is TCW-73's table row for `advance`. |
 | `discard <slug> --reason <r>` | the stage | TCW-69's `discard`. |
 | `comment <slug>` | nothing | Text from stdin. |
 | `rename <slug> <new name>` | the new slug | Design 5. |
 | `stage prompt <stage> [<slug>]` | the text | See 7.2. |
 | `procedure prompt <id> [<slug>]`, `docs`, `lifecycle` | the text | Rewired onto TCW-69's config. `lifecycle` prints the enabled stage table with each stage's `prompt`, `pre` and `post` bindings. Its options that name transitions go; the plan lists which. |
-| `tags list \| add \| rm` | as today | The tag registry is edited in `tcw-config.yaml` without the store. |
+| `tags list \| add \| rm` | as today | The tag registry is edited in `tcw-config.yaml` without the store. **`add` and `rm` only write the file** (review decision R10): today they stage it with `git add` through `_write_tags` → `_write_node_config` → `_write_staged` → `git_stage` (`tcw/store/fs.py:7569`, `:2183`, `:2221`, `:779`) and refuse a project outside git (`_require_repository`, `fs.py:2103`). Both go: the file is written and left unstaged, inside or outside a git repository. |
 | `nodes` | as today | TCW-73 renames it. |
 | `init` | as today | Scaffolds the 3.0 work folder (Design 11). TCW-73 merges it into `tcw init <axis>`. |
 
@@ -709,20 +810,66 @@ plain `show` lays the fields out. Until TCW-73 lands, `show --json` prints one
 record, `list --json` prints a JSON array of records, and plain `show` prints
 one `key: value` line per field.
 
-A `generate:` binding's script runs with the project root as its working
-directory and `TCW_SLUG` set to the full slug, as TCW-69's hooks do (the
-epic's decision 11).
+**What a `generate:` binding receives** (review decision R13). Today it gets
+`{"item": <work_item_json with body>, "hook": {...}}` on stdin
+(`tcw/work/resolve.py:162-189`). In this slice:
 
-#### 7.2 `stage prompt` without a packaged prompt
+- stdin carries one JSON object:
+  `{"schema": 1, "item": <the record above>, "request": <text or null>,
+  "hook": {"role", "kind", "id", "phase", "body_truncated"}}`.
+  - `item` is `null` when the prompt is composed with no item.
+  - `request` is `read_request` of the item. It is capped as 2.x caps
+    `body` (bytes of UTF-8, cut at a character boundary,
+    `tcw/work/resolve.py:162-182`), and `hook.body_truncated` says whether
+    it was cut. **[Decision]** The key keeps the name `body_truncated`
+    because R13 names it so.
+- The environment is TCW-69's Design 8: the hook variables of its
+  Design 6.5 (`TCW_SLUG` the full slug, `TCW_STAGE` the stage whose prompt
+  is composed) plus `TCW_HOOK_ROLE`, `TCW_HOOK_KIND`, `TCW_HOOK_ID` and
+  `TCW_HOOK_PHASE`, unchanged.
+- The script runs with the project root as its working directory (the
+  epic's decision 11).
 
-`stage prompt` composes the stage's `work.stages.<stage>.prompt` bindings with
-the packaged `tcw/work/prompts/<stage>.md`. TCW-74 writes `review.md` and
-`qa.md`.
+**`{{tcw:request}}` replaces `{{tcw:body}}`** (R13). The substitution in
+`tcw/work/resolve.py:307-360` (`substitute_body`, reading the 2.x
+`BODY_ORDER = ("initial-request", "intake")`, `tcw/store/base.py:3109`) is
+ported: a `{{tcw:request}}…{{/tcw:request}}` span is replaced with
+`read_request` of the item, and its inner text is the fallback shown when
+there is no item or no request, as the `body` span's is today. **[Decision]**
+The two packaged prompts that use the old token
+(`tcw/work/prompts/spec.md:6`, `tcw/work/prompts/plan.md:6`) have the token
+renamed in this slice, and nothing else in them changes; otherwise the
+epic branch would print raw `{{tcw:body}}` markup until TCW-74. TCW-74
+rewrites the rest of those texts. A `{{tcw:body}}` span left anywhere else is
+not substituted and is printed as written.
 
-**[Decision]** Until then, a stage whose `prompt` column is yes and whose
-packaged file is missing fails with exit 1, naming the missing file. A packaging
-gap should be loud, not an empty prompt. The header that `stage prompt` adds
-names `advance --dry-run` instead of `stage gate`.
+#### 7.2 What `stage prompt` composes
+
+**[Decision]** `stage prompt` composes **exactly** the stage's resolved
+`work.stages.<stage>.prompt` list, in order. It never adds the packaged
+`tcw/work/prompts/<stage>.md` on its own:
+
+- The packaged text appears only where a `builtin: true` entry stands in the
+  list. TCW-69's parser accepts that entry (its Design 8).
+- A stage whose config sets no `prompt` key gets the default list
+  `[{builtin: true}]`, as 2.x does (`tcw/work/resolve.py:449-456`), so a
+  project that configures nothing still gets TCW's text.
+- A list without a `builtin: true` entry replaces the packaged text. An
+  explicit empty list composes to nothing; 2.x's fallback that treats an
+  empty list as the default (`resolve.py:456`, `or [Binding(kind="builtin")]`)
+  is not kept.
+
+This is the rule TCW-72 builds on (its Design 3.2-3.5). TCW-72, which comes
+later (R1), moves the default into its loader as an inserted `{builtin: true}`
+entry, refuses `builtin:` written in a file, and has people write
+`inherit: true` instead (R8). The composed result for a project is the same
+before and after; only the spelling in the file changes.
+
+TCW-74 writes `review.md` and `qa.md`. **[Decision]** Until then, a
+`builtin: true` entry whose packaged file is missing fails with exit 1, naming
+the missing file. A packaging gap should be loud, not an empty prompt. The
+header that `stage prompt` adds names `advance --dry-run` instead of
+`stage gate`.
 
 ### 8. Configuration
 
@@ -780,6 +927,18 @@ Code:
 - The parts of `tcw/work/hooks.py` and `tcw/work/resolve.py` that take 2.x
   types.
 - `tcw/work/cli.py`, replaced.
+- `tcw/harness.py` and `tests/test_harness.py`. The module exists only for
+  `stage validate` (its docstring, `tcw/harness.py:3`), and its only importer
+  is `tcw/work/cli.py:33`.
+- In `tcw/cli_suggest.py`, the examples and mappings that name removed
+  commands (`tcw/cli_suggest.py:5`, `:12`, `:41`) are removed or replaced by
+  surviving commands; the suggestion mechanism stays.
+- **[Decision]** `RESERVED_PROJECT_IDS` (`tcw/store/project.py:23`) loses the
+  six 2.x status names (imported as `WORK_STATUSES`, `project.py:17`) and
+  keeps `t`, `c`, `w` and `local`. Nothing in 3.0 gives those six words a
+  meaning, so there is nothing for a project ID to collide with, and keeping
+  them would need a hard-coded copy of a removed table. Project IDs such as
+  `backlog` become legal.
 
 **Tests.** **[Decision]** A test file goes with the code it tests. A test of
 behavior that survives is **ported**, not deleted. That covers:
@@ -817,12 +976,35 @@ and the reason. About 119 of the 159 test files touch the work axis today.
    - a plain file in the work path other than hidden files (warning). This
      includes a leftover `dod.yaml`, `graveyard.yaml` or `renames.yaml`;
    - a tag not in the registry (warning);
-   - TCW-69's `reference_problems` over `list(Query(all=True))` (warnings, and
-     "unresolved" lines). Other projects are resolved with `open_project`;
-   - TCW-69's `stage_problems` (warnings);
-   - TCW-69's `records_problems(finished=False)` for every unfinished item
-     (errors). The file it checks is `<item>/capabilities.yaml`, at the item
-     root (the epic's decision 19).
+   - TCW-69's `reference_problems` over every **readable** item (warnings,
+     and "unresolved" lines). Other projects are resolved with `open_project`;
+   - TCW-69's `stage_problems` over every readable item (warnings);
+   - TCW-69's `records_problems(finished=False)` for every readable unfinished
+     item (errors). The file it checks is `<item>/capabilities.yaml`, at the
+     item root (the epic's decision 19).
+
+   **Unreadable items do not stop `validate`** (review decision R11). The
+   items come from `read_all` (3.3.3), not from `list`, so each unreadable
+   `item.yaml` is one error finding and every other check still runs over the
+   readable items. A reference held only by an unreadable item cannot be
+   checked; per R16 that is not reported as a finding, and stderr says once
+   which files' references were skipped.
+
+   **Two other places in `validate.py` open `FsWorkStore`,** and each is
+   named here so neither disappears without a decision:
+   - The check that two projects in the graph resolve to the same work path
+     (`validate.py:340-350`) is **kept**, rebuilt on the work path of
+     Design 3.4. `cli/host-multiple-projects-in-one-repo` promises it (its
+     `description.md:33`). Only filesystem-mode projects take part; a
+     Jira-mode project has no work path in this sense.
+   - **[Decision]** The `work` branch of `_target_roots`
+     (`validate.py:310-318`) is **removed**. Its only caller is
+     `validate(..., target=...)` from `tcw serve` (`tcw/serve/__init__.py:171`),
+     and every call with the `work` axis is in a work route this slice
+     removes (`tcw/serve/__init__.py:1006`, `:1289`, `:1428`, `:1458`,
+     `:1507`). TCW-77 adds what its own work routes need. `"work"` is removed
+     from `ValidationTarget.axis` (`validate.py:49`), and `_target_roots`
+     raises `ValueError` for any axis it does not handle.
 
    The first five checks, which read only the files in the work path, are
    **[Decision]** one plain function of `tcw/work/fs_backend.py`, not an
@@ -858,13 +1040,19 @@ and the reason. About 119 of the 159 test files touch the work axis today.
    stream. Which stream findings go to and their exact layout are TCW-73's
    (the epic's decision 10; TCW-73's spec moves them to stdout), so this
    slice's tests read both streams and assert only that each finding names its
-   file and key, and the exit code.
+   file and key, and the exit code. In this slice `validate()` still returns
+   strings; TCW-73, which comes after this slice and TCW-71 (review decision
+   R1), turns every finding into its `Finding(severity, where, message)` type
+   and updates the callers (R14). This slice's errors, warnings and
+   unresolved lines map one to one onto its three severities.
    The YAML well-formedness scan keeps working, with `item.yaml` replacing
    `state.yaml`, `tracker.yaml`, `graveyard.yaml` and `renames.yaml` in
    `OWNED_YAML_NAMES` (`fs.py:1510-1512`).
 3. **Drift.** **[Decision]** `tcw capabilities drift` stops following
    `Planning doc` fields into the work store (`capabilities/cli.py:200-254`).
-   - It runs TCW-69's `drift_problems` over the items at the completion stage.
+   - It runs TCW-69's `drift_problems` over the readable items at the
+     completion stage. An unreadable `item.yaml` is reported as a finding
+     naming the file, and the rest are still checked (review decision R11).
    - The other kind of drift it reports (inherited capabilities never reviewed
      locally) is unchanged.
    - This also moves from TCW-73, for the same reason as 10.1, and so does
@@ -878,6 +1066,8 @@ and the reason. About 119 of the 159 test files touch the work axis today.
 
 - `init` for the work component makes the work path and a `.gitkeep`. It no
   longer makes status folders or writes ignore rules for resolved items.
+  (TCW-72, later, makes `init` add `/tcw-config.local.yaml` to `.gitignore`;
+  that line is about personal configuration, not the work store.)
 - A store being relocated by `init --work-path` is refused when the old store
   holds any item folder, instead of today's status-folder check.
 - `provision` clones a declared work repository as today. A store counts as
@@ -894,9 +1084,28 @@ and the reason. About 119 of the 159 test files touch the work axis today.
    `validate` (Design 10.1).
 2. **`tcw serve`.** **[Decision, owner 2026-10-01]** The 2.x work routes are removed from
    `tcw/serve/__init__.py`, with their tests and Playwright specs.
-   - Requests to `/api/work…` answer 404.
-   - The taxonomy and capabilities routes keep working.
-   - TCW-77 rebuilds work on `open_backend` and the item record (7.1).
+   - **A two-route stub stays** (review decision R9), because the existing
+     client loads `/api/work` in the same `Promise.all` as `/api/taxonomy`
+     and `/api/capabilities` with no fallback
+     (`web/client/src/ui/app.tsx:154-176`, the fetch at `:158`), and `fetchJson` throws on any
+     status that is not 2xx (`web/client/src/model/api.ts:3-7`). A 404 there
+     would hide taxonomy and capabilities too.
+     - `GET /api/work` answers 200 with `[]`.
+     - `GET /api/work/tags` answers 200 with `[]`. The client reads
+       `tags.tags ?? []` (`app.tsx:172`), so an array gives an empty tag
+       list.
+     - Every other `/api/work…` request answers 404. The client's one other
+       work fetch at load, `/api/work/interrupted-claims`, already falls back
+       to `[]` on failure (`app.tsx:166-169`). A work action a viewer tries
+       anyway (for example creating an item, which posts to `/api/work`,
+       `app.tsx:551`) fails with the client's ordinary error until TCW-77.
+   - The client and the committed bundle under `tcw/serve/dist` are not
+     changed, so CI's `pnpm check:build` job (`.github/workflows/test.yml:78-104`)
+     is unaffected.
+   - The taxonomy and capabilities routes keep working, and the client shows
+     them with an empty board.
+   - TCW-77 replaces the stub, building work on `open_backend` and the item
+     record (7.1).
 
    Porting the 2.x routes onto the backend first would be thrown away by
    TCW-77's rewrite. Nothing on the epic branch ships before 3.0.0, so the gap
@@ -986,7 +1195,7 @@ is handled, and it replaces the "smallest edit" rule TCW-75's draft proposed
 | `item.yaml`, the folder name and date prefix, comment files | **Adapter details.** The model sees `Item`, `Item.created` and `comment(text)`. |
 | Listing direct children that hold `item.yaml` | **Adapter detail**, and bounded: named entries, never a recursive search. |
 | Rename as a folder move plus rewriting references | The **`rename` operation**. Jira renames only the part after the key. The stderr search for other mentions is an adapter-local text search, advisory only, and not an interface operation. |
-| The delegation conditions | **Adapter-private**, behind `open_delegation_target`. Jira's conditions differ (TCW-71). The caller sees a backend or a refusal. |
+| `delegate`, `open_for_update` | **Model-level operations** (R5), separate from opening. The filesystem conditions are adapter-private; Jira's differ (TCW-71). The caller sees what was created (a slug or a key), a backend to update, or a refusal. The upstream rule is the registry's, shared by both modes. |
 | `open_backend`, `open_project` | **Model-level dispatch** on `work.backend`. Locating a project stays in the registry. |
 | `tcw://` work references, `validate` references, `drift` | Built on `read` and `list`, not on paths. |
 | `validate`'s item-folder checks | **Adapter-specific checks**, a function of the adapter module and not an interface operation; the filesystem's equivalent of TCW-71's offline key check. |
@@ -1004,8 +1213,14 @@ both harnesses read.
 All criteria are checked by pytest unless they say otherwise. Fixtures are
 temporary git repositories built with the branch's `tcw init`. "Through the CLI"
 means calling `tcw.cli.main` with captured streams. The criteria marked
-**(installed)** run the console script in a subprocess, because they are about
-streams and exit codes as a shell sees them.
+**(installed)** run the CLI in a subprocess, because they are about streams and
+exit codes as a shell sees them. **[Decision]** That subprocess is
+`sys.executable -c` running `tcw.cli.main` with this checkout first on
+`sys.path`, the way `tests/test_documented_cli_surface.py:145-148` already
+does, and never the `tcw` on `PATH`: in a git worktree the editable install's
+console script runs the primary checkout's code, so a test of it would pass or
+fail on the wrong source. Its stdin is `subprocess.DEVNULL` unless the
+criterion pipes text.
 
 1. **Contract.** The contract module passes for both `MemoryBackend` and
    `FsWorkBackend`. It runs every case of TCW-69's memory-backend tests that is
@@ -1013,15 +1228,16 @@ streams and exit codes as a shell sees them.
    `FsWorkBackend` it also checks:
    - every `Item` read has `untracked == ()` and a `priority` that is not
      `None`;
-   - `current_user()` returns the `user_name` it was built with, and with none
-     raises `BackendError` (exit 1).
+   - `current_user()` returns the `user_name` it was built with, and `None`
+     when built with none, for both backends; it raises nothing (R3).
 2. **Create.**
    - `tcw work new "Add a widget"` prints exactly `<id>/<today>-add-a-widget`
      followed by a newline on stdout **(installed)**, where `<today>` is the local
      date.
    - The folder's `item.yaml` is exactly `title: Add a widget`,
      `stage: request`, `priority: medium`, in that order and with no other key.
-   - There is no `created`, `slug` or `history` key, and no `request/` folder.
+   - There is no `created`, `slug` or `history` key, and no `request/` folder,
+     with stdin `subprocess.DEVNULL` (empty, not a terminal).
    - Running the same command again the same day exits 3 and names the
      existing folder. No `-2` folder appears.
    - `new "!!!"` creates `<today>-untitled`.
@@ -1032,6 +1248,8 @@ streams and exit codes as a shell sees them.
      request file.
    - `read_request` returns `line one\n` for that item, and `None` for an item
      created with no piped text.
+   - `create(..., request="")` writes no `request/` folder, and `read_request`
+     returns `None` for it.
    - No command writes `intake.md`.
 4. **Reading.** Each of these makes `show` exit 1 with a message naming
    `item.yaml` and the key:
@@ -1045,6 +1263,20 @@ streams and exit codes as a shell sees them.
    - `show --json` gives `"stage": null`;
    - a bare `advance` exits 3;
    - `advance --to spec --force --reason r` moves it.
+
+   **Writes keep what they do not change** (R12):
+   - `edit <slug> --priority high` on an item with `stage: verify` exits 0,
+     and its `item.yaml` still says `stage: verify`, with `priority: high`;
+   - a rename that rewrites a referencing item holding `stage: verify` leaves
+     that `stage: verify` in place;
+   - an item carrying tag `old`, after `old` is removed from the registry,
+     accepts `edit --priority high` (exit 0, `old` kept) and
+     `edit --untag old` (exit 0, `old` gone); `edit --tag nosuch` with
+     `nosuch` unregistered exits 2.
+   - `show` of a readable item while another item's `item.yaml` is
+     unreadable exits 0, prints the readable item's record with `blocks` and
+     `children` computed from readable items, and writes one stderr line
+     naming the unreadable file (R11).
 5. **Listing.**
    - A default `list` shows inbox-stage and no-stage items and hides
      completed and discarded ones.
@@ -1058,8 +1290,10 @@ streams and exit codes as a shell sees them.
      - `list --tag ui` prints A and B only;
      - `list --tag ui --tag api` and `list --tag ui,api` each print A, B and
        C, and not D;
-     - `list --tag nosuch` prints nothing and exits 0, including when
-       `nosuch` is not in the tag registry;
+     - `list --tag nosuch` prints nothing on stdout and exits 0 when
+       `nosuch` is not in the tag registry, and stderr carries one `warning:`
+       line naming `nosuch`; `list --tag ui` (registered) writes nothing on
+       stderr;
      - `list --tag ui --all` also prints a completed item tagged `ui`, and
        `list --tag ui` without `--all` does not;
      - the `FsWorkBackend` contract case for `list(Query(tags={"ui"}))`
@@ -1097,23 +1331,35 @@ streams and exit codes as a shell sees them.
      a different date prefix exits 2.
    - With an unreadable item in the project, rename exits 1 and A's folder is
      unchanged.
-9. **Delegation.** Two projects, P and Q, are registered to each other.
-   - `tcw work new "T" --project q`, run in P:
-     - prints `q/<today>-t`;
-     - creates Q's item at `inbox`;
+9. **Delegation.** Two projects, P and Q, are registered to each other as
+   parent and child.
+   - `tcw work new "T" --priority high --project q`, run in P:
+     - prints `q/<today>-t` and exits 0;
+     - creates Q's item at `inbox` with `priority: high`;
      - stderr names the files and says they are uncommitted in Q's repository;
      - Q's `HEAD` and index are unchanged.
    - Each condition, broken in turn, exits 3 with a message naming it and
-     writes nothing:
-     - an unregistered ID;
-     - Q declared in P's config but its checkout absent from this machine;
+     writes nothing in Q (no new folder, `git status` output unchanged):
+     - an ID no declaration names;
+     - a project R that P declares as `upstream` (the message says an upstream
+       project is read-only from here), both with R's checkout present and
+       with it absent and a `jira` block in R's entry;
+     - Q declared in P's config, its checkout absent, no `jira` block;
      - Q's work path removed;
-     - an untracked file in Q's work store.
+     - an untracked file in Q's work store;
+     - Q's work store outside any git repository.
+   - Q declared, its checkout absent, with a `jira` block: `new --project q`
+     exits 1 with "Jira delegation arrives with the Jira backend" and writes
+     nothing; `edit p-item --blocks q/<folder>` exits 3.
+   - The uncommitted-changes check runs git with `--no-optional-locks`:
+     Q's `.git/index` modification time is unchanged by a refused delegation.
    - With Q's checkout absent, `tcw work show q/<folder>` run in P exits 5,
      and `show` of a slug whose project no declaration names exits 4.
    - `edit p-item --blocks q/<folder>` follows the same conditions, and on
-     success adds `p/p-item` to that Q item's `blocked-by`.
-   - A tag registered in P but not in Q exits 2.
+     success adds `p/p-item` to that Q item's `blocked-by` and creates no
+     folder in Q.
+   - `new "T" --project q --tag ui` exits 2, naming `--tag`, and writes
+     nothing.
 10. **Removed commands.** Each of these, run as `tcw work <command>`, exits 2
     with the parser's unknown-command message, and writes nothing:
     - `start`, `submit`, `rework`, `complete`, `drop`, `delete`;
@@ -1134,32 +1380,54 @@ streams and exit codes as a shell sees them.
       `--next --handoff` together exits 2.
     - An unknown slug exits 4.
     - A refused `advance` exits 3 with stdout empty.
-    - `advance --dry-run` writes no file.
-12. **No git state changes.** One test runs `new`, `edit`, `comment`,
-    `advance --force`, `discard`, `rename`, a delegation and
-    `edit --blocks` across P and Q. Before and after, it compares these in both
-    repositories, and all are unchanged:
+    - `advance --dry-run` writes no file. When the move is allowed it prints
+      exactly the target stage and a newline; when it is refused it prints
+      nothing on stdout and exits 3.
+12. **TCW never changes git state.** One test runs `new`, `edit`, `comment`,
+    `advance --force`, `discard`, `rename`, `tags add`, `tags rm`, a
+    delegation and `edit --blocks` across P and Q. Before and after, it
+    compares these in both repositories, and all are unchanged:
     - `git rev-parse HEAD`;
     - `git for-each-ref`;
-    - `git ls-files --stage`.
+    - `git ls-files --stage`;
+    - `git diff --cached --name-only` (empty before and after, so a staged
+      `tcw-config.yaml` from `tags add` fails it).
 
-    A second test scans `tcw/work/`, `tcw/validate.py`, `tcw/refs.py` and
-    `tcw/capabilities/cli.py` and asserts that none of them runs git with a
-    verb that writes: `add`, `commit`, `mv`, `rm`, `reset`, `checkout`, `merge`,
+    `tags add x` and `tags rm x` in a project that is not a git repository
+    exit 0 and change `tcw-config.yaml` (R10).
+
+    A second test scans `tcw/work/`, `tcw/validate.py`, `tcw/refs.py`,
+    `tcw/capabilities/cli.py` and `tcw/store/` (which includes
+    `tcw/store/fs.py`) and asserts that none of them runs git with a verb
+    that writes: `add`, `commit`, `mv`, `rm`, `reset`, `checkout`, `merge`,
     `worktree add`, `worktree remove`, `push`, `pull`, `fetch`, `stash` or
-    `tag`. It looks at git invocations (a `"git"` argument followed by the
-    verb), not at bare words, so the moved Jira client in `tcw/work/jira/`,
-    whose text uses words such as "add" and "comment" for HTTP calls, does not
-    trip it. It is mutation-checked by adding a `git add` call.
+    `tag`.
+    - It looks at git invocations, not at bare words: a literal argument list
+      starting with `"git"`, with any `-C <path>` pair and any option starting
+      with `-` (such as `--no-optional-locks`) skipped before the verb is
+      read. So `["git", "-C", str(root), "add", …]`, the form the repository
+      uses (`tcw/store/fs.py:792`), is caught. The moved Jira client in
+      `tcw/work/jira/`, whose text uses words such as "add" and "comment" for
+      HTTP calls, does not trip it.
+    - **[Decision]** One allowance: `FsStoreProvisioner` in
+      `tcw/store/fs.py` (`:4099`) may run `clone`, `checkout` and `fetch`,
+      for `tcw provision` (Design 4.2, R4). The allowance names the class,
+      not the file, so the same verbs anywhere else in `fs.py` fail.
+    - It is mutation-checked twice: adding
+      `["git", "-C", str(root), "add", "x"]` to `tcw/work/open.py`, and the
+      same call to a function of `tcw/store/fs.py` outside
+      `FsStoreProvisioner`, each make it fail.
 13. **2.x names are gone.** No `.py` file under `tcw/` contains any of these
     strings:
     - `graveyard.yaml`, `dod.yaml`, `renames.yaml`, `state.yaml`,
       `tracker.yaml`;
     - `FsWorkStore`, `WORK_STATUSES`, `LIFECYCLE_STEPS`;
     - `tcw work ` followed by any verb from criterion 10 (for example
-      `tcw work start`, `tcw work stage gate`).
+      `tcw work start`, `tcw work stage gate`, `tcw work tracker`,
+      `tcw work delete`).
 
-    Checked by a test that greps the tree. The packaged prompt and procedure
+    Checked by a test that greps the tree. `tcw/harness.py` does not exist,
+    and `tcw/cli_suggest.py` passes the grep (Design 9). The packaged prompt and procedure
     texts (`tcw/work/prompts/*.md`, `tcw/work/procedures/*.md`) are not `.py`
     files and are TCW-74's.
 14. **No stage literals.** TCW-69's criterion 5 scan also covers
@@ -1179,13 +1447,22 @@ streams and exit codes as a shell sees them.
       `docs/migration-guide-2.8-to-3.0.0.md`.
     - An item at `implement` whose `<item>/capabilities.yaml` has an unknown key
       fails.
+    - **One unreadable item does not hide the rest** (R11). A fixture with
+      one unreadable `item.yaml`, one item with a missing same-project
+      blocker, and one item at `implement` whose `capabilities.yaml` has an
+      unknown key reports all three findings, each naming its file, and exits
+      1.
+    - **Same work path.** Two projects in one graph whose `work.path` resolve
+      to the same directory make `validate` exit 1 with a message naming both
+      project IDs and the path.
     - Each line checked names its file (and key, where there is one). The
       test reads stdout and stderr together, so TCW-73 can move findings
       between streams without changing it.
 16. **Drift.** In a fixture, a completed item declaring `new: [x/y]` while
     `x/y` is absent makes `tcw capabilities drift` exit non-zero and name
     `x/y`. Removing the declaration makes it exit 0. No `Planning doc` field is
-    read.
+    read. Adding a second, unreadable item to the first fixture still names
+    `x/y`, and also names the unreadable `item.yaml`.
 17. **References.**
     - `tcw://W/<folder>` in a capability description passes `validate` when the
       item exists at any stage, including discarded.
@@ -1194,22 +1471,43 @@ streams and exit codes as a shell sees them.
 18. **Init and provision.**
     - `tcw init --id p work` in an empty repository creates `docs/work/.gitkeep`,
       with no other entry under `docs/work`.
-    - It adds no line to `.gitignore`.
+    - It adds no ignore rule for the work store: no line of `.gitignore`
+      names `docs/work` or anything under it. (TCW-72, later, makes `init`
+      add `/tcw-config.local.yaml`; this criterion does not forbid that
+      line.)
     - `tcw provision` accepts a declared work repository whose store folder
       contains only item folders.
-19. **Serve.** `GET /api/work` answers 404. The surviving taxonomy and
-    capabilities route tests pass.
+19. **Serve.** `GET /api/work` and `GET /api/work/tags` each answer 200 with
+    the JSON `[]`. `GET /api/work/<anything else>` answers 404. The surviving
+    taxonomy and capabilities route tests pass, and the files under
+    `tcw/serve/dist` and `web/client/src` are unchanged by this slice
+    (`git diff` of those paths against the epic branch's base is empty).
 20. **Config.** In a fixture whose `tcw-config.yaml` has `work.tracker`,
     `tcw work list` exits 1, naming `work.tracker` and
     `docs/migration-guide-2.8-to-3.0.0.md` on stderr.
 21. **Stage prompt.**
-    - `stage prompt spec <slug>` composes the packaged `spec.md` with a
-      `file:` binding from `work.stages.spec.prompt`.
+    - With `work.stages.spec.prompt: [{builtin: true}, {file: house.md}]`,
+      `stage prompt spec <slug>` prints the packaged `spec.md` text followed
+      by `house.md`'s. With `[{file: house.md}]` it prints `house.md`'s text
+      and no line of the packaged file. With `[]` it prints no line of
+      either. With no `prompt` key it prints the packaged text. (TCW-72
+      rewrites these fixtures to `inherit: true`.)
+    - For an item created with piped text `line one`, the default
+      `stage prompt spec <slug>` output contains `line one` where the
+      packaged `{{tcw:request}}` span was, and contains neither
+      `{{tcw:request}}` nor `{{tcw:body}}`. For an item with no request, the span's inner text
+      appears instead.
     - `stage prompt review` exits 1, naming the missing
       `tcw/work/prompts/review.md`.
     - The output names no removed command.
-    - A `generate:` binding receives the item record of 7.1 and runs with the
-      project root as its working directory and `TCW_SLUG` the full slug.
+    - A `generate:` binding whose script saves its stdin, `$PWD` and
+      environment receives one JSON object with exactly the keys `schema`
+      (equal to 1), `item` (the record of 7.1), `request` (the request text,
+      or `null` for an item with none) and `hook` (with exactly `role`,
+      `kind`, `id`, `phase` and `body_truncated`); runs with the project root
+      as its working directory; and has `TCW_SLUG` set to the full slug and
+      `TCW_HOOK_ROLE` set. A request longer than the cap arrives cut, with
+      `body_truncated` true.
 22. **Documentation allowance.**
     - `tests/test_documented_cli_surface.py` passes with the temporary
       allowance.
@@ -1292,8 +1590,8 @@ is intact.
      TCW-70 wires the item commands with TCW-73's stdout and exit codes and
      removes every store-built command (Design 1). The epic's decision 2
      accepted this split.
-  2. `open_backend`, `open_project` and `open_delegation_target` are the single
-     way in. Reading a project that is declared but not on this machine is
+  2. `open_backend`, `open_project`, `delegate` and `open_for_update` are the
+     single way in (delegation is its own operation, R5). Reading a project that is declared but not on this machine is
      exit 5 and delegating to one is exit 3 (the epic's decision 4); reading a
      project no declaration names is exit 4 (Design 2).
   3. The creation date is the local calendar date (3.1).
@@ -1312,17 +1610,20 @@ is intact.
      callers never branch on the backend (3.3.9).
   10. `read_comments` ignores files whose names are not timestamps, and fails
       on a timestamp-named file it cannot read (3.3.10).
-  11. `current_user` is implemented, but the backend is built with no
-      `user_name` until TCW-72 supplies one (3.3.11).
+  11. `current_user` is implemented and answers `None` (never raises, R3),
+      because the backend is built with no `user_name` until TCW-72 supplies
+      one (3.3.11).
   12. A work store is present when its directory exists (3.5).
   13. There is no lock (4.6).
   14. Rename takes only names already in folder form, works at any stage,
       searches only the work path for other mentions, and does not roll back
       (Design 5).
-  15. Delegation reaches any project the registry locates, upstream projects
-      included (6.2). Settled by the owner on 2026-10-01: delegation may write
-      into the target's checkout after its three conditions pass. A store outside git fails the uncommitted-changes condition, and
-      that check is a shared function TCW-71 also calls (6.3).
+  15. Delegation reaches any project the registry locates except an upstream
+      one, which is refused with exit 3 (6.2; owner answer R2). Settled by the
+      owner on 2026-10-01: delegation may write into the target's checkout
+      after its conditions pass. A store outside git fails the
+      uncommitted-changes condition, and that check is a shared function
+      TCW-71 also calls (6.3).
   16. `tcw work path` with no slug still prints the store folder (Design 7).
   17. Where TCW-73 still owns a command's output layout, this slice's tests
       check content and exit codes, not layout (Design 1).
@@ -1371,8 +1672,8 @@ is intact.
   - TCW-77 starts from a server with no work routes and builds on the item
     record (7.1). TCW-77's spec agrees. Its `record()` operation is replaced by
     `read_request` and `read_comments` (decision 1).
-  - TCW-71's four seams (`jira` branches of `open_backend` and
-    `open_delegation_target`, Jira projects through `open_project`, a third
+  - TCW-71's four seams (`jira` branches of `open_backend` and `delegate`,
+    Jira projects through `open_project`, a third
     contract-test parameter) stay as written. Its request to move the client
     and fake is accepted (this spec's Decision 21); its request for a callable
     uncommitted-changes check is accepted (this spec's Decision 15). The strict
@@ -1411,3 +1712,72 @@ is intact.
   slice after which the branch's CLI cannot read this repository at all. From
   implement onward, the board is driven by editing files (Design 15.3), and
   this item's Jira ticket is moved by hand (the epic's decision 7).
+
+### Review 2026-10-02
+
+The review (`scratchpad/reviews/TCW-70.md`) raised 18 findings. Each was
+checked against the repository and the sibling specs, and the cross-slice
+answers R1-R20 were applied.
+
+1. ACCEPTED (R3). `current_user()` returns `None` and never raises
+   (3.3.11, criterion 1), matching TCW-69's spec at its line 416-418.
+2. ACCEPTED (R9). `/api/work` and `/api/work/tags` stay as stubs answering
+   `[]`, because `web/client/src/ui/app.tsx:157-158` would otherwise fail the
+   whole load; no client rebuild (12.2, criterion 19).
+3. ACCEPTED (R10). `tags add` and `rm` only write the file, inside or outside
+   git; criterion 12 runs them, checks the index, and its scan covers
+   `tcw/store/` and the `git -C <path> <verb>` form (Design 7, criterion 12).
+4. ACCEPTED (R2). Upstream projects are refused (exit 3), `read_only_reason`
+   stays, and `cli/read-from-an-upstream-project` stays true (6.2,
+   criterion 9).
+5. ACCEPTED (R5). Delegation is its own operation, `delegate`, returning a
+   slug or a ticket key; `edit --blocks` uses `open_for_update`, which never
+   creates and refuses a Jira-block-only target with exit 3; exit codes are
+   R5's (2.3, 6.3, criterion 9).
+6. ACCEPTED (R12). Every write other than `set_stage` keeps the raw `stage`
+   (3.2.2, Design 5 step 4, criterion 4).
+7. ACCEPTED (R12). `update` checks only the tags an edit adds
+   (3.3.4, criterion 4).
+8. ACCEPTED. `validate.py:318` and `:340-350` were missing. The same-work-path
+   check is kept; the `work` branch of `_target_roots` is removed with its
+   only callers, the serve work routes (Problem 4, 10.1, criterion 15).
+9. ACCEPTED (R13). The `generate:` stdin object and environment are fixed,
+   `{{tcw:body}}` becomes `{{tcw:request}}`, and the token is renamed in the
+   two packaged prompts that use it (7.1, criterion 21).
+10. ACCEPTED (R11). `validate` and `drift` report unreadable items and carry
+    on; `show` degrades with one warning; only `list` and `rename` refuse
+    (3.3.3, 10.1, 10.3, criteria 4, 15, 16).
+11. ACCEPTED. `taxonomy/declare-the-taxonomy-stores-home-repository` is added
+    to Changed (its `description.md:15-16`).
+12. ACCEPTED. `tcw/harness.py` and its test are deleted, `cli_suggest.py`
+    loses its removed-command examples, and `RESERVED_PROJECT_IDS` drops the
+    status names (Design 9, criterion 13).
+13. ACCEPTED (R4). The check runs `git --no-optional-locks status`
+    (4.2, 6.3, criterion 9).
+14. ACCEPTED. Empty request text is no request (3.3.1, criteria 2 and 3).
+15. ACCEPTED. The 2.8 unregistered-tag warning on `list --tag` stays, as
+    TCW-73's Design 2.6 keeps it (Design 7, criterion 5).
+16. ACCEPTED. `advance --dry-run` stdout is pinned to TCW-73's table row
+    (Design 7, criterion 11).
+17. ACCEPTED. "(installed)" criteria run `sys.executable -c` with this
+    checkout first on `sys.path`, as `tests/test_documented_cli_surface.py:145-148`
+    does, never the `tcw` on `PATH`.
+18. REJECTED for this spec. It is a defect in TCW-74's spec, not this one:
+    this spec already removes `stage gate` and `stage validate` (Design 1,
+    the removal list), as the epic's decision 2 says. TCW-74's own revision
+    should correct its line 158.
+
+Also applied from the coordinator, reconciling with TCW-72: `stage prompt`
+composes exactly the resolved `prompt` list, with the packaged text only where
+a `builtin: true` entry stands (7.2, criterion 21), and criterion 18 no longer
+forbids TCW-72's `/tcw-config.local.yaml` ignore line.
+
+New choices made in this round, each marked **[Decision]** above:
+`delegate` takes `here` as a keyword (2.3); `new --project` accepts only
+`--priority` (6.1); the upstream test must answer for an absent project (6.2);
+`read_all` sets unreadable items aside for `show`, `validate` and `drift`
+(3.3.3); the `work` branch of `_target_roots` is removed (10.1); the token is
+renamed in two packaged prompts (7.1); the status names leave
+`RESERVED_PROJECT_IDS` (Design 9); the provisioner allowance in the git scan
+(criterion 12); how "(installed)" criteria run (Acceptance criteria).
+
