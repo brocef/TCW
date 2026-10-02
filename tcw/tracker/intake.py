@@ -555,7 +555,7 @@ def leave_pre_backlog(client, ticket: TicketRead
     """
     from tcw.store.base import pre_backlog_entry, target_status
     from tcw.tracker.claim import _normalize
-    from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerNotFound,
+    from tcw.work.jira.client import (TrackerAuthError, TrackerError, TrackerNotFound,
                                   TrackerPermissionError, TrackerRateLimited,
                                   TrackerRequestInvalid)
 
@@ -638,7 +638,7 @@ def claim(client, ticket: TicketRead) -> ClaimOutcome:
     say so. A bare `raise` keeps the error's type, so it is still sorted into
     pending or conflicting correctly.
     """
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
 
     ticket, refusal, left = leave_pre_backlog(client, ticket)
     if refusal is not None:
@@ -667,7 +667,7 @@ def _claim_from(client, ticket: TicketRead) -> ClaimOutcome:
     propagate: the transition did not apply and there is nothing to read back.
     """
     from tcw.tracker.claim import AMBIGUOUS, NOT_CONFIGURED, _normalize, assess
-    from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerNotFound,
+    from tcw.work.jira.client import (TrackerAuthError, TrackerError, TrackerNotFound,
                                   TrackerPermissionError, TrackerRateLimited,
                                   TrackerRequestInvalid)
 
@@ -787,7 +787,7 @@ def put_back(client, outcome: ClaimOutcome) -> tuple[str, str]:
     something to report, not a reason to fail.
     """
     from tcw.tracker.claim import _normalize
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     from tcw.tracker.sync import CURRENT, assess_move
 
     target = outcome.claimed_from

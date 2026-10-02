@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tcw.store.base import target_status
-from tcw.tracker.jira import TrackerError
+from tcw.work.jira.client import TrackerError
 from tcw.tracker.sync import _normalize
 
 

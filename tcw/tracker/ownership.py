@@ -42,7 +42,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from tcw.tracker.claim import _normalize
-from tcw.tracker.jira import TrackerError, TrackerRequestInvalid
+from tcw.work.jira.client import TrackerError, TrackerRequestInvalid
 
 
 @dataclass(frozen=True)

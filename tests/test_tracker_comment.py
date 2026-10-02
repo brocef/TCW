@@ -144,7 +144,7 @@ def test_unlink_carries_an_owed_comment_into_the_history():
 # ── publishing, directly ─────────────────────────────────────────────────────
 
 
-from tcw.tracker import jira  # noqa: E402
+from tcw.work.jira import client as jira  # noqa: E402
 
 
 def comments_node(tmp_path, **tracker):

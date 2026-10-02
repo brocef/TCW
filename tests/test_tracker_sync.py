@@ -26,7 +26,7 @@ from tcw.store.base import classify_binding
 from tcw.store.fs import FsWorkStore, init
 from tcw.tracker.intake import binding_document, unlink_document, with_sync_record
 from tcw.work.projection import WORK_ITEM_SCHEMA
-from tracker_fake import BASE_URL, GLOBAL, SYNC, TWO_ROUTES_IN, FakeJira, install_sites
+from tests.work.jira.fake import BASE_URL, GLOBAL, SYNC, TWO_ROUTES_IN, FakeJira, install_sites
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"
@@ -249,7 +249,7 @@ def test_import_refuses_a_same_id_ticket_from_another_site(tmp_path, two_sites):
 
 
 def deliver_now(root: Path, slug: str, *, move: str | None, previous: str | None):
-    from tcw.tracker.jira import JiraClient
+    from tcw.work.jira.client import JiraClient
     from tcw.tracker.sync import deliver
     st = FsWorkStore.open(root)
     config = st.tracker_config()
@@ -502,7 +502,7 @@ def test_no_transition_or_two_to_the_target_is_conflicting(tmp_path, monkeypatch
     ("400", "conflicting"), ("503", "pending"), ("no-credentials", "pending")])
 def test_errors_are_pending_or_conflicting_by_what_the_tracker_said(node, fake, monkeypatch,
                                                                     error, state):
-    from tcw.tracker import jira
+    from tcw.work.jira import client as jira
     slug = bound_item(node)
     claimed_ticket(fake)
     moved_to(node, slug, "review")
@@ -1144,7 +1144,7 @@ def test_start_and_sync_send_nothing_through_a_binding_on_another_site(node, fak
 def ambiguous_node(tmp_path, monkeypatch, **transitions):
     """A workflow whose `In Progress` offers two transitions into `Done` — one for
     finished work and one for abandoned work, which is GitHub #40's shape."""
-    from tracker_fake import AMBIGUOUS, FakeJira
+    from tests.work.jira.fake import AMBIGUOUS, FakeJira
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
@@ -1357,7 +1357,7 @@ def test_a_move_that_arrives_after_a_plain_link_clears_the_note(node, fake):
 
 def ladder_node(tmp_path, monkeypatch, workflow, *, status="To Do", assignee=None,
                 transitions=NAMED_START):
-    from tracker_fake import FakeJira
+    from tests.work.jira.fake import FakeJira
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
@@ -1413,7 +1413,7 @@ def sync_link(root, slug):
 def transitions_fail(fake_, *which: int):
     """Make the numbered POSTs to a transitions endpoint fail as unreachable (1-based);
     returns the function that puts the fake back."""
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     answer, posts = fake_.answer, []
 
     def failing(client, method, path, body):
@@ -1430,7 +1430,7 @@ def transitions_fail(fake_, *which: int):
 def test_sync_status_walks_a_ticket_up_where_there_is_no_shortcut(tmp_path, monkeypatch):
     """No shortcut to Done in this workflow, so catching up takes three transitions:
     the claim onto In Progress, then In Review, then Done."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = under_way(root, "completed")
     code, _out, err = sync_link(root, slug)
@@ -1454,7 +1454,7 @@ def test_sync_status_takes_a_shortcut_when_the_workflow_offers_one(tmp_path, mon
 
 def test_a_walk_that_cannot_finish_leaves_the_ticket_where_it_reached(tmp_path,
                                                                      monkeypatch):
-    from tracker_fake import BROKEN_LADDER
+    from tests.work.jira.fake import BROKEN_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, BROKEN_LADDER)
     slug = under_way(root, "completed")
     code, _out, err = sync_link(root, slug)
@@ -1469,7 +1469,7 @@ def test_sync_finishes_a_sync_status_link_the_tracker_did_not_answer(tmp_path,
                                                                      monkeypatch):
     """What `--sync-status` could not deliver stays recorded, so the command a user runs
     next finishes it."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = under_way(root, "review")
     restore = transitions_fail(fake_, 1)
@@ -1488,7 +1488,7 @@ def test_sync_finishes_a_sync_status_link_the_tracker_did_not_answer(tmp_path,
 def test_the_walk_aims_at_the_items_status_not_the_recorded_move(tmp_path, monkeypatch):
     """The item moved on while nothing was sent (from `tcw serve`, say), so the record
     still names `start`. One sync must take the ticket to where the item is now."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = under_way(root, "active")
     restore = transitions_fail(fake_, 1)
@@ -1506,7 +1506,7 @@ def test_a_ticket_behind_its_item_with_no_record_is_still_drift(tmp_path, monkey
     is nothing owed, so nothing is caught up. The `claim: done` case, which is what
     the gate actually turns on, is
     `test_a_claimed_ticket_moved_back_is_not_walked_forward_again`."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER,
                               status="In Progress", assignee=A)
     slug = bound_item(root)                                   # linked while in backlog
@@ -1526,7 +1526,7 @@ def test_a_claimed_ticket_moved_back_is_not_walked_forward_again(tmp_path, monke
     then pushed back below where it was left. Walking it forward here would undo a
     person's deliberate move. Mutating the gate to accept `claim: done` must turn
     this red — without a record in play, nothing distinguishes the two."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER,
                               status="In Review", assignee=A)
     slug = bound_item(root)
@@ -1548,7 +1548,7 @@ def test_a_claimed_ticket_moved_back_is_not_walked_forward_again(tmp_path, monke
 def _ticket_offering(*offered, status: str = "In Progress"):
     """One `TicketRead`, ours, for a direct call on `assess_move`."""
     from tcw.tracker.intake import TicketRead
-    from tcw.tracker.jira import Transition
+    from tcw.work.jira.client import Transition
     return TicketRead(
         issue_id=TICKET_ID, key=KEY, url="", summary="t", status=status, category="new",
         assignee_id=A, assignee_name="Alice", me_id=A, me_name="Alice",
@@ -1650,7 +1650,7 @@ def test_sync_status_does_not_pull_back_a_ticket_already_past_its_item(tmp_path,
     """On a workflow offering the claim from every status, claiming a ticket that is
     already in review would move it back to In Progress. It is refused instead, and
     the claim stays owed."""
-    from tracker_fake import GLOBAL
+    from tests.work.jira.fake import GLOBAL
     root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
     slug = under_way(root, "active")
     code, _out, err = sync_link(root, slug)
@@ -1676,7 +1676,7 @@ def test_a_walk_interrupted_after_the_claim_resumes_on_the_next_sync(tmp_path,
     """The claim lands, then the tracker drops out before the first hop. The record
     now says the claim is done, so the next sync is not on the owed path — and on a
     workflow with no shortcut, one transition cannot reach Done from In Progress."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = under_way(root, "completed")
     restore = transitions_fail(fake_, 2)
@@ -1725,7 +1725,7 @@ def test_sync_status_carries_on_from_a_ticket_already_yours_part_way_up(
     """A ticket already assigned to you and already in review needs no claim. Claiming
     anyway moves it back on a workflow offering the claim from everywhere, and on one
     that does not, the claim lands off `active` and the catch-up is refused."""
-    import tracker_fake
+    import tests.work.jira.fake as tracker_fake
     root, fake_ = ladder_node(tmp_path, monkeypatch, getattr(tracker_fake, workflow_name),
                               status="In Review", assignee=A)
     slug = under_way(root, "completed")
@@ -1739,7 +1739,7 @@ def test_sync_status_does_not_claim_back_an_unassigned_ticket_part_way_up(tmp_pa
                                                                           monkeypatch):
     """Unassigned and already in review: the claim would move it back, so it is
     refused and nothing is sent."""
-    from tracker_fake import GLOBAL
+    from tests.work.jira.fake import GLOBAL
     root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
     slug = under_way(root, "completed")
     code, _out, err = sync_link(root, slug)
@@ -1751,7 +1751,7 @@ def test_a_status_shared_by_review_and_completed_uses_the_complete_transition(
         tmp_path, monkeypatch):
     """With `review` and `completed` both mapped to Done, the rung is the completion:
     its hop must use `transitions.complete`, not `transitions.submit`."""
-    from tracker_fake import FakeJira
+    from tests.work.jira.fake import FakeJira
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     monkeypatch.setenv("TCW_WORK_OWNER", "a@example.test")
@@ -1773,7 +1773,7 @@ def test_a_status_shared_by_review_and_completed_uses_the_complete_transition(
 
 def test_sync_status_on_a_review_item_does_not_claim_back_an_unassigned_ticket_in_review(
         tmp_path, monkeypatch):
-    from tracker_fake import GLOBAL
+    from tests.work.jira.fake import GLOBAL
     root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
     slug = under_way(root, "review")
     code, _out, err = sync_link(root, slug)
@@ -1788,7 +1788,7 @@ def test_the_past_the_claim_refusal_only_blames_the_claim_transition_when_there_
     """Without `exclusive-claim-transition` a claim is an assignment and moves
     nothing, so saying it could move the ticket back is untrue. The refusal itself is
     unchanged; only its reason depends on the key."""
-    from tracker_fake import GLOBAL
+    from tests.work.jira.fake import GLOBAL
     root, fake_ = ladder_node(tmp_path, monkeypatch, GLOBAL, status="In Review")
     if key_set:
         config = yaml.safe_load((root / "tcw-config.yaml").read_text(encoding="utf-8"))
@@ -1875,7 +1875,7 @@ def test_without_sync_status_sync_does_not_walk_a_ticket_through_statuses(tmp_pa
                                                                           monkeypatch):
     """An ordinary binding: completing straight from active on a workflow with no
     shortcut is a conflict, and a later `sync` must not start walking it."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = bound_item(root)                                    # linked in the backlog
     assert cli(root, "work", "start", slug)[0] == 0
@@ -1895,7 +1895,7 @@ def test_a_recorded_start_a_finished_item_no_longer_owes_is_not_delivered_by_syn
     On a workflow with no transition from where the ticket sits to `statuses.completed`
     that is a refusal — the honest answer, where marching the ticket up through the
     statuses that mean somebody is working on it, purely to close it, is not."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = bound_item(root)
     fake_.down = True
@@ -2598,7 +2598,7 @@ def test_a_ladder_hop_onto_the_active_rung_with_no_configured_name_derives_too(
     """The third path: a hop inside `walk()`, whose move is `MOVE_ONTO['active']` —
     which is `start`. `STRICT_LADDER` has no shortcut, so the walk really takes three
     hops and the first of them is the start."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER, transitions=None)
     slug = under_way(root, "completed")
     code, _out, err = sync_link(root, slug)
@@ -2610,7 +2610,7 @@ def test_a_ladder_hop_onto_the_active_rung_with_no_configured_name_derives_too(
 def test_a_claim_the_tracker_did_not_answer_is_recorded_pending(node, fake):
     """Criterion 17d: pending says a re-run will clear it; conflicting would say
     somebody has to act."""
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     slug = bound_item(node)
     fake.fail("PUT", "/assignee", TrackerUnavailable("the tracker could not be reached"))
     code, _out, err = cli(node, "work", "start", slug)
@@ -2738,7 +2738,7 @@ def start_hop_fails(fake_, where: str) -> None:
     ladder; `transition` makes the POST unreachable; `read-back` lets the POST land
     and makes the read that would confirm it unreachable, which is armed from inside
     the POST so it cannot catch an earlier read."""
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
 
     def unreachable():
         return TrackerUnavailable("the tracker could not be reached (fake)")
@@ -2804,7 +2804,7 @@ def test_a_claim_that_fails_while_the_start_is_owed_keeps_the_record_naming_it(n
     the start's failure just as much — so the record it writes keeps naming the start.
     Naming the later move loses the start for good: its window then begins at
     `statuses.active`, where nothing ever put the ticket."""
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     slug = bound_item(node)
     fake.down = True
     assert cli(node, "work", "start", slug)[0] == 1
@@ -2957,7 +2957,7 @@ def test_a_catch_up_already_on_disk_still_parses_and_still_walks(tmp_path, monke
     """Criterion 13, and the requester's decision: nothing writes `catch-up: true`,
     but a binding carrying it is still bound, and still walks a ticket up more than
     one rung — the only thing that can."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = ladder_node(tmp_path, monkeypatch, STRICT_LADDER)
     slug = under_way(root, "completed")
     code, _out, err = cli(root, "work", "tracker", "link", slug, KEY)

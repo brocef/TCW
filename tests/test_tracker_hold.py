@@ -25,7 +25,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsWorkStore
-from tcw.tracker import jira
+from tcw.work.jira import client as jira
 from test_tracker_import import (A, B, SENTINEL, TICKET, binding,  # noqa: F401
                                  fake, make_node, run, write_binding)
 

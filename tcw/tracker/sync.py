@@ -72,7 +72,7 @@ from tcw.tracker.claim import _normalize
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, leave_pre_backlog,
                                 moved_out, pre_backlog_hint, read_ticket, same_site,
                                 with_status_synced, with_sync_record)
-from tcw.tracker.jira import (TrackerAuthError, TrackerError, TrackerRateLimited,
+from tcw.work.jira.client import (TrackerAuthError, TrackerError, TrackerRateLimited,
                               TrackerUnavailable)
 from tcw.tracker.ownership import assert_ownership
 

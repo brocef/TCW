@@ -18,8 +18,9 @@ from __future__ import annotations
 import pytest
 
 from tcw.store.base import TrackerConfig
-from tcw.tracker import intake, jira
-from tracker_fake import BASE_URL, GLOBAL, FakeJira
+from tcw.tracker import intake
+from tcw.work.jira import client as jira
+from tests.work.jira.fake import BASE_URL, GLOBAL, FakeJira
 
 A, B = "acct-a", "acct-b"
 

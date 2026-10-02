@@ -18,8 +18,8 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsWorkStore, init
-from tcw.tracker import jira
-from tracker_fake import BASE_URL, FakeJira
+from tcw.work.jira import client as jira
+from tests.work.jira.fake import BASE_URL, FakeJira
 
 SENTINEL = "sentinel-token-do-not-print"
 A, B = "acct-a", "acct-b"

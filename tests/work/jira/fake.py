@@ -23,7 +23,7 @@ import os
 import re
 from dataclasses import dataclass, field
 
-from tcw.tracker import jira
+from tcw.work.jira import client as jira
 
 BASE_URL = "https://example.invalid"
 

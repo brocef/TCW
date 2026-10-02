@@ -23,7 +23,7 @@ from tcw.tracker.claim import (
     AMBIGUOUS, CLAIM_NOT_OFFERED, CLAIMABLE, EXCLUSIVE, MISCONFIGURED,
     NOT_CLAIMABLE, NOT_CONFIGURED, NOT_DETERMINED, NOT_EXCLUSIVE, assess,
 )
-from tcw.tracker.jira import Transition
+from tcw.work.jira.client import Transition
 
 CLAIM = "Start Progress"
 

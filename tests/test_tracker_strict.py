@@ -19,7 +19,7 @@ from tcw.validate import validate
 from test_tracker_sync import (A, B, KEY, NAMED_START, SENTINEL, STATUSES,  # noqa: F401
                                TICKET_ID, accepted, bound_item, claimed_ticket, cli,
                                fake, make_node, record, status, with_record)
-from tracker_fake import BASE_URL
+from tests.work.jira.fake import BASE_URL
 
 BASE = {
     "provider": "jira-cloud", "base-url": BASE_URL,
@@ -181,7 +181,7 @@ def test_a_broken_block_does_not_switch_strict_off(tmp_path, fake, strict, probl
 
 
 def client_for(root: Path):
-    from tcw.tracker.jira import JiraClient
+    from tcw.work.jira.client import JiraClient
     st = FsWorkStore.open(root)
     return st, JiraClient(st.tracker_config()), st.tracker_config()
 
@@ -279,7 +279,7 @@ def test_an_undelivered_change_must_be_synced_first(strict, fake):
 def test_a_claim_on_a_workflow_that_offers_it_everywhere_is_refused(tmp_path, monkeypatch):
     from tcw.tracker.intake import claim, read_ticket
     from tcw.tracker.sync import claim_refusal
-    from tracker_fake import GLOBAL, FakeJira
+    from tests.work.jira.fake import GLOBAL, FakeJira
     monkeypatch.setenv("TCW_A_EMAIL", "a@example.test")
     monkeypatch.setenv("TCW_PROBE_TOKEN", SENTINEL)
     fake_ = FakeJira(workflow=GLOBAL)
@@ -317,7 +317,7 @@ def test_a_claim_row_1e_from_the_wrong_status_is_refused(strict, fake):
 
 import subprocess  # noqa: E402
 
-from tracker_fake import GLOBAL, SYNC, FakeJira  # noqa: E402
+from tests.work.jira.fake import GLOBAL, SYNC, FakeJira  # noqa: E402
 
 REFUSED = "refused under strict tracker mode"
 
@@ -617,7 +617,7 @@ def test_a_strict_start_on_the_claims_own_status_is_refused_where_it_is_offered_
 
 
 def refuse_the_assignment(fake_) -> None:
-    from tcw.tracker import jira
+    from tcw.work.jira import client as jira
     fake_.fail("PUT", "/assignee",
                jira._for_status(400, {}, "cannot assign", "x"))
 
@@ -674,7 +674,7 @@ def test_a_start_whose_assignment_failed_after_the_transition_says_the_ticket_mo
 def fail_the_read_back(fake_) -> None:
     """Let the assignment land and break the read that would confirm it, armed from
     inside the assignment so it cannot catch an earlier read."""
-    from tcw.tracker import jira
+    from tcw.work.jira import client as jira
     fake_.before("PUT", "/assignee", lambda: fake_.fail(
         "GET", f"/rest/api/3/issue/{TICKET_ID}?",
         jira.TrackerUnavailable("down (fake)")))
@@ -1541,7 +1541,7 @@ def test_the_exclusivity_verdict_comes_from_the_exclusive_claim_transition(
     shows which one it was asked about. `import` is asked about both, since it takes
     the ticket through `transitions.start`; `start` and `tracker claim` take it
     through `exclusive-claim-transition` only."""
-    from tracker_fake import ONE_MUTEX_ONE_NOT
+    from tests.work.jira.fake import ONE_MUTEX_ONE_NOT
     root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=ONE_MUTEX_ONE_NOT,
                                    strict=True, assignee=None, ticket_status="To Do",
                                    start=start, exclusive=exclusive)
@@ -1594,7 +1594,7 @@ def test_show_answers_each_line_about_its_own_key(tmp_path, monkeypatch, command
     through; `workflow:` is about `exclusive-claim-transition`, the key strict mode's
     promise rests on. With the two naming different transitions, each line shows
     which one it was asked about."""
-    from tracker_fake import ONE_MUTEX_ONE_NOT
+    from tests.work.jira.fake import ONE_MUTEX_ONE_NOT
     root, _fake = exclusivity_node(tmp_path, monkeypatch, workflow=ONE_MUTEX_ONE_NOT,
                                    strict=False, assignee=None,
                                    ticket_status="In Progress", start=start,
@@ -1690,7 +1690,7 @@ def test_an_applied_claim_transition_is_checked_where_it_landed(tmp_path, monkey
                                                                 command):
     """The claim applied the transition, so the ticket is where it leads, and whether
     it is offered again there is answerable — even off `statuses.active`."""
-    from tracker_fake import CATEGORY
+    from tests.work.jira.fake import CATEGORY
     monkeypatch.setitem(CATEGORY, "Selected", "indeterminate")
     root, fake_ = exclusivity_node(tmp_path, monkeypatch, workflow=SELECT_ELSEWHERE,
                                    strict=True, assignee=None, ticket_status="To Do",

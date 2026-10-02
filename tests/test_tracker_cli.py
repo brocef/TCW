@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsWorkStore, init
-from tcw.tracker import jira
+from tcw.work.jira import client as jira
 
 SENTINEL = "sentinel-token-do-not-print"
 
@@ -1221,7 +1221,7 @@ def test_an_unreachable_tracker_still_files_the_item_and_records_the_debt(
     a train. The debt is recorded instead."""
     root, configure = node
     configure(ON_NEW_TRACKER)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
 
     code, out, err = _run(["work", "new", "Filed on a train"])
@@ -1244,7 +1244,7 @@ def test_an_owed_ticket_is_visible_on_the_board(node, monkeypatch):
     quietly accumulates items nobody knows are missing from the tracker."""
     root, configure = node
     configure(ON_NEW_TRACKER)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
     code, _out, err = _run(["work", "new", "Filed on a train"])
     assert code == 0, err
@@ -1312,7 +1312,7 @@ def test_creating_the_owed_ticket_later_binds_it_and_clears_the_debt(
     retried filing must not double-create."""
     root, configure = node
     configure(ON_NEW_TRACKER)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
     code, out, err = _run(["work", "new", "Filed on a train"])
     assert code == 0, err
@@ -1335,7 +1335,7 @@ def test_all_sweeps_up_owed_tickets(node, monkeypatch):
     """The recovery path for a whole board's worth of debt."""
     root, configure = node
     configure(ON_NEW_TRACKER)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
     for title in ("Alpha", "Beta"):
         assert _run(["work", "new", title])[0] == 0
@@ -1366,7 +1366,7 @@ def _owed_item(monkeypatch, title="Filed on a train"):
     `binding_value` reports as `{"owed": ...}` — the fourth shape, and the one no
     test moved through a lifecycle before these two.
     """
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     _create_responses(monkeypatch, __create__=TrackerError("the network is down"))
     code, out, err = _run(["work", "new", title])
     assert code == 0, err

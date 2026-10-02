@@ -460,7 +460,7 @@ def _strict_refusal(st, bare: str, change: str, own=None, *,
     if config is None:
         return _STRICT_BROKEN
     from tcw.store.base import target_status
-    from tcw.tracker.jira import JiraClient
+    from tcw.work.jira.client import JiraClient
     from tcw.tracker.sync import MOVE_STATUS, authorize
     # The item's resolution, as `deliver` uses it to pick a configured transition.
     target = target_status(config.statuses, MOVE_STATUS[change], resolution)
@@ -494,7 +494,7 @@ def _claim_gate(st, bare: str) -> str | None:
     if config is None:
         return None
     from tcw.tracker.intake import Bound, binding_of, read_ticket, same_site
-    from tcw.tracker.jira import JiraClient, TrackerError
+    from tcw.work.jira.client import JiraClient, TrackerError
     try:
         bound, _revision = binding_of(st, bare)
     except (OSError, UnicodeDecodeError):
@@ -576,7 +576,7 @@ def _strict_claim(st, bare: str, item, args, *,
         return None, False                # likewise, before any ticket is taken
     from tcw.tracker.claim import _normalize
     from tcw.tracker.intake import leave_pre_backlog, moved_out, read_ticket
-    from tcw.tracker.jira import JiraClient, TrackerError
+    from tcw.work.jira.client import JiraClient, TrackerError
     from tcw.tracker.ownership import assert_ownership
     from tcw.tracker.sync import binding_refusal, lowest_rung
     bound, refusal = binding_refusal(
@@ -706,7 +706,7 @@ def _ticket_on_filing(st, slug: str, verb: str) -> None:
     config = st.tracker_config()
     if config is None or config.create is None or not config.create.on_new:
         return
-    from tcw.tracker.jira import JiraClient
+    from tcw.work.jira.client import JiraClient
     try:
         # The client is built here rather than through `_tracker_client`, which
         # prints its own refusals for a missing or broken block. Both are already
@@ -887,7 +887,7 @@ def _inbox_list(args: argparse.Namespace) -> int:
 def _inbox_tickets(config) -> int:
     """The tracker half of `inbox list`, printed after raw intake so a tracker that
     cannot be reached costs nothing but itself."""
-    from tcw.tracker.jira import JiraClient, TrackerError
+    from tcw.work.jira.client import JiraClient, TrackerError
     try:
         result = JiraClient(config).search(config.inbox_query)
     except TrackerError as e:
@@ -925,7 +925,7 @@ def _inbox_can_try_ticket(st, verb: str, not_found: InboxEntryNotFound | None) -
 def _not_a_ticket(verb: str, ref: str, not_found: InboxEntryNotFound | None,
                   error: Exception) -> None:
     """A failed ticket read, naming the raw-entry miss too when there was one."""
-    from tcw.tracker.jira import TrackerNotFound
+    from tcw.work.jira.client import TrackerNotFound
     if not_found is None:
         reason = error
     elif isinstance(error, TrackerNotFound):
@@ -965,7 +965,7 @@ def _inbox_show(args: argparse.Namespace) -> int:
 def _inbox_show_ticket(st, ref: str, not_found: InboxEntryNotFound | None) -> int:
     if not _inbox_can_try_ticket(st, "inbox show", not_found):
         return 1
-    from tcw.tracker.jira import JiraClient, TrackerError
+    from tcw.work.jira.client import JiraClient, TrackerError
     client = JiraClient(st.tracker_config())
     try:
         issue = client.issue(ref)
@@ -1513,7 +1513,7 @@ def _deliver_after(st, bare: str, verb: str, move: str, previous_status: str, *,
                 "the tracker configuration has problems: " + "; ".join(problems)
                 + ". Run `tcw validate`."))
         else:
-            from tcw.tracker.jira import JiraClient
+            from tcw.work.jira.client import JiraClient
             client = JiraClient(config)
             outcome = deliver(st, bare, client, config, move=move,
                               previous_status=previous_status)
@@ -2796,7 +2796,7 @@ def _tracker_client(label: str):
             print(f"tcw work {label}: no tracker is configured. Add a "
                   f"work.tracker block to tcw-config.yaml.", file=sys.stderr)
         return None
-    from tcw.tracker.jira import JiraClient
+    from tcw.work.jira.client import JiraClient
     return JiraClient(config)
 
 
@@ -2811,7 +2811,7 @@ def _tracker_list(args: argparse.Namespace) -> int:
     client = _tracker_client("tracker list")
     if client is None:
         return 1
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     try:
         result = client.search(client.config.candidate_query)
     except TrackerError as e:
@@ -2835,7 +2835,7 @@ def _tracker_show(args: argparse.Namespace) -> int:
     client = _tracker_client("tracker show")
     if client is None:
         return 1
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     try:
         issue = client.issue(args.ticket)
         offered = client.transitions(args.ticket)
@@ -2943,7 +2943,7 @@ def _tracker_import(args: argparse.Namespace, label: str = "tracker import",
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, claim,
                                     find_binding, moved_out, pre_backlog_hint,
                                     put_back, read_ticket, validate_part)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
 
     client = _tracker_client(label)
     if client is None:
@@ -3347,7 +3347,7 @@ def _create_one(st, client, slug: str, part: str | None, dry_run: bool, *,
     from tcw.tracker.intake import (BINDING_SIDECAR, Bound, Malformed, binding_of,
                                     created_record, validate_part,
                                     with_created_record)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
 
     item = st.get(slug)
 
@@ -3595,7 +3595,7 @@ def _tracker_link(args: argparse.Namespace, *, verb: str = "tracker link") -> in
     from tcw.tracker.intake import (BINDING_SIDECAR, BindingProblem, Bound, Malformed,
                                     binding_of, find_binding, read_ticket,
                                     unlinked_history, validate_part)
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
 
     if getattr(args, "sync_status", False):
         # Retired: taking a ticket and moving it are separate commands now, so the
@@ -3800,7 +3800,7 @@ def _tracker_claim(args: argparse.Namespace) -> int:
     taken never leaves the item claiming something the tracker disagrees with.
     """
     from tcw.tracker.intake import read_ticket, same_site
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     from tcw.tracker.ownership import assert_ownership
 
     resolved = _tracker_ownership_target(args, "claim")
@@ -3869,7 +3869,7 @@ def _tracker_release(args: argparse.Namespace) -> int:
     what handing work over looks like before somebody else claims it.
     """
     from tcw.tracker.intake import read_ticket, same_site
-    from tcw.tracker.jira import TrackerError
+    from tcw.work.jira.client import TrackerError
     from tcw.tracker.ownership import drop_ownership
 
     resolved = _tracker_ownership_target(args, "release")

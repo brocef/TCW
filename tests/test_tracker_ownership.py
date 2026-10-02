@@ -17,10 +17,10 @@ from __future__ import annotations
 import pytest
 
 from tcw.store.base import TrackerConfig
-from tcw.tracker import jira
+from tcw.work.jira import client as jira
 from tcw.tracker.intake import read_ticket
 from tcw.tracker.ownership import assert_ownership, drop_ownership
-from tracker_fake import BASE_URL, GLOBAL, SYNC, FakeJira
+from tests.work.jira.fake import BASE_URL, GLOBAL, SYNC, FakeJira
 
 A, B = "acct-a", "acct-b"
 TICKET = "10052"

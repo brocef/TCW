@@ -641,7 +641,7 @@ def test_tracker_list_sends_the_childs_query_to_the_inherited_site(tmp_path, mon
     """C17. No CLI code changed; this proves `tcw work tracker list` reads the merge."""
     import json
 
-    from tcw.tracker import jira
+    from tcw.work.jira import client as jira
 
     nodes = _chain(tmp_path, root_board=False, root=COMPLETE, repo=ABSENT, pkg=QUERY_ONLY)
     monkeypatch.chdir(nodes["pkg"])

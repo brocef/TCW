@@ -30,7 +30,7 @@ from tcw.tracker.claim import (
     CLAIM_NOT_OFFERED, CLAIMABLE, EXCLUSIVE, MISCONFIGURED, NOT_CLAIMABLE,
     NOT_DETERMINED, NOT_EXCLUSIVE, assess,
 )
-from tcw.tracker.jira import Transition
+from tcw.work.jira.client import Transition
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "tracker"
 CLAIM = "Start Progress"

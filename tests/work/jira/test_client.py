@@ -23,10 +23,24 @@ import urllib.error
 
 import pytest
 
-from tcw.store.base import TrackerConfig
-from tcw.tracker import jira
+from tcw.work.jira import client as jira
+from tcw.work.jira.client import TrackerError
 
-CONFIG = TrackerConfig(
+
+@dataclasses.dataclass(frozen=True)
+class _Config:
+    """The attributes the client reads from its configuration, and no more:
+    it reads them only by name, so any object carrying them will do."""
+    provider: str
+    base_url: str
+    candidate_query: str
+    email_env: str
+    token_env: str
+    start_transition: str
+    timeout_seconds: int = 15
+
+
+CONFIG = _Config(
     provider="jira-cloud",
     base_url="https://example.atlassian.net",
     candidate_query='assignee = currentUser() AND status = "To Do"',
@@ -501,3 +515,78 @@ def test_a_server_that_drops_the_connection_is_unavailable_not_a_crash():
     finally:
         thread.join(timeout=5)
         listener.close()
+
+
+# The two tests below came from tests/test_tracker_hardening.py: they test only
+# the client's handling of a response, which outlives the 2.x tracker.
+KEY, TICKET_ID = "SYNC-1", "20001"
+
+
+# ── criterion 2: each client operation refuses a response of the wrong shape ─
+
+def respond(path: str, payload) -> Recorder:
+    return Recorder({path: (200, {}, json.dumps(payload).encode())})
+
+
+ISSUE = f"/rest/api/3/issue/{KEY}?fields=summary,status,assignee,description"
+SEARCH = "/rest/api/3/search/jql"
+TRANSITIONS = f"/rest/api/3/issue/{KEY}/transitions"
+COMMENTS = f"/rest/api/3/issue/{TICKET_ID}/comment?orderBy=-created&maxResults=100"
+DESCRIPTION = f"/rest/api/2/issue/{TICKET_ID}?fields=description"
+
+CALLS = {
+    "myself": ("/rest/api/3/myself", lambda c: c.myself()),
+    "issue": (ISSUE, lambda c: c.issue(KEY)),
+    "search": (SEARCH, lambda c: c.search("x")),
+    "transitions": (TRANSITIONS, lambda c: c.transitions(KEY)),
+    "recent_comments": (COMMENTS, lambda c: c.recent_comments(TICKET_ID)),
+    "description": (DESCRIPTION, lambda c: c.description(TICKET_ID)),
+    "create_issue": ("/rest/api/3/issue", lambda c: c.create_issue(
+        project="P", summary="s", description={}, issue_type="Task")),
+}
+
+BAD = [
+    ("myself", []),
+    ("issue", ["not", "a", "mapping"]),
+    ("issue", {"fields": []}),
+    ("issue", {"fields": {"status": "Done"}}),
+    ("issue", {"fields": {"status": {"statusCategory": 3}}}),
+    ("issue", {"fields": {"assignee": ["a"]}}),
+    ("search", {"issues": {"a": 1}}),
+    ("search", {"issues": ["TCW-1"]}),
+    ("search", {"issues": [{"fields": {"status": 1}}]}),
+    ("transitions", {"transitions": "all"}),
+    ("transitions", {"transitions": [7]}),
+    ("transitions", {"transitions": [{"id": "1", "to": "Done"}]}),
+    ("recent_comments", {"comments": {"x": 1}}),
+    ("recent_comments", {"comments": ["hi"]}),
+    ("description", {"fields": "text"}),
+    # Values read from an issue, not only the levels holding them.
+    ("issue", {"fields": {"status": {"name": 5}}}),
+    ("issue", {"key": 1, "fields": {}}),
+    ("issue", {"fields": {"summary": ["s"]}}),
+    ("issue", {"fields": {"assignee": {"displayName": {"x": 1}}}}),
+    ("search", {"issues": [{"fields": {"status": {"statusCategory": {"key": 2}}}}]}),
+    # `create_issue` is deliberately absent: its answer is returned as it came,
+    # so `create.py` can warn that the ticket may exist
+    # (`tests/test_tracker_message_tidy.py`).
+]
+
+
+@pytest.mark.parametrize("operation, payload", BAD,
+                         ids=[f"{op}-{i}" for i, (op, _) in enumerate(BAD)])
+def test_a_response_of_the_wrong_shape_is_a_tracker_error(monkeypatch, operation, payload):
+    path, call = CALLS[operation]
+    client = _client(monkeypatch, respond(path, payload))
+    with pytest.raises(TrackerError, match="unexpected shape"):
+        call(client)
+
+
+def test_nulls_the_code_already_treats_as_absent_still_read(monkeypatch):
+    payload = {"id": TICKET_ID, "key": KEY,
+               "fields": {"summary": "s", "status": {"name": "To Do", "statusCategory": None},
+                          "assignee": None, "description": None}}
+    assert _client(monkeypatch, respond(ISSUE, payload)).issue(KEY)["key"] == KEY
+    comments = {"comments": [{"author": None, "body": {"content": "not a list"}}]}
+    assert _client(monkeypatch, respond(COMMENTS, comments)).recent_comments(TICKET_ID) == [
+        ("", "")]

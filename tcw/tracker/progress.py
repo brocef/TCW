@@ -27,7 +27,7 @@ import secrets
 from tcw.store.base import link_for
 from tcw.tracker.intake import (BINDING_SIDECAR, Bound, binding_of, read_ticket,
                                 same_site, with_comment_record)
-from tcw.tracker.jira import TrackerError
+from tcw.work.jira.client import TrackerError
 from tcw.tracker.sync import (CONFLICTING, CURRENT, MOVES_NEEDING_NO_CLAIM, NONE,
                               PENDING, REASON_LIMIT, Outcome, _now, classify_error)
 

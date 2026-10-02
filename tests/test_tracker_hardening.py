@@ -10,9 +10,9 @@ import subprocess
 import pytest
 
 from tcw.store.fs import FsWorkStore
-from tcw.tracker import jira
-from tcw.tracker.jira import TrackerError
-from test_tracker_client import CONFIG, Recorder, _client, _credentials  # noqa: F401
+from tcw.work.jira import client as jira
+from tcw.work.jira.client import TrackerError
+from tests.work.jira.test_client import CONFIG, Recorder, _client, _credentials  # noqa: F401
 from test_tracker_strict import REFUSED, strict  # noqa: F401
 from test_tracker_sync import (KEY, STATUSES, TICKET_ID, cli, fake,  # noqa: F401
                                make_node)
@@ -57,76 +57,6 @@ def test_read_sidecar_raises_for_a_name_that_is_not_a_regular_file(node):
         FsWorkStore.open(node).read_sidecar(slug, "tracker.yaml")
     other = FsWorkStore.open(node).create("Plain").slug
     assert FsWorkStore.open(node).read_sidecar(other, "tracker.yaml") is None
-
-
-# ── criterion 2: each client operation refuses a response of the wrong shape ─
-
-def respond(path: str, payload) -> Recorder:
-    return Recorder({path: (200, {}, json.dumps(payload).encode())})
-
-
-ISSUE = f"/rest/api/3/issue/{KEY}?fields=summary,status,assignee,description"
-SEARCH = "/rest/api/3/search/jql"
-TRANSITIONS = f"/rest/api/3/issue/{KEY}/transitions"
-COMMENTS = f"/rest/api/3/issue/{TICKET_ID}/comment?orderBy=-created&maxResults=100"
-DESCRIPTION = f"/rest/api/2/issue/{TICKET_ID}?fields=description"
-
-CALLS = {
-    "myself": ("/rest/api/3/myself", lambda c: c.myself()),
-    "issue": (ISSUE, lambda c: c.issue(KEY)),
-    "search": (SEARCH, lambda c: c.search("x")),
-    "transitions": (TRANSITIONS, lambda c: c.transitions(KEY)),
-    "recent_comments": (COMMENTS, lambda c: c.recent_comments(TICKET_ID)),
-    "description": (DESCRIPTION, lambda c: c.description(TICKET_ID)),
-    "create_issue": ("/rest/api/3/issue", lambda c: c.create_issue(
-        project="P", summary="s", description={}, issue_type="Task")),
-}
-
-BAD = [
-    ("myself", []),
-    ("issue", ["not", "a", "mapping"]),
-    ("issue", {"fields": []}),
-    ("issue", {"fields": {"status": "Done"}}),
-    ("issue", {"fields": {"status": {"statusCategory": 3}}}),
-    ("issue", {"fields": {"assignee": ["a"]}}),
-    ("search", {"issues": {"a": 1}}),
-    ("search", {"issues": ["TCW-1"]}),
-    ("search", {"issues": [{"fields": {"status": 1}}]}),
-    ("transitions", {"transitions": "all"}),
-    ("transitions", {"transitions": [7]}),
-    ("transitions", {"transitions": [{"id": "1", "to": "Done"}]}),
-    ("recent_comments", {"comments": {"x": 1}}),
-    ("recent_comments", {"comments": ["hi"]}),
-    ("description", {"fields": "text"}),
-    # Values read from an issue, not only the levels holding them.
-    ("issue", {"fields": {"status": {"name": 5}}}),
-    ("issue", {"key": 1, "fields": {}}),
-    ("issue", {"fields": {"summary": ["s"]}}),
-    ("issue", {"fields": {"assignee": {"displayName": {"x": 1}}}}),
-    ("search", {"issues": [{"fields": {"status": {"statusCategory": {"key": 2}}}}]}),
-    # `create_issue` is deliberately absent: its answer is returned as it came,
-    # so `create.py` can warn that the ticket may exist
-    # (`tests/test_tracker_message_tidy.py`).
-]
-
-
-@pytest.mark.parametrize("operation, payload", BAD,
-                         ids=[f"{op}-{i}" for i, (op, _) in enumerate(BAD)])
-def test_a_response_of_the_wrong_shape_is_a_tracker_error(monkeypatch, operation, payload):
-    path, call = CALLS[operation]
-    client = _client(monkeypatch, respond(path, payload))
-    with pytest.raises(TrackerError, match="unexpected shape"):
-        call(client)
-
-
-def test_nulls_the_code_already_treats_as_absent_still_read(monkeypatch):
-    payload = {"id": TICKET_ID, "key": KEY,
-               "fields": {"summary": "s", "status": {"name": "To Do", "statusCategory": None},
-                          "assignee": None, "description": None}}
-    assert _client(monkeypatch, respond(ISSUE, payload)).issue(KEY)["key"] == KEY
-    comments = {"comments": [{"author": None, "body": {"content": "not a list"}}]}
-    assert _client(monkeypatch, respond(COMMENTS, comments)).recent_comments(TICKET_ID) == [
-        ("", "")]
 
 
 # ── criterion 3: link refuses an item waiting for deletion ──────────────────

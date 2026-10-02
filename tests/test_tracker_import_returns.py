@@ -12,11 +12,11 @@ from __future__ import annotations
 import pytest
 
 from tcw.store.fs import FsWorkStore
-from tcw.tracker.jira import TrackerUnavailable
+from tcw.work.jira.client import TrackerUnavailable
 from test_tracker_pre_backlog import TRIAGE, post_fails, set_pre_backlog
 from test_tracker_strict import set_tracker_key, strict_node
 from test_tracker_sync import A, KEY, SENTINEL, TICKET_ID, cli, ladder_node
-from tracker_fake import SYNC, FakeJira
+from tests.work.jira.fake import SYNC, FakeJira
 
 STOP = ("71", "Stop", "To Do")
 # `SYNC` with a way back from the working statuses to the backlog, as the TCW Jira

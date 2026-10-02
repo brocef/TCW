@@ -1,5 +1,8 @@
 """A Jira Cloud REST client, standard library only.
 
+This module is the single home of all Jira HTTP work in TCW, including what the
+Jira work backend needs, so that a second Jira client never gets written.
+
 TCW ships with PyYAML and nothing else, and that does not change for this. So the
 transport is `urllib.request`, with a basic-authentication header built by hand.
 

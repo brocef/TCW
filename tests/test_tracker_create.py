@@ -15,7 +15,7 @@ from tcw.store.base import TrackerConfig, TrackerCreate
 from tcw.tracker.create import (
     create_and_place, description_document, placement_target, unplaceable,
 )
-from tcw.tracker.jira import TrackerError, Transition
+from tcw.work.jira.client import TrackerError, Transition
 
 
 class StubClient:

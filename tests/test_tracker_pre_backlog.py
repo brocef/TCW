@@ -94,10 +94,11 @@ def test_a_child_inherits_pre_backlog_entries():
 # ── Task 2: the step, inside the claim ────────────────────────────────────────
 
 from tcw.store.base import TrackerConfig  # noqa: E402
-from tcw.tracker import intake, jira  # noqa: E402
+from tcw.tracker import intake  # noqa: E402
+from tcw.work.jira import client as jira  # noqa: E402
 
-import tracker_fake  # noqa: E402
-from tracker_fake import BASE_URL, SYNC, FakeJira  # noqa: E402
+import tests.work.jira.fake as tracker_fake  # noqa: E402
+from tests.work.jira.fake import BASE_URL, SYNC, FakeJira  # noqa: E402
 
 A, B = "acct-a", "acct-b"
 ID, TKEY = "10052", "TRI-6"
@@ -364,7 +365,7 @@ def test_link_sync_status_accepts_then_claims(tmp_path, monkeypatch, assignee):
 def test_sync_finishes_an_owed_catch_up_from_triage(tmp_path, monkeypatch):
     """A catch-up whose first attempt never got `Accept` through is finished by
     `sync`, walking on up a workflow with no shortcut."""
-    from tracker_fake import STRICT_LADDER
+    from tests.work.jira.fake import STRICT_LADDER
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"},
                               workflow={**STRICT_LADDER, "Triage": TRIAGE["Triage"]})
@@ -412,7 +413,7 @@ def test_a_claim_refused_after_the_step_is_resumed_by_sync(tmp_path, monkeypatch
 
 
 def test_a_step_that_may_not_have_applied_is_recorded_pending(tmp_path, monkeypatch):
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
     slug = FsWorkStore.open(root).create("Waiting in triage").slug
@@ -425,7 +426,7 @@ def test_a_step_that_may_not_have_applied_is_recorded_pending(tmp_path, monkeypa
 
 
 def test_a_claim_raising_after_the_step_still_reports_the_move(tmp_path, monkeypatch):
-    from tcw.tracker.jira import TrackerRateLimited
+    from tcw.work.jira.client import TrackerRateLimited
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
     slug = under_way(root)
@@ -702,7 +703,7 @@ def test_import_refused_after_the_step_is_retried_by_import(tmp_path, monkeypatc
 
 
 def test_import_that_raises_after_the_step_reports_the_move(tmp_path, monkeypatch):
-    from tcw.tracker.jira import TrackerRateLimited
+    from tcw.work.jira.client import TrackerRateLimited
     root, fake_ = triage_node(tmp_path, monkeypatch, assignee=None,
                               pre_backlog={"Triage": "Accept"})
     post_fails(fake_, 2, TrackerRateLimited("slow down (fake)"))
@@ -822,7 +823,7 @@ def test_an_accept_landing_elsewhere_does_not_claim_it_reached_the_backlog(tmp_p
 
 def test_an_unanswered_accept_that_cannot_be_read_back_is_not_called_a_move(tmp_path,
                                                                           monkeypatch):
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
     post_fails(fake_, 1, TrackerUnavailable("no answer (fake)"))
     fail_reads_after_first_post(fake_, TrackerUnavailable("no answer (fake)"))
@@ -836,7 +837,7 @@ def test_an_unanswered_accept_that_cannot_be_read_back_is_not_called_a_move(tmp_
 
 
 def test_an_uncertain_accept_points_at_sync_not_at_rerunning_start(tmp_path, monkeypatch):
-    from tcw.tracker.jira import TrackerUnavailable
+    from tcw.work.jira.client import TrackerUnavailable
     root, fake_, slug = started_from_triage(tmp_path, monkeypatch)
     post_fails(fake_, 1, TrackerUnavailable("no answer (fake)"))
     code, _out, err = cli(root, "work", "start", slug)

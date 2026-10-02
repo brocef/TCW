@@ -10,7 +10,7 @@ from test_tracker_strict import (REFUSED, set_tracker_key, started,  # noqa: F40
                                  strict)
 from test_tracker_sync import (A, TICKET_ID, binding_text, bound_item,  # noqa: F401
                                claimed_ticket, cli, fake, record, status)
-from tracker_fake import STRICT_LADDER
+from tests.work.jira.fake import STRICT_LADDER
 
 
 def no_route_to_review(fake):
@@ -271,7 +271,7 @@ def test_a_catch_up_walk_is_refused_and_taken_one_step_at_a_time(strict, fake): 
 
 def test_a_catch_up_walk_broken_part_way_is_refused_before_anything_moves(
         strict, fake):  # noqa: F811
-    from tracker_fake import BROKEN_LADDER
+    from tests.work.jira.fake import BROKEN_LADDER
     slug = bound_item(strict)
     claimed_ticket(fake, "In Progress", A)
     started(strict, slug)
