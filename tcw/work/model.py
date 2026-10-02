@@ -251,3 +251,138 @@ def apply_changes(item: Item, changes: Changes) -> Item:
 def blocks_of(slug: Slug, items: Iterable[Item]) -> list[Slug]:
     """The items `slug` blocks. Nothing stores this; it is read off blocked-by."""
     return [item.slug for item in items if slug in item.blocked_by]
+
+
+# ---------------------------------------------------------------------------
+# The stage table
+
+# Column values. `kind`: a flow stage is part of the forward path, a terminal
+# stage ends it, and a side stage is worked on but never moved into.
+FLOW, TERMINAL, SIDE = "flow", "terminal", "side"
+# `artifact`: one revised document, numbered rounds, or no files at all.
+DOCUMENT, ROUNDS, NO_ARTIFACT = "document", "rounds", "none"
+# Built-in gate names, as the `gates` column and `gates_for` give them.
+RECORDS_GATE, COMPLETION_GATE = "records", "completion"
+
+
+@dataclass(frozen=True)
+class Stage:
+    name: str
+    kind: str
+    artifact: str
+    optional: bool  # may a project disable it
+    verdict: bool  # do its rounds carry an accepted/rejected verdict
+    on_reject: str | None  # where a rejected round sends the item
+    completion: bool  # finished work moves here
+    discard: bool  # abandoned work moves here
+    prompt: bool  # TCW ships a built-in prompt, tcw/work/prompts/<name>.md
+    gates: tuple[str, ...]  # built-in gates that run on a move into it
+
+
+def _row(name, kind, artifact, optional=False, verdict=False, on_reject=None,
+         completion=False, discard=False, prompt=True, gates=()):
+    return Stage(name, kind, artifact, optional, verdict, on_reject, completion,
+                 discard, prompt, gates)
+
+
+# The only place a stage is named. Order is the order of the lifecycle.
+STAGES: tuple[Stage, ...] = (
+    _row("inbox", FLOW, NO_ARTIFACT),
+    _row("request", FLOW, DOCUMENT),
+    _row("spec", FLOW, DOCUMENT, optional=True),
+    _row("plan", FLOW, DOCUMENT, optional=True),
+    _row("implement", FLOW, ROUNDS),
+    _row("review", FLOW, ROUNDS, optional=True, verdict=True,
+         on_reject="implement"),
+    _row("qa", FLOW, ROUNDS, optional=True, verdict=True, on_reject="implement"),
+    _row("completed", TERMINAL, NO_ARTIFACT, completion=True, prompt=False,
+         gates=(COMPLETION_GATE,)),
+    _row("discarded", TERMINAL, NO_ARTIFACT, discard=True, prompt=False),
+    _row("postmortem", SIDE, DOCUMENT, optional=True),
+)
+
+_BY_NAME = {s.name: s for s in STAGES}
+_INDEX = {s.name: i for i, s in enumerate(STAGES)}
+
+
+def stage(name: str) -> Stage:
+    try:
+        return _BY_NAME[name]
+    except (KeyError, TypeError):
+        raise UsageError(
+            f"unknown stage {name!r}; the stages are "
+            f"{', '.join(s.name for s in STAGES)}") from None
+
+
+def is_stage(name: object) -> bool:
+    return isinstance(name, str) and name in _BY_NAME
+
+
+def completion_stage() -> str:
+    return next(s.name for s in STAGES if s.completion)
+
+
+def discard_stage() -> str:
+    return next(s.name for s in STAGES if s.discard)
+
+
+def inbox_stage() -> str:
+    """The first flow stage: where a raw entry waits before it is taken on."""
+    return next(s.name for s in STAGES if s.kind == FLOW)
+
+
+def start_stage() -> str:
+    """Where `new` puts an item: the first flow stage that has an artifact."""
+    return next(s.name for s in STAGES
+                if s.kind == FLOW and s.artifact != NO_ARTIFACT)
+
+
+def flow_order(enabled: frozenset[str]) -> tuple[str, ...]:
+    return tuple(s.name for s in STAGES if s.kind == FLOW and s.name in enabled)
+
+
+def position(name: str) -> int:
+    """The stage's place in the table. The completion stage sorts after every
+    flow stage because the table lists it after them; `is_skip` relies on it."""
+    return _INDEX[stage(name).name]
+
+
+def next_stage(current: str, enabled: frozenset[str]) -> str:
+    """The next enabled flow stage after `current`, or the completion stage.
+
+    Only a flow stage has a next stage. `advance` never asks for one from a
+    terminal or side stage, so doing so is a programming error, raised loudly.
+    """
+    here = stage(current)
+    if here.kind != FLOW:
+        raise ValueError(f"a {here.kind} stage ({current}) has no next stage")
+    for later in STAGES[position(current) + 1:]:
+        if later.kind == FLOW and later.name in enabled:
+            return later.name
+    return completion_stage()
+
+
+def is_skip(current: str, target: str, enabled: frozenset[str]) -> bool:
+    """True when moving forward from `current` to `target` passes over at least
+    one enabled flow stage. A backward move, and any move to the discard stage,
+    is never a skip."""
+    if stage(target).discard:
+        return False
+    low, high = position(current), position(target)
+    return any(s.kind == FLOW and s.name in enabled
+               for s in STAGES[low + 1:high])
+
+
+def records_gate_stage(enabled: frozenset[str]) -> str:
+    """Where the records gate runs: the stage that follows the last enabled
+    rounds stage whose rounds carry no verdict (the implementation)."""
+    last = [s.name for s in STAGES if s.kind == FLOW and s.name in enabled
+            and s.artifact == ROUNDS and not s.verdict][-1]
+    return next_stage(last, enabled)
+
+
+def gates_for(target: str, enabled: frozenset[str]) -> tuple[str, ...]:
+    gates = stage(target).gates
+    if target == records_gate_stage(enabled):
+        gates += (RECORDS_GATE,)
+    return gates
