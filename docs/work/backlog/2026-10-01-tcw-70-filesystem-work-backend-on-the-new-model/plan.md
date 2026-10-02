@@ -201,9 +201,17 @@ one commit a git-state comparison needs.
     other than a hidden one (warning); an unregistered tag (warning). Both
     "not part of a work store" messages end with "see
     `docs/migration-guide-2.8-to-3.0.0.md` for the work store layout", using
-    TCW-69's `MIGRATION_GUIDE`. `Finding` is a small frozen dataclass
-    (`level`, `path`, `key`, `message`) local to this module; TCW-73
-    replaces it with its own type (spec 10.2).
+    TCW-69's `MIGRATION_GUIDE`. Each finding is a `Finding` (below), with
+    the file as `where` and the key named in the message.
+- **Create** `tcw/findings.py` with the frozen dataclass
+  `Finding(severity, where, message)` and its `__str__`
+  (`<severity>: <where>: <message>`), exactly as TCW-73's spec defines it
+  (its Design 6.3, review decision R14). The spec leaves the finding type to
+  TCW-73, but TCW-71 lands before TCW-73 and its `validate --remote` already
+  prints findings in that form, so the type is created once, here, in its
+  final shape and place. Only the new work checks use it in this slice;
+  `validate()` keeps returning strings, built with `str(finding)`, until
+  TCW-73 changes its return type and every store's `check()`.
 - **Create** `tcw/work/record.py` with `item_record(item, items, layout) ->
   dict`, the record of Design 7.1 with exactly its keys (`slug`, `title`,
   `stage`, `created`, `priority`, `effort`, `complexity`, `tags`,
@@ -805,6 +813,10 @@ Then:
      `skills/extras-triage-issues`) link to removed records, and
      `work/inspect-the-node-topology` moved from Unchanged to Changed for the
      same reason.
+  8. `tcw/findings.py`, which TCW-73's spec creates, is created here in its
+     final shape, because TCW-71 (before TCW-73) prints findings in that form
+     and two interim types would only be thrown away (added while planning
+     TCW-71).
 - **Self-review.** Every acceptance criterion maps to a task:
   - AC 1: Task 4;
   - AC 2–8: Task 4 (backend) and Task 8 (commands); AC 2's installed line in
