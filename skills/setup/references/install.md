@@ -6,7 +6,7 @@ The plugin ships the skills; `tcw` is a Python package that has to be installed.
 distribution from PyPI with `pipx` and reinstalls it when a plugin update changes
 the plugin's version. The first install needs network — there is no offline
 fallback — and the script is silent on success and on every deliberate skip, so
-it says nothing most sessions. Under Codex there is no hook, so once the check
+it says nothing most sessions. Codex and Pi do not run this hook, so once the check
 below finds no `tcw`, run it yourself:
 
 ```sh

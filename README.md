@@ -2,8 +2,8 @@
 
 TCW keeps three things about a software project inside the repository, next to
 the code: what the project deals with, what a user can do with it, and what is
-being changed. One command-line tool, `tcw`, and an agent plugin for Claude Code
-and Codex keep all three in step with the code.
+being changed. One command-line tool, `tcw`, and an agent plugin for Claude Code,
+Codex, and Pi keep all three in step with the code.
 
 | Component        | Answers                                                 |
 | ---------------- | ------------------------------------------------------- |
@@ -93,7 +93,28 @@ skill — it runs the same install script Claude runs automatically. Every tcw
 skill also asks the agent to run the plugin's version check once per session,
 which warns when the CLI and the skills come from different releases.
 
-The plugin ships the skills and read-only review agents described in
+In **Pi**:
+
+```bash
+pi install git:github.com/brocef/TCW
+```
+
+Add `-l` to install for the current project instead of your personal settings.
+For a development checkout, use `pi install /absolute/path/to/TCW`.
+Start a new Pi session, then run `/skill:setup` to install or check the `tcw`
+CLI. You can also install it yourself with `pipx install tcw-cli`.
+Invoke skills with `/skill:work`, `/skill:capabilities`, or `/skill:taxonomy`.
+
+Pi loads the same skills through the official `pi` declaration in `package.json`.
+It does not run TCW's Claude session-start hook or shell injections; the skills
+provide explicit commands for setup, version checks, and lifecycle instructions.
+Claude's custom review agents are not installed as Pi agents. When delegation
+is unavailable, run ordinary lifecycle stages in the main session; autonomous
+work still requires the advisors named by that workflow.
+Git installation also installs the repository's Node package dependencies,
+which support the TCW web app; local-path installation uses the checkout directly.
+
+The plugin ships the skills and Claude Code read-only review agents described in
 [Skills and Agents](#skills-and-agents).
 
 ### CLI
@@ -724,7 +745,7 @@ resolve, what has to be true before an item completes. What a command cannot
 decide (what a request really asks for, whether a spec is good enough, whether
 the work is finished) is judgment, and the plugin's skills guide an agent through
 it. Skills name `tcw` commands and never reimplement them. Every entry point is a
-skill, so they work the same way under Claude Code and Codex.
+skill, with the same CLI-backed lifecycle under Claude Code, Codex, and Pi.
 
 The skills for a single axis are listed in that axis's section above. These cut
 across the axes.

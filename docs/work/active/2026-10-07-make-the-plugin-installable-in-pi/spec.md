@@ -18,7 +18,7 @@ No npm publication, new extension, automatic Pi hook, agent conversion, release,
 
 ## Design
 
-Add an explicit `pi` manifest exposing `./skills` in the existing package.json. Keep its private name, package manager, dependencies and scripts. Pin other resource types to empty arrays to avoid accidental extension or prompt discovery. Do not add a sixth version field: Git refs identify versions.
+Add an explicit `pi` manifest exposing `./skills/*/SKILL.md` in the existing package.json. The glob excludes skills/README.md from package resource discovery. Keep its private name, package manager, dependencies and scripts. Pin other resource types to empty arrays to avoid accidental extension or prompt discovery. Do not add a sixth version field: Git refs identify versions.
 
 Document Git installation, project-local installation, local checkout testing, `/skill:setup`, CLI installation, and `/skill:work` invocation. Pi does not execute the Claude hooks or dynamic shell injection: existing manual commands remain the required fallback. Keep existing Claude and Codex mechanisms intact. Explain that custom Claude agent files are not Pi resources, and stages run inline when delegation is unavailable; autonomous advisor requirements still apply.
 

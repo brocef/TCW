@@ -25,8 +25,9 @@ not. Dispatch the assessment, present the result, hold the answer yourself.
 
 ## Delegable means permitted, never required
 
-Both harnesses TCW ships to have subagents, so a stage's instructions may instruct delegation
-outright. A session that cannot dispatch — or should not, because the work is too
+Claude Code and Codex provide subagents; Pi's available tools depend on its
+configuration. A stage's instructions may request delegation. A session that
+cannot dispatch — or should not, because the work is too
 coupled to split — runs the same stage in the main session, following the same
 instructions. Delegation is an optimization for context isolation. **No behavior
 depends on it**, and where it is unavailable only the token saving is lost.

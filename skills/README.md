@@ -5,7 +5,7 @@ Every `SKILL.md` in this folder carries `dynamic_skill: true` or
 means, the two rules that decide its value, and the verdict for every skill,
 reference document and agent TCW ships.
 
-The key is for people. Neither Claude Code nor Codex acts on it.
+The key is for people. Claude Code, Codex, and Pi do not act on it.
 `tests/test_dynamic_skill_marker.py` fails when a shipped document has no row
 below, or when a skill's key disagrees with its row.
 
@@ -116,7 +116,7 @@ Documents are named by owner and by path within the owner.
 
 ### Agents
 
-An agent definition is Claude Code packaging — Codex never reads `agents/` — and
+An agent definition is Claude Code packaging — Codex and Pi do not load `agents/` — and
 it runs only when a skill or stage chooses to dispatch it. Every document it
 serves stands alone without it. So the project's choice lives at the dispatch,
 not in the agent: a project wanting a different assessor or investigator names
