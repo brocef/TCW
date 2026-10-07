@@ -1,0 +1,3 @@
+changed:
+  - plugin/install-as-a-plugin
+  - plugin/bootstrap-the-cli
