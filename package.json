@@ -1,6 +1,12 @@
 {
     "name": "tcw-web",
     "private": true,
+    "pi": {
+        "skills": ["./skills/*/SKILL.md"],
+        "extensions": [],
+        "prompts": [],
+        "themes": []
+    },
     "packageManager": "pnpm@10.14.0",
     "engines": {
         "node": ">=22.12.0"
