@@ -128,6 +128,7 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
     at any stage is OK; `NotFound` is missing; a project declared but not on
     this machine is unresolved (TCW-70 Design 12.1)."""
     from tcw.errors import BackendError, NotFound, Unreachable
+    from tcw.work.jira.backend import JiraBackend, link_exists
     from tcw.work.open import open_backend, open_project
 
     namespace = namespace or None              # the parser gives "" for no namespace
@@ -140,7 +141,16 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
             backend = open_project(namespace, node_root)
             if backend.project == _current_project(node_root):
                 namespace = None
-        item = backend.read(ref)
+        if isinstance(backend, JiraBackend):
+            # The folder scan `lookup` uses, never a read of the ticket, so
+            # plain `validate` needs no Jira (TCW-71 R20).
+            if not link_exists(backend.work_path, ref):
+                raise NotFound(f"no work item {backend.project}/{ref}")
+            item = None
+            folder = ref
+        else:
+            item = backend.read(ref)
+            folder = item.slug.folder
     except Unreachable as error:
         return ResolveResult(False, "W", None, f"unresolved: {error}")
     except NotFound as error:
@@ -148,8 +158,8 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
     except BackendError as error:
         return ResolveResult(False, "W", None, str(error))
     if namespace is None:
-        return ResolveResult(True, "W", item.slug.folder, "")
-    return ResolveResult(True, "W", str(item.slug), "", namespace)
+        return ResolveResult(True, "W", folder, "")
+    return ResolveResult(True, "W", f"{backend.project}/{folder}", "", namespace)
 
 
 def _current_project(node_root: Path) -> str | None:

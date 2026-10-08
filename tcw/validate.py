@@ -436,21 +436,29 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     from tcw.errors import BackendError, NotFound, Unreachable
     from tcw.findings import Finding
     from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
+    from tcw.work.jira.backend import JiraBackend, jira_store_problems, link_exists
+    from tcw.work.jira.config import connected_block_problems
     from tcw.work.gates import project_reader, records_problems
     from tcw.work.model import TERMINAL, stage as table_stage
     from tcw.work.open import open_backend, open_project
     from tcw.work.references import FOUND, MISSING, UNRESOLVED, reference_problems, \
         stage_problems
 
+    config_file = str(project_root / "tcw-config.yaml")
+    blocks = [Finding("error", config_file, str(problem))
+              for problem in connected_block_problems(registry.config())]
     try:
         backend = open_backend(project_root)
     except BackendError as error:
-        return [Finding("error", str(project_root / "tcw-config.yaml"), str(error))], None
+        return [Finding("error", config_file, str(error)), *blocks], None
+    if isinstance(backend, JiraBackend):
+        # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
+        return [*blocks, *jira_store_problems(backend.work_path, backend.jira)], None
     if not isinstance(backend, FsWorkBackend):
-        return [], None                      # the Jira backend checks its own (TCW-71)
+        return blocks, None
     layout = backend.layout
-    findings = list(work_store_problems(backend.work_path, backend.project,
-                                        backend.config))
+    findings = [*blocks, *work_store_problems(backend.work_path, backend.project,
+                                              backend.config)]
     items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
 
     def item_file(slug) -> str:
@@ -469,6 +477,9 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         other = opened[ref.project]
         if isinstance(other, str):
             return other
+        if isinstance(other, JiraBackend):
+            # A Jira item is checked by its folder, offline (R20).
+            return FOUND if link_exists(other.work_path, ref.folder) else MISSING
         try:
             other.read(ref.folder)
         except NotFound:

@@ -254,3 +254,22 @@ def parse_delegation_block(raw: Any, where: KeyPath
     return DelegationTarget(site=site, project=project, inbox_status=inbox,
                             email_env=credentials[0], token_env=credentials[1],
                             project_field=project_field), problems
+
+
+def connected_block_problems(raw_config: Any) -> list[ConfigProblem]:
+    """The problems of every `jira` block among a project's own
+    `connected-projects` entries, by key path."""
+    problems: list[ConfigProblem] = []
+    sections = raw_config.get("connected-projects") if isinstance(raw_config, dict) \
+        else None
+    if not isinstance(sections, dict):
+        return problems
+    for relation, entries in sections.items():
+        if not isinstance(entries, dict):
+            continue
+        for project_id, entry in entries.items():
+            if isinstance(entry, dict) and "jira" in entry:
+                problems.extend(parse_delegation_block(
+                    entry["jira"], ("connected-projects", str(relation),
+                                    str(project_id), "jira"))[1])
+    return problems

@@ -21,9 +21,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
+import yaml
+
 from tcw.errors import (
     BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
 )
+from tcw.findings import Finding
 from tcw.store.base import normalize_tag
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
@@ -92,6 +95,72 @@ def folder_key(folder: str) -> str | None:
     """The key a Jira-mode folder name starts with, or None."""
     match = KEY_FOLDER.fullmatch(folder) if isinstance(folder, str) else None
     return match.group("key") if match else None
+
+
+def link_exists(work_path: Path, folder: str) -> bool:
+    """Whether `folder` is an item of a Jira-mode project, by the folder scan
+    `lookup` uses: the key in the name is authoritative, so no read of the
+    ticket is needed, and a work link stays offline (R20)."""
+    return folder_key(folder) is not None and "/" not in folder \
+        and (Path(work_path) / folder).is_dir()
+
+
+def jira_store_problems(work_path: Path, jira: JiraConfig) -> list[Finding]:
+    """The offline checks of a Jira-mode work path (Design 9.1): each folder's
+    name and `item.yaml`, keys used twice, and record folders for stages Jira
+    keeps. Reads no network."""
+    findings: list[Finding] = []
+    work_path = Path(work_path)
+    if not work_path.is_dir():
+        return findings
+    by_key: dict[str, list[str]] = {}
+    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
+        if entry.name.startswith(".") or not entry.is_dir():
+            continue
+        key = folder_key(entry.name)
+        if key is None:
+            findings.append(Finding("error", str(entry),
+                                    "is not a Jira item folder: its name must be the "
+                                    "ticket's key, then title words, such as "
+                                    "TCW-5-add-export"))
+            continue
+        by_key.setdefault(key, []).append(entry.name)
+        findings.extend(_item_file_problems(entry / ITEM_FILE, key, jira.site))
+        for stage in sorted(EXTERNAL_STAGES):
+            if (entry / table_stage(stage).name).is_dir():
+                findings.append(Finding("warning", str(entry / stage),
+                                        f"Jira keeps the {stage} record, so this "
+                                        f"folder is ignored"))
+    for key, names in by_key.items():
+        if len(names) > 1:
+            findings.append(Finding("error", str(work_path),
+                                    f"the key {key} names {len(names)} folders: "
+                                    f"{', '.join(names)}"))
+    return findings
+
+
+def _item_file_problems(path: Path, key: str, site: str) -> list[Finding]:
+    """`item.yaml` must be exactly `ticket: <site>/browse/<KEY>` (Design 2.2)."""
+    where = str(path)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return [Finding("error", where, "is missing; it holds the ticket's link")]
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
+        return [Finding("error", where, f"cannot be read: {error}")]
+    if not isinstance(data, dict) or set(data) != {"ticket"}:
+        extra = sorted(map(str, set(data) - {"ticket"})) if isinstance(data, dict) else []
+        detail = f"; it also has {', '.join(extra)}" if extra else ""
+        return [Finding("error", where, f"must hold exactly one key, ticket{detail}")]
+    url = data["ticket"]
+    prefix = f"{site}/browse/"
+    if not isinstance(url, str) or not url.startswith(prefix):
+        return [Finding("error", where, f"ticket {url!r} is not on {site} "
+                                        f"(work.jira.site)")]
+    if url[len(prefix):] != key:
+        return [Finding("error", where, f"ticket {url!r} names {url[len(prefix):]}, but "
+                                        f"the folder's key is {key}")]
+    return []
 
 
 def _unique(values: Iterable[str]) -> list[str]:
