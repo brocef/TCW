@@ -141,8 +141,8 @@ def _map_store_error(e: Exception) -> tuple[int, bytes]:
     msg = str(e).lower()
     if isinstance(e, StaleRevision):
         # The one 409 the web app answers with its conflict banner. Marked,
-        # because strict-tracker and generated-sidecar refusals are 409 too and
-        # must show their own message instead.
+        # because generated-sidecar refusals are 409 too and must show their
+        # own message instead.
         return _err(HTTPStatus.CONFLICT, str(e), code="stale-revision")
     if isinstance(e, MultipleMatch):
         # Two folders hold the slug: the data needs fixing, not the request.
