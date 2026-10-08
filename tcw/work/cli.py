@@ -14,13 +14,14 @@ import sys
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import BackendError, Refused, UsageError
+from tcw.errors import BackendError, NotFound, Refused, UsageError
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_node_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
 from tcw.work.fs_backend import FsWorkBackend, read_all
+from tcw.work.jira.backend import KEY, JiraBackend
 from tcw.work.gates import project_reader
 from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, inbox_stage, stage as table_stage, start_stage,
@@ -54,6 +55,12 @@ def resolve_item(arg: str, here: Path | None = None
     project's slug opens that project for reading."""
     root = project_root(here)
     backend = open_backend(root)
+    if isinstance(backend, JiraBackend) and isinstance(arg, str) and KEY.fullmatch(arg):
+        # A ticket key typed where an item is named (TCW-71 Design 2.6).
+        folder = backend.lookup(arg)
+        if folder is None:
+            raise NotFound(f"no work item here carries the Jira key {arg}")
+        return Slug(backend.project, folder), backend, root
     slug = Slug.parse(arg, backend.project)
     if slug.project != backend.project:
         backend = open_project(slug.project, root)

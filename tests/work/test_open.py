@@ -11,6 +11,7 @@ from tcw.errors import BackendError, NotFound, Refused, Unreachable
 from tcw.work.backend import Query
 from tcw.work.config import MIGRATION_GUIDE
 from tcw.work.fs_backend import FsWorkBackend
+from tcw.work.jira.backend import JiraBackend
 from tcw.work.open import (
     delegate, open_backend, open_for_update, open_project, uncommitted_changes,
 )
@@ -43,7 +44,7 @@ def test_a_removed_key_names_the_key_and_the_guide(tmp_path):
     assert MIGRATION_GUIDE in str(error.value)
 
 
-def test_the_jira_backend_is_not_here_yet(tmp_path):
+def test_a_jira_project_opens_the_jira_backend(tmp_path):
     statuses = ["inbox", "request", "spec", "plan", "implement", "review", "qa",
                 "completed", "discarded"]
     p = make_project(tmp_path, "p", config={
@@ -52,8 +53,9 @@ def test_the_jira_backend_is_not_here_yet(tmp_path):
             "credentials": {"email-env": "E", "token-env": "T"},
             "fields": {"project": "TCW Project", "item": "TCW Item"}},
         "stages": {name: {"status": name.title()} for name in statuses}})
-    with pytest.raises(BackendError, match="TCW-71"):
-        open_backend(p)
+    backend = open_backend(p)
+    assert isinstance(backend, JiraBackend)
+    assert (backend.project, backend.jira.project) == ("p", "PP")
 
 
 def test_no_work_path_is_an_error(tmp_path):

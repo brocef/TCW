@@ -116,7 +116,9 @@ class Ticket:
     parent: str | None = None
     custom: dict = field(default_factory=dict)
     comments: list[dict] = field(default_factory=list)
-    written: int = 0                     # the request number of the last write
+    #: The request number of the last write through the API; None for a
+    #: ticket made directly, which no search lag hides.
+    written: int | None = None
 
 
 @dataclass
@@ -399,7 +401,7 @@ class FakeJira:
                 if any(k not in self.tickets for k in named):
                     raise self._error(400, route, "An issue with key does not exist")
             visible = [t for t in self.tickets.values()
-                       if not self.search_lag
+                       if not self.search_lag or t.written is None
                        or t.written <= len(self.log) - self.search_lag - 1]
             found = fake_jql.select(query, visible, self._value,
                                     ignore_label_case=self.ignore_label_case)

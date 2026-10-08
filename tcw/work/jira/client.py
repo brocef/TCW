@@ -259,12 +259,12 @@ class JiraClient:
             ))
         return out
 
-    def comments(self, key: str, limit: int) -> list[JiraComment]:
-        """Up to `limit` comments, newest first, page by page."""
+    def comments(self, key: str, limit: int | None) -> list[JiraComment]:
+        """Up to `limit` comments (all when None), newest first, page by page."""
         out: list[JiraComment] = []
         start = 0
-        while len(out) < limit:
-            size = min(PAGE, limit - len(out))
+        while limit is None or len(out) < limit:
+            size = PAGE if limit is None else min(PAGE, limit - len(out))
             path = (f"/rest/api/3/issue/{_quote(key)}/comment?orderBy=-created"
                     f"&startAt={start}&maxResults={size}")
             payload = self._json("GET", path)
@@ -283,7 +283,7 @@ class JiraClient:
             total = payload.get("total")
             if not page or (isinstance(total, int) and start >= total):
                 break
-        return out[:limit]
+        return out if limit is None else out[:limit]
 
     def user(self, account_id: str) -> dict:
         """One account, by id."""

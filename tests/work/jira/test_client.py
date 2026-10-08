@@ -171,6 +171,24 @@ def test_comments_page_newest_first_up_to_the_limit(monkeypatch):
     assert found[0].author_id == "a0" and found[0].author_name == "N0"
 
 
+def test_comments_with_no_limit_read_every_page(monkeypatch):
+    def page(start, count):
+        return {"total": 230, "comments": [
+            {"author": None, "created": "x", "body": None}] * count}
+    answers = [page(0, 100), page(100, 100), page(200, 30)]
+    paths = []
+
+    def answer(method, path, body=None, *, timeout=None):
+        paths.append(path)
+        return 200, {}, json.dumps(answers.pop(0)).encode()
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", answer)
+    assert len(client.comments("P-1", None)) == 230
+    assert [p.split("startAt=")[1] for p in paths] == [
+        "0&maxResults=100", "100&maxResults=100", "200&maxResults=100"]
+
+
 def test_comments_stop_at_the_limit(monkeypatch):
     rec = Recorder({"/rest/api/3/issue/P-1/comment": {"total": 500, "comments": [
         {"author": None, "created": "x", "body": None}] * 10}})
