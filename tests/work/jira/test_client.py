@@ -125,6 +125,16 @@ def test_search_reads_every_page(monkeypatch):
     assert bodies[0] == {"jql": 'project = "P"', "fields": ["summary"], "maxResults": 100}
 
 
+def test_a_search_with_a_limit_reads_only_what_it_needs(monkeypatch):
+    path = "/rest/api/3/search/jql"
+    rec = Recorder({path: [
+        Answer({"issues": [{"key": "P-1"}], "nextPageToken": "t1", "isLast": False}),
+        Answer({"issues": [{"key": "P-2"}], "isLast": True})]})
+    found = _client(monkeypatch, rec).search("x", [], limit=1)
+    assert [i["key"] for i in found] == ["P-1"]
+    assert len(rec.calls) == 1 and rec.calls[0]["body"]["maxResults"] == 1
+
+
 def test_a_search_answer_that_does_not_say_there_is_more_ends_the_walk(monkeypatch):
     rec = Recorder({"/rest/api/3/search/jql": {"issues": [], "nextPageToken": "t"}})
     assert _client(monkeypatch, rec).search("x", []) == []

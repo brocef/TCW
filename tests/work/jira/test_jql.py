@@ -45,13 +45,14 @@ def every_query():
     yield jql.keys_query(["TCW-1"])
     yield jql.keys_query([f"TCW-{n}" for n in range(1, 101)])
     yield jql.sample_query("TCW", "Sub-task", "In Review")
+    yield jql.type_query("TCW", "Bug")
 
 
 QUERIES = list(every_query())
 
 
 def test_the_table_covers_every_clause():
-    assert len(QUERIES) == 3 * 2 * 2 * 2 * 3 + 5
+    assert len(QUERIES) == 3 * 2 * 2 * 2 * 3 + 6
     text = " ".join(QUERIES)
     for clause in ("status IN", "status NOT IN", "parent =", "assignee =", "labels IN",
                    "IS EMPTY", "IS NOT EMPTY", " OR ", "key IN", "issuetype ="):

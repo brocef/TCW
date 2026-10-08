@@ -450,6 +450,10 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     for warning in registry.warnings():
         print(f"warning: {warning}", file=sys.stderr)
     from tcw.validate import is_failure, validate
+    if args.remote and not _jira_mode(node_root):
+        print("tcw validate: --remote checks a Jira-mode project, and this project's "
+              "work.backend is filesystem", file=sys.stderr)
+        return 2
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]
     problems: list[str] = []
@@ -464,10 +468,60 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         problems.extend(project_problems)
     for p in problems:
         print(p, file=sys.stderr)
+    if args.remote:
+        return _validate_remote(projects, failures)
     if failures:
         print(f"{failures} problem(s).", file=sys.stderr)
         return 1
     print("validate OK")
+    return 0
+
+
+def _jira_mode(project_root: Path) -> bool:
+    from tcw.errors import TcwError
+    from tcw.work.open import read_work_config
+    try:
+        return read_work_config(project_root).backend == "jira"
+    except (TcwError, ValueError):
+        return False
+
+
+def _validate_remote(projects, failures: int) -> int:
+    """The remote checks of every Jira-mode project visited (TCW-71 Design
+    9.2): findings on stdout, one per line, and what passed or was skipped
+    on stderr. Exit 5 when Jira could not be reached, else 1 with any error."""
+    from tcw.errors import TcwError
+    from tcw.store.fs import FsProjectRegistry
+    from tcw.work.gates import project_reader
+    from tcw.work.jira.backend import JiraBackend
+    from tcw.work.jira.remote import remote_findings
+    from tcw.work.open import open_backend, reference_resolver
+    unreachable = False
+    for project in projects:
+        root = Path(project.locator)
+        if not _jira_mode(root):
+            continue
+        try:
+            backend = open_backend(root)
+        except TcwError:
+            continue                 # the offline checks have reported it
+        if not isinstance(backend, JiraBackend):
+            continue
+        reader = project_reader(root, FsProjectRegistry.open(root))
+        findings, narration = remote_findings(backend, backend.layout, reader,
+                                              reference_resolver(root))
+        for line in narration:
+            print(line, file=sys.stderr)
+        for finding in findings:
+            print(finding)
+        failures += sum(1 for f in findings if f.severity == "error")
+        unreachable = unreachable or any(f.severity == "unresolved" for f in findings)
+    if unreachable:
+        return 5
+    if failures:
+        print(f"{failures} problem(s).", file=sys.stderr)
+        return 1
+    print("validate OK", file=sys.stderr)
     return 0
 
 
@@ -518,6 +572,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate.add_argument(
         "--no-recurse", action="store_true",
         help="validate only the active project, excluding registered descendants",
+    )
+    p_validate.add_argument(
+        "--remote", action="store_true",
+        help="also check each Jira-mode project against Jira itself (reads only)",
     )
     p_validate.set_defaults(func=_cmd_validate)
 

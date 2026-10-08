@@ -22,10 +22,10 @@ from tcw.store.fs import (
 )
 from tcw.work.backend import WorkBackend
 from tcw.work.config import WorkConfig, parse_work_config
-from tcw.work.jira.backend import JiraBackend
+from tcw.work.jira.backend import JiraBackend, link_exists
 from tcw.work.jira.config import JiraConfig, parse_jira_config
 from tcw.work.fs_backend import FsWorkBackend
-from tcw.work.model import Changes, inbox_stage
+from tcw.work.model import Changes, Slug, inbox_stage
 
 
 def work_path(project_root: Path) -> Path:
@@ -198,3 +198,34 @@ def open_for_update(project_id: str, here: Path) -> WorkBackend:
     registry = _registry(here)
     _check_target(registry, project_id)
     return open_backend(Path(registry.get(project_id).locator))
+
+
+def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
+    """How `validate` answers a reference into another project: `found`,
+    `missing` or `unresolved`, opening each project once. A Jira-mode project
+    is answered by its folders, so no reference needs Jira (TCW-71 R20)."""
+    from tcw.work.references import FOUND, MISSING, UNRESOLVED
+    opened: dict[str, object] = {}
+
+    def resolve(ref: Slug) -> str:
+        if ref.project not in opened:
+            try:
+                opened[ref.project] = open_project(ref.project, project_root)
+            except NotFound:
+                opened[ref.project] = MISSING
+            except (Unreachable, BackendError):
+                opened[ref.project] = UNRESOLVED
+        other = opened[ref.project]
+        if isinstance(other, str):
+            return other
+        if isinstance(other, JiraBackend):
+            return FOUND if link_exists(other.work_path, ref.folder) else MISSING
+        try:
+            other.read(ref.folder)
+        except NotFound:
+            return MISSING
+        except BackendError:
+            return UNRESOLVED
+        return FOUND
+
+    return resolve

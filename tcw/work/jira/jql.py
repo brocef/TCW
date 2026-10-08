@@ -79,3 +79,9 @@ def sample_query(project: str, issue_type: str, status: str) -> str:
     """One ticket of a type at a status, for `validate --remote` to sample."""
     return (f"project = {quote(project)} AND issuetype = {quote(issue_type)} "
             f"AND status = {quote(status)}" + ORDER)
+
+
+def type_query(project: str, issue_type: str) -> str:
+    """Tickets of one issue type, for `validate --remote` to sample an edit
+    screen."""
+    return f"project = {quote(project)} AND issuetype = {quote(issue_type)}" + ORDER

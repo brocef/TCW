@@ -212,8 +212,10 @@ class JiraClient:
             path += "?fields=" + ",".join(urllib.parse.quote(f, safe="") for f in fields)
         return _check_issue(self._json("GET", path), path)
 
-    def search(self, jql: str, fields: tuple[str, ...] | list[str]) -> list[dict]:
-        """Every issue the query selects, reading page after page.
+    def search(self, jql: str, fields: tuple[str, ...] | list[str],
+               limit: int | None = None) -> list[dict]:
+        """Every issue the query selects, reading page after page; at most
+        `limit` when given, which is how a sample of one costs one small page.
 
         `/rest/api/3/search/jql`, not `/rest/api/3/search`, which Atlassian has
         removed. The endpoint is paged by `nextPageToken` and says `isLast`; a
@@ -224,7 +226,8 @@ class JiraClient:
         issues: list[dict] = []
         token = None
         while True:
-            body: dict = {"jql": jql, "fields": list(fields), "maxResults": PAGE}
+            size = PAGE if limit is None else min(PAGE, limit - len(issues))
+            body: dict = {"jql": jql, "fields": list(fields), "maxResults": size}
             if token:
                 body["nextPageToken"] = token
             payload = self._json("POST", path, body)
@@ -232,6 +235,8 @@ class JiraClient:
             for found in page:
                 _check_issue(found, path)
             issues.extend(page)
+            if limit is not None and len(issues) >= limit:
+                return issues[:limit]
             token = payload.get("nextPageToken")
             if payload.get("isLast") is not False or not isinstance(token, str) \
                     or not token:

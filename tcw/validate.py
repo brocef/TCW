@@ -433,16 +433,15 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
 
     Unreadable items do not stop the checks: they come from `read_all`, each
     is one error, and every other check runs over the readable items."""
-    from tcw.errors import BackendError, NotFound, Unreachable
+    from tcw.errors import BackendError
     from tcw.findings import Finding
     from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
-    from tcw.work.jira.backend import JiraBackend, jira_store_problems, link_exists
+    from tcw.work.jira.backend import JiraBackend, jira_store_problems
     from tcw.work.jira.config import connected_block_problems
     from tcw.work.gates import project_reader, records_problems
     from tcw.work.model import TERMINAL, stage as table_stage
-    from tcw.work.open import open_backend, open_project
-    from tcw.work.references import FOUND, MISSING, UNRESOLVED, reference_problems, \
-        stage_problems
+    from tcw.work.open import open_backend, reference_resolver
+    from tcw.work.references import reference_problems, stage_problems
 
     config_file = str(project_root / "tcw-config.yaml")
     blocks = [Finding("error", config_file, str(problem))
@@ -464,29 +463,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     def item_file(slug) -> str:
         return str(layout.item_dir(slug) / "item.yaml")
 
-    opened: dict[str, object] = {}
-
-    def resolve(ref) -> str:
-        if ref.project not in opened:
-            try:
-                opened[ref.project] = open_project(ref.project, project_root)
-            except NotFound:
-                opened[ref.project] = MISSING
-            except (Unreachable, BackendError):
-                opened[ref.project] = UNRESOLVED
-        other = opened[ref.project]
-        if isinstance(other, str):
-            return other
-        if isinstance(other, JiraBackend):
-            # A Jira item is checked by its folder, offline (R20).
-            return FOUND if link_exists(other.work_path, ref.folder) else MISSING
-        try:
-            other.read(ref.folder)
-        except NotFound:
-            return MISSING
-        except BackendError:
-            return UNRESOLVED
-        return FOUND
+    resolve = reference_resolver(project_root)
 
     for problem in reference_problems(items, backend.project, resolve):
         findings.append(Finding(problem.level, item_file(problem.slug), problem.message))
