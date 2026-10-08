@@ -338,14 +338,17 @@ class JiraClient:
         path = "/rest/api/3/issueLinkType"
         return _entries(self._json("GET", path).get("issueLinkTypes"), path)
 
-    def workflows(self, project_id: str, issue_type_id: str) -> list[dict]:
-        """The workflow definitions for one project and issue type. Needs
-        administrator rights on many sites; a refusal is the caller's to read
-        (`TrackerPermissionError`)."""
+    def workflows(self, project_id: str, issue_type_id: str) -> dict:
+        """The workflow definitions for one project and issue type: the answer
+        holds `workflows` and, beside them, the `statuses` their transitions
+        refer to. Needs administrator rights on many sites; a refusal is the
+        caller's to read (`TrackerPermissionError`)."""
         path = "/rest/api/3/workflows"
         payload = self._json("POST", path, {"projectAndIssueTypes": [
             {"projectId": str(project_id), "issueTypeId": str(issue_type_id)}]})
-        return _entries(payload.get("workflows"), path)
+        _entries(payload.get("workflows"), path)
+        _entries(payload.get("statuses"), path)
+        return payload
 
     # -- operations: writes --
 

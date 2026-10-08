@@ -219,11 +219,13 @@ def test_create_metadata_pages(monkeypatch):
 def test_edit_metadata_link_types_and_workflows(monkeypatch):
     rec = Recorder({f"/rest/api/3/issue/{QODD}/editmeta": {"fields": {"summary": {}}},
                     "/rest/api/3/issueLinkType": {"issueLinkTypes": [{"name": "Blocks"}]},
-                    "/rest/api/3/workflows": {"workflows": [{"id": "w"}]}})
+                    "/rest/api/3/workflows": {"workflows": [{"id": "w"}],
+                                              "statuses": [{"name": "Done"}]}})
     client = _client(monkeypatch, rec)
     assert client.edit_metadata(ODD) == {"summary": {}}
     assert client.link_types() == [{"name": "Blocks"}]
-    assert client.workflows("10000", "10001") == [{"id": "w"}]
+    assert client.workflows("10000", "10001") == {"workflows": [{"id": "w"}],
+                                                  "statuses": [{"name": "Done"}]}
     assert call(rec) == ("POST", "/rest/api/3/workflows", {"projectAndIssueTypes": [
         {"projectId": "10000", "issueTypeId": "10001"}]})
 
@@ -582,6 +584,7 @@ BAD = [
     ("edit_metadata", {"fields": []}),
     ("link_types", {"issueLinkTypes": "Blocks"}),
     ("workflows", {"workflows": {"a": 1}}),
+    ("workflows", {"workflows": [], "statuses": "Done"}),
     ("assignable_users", {"accountId": "a"}),
     # `create_issue` is deliberately absent: its answer is returned as it came,
     # since the request may have made the ticket whatever the answer looks like.
