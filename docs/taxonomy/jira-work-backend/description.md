@@ -1,0 +1,1 @@
+Jira as the one home of a work item's status, request and comments: a project with `work.backend: jira` keeps each item as a Jira ticket, maps each stage to one Jira status, and keeps only the technical record in the repository, in one folder per ticket.

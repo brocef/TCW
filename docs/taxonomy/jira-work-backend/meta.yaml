@@ -1,0 +1,7 @@
+name: Jira work backend
+kind: Feature
+relatesTo:
+    - work-inbox
+vocabulary:
+    - work-item
+    - cli

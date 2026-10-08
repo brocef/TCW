@@ -4,6 +4,7 @@ relatesTo:
 - configurable-work-lifecycle
 - configurable-component-store-location
 - connected-project-registry
+- jira-work-backend
 vocabulary:
 - skill
 - node

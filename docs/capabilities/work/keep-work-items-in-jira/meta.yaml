@@ -1,0 +1,6 @@
+id: cap-625de7
+name: Keep work items in Jira
+Status: Supported
+Subject:
+    - work-item
+Feature: jira-work-backend

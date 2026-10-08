@@ -1,0 +1,6 @@
+id: cap-494a89
+name: Check a Jira project against the stage mapping
+Status: Supported
+Subject:
+    - work-item
+Feature: jira-work-backend
