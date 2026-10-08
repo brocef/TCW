@@ -388,8 +388,8 @@ class JiraClient:
                       {"body": document})
 
     def add_link(self, type_name: str, inward_key: str, outward_key: str) -> None:
-        """Link two issues. For `Blocks`, the outward issue blocks the inward
-        one."""
+        """Link two issues. Which side is which for `Blocks` is decided in one
+        place, `tcw.work.jira.mapping.block_link`."""
         self._payload("POST", "/rest/api/3/issueLink", {
             "type": {"name": type_name},
             "inwardIssue": {"key": inward_key},
