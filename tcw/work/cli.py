@@ -304,7 +304,8 @@ def _tickets_list(args) -> int:
     else:
         for ticket in tickets:
             print(ticket["key"])
-    _say(f"{len(tickets)} ticket{'' if len(tickets) == 1 else 's'} in the Jira inbox")
+    _say(f"{len(tickets)} ticket{'' if len(tickets) == 1 else 's'} waiting in Jira to "
+         f"become items")
     _say(f"JQL: {query}")
     return codes.OK
 
@@ -764,12 +765,13 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                        help="a tag, or comma-separated tags")
         p.set_defaults(func=func)
 
-    p = cmds.add_parser("tickets", help="the Jira inbox (Jira mode only)")
+    p = cmds.add_parser("tickets", help="Jira tickets that are not items yet (Jira "
+                                        "mode only)")
     verbs = p.add_subparsers(dest="tickets_verb", required=True)
     p = verbs.add_parser("list", help="tickets waiting to become items")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=_tickets_list)
-    p = verbs.add_parser("adopt", help="make a ticket an item at request")
+    p = verbs.add_parser("adopt", help="make a ticket an item")
     p.add_argument("key", help="the ticket's Jira key")
     p.set_defaults(func=_tickets_adopt)
 

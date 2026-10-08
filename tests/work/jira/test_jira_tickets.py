@@ -39,7 +39,7 @@ def test_the_inbox(jira_project, tcw):
     raw(jira_project, "at request", status="Triage")
     result = listed(tcw, jira_project)
     assert result.out.split("\n") == [bare, ours, ""]
-    assert "2 tickets in the Jira inbox" in result.err and "JQL: " in result.err
+    assert "2 tickets waiting in Jira" in result.err and "JQL: " in result.err
 
 
 @pytest.fixture
