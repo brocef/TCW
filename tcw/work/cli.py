@@ -22,6 +22,7 @@ from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
 from tcw.work.fs_backend import FsWorkBackend, read_all
 from tcw.work.jira.backend import KEY, JiraBackend
+from tcw.work.jira.tickets import adopt, inbox
 from tcw.work.gates import project_reader
 from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, inbox_stage, stage as table_stage, start_stage,
@@ -33,7 +34,7 @@ from tcw.work.record import item_record
 NAME = "work"
 SUBCOMMANDS = {"new", "list", "show", "path", "edit", "advance", "discard",
                "comment", "rename", "stage", "procedure", "lifecycle", "docs",
-               "tags", "nodes", "init"}
+               "tags", "nodes", "init", "tickets"}
 DEFAULT_SUBCOMMAND = None
 
 
@@ -294,6 +295,27 @@ def _rename(args) -> int:
     item = _own(slug, backend, root).rename(slug.folder, args.new_name)
     print(item.slug)
     return codes.OK
+
+
+def _tickets_list(args) -> int:
+    tickets, query = inbox(open_backend(project_root()))
+    if args.json:
+        print(json.dumps(tickets, indent=2))
+    else:
+        for ticket in tickets:
+            print(ticket["key"])
+    _say(f"{len(tickets)} ticket{'' if len(tickets) == 1 else 's'} in the Jira inbox")
+    _say(f"JQL: {query}")
+    return codes.OK
+
+
+def _tickets_adopt(args) -> int:
+    root = project_root()
+    backend = open_backend(root)
+    slug, code = adopt(backend, args.key, config=backend.config,
+                       layout=_layout(backend), project_root=root)
+    print(slug)
+    return code
 
 
 # -- instructions: stage prompt, procedure prompt, lifecycle, docs ----------------------
@@ -741,6 +763,15 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
         p.add_argument("tag", nargs="+", type=_tags,
                        help="a tag, or comma-separated tags")
         p.set_defaults(func=func)
+
+    p = cmds.add_parser("tickets", help="the Jira inbox (Jira mode only)")
+    verbs = p.add_subparsers(dest="tickets_verb", required=True)
+    p = verbs.add_parser("list", help="tickets waiting to become items")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=_tickets_list)
+    p = verbs.add_parser("adopt", help="make a ticket an item at request")
+    p.add_argument("key", help="the ticket's Jira key")
+    p.set_defaults(func=_tickets_adopt)
 
     p = cmds.add_parser("nodes", help="this project's parent and child projects")
     p.set_defaults(func=_nodes)

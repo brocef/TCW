@@ -180,6 +180,18 @@ def _bindings(bindings: tuple[Binding, ...] | None, item: Item) -> list[Binding]
     return [b for b in bindings or () if binding_applies(b, item)]
 
 
+def run_post(config: WorkConfig, layout: Layout, project_root: Path, item: Item,
+             stage: str, *, env: dict[str, str] | None = None) -> str | None:
+    """Run the `post` bindings of a move of `item` into `stage`, `item` as it
+    was before the move (its stage is TCW_FROM_STAGE). Returns what failed,
+    or None. `advance` calls it after every move; Jira's `tickets adopt` calls
+    it when a ticket arrives at the request stage (TCW-71 Design 7.2)."""
+    if env is None:
+        env = hook_env(item, stage, layout, project_root)
+    return run_bindings(_bindings(config.stage(stage).post, item), project_root, env,
+                        config.hooks.timeout, f"{stage} post")
+
+
 def _run_gates(item: Item, target: str, force: bool, config: WorkConfig,
                layout: Layout, reader: RecordsReader, project_root: Path,
                env: dict[str, str]) -> Outcome | list[str]:
@@ -276,9 +288,7 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
                        (f"asked the backend to move {item.slug} to {target}, but "
                         f"it reports {reported}",), overridden)
 
-    failure = run_bindings(_bindings(config.stage(target).post, item),  # 6.8
-                           project_root, env, config.hooks.timeout,
-                           f"{target} post")
+    failure = run_post(config, layout, project_root, item, target, env=env)  # 6.8
     if failure:
         code = codes.MOVED_WITH_PROBLEM
         messages.append(f"moved to {target}, but {failure}")
