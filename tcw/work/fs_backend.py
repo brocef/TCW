@@ -36,7 +36,7 @@ from tcw.work.config import MIGRATION_GUIDE, WorkConfig
 from tcw.work.layout import Layout
 from tcw.work.model import (
     DEFAULT_PRIORITY, FLOW, FOLDER_LIMIT, PRIORITIES, SIZES, TERMINAL, Changes,
-    Item, Slug, apply_changes, is_stage, stage as table_stage, start_stage,
+    Item, Slug, apply_changes, check_encodable, is_stage, stage as table_stage, start_stage,
     title_words as make_title_words, validate_changes,
 )
 
@@ -197,15 +197,6 @@ def _replace_file(path: Path, text: str) -> None:
     _atomic_write_all([(path, text)])
 
 
-def _encodable(text: str, what: str) -> None:
-    """Refuse text that cannot be written as UTF-8 (an undecodable byte on the
-    command line arrives as a lone surrogate) before anything is written."""
-    try:
-        text.encode("utf-8")
-    except UnicodeEncodeError:
-        raise UsageError(f"{what} holds a byte that is not valid UTF-8") from None
-
-
 def read_all(work_path: Path, project: str,
              enabled: frozenset[str]) -> tuple[list[Item], list[Unreadable]]:
     """Every item folder directly inside the work path, in name order, read
@@ -298,7 +289,7 @@ class FsWorkBackend:
         if not isinstance(title, str) or not title.strip():
             raise UsageError("a title must not be empty")
         table_stage(stage)
-        self._validate(props, None)
+        self._validate(replace(props, title=title), None)
         folder = f"{self.today().isoformat()}-{make_title_words(title)}"
         path = self.work_path / folder
         if path.exists():
@@ -348,7 +339,7 @@ class FsWorkBackend:
         item, _ = self._load(folder)
         table_stage(stage)
         if note is not None:
-            _encodable(note, "the reason")
+            check_encodable(note, "the reason")
         self._write(item, stage)
         if note is not None:
             try:
@@ -377,17 +368,41 @@ class FsWorkBackend:
                 except FileExistsError:
                     when += timedelta(seconds=1)
                     continue
+                except OSError:
+                    # FAT and exFAT volumes and SMB mounts have no hard links.
+                    path = self._create_comment(directory, when, text)
                 break
         finally:
             os.unlink(tmp)
         self.report(f"wrote {path}")
         return path
 
+    @staticmethod
+    def _create_comment(directory: Path, when: datetime, text: str) -> Path:
+        """The fallback without hard links: take the first free name with an
+        exclusive create, which also never replaces a file, and remove the
+        file again if writing it fails."""
+        while True:
+            path = directory / f"{when.strftime(COMMENT_STAMP)}.md"
+            try:
+                # `open` applies the umask itself.
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            except FileExistsError:
+                when += timedelta(seconds=1)
+                continue
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+            except BaseException:
+                path.unlink(missing_ok=True)
+                raise
+            return path
+
     def comment(self, folder: str, text: str) -> None:
         self._folder(folder)
         if not isinstance(text, str) or not text.strip():
             raise UsageError("a comment must not be empty")
-        _encodable(text, "the comment")
+        check_encodable(text, "the comment")
         try:
             self._write_comment(folder, text)
         except OSError as error:

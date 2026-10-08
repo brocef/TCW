@@ -737,17 +737,24 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             raise ValueError(f"work.path target is not inside a Git repository: {target}")
         if default_root.exists() and default_root.resolve() != target.resolve():
             # `is_symlink` first: replacing a default store means deleting it,
-            # and a symlink is someone else's directory. Anything in it but a
-            # hidden file such as `.gitkeep` may be someone's work — an item,
-            # a 2.x status folder, a note — and work is moved by a person,
-            # never deleted by init.
+            # and a symlink is someone else's directory. Anything in it but
+            # `.gitkeep`, Finder's `.DS_Store` or an empty hidden file may be
+            # someone's work — an item, a 2.x status folder, a note — and work
+            # is moved by a person, never deleted by init.
+            def disposable(entry: Path) -> bool:
+                return (entry.name.startswith(".") and entry.is_file()
+                        and not entry.is_symlink()
+                        and (entry.name in (".gitkeep", ".DS_Store")
+                             or entry.stat().st_size == 0))
             held = [] if default_root.is_symlink() else sorted(
                 entry.name for entry in default_root.iterdir()
-                if not (entry.name.startswith(".") and entry.is_file()))
+                if not disposable(entry))
             if default_root.is_symlink() or held:
+                shown = ", ".join(held[:5]) + (f" and {len(held) - 5} more"
+                                               if len(held) > 5 else "")
                 raise ValueError(
                     f"refusing to replace non-pristine {default_root}"
-                    + (f" (it holds {', '.join(held)})" if held else "")
+                    + (f" (it holds {shown})" if held else "")
                     + "; move existing work manually, update work.path, then "
                     "re-run init"
                 )

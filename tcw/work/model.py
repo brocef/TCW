@@ -175,6 +175,16 @@ def _tag(value: str) -> str:
         raise UsageError(f"{value!r} is not a tag") from None
 
 
+def check_encodable(text: str, what: str) -> None:
+    """Refuse text that cannot be written as UTF-8 — an undecodable byte on
+    the command line arrives as a lone surrogate — before anything is
+    written, since every later read of it would fail."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise UsageError(f"{what} holds a byte that is not valid UTF-8") from None
+
+
 def validate_changes(changes: Changes, *, item_slug: Slug | None,
                      registered_tags: Iterable[str], current_project: str,
                      parent_of: Callable[[Slug], Slug | None]) -> None:
@@ -188,6 +198,10 @@ def validate_changes(changes: Changes, *, item_slug: Slug | None,
     if changes.title is not UNSET and (
             not isinstance(changes.title, str) or not changes.title.strip()):
         raise UsageError("a title must not be empty")
+    for what, value in (("the title", changes.title),
+                        ("the assignee", changes.assignee)):
+        if isinstance(value, str):
+            check_encodable(value, what)
     _check_scale(changes.priority, PRIORITIES, "priority")
     _check_scale(changes.effort, SIZES, "effort")
     _check_scale(changes.complexity, SIZES, "complexity")

@@ -127,22 +127,51 @@ def test_a_reason_that_cannot_be_written_is_a_usage_error(tmp_path, monkeypatch,
     assert not (root / "docs" / "work" / "2026-10-01-a" / "comments").exists()
 
 
-def test_a_failed_comment_write_leaves_no_file(tmp_path, monkeypatch):
+@pytest.mark.parametrize("links", [True, False])
+def test_a_failed_comment_write_leaves_no_file(tmp_path, monkeypatch, links):
+    """The write fails partway, with and without hard links: the item has
+    moved, the command says the trace is missing, and no comment file is
+    left half-written."""
+    import errno
+    from tcw.errors import MovedWithoutNote
     from tcw.work import fs_backend
     from tcw.work.open import open_backend
     root = make_project(tmp_path, "p")
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
     backend = open_backend(root)
+    real = fs_backend.os.fdopen
 
-    def fail(*_a, **_k):
-        raise OSError("disk full")
+    class Failing:
+        def __init__(self, handle):
+            self.handle = handle
 
-    monkeypatch.setattr(fs_backend.os, "link", fail)
-    from tcw.errors import MovedWithoutNote
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.handle.close()
+
+        def write(self, _text):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    # With hard links the temporary file's write fails; without them that
+    # write succeeds and the fallback's own write fails.
+    opened = []
+
+    def fdopen(*a, **k):
+        opened.append(1)
+        handle = real(*a, **k)
+        return Failing(handle) if links or len(opened) > 1 else handle
+
+    monkeypatch.setattr(fs_backend.os, "fdopen", fdopen)
+    if not links:
+        def refuse(*_a, **_k):
+            raise OSError(errno.ENOTSUP, "ENOTSUP")
+        monkeypatch.setattr(fs_backend.os, "link", refuse)
     with pytest.raises(MovedWithoutNote):
         backend.set_stage("2026-10-01-a", "plan", "why")
     comments = root / "docs" / "work" / "2026-10-01-a" / "comments"
-    assert not comments.exists() or list(comments.iterdir()) == []
+    assert list(comments.iterdir()) == []
 
 
 # -- delegation messages -------------------------------------------------------------------
@@ -227,3 +256,59 @@ def test_a_filesystem_error_is_a_message_not_a_traceback(tmp_path, monkeypatch, 
     code, out, err = run(monkeypatch, capsys, root, "work", "new", "T")
     assert (code, out) == (1, "")
     assert "Permission denied" in err and "Traceback" not in err
+
+
+# -- round three ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("error", ["ENOTSUP", "EPERM", "EXDEV", "EMLINK"])
+def test_comments_work_where_hard_links_do_not(tmp_path, monkeypatch, error):
+    """FAT and exFAT volumes and SMB mounts refuse hard links."""
+    import errno
+    from tcw.work import fs_backend
+    from tcw.work.open import open_backend
+    root = make_project(tmp_path, "p")
+    write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
+    backend = open_backend(root)
+
+    def refuse(*_a, **_k):
+        raise OSError(getattr(errno, error), error)
+
+    monkeypatch.setattr(fs_backend.os, "link", refuse)
+    backend.comment("2026-10-01-a", "first")
+    backend.comment("2026-10-01-a", "second")
+    assert backend.set_stage("2026-10-01-a", "plan", "why") == "plan"
+    comments = sorted((root / "docs/work/2026-10-01-a/comments").iterdir())
+    assert [c.read_text() for c in comments] == ["first", "second", "why"]
+
+
+@pytest.mark.parametrize("argv", [["new", "X \udcff"],
+                                  ["edit", "2026-10-01-a", "--assignee", "z\udcff"],
+                                  ["edit", "2026-10-01-a", "--title", "t\udcff"]])
+def test_undecodable_text_is_a_usage_error(tmp_path, monkeypatch, capsys, argv):
+    root = make_project(tmp_path, "p")
+    write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})
+    before = sorted(p.name for p in (root / "docs" / "work").iterdir())
+    text = (root / "docs/work/2026-10-01-a/item.yaml").read_text()
+    code, out, _ = run(monkeypatch, capsys, root, "work", *argv)
+    assert (code, out) == (2, "")
+    assert sorted(p.name for p in (root / "docs" / "work").iterdir()) == before
+    assert (root / "docs/work/2026-10-01-a/item.yaml").read_text() == text
+
+
+def test_init_refuses_to_move_a_store_holding_a_hidden_file_with_content(
+        tmp_path, monkeypatch, capsys):
+    root = make_project(tmp_path, "p")
+    notes = root / "docs" / "work" / ".notes"
+    notes.write_text("my notes")
+    code, _, _ = run(monkeypatch, capsys, root, "init", "work", "--work-path", "elsewhere")
+    assert code == 1 and notes.read_text() == "my notes"
+
+
+def test_init_moves_a_store_holding_only_empty_or_finder_files(tmp_path, monkeypatch,
+                                                              capsys):
+    root = make_project(tmp_path, "p")
+    (root / "docs" / "work" / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    code, _, err = run(monkeypatch, capsys, root, "init", "work", "--work-path", "elsewhere")
+    assert code == 0, err
+    assert not (root / "docs" / "work").exists()
