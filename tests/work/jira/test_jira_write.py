@@ -308,4 +308,4 @@ def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch,
     monkeypatch.setattr(jira_project.fake, "_transition", forbidden)
     result = tcw(["new", "Half"], jira_project.root)
     assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
-    assert "advance tcw/TCW-1-half --to request" in result.err
+    assert "advance tcw/TCW-1-half --to request --force --reason" in result.err

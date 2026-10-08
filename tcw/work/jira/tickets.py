@@ -136,6 +136,8 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
                       f"{backend.project!r}")
     here = backend.lookup(key)
     tcw_item = fields.get(ids["item"])
+    # Statuses of stages past request: adopting from one would skip stages.
+    moved_on = set(backend.statuses.values()) - {inbox_status, request_status}
     resuming = False
     if tcw_item:
         named = _own_slug(backend, tcw_item, key)
@@ -144,8 +146,11 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if here is not None and here != named.folder:
             raise Refused(f"a folder for {key} already exists here ({here}), but the "
                           f"ticket names {named.folder}")
-        if here is not None and status != inbox_status and \
-                (backend.work_path / here / ITEM_FILE).is_file():
+        # A folder without item.yaml is an adoption that stopped part way, but
+        # only at a status nothing has moved it on from (Design 7.2).
+        unfinished = (here is not None and status not in moved_on
+                      and not (backend.work_path / here / ITEM_FILE).is_file())
+        if here is not None and status != inbox_status and not unfinished:
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
     else:
@@ -153,8 +158,9 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
             raise Refused(f"a folder for {key} already exists here: {here}")
         slug = Slug(backend.project, f"{key}-{title_words(str(fields.get('summary') or key))}")
     # A ticket this project made, whose create or delegation stopped before it
-    # set TCW Item, may sit at any status the workflow starts at (Design 7.2).
-    ours = tcw_project == backend.project and not tcw_item
+    # set TCW Item, may sit at a first status that no stage maps (Design 7.2).
+    ours = tcw_project == backend.project and not tcw_item and \
+        status not in backend.statuses.values()
     chosen = None
     if status != request_status:
         if not resuming and not ours and status != inbox_status:

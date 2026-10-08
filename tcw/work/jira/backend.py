@@ -733,7 +733,10 @@ class JiraBackend:
 
     def _enter_request(self, key: str, slug: Slug, chosen: Transition) -> None:
         stage = start_stage()
-        finish = f"`tcw work advance {slug} --to {stage}`"
+        # The first status may map to no stage, and a move from no stage
+        # needs --force and a reason (advance's direction check).
+        finish = (f"`tcw work advance {slug} --to {stage} --force --reason "
+                  f"\"<why>\"`")
         try:
             self.client.apply_transition(key, chosen.id)
         except TrackerRequestInvalid as error:

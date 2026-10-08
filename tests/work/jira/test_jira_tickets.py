@@ -324,3 +324,23 @@ def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
     assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-kept"), result.err
     assert (jira_project.work / "TCW-1-kept" / "item.yaml").read_text() == \
         f"ticket: {jira_project.fake.site}/browse/{key}\n"
+
+
+@pytest.mark.parametrize("status", ["In Progress", "Done"])
+def test_a_delegated_ticket_moved_on_is_not_taken_back(jira_project, tcw, status):
+    key = raw(jira_project, "x", status=status, TCW_Project="tcw")
+    jira_project.fake.log.clear()
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    assert result.code == 3, result.err
+    assert jira_project.fake.writes() == []
+
+
+def test_an_item_moved_on_whose_item_yaml_is_gone_is_not_taken_back(jira_project, tcw):
+    key = raw(jira_project, "x", status="In Progress", TCW_Project="tcw",
+              TCW_Item="tcw/TCW-1-kept")
+    (jira_project.work / "TCW-1-kept").mkdir(parents=True)
+    jira_project.fake.log.clear()
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    assert result.code == 3 and "already the item" in result.err, result.err
+    assert jira_project.fake.writes() == []
+    assert not (jira_project.work / "TCW-1-kept" / "item.yaml").exists()

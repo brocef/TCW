@@ -331,13 +331,13 @@ def _definition(run: _Run, project_id: str, kind: IssueType) -> list[_Route] | N
                 workflow, dict) else []:
             if not isinstance(transition, dict):
                 continue
-            kind = transition.get("type")
-            if kind == "INITIAL":
+            shape = transition.get("type")
+            if shape == "INITIAL":
                 continue                 # the create transition, from no status
             to = names.get(transition.get("toStatusReference"))
             links = [names.get(link.get("fromStatusReference"))
                      for link in transition.get("links") or [] if isinstance(link, dict)]
-            sources = None if kind == "GLOBAL" else frozenset(links)
+            sources = None if shape == "GLOBAL" else frozenset(links)
             routes.append(_Route(str(to), sources))
     return routes
 
