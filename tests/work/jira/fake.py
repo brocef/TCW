@@ -159,6 +159,8 @@ class FakeJira:
         self.down: Exception | None = None
         self.refuse_cross_project_parent = False
         self._drop_after_write = False
+        self._down_after_drop = False
+        self._drop_before_write = False
         self.add_project("TCW")
 
     # -- setup -------------------------------------------------------------------
@@ -197,8 +199,15 @@ class FakeJira:
                 return
         raise KeyError(transition_id)
 
-    def drop_after_next_write(self) -> None:
+    def drop_after_next_write(self, *, then_unreachable: bool = False) -> None:
+        """The next write is applied, then its connection drops; with
+        `then_unreachable`, every request after it is unreachable too."""
         self._drop_after_write = True
+        self._down_after_drop = then_unreachable
+
+    def drop_before_next_write(self) -> None:
+        """The next write's connection drops before Jira applies it."""
+        self._drop_before_write = True
 
     def unreachable(self) -> None:
         self.down = jira.TrackerUnavailable(f"could not reach the tracker at {self.site}")
@@ -235,10 +244,16 @@ class FakeJira:
             self.account(email, f"acct-{len(self.accounts) + 1}", email or "anonymous")
         me = self.accounts[email]
         route, query = _split(path)
+        if _is_write(method, path) and self._drop_before_write:
+            self._drop_before_write = False
+            raise jira.TrackerUnavailable(
+                f"could not reach the tracker at {self.site} (connection reset)")
         payload = self._route(me, method, route, query, body)
         if _is_write(method, path):
             if self._drop_after_write:
                 self._drop_after_write = False
+                if self._down_after_drop:
+                    self.unreachable()
                 raise jira.TrackerUnavailable(
                     f"the connection to the tracker at {self.site} was lost before "
                     f"it answered (RemoteDisconnected)")

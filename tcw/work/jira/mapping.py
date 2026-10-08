@@ -169,18 +169,24 @@ def scale_name(option: Any) -> str | None:
     return name if name in SIZES else None
 
 
-def blocker_keys(links: Any) -> tuple[str, ...]:
-    """The keys of the tickets that block this one: `Blocks` links where this
-    ticket is the inward (blocked) side. The direction is a live-check question
-    (Design 15.4); it lives here and in `block_link` only."""
-    keys: list[str] = []
+def blocker_links(links: Any) -> dict[str, str | None]:
+    """Each ticket that blocks this one, by key, with the id of its link, in
+    Jira's order. As read on the blocked ticket, a `Blocks` link names the
+    blocker as `inwardIssue`. The direction is a live-check question (Design
+    15.4); it lives here and in `block_link` only."""
+    found: dict[str, str | None] = {}
     for link in links if isinstance(links, list) else ():
         if _get(link, "type", "name") != BLOCKS:
             continue
         key = _string(_get(link, "inwardIssue", "key"))
-        if key and key not in keys:
-            keys.append(key)
-    return tuple(keys)
+        if key and key not in found:
+            found[key] = _string(_get(link, "id"))
+    return found
+
+
+def blocker_keys(links: Any) -> tuple[str, ...]:
+    """The keys of the tickets that block this one."""
+    return tuple(blocker_links(links))
 
 
 def block_link(blocker: str, blocked: str) -> tuple[str, str]:

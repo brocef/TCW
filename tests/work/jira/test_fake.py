@@ -155,6 +155,26 @@ def test_drop_after_the_next_write_applies_it(client, fake):
     client.edit_issue(key, {"summary": "again"})               # only the next one
 
 
+def test_drop_after_a_write_and_stay_down(client, fake):
+    key = create(client)
+    fake.drop_after_next_write(then_unreachable=True)
+    with pytest.raises(jira.TrackerUnavailable):
+        client.edit_issue(key, {"summary": "landed"})
+    with pytest.raises(jira.TrackerUnavailable):
+        client.issue(key)
+    assert fake.tickets[key].summary == "landed"
+
+
+def test_drop_before_the_next_write_does_not_apply_it(client, fake):
+    key = create(client)
+    fake.drop_before_next_write()
+    with pytest.raises(jira.TrackerUnavailable):
+        client.edit_issue(key, {"summary": "lost"})
+    assert client.issue(key)["fields"]["summary"] == "T"
+    client.edit_issue(key, {"summary": "again"})
+    assert fake.tickets[key].summary == "again"
+
+
 def test_a_missing_key_search(client, fake):
     key = create(client)
     assert client.search(jql.keys_query([key, "TCW-99"]), []) != []

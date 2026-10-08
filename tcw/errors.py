@@ -11,9 +11,15 @@ from tcw import exit as codes
 
 
 class TcwError(Exception):
-    """Base class: a failure the CLI turns into its `code`."""
+    """Base class: a failure the CLI turns into its `code`.
+
+    `name` is set when the failure left a record behind that the user needs
+    to know about: in Jira, the key or slug of what `new` created before it
+    stopped. The CLI prints it on stdout.
+    """
 
     code = codes.ERROR
+    name: str | None = None
 
 
 class BackendError(TcwError):

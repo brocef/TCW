@@ -21,22 +21,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
-from tcw.errors import BackendError, NotFound, Refused, Unreachable, UsageError
+from tcw.errors import (
+    BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
+)
 from tcw.store.base import normalize_tag
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
+from tcw.work.fs_backend import ITEM_FILE, WORDS, report_mentions
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
-    JiraClient, TrackerAuthError, TrackerError, TrackerNotFound, TrackerPermissionError,
-    TrackerRateLimited, TrackerRequestInvalid, TrackerUnavailable,
+    JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
+    TrackerPermissionError, TrackerRateLimited, TrackerRequestInvalid, TrackerUnavailable,
 )
 from tcw.work.jira.config import JiraConfig
 from tcw.work.jira.mapping import (
-    Props, document_text, read_fields, read_props, scale_name,
+    BLOCKS, Props, block_link, blocker_links, create_fields, document_text,
+    normalize_text, read_fields, read_props, scale_name, text_document, write_fields,
 )
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    Changes, Item, Slug, completion_stage, discard_stage, stage as table_stage,
+    FOLDER_LIMIT, UNSET, Changes, Item, Slug, check_encodable, completion_stage,
+    discard_stage, stage as table_stage, start_stage, title_words as make_title_words,
+    validate_changes,
 )
 
 #: A whole Jira key.
@@ -50,6 +56,9 @@ EXTERNAL_STAGES = frozenset(table_stage(name).name for name in ("request", "qa")
 
 #: How many matching people `Refused` lists for an ambiguous assignee.
 SHOWN_MATCHES = 10
+#: How many of the newest comments are searched for a note that may have
+#: landed (Design 5).
+NOTE_WINDOW = 10
 
 
 def _warn(line: str) -> None:
@@ -136,8 +145,10 @@ class JiraBackend:
 
     def __init__(self, project: str, work_path: Path, config: WorkConfig,
                  jira: JiraConfig, *, client: JiraClient | None = None,
-                 report: Callable[[str], None] | None = None):
+                 report: Callable[[str], None] | None = None,
+                 root: Path | None = None):
         self.project = project
+        self.root = None if root is None else Path(root)
         self.work_path = Path(work_path)
         self.config = config
         self.jira = jira
@@ -472,23 +483,467 @@ class JiraBackend:
             self.names[found[0]["accountId"]] = found[0]["displayName"]
         return str(found[0]["accountId"])
 
-    # -- writing: TCW-71 task 8 --------------------------------------------------
+    # -- resolving what a write names --------------------------------------------
+
+    def _other(self, project_id: str):
+        """Another project's backend; None when this backend was built without
+        a project root to find it from."""
+        if self.root is None:
+            return None
+        from tcw.work.open import open_project
+        return open_project(project_id, self.root)
+
+    def ticket_key(self, value: Any, what: str) -> str:
+        """The Jira key of the item a parent or blocker names. An item that is
+        not a ticket on this site is refused before any request (Design 4.1
+        step 1, 11.4)."""
+        slug = value if isinstance(value, Slug) else Slug.parse(value, self.project)
+        backend = self if slug.project == self.project else self._other(slug.project)
+        if not isinstance(backend, JiraBackend) or backend.jira.site != self.jira.site \
+                or folder_key(slug.folder) is None:
+            raise Refused(f"{what} {slug} is not a Jira ticket on {self.jira.site}; "
+                          f"Jira links only tickets on one site")
+        return backend._key(slug.folder)
+
+    def _type_of(self, issue: Mapping) -> tuple[int, str]:
+        kind = issue.get("fields", {}).get("issuetype") if isinstance(
+            issue.get("fields"), dict) else None
+        if not isinstance(kind, dict) or not isinstance(kind.get("hierarchyLevel"), int):
+            raise BackendError(f"Jira did not say where {issue.get('key')} sits in "
+                               f"the issue hierarchy")
+        return kind["hierarchyLevel"], str(kind.get("name"))
+
+    def child_issue_type(self, parent_key: str, level: int, type_name: str) -> IssueType:
+        """The issue type of a new child of a ticket at `level` (Design 11)."""
+        meta = self.metadata()
+        target = level - 1
+        if target == 0:
+            return meta.issue_type
+        if target == -1:
+            found = [t for t in meta.issue_types if t.subtask]
+        elif target >= 1:
+            found = [t for t in meta.issue_types if t.level == target]
+        else:
+            raise Refused(f"{parent_key} is a {type_name}; Jira gives that type no "
+                          f"children")
+        if len(found) != 1:
+            raise Refused(f"{parent_key} is a {type_name}, and Jira project "
+                          f"{self.jira.project} has no single issue type to put under "
+                          f"it ({len(found)} found)")
+        return found[0]
+
+    def _parent(self, value: Any) -> tuple[str, int, str]:
+        """A parent's key, hierarchy level and type name."""
+        key = self.ticket_key(value, "parent")
+        with _jira():
+            issue = self.client.issue(key, ("issuetype",))
+        level, name = self._type_of(issue)
+        return key, level, name
+
+    def _validate(self, changes: Changes, item_slug: Slug | None) -> None:
+        # Jira's hierarchy puts every parent one level above its child, so a
+        # chain of parents cannot loop and there is no cycle to walk for.
+        validate_changes(changes, item_slug=item_slug, registered_tags=self.config.tags,
+                         current_project=self.project, parent_of=lambda slug: None)
+
+    def _check_priority(self, changes: Changes) -> None:
+        if changes.priority not in (UNSET, None) and not self.metadata().has_priority:
+            raise Refused(f"Jira project {self.jira.project} has no Priority field, so "
+                          f"an item there has no priority to set")
+
+    @staticmethod
+    def _normalized(changes: Changes) -> Changes:
+        return replace(changes, add_tags=tuple(normalize_tag(t) for t in changes.add_tags),
+                       remove_tags=tuple(normalize_tag(t) for t in changes.remove_tags))
+
+    def _item_file(self, folder: str, key: str) -> None:
+        path = self.work_path / folder
+        path.mkdir(parents=True)
+        self.report(f"created {path}")
+        document = path / ITEM_FILE
+        document.write_text(f"ticket: {self.jira.site}/browse/{key}\n", encoding="utf-8")
+        self.report(f"wrote {document}")
+
+    # -- create (Design 4.1) -------------------------------------------------------
 
     def create(self, title: str, props: Changes, *, stage: str,
                request: str | None) -> Item:
-        raise NotImplementedError
+        if not isinstance(title, str) or not title.strip():
+            raise UsageError("a title must not be empty")
+        table_stage(stage)
+        if stage != start_stage():
+            raise UsageError(f"a Jira item is created at {start_stage()}, not {stage}")
+        if request is not None:
+            check_encodable(request, "the request")
+        props = self._normalized(props)
+        self._validate(replace(props, title=title), None)
+        meta = self.metadata()
+        # 1. Resolve, reading only.
+        self._check_priority(props)
+        issue_type, parent_key = meta.issue_type, None
+        if props.parent not in (UNSET, None):
+            parent_key, level, type_name = self._parent(props.parent)
+            issue_type = self.child_issue_type(parent_key, level, type_name)
+        assignee = (self.account(props.assignee)
+                    if props.assignee not in (UNSET, None) else None)
+        blockers = _unique(self.ticket_key(b, "blocked-by") for b in props.add_blocked_by)
+        # 2. Create the ticket.
+        fields = create_fields(title, props, request, config=self.jira,
+                               field_ids=meta.field_ids, project_id=self.project,
+                               issue_type=issue_type.id, has_priority=meta.has_priority,
+                               assignee=assignee, parent=parent_key, options=meta.options)
+        with _jira():
+            try:
+                created = self.client.create_issue(fields)
+            except TrackerRequestInvalid as error:
+                hint = (" A parent in another Jira project may not be allowed by "
+                        "this project's type." if parent_key and
+                        not parent_key.startswith(self.jira.project + "-") else "")
+                raise BackendError(f"Jira refused to create the ticket: {error}.{hint}") \
+                    from None
+        key = created.get("key") if isinstance(created, dict) else None
+        if not isinstance(key, str) or not KEY.fullmatch(key):
+            raise BackendError("Jira's answer to the create request names no ticket key; "
+                               "a ticket may have been created: look for it in Jira")
+        folder = f"{key}-{make_title_words(title)}"
+        slug = Slug(self.project, folder)
+        request_status = self.statuses[start_stage()]
+        # 3. Check the route to the request status.
+        try:
+            chosen = self._route(key, request_status)
+        except TcwError as error:
+            error.name = key
+            raise
+        if isinstance(chosen, Refusal):
+            raise Refused(f"created Jira ticket {key}, but {chosen.message}; it is left "
+                          f"as an ordinary ticket with no item", name=key)
+        # 4. Set TCW Item.
+        try:
+            with _jira():
+                self.client.edit_issue(key, {meta.field_ids["item"]: str(slug)})
+        except TcwError as error:
+            raise _named(BackendError(
+                f"created Jira ticket {key}, but could not set its TCW Item: {error}; "
+                f"finish with `tcw work tickets adopt {key}`"), key) from None
+        # 5. Write the folder and item.yaml.
+        try:
+            self._item_file(folder, key)
+        except OSError as error:
+            raise _named(BackendError(
+                f"created Jira ticket {key} naming {slug}, but could not write its "
+                f"folder: {error}; finish with `tcw work tickets adopt {key}`"), key) \
+                from None
+        # 6. Apply the transition.
+        if chosen is not None:
+            self._enter_request(key, slug, chosen)
+        # 7. Create the Blocks links.
+        made, failed = self._add_links(key, blockers)
+        if failed:
+            raise _named(BackendError(
+                f"created {slug} at {start_stage()}, but not all its blocked-by links: "
+                f"{_link_report(made, failed)}; finish with `tcw work edit {slug} "
+                f"--blocked-by …`"), str(slug))
+        return self.read(folder)
+
+    def _route(self, key: str, status: str) -> Transition | Refusal | None:
+        """None when `key` is already at `status`; else the transition the
+        choice rule picks, or why it picks none."""
+        with _jira():
+            if self._status(key) == status:
+                return None
+            return choose_transition(self.client.transitions(key), status)
+
+    def _status(self, key: str) -> str | None:
+        issue = self.client.issue(key, ("status",))
+        status = issue.get("fields", {}).get("status") if isinstance(
+            issue.get("fields"), dict) else None
+        return status.get("name") if isinstance(status, dict) else None
+
+    def _enter_request(self, key: str, slug: Slug, chosen: Transition) -> None:
+        stage = start_stage()
+        try:
+            self.client.apply_transition(key, chosen.id)
+        except TrackerRequestInvalid as error:
+            raise _named(BackendError(
+                f"created {slug}, but Jira refused to move it to {stage}: {error}; it "
+                f"is at the workflow's first status. Fix the workflow, then run "
+                f"`tcw work advance {slug}`"), str(slug)) from None
+        except TrackerError as error:
+            raise _named(Unreachable(
+                f"created {slug}, but moving it to {stage} did not complete: {error}; "
+                f"check it with `tcw work show {slug}`, then `tcw work advance "
+                f"{slug}`"), str(slug)) from None
+        try:
+            with _jira():
+                status = self._status(key)
+        except TcwError as error:
+            raise _named(type(error)(f"created {slug}, but its status cannot be read "
+                                     f"back: {error}"), str(slug)) from None
+        if status != self.statuses[stage]:
+            raise _named(BackendError(
+                f"created {slug}, but Jira reports it at {status!r}, not "
+                f"{self.statuses[stage]!r}; run `tcw work advance {slug}`"), str(slug))
+
+    # -- update (Design 4.2) -----------------------------------------------------------
 
     def update(self, folder: str, changes: Changes) -> Item:
-        raise NotImplementedError
+        key = self._key(folder)
+        slug = Slug(self.project, folder)
+        changes = self._normalized(changes)
+        self._validate(changes, slug)
+        meta = self.metadata()
+        self._check_priority(changes)
+        issue = self._issue(key, folder, read_fields(meta.field_ids))
+        parent: Any = UNSET
+        if changes.parent is None:
+            parent = None
+        elif changes.parent is not UNSET:
+            parent, level, type_name = self._parent(changes.parent)
+            own_level, own_name = self._type_of(issue)
+            if level != own_level + 1:
+                raise Refused(f"{key} is a {own_name}, which cannot sit under {parent}, "
+                              f"a {type_name}; Jira cannot change an issue's type here")
+        assignee: Any = UNSET
+        if changes.assignee is None:
+            assignee = None
+        elif changes.assignee is not UNSET:
+            assignee = self.account(changes.assignee)
+        add = _unique(self.ticket_key(b, "blocked-by") for b in changes.add_blocked_by)
+        remove = _unique(self.ticket_key(b, "blocked-by")
+                         for b in changes.remove_blocked_by)
+        fields, update = write_fields(changes, self.jira, meta.field_ids,
+                                      assignee=assignee, parent=parent,
+                                      options=meta.options)
+        if fields or update:
+            with _jira():
+                try:
+                    self.client.edit_issue(key, fields or None, update or None)
+                except TrackerRequestInvalid as error:
+                    hint = (" A parent in another Jira project may not be allowed by "
+                            "this project's type." if isinstance(parent, str)
+                            and not parent.startswith(self.jira.project + "-") else "")
+                    raise BackendError(f"Jira refused the edit of {slug}: {error}."
+                                       f"{hint}") from None
+        current = blocker_links(issue.get("fields", {}).get("issuelinks"))
+        made, failed = self._add_links(key, [k for k in add if k not in current])
+        for blocker in remove:
+            link = current.get(blocker)
+            if link is None:
+                continue
+            try:
+                self.client.delete_link(link)
+                made.append(f"removed {blocker}")
+            except TrackerError as error:
+                failed.append(f"remove {blocker} ({error})")
+        if failed:
+            saved = "the fields were saved" if fields or update else "no field changed"
+            raise BackendError(f"{slug}: {saved}, but not every blocked-by link: "
+                               f"{_link_report(made, failed)}; running the same edit "
+                               f"again is safe")
+        return self.read(folder)
 
-    def set_stage(self, folder: str, stage: str, note: str | None) -> str | None:
-        raise NotImplementedError
+    def _add_links(self, key: str, blockers: Iterable[str]) -> tuple[list[str], list[str]]:
+        made: list[str] = []
+        failed: list[str] = []
+        for blocker in blockers:
+            try:
+                self.client.add_link(BLOCKS, *block_link(blocker, key))
+                made.append(f"added {blocker}")
+            except TrackerError as error:
+                failed.append(f"add {blocker} ({error})")
+        return made, failed
+
+    # -- comment and rename (Design 4.3, 4.4) ---------------------------------------------
 
     def comment(self, folder: str, text: str) -> None:
-        raise NotImplementedError
+        key = self._key(folder)
+        if not isinstance(text, str) or not text.strip():
+            raise UsageError("a comment must not be empty")
+        check_encodable(text, "the comment")
+        with _jira():
+            self.client.add_comment(key, text_document(text))
 
     def rename(self, folder: str, title_words: str) -> Item:
-        raise NotImplementedError
+        key = self._key(folder)
+        words = title_words
+        keyed = KEY_FOLDER.fullmatch(title_words) if isinstance(title_words, str) else None
+        if keyed:
+            if keyed.group("key") != key:
+                raise UsageError(f"a rename keeps the key {key}; give the words alone, "
+                                 f"or {key}-<words>")
+            words = title_words[len(key) + 1:]
+        if not isinstance(words, str) or not WORDS.fullmatch(words):
+            raise UsageError(f"{title_words!r} is not a folder name; did you mean "
+                             f"{make_title_words(str(title_words))}?")
+        new = f"{key}-{words}"
+        if len(new) > FOLDER_LIMIT:
+            raise UsageError(f"{new} is longer than {FOLDER_LIMIT} characters")
+        if new == folder:
+            raise Refused(f"{folder} already has that name")
+        old_path, new_path = self.work_path / folder, self.work_path / new
+        if new_path.exists():
+            raise Refused(f"{new_path} already exists")
+        item_field = self.metadata().field_ids["item"]
+        old_slug, new_slug = Slug(self.project, folder), Slug(self.project, new)
+        with _jira():
+            self.client.edit_issue(key, {item_field: str(new_slug)})
+        try:
+            os.rename(old_path, new_path)
+        except OSError as error:
+            try:
+                self.client.edit_issue(key, {item_field: str(old_slug)})
+                restored = f"TCW Item is set back to {old_slug}"
+            except TrackerError as again:
+                restored = (f"TCW Item still says {new_slug} and could not be set back "
+                            f"to {old_slug} ({again})")
+            raise BackendError(f"could not move {old_path} to {new_path}: {error}; "
+                               f"{restored}") from None
+        self.report(f"moved {old_path} to {new_path}")
+        report_mentions(self.work_path, folder, self.report)
+        return self.read(new)
+
+    # -- set_stage (Design 5) --------------------------------------------------------------
+
+    def set_stage(self, folder: str, stage: str, note: str | None) -> str | None:
+        key = self._key(folder)
+        slug = Slug(self.project, folder)
+        table_stage(stage)
+        status = self.statuses.get(stage)
+        if status is None:
+            raise UsageError(f"stage {stage} has no Jira status in this project")
+        with _jira():
+            offered = self.client.transitions(key)
+        chosen = choose_transition(offered, status)
+        if isinstance(chosen, Refusal):
+            raise Refused(f"cannot move {slug} to {stage}: {chosen.message}")
+        document = text_document(note) if note is not None and note.strip() else None
+        try:
+            self.client.apply_transition(key, chosen.id, document)
+        except TrackerRequestInvalid as error:
+            return self._after_refusal(key, slug, stage, status, chosen, note, document,
+                                       error)
+        except TrackerUnavailable as error:
+            return self._after_drop(key, slug, stage, status, note, document, error)
+        except TrackerError:
+            with _jira():
+                raise
+        return self._stage_now(key)
+
+    def _stage_now(self, key: str) -> str | None:
+        with _jira():
+            status = self._status(key)
+        return {name: stage for stage, name in self.statuses.items()}.get(status)
+
+    def _note_found(self, key: str, note: str) -> bool:
+        wanted = normalize_text(note)
+        return any(normalize_text(document_text(c.body)) == wanted
+                   for c in self.client.comments(key, NOTE_WINDOW))
+
+    def _post_note(self, key: str, slug: Slug, stage: str, note: str) -> None:
+        try:
+            self.client.add_comment(key, text_document(note))
+        except TrackerError as error:
+            raise MovedWithoutNote(f"{slug} moved to {stage}, but posting the note "
+                                   f"failed: {error}") from None
+
+    def _after_refusal(self, key, slug, stage, status, chosen, note, document,
+                       error) -> str | None:
+        """Jira answered 400. Its text is never read to decide what happened;
+        the status is (Design 5)."""
+        with _jira():
+            current = self._status(key)
+        if current == status:
+            # Someone else made the move first, or Jira refused only the comment.
+            if document is not None:
+                try:
+                    found = self._note_found(key, note)
+                except TrackerError:
+                    found = False
+                if not found:
+                    self._post_note(key, slug, stage, note)
+            return stage
+        if document is None:
+            raise Refused(_refusal_text(slug, stage, chosen, error))
+        try:
+            self.client.apply_transition(key, chosen.id)
+        except TrackerRequestInvalid as again:
+            raise Refused(_refusal_text(slug, stage, chosen, again)) from None
+        except TrackerUnavailable as again:
+            return self._after_drop(key, slug, stage, status, None, None, again)
+        except TrackerError:
+            with _jira():
+                raise
+        self._post_note(key, slug, stage, note)
+        return self._stage_now(key)
+
+    def _after_drop(self, key, slug, stage, status, note, document, error) -> str | None:
+        """The connection failed mid-request, which may have landed."""
+        try:
+            current = self._status(key)
+        except TrackerError:
+            raise Unreachable(f"the connection to Jira failed while moving {slug} to "
+                              f"{stage} ({error}), and its status cannot be read now; "
+                              f"the move may have happened: check with "
+                              f"`tcw work show {slug}`") from None
+        if current != status:
+            raise Unreachable(f"Jira could not be reached to move {slug} to {stage}; "
+                              f"it was not moved: {error}")
+        if document is not None:
+            try:
+                found = self._note_found(key, note)
+            except TrackerError:
+                found = False
+            if not found:
+                raise MovedWithoutNote(f"{slug} moved to {stage}, but the connection "
+                                       f"failed and the note is not among its newest "
+                                       f"{NOTE_WINDOW} comments")
+        return stage
+
+
+@dataclass(frozen=True)
+class Refusal:
+    """Why the choice rule picked no transition."""
+    message: str
+
+
+def _describe(transition: Transition) -> str:
+    shown = f" (screen: {', '.join(transition.fields)})" if transition.fields else ""
+    return f"{transition.name} → {transition.to_status}{shown}"
+
+
+def choose_transition(transitions: Iterable[Transition],
+                      status: str) -> Transition | Refusal:
+    """The choice rule (Design 5 step 2): the one transition into `status`;
+    of several, the one whose screen asks for nothing but a comment; else a
+    refusal listing them. It never walks through other statuses."""
+    offered = list(transitions)
+    candidates = [t for t in offered if t.to_status == status]
+    if len(candidates) == 1:
+        return candidates[0]
+    if not candidates:
+        listed = "; ".join(_describe(t) for t in offered) or "none"
+        return Refusal(f"no transition leads to {status!r}; the ticket offers: {listed}")
+    plain = [t for t in candidates if set(t.fields) <= {"comment"}]
+    if len(plain) == 1:
+        return plain[0]
+    listed = "; ".join(_describe(t) for t in (plain or candidates))
+    return Refusal(f"several transitions lead to {status!r}, and TCW will not choose "
+                   f"between them: {listed}")
+
+
+def _refusal_text(slug: Slug, stage: str, chosen: Transition, error: Exception) -> str:
+    return (f"Jira refused moving {slug} to {stage} through {chosen.name!r}: {error}. "
+            f"If that transition's screen requires a field such as a resolution, set "
+            f"it in a workflow post function instead; TCW fills in only the comment")
+
+
+def _link_report(made: list[str], failed: list[str]) -> str:
+    return (f"made: {', '.join(made) or 'none'}; not made: {', '.join(failed)}")
+
+
+def _named(error: TcwError, name: str) -> TcwError:
+    error.name = name
+    return error
 
 
 class _Unread:

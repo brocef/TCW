@@ -215,6 +215,21 @@ def read_all(work_path: Path, project: str,
     return items, bad
 
 
+def report_mentions(work_path: Path, old: str, report: Callable[[str], None]) -> None:
+    """After a rename, every line of the work path's files, other than
+    `item.yaml`, that still names the old folder. None is rewritten."""
+    for path in sorted(work_path.rglob("*")):
+        if not path.is_file() or path.name == ITEM_FILE:
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(lines, start=1):
+            if old in line:
+                report(f"{path}:{number}: names {old}, not rewritten")
+
+
 def _stderr(line: str) -> None:
     print(line, file=sys.stderr)
 
@@ -457,22 +472,11 @@ class FsWorkBackend:
             raise BackendError(f"moved {folder} to {new}, but these items still "
                                f"name the old slug: {', '.join(failed)}")
 
-        self._report_mentions(folder)
+        report_mentions(self.work_path, folder, self.report)
         self.report(f"items in other projects that name {old_slug} are not "
                     f"rewritten; `tcw validate` there reports them")
         return self.read(new)
 
-    def _report_mentions(self, old: str) -> None:
-        for path in sorted(self.work_path.rglob("*")):
-            if not path.is_file() or path.name == ITEM_FILE:
-                continue
-            try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except (OSError, UnicodeDecodeError):
-                continue
-            for number, line in enumerate(lines, start=1):
-                if old in line:
-                    self.report(f"{path}:{number}: names {old}, not rewritten")
 
     def lookup(self, name: str) -> str | None:
         return None

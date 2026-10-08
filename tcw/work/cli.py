@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import BackendError, NotFound, Refused, UsageError
+from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_node_root
 from tcw.stdin import read_piped_stdin
@@ -154,7 +154,12 @@ def _new(args) -> int:
         complexity=_optional(args.complexity), assignee=_optional(args.assignee),
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
-    item = backend.create(args.title, changes, stage=stage, request=request)
+    try:
+        item = backend.create(args.title, changes, stage=stage, request=request)
+    except TcwError as error:
+        if error.name:
+            print(error.name)          # what was created before it stopped
+        raise
     print(item.slug)
     return codes.OK
 

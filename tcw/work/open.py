@@ -75,7 +75,7 @@ def open_backend(project_root: Path, *,
     except ValueError as error:
         raise BackendError(str(error)) from None
     if jira is not None:
-        return JiraBackend(project, path, config, jira, report=report)
+        return JiraBackend(project, path, config, jira, report=report, root=root)
     return FsWorkBackend(project, path, config, report=report)
 
 
