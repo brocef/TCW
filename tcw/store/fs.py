@@ -80,7 +80,44 @@ def _store_classes() -> dict:
     this module than the helpers that need them."""
     return {"taxonomy": FsTaxonomyStore,
             "capabilities": FsCapabilitiesStore,
-            "work": FsWorkStore}
+            "work": WorkLocation}
+
+
+class WorkLocation:
+    """The work store as the location ladder sees it (TCW-70 Design 3.4-3.5).
+
+    The work path is found as every store's location is (`work.path`, else
+    `docs/work`, re-anchored in a linked worktree, else a declared repository's
+    provisioned checkout). It is usable when the directory is there: an empty
+    store is a real state, and nothing inside it is required.
+    """
+
+    COMPONENT = "work"
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    @classmethod
+    def open(cls, node_root: Path) -> "WorkLocation":
+        return resolve_store(cls, Path(node_root))
+
+    @classmethod
+    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
+        if configured is None:
+            return node_root / "docs" / cls.COMPONENT
+        value = Path(configured).expanduser()
+        if value.is_absolute():
+            return value
+        return anchor_configured_path(node_root, value) / value
+
+    @classmethod
+    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+                 external: bool, must_exist: bool = True, declaration=None,
+                 _walk=None) -> "WorkLocation":
+        if not raw_root.is_dir():
+            raise StoreLocationUnusable(
+                f"{config_path}: work.path is not a directory: {raw_root}")
+        return cls(raw_root.resolve())
 
 
 class _StoreClasses:
@@ -556,7 +593,7 @@ def _has_work_store(node_root: Path) -> bool:
     caller of this function actually wants.
     """
     try:
-        FsWorkStore.open(node_root)
+        WorkLocation.open(node_root)
         return True
     except ValueError:                     # StoreNotProvisioned included, by design
         return False
@@ -1328,13 +1365,12 @@ def init(components: list[str], root: Path, project_id: str | None = None,
          work_path: Path | None = None,
          paths: dict[str, Path] | None = None) -> list[Path]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
-    Returns leaf dirs made. A `.gitkeep` lands in each leaf so the empty skeleton
+    Returns the dirs made. A `.gitkeep` lands in each so the empty skeleton
     survives a commit (git doesn't track empty directories).
 
-    Scaffolding `work` also gitignores the resolved status folders, so completing
-    or discarding an item takes it *out* of the tracked tree instead of
-    accumulating it there — `git_mv` untracks rather than moves when the
-    destination is ignored. Unstaged, like everything else init writes.
+    The work component is one directory and its `.gitkeep`, nothing else: no
+    status folders and no ignore rules (TCW-70 Design 11). Unstaged, like
+    everything else init writes.
     """
     # Read ahead of `write_sentinel`, so its own mapping check no longer runs
     # first — a malformed config used to come back from it as a `ValueError` and
@@ -1379,11 +1415,6 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # or a new sentinel in a project that had none, or the whole status tree.
     default_root = root / "docs" / "work"
     replacing_default_store = False
-    # Which repository answers the ignore question for the work leaves. The
-    # node's own, unless `work.path` sends the store somewhere else — and it is
-    # asked for the default store too, which is the layout most projects use and
-    # the one the check originally skipped entirely.
-    ignore_root: Path | None = git_root(root)
     if work_path is not None and "work" in components:
         target = work_path if work_path.is_absolute() else root / work_path
         # Probed at the nearest *existing* ancestor, not at the target:
@@ -1399,32 +1430,13 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         target_git = git_root(probe)
         if target_git is None:
             raise ValueError(f"work.path target is not inside a Git repository: {target}")
-        ignore_root = target_git                      # the store's, not the node's
         if default_root.exists() and default_root.resolve() != target.resolve():
-            expected = {"inbox", *WORK_STATUSES}
-            # `.claiming/` is adapter-private staging that `start` creates and
-            # nothing removes, so any store an item was ever started in has it
-            # forever, empty. Its presence says nothing about whether the store
-            # holds work, which is the only question here — and leaving it in
-            # made this refuse to relocate an otherwise-empty store. The name is
-            # forgiven, not the directory: the `all(...)` below still walks its
-            # contents, so a claim in flight is still work and still refuses.
-            actual = {entry.name for entry in default_root.iterdir()} - {".claiming"}
-            # `is_symlink` first: a symlinked `docs/work` reads as pristine
-            # through the link and then meets `shutil.rmtree`, which refuses a
-            # symlink. Replacing a default store means deleting it, and a symlink
-            # is someone else's directory.
-            # A `.stamp-*.yaml` in `.claiming/` is a temporary file a claim's
-            # stamp left when its process died mid-write (`_stamp_claim`):
-            # garbage, not work.
-            pristine = not default_root.is_symlink() and actual == expected and all(
-                child.is_dir() and {entry.name for entry in child.iterdir()
-                                    if not (child.name == ".claiming"
-                                            and entry.name.startswith(".stamp-"))}
-                <= {".gitkeep"}
-                for child in default_root.iterdir()
-            )
-            if not pristine:
+            # `is_symlink` first: replacing a default store means deleting it,
+            # and a symlink is someone else's directory. Any item folder in it
+            # is work, and work is moved by a person, never deleted by init.
+            from tcw.work.fs_backend import is_item_folder
+            if default_root.is_symlink() or any(
+                    is_item_folder(entry) for entry in default_root.iterdir()):
                 raise ValueError(
                     f"refusing to replace non-pristine {default_root}; move existing work "
                     "manually, update work.path, then re-run init"
@@ -1465,8 +1477,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             raise ValueError(
                 f"{root / SENTINEL}: {c} is already provided by its declared "
                 f"repository; there is nothing to scaffold.{rest}")
-        plan.append((c, base, [base / "inbox", *(base / s for s in WORK_STATUSES)]
-                     if c == "work" else [base]))
+        plan.append((c, base, [base]))
     for component, _, leaves in plan:
         for leaf in leaves:
             # `mkdir(parents=True, exist_ok=True)` raises on a leaf that exists as
@@ -1479,50 +1490,6 @@ def init(components: list[str], root: Path, project_id: str | None = None,
                              if c.exists() or c.is_symlink()), None)
             if occupied is not None and not occupied.is_dir():
                 raise ValueError(f"cannot scaffold {leaf}: {occupied} is not a directory")
-            # Inside a repository is not the same as tracked by one: `git_stage`
-            # drops ignored paths from the `git add` it builds, so items filed
-            # under one are real on disk and invisible to git — the outcome the
-            # external-store contract exists to prevent. Asked of each status
-            # folder, not just the store root, because a rule naming one folder
-            # leaves the root visible and hides only what lands inside it.
-            #
-            # Would an *item* written here be recorded? Asked of a representative
-            # payload rather than of the folder or its `.gitkeep`, both of which
-            # answer a different question: `<status>/*` with a `!<status>/.gitkeep`
-            # negation — TCW's own shape for the resolved statuses, and an
-            # ordinary thing for a person to write — leaves the marker visible
-            # while hiding every item, and `git check-ignore` matches a
-            # trailing-slash path against a `dir/*` rule, so asking about the
-            # folder would make TCW's own scaffolding refuse itself.
-            #
-            # *Two* differently-named payloads, refused only when **both** are
-            # hidden. One fixed name makes the guard answerable by a rule naming
-            # that one literal (`an-item*`), which would refuse a store every
-            # real item would be tracked in. No plausible single glob matches
-            # both names unless it is the broad rule this exists to catch. The
-            # file name is deliberately not varied: `state.yaml` is fixed by the
-            # layout, so a rule hiding it hides every item's status record and
-            # must still refuse.
-            #
-            # `completed` and `discarded` are skipped because TCW ignores their
-            # contents deliberately: that is how a resolved item leaves the
-            # tracked tree.
-            #
-            # ponytail: a configure-time guard against a footgun, not a boundary.
-            # It cannot see a `.gitignore` written after `init`, a rule naming a
-            # specific slug, or one that arrives with a later `git pull`. Catching
-            # those means checking at write time, in `git_stage`, which is a
-            # different change.
-            if component == "work" and ignore_root is not None \
-                    and leaf.name not in RESOLVED_STATUSES:
-                probes = [leaf / f"{name}.md" if leaf.name == "inbox"
-                          else leaf / name / "state.yaml"
-                          for name in ("an-item", "some-slug")]
-                if all(git_ignored(ignore_root, p, no_index=True) for p in probes):
-                    raise ValueError(
-                        f"items written in {leaf} would be gitignored, so work "
-                        f"filed there would not be tracked"
-                    )
     # The config's whole change — `id` and every `<component>.path` — decided
     # and verified as one edit before anything is written. It used to be two
     # writes with the default store's deletion between them, so a refusal at
@@ -1550,25 +1517,6 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             leaf.mkdir(parents=True, exist_ok=True)
             (leaf / ".gitkeep").touch()
             created.append(leaf)
-        if c == "work":
-            target_git = git_root(base)
-            if target_git is None and work_path is not None:
-                raise ValueError(f"work.path target is not inside a Git repository: {base}")
-            # A node that has declared retention has said what it wants to happen
-            # to resolved work, and the ignore rules are one adapter's way of
-            # saying something else. Only the statuses it has *not* spoken for
-            # get the default rules; a node declaring nothing gets both, exactly
-            # as before.
-            declared = existing_config.get("work") or {}
-            declared = declared.get("retain") if isinstance(declared, dict) else None
-            declared = declared if isinstance(declared, dict) else {}
-            statuses = [s for s in RESOLVED_STATUSES if s not in declared]
-            if target_git is None:
-                ensure_ignored(root, *resolved_ignore_rules(statuses=statuses))
-            else:
-                ensure_ignored(target_git,
-                               *resolved_ignore_rules(base, target_git,
-                                                      statuses=statuses))
     return created
 
 
@@ -1595,33 +1543,15 @@ _UniqueKeyLoader.add_constructor(
 
 #: The YAML filenames TCW writes as records, held to `load_yaml`'s mapping
 #: contract by `tcw validate`. Named rather than inferred and kept in one place,
-#: because naming what TCW owns is narrower than exempting what it does not, and
-#: an attachment that happens to be called `state.yaml` is a case nobody has.
+#: because naming what TCW owns is narrower than exempting what it does not.
 #:
-#: Neither spelling of the old per-store config is here any more. `extends`
-#: moved to `<component>.extends` in the node's `tcw-config.yaml`, so TCW writes
-#: no `config.yaml` or `.config.yaml` at all — and the work store never did,
-#: whatever this comment used to claim. A leftover copy is not a record of ours
-#: and is not held to the mapping contract. It is still reported: the component
-#: `check()` names any copy at a store root as no longer read
-#: (`FsTreeStore._legacy_config_problems`), and `tcw validate`'s YAML scan
-#: separately reports one that is unparseable.
-#:
-#: Three names are absent on purpose, and each is legitimately not a mapping or
-#: is never reached by that pass. `dod.yaml` is a top-level list. The node
-#: sentinel `tcw-config.yaml` sits outside the scanned trees and is refused by
-#: `load_config` the moment anything reads it. And a work item's
-#: `capabilities.yaml` has **two** valid shapes — the `new:`/`changed:` mapping
-#: the Definition-of-Done gate reads, and the list form `reconcile` writes — so
-#: holding it to one of them would report a sound file, and worse, make that
-#: gate fail closed on it. See `declared_capabilities` in `tcw/store/base.py`.
-#:
-#: `tracker.yaml`, an item's binding to a tracker ticket, has one shape — a mapping,
-#: which `write_sidecar` already enforces — so it is held to the contract like
-#: `state.yaml`.
-OWNED_YAML_NAMES = frozenset({
-    "state.yaml", "meta.yaml", "graveyard.yaml", "tracker.yaml", "renames.yaml",
-})
+#: `item.yaml` is a work item's record (TCW-70 Design 3.2). The node sentinel
+#: `tcw-config.yaml` sits outside the scanned trees and is refused by
+#: `load_config` the moment anything reads it. A work item's `capabilities.yaml`
+#: is checked by the work checks in `tcw validate`, not by this list. A leftover
+#: per-store `config.yaml` is not a record of ours: `check()` names any copy at a
+#: store root as no longer read (`FsTreeStore._legacy_config_problems`).
+OWNED_YAML_NAMES = frozenset({"meta.yaml", "item.yaml"})
 
 
 class NotAMapping(yaml.YAMLError):
@@ -3948,35 +3878,31 @@ def _is_store_layout(root: Path, component: str) -> bool:
     The answer has two strengths, because the components differ in what they can
     honestly claim.
 
-    A **work** store names six folders, so this is the same question
-    `FsWorkStore.open` asks and a provisioned store and an opened one agree.
+    A **work** store names nothing either (TCW-70 Design 3.5): it is present
+    when its directory is, the same answer `WorkLocation.open` gives, so a
+    provisioned store and an opened one agree.
 
     A **tree** store — taxonomy, capabilities — names nothing. `init` scaffolds
-    it as a bare directory (see `init`'s plan loop, which gives work its status
-    leaves and the tree components only `[base]`), it holds no config file of its
+    it as a bare directory (see `init`'s plan loop), it holds no config file of its
     own at all now that `extends` lives in the node's `tcw-config.yaml`, and the
     only file reliably left behind is a `.gitkeep`, which is git's answer to
     empty directories and means nothing here. So "the directory is there" is the strongest honest answer, and it is
-    deliberately weaker than the work store's: a declared tree store that clones
+    shared by the work store: a declared tree store that clones
     into an empty directory reads as usable, because an empty taxonomy is a real
     state and nothing distinguishes the two. What this still refuses — a
     `repository.path` naming nothing at all — is what keeps "a failure leaves
     nothing behind" true for every component.
 
     `component` is required rather than defaulted: a caller that forgets it
-    should not silently get the work store's answer for a tree store.
+    should not silently get a store's answer for a node.
     """
     if not root.is_dir():
         return False
     if component == NODE_TARGET:
-        # A node names one file and it is the same file everywhere. Stronger
-        # than a tree store's "the directory is there" and weaker than a work
-        # store's six folders, which is exactly how much a node can honestly
-        # claim.
+        # A node names one file and it is the same file everywhere, which is
+        # exactly how much a node can honestly claim.
         return (root / SENTINEL).is_file()
-    if component != "work":
-        return True
-    return all((root / name).is_dir() for name in STORE_LAYOUT)
+    return True
 
 
 def _registry_checkout_root(
@@ -4303,10 +4229,7 @@ class FsStoreProvisioner(StoreProvisioner):
                 f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")
-        if not root.is_dir():
-            raise ValueError(f"{prefix}: no such directory in the repository")
-        missing = [n for n in STORE_LAYOUT if not (root / n).is_dir()]
-        raise ValueError(f"{prefix}; missing: {', '.join(missing)}")
+        raise ValueError(f"{prefix}: no such directory in the repository")
 
     # -- git plumbing (adapter-private; nothing above this class names it) --
 

@@ -24,6 +24,11 @@ NEW_MODULES = [PACKAGE / "work" / f"{name}.py" for name in
 TOP_MODULES = [PACKAGE / "exit.py", PACKAGE / "errors.py"]
 MODEL = PACKAGE / "work" / "model.py"
 ALL_MODULES = NEW_MODULES + TOP_MODULES + [MODEL]
+# TCW-70 AC 14: the backend, opening and the commands spell no stage either.
+# Not in the process guard: `open.py` reads `git status` and `cli.py` reaches
+# hooks through `advance`.
+BACKEND_MODULES = [PACKAGE / "work" / f"{name}.py" for name in
+                   ("fs_backend", "open", "cli")]
 
 STAGE_NAME = re.compile(r"\b(" + "|".join(s.name for s in STAGES) + r")\b")
 GIT_WRITERS = {"_git", "_git_index", "git_stage", "git_rm", "git_mv",
@@ -62,7 +67,8 @@ def _stage_literals(nodes, path):
             if STAGE_NAME.search(n.value)]
 
 
-@pytest.mark.parametrize("path", NEW_MODULES + TOP_MODULES, ids=lambda p: p.name)
+@pytest.mark.parametrize("path", NEW_MODULES + TOP_MODULES + BACKEND_MODULES,
+                         ids=lambda p: p.name)
 def test_no_stage_name_is_spelled_outside_the_table(path):
     assert _stage_literals(_strings(_parse(path)), path) == []
 

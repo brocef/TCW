@@ -143,3 +143,34 @@ def test_distinct_work_paths_are_fine(tmp_path):
     connect(p, q, "children")
     connect(q, p, "parent")
     assert _shared_work_paths(FsProjectRegistry.open(p)) == []
+
+
+# -- through the command (AC 15) ------------------------------------------------------
+
+def run_validate(capsys, monkeypatch, root):
+    from tcw.cli import main
+    monkeypatch.chdir(root)
+    code = main(["validate"])
+    captured = capsys.readouterr()
+    return code, captured.out + captured.err
+
+
+def test_validate_counts_only_errors(tmp_path, capsys, monkeypatch):
+    p = make_project(tmp_path, "p", config=TAGS)
+    write_item(p, "2026-10-01-tagged", {"title": "d", "stage": "request",
+                                       "tags": ["unregistered"]})
+    code, text = run_validate(capsys, monkeypatch, p)
+    assert code == 0, text
+    assert "warning:" in text and "2026-10-01-tagged/item.yaml" in text
+    write_item(p, "2026-10-01-bad", {"title": "b", "stage": "request",
+                                    "created": "2026-10-01"})
+    code, text = run_validate(capsys, monkeypatch, p)
+    assert code == 1
+    assert "2026-10-01-bad/item.yaml" in text and "created" in text
+
+
+def test_validate_names_the_guide_for_a_status_folder(tmp_path, capsys, monkeypatch):
+    p = make_project(tmp_path, "p")
+    (p / "docs" / "work" / "inbox").mkdir()
+    code, text = run_validate(capsys, monkeypatch, p)
+    assert code == 1 and MIGRATION_GUIDE in text

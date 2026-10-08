@@ -12,7 +12,7 @@ from datetime import date
 import pytest
 import yaml
 
-from tcw.work import cli_next
+from tcw.cli import main
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 
 TODAY = date.today().isoformat()
@@ -30,7 +30,10 @@ def tcw(monkeypatch, capsys):
     def run(argv, cwd, stdin=""):
         monkeypatch.chdir(cwd)
         monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
-        code = cli_next.run(["work", *argv])
+        try:
+            code = main(["work", *argv])
+        except SystemExit as stop:
+            code = stop.code if isinstance(stop.code, int) else 1
         captured = capsys.readouterr()
         return Result(code, captured.out, captured.err)
     return run

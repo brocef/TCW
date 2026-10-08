@@ -1,7 +1,7 @@
 """Every positional argument in the whole CLI carries a `help=`.
 
 A positional has no flag to hint at its meaning, so with no `help=` the only clue
-to what it wants is its position — which is why `tcw work tracker link slug ticket`
+to what it wants is its position — which is why a two-positional command
 could not tell a reader which of the two was which. That defect was reported
 against one command group and was never particular to it.
 
@@ -44,9 +44,9 @@ def test_the_walk_reaches_all_three_command_groups():
 
     visit(build_parser())
     for command in ("tcw work", "tcw taxonomy", "tcw capabilities",
-                    "tcw work tracker link", "tcw taxonomy extends add"):
+                    "tcw work tags add", "tcw taxonomy extends add"):
         assert command in seen, command
-    assert len(seen) > 60, len(seen)
+    assert len(seen) > 40, len(seen)          # 52 after TCW-70 removed the 2.x verbs
 
 
 def test_every_positional_has_help():

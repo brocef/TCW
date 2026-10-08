@@ -3,7 +3,7 @@
 **Purpose.** Decide _how_, in ordered steps someone else could follow — where
 sequencing risk is found, before a half-finished implementation finds it.
 
-**Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}} and `spec.md`.
+**Inputs.** {{tcw:request}}the item's body artifact{{/tcw:request}} and `spec.md`.
 Repository discovery is unrestricted.
 
 **Produce** `plan.md`, in the item's folder. Required: ordered tasks, each

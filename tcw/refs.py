@@ -3,21 +3,15 @@
 Grammar: ``tcw://[<namespace>/]<axis>/<ref>``
   - ``<axis>``      is ``T`` (Taxonomy), ``C`` (Capabilities), or ``W`` (Work).
   - ``<namespace>`` (optional) locates the object in another project: an
-    ``extends`` alias for T/C, a descendant node path for W. Absent = local.
+    ``extends`` alias for T/C, a project ID for W. Absent = local.
   - ``<ref>``       is the identifier within that axis.
 
 `parse_tcw_uri` is a pure, total function (never raises) — the abstract grammar.
-`resolve_tcw_ref` is thin CLI/serve adapter glue: it imports the FS stores and
-dispatches through ``get()`` / ``tombstone()`` / ``resolve_qualified_work_ref``,
-and never propagates a store exception to a caller scanning many links.
-
-This module once recorded that it added *no* new store-interface method. That
-stopped being true when work references learned to tell a resolved item from a
-slug nobody created: `get()` alone cannot draw that distinction, because a store
-whose resolved items leave it answers None to both. `tombstone()` is the second
-abstract read, and it is abstract rather than a filesystem check on purpose —
-any store can answer "did I ever hold this id", and one that keeps its resolved
-items answers it without storing anything extra.
+`resolve_tcw_ref` is thin CLI/serve adapter glue: it imports the FS stores for
+T and C and reads a work item through its project's backend for W, and never
+propagates a store exception to a caller scanning many links. A work item is
+found at any stage, because TCW never deletes an item folder (TCW-70 Design
+12.1).
 """
 
 from __future__ import annotations
@@ -26,12 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
 
-from tcw.store.fs import (
-    FsCapabilitiesStore,
-    FsTaxonomyStore,
-    qualified_work_ref_problem,
-    resolve_qualified_work_ref,
-)
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 
 _SCHEME = "tcw://"
 _AXES = {"T", "C", "W"}
@@ -106,11 +95,10 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
     dead-end in the SPA: the two spellings of a namespaced work ref took different
     paths, and the one people actually write never reached the gate at all.
 
-    Both spellings now produce the same qualified key. ``parse_tcw_uri`` treats the
-    first T/C/W segment as the axis, so ``tcw://<id>/W/<slug>`` arrives with a
-    parsed namespace while ``tcw://W/<id>/<slug>`` arrives as a bare ref whose
-    qualifier is resolved by ``resolve_qualified_work_ref``; keying off where the
-    ref actually landed, rather than off the spelling, covers both.
+    Both spellings produce the same qualified key. ``parse_tcw_uri`` treats the
+    first T/C/W segment as the axis, so ``tcw://<id>/W/<folder>`` arrives with a
+    parsed namespace while ``tcw://W/<id>/<folder>`` arrives as a bare ref with
+    the project in front; `_resolve_work` reads both the same way.
     """
     parsed = parse_tcw_uri(uri)
     if parsed is None:
@@ -130,43 +118,7 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
                 return ResolveResult(False, "C", None, f"no capability: {ns_ref}")
             return ResolveResult(True, "C", cap.qualified, "")
         # axis == "W"
-        resolved = resolve_qualified_work_ref(node_root, ns_ref)
-        if resolved is None:
-            return ResolveResult(
-                False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
-        store, bare = resolved
-        # A renamed item answers to its old slug too: a link is exactly the kind
-        # of reference a rename cannot rewrite.
-        if store.get(bare) is None and (renamed := store.renamed(bare)):
-            bare = renamed
-        # Locating the store that would hold the item is not the item existing.
-        # `resolve_qualified_work_ref` answers "which store addresses this ref",
-        # which is what `tcw serve`'s routing wants; `ok` answers "does this
-        # reference resolve", the same question asked of T and C above, so it has
-        # to look. Only the status-path spelling checked before, which left
-        # `tcw://W/<slug>` reporting ok for a slug nobody ever created — passing
-        # `tcw validate` and rendering as a link that 404s.
-        if store.get(bare) is None:
-            # Not live — but "not live" and "never existed" are different
-            # answers, and reporting them identically is what made this check
-            # machine-dependent: a resolved item's folder is ignored, so it is
-            # present for whoever ran the transition and absent for everyone
-            # else, and the same reference passed there and failed here.
-            grave = store.tombstone(bare)
-            if grave is None:
-                return ResolveResult(
-                    False, "W", None, qualified_work_ref_problem(node_root, ns_ref))
-            local = store.node_root == node_root.resolve()
-            return ResolveResult(
-                True, "W", bare if local else f"{ns_ref.partition('/')[0]}/{bare}",
-                "", "" if local else ns_ref.partition("/")[0],
-                archived=True, resolution=grave.resolution)
-        if store.node_root == node_root.resolve():        # landed locally
-            return ResolveResult(True, "W", bare, "")
-        # Foreign: the qualifier is a project id (a status-path locator is always
-        # local), and the SPA keys foreign items the way the board prints them.
-        project = ns_ref.partition("/")[0]
-        return ResolveResult(True, "W", f"{project}/{bare}", "", project)
+        return _resolve_work(node_root, parsed.namespace, parsed.ref)
     except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False
         return ResolveResult(False, parsed.axis, None, str(e))
 
@@ -178,6 +130,7 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
     from tcw.errors import BackendError, NotFound, Unreachable
     from tcw.work.open import open_backend, open_project
 
+    namespace = namespace or None              # the parser gives "" for no namespace
     if namespace is None and "/" in ref:
         namespace, ref = ref.split("/", 1)
     try:

@@ -11,12 +11,13 @@ import sys
 from pathlib import Path
 
 from tcw.cli_suggest import SuggestingParser, attach_index
+from tcw.errors import TcwError
 from tcw import __version__
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, NOT_A_REPOSITORY, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    FsWorkStore, declared_repository, find_node_root, git_root, init,
+    declared_repository, find_node_root, git_root, init,
     provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
@@ -88,9 +89,6 @@ def run_init(components: list[str], project_id: str | None = None,
             shown = p
         print(f"  {shown}")
     print(f"Node marker: {SENTINEL}")          # deterministic across runs
-    if "work" in components:
-        print(".gitignore: resolved work (completed/, discarded/) stays on disk, "
-              "out of the tracked tree")
     return 0
 
 
@@ -167,7 +165,7 @@ def run_provision(components: list[str], *, refresh: bool = False,
         declared_available = provisioner.is_available()
         if not refresh and not declared_available:
             try:
-                # *This* component's store. Asking `FsWorkStore` here was
+                # *This* component's store. Asking the work store here was
                 # correct only while the loop had one component to run: with
                 # more, a taxonomy declaration was measured against whether the
                 # work store resolved, and would be cloned because it did not.
@@ -451,19 +449,23 @@ def _cmd_validate(args: argparse.Namespace) -> int:
               f"at {registry.get(entry.id).locator}", file=sys.stderr)
     for warning in registry.warnings():
         print(f"warning: {warning}", file=sys.stderr)
-    from tcw.validate import validate
+    from tcw.validate import is_failure, validate
     recurse = args.path is None and not args.no_recurse
     projects = [registry.current, *registry.descendants()] if recurse else [registry.current]
     problems: list[str] = []
+    failures = 0
     for project in projects:
         project_problems = validate(Path(project.locator), args.path)
+        # Warnings, unresolved references and notes are printed and never
+        # counted: only errors fail the command (TCW-70 Design 10.2).
+        failures += sum(1 for problem in project_problems if is_failure(problem))
         if len(projects) > 1:
             project_problems = [f"[{project.id}] {problem}" for problem in project_problems]
         problems.extend(project_problems)
     for p in problems:
         print(p, file=sys.stderr)
-    if problems:
-        print(f"{len(problems)} problem(s).", file=sys.stderr)
+    if failures:
+        print(f"{failures} problem(s).", file=sys.stderr)
         return 1
     print("validate OK")
     return 0
@@ -551,6 +553,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(_normalize(argv))
     try:
         return args.func(args)
+    except TcwError as error:
+        print(f"tcw: {error}", file=sys.stderr)
+        return error.code
     except (ValueError, MultipleMatch) as error:
         # `MultipleMatch` is not a `ValueError`, so a verb that does not catch it
         # itself — `start`, `submit` — printed a traceback for a slug two folders

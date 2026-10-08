@@ -17,10 +17,8 @@ from pathlib import Path
 from typing import Callable
 
 from tcw.errors import BackendError, NotFound, Refused, Unreachable
-from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
-    SENTINEL, FsProjectRegistry, anchor_configured_path, git_root, load_config,
-    resolve_store,
+    SENTINEL, FsProjectRegistry, WorkLocation, git_root, load_config,
 )
 from tcw.work.backend import WorkBackend
 from tcw.work.config import parse_work_config
@@ -28,38 +26,12 @@ from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Changes, inbox_stage
 
 
-class _WorkPath:
-    """The work component as `resolve_store` asks for it: where the work path
-    is, and whether it is usable. Usable means the directory is there; an
-    empty store is a real state, and 3.0 has no status folders to look for."""
-
-    COMPONENT = "work"
-
-    @classmethod
-    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
-        if configured is None:
-            return node_root / "docs" / cls.COMPONENT
-        value = Path(configured).expanduser()
-        if value.is_absolute():
-            return value
-        return anchor_configured_path(node_root, value) / value
-
-    @classmethod
-    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
-                 external: bool, must_exist: bool = True, declaration=None,
-                 _walk=None) -> Path:
-        if not raw_root.is_dir():
-            raise StoreLocationUnusable(
-                f"{config_path}: work.path is not a directory: {raw_root}")
-        return raw_root.resolve()
-
-
 def work_path(project_root: Path) -> Path:
     """The project's work path, resolved as every store's location is
     (`work.path`, else `docs/work`, re-anchored in a linked worktree, else a
     declared repository's provisioned checkout). Raises `ValueError` when no
     usable directory is found."""
-    return resolve_store(_WorkPath, Path(project_root))
+    return WorkLocation.open(Path(project_root)).root
 
 
 def open_backend(project_root: Path, *,

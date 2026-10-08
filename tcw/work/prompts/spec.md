@@ -3,7 +3,7 @@
 **Purpose.** Decide _what_ to build and why, before deciding how. A spec that
 describes an implementation has skipped its own job.
 
-**Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}}, read as filed.
+**Inputs.** {{tcw:request}}the item's body artifact{{/tcw:request}}, read as filed.
 An `intake.md` is raw arrival: the `request` stage has not run, so work from the
 intake itself, and expect no `## References` unless whoever filed it wrote one.
 In an `initial-request.md` that section is the research starting set, not its

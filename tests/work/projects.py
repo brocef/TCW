@@ -1,8 +1,9 @@
 """Fixture projects for the 3.0 work tests.
 
-`make_project` builds one project: a git repository with a `tcw-config.yaml`
-and an empty work folder. Every configuration key the code under test branches
-on is passed explicitly by the test, through `config`.
+`make_project` builds one project: a git repository scaffolded by the branch's
+own `init`, so it has a `tcw-config.yaml` and an empty work folder. Every
+configuration key the code under test branches on is passed explicitly by the
+test, through `config`.
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ import subprocess
 from pathlib import Path
 
 import yaml
+
+from tcw.store.fs import init
 
 WORK_PATH = Path("docs") / "work"
 
@@ -29,12 +32,12 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
     git(root, "init", "-q")
     git(root, "config", "user.email", "t@t")
     git(root, "config", "user.name", "t")
-    document = {"id": project_id}
+    init(["work"], root, project_id)                 # the branch's own init
     if config is not None:
+        path = root / "tcw-config.yaml"
+        document = yaml.safe_load(path.read_text())
         document["work"] = config
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(document, sort_keys=False))
-    (root / WORK_PATH).mkdir(parents=True)
-    (root / WORK_PATH / ".gitkeep").write_text("")
+        path.write_text(yaml.safe_dump(document, sort_keys=False))
     return root
 
 

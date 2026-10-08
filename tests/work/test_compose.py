@@ -33,8 +33,9 @@ def compose(cfg, stage, root, **kw):
 # -- which bindings compose (7.2) ------------------------------------------------------
 
 def test_no_prompt_key_is_the_packaged_text(tmp_path):
-    assert compose(config(), "spec", tmp_path) == packaged_text(
-        "prompts", "spec").rstrip()
+    # With no item, the packaged request span shows its own inner text.
+    assert compose(config(), "spec", tmp_path) == substitute_request(
+        packaged_text("prompts", "spec").rstrip(), None)
 
 
 def test_a_list_without_builtin_replaces_the_packaged_text(tmp_path):

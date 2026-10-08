@@ -1,22 +1,20 @@
 """Answer a mistyped subcommand with the command that was probably meant.
 
 argparse reports a wrong subcommand by listing every valid choice at that level,
-which says nothing when the word exists one level down (`tcw tracker` for
-`tcw work tracker`) or is a synonym (`status` for `show`). `SuggestingParser`
+which says nothing when the word exists one level down (`tcw tags` for
+`tcw work tags`) or is a synonym (`status` for `show`). `SuggestingParser`
 keeps argparse's message word for word and adds one line after it.
 
 Three rules, first match wins:
 
 1. The word is a subcommand somewhere else in the tree: name each full command,
    and complete it with the word that followed when that is wrong there too —
-   `tcw tracker status` → `tcw work tracker show`.
+   `tcw tags ls` → `tcw work tags list`.
 2. A small table of synonyms, offered only where their target is valid.
 3. Close spellings among the choices valid at that level.
 
-Only subcommands that `--help` lists are ever offered. That is what keeps the
-removed `tcw work stage <id>` spellings — registered without `help=` so that the
-old form can print its replacement — out of every suggestion, without naming
-them here.
+Only subcommands that `--help` lists are ever offered, so a parser registered
+without `help=` never appears in a suggestion.
 """
 
 from __future__ import annotations
@@ -38,7 +36,7 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
 # Never offered by any rule, and never answered either: pointing somebody at a
 # command that destroys things, when they typed something else, is worse than
 # no hint — and so is guessing what a mistyped removal was meant to remove
-# (`tcw work tracker delete` is not `tcw work delete`, which deletes an item).
+# (`tcw work tags rm` removes a tag, and nothing else named `rm` is related).
 REMOVAL = frozenset({"rm", "drop", "delete"})
 
 _MAX = 3
@@ -123,8 +121,8 @@ class SuggestingParser(argparse.ArgumentParser):
         if root is None or here is None or word in REMOVAL:
             return ""
         # Same component first — `tcw work tags show` means a `tcw work …` show,
-        # not `tcw taxonomy show` — then shallowest: `tcw show` means
-        # `tcw work show` before `tcw work inbox show`. `sorted` is stable, so
+        # not `tcw taxonomy show` — then shallowest: `tcw list` means
+        # `tcw work list` before `tcw work tags list`. `sorted` is stable, so
         # ties keep tree order.
         elsewhere = sorted(
             (p for p in root._tcw_index.get(word, ()) if p[:-1] != here),

@@ -14,6 +14,8 @@ or a single `[path]`):
       error or a record of the wrong shape (they re-load the file and raise).
   (d) when (a) skipped (c): each tree store's open failure or leftover pre-2.5.0
       store config file, so malformed YAML cannot hide either.
+  (e) the work checks (TCW-70 Design 10.1), each an `error:`, `warning:` or
+      `unresolved:` line. Only errors fail the command.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
 from tcw.store.fs import (
     OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
-    FsWorkStore, _UniqueKeyLoader, load_yaml,
+    WorkLocation, _UniqueKeyLoader, load_yaml,
 )
 
 _COMPONENTS = ("taxonomy", "capabilities", "work")
@@ -123,7 +125,7 @@ def _scan_roots(node_root: Path, path, trees: dict) -> list[Path]:
         return [Path(path)]
     roots = [r for r in trees.values() if isinstance(r, Path)]
     try:
-        roots.append(FsWorkStore.open(node_root).root)
+        roots.append(WorkLocation.open(node_root).root)
     except ValueError:
         roots.append(node_root / "docs" / "work")
     return roots
@@ -153,26 +155,12 @@ def _claims_work(node_root: Path) -> bool:
 
 
 def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
-    """Which component check()s to run: every store the node has when scanning
-    the whole node — one that cannot open included, so `_run_check` says why —
-    else the one whose tree the path falls under (a path under the work store —
-    or spanning several trees — runs none)."""
+    """Which tree-store check()s to run: every tree store the node has when
+    scanning the whole node — one that cannot open included, so `_run_check`
+    says why — else the one whose tree the path falls under. The work store is
+    not among them: its checks are `_work_findings`, run by `_checks_work`."""
     if path is None:
-        present = list(trees)
-        try:
-            FsWorkStore.open(node_root)
-            present.append("work")
-        except ValueError:
-            # A node that *claims* a work store and cannot open one has to say
-            # why — a declared-but-unprovisioned board, a `work.path` typo —
-            # rather than silently skipping the check. But "has a
-            # tcw-config.yaml" is true of every node, and a node may legitimately
-            # keep no board at all: a repository root registered purely so its
-            # packages can reach each other. Claiming one means a `work:` section
-            # or a tree on disk.
-            if (node_root / "docs" / "work").exists() or _claims_work(node_root):
-                present.append("work")
-        return present
+        return list(trees)
     p = Path(path).resolve()
     for c, root in trees.items():
         # A store that will not open is still matched where it was meant to be
@@ -182,12 +170,32 @@ def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
                  else [_intended_root(node_root, c), node_root / "docs" / c])
         if any(_under(p, w.resolve()) for w in where):
             return [c]
-    try:
-        if _under(p, FsWorkStore.open(node_root).root):
-            return ["work"]
-    except ValueError:
-        pass
     return []
+
+
+def _work_root(node_root: Path) -> Path | None:
+    try:
+        return WorkLocation.open(node_root).root
+    except ValueError:
+        return None
+
+
+def _checks_work(node_root: Path, path) -> bool:
+    """Whether to run the work checks: on a whole-node scan of a node that has
+    a work store or claims one, or on a path inside the work store.
+
+    A node that *claims* a work store and cannot open one has to say why — a
+    declared-but-unprovisioned board, a `work.path` typo — rather than silently
+    skipping the check. But "has a tcw-config.yaml" is true of every node, and a
+    node may legitimately keep no board at all: a repository root registered
+    purely so its packages can reach each other. Claiming one means a `work:`
+    `path` or `repository`, or a tree on disk.
+    """
+    root = _work_root(node_root)
+    if path is not None:
+        return root is not None and _under(Path(path).resolve(), root)
+    return (root is not None or (node_root / "docs" / "work").exists()
+            or _claims_work(node_root))
 
 
 def _configured_path_problem(node_root: Path, comp: str) -> str | None:
@@ -251,7 +259,7 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
     the others. The node-root `tcw-config.yaml` is also not among the YAML-scan
     roots, so nothing else would catch it.
     """
-    store_cls = {"taxonomy": FsTaxonomyStore, "work": FsWorkStore,
+    store_cls = {"taxonomy": FsTaxonomyStore,
                  "capabilities": FsCapabilitiesStore}[comp]
     try:
         store = store_cls.open(node_root)
@@ -264,49 +272,6 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
     except ValueError as e:
         return [f"{comp} check: {e}"]
     return [f"{comp} check: {p}" for p in problems]
-
-
-def _open_sidecar_problems(node_root: Path, st: FsWorkStore,
-                           slug: str | None = None) -> list[str]:
-    """`capabilities.yaml` problems of items in backlog, active or review, each
-    as `<file>:<line>: <problem>` — the completion gate's checks, less the ones
-    that are only true at completion."""
-    from tcw.work.recursion import capability_gate
-    held_twice = st.duplicate_slugs()           # reported by the store's check
-    if slug in held_twice:
-        return []
-    items = [st.get(slug)] if slug is not None else st.query()
-    out: list[str] = []
-    for item in items:
-        if item is None or item.slug in held_twice \
-                or item.status not in ("backlog", "active", "review"):
-            continue
-        folder = st.path(item.slug)
-        sidecar = folder / "capabilities.yaml" if folder is not None else None
-        # Only for line numbers: a sidecar that cannot be read is reported by
-        # the gate below, so an unreadable one just gets no line.
-        text = (_read_text(sidecar)[0] or "") if sidecar is not None else ""
-        for problem in capability_gate(st, item, in_progress=True):
-            declared = problem.partition(": ")[0]
-            line = next((n for n, row in enumerate(text.splitlines(), 1)
-                         if declared in _listed_paths(row)), None)
-            where = _rel(sidecar, node_root) if sidecar is not None else item.slug
-            out.append(f"{where}{f':{line}' if line else ''}: {problem}")
-    return out
-
-
-def _listed_paths(row: str) -> list[str]:
-    """The paths a `capabilities.yaml` line lists — a `- path` item or a
-    `key: [a, b]` flow list — so a line number points at the path itself, never
-    at a comment or a longer path that contains it."""
-    row = row.split(" #", 1)[0].strip()
-    if row.startswith("- "):
-        items = [row[2:]]
-    elif "[" in row and row.endswith("]"):
-        items = row[row.index("[") + 1:-1].split(",")
-    else:
-        return []
-    return [i.strip().strip("'\"") for i in items]
 
 
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
@@ -339,16 +304,9 @@ def validate(node_root: Path, path: Path | None = None, *,
     # narrower, never wrong: it can miss a collision a complete checkout would
     # catch, and cannot invent one. The unreachable edges themselves are reported
     # by `tcw validate`'s caller, so they are not silently dropped here.
-    work_roots: dict[Path, str] = {}
-    for project in [registry.current, *registry.ancestors(), *registry.descendants()]:
-        try:
-            root = FsWorkStore.open(Path(project.locator)).root
-        except ValueError:
-            continue
-        previous = work_roots.get(root)
-        if previous is not None and previous != project.id:
-            return [f"project graph: projects '{previous}' and '{project.id}' resolve to the same work.path: {root}"]
-        work_roots[root] = project.id
+    shared = _shared_work_paths(registry)
+    if shared:
+        return shared
     trees = _tree_roots(node_root) if target is None else {}
     if target is not None:
         roots = _target_roots(node_root, target)
@@ -359,36 +317,10 @@ def validate(node_root: Path, path: Path | None = None, *,
     problems: list[str] = []
     yaml_syntax_error = False
 
-    # Retention: a malformed setting reads as the safe default, so the only
-    # place a user learns about it is here. And a node that says it retains
-    # while git ignores the folder is a real contradiction — the items will not
-    # be tracked whatever the config says.
-    try:
-        work_store = FsWorkStore.open(node_root)
-    except ValueError:
-        work_store = None
-    if work_store is not None:
-        problems += [f"work: {p}" for p in work_store.retention_problems()]
-        problems += work_store.retention_conflicts()
-        # Tracker configuration, read *directly* rather than through `check()`,
-        # following the retention pair above: `check()` returns one
-        # undifferentiated problem list and reaching around it keeps this simple.
-        #
-        # Shape only. Nothing here calls the tracker, and nothing here may: this
-        # command is bound as a `pre` hook on `complete` in TCW's own
-        # `tcw-config.yaml`, and a `pre` failure means the store is not touched
-        # (`tcw/work/hooks.py`). A network call would make completing a work item
-        # depend on the tracker being reachable, on the credential variables being
-        # set in that shell, and on the token not having expired — and `validate`
-        # recurses across descendant projects, multiplying all three.
-        # `tests/test_tracker_validate.py` fails if a connection is ever attempted.
-        problems += work_store.tracker_problems()
-
     # (a) YAML well-formedness, and the shape of the files TCW writes
     #
     # Parsed here rather than through `load_yaml`, because this loop must keep
-    # accepting *any* shape: `docs/work/dod.yaml` is a top-level list on purpose
-    # and an attachment may hold whatever its author wanted. `load_yaml`'s
+    # accepting *any* shape: an attachment may hold whatever its author wanted. `load_yaml`'s
     # mapping contract belongs to the records TCW owns, and this is where those
     # are held to it — by name, from `OWNED_YAML_NAMES`.
     #
@@ -396,8 +328,15 @@ def validate(node_root: Path, path: Path | None = None, *,
     # deliberately degrades one to empty rather than crashing the board, so
     # without a report here an item whose state file is not a state file reads
     # as healthy everywhere.
+    work_root = _work_root(node_root)
     for root in roots:
         for f in _iter(root, "*.yaml"):
+            if f.name == "item.yaml" and work_root is not None \
+                    and _under(f.resolve(), work_root):
+                # The work checks read every `item.yaml` and report one that
+                # cannot be read with its file and key; a second line here
+                # would only repeat it.
+                continue
             text, unreadable = _read_text(f)
             if unreadable is not None:
                 problems.append(f"{_rel(f, node_root)}: {unreadable}")
@@ -429,7 +368,14 @@ def validate(node_root: Path, path: Path | None = None, *,
             for m in _LINK_RE.finditer(text):
                 uri = m.group(1)
                 r = resolve_tcw_ref(node_root, uri)
-                if not r.ok:
+                if r.ok:
+                    continue
+                # A project declared but not on this machine is reported and
+                # not counted (TCW-70 Design 12.1).
+                level, _, why = r.reason.partition("unresolved: ")
+                if not level and why:
+                    problems.append(f"unresolved: {_rel(f, node_root)}: tcw:// {uri} → {why}")
+                else:
                     problems.append(f"{_rel(f, node_root)}: tcw:// {uri} → {r.reason}")
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
@@ -446,15 +392,6 @@ def validate(node_root: Path, path: Path | None = None, *,
                 problems.append(f"{comp} path: {configured}")
             problems += _run_check(node_root, comp, target.ref if target else None)
 
-    # (c2) Capability paths declared by work still in hand. Checked now, while a
-    # bad path can still be fixed before it is copied into sibling slices; never
-    # on resolved work, which records what was true when it shipped.
-    # Not after a YAML problem: a broken sidecar is already reported above.
-    if (work_store is not None and path is None and not yaml_syntax_error
-            and (target is None or target.axis == "work")):
-        problems += _open_sidecar_problems(node_root, work_store,
-                                           target.ref if target is not None else None)
-
     # (d) With the component checks skipped by a YAML problem, each tree store
     # still says whether it can open and whether a pre-2.5.0 store config is
     # left in it. Only that much: a migration message that malformed YAML
@@ -467,12 +404,27 @@ def validate(node_root: Path, path: Path | None = None, *,
             store = STORE_CLASSES[comp].open(node_root)
             problems += [f"{comp} check: {p}" for p in store._legacy_config_problems()]
 
+    # (e) The work checks. Not skipped after a YAML problem: they read only the
+    # work store, and an unreadable item is one of their own findings.
+    if target is None and _checks_work(node_root, path):
+        findings, note = _work_findings(node_root, registry)
+        problems += [str(f) for f in findings]
+        if note is not None:
+            problems.append(f"note: {note}")
+
     return problems
 
 
+#: The prefixes of `validate` lines that do not fail the command.
+NOT_FAILING = ("warning: ", "unresolved: ", "note: ")
+
+
+def is_failure(problem: str) -> bool:
+    return not problem.startswith(NOT_FAILING)
+
+
 # ---------------------------------------------------------------------------
-# TCW 3.0 work checks (TCW-70 Design 10.1). Beside the 2.x checks above until
-# TCW-70 switches `validate` over to them.
+# The work checks (TCW-70 Design 10.1).
 
 
 def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":

@@ -44,3 +44,25 @@ def test_an_absent_project_is_unresolved_and_an_unknown_one_missing(tmp_path):
     assert not absent.ok and absent.reason.startswith("unresolved")
     unknown = _resolve_work(p, "nobody", "2026-10-01-x")
     assert not unknown.ok and not unknown.reason.startswith("unresolved")
+
+
+# -- through `tcw validate` (AC 17) ---------------------------------------------------
+
+def test_a_link_in_a_capability_description(tmp_path, capsys, monkeypatch):
+    from tcw.cli import main
+    p = make_project(tmp_path, "p")
+    write_item(p, "2026-10-01-a", {"title": "a", "stage": "discarded"})
+    cap = p / "docs" / "capabilities" / "area" / "do-a-thing"
+    cap.mkdir(parents=True)
+    description = cap / "description.md"
+    monkeypatch.chdir(p)
+
+    description.write_text("See [the work](tcw://W/2026-10-01-a).\n")
+    code = main(["validate"])
+    text = "".join(capsys.readouterr())
+    assert "tcw://W/2026-10-01-a" not in text, text
+
+    description.write_text("See [the work](tcw://W/2026-10-01-nothing).\n")
+    code = main(["validate"])
+    text = "".join(capsys.readouterr())
+    assert code == 1 and "tcw://W/2026-10-01-nothing" in text

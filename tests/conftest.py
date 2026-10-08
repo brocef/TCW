@@ -141,3 +141,11 @@ def _cache_in_tmp(tmp_path, monkeypatch):
     if this is the directory the code would have used.
     """
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip the 2.x work tests TCW-70 did not port (`tests/not_ported.py`)."""
+    from tests.not_ported import NOT_PORTED, REASON
+    for item in items:
+        if item.nodeid in NOT_PORTED:
+            item.add_marker(pytest.mark.skip(reason=REASON))

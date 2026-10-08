@@ -28,6 +28,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.doc_allowance import REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS
+
 REPO = Path(__file__).resolve().parent.parent
 
 # Documents that record what was true at a point in time, and are therefore
@@ -212,8 +214,10 @@ def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
             return f"no such verb: tcw {' '.join([*path, token])}"
         break                            # a positional arg, not a subcommand
     known = tree.get(tuple(path), set())
+    allowed = {flag for command, flag in REMOVED_FLAGS
+               if command == " ".join(["tcw", *path])}
     for flag in FLAG.findall(span):
-        if flag not in known:
+        if flag not in known and flag not in allowed:
             return f"no such flag: {flag} on tcw {' '.join(path)}"
     return None
 
@@ -236,10 +240,20 @@ def test_only_real_invocations_are_parsed(text, spans):
     assert _invocations(text) == spans
 
 
+def _allowed(span: str) -> bool:
+    """A span invoking a command TCW-70 removed, which a later slice rewrites
+    (`tests/doc_allowance.py`)."""
+    command = " ".join(span[INVOCATION.search(span).start():].split())
+    return any(command == removed or command.startswith(removed + " ")
+               for removed in REMOVED_COMMANDS)
+
+
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
 def test_documented_verbs_and_flags_exist(doc, tree):
     problems = []
     for span in _invocations(doc.read_text(encoding="utf-8")):
+        if _allowed(span):
+            continue
         if (problem := _check(span, tree)) is not None:
             problems.append(f"`{span}` — {problem}")
     assert not problems, (
@@ -258,8 +272,7 @@ def test_documented_verbs_and_flags_exist(doc, tree):
 # Entries are added when a verb is worth finding by reading rather than by
 # `--help`. The prose home for the work commands is `docs/guide/work.md`; the
 # README is the pitch and links out to it, so it is not checked here.
-DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
-                    "tcw work scaffold", "tcw work tracker")
+DOCUMENTED_VERBS = ("tcw work stage prompt",)
 
 
 @pytest.mark.parametrize("verb", DOCUMENTED_VERBS)
@@ -269,3 +282,22 @@ DOCUMENTED_VERBS = ("tcw work stage prompt", "tcw work stage gate",
 def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
     assert verb in (REPO / doc).read_text(encoding="utf-8"), \
         f"{doc} never mentions `{verb}`"
+
+
+# ── configuration keys the 3.0 parser refuses ────────────────────────────────
+
+# The keys TCW-69's parser removed, spelled as documents write them. Read from
+# the parser's own table, so a key it starts refusing is checked from then on.
+from tcw.work.config import _REMOVED_WORK_KEYS  # noqa: E402
+
+KEY_SPELLING = re.compile(
+    r"\bwork\.(" + "|".join(re.escape(k) for k in _REMOVED_WORK_KEYS) + r")\b")
+
+
+@pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
+def test_documents_name_no_refused_key(doc):
+    named = {f"work.{m.group(1)}"
+             for m in KEY_SPELLING.finditer(doc.read_text(encoding="utf-8"))}
+    unexpected = sorted(named - set(REFUSED_KEYS))
+    assert not unexpected, (f"{doc.relative_to(REPO)} names configuration keys "
+                            f"TCW 3.0 refuses: {', '.join(unexpected)}")
