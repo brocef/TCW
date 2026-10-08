@@ -1,0 +1,7 @@
+As a user, I move a work item between stages with one command, `tcw work advance <slug>`. With no `--to` it moves the item to its next enabled stage; after a stage that ends in a verdict (review or qa), the verdict in its latest round decides: accepted moves on, rejected goes back to implementation. On success it prints the stage the item is now at, and nothing else, on stdout.
+
+Before the move it runs the target stage's checks: TCW's own gates first (the capability records the item declared, checked when it leaves implementation, and the accepted verdicts it needs to be completed), then the target stage's `pre` hooks. The first failure refuses the move, exits 3, prints nothing on stdout and changes nothing. After the move it runs the target stage's `post` hooks.
+
+`--to <stage>` names the target. A move that skips a stage, goes forward past a verdict that is not accepted, or leaves an item with no stage needs `--force` and a `--reason`; reopening a finished item needs a `--reason`. A forced move still runs every check, and records the reason and every check it went past as a comment on the item (`tcw://C/work/comment-on-a-work-item`). If that comment cannot be written, the item has still moved, and the command exits 6 to say the trace is missing.
+
+`--dry-run` runs the same checks and changes nothing: it prints the stage the item would move to, or nothing when the move would be refused (exit 3). An unknown item exits 4.

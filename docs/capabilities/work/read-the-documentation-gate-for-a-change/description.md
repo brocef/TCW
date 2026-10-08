@@ -8,17 +8,13 @@ planning names a documentation task for every trigger expected to fire and
 implementation answers each fired trigger over the finished diff — see
 [Run a lifecycle stage](tcw://C/work/run-a-lifecycle-stage). Where a project has
 declared nothing, the same span falls back to its own text unchanged, so a
-project that configured nothing gets byte-identical instructions rather than a
-blank where its entries would have been.
+project that configured nothing gets the instructions it always did rather
+than a blank where its entries would have been.
 
-**`tcw work docs` is the verb for every caller that is not resolving a stage
-prompt.** The gate itself runs at two points, both stages, but the entries are
-also read outside the lifecycle entirely — the `documentation-sync` skill asks
-for them before any stage is resolved, and the local web app reads the same
-answer. It prints each entry's path, trigger, and description, and writes
-nothing. It also answers for an item that is already closed, where
-`tcw work stage gate implement` is correctly refused: the reading verb checks
-nothing, so it responds with a note on stderr and exit 0.
+**`tcw work docs` is the verb for every caller that is not reading a stage
+prompt.** The `documentation-sync` skill asks for the entries before any stage
+is read, and works the same way for an item that is already finished. It
+prints each entry's path, trigger, and description, and writes nothing.
 
 `--json` adds `source`, and that field is the point of it: `config` means the
 entries are declared and authoritative, so no Markdown needs reading;

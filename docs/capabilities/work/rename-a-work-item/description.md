@@ -1,21 +1,16 @@
-As a user, I run `tcw work rename <slug> <new-slug>` when an item's scope has
-changed and its slug no longer says what it is. I give the new slug in full,
-or only the part after the date; the item keeps its original date, because
-that records when it was made. The new slug must already be in slug form and
-not taken by another item, a resolved item's record, or an earlier rename.
+As a user, I run `tcw work rename <slug> <new-words>` when an item's scope has
+changed and its folder name no longer says what it is. I give only the words
+after the date, in lower case with hyphens; the item keeps its original date,
+because that records when it was made. A new name that is not in that form, or
+that carries a date, is refused (exit 2), and one that another item already has
+is refused (exit 3).
 
-The item's folder moves in place, and everything on my board that names it
-follows in the same commit: other items' blockers, a child's parent and
-initiative, a resolved child's record, and a capability's `Planning doc:`.
-For an epic, its initiative children on other boards follow too, committed
-in their own repositories. The old slug is recorded in `renames.yaml`, so it
-keeps working where I could not rewrite it: `tcw work show` and `tcw work path`
-follow it and say so, a blocker naming it — even from another project — reads
-the renamed item's real status, and no new item is ever given it. A command
-that changes an item refuses the old slug and names the new one.
+The item's folder is renamed in place, and every other item in my project that
+names it — as its parent or as a blocker — is rewritten to the new full slug.
+The command prints the new slug. It lists, on stderr as `file:line`, the lines
+in the item's own documents that still mention the old name, and leaves that
+prose for me to edit. An item in another project that names it is not changed.
 
-Only an open item is renamed, and only by its holder. An item with a worktree
-or branch is refused, with the manual steps, and so is a resolved one. The
-command lists files in the item that still mention the old slug in their
-prose, and names the tracker ticket bound to it, whose text may quote the old
-slug; it rewrites neither. A failed rename is undone, so it can be run again.
+If any item in my project cannot be read, the rename is refused and nothing
+moves, because a reference that item holds could not be rewritten. TCW never
+commits the rename; the change is mine to commit.

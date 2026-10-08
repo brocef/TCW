@@ -1,5 +1,5 @@
-As a user or agent, I run `tcw work lifecycle [work-ref]` to see every lifecycle stage and transition in order — what each is for, what it reads, what it produces, what the tool refuses past, and which of my own skills or commands are bound to it. It changes nothing and runs nothing.
-`--json` gives the same contract for tooling. `--stage <id> --directive` emits one complete instruction line for an agent, or nothing at all when the id is unbound; both exit 0, while any error writes nothing to stdout and exits non-zero, so an empty injection can never hide a typo.
-`--phase` narrows what is reported: `pre` or `prompt` for a stage, `pre` or `post` for a transition. A stage has no `post` — its exit checks belong on the next stage's `pre` — and asking for one is an error that says so, rather than empty output I would read as "nothing is configured".
-The `--json` payload grew without moving: every key it carried before means the same thing and holds the same value, and the new ones — a stage's checks, a binding's condition, the artifact templates, the output cap — appear only when I have configured them.
-A qualified reference reports the owning node's policy rather than the anchor's.
+As a user or agent, I run `tcw work lifecycle [<slug>]` to see my project's enabled stages in order, each with the `prompt`, `pre` and `post` bindings configured for it. A stage with no `prompt` key shows TCW's own text as `builtin`. It changes nothing and runs nothing.
+
+`--json` gives the same for tooling, with the hook limits. `--stage <stage>` shows one stage, and `--phase pre|prompt|post` narrows to one list. `--stage <stage> --directive` prints one instruction line for an agent — the skills to invoke and commands to run — or nothing at all when nothing is bound; an error writes nothing to stdout, so an empty injection can never hide a typo.
+
+With a slug from another project, it reports that project's configuration.

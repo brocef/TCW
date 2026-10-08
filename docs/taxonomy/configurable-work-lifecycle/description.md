@@ -1,1 +1,1 @@
-Binding a node's own agent skills or shell commands to named lifecycle stages and transitions, so TCW's fixed contract carries a team's methodology without TCW knowing it.
+Configuring which optional stages a project uses, and binding its own instructions, checks and commands to each stage, so TCW's fixed order of stages carries a team's methodology without TCW knowing it.

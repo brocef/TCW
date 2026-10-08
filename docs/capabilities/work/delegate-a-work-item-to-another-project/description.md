@@ -1,0 +1,5 @@
+As a user, I file work in another project from the one I am in with `tcw work new "<title>" --project <id>`. The other project must be one my `tcw-config.yaml` declares and that is on this machine. The item lands in that project's inbox, so its owners decide what to do with it; piped text becomes its request, and `--priority` is the only property I may set from here. The command prints the new item's full slug, `<id>/<folder>`.
+
+I can also mark an item there as blocked by one of mine: `tcw work edit <my-item> --blocks <id>/<folder>` adds my item to that item's `blocked-by`, and never creates anything.
+
+Both refuse (exit 3) and write nothing in the other project when it is not declared here, is declared as an upstream project (which is read-only from here, `tcw://C/cli/read-from-an-upstream-project`), is not on this machine, has no work store, or has uncommitted changes in its work store. The last check reads git without taking any lock in that repository. What delegation writes is left uncommitted in the other project's repository, and the command says which files, so that project's owners commit it.

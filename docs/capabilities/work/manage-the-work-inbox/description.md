@@ -1,41 +1,13 @@
-As a user, I inspect raw work requests with `tcw work inbox list` and
-`tcw work inbox show <entry>`, then accept a request into the formal backlog
-with `tcw work inbox accept <entry> [--title <title>]`. Accepting a raw entry
-prints the new item's slug, where it now lives, and the next step — the `request`
-stage's gate — exactly as `tcw work new` does.
-I run `tcw work inbox path` to print the absolute, resolved inbox folder inside
-the active, configuration-aware work store.
+As a user, I keep raw requests in the inbox: an item at the `inbox` stage, which
+says nothing has been decided about it yet. `tcw work new "<title>" --stage inbox`
+files one, with any text I pipe in as its request, and work another project
+delegates to mine lands there too
+([Delegate a work item to another project](tcw://C/work/delegate-a-work-item-to-another-project)).
 
-Inbox entries remain permissive intake packages rather than work items. An
-entry may be a standalone file or a folder containing an `INDEX.md` or
-`INDEX.txt` request plus related resources. Accepting an entry creates a
-backlog work item, preserves its resources as named attachments, records what
-arrived as the item's durable `intake.md` — the entry body, a manifest naming
-every preserved resource and the entry it was accepted from, and a note in place
-of a primary resource that is not text — and consumes the original inbox entry.
-Accepting no longer writes the item's request: what the entry said is preserved
-as raw intake, and the `request` stage is still to run.
+`tcw work list --stage inbox` lists them. A plain `tcw work list` shows them
+beside every other unfinished item.
 
-The accepted item's title is the `--title` I passed, or the first `# ` heading
-the entry's body declares, or the entry's own name with a leading `YYYY-MM-DD-`
-removed — in that order. An entry named nothing *but* a date keeps it, since
-stripping it would leave no name at all.
-
-Where the project has connected a tracker and declared
-`work.tracker.inbox-query`, the inbox also holds the tracker's tickets waiting to be
-triaged. `tcw work inbox list` then prints two sections, `raw intake:` and
-`tracker tickets:`, and a tracker that cannot be reached still leaves me the raw
-intake, marks the ticket section `(not listed)` and exits non-zero. Without that
-query the listing is exactly the raw intake, as before. `show` and `accept` take a
-ticket key as well as an entry: a raw entry is looked for first, so an entry with a
-ticket's name hides that ticket until I pass `--ticket`. Showing a ticket prints it
-as `tcw work tracker show` does, followed by its description, and accepting one
-claims it exactly as `tcw work tracker import` does, `--part` included.
-
-Requests I send across nodes with `tcw work delegate` and `tcw work escalate`
-land in the target project's configured inbox, wherever `work.path` puts it. If
-that store cannot be resolved, the command fails with a non-zero exit and an
-error rather than creating a default `docs/work/inbox` folder nobody reads — a
-misrouted request is reported, never silently written away.
-
-Accepting a raw entry commits the new item and the entry's removal together, under `work.auto-commit-transitions`, as `tcw work new` does.
+Taking a request on is moving it to the next stage with
+`tcw work advance <slug>`; turning it down is
+`tcw work discard <slug> --reason "<why>"`. Either way the item keeps its
+folder and its request, so nothing has to be copied from one place to another.

@@ -14,24 +14,15 @@ still listed, with which of the two reasons applies: `(no work store)` where it
 keeps no board at all, `(work store not provisioned here)` where it declares one
 this machine has not obtained. Leaving them out made a project with children read
 as a leaf, and calling a grouping parent the root hid a whole project from me.
-What the *unmarked* entries print is the set of nodes the cross-node commands can
-actually reach.
 
-That makes it the command to run first when a cross-node operation is not
-behaving: the IDs listed here are exactly the ones
-[Delegate a request to a child node](tcw://C/work/delegate-a-request-to-a-child-node)
-accepts, and the descendants
-[Reconcile an epic rollup](tcw://C/work/reconcile-an-epic-rollup) will follow. If
-a project I expected is missing, the problem is its registration or its work
-store, not the command I was trying to run.
-
-The board view is separate: `tcw work list --include-descendants` aggregates the
-*items* held across the same graph, while this shows the graph itself. See
-[View the board](tcw://C/work/view-the-board).
+That makes it the command to run first when work in another project is not
+behaving: the IDs listed here, unmarked, are the projects
+[Delegate a work item to another project](tcw://C/work/delegate-a-work-item-to-another-project)
+can reach. If a project I expected is missing, the problem is its registration
+or its work store, not the command I was trying to run.
 
 Upstream projects — declared by this node or an ancestor, read here but never
 written — are listed apart, under `upstream (read-only):`, each with the project
 that declared it and where it is (or `(not in this checkout)`). The section is
-printed only when there is one. They are not children: delegation and
-`--include-descendants` do not reach them. See
+printed only when there is one. Delegation does not reach them. See
 [Read from an upstream project](tcw://C/cli/read-from-an-upstream-project).

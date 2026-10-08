@@ -53,25 +53,15 @@ repository is declared. That is the ordinary state of a checkout holding only
 the code, which is the case the declaration exists for, and reporting it would
 give every provisioned node a permanent problem.
 
-A reference to a work item this project once held and has since completed or
-discarded is **not** a problem. Finishing work is normal, and reporting every
-reference to finished work as a mistake buries the real ones. A reference to a
-slug the project never held is still reported, in the same words as before —
-that distinction is the point.
+In the work store it checks every item: an `item.yaml` that cannot be read is
+an error naming the file and the key, and the other checks still run over the
+items that can be read. A parent or blocker that names no item is a warning
+(printed `warning: …`, so it does not fail the run); one in a project that
+cannot be reached is printed `unresolved: …` and does not fail it either. An
+item whose stage is not in the stage table, or is disabled in this project, is
+reported. While an item is still being worked, its `capabilities.yaml` is
+checked for paths that cannot be right. A work store shared with another
+project in this repository, which would mix their items, is an error.
 
-**A reference to a resolved item gives the same answer in every checkout.** It no
-longer matters whether the machine running validation is the one that resolved
-the item, because the record the answer comes from is tracked. That is what makes
-validation usable as a gate on finishing work.
-
-Note the limit, which is narrower than "reads only what is committed": validation
-walks the working tree, not the index, so a file that is on disk but untracked —
-including the documents inside a resolved item's own folder — is still scanned.
-A mistyped reference *inside* a completed item's documents is therefore still
-reported only on a machine that still has them.
-
-In the work store it also reports two things a moved item leaves behind: a
-folder named like an item that is not the item (no `state.yaml`) yet holds a
-file — usually written through a path noted before a transition moved the
-item — and a slug that two item folders both hold, naming each folder, where
-it once stopped with a traceback.
+The summary counts only failures, so a run whose only output is warnings
+passes.

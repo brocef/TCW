@@ -1,1 +1,1 @@
-A named step that produces exactly one lifecycle artifact. Distinct from a transition, which moves status; nothing is both.
+One row of the stage table: a named step a work item can be at, in a fixed order. A stage may produce a document, or numbered rounds of one, and may end in a verdict; some stages can be disabled per project.

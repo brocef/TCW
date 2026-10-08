@@ -16,10 +16,9 @@ way. With no component named, every component that declares a home repository is
 provisioned. Each is resolved, reported, and failed on its own, so one
 component's bad declaration neither suppresses nor corrupts another's result.
 
-`--refresh` is no longer the only way a provisioned store meets its remote: a
-transition on one refreshes and publishes on its own. This command stays the way
-I ask for a store, and the way I bring one up to date without transitioning
-anything.
+No other command pulls or pushes a provisioned store: this command is how I
+ask for one, and `--refresh` is how I bring it up to date. Committing and
+pushing what I change in it is mine to do.
 
 Running it again does nothing: a store that already resolves is reported as
 already available and no network call is made. **That covers whatever resolution

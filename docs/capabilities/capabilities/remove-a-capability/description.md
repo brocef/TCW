@@ -19,5 +19,6 @@ nothing, when:
   those fields first.
 
 When a work item deletes a capability, I list its path under `removed:` in the
-item's `capabilities.yaml`. Completing the item is refused while that path still
-resolves (see [Complete a work item](tcw://C/work/complete-a-work-item)).
+item's `capabilities.yaml`. Moving the item on from implementation is refused
+while that path still resolves (see
+[Advance a work item](tcw://C/work/advance-a-work-item)).

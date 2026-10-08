@@ -1,19 +1,14 @@
-As a user, I run `tcw work list` to see the local board, with lifecycle stages,
-priority, tags, blockers, and ready-to-close epic state. The board shows live work
-and hides both closed columns — `completed` and `discarded` — so `--all` or
-`--status discarded` is how I look at what was closed. Items in `review` are
-live work, not closed, so they stay on the default board. With
-`--include-descendants`, TCW follows the registered project graph and groups
-every reachable descendant board by canonical project ID. Descendant items are
-qualified as `<project-id>/<slug>`, including deep descendants whose filesystem
-location is unrelated to the current project. Unregistered nearby nodes are
-never visited. The shorter `-i` and `--incl-desc` spellings are aliases for
-`--include-descendants`. In the aggregate view, initiative tasks are indented
-beneath their visible owning epic even when a task lives in a descendant node;
-the qualified task address is preserved and each task is printed once.
-Active board rows show the claimant and UTC start time. Legacy or reworked
-active items without claim metadata are shown as unclaimed. A row for an item bound
-to a tracker ticket ends with that ticket's key, and its part when it is not the
-default, and `pending` or `conflicting` when the ticket has not followed the item's
-last move, and `comment pending` or `comment conflicting` when a progress comment is
-still owed; or with `unreadable` when its binding file cannot be read.
+As a user, I run `tcw work list` to list my project's work items, one full slug
+per line, so a script can read it. It shows unfinished work — inbox items and
+items with no readable stage included — and hides finished items, `completed`
+and `discarded`; `--all` shows everything.
+
+I narrow it with `--stage <stage>` (repeatable), `--tag <tag>` (repeatable;
+an item carrying any of them matches), `--parent <slug>` and `--assignee
+<name>`. `--stage` and `--all` together are refused, since they ask for two
+different sets. `--json` prints each item's full record, the same one
+`tcw work show --json` gives.
+
+A folder in the work store that is not an item, or a plain file, is ignored.
+An item whose `item.yaml` cannot be read makes `list` exit 1 naming the file,
+because a list that silently left it out would read as complete.

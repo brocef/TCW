@@ -1,0 +1,1 @@
+One numbered document of a lifecycle stage that can run more than once, such as implementation or review. Where the stage ends in a verdict, the round carries it: accepted or rejected, and which implementation round it judged.

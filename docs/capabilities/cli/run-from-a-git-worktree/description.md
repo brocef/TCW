@@ -28,7 +28,3 @@ primary checkout, so the current project appears once, not twice.
 Nothing changes outside a worktree, and nothing changes for a project that is
 not in a git repository at all.
 
-One thing I cannot do from inside a worktree is
-[complete the work item](tcw://C/work/complete-a-work-item) that worktree
-belongs to — the merge-back and teardown act on the primary checkout, so TCW
-refuses and tells me where to re-run it.

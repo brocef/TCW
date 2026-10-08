@@ -1,29 +1,7 @@
-As a user, I run `tcw work show <slug>` to read an item's state and body
-(including any recorded blockers), `tcw work path <slug>` to print its current
-on-disk path, or `tcw work path` without a slug to print the absolute, resolved,
-configuration-aware work-store folder.
-For initiative-related work, `show` includes the item's `type` and `initiative` fields when present so an agent can choose the right lifecycle path.
-An item bound to a tracker ticket gets one more line naming the ticket, the
-provider, the part and the ticket's link, or saying that its binding file cannot be
-read and why. That line reports what the binding records, not what the tracker
-says now, and reading it needs no tracker configured. When the ticket did not follow
-the item's last move, a `tracker sync:` line says whether that is pending or
-conflicting, after which move, when, and why, and a `tracker comment:` line does
-the same for a progress comment that did not post.
+As a user, I run `tcw work show <slug>` to read an item's record: its slug, title, stage, created date, priority, effort, complexity, tags, assignee, parent, what blocks it and what it blocks, its children, and its folder. The slug may be the full `<project-id>/<folder>` or just the folder name, matched exactly. Plain `show` prints one `key: value` line per field; `--json` prints the same record as JSON, the same shape each entry of `tcw work list --json` takes. An item from another project is read through that project.
 
-With `--json`, `show` prints the item as a machine-readable document instead of
-the summary: an explicit `schema` version I can check before relying on the
-shape, every field at a documented JSON type, and an `artifacts` map telling me
-which lifecycle documents exist — so a script can ask whether the spec has been
-written without reading the folder. Its `tracker` field is `null` for an item with
-no binding, the ticket's key, id and URL with the provider, project, part and bound
-date, a `sync` record (`null` while the ticket is in step) and a `comment` record
-(`null` unless a progress comment is owed) for a bound one, or
-a `problem` for a binding that cannot be read. It is the same document `tcw serve`'s API
-returns, so what I automate against and what the web app shows cannot drift.
+An item whose `item.yaml` cannot be read — not valid YAML, an unknown key, a missing title, a value of the wrong kind — makes `show` exit 1 naming the file and the key. One unreadable item does not stop me reading another: `show` still prints the readable item, works out its blocks and children from the items it can read, and says on stderr which file it could not.
 
-Errors keep stdout empty and exit non-zero, so piping into `jq` fails cleanly
-rather than on a fragment. A `capabilities` block holding a value JSON cannot
-represent — a date, binary data, a set — is converted rather than stringified on
-the way out; a block whose keys would collide once converted is refused by name,
-because dropping one of them silently is worse than telling me.
+`tcw work path <slug>` prints the item's folder; `tcw work path <slug> <stage>` prints the stage's document or folder in it; `--next` names the next numbered round of a stage that loops, and `--handoff` the path for a note to whoever resumes the stage. None of them writes anything. `tcw work path` with no slug prints the work store's folder.
+
+Errors keep stdout empty and exit non-zero — 4 for an item that does not exist — so piping into `jq` fails cleanly rather than on a fragment.

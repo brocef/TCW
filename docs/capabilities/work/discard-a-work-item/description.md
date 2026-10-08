@@ -1,21 +1,16 @@
-As a user, I close a work item that will not ship by running
-`tcw work complete <slug> --resolution <wontfix|duplicate|superseded> --confirm`,
-and the item lands in `discarded/` rather than `completed/` — so `completed/`
-answers "what shipped?" on its own.
+As a user, I close a work item that will not ship with
+`tcw work discard <slug> --reason "<why>"`. The item moves to the `discarded`
+stage, so a finished item tells shipped work and abandoned work apart by its
+stage alone, and the command prints `discarded`.
 
-I can discard directly from `backlog` without first starting the item, which is
-the common case: an idea I decide against was usually never started. Discarding
-is terminal; reviving an abandoned idea means raising a fresh item.
+I can discard from any stage, which covers the common case: an idea I decide
+against was usually never started. The reason is required, and is recorded as a
+comment on the item (`tcw://C/work/comment-on-a-work-item`).
 
-Because a discard is not a shipment, the Definition-of-Done checklist, the
-capability-reconciliation gate, and the unresolved-blocker check do not apply — I still confirm the closure
-explicitly, and TCW warns me (without blocking) if the item declared
-capabilities I should mark `Omitted`. A bound ticket is moved to its discarded status whoever holds it, since abandoning
-work needs no claim. A discarded item counts as resolved: it
-stops blocking whatever it blocked, and it lets its parent epic close.
+Because a discard is not a shipment, the capability-records and completion
+gates do not apply. A discarded item counts as finished: it stops blocking
+whatever it blocked. Its folder stays where it is, so a reference to it still
+resolves. Reopening it is a move like any other (`tcw://C/work/advance-a-work-item`)
+and needs a reason.
 
-TCW commits the status move itself, scoped to the item's own folders so unrelated edits in my working tree are never swept in. Where `work.retain` says this status is not kept, that is two commits rather than one — the item is committed where it landed, then removed — so the documents are in the history even though the folder is gone (see [what happens to resolved work](tcw://C/work/keep-resolved-work-out-of-git)). I turn that off with `work.auto-commit-transitions: false` in `tcw-config.yaml`, and `work.trunk-branch` adds an advisory warning when I transition from some other branch.
-
-Discarding records the item's slug exactly as completing does, carrying the
-resolution I gave, so references to an abandoned item resolve rather than
-reading as mistakes. See [Complete a work item](tcw://C/work/complete-a-work-item).
+TCW never commits the change; the item's files are mine to commit.

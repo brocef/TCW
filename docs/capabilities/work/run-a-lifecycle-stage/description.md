@@ -1,118 +1,13 @@
-As a user or agent, I work a lifecycle stage with three verbs, each doing one job.
-`tcw work stage gate <id> <ref>` asks **may this run**: TCW checks the stage makes
-sense for where the item is, runs whatever `pre` checks the project configured,
-and answers with an exit code. It prints no instructions.
-`tcw work stage prompt <id> [<ref>]` asks **what does it want**: the instructions,
-resolved, with no legality check and no `pre` checks at all.
-`tcw work stage validate <id> [<ref>]` asks **would `prompt` accept this**: it
-prints nothing when it would, and a Markdown usage error with the reason when it
-would not.
+As a user or agent, I read what a lifecycle stage asks of me with `tcw work stage prompt <stage> [<slug>]`: the stage's instructions, composed from my project's configuration, on stdout and nothing else, so I can pipe them straight into an agent.
 
-The two that deal in instructions are separate verbs because one command answering both questions made the obvious
-one unanswerable. On a project that gates a stage, asking what `plan` involves
-ran the gate, the gate refused because the spec was not written, and I learned
-nothing about planning — the command I would use to find out what to do required
-me to have already done it.
+**Reading checks nothing.** The command runs no gate and moves nothing, so asking what a stage involves is always safe. The text opens with a line saying so, and naming `tcw work advance <slug> --dry-run`, which is what tells me whether the item may move on and what would stop it.
 
-And they print different things because printing the same thing twice is what a
-reader has to explain away. Every view that composed a stage out of both showed
-the instructions once from each verb; now the text exists in one place.
+**With nothing configured for a stage, the instructions are TCW's own**, so the command is useful on a project that has never written a line of lifecycle configuration. A stage my project configures replaces them outright; `builtin: true` in that stage's `prompt:` list puts them back, composed with my own in the order I declared them — see [Configure the work lifecycle](tcw://C/work/configure-the-work-lifecycle). A stage whose packaged text TCW does not ship fails with exit 1 naming the missing file, rather than printing an empty prompt.
 
-Those instructions are opinionated where it counts. `implement` does not merely
-say to write the failing test first; it tells me what to do when a *new* test
-passes on its first run — break the behaviour it names and confirm it goes red,
-because a green that was never earned is the same as no test, and the explanation
-for one is usually true and beside the point.
+Those instructions are opinionated where it counts. `implement` does not merely say to write the failing test first; it tells me what to do when a *new* test passes on its first run — break the behaviour it names and confirm it goes red, because a green that was never earned is the same as no test.
 
-**With nothing configured for a stage, the instructions are TCW's own.** TCW
-ships defaults for all seven lifecycle stages, `inbox` included, so the command
-is useful on a project that has never written a line of lifecycle configuration.
-A stage my project does configure replaces them outright; writing `builtin: true`
-in that stage's `prompt:` list puts them back, composed with my own in the order
-I declared them.
+**The item is optional and changes what resolves.** With one, `when:` conditions test its tags, a `generate:` script receives its record, and the `{{tcw:request}}` span in the text becomes the item's request. Without one, I get the stage's generic instructions and the span shows its own fallback words. `inbox` runs before an item exists, so it takes no item, and naming one is refused.
 
-**`inbox` takes no work item reference, on any verb.** It runs before an item
-exists, so there is nothing to resolve a stage against: `tcw work stage gate
-inbox` and `tcw work stage prompt inbox` each take nothing after them, and naming
-an item is reported as the mistake it is rather than guessed at.
+Errors go to stderr and print nothing on stdout, so a pipeline receives the whole instruction or none of it. A disabled stage still prints, with a note on stderr. `--no-exec` lists on stderr what would resolve, marking the bindings a `when:` skipped, runs nothing, reads no `file:`, and prints nothing on stdout.
 
-**`validate` exists for the `work-stage` skill**, which runs it before
-anything else as the skill loads. The arguments are valid exactly when `prompt`
-would accept them: a known stage id, no work item for `inbox`, and otherwise an
-optional reference that resolves to one item. Like `prompt`, it does not judge
-the item's status. Valid arguments print nothing and exit 0; invalid ones print
-the usage error and the reason on stdout and exit 1. Under an agent harness other
-than Claude Code it first prints a notice that the skill's injected commands must
-be run by hand, even when the arguments are valid. The harness is the nearest
-`claude` or `codex` process above the command, and when that cannot be read, a
-`CODEX_THREAD_ID`, `CODEX_SANDBOX` or `CODEX_SESSION_ID` variable means Codex;
-anything else reads as Claude Code.
-
-**The shipped instructions name my item's own body, not a fixed filename.** The
-`spec` and `plan` instructions resolve it the same way `tcw work show` does —
-`initial-request.md` once the `request` stage has written one, and the
-`intake.md` the item arrived as otherwise — so an item created from a pipe or
-adopted from the inbox is never sent after a document nobody wrote. On an item
-with neither, they name no file at all rather than inventing one, and the `spec`
-instructions say to read a raw intake as the request instead of drawing
-conclusions from the request that is missing.
-
-They come out on **stdout alone**, so I can pipe them straight into an agent.
-On `gate` and `prompt`, every check's own output, and every error, goes to stderr — and any failure
-prints *nothing* on stdout, so a pipeline receives the whole instruction or none
-of it rather than a fragment.
-
-**No verb writes anything**: no lifecycle document, no draft, no status
-change, no field. Running any of them purely to read the instructions is safe, which
-is what makes it usable — reaching a stage should not mean weighing whether
-asking what to do will change something.
-
-**`gate` refuses a stage that makes no sense for the item's current status,
-before any hook runs**: `implement` on a backlog item, or `spec` on one already
-closed. `verify` is legal from `active` as well as `review`, because an item can
-be closed without ever having been submitted. `request`, `spec` and `plan` are
-legal in `active` as well as `backlog`, since nothing moves an item back and one
-started before it was planned would otherwise never pass them. `postmortem` is
-the out-of-band exception, legal in review and after completion — but not on a
-discarded item, which was closed without shipping. A refusal says how to go on:
-send a reviewed item back with `tcw work rework`, start a backlog one with
-`tcw work start`, or read the instructions with `prompt`, whose checks do not
-run; on a resolved item, it says no stage runs.
-
-**`prompt` refuses none of that**, which is the point of having it. Given an item
-the stage is not legal for, it prints the instructions anyway and says so in a
-note on stderr, leaving stdout carrying the instructions alone and the exit code
-0. Worth the note rather than silent, because some built-in instructions name
-commands that change an item's state — reading them early is fine, following them
-is not.
-
-**Every set of instructions says it ran no checks, and where the stage leads.**
-Because `prompt` gates nothing, wanting the instructions is no longer a reason to
-run `gate` — so the reminder rides with the text itself, wrapped around whatever
-resolved: a line saying this ran no checks and naming my `gate` invocation, and a
-closing section saying what to do once the stage's output is written. It wraps my
-own `prompt:` bindings too. Overriding what a stage says is not overriding where
-the lifecycle goes next.
-
-The reference is optional on `prompt` and changes what resolves. Without one,
-`when:` conditions do not match, a `generate:` hook receives no item, and the
-body token falls back to its no-body text, so I get the stage's generic
-instructions. With one, all three resolve against that item.
-
-`--no-exec` is on both verbs and each reports only its own half: `gate` lists the
-`pre` checks it would run, `prompt` lists the bindings it would resolve, marking
-the ones a `when:` condition skipped. Neither runs anything, neither reads a
-`file:` binding, and under the flag **neither prints anything on stdout** — the
-plan goes to stderr, so a dry run can never be mistaken for the instructions. It
-is how I read an unfamiliar project's lifecycle before triggering any part of
-it.
-
-A project-qualified reference resolves against the owning node, so I can ask
-about a descendant's item from the enclosing project — including on `prompt`,
-where it reads that node's `prompt:` bindings rather than the one I am standing
-in.
-
-The `implement` and `verify` instructions tell me to write the stage's file in
-the item's folder wherever it currently lives, which `tcw work path <slug>`
-prints: `submit` moves the folder to `review/`, so a path noted earlier no
-longer points at the item.
+An item in another project (`<project-id>/<folder>`) resolves against that project's configuration.

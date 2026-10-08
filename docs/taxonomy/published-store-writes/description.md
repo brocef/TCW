@@ -1,1 +1,0 @@
-Keeping a provisioned component store in step with the repository it came from across writes — refreshing before a change and publishing after it — so work done in an ephemeral checkout survives the checkout.

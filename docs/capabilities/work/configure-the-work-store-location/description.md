@@ -5,17 +5,15 @@ A relative path is read against the project's own directory; inside a linked
 git worktree it is read against the primary checkout only when it points
 outside the checkout, while one that stays inside belongs to the worktree like
 the default store does (see
-[Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)). TCW follows symlinks, routes every work
-command and web edit to that store, and commits work transitions in the Git
-repository containing it while lifecycle hooks and code worktrees remain in the
-owning software repository. That routing is uniform: cross-node requests, epic
-rollups, capability-drift lookups, and node discovery all resolve the configured
-store rather than a default folder, and a leftover `docs/work/` directory beside
-a configured store is ignored rather than treated as the store.
+[Run TCW from inside a git worktree](tcw://C/cli/run-from-a-git-worktree)). TCW follows symlinks and routes every
+work command to that store, while lifecycle hooks still run in the owning
+software project. That routing is uniform: delegation into another project,
+capability drift, `tcw validate` and the project graph all resolve the
+configured store rather than a default folder, and a leftover `docs/work/`
+directory beside a configured store is ignored rather than treated as the store.
 
-Because the configured store is the only authority, a project whose default
-`docs/work/` layout is missing its inbox or any status folder counts as having no
-work store until I restore it with `tcw work init`.
+A work store is present when its folder is. Nothing inside it is required, so
+an empty store is a real one.
 
 The same key exists for the other two components —
 [taxonomy](tcw://C/taxonomy/configure-the-taxonomy-store-location) and
@@ -32,10 +30,7 @@ The declaration is a fallback and never an override: a store already present at
 that has the folder and a fresh checkout that does not.
 
 I can scaffold this layout with `tcw work init --path <path>` or `tcw init
---work-path <path> work`. TCW refuses broken, invalid, non-Git, or colliding
-stores — including a store whose items the repository's own ignore rules would
-hide, which would otherwise look like a working store holding untracked work —
-and never moves an existing non-pristine store automatically. Those refusals
-leave nothing behind. A rule that arrives *after* I set the store up — written
-by hand, naming a single item, or pulled in from someone else — is no longer
-invisible either: the write itself tells me the item will not be recorded.
+--work-path <path> work`. TCW refuses a broken, invalid or non-Git location, and
+never moves a store that holds a work item: that move is mine to make. Those
+refusals leave nothing behind. TCW never commits what it writes there; the
+store's files are mine to commit.

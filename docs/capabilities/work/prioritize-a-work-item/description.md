@@ -1,1 +1,1 @@
-As a user, I assign an integer priority with `tcw work new "<title>" --priority N` or `tcw work edit <slug> --priority N` (higher integer = higher priority; the default is unspecified). Higher-priority items sort to the top of the board.
+As a user, I set an item's priority with `tcw work new "<title>" --priority <level>` or `tcw work edit <slug> --priority <level>`, where `<level>` is one of `highest | high | medium | low | lowest`. Every item has one, and a new item gets `medium`. `tcw work show` displays it.
