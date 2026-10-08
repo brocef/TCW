@@ -19,7 +19,8 @@ from tcw.work.advance import run_post
 from tcw.work.config import WorkConfig
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
-    KEY, JiraBackend, Refusal, _jira, _named, choose_transition, folder_key,
+    ITEM_FILE, KEY, JiraBackend, Refusal, _jira, _named, choose_transition, field_id,
+    folder_key,
 )
 from tcw.work.jira.client import (
     JiraClient, TrackerError, TrackerNotFound, TrackerRequestInvalid,
@@ -143,16 +144,20 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if here is not None and here != named.folder:
             raise Refused(f"a folder for {key} already exists here ({here}), but the "
                           f"ticket names {named.folder}")
-        if here is not None and status != inbox_status:
+        if here is not None and status != inbox_status and \
+                (backend.work_path / here / ITEM_FILE).is_file():
             raise Refused(f"{key} is already the item {named}")
         slug, resuming = named, True
     else:
         if here is not None:
             raise Refused(f"a folder for {key} already exists here: {here}")
         slug = Slug(backend.project, f"{key}-{title_words(str(fields.get('summary') or key))}")
+    # A ticket this project made, whose create or delegation stopped before it
+    # set TCW Item, may sit at any status the workflow starts at (Design 7.2).
+    ours = tcw_project == backend.project and not tcw_item
     chosen = None
     if status != request_status:
-        if not resuming and status != inbox_status:
+        if not resuming and not ours and status != inbox_status:
             raise Refused(f"{key} is at {status!r}; only a ticket at {inbox_status!r} "
                           f"or {request_status!r} can be adopted, since adopting one "
                           f"further along would skip stages with no trace")
@@ -167,10 +172,10 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         with _jira():
             backend.client.edit_issue(key, {ids["project"]: backend.project,
                                             ids["item"]: str(slug)})
-    # 4. Write the folder and item.yaml.
-    if not (backend.work_path / slug.folder).is_dir():
+    # 4. Write the folder and item.yaml, or finish a folder left without one.
+    if not (backend.work_path / slug.folder / ITEM_FILE).is_file():
         try:
-            backend._item_file(slug.folder, key)
+            backend._item_file(slug.folder, key, resume=True)
         except OSError as error:
             raise _named(BackendError(
                 f"{key} now names {slug}, but its folder could not be written: "
@@ -366,9 +371,9 @@ def _remote_metadata(client: JiraClient, jira_project: str,
         raise BackendError(f"Jira project {jira_project} has {len(named)} fields named "
                            f"{project_field!r}; the connected-project jira block's "
                            f"fields.project must name exactly one")
-    has_priority = any(isinstance(f, dict) and f.get("fieldId") == "priority"
+    has_priority = any(isinstance(f, dict) and field_id(f) == "priority"
                        for f in fields)
-    return str(types[0]["id"]), str(named[0]["fieldId"]), has_priority
+    return str(types[0]["id"]), field_id(named[0]), has_priority
 
 
 def _move_to(client: JiraClient, key: str, status: str) -> None:

@@ -174,7 +174,7 @@ def test_without_the_definition_moves_are_sampled(clean, monkeypatch, capsys):
                and "requires resolution" in line for line in run.lines), run.out
     assert any(line.startswith("warning: work.jira: unchecked: the move from "
                                "'Specifying' to 'Planning'") for line in run.lines)
-    assert "could not be read (no permission)" in run.err
+    assert "could not be read (no permission, or an empty answer)" in run.err
 
 
 def test_tcw_item_naming_another_slug(clean, monkeypatch, capsys):
@@ -231,3 +231,50 @@ def test_rejected_credentials_skip_the_rest(clean, monkeypatch, capsys):
     assert run.code == 1 and len(run.lines) == 1
     assert run.lines[0].startswith("error: work.jira: Jira rejected the credentials")
     assert "remaining remote checks were skipped" in run.err
+
+
+def test_a_missing_status_without_the_definition_keeps_every_finding(
+        tmp_path, fake, monkeypatch, capsys):
+    project = configured(tmp_path, fake,
+                         lambda c: c["stages"]["qa"].update(status="In Quality"))
+    fake.workflows_forbidden = True
+    run = remote(project, monkeypatch, capsys)
+    assert run.code == 1
+    assert "error: work.jira: status 'In Quality' (stage qa) is not a status of Task " \
+           "in TCW" in run.lines
+    assert not any("did not run" in line for line in run.lines), run.out
+
+
+def test_a_refused_read_keeps_what_was_found(tmp_path, fake, monkeypatch, capsys):
+    project = configured(tmp_path, fake,
+                         lambda c: c["jira"].update(priorities={"high": "Major"}))
+    answer = fake.answer
+
+    def refusing(client, method, path, body):
+        if path.endswith("/statuses"):
+            raise fake._error(403, path, "You do not have permission")
+        return answer(client, method, path, body)
+    monkeypatch.setattr(fake, "answer", refusing)
+    run = remote(project, monkeypatch, capsys)
+    assert run.code == 1
+    assert "error: work.jira: priority 'Major' (work.jira.priorities.high) is not a " \
+           "priority of TCW" in run.lines
+    assert run.lines[-1].startswith("error: work.jira: Jira refused a read, so the "
+                                    "remaining remote checks did not run")
+
+
+def test_the_create_transition_is_no_route(clean, monkeypatch, capsys):
+    flow = clean.fake.projects["TCW"]
+    flow.statuses = ("Triage",) + tuple(s for s in flow.statuses if s != "Triage")
+    routes_into(clean, "Triage")       # only the create transition leads there now
+    run = remote(clean, monkeypatch, capsys)
+    assert "error: work.jira: no transition makes the move from 'To Do' to 'Triage' " \
+           "(inbox to request) for Task" in run.lines, run.out
+
+
+def test_an_empty_definition_is_sampled_rather_than_failed(clean, monkeypatch, capsys):
+    monkeypatch.setattr(clean.fake, "_workflows",
+                        lambda body, route: {"statuses": [], "workflows": []})
+    run = remote(clean, monkeypatch, capsys)
+    assert not any("no transition makes" in line for line in run.lines), run.out
+    assert "or an empty answer" in run.err

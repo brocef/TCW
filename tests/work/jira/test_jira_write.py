@@ -300,3 +300,12 @@ def test_rename_reports_other_mentions(jira_project, capsys):
     jira_project.backend().rename(folder, "new")
     assert f"names {folder}, not rewritten" in capsys.readouterr().err
     assert (jira_project.work / f"{key}-new" / "notes.md").read_text() == f"{folder} is mine\n"
+
+
+def test_step_6_without_permission_is_not_unreachable(jira_project, monkeypatch, tcw):
+    def forbidden(ticket, body, route):
+        raise jira_project.fake._error(403, route, "You do not have permission")
+    monkeypatch.setattr(jira_project.fake, "_transition", forbidden)
+    result = tcw(["new", "Half"], jira_project.root)
+    assert (result.code, result.out.strip()) == (1, "tcw/TCW-1-half")
+    assert "advance tcw/TCW-1-half --to request" in result.err

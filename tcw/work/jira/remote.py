@@ -22,7 +22,7 @@ from tcw.findings import Finding
 from tcw.work.jira import jql
 from tcw.work.jira.backend import (
     KEY_FOLDER, IssueType, JiraBackend, Refusal, _chunks, _jira, choose_transition,
-    folder_key, link_exists,
+    field_id, folder_key, link_exists,
 )
 from tcw.work.jira.client import (
     TrackerNotFound, TrackerPermissionError, TrackerRequestInvalid,
@@ -85,6 +85,9 @@ def remote_findings(backend: JiraBackend, layout: Layout, reader: Any,
         run.findings.append(Finding("unresolved", backend.project,
                                     f"Jira could not be reached, so the remaining "
                                     f"remote checks did not run: {error}"))
+    except TcwError as error:
+        run.error(PROJECT_WIDE, f"Jira refused a read, so the remaining remote checks "
+                                f"did not run: {error}")
     return run.findings, run.narration
 
 
@@ -144,10 +147,10 @@ def _checks(run: _Run, layout: Layout, reader: Any,
     _edit_screens(run, edit_types, ids, has_priority)
 
     # 3. Statuses.
-    _statuses(run, checked)
+    present = _statuses(run, checked)
 
-    # 4 and 5. Moves.
-    _moves(run, checked, str(project.get("id")))
+    # 4 and 5. Moves, apart from those into or out of a status 3 found missing.
+    _moves(run, checked, str(project.get("id")), present)
 
     # 7. Items and tickets.
     if "item" in ids and "project" in ids:
@@ -194,7 +197,7 @@ def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
                       (f"work.jira.fields.{role} {name!r} names {len(found)} fields on "
                        f"the {configured.name} create screen"))
             continue
-        ids[role] = str(found[0].get("fieldId"))
+        ids[role] = field_id(found[0])
         schema = found[0].get("schema") if isinstance(found[0].get("schema"), dict) else {}
         if role in ("project", "item") and schema.get("type") != "string":
             ok = False
@@ -210,7 +213,7 @@ def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
                                         f"{', '.join(SIZES)}; it lacks "
                                         f"{', '.join(missing) or 'the single-choice kind'}")
     priority = next((f for f in fields if isinstance(f, dict)
-                     and f.get("fieldId") == "priority"), None)
+                     and field_id(f) == "priority"), None)
     if priority is None:
         run.say(f"{run.backend.project}: {jira.project} has no Priority field, so "
                 f"priorities were not checked")
@@ -223,9 +226,9 @@ def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
                                         f"{model}) is not a priority of {jira.project}")
     needed = _needed_fields(ids, priority is not None)
     for type_name, screen in screens.items():
-        present = {f.get("fieldId") for f in screen if isinstance(f, dict)}
-        for field_id, label in needed:
-            if field_id not in present:
+        present = {field_id(f) for f in screen if isinstance(f, dict)}
+        for wanted, label in needed:
+            if wanted not in present:
                 run.error(PROJECT_WIDE, f"{label} is not on the {type_name} create screen, "
                                         f"so a new ticket cannot set it")
     with _jira():
@@ -239,8 +242,8 @@ def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
 def _needed_fields(ids: Mapping[str, str], has_priority: bool) -> list[tuple[str, str]]:
     jira_names = {"project": "TCW Project", "item": "TCW Item", "effort": "the effort "
                   "field", "complexity": "the complexity field"}
-    needed = [(field_id, jira_names[role]) for role, field_id in ids.items()]
-    needed += [(field_id, label) for field_id, label in SYSTEM_FIELDS]
+    needed = [(wanted, jira_names[role]) for role, wanted in ids.items()]
+    needed += list(SYSTEM_FIELDS)
     if has_priority:
         needed.append(("priority", "Priority"))
     return needed
@@ -257,8 +260,8 @@ def _edit_screens(run: _Run, kinds: Iterable[IssueType], ids: Mapping[str, str],
             continue
         with _jira():
             screen = run.backend.client.edit_metadata(key)
-        for field_id, label in needed:
-            if field_id not in screen:
+        for wanted, label in needed:
+            if wanted not in screen:
                 run.error(PROJECT_WIDE, f"{label} is not on the {kind.name} edit screen "
                                         f"(read on {key}), so TCW cannot change it")
 
@@ -266,7 +269,9 @@ def _edit_screens(run: _Run, kinds: Iterable[IssueType], ids: Mapping[str, str],
 # -- 3. statuses ---------------------------------------------------------------------
 
 
-def _statuses(run: _Run, kinds: Iterable[IssueType]) -> None:
+def _statuses(run: _Run, kinds: Iterable[IssueType]) -> dict[str, set[str]]:
+    """Report each mapped status a checked type lacks; return each type's
+    statuses."""
     jira = run.backend.jira
     with _jira():
         listed = run.backend.client.project_statuses(jira.project)
@@ -279,6 +284,7 @@ def _statuses(run: _Run, kinds: Iterable[IssueType]) -> None:
             if status not in have:
                 run.error(PROJECT_WIDE, f"status {status!r} (stage {stage}) is not a "
                                         f"status of {kind.name} in {jira.project}")
+    return by_type
 
 
 # -- 4 and 5. moves ------------------------------------------------------------------
@@ -315,6 +321,8 @@ def _definition(run: _Run, project_id: str, kind: IssueType) -> list[_Route] | N
             answer = run.backend.client.workflows(project_id, kind.id)
         except TrackerPermissionError:
             return None
+    if not answer.get("workflows"):
+        return None                      # some sites answer a non-admin with none
     names = {s.get("statusReference"): s.get("name")
              for s in answer.get("statuses") or [] if isinstance(s, dict)}
     routes = []
@@ -323,16 +331,19 @@ def _definition(run: _Run, project_id: str, kind: IssueType) -> list[_Route] | N
                 workflow, dict) else []:
             if not isinstance(transition, dict):
                 continue
+            kind = transition.get("type")
+            if kind == "INITIAL":
+                continue                 # the create transition, from no status
             to = names.get(transition.get("toStatusReference"))
             links = [names.get(link.get("fromStatusReference"))
                      for link in transition.get("links") or [] if isinstance(link, dict)]
-            sources = None if transition.get("type") == "GLOBAL" or not links \
-                else frozenset(links)
+            sources = None if kind == "GLOBAL" else frozenset(links)
             routes.append(_Route(str(to), sources))
     return routes
 
 
-def _moves(run: _Run, kinds: Iterable[IssueType], project_id: str) -> None:
+def _moves(run: _Run, kinds: Iterable[IssueType], project_id: str,
+           present: Mapping[str, set[str]]) -> None:
     statuses = run.backend.statuses
     moves = [(a, b) for a, b in needed_moves(run.backend.enabled)
              if a in statuses and b in statuses]
@@ -341,9 +352,13 @@ def _moves(run: _Run, kinds: Iterable[IssueType], project_id: str) -> None:
         routes = _definition(run, project_id, kind)
         if routes is None:
             run.say(f"{run.backend.project}: the {kind.name} workflow definition could not "
-                    f"be read (no permission), so moves were checked on sample tickets")
+                    f"be read (no permission, or an empty answer), so moves were checked "
+                    f"on sample tickets")
+        have = present.get(kind.name, set())
         for a, b in moves:
             source, target = statuses[a], statuses[b]
+            if source not in have or target not in have:
+                continue                 # already an error; Jira refuses its JQL
             where = f"the move from {source!r} to {target!r} ({a} to {b}) for {kind.name}"
             if routes is not None:
                 candidates = [r for r in routes if r.to == target

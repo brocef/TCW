@@ -146,8 +146,14 @@ def _new(args) -> int:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
-        print(delegate(args.project, args.title, request, args.priority,
-                       here=root, report=_say))
+        try:
+            made = delegate(args.project, args.title, request, args.priority,
+                            here=root, report=_say)
+        except TcwError as error:
+            if error.name:
+                print(error.name)      # the ticket created before it stopped
+            raise
+        print(made)
         return codes.OK
     backend = open_backend(root)
     changes = Changes(

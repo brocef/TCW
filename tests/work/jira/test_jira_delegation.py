@@ -106,3 +106,13 @@ def test_other_property_flags_are_usage_errors(pair, fake, tcw):
     p, _, _ = pair
     assert tcw(["new", "Add export", "--project", "tcw", "--tag", "ui"], p).code == 2
     assert fake.log == []
+
+
+def test_a_refused_inbox_move_prints_the_created_key(pair, fake, tcw):
+    p, target, _ = pair
+    shutil.rmtree(target)
+    block_for(p, {**BLOCK, "inbox-status": "Specifying"})
+    flow = fake.projects["TCW"]
+    flow.transitions = [t for t in flow.transitions if t.to != "Specifying"]
+    result = tcw(["new", "Add export", "--project", "tcw"], p)
+    assert (result.code, result.out.strip()) == (3, "TCW-1")

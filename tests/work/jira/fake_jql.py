@@ -35,6 +35,7 @@ class JqlError(ValueError):
 class Query:
     predicate: Callable[[Getter, bool], bool]
     order: tuple[str, str] | None
+    statuses: tuple[str, ...] = ()       # every value a status clause names
 
 
 def _tokens(jql: str) -> list[tuple[str, str]]:
@@ -59,6 +60,7 @@ class _Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.i = 0
+        self.statuses: list[str] = []
 
     def peek(self, offset=0):
         j = self.i + offset
@@ -109,15 +111,18 @@ class _Parser:
         if self.peek() == ("punct", "="):
             self.take("punct")
             value = self.take("string")
+            self._named(name, [value])
             return lambda get, ic: _matches(name, get(name), [value], ic)
         if self.word("IN"):
             self.take(word="IN")
             values = self.values()
+            self._named(name, values)
             return lambda get, ic: _matches(name, get(name), values, ic)
         if self.word("NOT") and self.peek(1)[1] and self.peek(1)[1].upper() == "IN":
             self.take(word="NOT")
             self.take(word="IN")
             values = self.values()
+            self._named(name, values)
             return lambda get, ic: not _matches(name, get(name), values, ic)
         if self.word("IS"):
             self.take(word="IS")
@@ -127,6 +132,10 @@ class _Parser:
             self.take(word="EMPTY")
             return lambda get, ic: _empty(get(name)) != negate
         raise JqlError(f"unsupported operator after {name!r}: {self.peek()[1]!r}")
+
+    def _named(self, name: str, values: list[str]) -> None:
+        if name.lower() == "status":
+            self.statuses += values
 
     def values(self) -> list[str]:
         if self.take("punct") != "(":
@@ -168,13 +177,17 @@ def parse(jql: str) -> Query:
     predicate = parser.expression()
     if parser.i != len(tokens):
         raise JqlError(f"unexpected {tokens[parser.i][1]!r}")
-    return Query(predicate, order)
+    return Query(predicate, order, tuple(parser.statuses))
 
 
 def select(jql: str, tickets: list, getter: Callable[[Any, str], Any], *,
-           ignore_label_case: bool = False) -> list:
-    """The tickets the query selects, in its order."""
+           ignore_label_case: bool = False, statuses=None) -> list:
+    """The tickets the query selects, in its order. Like Jira, a status
+    value the site does not have is an error, when `statuses` is given."""
     query = parse(jql)
+    unknown = [v for v in query.statuses if statuses is not None and v not in statuses]
+    if unknown:
+        raise JqlError(f"The value '{unknown[0]}' does not exist for the field 'status'.")
     found = [t for t in tickets
              if query.predicate(lambda name, t=t: getter(t, name), ignore_label_case)]
     if query.order:

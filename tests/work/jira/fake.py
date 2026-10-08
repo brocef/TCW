@@ -418,8 +418,10 @@ class FakeJira:
             visible = [t for t in self.tickets.values()
                        if not self.search_lag or t.written is None
                        or t.written <= len(self.log) - self.search_lag - 1]
+            known = {s for p in self.projects.values() for s in p.statuses}
             found = fake_jql.select(query, visible, self._value,
-                                    ignore_label_case=self.ignore_label_case)
+                                    ignore_label_case=self.ignore_label_case,
+                                    statuses=known)
         except fake_jql.JqlError as error:
             raise self._error(400, route, str(error)) from None
         start = int(body.get("nextPageToken") or 0)
@@ -518,7 +520,10 @@ class FakeJira:
         wanted = body["projectAndIssueTypes"][0]
         project = next(p for p in self.projects.values() if p.id == wanted["projectId"])
         refs = {s: f"ref-{i}" for i, s in enumerate(project.statuses)}
-        transitions = []
+        # Real answers carry the create transition too, typed INITIAL, with no
+        # links; it is offered from no status.
+        transitions = [{"id": "1", "name": "Create", "type": "INITIAL", "links": [],
+                        "toStatusReference": refs[project.statuses[0]]}]
         for t in project.transitions:
             entry = {"id": t.id, "name": t.name, "toStatusReference": refs[t.to],
                      "type": "GLOBAL" if t.sources is None else "DIRECTED",

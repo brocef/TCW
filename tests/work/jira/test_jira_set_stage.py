@@ -202,3 +202,20 @@ def test_choose_transition(offered, expected):
         assert isinstance(chosen, Refusal)
     else:
         assert chosen.id == expected
+
+
+def test_a_drop_on_the_retry_without_the_comment_still_posts_the_note(item, monkeypatch):
+    project, key, folder = item
+    project.fake.refuse_commented_transitions = True
+    answer, posts = project.fake.answer, []
+
+    def arming(client, method, path, body):
+        if (method, path) == ("POST", f"/rest/api/3/issue/{key}/transitions"):
+            posts.append(body)
+            if len(posts) == 2:              # the retry, sent without the comment
+                project.fake.drop_after_next_write()
+        return answer(client, method, path, body)
+    monkeypatch.setattr(project.fake, "answer", arming)
+    assert project.backend().set_stage(folder, "plan", NOTE) == "plan"
+    assert "update" not in posts[1]
+    assert comment_texts(project, key) == [NOTE]

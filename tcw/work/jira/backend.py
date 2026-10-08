@@ -281,14 +281,14 @@ class JiraBackend:
                     f"work.jira.fields.{role} is {name!r}, but Jira project "
                     f"{self.jira.project} has {what} of that name on the "
                     f"{chosen[0].name} create screen")
-            field_ids[role] = str(found[0].get("fieldId") or found[0].get("key"))
+            field_ids[role] = field_id(found[0])
             if role in ("effort", "complexity"):
                 options[role] = {
                     scale: value["value"]
                     for value in found[0].get("allowedValues") or []
                     if isinstance(value, dict) and isinstance(value.get("value"), str)
                     for scale in [scale_name(value)] if scale}
-        has_priority = any(isinstance(f, dict) and f.get("fieldId") == "priority"
+        has_priority = any(isinstance(f, dict) and field_id(f) == "priority"
                            for f in fields)
         return Metadata(project_id=str(project.get("id")), issue_types=types,
                         issue_type=chosen[0], field_ids=field_ids,
@@ -625,10 +625,13 @@ class JiraBackend:
         return replace(changes, add_tags=tuple(normalize_tag(t) for t in changes.add_tags),
                        remove_tags=tuple(normalize_tag(t) for t in changes.remove_tags))
 
-    def _item_file(self, folder: str, key: str) -> None:
+    def _item_file(self, folder: str, key: str, *, resume: bool = False) -> None:
+        """Make the folder and its item.yaml. `resume` finishes a folder an
+        interrupted run made, and refuses nothing when it exists."""
         path = self.work_path / folder
-        path.mkdir(parents=True)
-        self.report(f"created {path}")
+        if not (resume and path.is_dir()):
+            path.mkdir(parents=True)
+            self.report(f"created {path}")
         document = path / ITEM_FILE
         document.write_text(f"ticket: {self.jira.site}/browse/{key}\n", encoding="utf-8")
         self.report(f"wrote {document}")
@@ -730,18 +733,27 @@ class JiraBackend:
 
     def _enter_request(self, key: str, slug: Slug, chosen: Transition) -> None:
         stage = start_stage()
+        finish = f"`tcw work advance {slug} --to {stage}`"
         try:
             self.client.apply_transition(key, chosen.id)
         except TrackerRequestInvalid as error:
             raise _named(BackendError(
                 f"created {slug}, but Jira refused to move it to {stage}: {error}; it "
                 f"is at the workflow's first status. Fix the workflow, then run "
-                f"`tcw work advance {slug}`"), str(slug)) from None
-        except TrackerError as error:
+                f"{finish}"), str(slug)) from None
+        except (TrackerUnavailable, TrackerRateLimited) as error:
             raise _named(Unreachable(
                 f"created {slug}, but moving it to {stage} did not complete: {error}; "
-                f"check it with `tcw work show {slug}`, then `tcw work advance "
-                f"{slug}`"), str(slug)) from None
+                f"check it with `tcw work show {slug}`, then run {finish}"),
+                str(slug)) from None
+        except TrackerError as error:
+            try:
+                with _jira():
+                    raise error
+            except TcwError as mapped:
+                raise _named(type(mapped)(
+                    f"created {slug}, but could not move it to {stage}: {mapped}; "
+                    f"then run {finish}"), str(slug)) from None
         try:
             with _jira():
                 status = self._status(key)
@@ -751,7 +763,7 @@ class JiraBackend:
         if status != self.statuses[stage]:
             raise _named(BackendError(
                 f"created {slug}, but Jira reports it at {status!r}, not "
-                f"{self.statuses[stage]!r}; run `tcw work advance {slug}`"), str(slug))
+                f"{self.statuses[stage]!r}; run {finish}"), str(slug))
 
     # -- update (Design 4.2) -----------------------------------------------------------
 
@@ -938,7 +950,10 @@ class JiraBackend:
         except TrackerRequestInvalid as again:
             raise Refused(_refusal_text(slug, stage, chosen, again)) from None
         except TrackerUnavailable as again:
-            return self._after_drop(key, slug, stage, status, None, None, again)
+            # The retry carried no comment, so posting the note cannot repeat it.
+            moved = self._after_drop(key, slug, stage, status, None, None, again)
+            self._post_note(key, slug, stage, note)
+            return moved
         except TrackerError:
             with _jira():
                 raise
@@ -967,6 +982,11 @@ class JiraBackend:
                                        f"failed and the note is not among its newest "
                                        f"{NOTE_WINDOW} comments")
         return stage
+
+
+def field_id(entry: dict) -> str:
+    """A create-metadata entry's field id; older answers carry only `key`."""
+    return str(entry.get("fieldId") or entry.get("key"))
 
 
 @dataclass(frozen=True)

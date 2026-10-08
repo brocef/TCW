@@ -306,3 +306,21 @@ def test_the_helpers_are_jira_only(tmp_path, fake):
                  lambda: assignable_users(backend, "a")):
         with pytest.raises(UsageError):
             call()
+
+
+def test_finishing_a_create_that_stopped_before_its_tcw_item(jira_project, tcw):
+    jira_project.fake.projects["TCW"].statuses += ("Open",)
+    key = raw(jira_project, "Half", status="Open", TCW_Project="tcw")
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-half"), result.err
+    assert jira_project.fake.tickets[key].status == "Triage"
+
+
+def test_a_folder_left_without_item_yaml_is_finished(jira_project, tcw):
+    key = raw(jira_project, "x", status="Triage", TCW_Project="tcw",
+              TCW_Item="tcw/TCW-1-kept")
+    (jira_project.work / "TCW-1-kept").mkdir(parents=True)
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    assert (result.code, result.out.strip()) == (0, "tcw/TCW-1-kept"), result.err
+    assert (jira_project.work / "TCW-1-kept" / "item.yaml").read_text() == \
+        f"ticket: {jira_project.fake.site}/browse/{key}\n"
