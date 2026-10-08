@@ -666,7 +666,13 @@ project = "<project>" AND status = "<inbox status>" AND cf[<item>] IS EMPTY
    - a folder named for this key already exists here;
    - the ticket's status is neither the inbox status nor the request status.
      **[Decision]** Adopting a ticket that is already further along would skip
-     stages with no trace;
+     stages with no trace. One exception (added at implement, after review): a
+     ticket whose TCW Project is this project and whose TCW Item is empty may
+     also be at a status that no stage maps. That is the state a `create` or a
+     delegation leaves when it stops before setting TCW Item, at a workflow's
+     first status that is no stage's. A status mapped to a stage past request
+     is still refused, so a delegated ticket someone has moved on is never
+     taken back;
    - the ticket is at the inbox status and the choice rule (Design 5 step 2) picks
      no transition to the request status (as in 4.1 step 3).
 3. **Set TCW Project and TCW Item** in one edit. The folder is `<KEY>-<words>`, with
@@ -717,6 +723,11 @@ for creation and run no hooks. TCW-75's Jira guide and git example state this
   step 5);
 - if the folder exists with that exact name and the ticket is still at the inbox
   status, it keeps the folder (a run that stopped between steps 4 and 5);
+- if the folder exists with that exact name but has no `item.yaml`, and the
+  ticket is at the inbox or request status or at a status no stage maps, it
+  writes `item.yaml` (a run that stopped between making the folder and writing
+  the file). At a status mapped to a stage past request it refuses as "already
+  the item", since that item has moved on (added at implement, after review);
 - either way it continues from step 5, `post` hooks included, and says on stderr
   that it is resuming.
 
