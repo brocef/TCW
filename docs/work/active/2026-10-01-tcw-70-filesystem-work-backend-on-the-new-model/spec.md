@@ -1092,7 +1092,9 @@ and the reason. About 119 of the 159 test files touch the work axis today.
   (TCW-72, later, makes `init` add `/tcw-config.local.yaml` to `.gitignore`;
   that line is about personal configuration, not the work store.)
 - A store being relocated by `init --work-path` is refused when the old store
-  holds any item folder, instead of today's status-folder check.
+  holds anything but hidden files such as `.gitkeep`, instead of today's
+  status-folder check. (Corrected at review: "any item folder" let init delete
+  a 2.x board, notes, or a malformed folder without a word.)
 - `provision` clones a declared work repository as today. A store counts as
   present by Design 3.5.
 
