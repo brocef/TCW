@@ -16,8 +16,14 @@ from tcw.work.open import (
     delegate, open_backend, open_for_update, open_project, uncommitted_changes,
 )
 from tcw.work.model import Changes
+from tests.work.jira.fake import SITE, FakeJira
 from tests.work.projects import commit_all, connect, git, make_project
 
+
+#: A connected-project `jira` block for project q, answered by the fake.
+JIRA_BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
+              "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
+              "fields": {"project": "TCW Project"}}
 
 def write_config(root, **document):
     path = root / "tcw-config.yaml"
@@ -162,15 +168,27 @@ def test_a_declared_absent_project_is_refused(pq):
         delegate("q", "T", None, None, here=p)
 
 
-def test_an_absent_project_with_a_jira_block(pq):
+def test_an_absent_project_with_a_jira_block(pq, monkeypatch):
+    p, q = pq
+    shutil.rmtree(q)
+    fake = FakeJira().install(monkeypatch)
+    monkeypatch.setenv("Q_EMAIL", "dev@example.test")
+    monkeypatch.setenv("Q_TOKEN", "token")
+    write_config(p, **{"connected-projects": {"children": {
+        "q": {"path": "../q", "jira": JIRA_BLOCK}}}})
+    assert delegate("q", "T", None, None, here=p) == "TCW-1"
+    assert fake.tickets["TCW-1"].status == "To Do"
+    with pytest.raises(Refused):
+        open_for_update("q", p)
+
+
+def test_a_malformed_jira_block_is_named(pq):
     p, q = pq
     shutil.rmtree(q)
     write_config(p, **{"connected-projects": {"children": {
         "q": {"path": "../q", "jira": {"site": "x"}}}}})
-    with pytest.raises(BackendError, match="Jira delegation arrives with the Jira backend"):
+    with pytest.raises(BackendError, match="connected-projects.q.jira.site"):
         delegate("q", "T", None, None, here=p)
-    with pytest.raises(Refused):
-        open_for_update("q", p)
 
 
 def test_a_missing_work_store_is_refused(pq):

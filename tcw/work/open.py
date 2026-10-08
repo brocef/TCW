@@ -126,22 +126,24 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
     return [line[3:] for line in result.stdout.splitlines() if line.strip()]
 
 
-def _check_target(registry: FsProjectRegistry, project_id: str, *,
-                  creating: bool) -> Path:
-    """The five conditions of delegation, in order; the first that fails
-    refuses. Returns the target's work path."""
+def _check_declared(registry: FsProjectRegistry, project_id: str) -> None:
+    """The first two conditions of delegation: declared, and not upstream."""
     if registry.get(project_id) is None and registry.entry(project_id) is None \
             and registry.unreachable_project(project_id) is None:
         raise Refused(f"no project '{project_id}' is declared here")
     reason = registry.read_only_reason(project_id)
     if reason is not None:
         raise Refused(f"{reason}; an upstream project is read-only from here")
+
+
+def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:
+    """The five conditions of delegation, in order; the first that fails
+    refuses. Returns the target's work path."""
+    _check_declared(registry, project_id)
     project = registry.get(project_id)
     if project is None:
         entry = registry.entry(project_id)
         if entry is not None and entry.jira is not None:
-            if creating:
-                raise BackendError("Jira delegation arrives with the Jira backend")
             raise Refused(f"project '{project_id}' is not on this machine, and "
                           f"--blocks never creates a ticket")
         raise Refused(f"project '{project_id}' is declared but is not on this "
@@ -161,15 +163,28 @@ def _check_target(registry: FsProjectRegistry, project_id: str, *,
 def delegate(project_id: str, title: str, request: str | None,
              priority: str | None, *, here: Path,
              report: Callable[[str], None] | None = None) -> str:
-    """Create an item in another project's inbox, and return its full slug."""
+    """Create an item in another project's inbox, and return its full slug;
+    for a Jira-mode target, the ticket's key when no item could be made
+    (TCW-71 Design 8)."""
     registry = _registry(here)
-    path = _check_target(registry, project_id, creating=True)
+    _check_declared(registry, project_id)
+    say = report or (lambda line: print(line, file=sys.stderr))
+    project = registry.get(project_id)
+    entry = registry.entry(project_id)
+    if project is None and entry is not None and entry.jira is not None:
+        from tcw.work.jira.tickets import delegate_to_jira
+        return delegate_to_jira(project_id, title, request, priority,
+                                block=entry.jira, report=say)
+    if project is not None and read_work_config(Path(project.locator)).backend == "jira":
+        from tcw.work.jira.tickets import delegate_to_jira
+        return delegate_to_jira(project_id, title, request, priority,
+                                root=Path(project.locator), report=say)
+    path = _check_target(registry, project_id)
     project = registry.get(project_id)
     root = Path(project.locator)
     # The repository holding the work store, which is where the new files are
     # left uncommitted; it need not be the project's own.
     repository = git_root(path) or path
-    say = report or (lambda line: print(line, file=sys.stderr))
     backend = open_backend(root, report=lambda line: say(
         f"{line} (uncommitted in {repository})"))
     props = Changes() if priority is None else Changes(priority=priority)
@@ -181,5 +196,5 @@ def open_for_update(project_id: str, here: Path) -> WorkBackend:
     """Another project's backend, so `edit --blocks` can change an existing
     item there. It never creates anything."""
     registry = _registry(here)
-    _check_target(registry, project_id, creating=False)
+    _check_target(registry, project_id)
     return open_backend(Path(registry.get(project_id).locator))
