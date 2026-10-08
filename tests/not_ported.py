@@ -44,7 +44,6 @@ NOT_PORTED = frozenset({
     'tests/test_command_suggestions.py::test_the_inbox_stage_is_named_without_a_slug',
     'tests/test_command_suggestions.py::test_the_same_component_is_suggested_first',
     # tests/test_config_edit_writers.py
-    'tests/test_config_edit_writers.py::test_a_refused_init_leaves_config_index_and_folders_alone',
     'tests/test_config_edit_writers.py::test_tags_add_where_work_has_no_tags',
     'tests/test_config_edit_writers.py::test_tags_add_with_a_scalar_work_section_is_refused',
     # tests/test_documentation_config.py

@@ -587,6 +587,11 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(error.stderr, str) and error.stderr.strip():
             print(error.stderr.rstrip("\n"), file=sys.stderr)
         return 1
+    except OSError as error:
+        # A file TCW could not read or write — permissions, a full disk, a
+        # path that vanished — is reported in one line, not as a traceback.
+        print(f"tcw: {error}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

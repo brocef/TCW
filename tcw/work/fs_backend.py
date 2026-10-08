@@ -30,6 +30,7 @@ import yaml
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
 from tcw.store.base import normalize_tag
+from tcw.store.fs import _atomic_write_all, _umask
 from tcw.work.backend import Comment, Query
 from tcw.work.config import MIGRATION_GUIDE, WorkConfig
 from tcw.work.layout import Layout
@@ -191,19 +192,18 @@ def _dump(item: Item, raw_stage: str) -> str:
 
 
 def _replace_file(path: Path, text: str) -> None:
-    """Write `text` to a temporary file beside `path`, then replace `path`
-    with it in one step, so no reader ever sees half a file."""
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    """Replace `path` with `text` in one step, so no reader ever sees half a
+    file, with the mode an ordinary write would give."""
+    _atomic_write_all([(path, text)])
+
+
+def _encodable(text: str, what: str) -> None:
+    """Refuse text that cannot be written as UTF-8 (an undecodable byte on the
+    command line arrives as a lone surrogate) before anything is written."""
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(tmp, path)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except FileNotFoundError:
-            pass
-        raise
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise UsageError(f"{what} holds a byte that is not valid UTF-8") from None
 
 
 def read_all(work_path: Path, project: str,
@@ -347,11 +347,13 @@ class FsWorkBackend:
     def set_stage(self, folder: str, stage: str, note: str | None) -> str | None:
         item, _ = self._load(folder)
         table_stage(stage)
+        if note is not None:
+            _encodable(note, "the reason")
         self._write(item, stage)
         if note is not None:
             try:
                 self._write_comment(folder, note)
-            except OSError as error:
+            except (OSError, ValueError) as error:
                 raise MovedWithoutNote(str(error)) from None
         return self.read(folder).stage
 
@@ -359,22 +361,33 @@ class FsWorkBackend:
         directory = self.work_path / folder / COMMENTS
         directory.mkdir(exist_ok=True)
         when = self.now().astimezone(timezone.utc).replace(microsecond=0)
-        while True:
-            path = directory / f"{when.strftime(COMMENT_STAMP)}.md"
-            try:
-                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-            except FileExistsError:
-                when += timedelta(seconds=1)
-                continue
+        # Written whole to a temporary file first, then linked to the first
+        # free name: `link` takes a name in one step and never replaces one, so
+        # two comments in the same second cannot overwrite each other and a
+        # failed write leaves no comment file behind.
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".comment.")
+        try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 handle.write(text)
-            self.report(f"wrote {path}")
-            return path
+            os.chmod(tmp, 0o666 & ~_umask())
+            while True:
+                path = directory / f"{when.strftime(COMMENT_STAMP)}.md"
+                try:
+                    os.link(tmp, path)
+                except FileExistsError:
+                    when += timedelta(seconds=1)
+                    continue
+                break
+        finally:
+            os.unlink(tmp)
+        self.report(f"wrote {path}")
+        return path
 
     def comment(self, folder: str, text: str) -> None:
         self._folder(folder)
         if not isinstance(text, str) or not text.strip():
             raise UsageError("a comment must not be empty")
+        _encodable(text, "the comment")
         try:
             self._write_comment(folder, text)
         except OSError as error:

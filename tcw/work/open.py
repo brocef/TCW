@@ -21,7 +21,7 @@ from tcw.store.fs import (
     SENTINEL, FsProjectRegistry, WorkLocation, git_root, load_config,
 )
 from tcw.work.backend import WorkBackend
-from tcw.work.config import parse_work_config
+from tcw.work.config import WorkConfig, parse_work_config
 from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Changes, inbox_stage
 
@@ -34,10 +34,9 @@ def work_path(project_root: Path) -> Path:
     return WorkLocation.open(Path(project_root)).root
 
 
-def open_backend(project_root: Path, *,
-                 report: Callable[[str], None] | None = None) -> WorkBackend:
-    """The work backend of the project at `project_root`, from its tracked
-    `tcw-config.yaml`."""
+def read_work_config(project_root: Path) -> WorkConfig:
+    """The `work:` section of the project's `tcw-config.yaml`, parsed, without
+    opening the store: what the tag registry commands need."""
     root = Path(project_root)
     try:
         raw = load_config(root / SENTINEL)
@@ -48,6 +47,15 @@ def open_backend(project_root: Path, *,
     if problems:
         raise BackendError(f"{root / SENTINEL}: " +
                            "; ".join(str(p) for p in problems))
+    return config
+
+
+def open_backend(project_root: Path, *,
+                 report: Callable[[str], None] | None = None) -> WorkBackend:
+    """The work backend of the project at `project_root`, from its tracked
+    `tcw-config.yaml`."""
+    root = Path(project_root)
+    config = read_work_config(root)
     if config.backend != "filesystem":
         raise BackendError(f"{root / SENTINEL}: work.backend is "
                            f"{config.backend!r}; the Jira backend arrives with "
@@ -92,7 +100,7 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
     be checked. Runs `git --no-optional-locks status`, which neither refreshes
     the index nor takes `index.lock` in someone else's repository.
     """
-    who = f"'{project_id}'" if project_id else "the project"
+    who = f"`{project_id}`" if project_id else "the project"
     repository = git_root(Path(path))
     if repository is None:
         raise Refused(f"{who}'s work store is not in a git repository, so TCW "
@@ -133,7 +141,7 @@ def _check_target(registry: FsProjectRegistry, project_id: str, *,
         raise Refused(f"'{project_id}' has no work store on this machine") from None
     changed = uncommitted_changes(path, project_id)
     if changed:
-        raise Refused(f"'{project_id}''s work store has uncommitted changes: "
+        raise Refused(f"`{project_id}`'s work store has uncommitted changes: "
                       f"{', '.join(changed)} — commit or remove them in that "
                       f"project first")
     return path
@@ -144,10 +152,12 @@ def delegate(project_id: str, title: str, request: str | None,
              report: Callable[[str], None] | None = None) -> str:
     """Create an item in another project's inbox, and return its full slug."""
     registry = _registry(here)
-    _check_target(registry, project_id, creating=True)
+    path = _check_target(registry, project_id, creating=True)
     project = registry.get(project_id)
     root = Path(project.locator)
-    repository = git_root(root) or root
+    # The repository holding the work store, which is where the new files are
+    # left uncommitted; it need not be the project's own.
+    repository = git_root(path) or path
     say = report or (lambda line: print(line, file=sys.stderr))
     backend = open_backend(root, report=lambda line: say(
         f"{line} (uncommitted in {repository})"))

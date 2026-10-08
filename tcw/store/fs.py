@@ -737,14 +737,19 @@ def init(components: list[str], root: Path, project_id: str | None = None,
             raise ValueError(f"work.path target is not inside a Git repository: {target}")
         if default_root.exists() and default_root.resolve() != target.resolve():
             # `is_symlink` first: replacing a default store means deleting it,
-            # and a symlink is someone else's directory. Any item folder in it
-            # is work, and work is moved by a person, never deleted by init.
-            from tcw.work.fs_backend import is_item_folder
-            if default_root.is_symlink() or any(
-                    is_item_folder(entry) for entry in default_root.iterdir()):
+            # and a symlink is someone else's directory. Anything in it but a
+            # hidden file such as `.gitkeep` may be someone's work — an item,
+            # a 2.x status folder, a note — and work is moved by a person,
+            # never deleted by init.
+            held = [] if default_root.is_symlink() else sorted(
+                entry.name for entry in default_root.iterdir()
+                if not (entry.name.startswith(".") and entry.is_file()))
+            if default_root.is_symlink() or held:
                 raise ValueError(
-                    f"refusing to replace non-pristine {default_root}; move existing work "
-                    "manually, update work.path, then re-run init"
+                    f"refusing to replace non-pristine {default_root}"
+                    + (f" (it holds {', '.join(held)})" if held else "")
+                    + "; move existing work manually, update work.path, then "
+                    "re-run init"
                 )
             replacing_default_store = True
     # The exact directories this call will create, worked out before it creates

@@ -25,7 +25,8 @@ from tcw.work.gates import project_reader
 from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, inbox_stage, stage as table_stage, start_stage,
 )
-from tcw.work.open import delegate, open_backend, open_for_update, open_project
+from tcw.work.open import (delegate, open_backend, open_for_update, open_project,
+                           read_work_config)
 from tcw.work.record import item_record
 
 NAME = "work"
@@ -129,7 +130,10 @@ def _new(args) -> int:
     request = read_piped_stdin()
     request = request if request.strip() else None
     if args.project:
-        given = [f for f in PROPERTY_FLAGS if getattr(args, f)]
+        if args.project == FsProjectRegistry.open(root).current.id:
+            raise UsageError(f"--project {args.project} names this project; "
+                             f"leave --project out to create the item here")
+        given = [f for f in PROPERTY_FLAGS if getattr(args, f) is not None]
         if given:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
@@ -149,6 +153,8 @@ def _new(args) -> int:
 
 
 def _list(args) -> int:
+    for name in args.stage or ():
+        table_stage(name)              # an unknown stage is a usage error
     root = project_root()
     backend = open_backend(root)
     tags = frozenset(args.tag) if args.tag else None
@@ -208,15 +214,23 @@ def _edit(args) -> int:
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
     targets = [Slug.parse(t, slug.project) for t in args.blocks or ()]
-    if changes != Changes():
-        _own(slug, backend, root).update(slug.folder, changes)
-    elif not targets:
+    if changes == Changes() and not targets:
         raise UsageError("nothing to change; give at least one property flag")
-    if targets:
-        _own(slug, backend, root).read(slug.folder)
+    own = _own(slug, backend, root)
+    own.read(slug.folder)
+    # Every target is opened and read before anything is written, so a
+    # refused or missing one (exit 3 or 4) leaves every item as it was.
+    blocked = []
     for target in targets:
+        if target == slug:
+            raise UsageError(f"{slug} cannot block itself")
         other = backend if target.project == slug.project else \
             open_for_update(target.project, root)
+        other.read(target.folder)
+        blocked.append((other, target))
+    if changes != Changes():
+        own.update(slug.folder, changes)
+    for other, target in blocked:
         other.update(target.folder, Changes(add_blocked_by=(slug,)))
     return codes.OK
 
@@ -466,7 +480,7 @@ def _docs(args) -> int:
 
 
 def _tags_list(args) -> int:
-    for tag in open_backend(project_root()).config.tags:
+    for tag in read_work_config(project_root()).tags:
         print(tag)
     return codes.OK
 
@@ -477,9 +491,9 @@ def _write_tags(change) -> int:
     from tcw.store import config_edit
     from tcw.store.fs import SENTINEL, _atomic_write_all
     root = project_root()
-    backend = open_backend(root)
-    result = sorted(change(set(backend.config.tags)))
-    if set(result) != set(backend.config.tags):
+    registered = set(read_work_config(root).tags)
+    result = sorted(change(registered))
+    if set(result) != registered:
         path = root / SENTINEL
         try:
             text = config_edit.edit_text(path, config_edit.read_text(path),

@@ -352,7 +352,7 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     err = assert_refused_leaving_everything(root, before, code, capsys, "inside the braces")
     assert git(root, "status", "--porcelain").stdout == status   # .gitignore too
     assert "work.path" in err
-    assert (root / "docs" / "work" / "inbox").is_dir()
+    assert sorted(x.name for x in (root / "docs" / "work").iterdir()) == [".gitkeep"]
     assert not (root / "planning").exists()
     assert b"id:" not in config(root)
 
