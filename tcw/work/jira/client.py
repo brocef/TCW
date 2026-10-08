@@ -1,21 +1,18 @@
 """A Jira Cloud REST client, standard library only.
 
-This module is the single home of all Jira HTTP work in TCW, including what the
-Jira work backend needs, so that a second Jira client never gets written.
+This module is the single home of all Jira HTTP work in TCW, so that a second
+Jira client never gets written. It imports nothing from the rest of TCW.
 
 TCW ships with PyYAML and nothing else, and that does not change for this. So the
 transport is `urllib.request`, with a basic-authentication header built by hand.
 
 **One seam.** Every operation goes through `JiraClient._request`, which is the only
-function here that touches `urllib.request`. Tests replace it. That is a design
-decision rather than an accident: with `urlopen` called inline in four places the
-only way to test would be a live server or a monkeypatched module attribute, and
-several of this item's acceptance criteria depend on substituting the transport.
+function here that touches `urllib.request`. Tests replace it, and the fake Jira
+(`tests/work/jira/fake.py`) is installed there.
 
-**Two writes, and their responses are never interpreted.** `apply_transition` and
-`assign` exist for claiming a ticket. What a write returns is read only as success
-or as one of the error types below; whether a claim actually took effect is decided
-by the caller re-reading the issue.
+**Writes are never interpreted.** What a write returns is read only as success or
+as one of the error types below; whether it took effect is decided by the caller
+reading the issue back.
 
 **The error taxonomy is a deliverable, not an afterthought.** A live experiment
 against Jira recorded *three different* `HTTP 400` bodies for the same logical
@@ -23,10 +20,9 @@ condition — a transition that did not apply — one of which blames permission
 what was actually a lost race. So a status code says what failed and nothing
 reliable about why. Callers get a typed exception per cause and are expected to
 re-read state to decide, never to parse a message. Nothing here is named
-"conflict" or "already claimed", and `tests/test_tracker_client.py` fails if that
-changes.
+"conflict" or "already claimed", and `tests/work/jira/test_client.py` fails if
+that changes.
 """
-
 from __future__ import annotations
 
 import base64
@@ -39,7 +35,8 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
-DEFAULT_SEARCH_LIMIT = 50
+#: Jira's largest page for searches and comment reads.
+PAGE = 100
 
 
 # ── errors ───────────────────────────────────────────────────────────────────
@@ -88,40 +85,39 @@ class TrackerUnavailable(TrackerError):
 
 @dataclass(frozen=True)
 class Transition:
-    """One transition an issue offers right now."""
+    """One transition an issue offers right now, with what its screen shows.
+
+    `fields` are the ids of every field on the transition's screen and
+    `required` the ids of those Jira marks required; both are empty for a
+    transition with no screen."""
     id: str
     name: str
     to_status: str
     to_status_id: str = ""
+    fields: tuple[str, ...] = ()
+    required: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
-class SearchResult:
-    """Issues the query selected, and whether there were more.
-
-    `truncated` exists because silently returning a short list would make a user
-    believe they have no other assigned tickets.
-
-    **There is no total.** The endpoint this uses reports only whether the page it
-    returned is the last one; it does not count matches. An earlier version of this
-    class carried a `total` read from the old `/rest/api/3/search`, which Atlassian
-    has since removed outright — the live error names the replacement and links a
-    migration note. Inventing a total from a page size would be a number that looks
-    authoritative and is not.
-    """
-    issues: list[dict]
-    truncated: bool
+class JiraComment:
+    """One comment as Jira gives it. `body` is the Atlassian Document Format
+    (ADF) tree, turned into text by `tcw.work.jira.mapping.document_text`."""
+    author_id: str | None
+    author_name: str | None
+    created: str
+    body: object
 
 
 # ── the client ───────────────────────────────────────────────────────────────
 
 
 class JiraClient:
-    """The Jira Cloud operations TCW needs: four reads and the two claim writes.
+    """The Jira Cloud operations the Jira work backend needs.
 
-    Holds a `TrackerConfig`, which carries the *names* of the two environment
-    variables. The values are read in `_request` and nowhere else, so an instance
-    that never makes a call never touches a secret.
+    Holds a `JiraConfig` (`tcw.work.jira.config`), read by attribute: `site`,
+    `timeout`, and the *names* of the two credential variables, `email_env` and
+    `token_env`. The values are read in `_request` and nowhere else, so an
+    instance that never makes a call never touches a secret.
     """
 
     def __init__(self, config):
@@ -145,12 +141,12 @@ class JiraClient:
                    if not value]
         if missing:
             raise TrackerAuthError(
-                f"tracker credentials are not set: {', '.join(missing)}. "
-                f"Export them, or correct work.tracker.credentials in tcw-config.yaml.")
+                f"Jira credentials are not set: {', '.join(missing)}. "
+                f"Export them, or correct work.jira.credentials in tcw-config.yaml.")
 
         payload = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
-            f"{self.config.base_url}{path}", data=payload, method=method)
+            f"{self.config.site}{path}", data=payload, method=method)
         credentials = base64.b64encode(f"{email}:{token}".encode("utf-8")).decode("ascii")
         request.add_header("Authorization", f"Basic {credentials}")
         request.add_header("Accept", "application/json")
@@ -171,11 +167,11 @@ class JiraClient:
             # Covers a refused connection, DNS failure and a timeout: `URLError`
             # wraps `socket.timeout` rather than letting it through.
             raise TrackerUnavailable(
-                f"could not reach the tracker at {self.config.base_url} "
+                f"could not reach the tracker at {self.config.site} "
                 f"({error.reason}); the timeout was {timeout}s") from error
         except (socket.timeout, TimeoutError) as error:
             raise TrackerUnavailable(
-                f"the tracker at {self.config.base_url} did not respond within "
+                f"the tracker at {self.config.site} did not respond within "
                 f"{timeout}s") from error
         except (ConnectionError, http.client.HTTPException) as error:
             # A connection dropped after the request was sent is neither a
@@ -184,7 +180,7 @@ class JiraClient:
             # landed, so it is "unavailable" — which a claim answers by reading
             # the issue back — never an uncaught crash.
             raise TrackerUnavailable(
-                f"the connection to the tracker at {self.config.base_url} was lost "
+                f"the connection to the tracker at {self.config.site} was lost "
                 f"before it answered ({error.__class__.__name__})") from error
 
     def _json(self, method: str, path: str, body: dict | None = None) -> dict:
@@ -193,7 +189,7 @@ class JiraClient:
     def _payload(self, method: str, path: str, body: dict | None = None):
         """The decoded answer, whatever its shape; `{}` for an empty body."""
         _status, _headers, raw = self._request(
-            method, path, body, timeout=self.config.timeout_seconds)
+            method, path, body, timeout=self.config.timeout)
         if not raw:
             return {}
         try:
@@ -202,165 +198,211 @@ class JiraClient:
             raise TrackerError(
                 f"the tracker returned a response that is not JSON for {path}") from error
 
-    # -- operations --
+    # -- operations: reads --
 
     def myself(self) -> dict:
         """The account the configured credentials authenticate as."""
         return self._json("GET", "/rest/api/3/myself")
 
-    def search(self, jql: str, limit: int = DEFAULT_SEARCH_LIMIT) -> SearchResult:
-        """Issues the query selects, and whether there are more pages.
-
-        `/rest/api/3/search/jql`, not `/rest/api/3/search`. The latter has been
-        **removed**: a live call returns 400 with "The requested API has been
-        removed. Please migrate to the /rest/api/3/search/jql API." Found by running
-        this code against a real site rather than by reading a changelog.
-
-        The replacement is token-paginated and reports `isLast` instead of a match
-        count, so there is no total to report. Only the first page is fetched: this
-        item lists what a developer should look at next, and walking every page of a
-        badly-scoped query is not that.
-        """
-        path = "/rest/api/3/search/jql"
-        payload = self._json("POST", path, {
-            "jql": jql,
-            "maxResults": limit,
-            "fields": ["summary", "status", "assignee"],
-        })
-        issues = _entries(payload.get("issues"), path)
-        for found in issues:
-            _check_issue(found, path)
-        # `isLast` absent is treated as "this is the last page": a response that
-        # does not say there is more must not be reported as truncated.
-        return SearchResult(issues=issues, truncated=payload.get("isLast") is False)
-
-    def issue(self, key: str) -> dict:
-        """One issue, with the fields this item prints.
-
-        `key` is whatever the user typed, so it is quoted: a slash in it must not
-        address a different resource. Jira accepts a numeric issue id here too.
-        """
-        quoted = urllib.parse.quote(key, safe="")
-        path = f"/rest/api/3/issue/{quoted}?fields=summary,status,assignee,description"
+    def issue(self, key: str, fields: tuple[str, ...] | list[str] = ()) -> dict:
+        """One issue, with `fields` (every field Jira returns by default when
+        none are named)."""
+        path = f"/rest/api/3/issue/{_quote(key)}"
+        if fields:
+            path += "?fields=" + ",".join(urllib.parse.quote(f, safe="") for f in fields)
         return _check_issue(self._json("GET", path), path)
 
-    def transitions(self, key: str) -> list[Transition]:
-        """The transitions this issue offers **right now**, from its current status.
+    def search(self, jql: str, fields: tuple[str, ...] | list[str]) -> list[dict]:
+        """Every issue the query selects, reading page after page.
 
-        This is the whole basis of the claimability report: it needs no permission
-        beyond viewing the issue, and it behaves the same on team-managed and
-        company-managed projects, which is why it was chosen over reading a
-        project's workflow definition.
+        `/rest/api/3/search/jql`, not `/rest/api/3/search`, which Atlassian has
+        removed. The endpoint is paged by `nextPageToken` and says `isLast`; a
+        list that stopped at the first page would hide items, so every page is
+        read. `isLast` absent, or no token, ends the walk.
         """
-        path = f"/rest/api/3/issue/{key}/transitions"
+        path = "/rest/api/3/search/jql"
+        issues: list[dict] = []
+        token = None
+        while True:
+            body: dict = {"jql": jql, "fields": list(fields), "maxResults": PAGE}
+            if token:
+                body["nextPageToken"] = token
+            payload = self._json("POST", path, body)
+            page = _entries(payload.get("issues"), path)
+            for found in page:
+                _check_issue(found, path)
+            issues.extend(page)
+            token = payload.get("nextPageToken")
+            if payload.get("isLast") is not False or not isinstance(token, str) \
+                    or not token:
+                return issues
+
+    def transitions(self, key: str) -> list[Transition]:
+        """The transitions this issue offers **right now**, from its current
+        status, each with the fields its screen shows. It needs no permission
+        beyond viewing the issue, and reads the same in team-managed and
+        company-managed projects."""
+        path = f"/rest/api/3/issue/{_quote(key)}/transitions?expand=transitions.fields"
         payload = self._json("GET", path)
         out: list[Transition] = []
         for raw in _entries(payload.get("transitions"), path):
             to = _mapping(raw.get("to"), path)
+            screen = _mapping(raw.get("fields"), path)
             out.append(Transition(
                 id=str(raw.get("id", "")),
                 name=str(raw.get("name", "")),
                 to_status=str(to.get("name", "")),
                 to_status_id=str(to.get("id", "")),
+                fields=tuple(str(f) for f in screen),
+                required=tuple(str(f) for f, meta in screen.items()
+                               if isinstance(meta, dict) and meta.get("required")),
             ))
         return out
 
+    def comments(self, key: str, limit: int) -> list[JiraComment]:
+        """Up to `limit` comments, newest first, page by page."""
+        out: list[JiraComment] = []
+        start = 0
+        while len(out) < limit:
+            size = min(PAGE, limit - len(out))
+            path = (f"/rest/api/3/issue/{_quote(key)}/comment?orderBy=-created"
+                    f"&startAt={start}&maxResults={size}")
+            payload = self._json("GET", path)
+            page = _entries(payload.get("comments"), path)
+            for raw in page:
+                author = _mapping(raw.get("author"), path)
+                _text(author.get("accountId"), path)
+                _text(author.get("displayName"), path)
+                _text(raw.get("created"), path)
+                out.append(JiraComment(
+                    author_id=author.get("accountId") or None,
+                    author_name=author.get("displayName") or None,
+                    created=str(raw.get("created") or ""),
+                    body=raw.get("body")))
+            start += len(page)
+            total = payload.get("total")
+            if not page or (isinstance(total, int) and start >= total):
+                break
+        return out[:limit]
 
-    def create_issue(self, *, project: str, summary: str, description: dict,
-                     issue_type: str, components: tuple = ()):
-        """Create an issue and return the answer, normally `{"id", "key"}`.
+    def user(self, account_id: str) -> dict:
+        """One account, by id."""
+        return self._json("GET", "/rest/api/3/user?accountId="
+                          + urllib.parse.quote(account_id, safe=""))
+
+    def assignable_users(self, project: str, query: str, limit: int) -> list[dict]:
+        """The project's assignable users matching `query`."""
+        path = ("/rest/api/3/user/assignable/search?project="
+                + urllib.parse.quote(project, safe="")
+                + "&query=" + urllib.parse.quote(query, safe="")
+                + f"&maxResults={int(limit)}")
+        return _entries(self._payload("GET", path), path)
+
+    def project(self, key: str) -> dict:
+        """The project, with its issue types and their hierarchy levels."""
+        path = f"/rest/api/3/project/{_quote(key)}"
+        payload = self._json("GET", path)
+        _entries(payload.get("issueTypes"), path)
+        return payload
+
+    def project_statuses(self, key: str) -> list[dict]:
+        """Each issue type of the project with the statuses it can be in."""
+        path = f"/rest/api/3/project/{_quote(key)}/statuses"
+        types = _entries(self._payload("GET", path), path)
+        for kind in types:
+            _entries(kind.get("statuses"), path)
+        return types
+
+    def create_metadata(self, project: str, issue_type_id: str) -> list[dict]:
+        """Every field on the create screen of one issue type, page by page."""
+        out: list[dict] = []
+        start = 0
+        while True:
+            path = (f"/rest/api/3/issue/createmeta/{_quote(project)}/issuetypes/"
+                    f"{_quote(issue_type_id)}?startAt={start}&maxResults={PAGE}")
+            payload = self._json("GET", path)
+            page = _entries(payload.get("fields", payload.get("values")), path)
+            out.extend(page)
+            start += len(page)
+            total = payload.get("total")
+            if not page or not isinstance(total, int) or start >= total:
+                return out
+
+    def edit_metadata(self, key: str) -> dict:
+        """The fields this issue's edit screen allows, keyed by field id."""
+        path = f"/rest/api/3/issue/{_quote(key)}/editmeta"
+        return _mapping(self._json("GET", path).get("fields"), path)
+
+    def link_types(self) -> list[dict]:
+        """Every issue link type on the site."""
+        path = "/rest/api/3/issueLinkType"
+        return _entries(self._json("GET", path).get("issueLinkTypes"), path)
+
+    def workflows(self, project_id: str, issue_type_id: str) -> list[dict]:
+        """The workflow definitions for one project and issue type. Needs
+        administrator rights on many sites; a refusal is the caller's to read
+        (`TrackerPermissionError`)."""
+        path = "/rest/api/3/workflows"
+        payload = self._json("POST", path, {"projectAndIssueTypes": [
+            {"projectId": str(project_id), "issueTypeId": str(issue_type_id)}]})
+        return _entries(payload.get("workflows"), path)
+
+    # -- operations: writes --
+
+    def create_issue(self, fields: dict):
+        """Create an issue from a whole `fields` mapping and return the answer,
+        normally `{"id", "key"}`.
 
         As it came, not shape-checked: the request may have made the ticket
-        whatever the answer looks like, and the caller's warning to look for it
-        is worth more than "unexpected shape".
-
-        The issue lands in whatever status the project's workflow starts in —
-        Jira decides, not the caller — which is why every caller must move it
-        afterwards. A project with a triage column starts issues *there*, and
-        that is the status `inbox-query` is most likely to select, so a created
-        ticket left alone comes back as inbound work.
+        whatever the answer looks like. The issue lands in whatever status the
+        project's workflow starts in, which is why callers move it afterwards.
         """
-        fields: dict = {
-            "project": {"key": project},
-            "summary": summary,
-            "description": description,
-            "issuetype": {"name": issue_type},
-        }
-        if components:
-            fields["components"] = [{"name": name} for name in components]
         return self._payload("POST", "/rest/api/3/issue", {"fields": fields})
 
-    def apply_transition(self, issue_id: str, transition_id: str) -> None:
-        """Apply one transition. Success says only that Jira accepted the request.
+    def edit_issue(self, key: str, fields: dict | None = None,
+                   update: dict | None = None) -> None:
+        """One edit: `fields` set values, `update` holds operations such as
+        adding or removing one label."""
+        body: dict = {}
+        if fields:
+            body["fields"] = fields
+        if update:
+            body["update"] = update
+        self._payload("PUT", f"/rest/api/3/issue/{_quote(key)}", body)
 
-        A refused transition raises `TrackerRequestInvalid` whatever the reason —
-        a lost race, a validator, a misconfigured id — so the caller re-reads the
-        issue to learn what happened.
-        """
-        self._json("POST", f"/rest/api/3/issue/{issue_id}/transitions",
-                   {"transition": {"id": transition_id}})
+    def apply_transition(self, key: str, transition_id: str,
+                         comment: dict | None = None) -> None:
+        """Apply one transition, with `comment` (a document) in the same request
+        when given. Success says only that Jira accepted the request; a refused
+        transition raises `TrackerRequestInvalid` whatever the reason, so the
+        caller reads the issue back to learn what happened."""
+        body: dict = {"transition": {"id": transition_id}}
+        if comment is not None:
+            body["update"] = {"comment": [{"add": {"body": comment}}]}
+        self._payload("POST", f"/rest/api/3/issue/{_quote(key)}/transitions", body)
 
-    def assign(self, issue_id: str, account_id: str | None) -> None:
-        """Assign the issue to an account. Overwrites whatever assignee it had.
+    def add_comment(self, key: str, document: dict) -> None:
+        """Add a comment, given as a Jira document (ADF), in which text needs no
+        escaping."""
+        self._payload("POST", f"/rest/api/3/issue/{_quote(key)}/comment",
+                      {"body": document})
 
-        `None` unassigns it, which is what Jira documents `{"accountId": null}` to
-        mean. An empty string is not an account id and is answered with 400, so
-        callers wanting nobody to hold the ticket pass `None` rather than `""`.
+    def add_link(self, type_name: str, inward_key: str, outward_key: str) -> None:
+        """Link two issues. For `Blocks`, the outward issue blocks the inward
+        one."""
+        self._payload("POST", "/rest/api/3/issueLink", {
+            "type": {"name": type_name},
+            "inwardIssue": {"key": inward_key},
+            "outwardIssue": {"key": outward_key}})
 
-        A project configured to forbid unassigned issues refuses the unassignment
-        with 400 as well, which surfaces as `TrackerRequestInvalid`. That is a
-        refusal a caller reports, not a bug — and no fake can produce it, so it is
-        the one behaviour here that only a live project confirms.
-        """
-        self._json("PUT", f"/rest/api/3/issue/{issue_id}/assignee",
-                   {"accountId": account_id})
-
-    def description(self, issue_id: str) -> str:
-        """The issue's description as text, or `""`.
-
-        From the **v2** endpoint, which returns the description as a wiki-markup
-        string. The v3 endpoint returns a rich-text document tree that would need
-        converting, and a converter that silently drops parts of a description is
-        worse than markup a person can read.
-        """
-        path = f"/rest/api/2/issue/{issue_id}?fields=description"
-        value = _mapping(self._json("GET", path).get("fields"), path).get("description")
-        return value if isinstance(value, str) else ""
-
-    def add_comment(self, issue_id: str, document: dict) -> None:
-        """Add a comment, given as a Jira document. The v3 document, not v2's wiki
-        markup, in which square brackets are link syntax and text would not read
-        back as written."""
-        self._json("POST", f"/rest/api/3/issue/{issue_id}/comment", {"body": document})
-
-    def recent_comments(self, issue_id: str) -> list[tuple[str, str]]:
-        """The newest page of comments, newest first, as `(author account id, text)`.
-        The text is the document's text nodes joined, a line per block."""
-        path = f"/rest/api/3/issue/{issue_id}/comment?orderBy=-created&maxResults=100"
-        payload = self._json("GET", path)
-        out = []
-        for raw in _entries(payload.get("comments"), path):
-            author = raw.get("author") if isinstance(raw.get("author"), dict) else {}
-            out.append((str(author.get("accountId", "")), _document_text(raw.get("body"))))
-        return out
+    def delete_link(self, link_id: str) -> None:
+        self._payload("DELETE", f"/rest/api/3/issueLink/{_quote(link_id)}")
 
 
-def _document_text(node) -> str:
-    """The text of a Jira document: text nodes joined, one line per top-level block.
-    Anything not in a document's shape reads as no text."""
-    def children(value) -> list:
-        content = value.get("content")
-        return content if isinstance(content, list) else []
-
-    def walk(value) -> str:
-        if not isinstance(value, dict):
-            return ""
-        if value.get("type") == "text":
-            return str(value.get("text", ""))
-        return "".join(walk(child) for child in children(value))
-    if not isinstance(node, dict):
-        return ""
-    return "\n".join(walk(block) for block in children(node))
+def _quote(segment: str) -> str:
+    """A path segment taken from data, quoted so a `/` in it cannot address a
+    different resource."""
+    return urllib.parse.quote(str(segment), safe="")
 
 
 def _shape_error(path: str) -> "TrackerError":
@@ -421,7 +463,7 @@ def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerEr
     if status == 401:
         return TrackerAuthError(
             f"the tracker rejected the credentials{where}. Check the values of the "
-            f"variables named in work.tracker.credentials. {detail}".strip())
+            f"variables named in work.jira.credentials. {detail}".strip())
     if status == 403:
         return TrackerPermissionError(
             f"the account is not permitted to see this{where}. {detail}".strip())

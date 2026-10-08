@@ -1,14 +1,14 @@
 """The Jira client: its single seam, and what every operation puts through it.
 
-`_request` is the only function that touches `urllib.request`. That is a design
-decision rather than an implementation detail, because it is the one function a
-test replaces, and four of this item's acceptance criteria depend on replacing it.
+`_request` is the only function that touches `urllib.request`. It is the one
+function a test replaces, so every operation is tested here through a recorded
+stub: its method, path (with a key that needs quoting), query and body.
 
 The timeout test is the one to keep. `urllib.request.urlopen` falls back to the
 global socket default when no timeout is given, and that default is unset, so a
 forgotten timeout is an indefinite hang rather than a slow call. The test walks the
-operations rather than naming them individually, so a sixth operation added without
-a timeout fails it.
+operations rather than naming them individually, so an operation added without a
+timeout fails it.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from __future__ import annotations
 import dataclasses
 import io
 import json
-import pathlib
 import socket
 import time
 import urllib.error
@@ -24,31 +23,25 @@ import urllib.error
 import pytest
 
 from tcw.work.jira import client as jira
-from tcw.work.jira.client import TrackerError
+from tcw.work.jira.client import TrackerError, Transition
 
 
 @dataclasses.dataclass(frozen=True)
 class _Config:
     """The attributes the client reads from its configuration, and no more:
     it reads them only by name, so any object carrying them will do."""
-    provider: str
-    base_url: str
-    candidate_query: str
+    site: str
     email_env: str
     token_env: str
-    start_transition: str
-    timeout_seconds: int = 15
+    timeout: float = 15
 
 
-CONFIG = _Config(
-    provider="jira-cloud",
-    base_url="https://example.atlassian.net",
-    candidate_query='assignee = currentUser() AND status = "To Do"',
-    email_env="TCW_PROBE_EMAIL",
-    token_env="TCW_PROBE_TOKEN",
-    start_transition="Start Progress",
-    timeout_seconds=15,
-)
+CONFIG = _Config(site="https://example.atlassian.net", email_env="TCW_PROBE_EMAIL",
+                 token_env="TCW_PROBE_TOKEN", timeout=15)
+
+#: A key holding characters that must be quoted in a path.
+ODD = "A B/1"
+QODD = "A%20B%2F1"
 
 
 @pytest.fixture(autouse=True)
@@ -58,20 +51,32 @@ def _credentials(monkeypatch):
 
 
 class Recorder:
-    """Replaces `_request`; records every call and returns canned responses."""
+    """Replaces `_request`; records every call and answers from `responses`,
+    keyed by path, each a payload or a list of payloads given in turn."""
 
     def __init__(self, responses=None):
         self.calls = []
-        self.responses = responses or {}
+        self.responses = {k: (list(v) if isinstance(v, list) and v
+                              and isinstance(v[0], Answer) else v)
+                          for k, v in (responses or {}).items()}
 
     def __call__(self, method, path, body=None, *, timeout=None):
         self.calls.append({"method": method, "path": path, "body": body,
                            "timeout": timeout})
-        return self.responses.get(path, (200, {}, b"{}"))
+        answer = self.responses.get(path.split("?")[0] if path.split("?")[0]
+                                    in self.responses else path, {})
+        if isinstance(answer, list) and answer and isinstance(answer[0], Answer):
+            answer = answer.pop(0).payload
+        return 200, {}, json.dumps(answer).encode()
 
     @property
     def last(self):
         return self.calls[-1]
+
+
+@dataclasses.dataclass
+class Answer:
+    payload: object
 
 
 def _client(monkeypatch, recorder):
@@ -80,211 +85,215 @@ def _client(monkeypatch, recorder):
     return client
 
 
-# ── each operation's shape ───────────────────────────────────────────────────
+def call(rec):
+    return rec.last["method"], rec.last["path"], rec.last["body"]
 
 
-def test_myself_gets_the_current_user(monkeypatch):
-    rec = Recorder({"/rest/api/3/myself": (200, {}, json.dumps(
-        {"accountId": "abc", "displayName": "Probe",
-         "emailAddress": "probe@example.test"}).encode())})
-    who = _client(monkeypatch, rec).myself()
-    assert rec.last["method"] == "GET"
-    assert rec.last["path"] == "/rest/api/3/myself"
-    assert who["accountId"] == "abc"
+# ── reads ─────────────────────────────────────────────────────────────────────
 
 
-def test_search_posts_the_configured_query(monkeypatch):
+def test_myself(monkeypatch):
+    rec = Recorder({"/rest/api/3/myself": {"accountId": "a1"}})
+    assert _client(monkeypatch, rec).myself() == {"accountId": "a1"}
+    assert call(rec) == ("GET", "/rest/api/3/myself", None)
+
+
+def test_issue_quotes_the_key_and_names_the_fields(monkeypatch):
     rec = Recorder()
-    _client(monkeypatch, rec).search(CONFIG.candidate_query)
-    assert rec.last["method"] == "POST"
-    assert CONFIG.candidate_query == rec.last["body"]["jql"]
+    _client(monkeypatch, rec).issue(ODD, ("summary", "customfield_1"))
+    assert call(rec) == ("GET", f"/rest/api/3/issue/{QODD}?fields=summary,customfield_1",
+                         None)
 
 
-def test_search_sends_a_default_limit(monkeypatch):
+def test_issue_with_no_fields_asks_for_the_default(monkeypatch):
     rec = Recorder()
-    _client(monkeypatch, rec).search("project = X")
-    assert rec.last["body"]["maxResults"] == jira.DEFAULT_SEARCH_LIMIT
+    _client(monkeypatch, rec).issue("P-1")
+    assert rec.last["path"] == "/rest/api/3/issue/P-1"
 
 
-def test_search_uses_the_endpoint_that_still_exists(monkeypatch):
-    """`/rest/api/3/search` has been removed by Atlassian. A live call returns 400
-    naming `/rest/api/3/search/jql` as the replacement. Found by running against a
-    real site, which is why this assertion is on the path."""
+def test_search_reads_every_page(monkeypatch):
+    path = "/rest/api/3/search/jql"
+    rec = Recorder({path: [
+        Answer({"issues": [{"key": "P-1"}], "nextPageToken": "t1", "isLast": False}),
+        Answer({"issues": [{"key": "P-2"}], "nextPageToken": "t2", "isLast": False}),
+        Answer({"issues": [{"key": "P-3"}], "isLast": True})]})
+    found = _client(monkeypatch, rec).search('project = "P"', ["summary"])
+    assert [i["key"] for i in found] == ["P-1", "P-2", "P-3"]
+    bodies = [c["body"] for c in rec.calls]
+    assert [b.get("nextPageToken") for b in bodies] == [None, "t1", "t2"]
+    assert all(c["method"] == "POST" and c["path"] == path for c in rec.calls)
+    assert bodies[0] == {"jql": 'project = "P"', "fields": ["summary"], "maxResults": 100}
+
+
+def test_a_search_answer_that_does_not_say_there_is_more_ends_the_walk(monkeypatch):
+    rec = Recorder({"/rest/api/3/search/jql": {"issues": [], "nextPageToken": "t"}})
+    assert _client(monkeypatch, rec).search("x", []) == []
+    assert len(rec.calls) == 1
+
+
+def test_transitions_expand_their_screen_fields(monkeypatch):
+    rec = Recorder({f"/rest/api/3/issue/{QODD}/transitions": {"transitions": [
+        {"id": "11", "name": "Plan", "to": {"name": "Planning", "id": "3"},
+         "fields": {"comment": {"required": False}, "resolution": {"required": True}}},
+        {"id": "12", "name": "Go", "to": {"name": "Done", "id": "4"}}]}})
+    found = _client(monkeypatch, rec).transitions(ODD)
+    assert rec.last["path"] == (f"/rest/api/3/issue/{QODD}/transitions"
+                                "?expand=transitions.fields")
+    assert found == [Transition("11", "Plan", "Planning", "3",
+                                ("comment", "resolution"), ("resolution",)),
+                     Transition("12", "Go", "Done", "4")]
+
+
+def test_comments_page_newest_first_up_to_the_limit(monkeypatch):
+    def page(start, count):
+        return {"startAt": start, "total": 150, "comments": [
+            {"author": {"accountId": f"a{n}", "displayName": f"N{n}"},
+             "created": f"2026-10-0{1 + n % 9}T10:00:00.000+0000",
+             "body": {"type": "doc", "content": []}}
+            for n in range(start, start + count)]}
+    base = f"/rest/api/3/issue/{QODD}/comment"
     rec = Recorder()
-    _client(monkeypatch, rec).search("project = X")
-    assert rec.last["path"] == "/rest/api/3/search/jql"
-
-
-def test_search_reports_truncation_rather_than_hiding_it(monkeypatch):
-    """Silently returning a short list would make a user believe they have no
-    other assigned tickets. The endpoint reports `isLast`, not a count."""
-    payload = {"issues": [{"key": f"X-{n}"} for n in range(3)],
-               "isLast": False, "nextPageToken": "abc"}
-
-    def respond(method, path, body=None, *, timeout=None):
-        return (200, {}, json.dumps(payload).encode())
-
-    client = jira.JiraClient(CONFIG)
-    monkeypatch.setattr(client, "_request", respond)
-    result = client.search("project = X", limit=3)
-    assert len(result.issues) == 3
-    assert result.truncated is True
-
-
-def test_search_is_not_truncated_when_everything_fits(monkeypatch):
-    payload = {"issues": [{"key": "X-1"}], "isLast": True}
-
-    def respond(method, path, body=None, *, timeout=None):
-        return (200, {}, json.dumps(payload).encode())
-
-    client = jira.JiraClient(CONFIG)
-    monkeypatch.setattr(client, "_request", respond)
-    assert client.search("project = X", limit=50).truncated is False
-
-
-def test_a_response_that_does_not_say_there_is_more_is_not_truncated(monkeypatch):
-    """`isLast` absent must not read as truncated. Claiming there is more when the
-    response never said so would send a user hunting for tickets that do not exist."""
-    def respond(method, path, body=None, *, timeout=None):
-        return (200, {}, json.dumps({"issues": [{"key": "X-1"}]}).encode())
-
-    client = jira.JiraClient(CONFIG)
-    monkeypatch.setattr(client, "_request", respond)
-    assert client.search("project = X").truncated is False
-
-
-def test_issue_gets_one_ticket_by_key(monkeypatch):
-    rec = Recorder()
-    _client(monkeypatch, rec).issue("TCWCLAIM-1")
-    assert rec.last["method"] == "GET"
-    assert "TCWCLAIM-1" in rec.last["path"]
-
-
-def test_transitions_reads_what_the_issue_offers_now(monkeypatch):
-    rec = Recorder()
+    answers = [page(0, 100), page(100, 50)]
     rec.responses = {}
-    payload = {"transitions": [
-        {"id": "21", "name": "Start Progress", "to": {"name": "In Progress", "id": "3"}}]}
 
-    def respond(method, path, body=None, *, timeout=None):
+    def answer(method, path, body=None, *, timeout=None):
         rec.calls.append({"method": method, "path": path, "body": body,
                           "timeout": timeout})
-        return (200, {}, json.dumps(payload).encode())
+        return 200, {}, json.dumps(answers.pop(0)).encode()
 
     client = jira.JiraClient(CONFIG)
-    monkeypatch.setattr(client, "_request", respond)
-    offered = client.transitions("TCWCLAIM-1")
-    assert rec.last["method"] == "GET"
-    assert rec.last["path"].endswith("/transitions")
-    assert offered[0].name == "Start Progress"
-    assert offered[0].to_status == "In Progress"
+    monkeypatch.setattr(client, "_request", answer)
+    found = client.comments(ODD, 150)
+    assert len(found) == 150
+    assert [c["path"] for c in rec.calls] == [
+        f"{base}?orderBy=-created&startAt=0&maxResults=100",
+        f"{base}?orderBy=-created&startAt=100&maxResults=50"]
+    assert found[0].author_id == "a0" and found[0].author_name == "N0"
 
 
-def test_issue_quotes_the_key_it_puts_in_the_path(monkeypatch):
-    """The key is whatever the user typed. A slash in it must not reach a
-    different resource."""
-    rec = Recorder()
-    _client(monkeypatch, rec).issue("a/b")
-    assert rec.last["path"].startswith("/rest/api/3/issue/a%2Fb?")
+def test_comments_stop_at_the_limit(monkeypatch):
+    rec = Recorder({"/rest/api/3/issue/P-1/comment": {"total": 500, "comments": [
+        {"author": None, "created": "x", "body": None}] * 10}})
+    found = _client(monkeypatch, rec).comments("P-1", 10)
+    assert len(found) == 10 and len(rec.calls) == 1
+    assert "maxResults=10" in rec.last["path"]
+    assert found[0].author_id is None
 
 
-def test_apply_transition_posts_the_transition_id_by_issue_id(monkeypatch):
-    rec = Recorder()
-    assert _client(monkeypatch, rec).apply_transition("10052", "21") is None
-    assert rec.last["method"] == "POST"
-    assert rec.last["path"] == "/rest/api/3/issue/10052/transitions"
-    assert rec.last["body"] == {"transition": {"id": "21"}}
-
-
-def test_assign_puts_the_account_id_by_issue_id(monkeypatch):
-    rec = Recorder()
-    assert _client(monkeypatch, rec).assign("10052", "acct-a") is None
-    assert rec.last["method"] == "PUT"
-    assert rec.last["path"] == "/rest/api/3/issue/10052/assignee"
-    assert rec.last["body"] == {"accountId": "acct-a"}
-
-
-def test_assign_unassigns_with_a_null_account_id(monkeypatch):
-    """`None` is Jira's documented way to unassign, and the only one that works.
-
-    An empty string is not an account id and the real endpoint answers it with 400;
-    the fake tracker used to accept it, which is how a release could have gone green
-    here and failed in production.
-    """
-    rec = Recorder()
-    assert _client(monkeypatch, rec).assign("10052", None) is None
-    assert rec.last["body"] == {"accountId": None}
-
-
-def test_a_write_answered_with_no_content_succeeds(monkeypatch):
-    """Jira answers both writes with 204 and an empty body."""
-    rec = Recorder({"/rest/api/3/issue/10052/transitions": (204, {}, b""),
-                    "/rest/api/3/issue/10052/assignee": (204, {}, b"")})
+def test_user_and_assignable_users(monkeypatch):
+    rec = Recorder({"/rest/api/3/user/assignable/search": [{"accountId": "a"}]})
     client = _client(monkeypatch, rec)
-    client.apply_transition("10052", "21")
-    client.assign("10052", "acct-a")
+    client.user("id:1/2")
+    assert rec.last["path"] == "/rest/api/3/user?accountId=id%3A1%2F2"
+    assert client.assignable_users("P", "ann b", 20) == [{"accountId": "a"}]
+    assert rec.last["path"] == ("/rest/api/3/user/assignable/search?project=P"
+                                "&query=ann%20b&maxResults=20")
 
 
-def test_description_reads_the_plain_text_form(monkeypatch):
-    """The v2 endpoint returns the description as a wiki-markup string; v3 returns
-    a document tree this module would otherwise have to convert."""
-    path = "/rest/api/2/issue/10052?fields=description"
-    rec = Recorder({path: (200, {}, json.dumps(
-        {"fields": {"description": "h2. Problem\n\nIt is broken."}}).encode())})
-    assert _client(monkeypatch, rec).description("10052") == "h2. Problem\n\nIt is broken."
-    assert (rec.last["method"], rec.last["path"]) == ("GET", path)
+def test_project_reads(monkeypatch):
+    rec = Recorder({f"/rest/api/3/project/{QODD}": {"id": "1", "issueTypes": []},
+                    f"/rest/api/3/project/{QODD}/statuses": [{"statuses": []}]})
+    client = _client(monkeypatch, rec)
+    assert client.project(ODD)["id"] == "1"
+    assert client.project_statuses(ODD) == [{"statuses": []}]
+    assert rec.last == {"method": "GET", "path": f"/rest/api/3/project/{QODD}/statuses",
+                        "body": None, "timeout": 15}
 
 
-@pytest.mark.parametrize("value", [None, {"type": "doc"}])
-def test_a_missing_or_unexpected_description_is_empty(monkeypatch, value):
-    path = "/rest/api/2/issue/10052?fields=description"
-    rec = Recorder({path: (200, {}, json.dumps({"fields": {"description": value}}).encode())})
-    assert _client(monkeypatch, rec).description("10052") == ""
+def test_create_metadata_pages(monkeypatch):
+    base = f"/rest/api/3/issue/createmeta/{QODD}/issuetypes/10001"
+    answers = [{"total": 3, "fields": [{"fieldId": "a"}, {"fieldId": "b"}]},
+               {"total": 3, "fields": [{"fieldId": "c"}]}]
+    paths = []
+
+    def answer(method, path, body=None, *, timeout=None):
+        paths.append(path)
+        return 200, {}, json.dumps(answers.pop(0)).encode()
+
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request", answer)
+    assert [f["fieldId"] for f in client.create_metadata(ODD, "10001")] == ["a", "b", "c"]
+    assert paths == [f"{base}?startAt=0&maxResults=100", f"{base}?startAt=2&maxResults=100"]
+
+
+def test_edit_metadata_link_types_and_workflows(monkeypatch):
+    rec = Recorder({f"/rest/api/3/issue/{QODD}/editmeta": {"fields": {"summary": {}}},
+                    "/rest/api/3/issueLinkType": {"issueLinkTypes": [{"name": "Blocks"}]},
+                    "/rest/api/3/workflows": {"workflows": [{"id": "w"}]}})
+    client = _client(monkeypatch, rec)
+    assert client.edit_metadata(ODD) == {"summary": {}}
+    assert client.link_types() == [{"name": "Blocks"}]
+    assert client.workflows("10000", "10001") == [{"id": "w"}]
+    assert call(rec) == ("POST", "/rest/api/3/workflows", {"projectAndIssueTypes": [
+        {"projectId": "10000", "issueTypeId": "10001"}]})
+
+
+# ── writes ────────────────────────────────────────────────────────────────────
+
+
+def test_create_issue_sends_the_whole_fields_mapping(monkeypatch):
+    rec = Recorder({"/rest/api/3/issue": {"id": "1", "key": "P-1"}})
+    fields = {"project": {"key": "P"}, "summary": "s", "labels": ["a"]}
+    assert _client(monkeypatch, rec).create_issue(fields) == {"id": "1", "key": "P-1"}
+    assert call(rec) == ("POST", "/rest/api/3/issue", {"fields": fields})
+
+
+def test_edit_issue_sends_fields_and_update(monkeypatch):
+    rec = Recorder()
+    _client(monkeypatch, rec).edit_issue(ODD, {"summary": "t"},
+                                         {"labels": [{"add": "x"}]})
+    assert call(rec) == ("PUT", f"/rest/api/3/issue/{QODD}",
+                         {"fields": {"summary": "t"}, "update": {"labels": [{"add": "x"}]}})
+
+
+def test_apply_transition_with_and_without_a_comment(monkeypatch):
+    rec = Recorder()
+    client = _client(monkeypatch, rec)
+    client.apply_transition(ODD, "21")
+    assert call(rec) == ("POST", f"/rest/api/3/issue/{QODD}/transitions",
+                         {"transition": {"id": "21"}})
+    doc = {"type": "doc", "version": 1, "content": []}
+    client.apply_transition(ODD, "21", doc)
+    assert rec.last["body"] == {"transition": {"id": "21"}, "update": {
+        "comment": [{"add": {"body": doc}}]}}
 
 
 def test_add_comment_posts_a_document(monkeypatch):
     rec = Recorder()
     doc = {"type": "doc", "version": 1, "content": []}
-    _client(monkeypatch, rec).add_comment("10052", doc)
-    assert (rec.last["method"], rec.last["path"], rec.last["body"]) == (
-        "POST", "/rest/api/3/issue/10052/comment", {"body": doc})
+    _client(monkeypatch, rec).add_comment(ODD, doc)
+    assert call(rec) == ("POST", f"/rest/api/3/issue/{QODD}/comment", {"body": doc})
 
 
-def test_recent_comments_are_newest_first_with_their_text(monkeypatch):
-    path = "/rest/api/3/issue/10052/comment?orderBy=-created&maxResults=100"
-    body = {"type": "doc", "version": 1, "content": [
-        {"type": "paragraph", "content": [{"type": "text", "text": "TCW: "},
-                                          {"type": "text", "text": "done."}]},
-        {"type": "paragraph", "content": [{"type": "text", "text": "tcw-event: x-1"}]}]}
-    rec = Recorder({path: (200, {}, json.dumps({"comments": [
-        {"author": {"accountId": "acct-a"}, "body": body},
-        {"author": None, "body": "not a document"},
-    ]}).encode())})
-    assert _client(monkeypatch, rec).recent_comments("10052") == [
-        ("acct-a", "TCW: done.\ntcw-event: x-1"), ("", "")]
-    assert (rec.last["method"], rec.last["path"]) == ("GET", path)
+def test_links(monkeypatch):
+    rec = Recorder()
+    client = _client(monkeypatch, rec)
+    client.add_link("Blocks", "P-2", "P-1")
+    assert call(rec) == ("POST", "/rest/api/3/issueLink", {
+        "type": {"name": "Blocks"}, "inwardIssue": {"key": "P-2"},
+        "outwardIssue": {"key": "P-1"}})
+    client.delete_link("10/1")
+    assert call(rec) == ("DELETE", "/rest/api/3/issueLink/10%2F1", None)
 
 
-# ── the timeout, on every operation ──────────────────────────────────────────
+def test_a_write_answered_with_no_content_succeeds(monkeypatch):
+    client = jira.JiraClient(CONFIG)
+    monkeypatch.setattr(client, "_request",
+                        lambda *a, **k: (204, {}, b""))
+    client.edit_issue("P-1", {"summary": "s"})
 
 
-OPERATIONS = [
-    ("myself", ()),
-    ("search", ("project = X",)),
-    ("issue", ("X-1",)),
-    ("transitions", ("X-1",)),
-    ("apply_transition", ("10052", "21")),
-    ("assign", ("10052", "acct-a")),
-    ("description", ("10052",)),
-    ("add_comment", ("10052", {"type": "doc", "version": 1, "content": []})),
-    ("recent_comments", ("10052",)),
-    ("create_issue", ()),
-]
+# ── every operation passes a timeout ─────────────────────────────────────────
 
-#: Operations taking keyword-only arguments. `create_issue` does, because a
-#: positional call would let a summary and a description swap places silently.
-KWARGS = {"create_issue": dict(project="X", summary="s", description={},
-                               issue_type="Task")}
+OPERATIONS = {
+    "myself": (), "issue": ("P-1",), "search": ("x", ()), "transitions": ("P-1",),
+    "comments": ("P-1", 5), "user": ("a",), "assignable_users": ("P", "q", 5),
+    "project": ("P",), "project_statuses": ("P",), "create_metadata": ("P", "1"),
+    "edit_metadata": ("P-1",), "link_types": (), "workflows": ("1", "2"),
+    "create_issue": ({},), "edit_issue": ("P-1", {"summary": "s"}),
+    "apply_transition": ("P-1", "1"), "add_comment": ("P-1", {}),
+    "add_link": ("Blocks", "P-1", "P-2"), "delete_link": ("1",),
+}
 
 
 def test_every_operation_is_accounted_for_here():
@@ -292,16 +301,17 @@ def test_every_operation_is_accounted_for_here():
     silently stop covering it. This is what makes that impossible."""
     public = {name for name in vars(jira.JiraClient)
               if not name.startswith("_") and callable(getattr(jira.JiraClient, name))}
-    assert public == {name for name, _ in OPERATIONS}, public
+    assert public == set(OPERATIONS), public ^ set(OPERATIONS)
 
 
-@pytest.mark.parametrize("name,args", OPERATIONS)
-def test_every_operation_passes_an_explicit_timeout(monkeypatch, name, args):
-    rec = Recorder()
+@pytest.mark.parametrize("name", sorted(OPERATIONS))
+def test_every_operation_passes_an_explicit_timeout(monkeypatch, name):
+    rec = Recorder({"/rest/api/3/user/assignable/search": [],
+                    "/rest/api/3/project/P/statuses": []})
     client = jira.JiraClient(CONFIG)
     monkeypatch.setattr(client, "_request", rec)
-    getattr(client, name)(*args, **KWARGS.get(name, {}))
-    assert rec.last["timeout"] == CONFIG.timeout_seconds, (
+    getattr(client, name)(*OPERATIONS[name])
+    assert rec.calls and all(c["timeout"] == CONFIG.timeout for c in rec.calls), (
         f"{name} did not pass a timeout; urlopen would block forever")
 
 
@@ -410,7 +420,7 @@ def test_an_auth_failure_names_the_variable_to_fix(monkeypatch):
     _raise_http(monkeypatch, 401)
     with pytest.raises(jira.TrackerAuthError) as excinfo:
         jira.JiraClient(CONFIG).myself()
-    assert "work.tracker.credentials" in str(excinfo.value)
+    assert "work.jira.credentials" in str(excinfo.value)
 
 
 def test_an_unavailable_tracker_names_the_timeout(monkeypatch):
@@ -477,7 +487,7 @@ def test_a_server_that_never_answers_times_out_rather_than_hanging():
     port = listener.getsockname()[1]
     try:
         config = dataclasses.replace(
-            CONFIG, base_url=f"http://127.0.0.1:{port}", timeout_seconds=1)
+            CONFIG, site=f"http://127.0.0.1:{port}", timeout=1)
         started = time.monotonic()
         with pytest.raises(jira.TrackerUnavailable):
             jira.JiraClient(config).myself()
@@ -509,40 +519,38 @@ def test_a_server_that_drops_the_connection_is_unavailable_not_a_crash():
     thread.start()
     try:
         config = dataclasses.replace(
-            CONFIG, base_url=f"http://127.0.0.1:{port}", timeout_seconds=5)
+            CONFIG, site=f"http://127.0.0.1:{port}", timeout=5)
         with pytest.raises(jira.TrackerUnavailable, match="connection"):
-            jira.JiraClient(config).apply_transition("10052", "21")
+            jira.JiraClient(config).apply_transition("TCW-1", "21")
     finally:
         thread.join(timeout=5)
         listener.close()
 
 
-# The two tests below came from tests/test_tracker_hardening.py: they test only
-# the client's handling of a response, which outlives the 2.x tracker.
-KEY, TICKET_ID = "SYNC-1", "20001"
+# ── each read refuses a response of the wrong shape ──────────────────────────
 
-
-# ── criterion 2: each client operation refuses a response of the wrong shape ─
 
 def respond(path: str, payload) -> Recorder:
-    return Recorder({path: (200, {}, json.dumps(payload).encode())})
+    return Recorder({path: payload})
 
 
-ISSUE = f"/rest/api/3/issue/{KEY}?fields=summary,status,assignee,description"
-SEARCH = "/rest/api/3/search/jql"
-TRANSITIONS = f"/rest/api/3/issue/{KEY}/transitions"
-COMMENTS = f"/rest/api/3/issue/{TICKET_ID}/comment?orderBy=-created&maxResults=100"
-DESCRIPTION = f"/rest/api/2/issue/{TICKET_ID}?fields=description"
-
+KEY = "SYNC-1"
 CALLS = {
     "myself": ("/rest/api/3/myself", lambda c: c.myself()),
-    "issue": (ISSUE, lambda c: c.issue(KEY)),
-    "search": (SEARCH, lambda c: c.search("x")),
-    "transitions": (TRANSITIONS, lambda c: c.transitions(KEY)),
-    "recent_comments": (COMMENTS, lambda c: c.recent_comments(TICKET_ID)),
-    "description": (DESCRIPTION, lambda c: c.description(TICKET_ID)),
-    "create_issue": ("/rest/api/3/issue", lambda c: c.create_issue(
-        project="P", summary="s", description={}, issue_type="Task")),
+    "issue": (f"/rest/api/3/issue/{KEY}", lambda c: c.issue(KEY)),
+    "search": ("/rest/api/3/search/jql", lambda c: c.search("x", ())),
+    "transitions": (f"/rest/api/3/issue/{KEY}/transitions", lambda c: c.transitions(KEY)),
+    "comments": (f"/rest/api/3/issue/{KEY}/comment", lambda c: c.comments(KEY, 5)),
+    "project": ("/rest/api/3/project/P", lambda c: c.project("P")),
+    "project_statuses": ("/rest/api/3/project/P/statuses",
+                         lambda c: c.project_statuses("P")),
+    "create_metadata": ("/rest/api/3/issue/createmeta/P/issuetypes/1",
+                        lambda c: c.create_metadata("P", "1")),
+    "edit_metadata": (f"/rest/api/3/issue/{KEY}/editmeta", lambda c: c.edit_metadata(KEY)),
+    "link_types": ("/rest/api/3/issueLinkType", lambda c: c.link_types()),
+    "workflows": ("/rest/api/3/workflows", lambda c: c.workflows("1", "2")),
+    "assignable_users": ("/rest/api/3/user/assignable/search",
+                         lambda c: c.assignable_users("P", "q", 5)),
 }
 
 BAD = [
@@ -552,41 +560,50 @@ BAD = [
     ("issue", {"fields": {"status": "Done"}}),
     ("issue", {"fields": {"status": {"statusCategory": 3}}}),
     ("issue", {"fields": {"assignee": ["a"]}}),
-    ("search", {"issues": {"a": 1}}),
-    ("search", {"issues": ["TCW-1"]}),
-    ("search", {"issues": [{"fields": {"status": 1}}]}),
-    ("transitions", {"transitions": "all"}),
-    ("transitions", {"transitions": [7]}),
-    ("transitions", {"transitions": [{"id": "1", "to": "Done"}]}),
-    ("recent_comments", {"comments": {"x": 1}}),
-    ("recent_comments", {"comments": ["hi"]}),
-    ("description", {"fields": "text"}),
-    # Values read from an issue, not only the levels holding them.
     ("issue", {"fields": {"status": {"name": 5}}}),
     ("issue", {"key": 1, "fields": {}}),
     ("issue", {"fields": {"summary": ["s"]}}),
     ("issue", {"fields": {"assignee": {"displayName": {"x": 1}}}}),
+    ("search", {"issues": {"a": 1}}),
+    ("search", {"issues": ["TCW-1"]}),
+    ("search", {"issues": [{"fields": {"status": 1}}]}),
     ("search", {"issues": [{"fields": {"status": {"statusCategory": {"key": 2}}}}]}),
+    ("transitions", {"transitions": "all"}),
+    ("transitions", {"transitions": [7]}),
+    ("transitions", {"transitions": [{"id": "1", "to": "Done"}]}),
+    ("transitions", {"transitions": [{"id": "1", "fields": ["comment"]}]}),
+    ("comments", {"comments": {"x": 1}}),
+    ("comments", {"comments": ["hi"]}),
+    ("comments", {"comments": [{"author": {"accountId": 5}}]}),
+    ("project", {"issueTypes": "Task"}),
+    ("project_statuses", {"not": "a list"}),
+    ("project_statuses", [{"statuses": "Done"}]),
+    ("create_metadata", {"fields": "x"}),
+    ("edit_metadata", {"fields": []}),
+    ("link_types", {"issueLinkTypes": "Blocks"}),
+    ("workflows", {"workflows": {"a": 1}}),
+    ("assignable_users", {"accountId": "a"}),
     # `create_issue` is deliberately absent: its answer is returned as it came,
-    # so `create.py` can warn that the ticket may exist
-    # (`tests/test_tracker_message_tidy.py`).
+    # since the request may have made the ticket whatever the answer looks like.
 ]
 
 
 @pytest.mark.parametrize("operation, payload", BAD,
                          ids=[f"{op}-{i}" for i, (op, _) in enumerate(BAD)])
 def test_a_response_of_the_wrong_shape_is_a_tracker_error(monkeypatch, operation, payload):
-    path, call = CALLS[operation]
+    path, run = CALLS[operation]
     client = _client(monkeypatch, respond(path, payload))
     with pytest.raises(TrackerError, match="unexpected shape"):
-        call(client)
+        run(client)
 
 
 def test_nulls_the_code_already_treats_as_absent_still_read(monkeypatch):
-    payload = {"id": TICKET_ID, "key": KEY,
+    payload = {"id": "1", "key": KEY,
                "fields": {"summary": "s", "status": {"name": "To Do", "statusCategory": None},
                           "assignee": None, "description": None}}
-    assert _client(monkeypatch, respond(ISSUE, payload)).issue(KEY)["key"] == KEY
+    assert _client(monkeypatch, respond(f"/rest/api/3/issue/{KEY}", payload)).issue(
+        KEY)["key"] == KEY
     comments = {"comments": [{"author": None, "body": {"content": "not a list"}}]}
-    assert _client(monkeypatch, respond(COMMENTS, comments)).recent_comments(TICKET_ID) == [
-        ("", "")]
+    found = _client(monkeypatch, respond(f"/rest/api/3/issue/{KEY}/comment",
+                                         comments)).comments(KEY, 5)
+    assert (found[0].author_id, found[0].body) == (None, {"content": "not a list"})
