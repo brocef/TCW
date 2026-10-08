@@ -92,7 +92,9 @@ Work paused after Task 9 on 2026-10-02 and resumed on 2026-10-08.
 - `tcw validate` on this repository, with the released 2.8.1 (the branch
   refuses this repository's 2.x configuration until the epic migrates it):
   `validate OK`.
-- pyflakes: no unused import or name in `tcw/` (Task 11).
+- pyflakes over `tcw/`: no new warnings. The nine it prints (unused imports in
+  `tcw/serve/__init__.py` and `tcw/capabilities/cli.py`, and an f-string with
+  no placeholder) were all on `epic/tcw-3.0` before this branch.
 
 ### Mutation checks
 
