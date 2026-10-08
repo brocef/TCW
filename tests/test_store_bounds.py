@@ -15,8 +15,7 @@ import subprocess
 
 import pytest
 
-from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore,
-                          write_sentinel)
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
 
 
 def _repo(tmp_path, name="repo"):
@@ -40,11 +39,10 @@ def _repo(tmp_path, name="repo"):
 
 # ── the helper itself ────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore, FsWorkStore])
+@pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore])
 def test_within_store_exists_on_every_store_class(tmp_path, store_cls):
-    """`FsWorkStore.__init__` does not chain to `FsTreeStore.__init__`, so a
-    `_resolved_root` assigned in the base initializer would be missing there.
-    One case per class is what proves the `cached_property` resolves for all."""
+    """One case per class is what proves the `cached_property` resolves for
+    all."""
     root = _repo(tmp_path)
     store = store_cls.open(root)
     assert store._within_store(store.root / "ordinary-child") is True
@@ -262,31 +260,6 @@ def test_capabilities_validation_resources_refuses_an_escaping_ref(tmp_path):
 # an ordinary in-store item folder matches the glob by name, and its parent is
 # then accepted as an item folder.
 
-def test_work_item_with_a_symlinked_state_is_not_discovered(tmp_path):
-    root = _repo(tmp_path)
-    outside = root / "outside"
-    outside.mkdir()
-    (outside / "state.yaml").write_text(
-        "slug: sneaky\ntitle: OUTSIDE\nstatus: backlog\ntype: task\n")
-    d = root / "docs" / "work" / "backlog" / "sneaky"
-    d.mkdir(parents=True)
-    (d / "state.yaml").symlink_to("../../../../outside/state.yaml")
-    store = FsWorkStore.open(root)
-    assert [i.slug for i in store.query()] == []
-
-
-def test_work_item_folder_that_is_itself_a_symlink_stays_undiscovered(tmp_path):
-    """The pre-existing `rglob` property, pinned so a future switch to
-    `os.walk(followlinks=True)` fails loudly instead of silently reopening it."""
-    root = _repo(tmp_path)
-    outside = root / "outside" / "sneaky"
-    outside.mkdir(parents=True)
-    (outside / "state.yaml").write_text(
-        "slug: sneaky\ntitle: OUTSIDE\nstatus: backlog\ntype: task\n")
-    (root / "docs" / "work" / "backlog" / "sneaky").symlink_to("../../../outside/sneaky")
-    store = FsWorkStore.open(root)
-    assert [i.slug for i in store.query()] == []
-
 
 # ── work store: resources inside a legitimately discovered item ──────────────
 #
@@ -306,30 +279,3 @@ def _item_with_symlinked_artifact(root):
     return d
 
 
-def test_work_read_artifact_does_not_follow_a_symlink_out(tmp_path):
-    root = _repo(tmp_path)
-    _item_with_symlinked_artifact(root)
-    store = FsWorkStore.open(root)
-    got = store.read_artifact("2026-08-20-victim", "spec")
-    assert got is None or "OUTSIDE SPEC" not in got.content
-
-
-def test_work_validation_resources_returns_nothing_outside_the_store(tmp_path):
-    root = _repo(tmp_path)
-    _item_with_symlinked_artifact(root)
-    store = FsWorkStore.open(root)
-    for p in store._validation_resources("2026-08-20-victim"):
-        assert store._within_store(p), p
-
-
-def test_work_item_with_ordinary_artifacts_still_reads(tmp_path):
-    """The control."""
-    root = _repo(tmp_path)
-    d = root / "docs" / "work" / "backlog" / "2026-08-20-ordinary"
-    d.mkdir(parents=True)
-    (d / "state.yaml").write_text(
-        "slug: 2026-08-20-ordinary\ntitle: Ordinary\nstatus: backlog\ntype: task\n")
-    (d / "spec.md").write_text("REAL SPEC")
-    store = FsWorkStore.open(root)
-    got = store.read_artifact("2026-08-20-ordinary", "spec")
-    assert got is not None and "REAL SPEC" in got.content

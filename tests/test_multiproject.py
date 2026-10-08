@@ -109,80 +109,6 @@ def test_a_routing_node_is_a_legal_graph(tmp_path):
         FsProjectRegistry.open(root).require_valid()
 
 
-def test_an_epic_two_levels_up_resolves_through_a_routing_node(tmp_path):
-    from tcw.store.fs import FsWorkStore
-
-    a, b, c = _routing_graph(tmp_path)
-    top = FsWorkStore.open(a)
-    epic = top.create("Cross-package epic", created="2026-01-01")
-    top.set_field(epic.slug, "type", "epic")
-
-    leaf = FsWorkStore.open(c)
-    slice_ = leaf.create("A slice", created="2026-01-01")
-    leaf.set_field(slice_.slug, "initiative", epic.slug)
-
-    found = FsWorkStore.open(c).initiative_epic(
-        FsWorkStore.open(c).get(slice_.slug))
-    assert found is not None and found.slug == epic.slug
-
-
-def test_initiative_children_crosses_a_routing_node(tmp_path):
-    from tcw.store.fs import FsWorkStore
-
-    a, b, c = _routing_graph(tmp_path)
-    top = FsWorkStore.open(a)
-    epic = top.create("Cross-package epic", created="2026-01-01")
-    top.set_field(epic.slug, "type", "epic")
-    leaf = FsWorkStore.open(c)
-    slice_ = leaf.create("A slice", created="2026-01-01")
-    leaf.set_field(slice_.slug, "initiative", epic.slug)
-
-    slugs = [i.slug for i in FsWorkStore.open(a).initiative_children(epic.slug)]
-    assert slugs == [slice_.slug]
-
-
-def test_escalate_reaches_the_nearest_board_bearing_ancestor(tmp_path):
-    from tcw.store.fs import FsWorkStore
-    from tcw.work.recursion import escalate
-
-    a, b, c = _routing_graph(tmp_path)
-    escalate(c, "Something for the top")
-    inbox = FsWorkStore.open(a).root / "inbox"
-    assert [p.name for p in inbox.iterdir() if p.suffix == ".md"]
-
-
-def test_escalate_with_no_board_bearing_ancestor_says_so(tmp_path):
-    """Registered ancestry, none of it keeping a board — not the same as being
-    the root, and it used to be reported as if it were."""
-    import subprocess
-    import pytest as _pytest
-    import yaml
-    from tcw.store.fs import init, write_sentinel
-    from tcw.work.recursion import escalate
-
-    root = tmp_path / "root"
-    child = tmp_path / "root" / "child"
-    child.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root, "root-project")
-    init(["work"], child, "child-project")
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(
-        {"id": "root-project",
-         "connected-projects": {"children": {"child-project": "child"}}},
-        sort_keys=False))
-    child_doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
-    child_doc["connected-projects"] = {"parent": {"root-project": ".."}}
-    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_doc, sort_keys=False))
-
-    with _pytest.raises(ValueError) as excinfo:
-        escalate(child, "Nowhere to go")
-    message = str(excinfo.value)
-    assert "no registered ancestor keeps a work store" in message
-    assert "this is the root" not in message
-
-
 def test_nodes_reports_a_registered_parent_that_keeps_no_board(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
 
@@ -293,20 +219,6 @@ def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
     assert "(none — root)" not in out
 
 
-def test_escalate_says_the_parent_is_not_here_rather_than_that_there_is_none(
-        tmp_path, monkeypatch):
-    import pytest as _pytest
-    from tcw.work.recursion import escalate
-
-    child = _child_missing_its_parent(tmp_path)
-    monkeypatch.chdir(child)
-    with _pytest.raises(ValueError) as excinfo:
-        escalate(child, "Test")
-    message = str(excinfo.value)
-    assert "away-project" in message
-    assert "this is the root" not in message
-
-
 def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
                                                          capsys):
     import subprocess
@@ -331,25 +243,3 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     assert "(none — leaf)" not in out
 
 
-def test_delegate_to_an_absent_child_says_which_one(tmp_path, monkeypatch):
-    import subprocess
-    import yaml
-    import pytest as _pytest
-    from tcw.store.fs import init
-    from tcw.work.recursion import delegate
-
-    parent = tmp_path / "parent"
-    parent.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(parent)], check=True)
-    subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
-    subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
-    init(["work"], parent, "parent-project")
-    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
-    doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
-
-    with _pytest.raises(ValueError) as excinfo:
-        delegate(parent, "away-project", "Test")
-    message = str(excinfo.value)
-    assert "away-project" in message
-    assert "no child node" not in message

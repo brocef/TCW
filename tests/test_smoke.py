@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tcw.cli import build_parser, main
-from tcw.store.fs import COMPONENTS, WORK_STATUSES
+from tcw.store.fs import COMPONENTS
 
 
 def _git_init(path: Path) -> None:
@@ -13,16 +13,6 @@ def _git_init(path: Path) -> None:
 
 def _ignored(repo: Path, rel: str) -> bool:
     return subprocess.run(["git", "-C", str(repo), "check-ignore", "-q", "--", rel]).returncode == 0
-
-
-def test_init_scaffolds_all_components(tmp_path, monkeypatch):
-    _git_init(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    assert main(["init", "--id", "test-project"]) == 0
-    for c in COMPONENTS:
-        assert (tmp_path / "docs" / c).is_dir()
-    for s in WORK_STATUSES:
-        assert (tmp_path / "docs" / "work" / s / ".gitkeep").is_file()
 
 
 def test_init_named_subset_only(tmp_path, monkeypatch):

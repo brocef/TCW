@@ -1,30 +1,24 @@
-"""Resolving lifecycle bindings to text.
+"""Resolving prompt and procedure bindings to text (TCW-70 Design 7.2).
 
-A library, not a command: C4's `tcw work stage` and C5's `tcw work scaffold` both
-call it, and the existing transition-check path shares its condition filter. One
-implementation so the three cannot disagree about when a binding applies.
+A library, not a command: `tcw work stage prompt` and `tcw work procedure
+prompt` call it.
 
 **Nothing here writes.** It reads files, runs generators, and returns text.
-Everything that writes belongs to C5.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from tcw.store.base import (
-    BODY_ORDER, DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, STAGE_IDS, STAGE_NEXT_STEPS,
-    Binding,
-    DocEntry, LifecyclePolicy, WorkItem,
-)
+from tcw.errors import BackendError
+from tcw.store.base import DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, DocEntry
 from tcw.work.generate import GenerateError, run_generate
-from tcw.work.projection import work_item_json
-from tcw.work.templates import ARTIFACT_TEMPLATES
 
 
 class ResolveError(Exception):
@@ -33,18 +27,9 @@ class ResolveError(Exception):
 
 @dataclass(frozen=True)
 class Builtins:
-    """TCW's own shipped text, by role.
-
-    **Two maps, not one.** Stage ids and artifact names overlap — `spec` and
-    `plan` are both — so a single registry cannot hold `spec`'s prompt and
-    `spec`'s template at the same time. C6 fills `stage_prompts`; C5 fills
-    `artifact_templates`; C3 ships both empty, and an empty one resolving to
-    nothing is a legal state rather than a failure.
-    """
+    """TCW's own shipped text, by role: stage prompts and procedures. Two maps
+    because a procedure id could one day equal a stage id."""
     stage_prompts: Mapping[str, str] = field(default_factory=dict)
-    artifact_templates: Mapping[str, str] = field(default_factory=dict)
-    # A third map for the same reason as the first two: a procedure id could one
-    # day equal a stage id, and one registry could not hold both texts.
     procedures: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -52,24 +37,17 @@ class Builtins:
 def load_builtins() -> Builtins:
     """TCW's shipped text, loaded once per process.
 
-    **One loader, both halves.** Two functions returning two different
-    `Builtins` is how `spec`'s prompt and `spec`'s template end up resolved from
-    different places, so every caller asks here and every new kind of built-in
-    is added to this return value — C6 populates `stage_prompts` from
-    `tcw/work/prompts/*.md` right here, beside the artifact templates.
-
-    The stage set is the derivation `set(STAGE_IDS)`, never a literal list, so
-    adding a stage without its prompt file fails here rather than shipping a
-    stage that silently says nothing. `inbox` is in it: that stage runs before
-    an item exists, which shapes how it is *invoked* — with no work item
-    reference — but is no reason for TCW to have no instructions for it.
-    `importlib.resources`
-    rather than a path off `__file__`: the latter assumes an unpacked directory
-    and breaks under a zipimport-style install.
+    The stages are those of TCW-69's table that ship a prompt file (`review`
+    and `qa` arrive with TCW-74), never a literal list. `importlib.resources`
+    rather than a path off `__file__`: the latter assumes an unpacked
+    directory and breaks under a zipimport-style install.
     """
+    from tcw.work.model import STAGES
     root = files("tcw.work")
-    return Builtins(stage_prompts=_load_texts(root, "prompts", STAGE_IDS, "prompt for stage"),
-                    artifact_templates=ARTIFACT_TEMPLATES,
+    shipped = [s.name for s in STAGES
+               if s.prompt and (root / "prompts" / f"{s.name}.md").is_file()]
+    return Builtins(stage_prompts=_load_texts(root, "prompts", shipped,
+                                              "prompt for stage"),
                     procedures=_load_texts(root, "procedures", PROCEDURE_IDS,
                                            "text for procedure"))
 
@@ -108,16 +86,6 @@ class PlanEntry:
 class Resolution:
     text: str = ""
     plan: list[PlanEntry] = field(default_factory=list)
-
-
-def select(bindings: Sequence[Binding], item: WorkItem | None) -> list[Binding]:
-    """The bindings whose condition matches. Shared by all three roles.
-
-    C4 needs this for stage checks and the existing transition path needs the
-    same rule; one function is what stops "when does a `when:` apply" from having
-    two answers.
-    """
-    return [b for b in bindings if b.when is None or b.when.matches(item)]
 
 
 def _confined(node_root: Path, rel: str) -> Path:
@@ -159,73 +127,12 @@ def _read_file(node_root: Path, rel: str) -> str:
 BODY_CAP = DEFAULT_OUTPUT_CAP
 
 
-def hook_payload(item: WorkItem | None, artifacts: Sequence, role: str, kind: str,
-                 hook_id: str, phase: str, body_cap: int = BODY_CAP
-                 ) -> tuple[str, bool]:
-    """The JSON a `generate` hook receives on stdin, and whether the body was cut.
-
-    `body_truncated` goes in the **hook** envelope, never beside `body` in the
-    item: `WORK_ITEM_SCHEMA` is closed, so a sibling key there would make the
-    document fail the schema TCW published for it. The item stays a valid DTO
-    and only its `body` is shorter.
-
-    The cap is **bytes of UTF-8, cut at a character boundary**. Slicing that many
-    *characters* caps nothing on multi-byte text, and slicing bytes blindly
-    yields invalid UTF-8 that breaks the JSON the hook is about to parse.
-    """
-    doc = work_item_json(item, artifacts) if item is not None else None
-    truncated = False
-    if doc is not None:
-        raw = doc["body"].encode("utf-8")
-        if len(raw) > body_cap:
-            doc["body"] = raw[:body_cap].decode("utf-8", errors="ignore")
-            truncated = True
-    payload = {
-        "item": doc,
-        "hook": {"role": role, "kind": kind, "id": hook_id, "phase": phase,
-                 "body_truncated": truncated},
-    }
-    return json.dumps(payload), truncated
-
-
 def _hook_env(base_env: dict, role: str, kind: str, hook_id: str,
               phase: str) -> dict:
     """The four `TCW_*` variables a caller already set, plus the hook's own — so
     a one-line script needs no JSON parser."""
     return {**base_env, "TCW_HOOK_ROLE": role, "TCW_HOOK_KIND": kind,
             "TCW_HOOK_ID": hook_id, "TCW_HOOK_PHASE": phase}
-
-
-def _resolve_one(b: Binding, *, role: str, hook_id: str, phase: str,
-                 item: WorkItem | None, artifacts: Sequence, node_root: Path,
-                 builtins: Mapping[str, str], policy: LifecyclePolicy,
-                 env: dict, execute: bool) -> tuple[str, bool]:
-    """One binding's text, and whether anything was executed."""
-    if b.kind == "blob":
-        return b.value, False
-    if b.kind == "skill":
-        return f"Invoke the {b.value} skill.", False
-    if b.kind == "builtin":
-        return builtins.get(hook_id, ""), False
-    if b.kind == "file":
-        if not execute:
-            # Plan mode reads nothing either: "what would happen" must not make
-            # any of it happen, and a file read is observable.
-            return "", False
-        return _read_file(node_root, b.value), False
-    if b.kind == "generate":
-        if not execute:
-            return "", False
-        stdin_text, _ = hook_payload(item, artifacts, role, b.kind, hook_id,
-                                     phase)
-        try:
-            result = run_generate(b.value, node_root,
-                                  _hook_env(env, role, b.kind, hook_id, phase),
-                                  stdin_text, policy.timeout, policy.output_cap)
-        except GenerateError as e:
-            raise ResolveError(str(e))
-        return result.text, True
-    raise ResolveError(f"cannot resolve a '{b.kind}' binding in a {role} position")
 
 
 DOC_OPEN = "{{tcw:documentation}}"
@@ -304,86 +211,6 @@ def substitute_documentation(text: str, entries: Sequence[DocEntry]) -> str:
     return "".join(out)
 
 
-BODY_OPEN = "{{tcw:body}}"
-BODY_CLOSE = "{{/tcw:body}}"
-
-
-def resolved_body(artifacts: Sequence) -> str | None:
-    """The artifact label a stage should actually read, or `None` when the item
-    has no body at all.
-
-    `BODY_ORDER` is the store's own read-resolution rule — the same one behind
-    `tcw work show` and the `R`/`i` letters on the board — so a prompt and the
-    body surface cannot disagree about which document is the request. Rendered
-    as `<name>.md` to match how every prompt and `LifecycleStep.produces_note`
-    already name an artifact; that is a rendering convention here, not a field
-    on `Artifact`.
-    """
-    # `a.present` directly, not `getattr(..., False)`: `WorkStore.artifacts`
-    # promises `list[Artifact]` and `present` is mandatory, so an adapter that
-    # breaks that contract should raise here rather than quietly resolve every
-    # item to "no body".
-    present = {a.name for a in artifacts if a.present}
-    for name in BODY_ORDER:
-        if name in present:
-            return f"`{name}.md`"
-    return None
-
-
-def substitute_body(text: str, artifacts: Sequence) -> str:
-    """Replace each `{{tcw:body}}…{{/tcw:body}}` span with the resolved body.
-
-    **Inline, and deliberately not `substitute_documentation`'s walk.** That one
-    substitutes a multi-line bullet list, so it always follows the rendered text
-    with a newline and the span's indent, and eats one following space. Applying
-    that here would turn
-
-        **Inputs.** {{tcw:body}}the item's body artifact{{/tcw:body}}. On an …
-
-    into a line break in the middle of a sentence. This replaces the span in
-    place: no inserted newline, no indent, no following-space adjustment.
-
-    With no body artifact present the span becomes its own inner text unchanged,
-    which is the same fallback contract the documentation span carries — a
-    prompt keeps its own prose for the case the resolver cannot fill.
-
-    An unterminated open token is left **verbatim**, matching
-    `substitute_documentation`: a malformed prompt should look wrong rather than
-    silently swallow the rest of the text.
-
-    Nesting the two token pairs is not supported and is not given defined
-    behavior; they are substituted independently, documentation first. That
-    order has one sharp edge worth knowing: because documentation renders
-    first, a body token appearing *inside a rendered documentation entry* —
-    a project whose `work.documentation` description happens to contain the
-    literal `{{tcw:body}}` — is text this pass will then substitute. Keep the
-    tokens out of documentation descriptions.
-
-    **Wrapping is the prompt author's job.** Nothing re-flows the line, so a
-    span whose sentence continues past the source line break leaves a stranded
-    fragment when it resolves to something shorter than its fallback — put the
-    span so its sentence *ends* at the line break and every resolution reads as
-    a whole sentence.
-    """
-    label = resolved_body(artifacts)
-    out: list[str] = []
-    rest = text
-    while True:
-        start = rest.find(BODY_OPEN)
-        if start < 0:
-            out.append(rest)
-            break
-        end = rest.find(BODY_CLOSE, start)
-        if end < 0:
-            out.append(rest)                      # unterminated: leave it alone
-            break
-        out.append(rest[:start])
-        fallback = rest[start + len(BODY_OPEN):end]
-        out.append(label if label is not None else fallback)
-        rest = rest[end + len(BODY_CLOSE):]
-    return "".join(out)
-
-
 def _join(parts: Sequence[str]) -> str:
     """Exactly how prompt text composes.
 
@@ -396,158 +223,8 @@ def _join(parts: Sequence[str]) -> str:
     return "\n\n".join(kept)
 
 
-def bookend(text: str, stage_id: str, ref: str) -> str:
-    """Wrap resolved prompt text in its lifecycle position.
-
-    Two generated sections, not seven copies in the prompt files: those are
-    capped at 50 lines and one of them is at 49, and navigation text repeated
-    seven times drifts on the first edit that forgets one.
-
-    **The header is the gate.** `tcw work stage prompt` answers without checking
-    anything, which is the whole reason it can be read for a stage an item is not
-    ready for — and the reason nothing about wanting the instructions makes
-    anyone run `tcw work stage gate`. Putting the reminder in the resolved text
-    puts it in front of every reader, under every harness, rather than in a skill
-    only one of them has.
-
-    Applied to a project's own `prompt:` bindings as well as to the built-in
-    floor. Overriding what a stage *says* is not overriding where the lifecycle
-    goes next, and a reader of the overridden text needs the gate reminder just
-    as much.
-
-    `ref` is the work item reference to show in the commands, or `<slug>` when
-    resolving without one. `inbox` takes none, so its gate command shows none.
-
-    Applied by the CLI at print time rather than inside `resolve_prompts`, which
-    stays a pure resolution of bindings. Two reasons. `resolve_prompts` promises
-    that a stage whose only binding does not match resolves to **nothing**, and
-    wrapping would turn that nothing into a header and a footer around an empty
-    middle. And every one of its unit tests asserts composed binding text, which
-    is not what this adds.
-    """
-    target = "" if stage_id == "inbox" else f" {ref}"
-    header = (
-        f"> **This text ran no checks.** `tcw work stage prompt` resolves "
-        f"instructions and gates nothing. If you have not run "
-        f"`tcw work stage gate {stage_id}{target}` for this stage, do that "
-        f"first — it is what confirms the stage is legal here and runs whatever "
-        f"this project bound to it.")
-    nxt = STAGE_NEXT_STEPS[stage_id].replace("<slug>", ref)
-    body = (nxt[0].upper() + nxt[1:] + "." if nxt else
-            "Nothing follows. This stage runs out of band and moves no item.")
-    footer = "## When this stage's output is written\n\n" + body
-    return "\n\n".join(p for p in (header, text.strip(), footer) if p)
-
-
-def resolve_prompts(policy: LifecyclePolicy, stage_id: str,
-                    item: WorkItem | None, node_root: Path, builtins: Builtins,
-                    artifacts: Sequence = (), env: dict | None = None, *,
-                    execute: bool = True,
-                    documentation: Sequence[DocEntry] = ()) -> Resolution:
-    """A stage's prompt text: **every** matching binding, in declaration order.
-
-    A stage with **no prompt bindings** resolves as if it bound
-    `[{builtin: true}]` — the floor, so a node that configures nothing still
-    gets TCW's own instructions. The condition is on the binding *list*, not on
-    the resolved text: a stage whose only binding carries a `when:` that did not
-    match resolves to nothing, because the node configured that stage and a
-    stage the node configures wins outright.
-    """
-    return _compose(policy.stage(stage_id) or [Binding(kind="builtin")],
-                    role="prompt", hook_id=stage_id, item=item,
-                    node_root=node_root, builtins=builtins.stage_prompts,
-                    policy=policy, artifacts=artifacts, env=env, execute=execute,
-                    documentation=documentation)
-
-
-def resolve_procedure(policy: LifecyclePolicy, procedure_id: str,
-                      item: WorkItem | None, node_root: Path, builtins: Builtins,
-                      artifacts: Sequence = (), env: dict | None = None, *,
-                      execute: bool = True,
-                      documentation: Sequence[DocEntry] = ()) -> Resolution:
-    """A procedure's text, resolved exactly as a stage's prompt is.
-
-    Same floor, same rule: a procedure with no bindings under `work.procedures`
-    resolves as `[{builtin: true}]`, and one whose bindings all carry a `when:`
-    that did not match resolves to nothing. A `generate:` hook sees the role
-    `procedure`, so a script shared with a stage can tell which asked.
-    """
-    return _compose(policy.procedure(procedure_id) or [Binding(kind="builtin")],
-                    role="procedure", hook_id=procedure_id, item=item,
-                    node_root=node_root, builtins=builtins.procedures,
-                    policy=policy, artifacts=artifacts, env=env, execute=execute,
-                    documentation=documentation)
-
-
-def _compose(bindings: Sequence[Binding], *, role: str, hook_id: str,
-             item: WorkItem | None, node_root: Path, builtins: Mapping[str, str],
-             policy: LifecyclePolicy, artifacts: Sequence, env: dict | None,
-             execute: bool, documentation: Sequence[DocEntry]) -> Resolution:
-    """Every matching binding, in declaration order, joined and substituted.
-    Shared by stage prompts and procedures so the two cannot compose differently."""
-    res = Resolution()
-    parts: list[str] = []
-    for b in bindings:
-        matched = b.when is None or b.when.matches(item)
-        if not matched:
-            res.plan.append(PlanEntry(b.kind, b.ref, False))
-            continue
-        text, ran = _resolve_one(
-            b, role=role, hook_id=hook_id, phase="prompt", item=item,
-            artifacts=artifacts, node_root=node_root,
-            builtins=builtins, policy=policy, env=env or {},
-            execute=execute)
-        res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
-        parts.append(text)
-    # Substituted here, over the joined text, and deliberately **not** in
-    # `_resolve_one`: that is shared with `resolve_artifact`, so substituting
-    # there would rewrite artifact templates too — and inconsistently, because
-    # `tcw work scaffold`'s implicit built-in fallback bypasses `_resolve_one`
-    # entirely. Doing it here also means a project's own `file:` or `blob:`
-    # prompt can use the token, which is what makes this prompt generation
-    # rather than a built-in-only special case.
-    res.text = substitute_body(
-        substitute_documentation(_join(parts), documentation), artifacts)
-    return res
-
-
-def resolve_artifact(policy: LifecyclePolicy, artifact: str,
-                     item: WorkItem | None, node_root: Path, builtins: Builtins,
-                     artifacts: Sequence = (), env: dict | None = None, *,
-                     execute: bool = True) -> Resolution:
-    """An artifact's template: the **first** matching binding wins.
-
-    Nothing after the winner is resolved — so a `generate` entry below a match
-    does not run, which is the difference between "first match wins" and "first
-    match is returned".
-    """
-    res = Resolution()
-    won = False
-    for b in policy.artifact(artifact):
-        if won:
-            res.plan.append(PlanEntry(b.kind, b.ref, False))
-            continue
-        if b.when is not None and not b.when.matches(item):
-            res.plan.append(PlanEntry(b.kind, b.ref, False))
-            continue
-        text, ran = _resolve_one(
-            b, role="artifact", hook_id=artifact, phase="artifact", item=item,
-            artifacts=artifacts, node_root=node_root,
-            builtins=builtins.artifact_templates, policy=policy, env=env or {},
-            execute=execute)
-        res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
-        res.text = text
-        won = True
-    return res
-
-
 # ---------------------------------------------------------------------------
-# TCW 3.0 composition. Beside the 2.x functions above until TCW-70 deletes
-# them; these read TCW-69's configuration and item model only.
-
-import os  # noqa: E402
-
-from tcw.errors import BackendError  # noqa: E402
+# Composition on TCW-69's configuration and item model.
 
 REQUEST_OPEN = "{{tcw:request}}"
 REQUEST_CLOSE = "{{/tcw:request}}"

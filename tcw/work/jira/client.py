@@ -15,7 +15,7 @@ several of this item's acceptance criteria depend on substituting the transport.
 **Two writes, and their responses are never interpreted.** `apply_transition` and
 `assign` exist for claiming a ticket. What a write returns is read only as success
 or as one of the error types below; whether a claim actually took effect is decided
-by the caller re-reading the issue (`tcw/tracker/intake.py`).
+by the caller re-reading the issue.
 
 **The error taxonomy is a deliverable, not an afterthought.** A live experiment
 against Jira recorded *three different* `HTTP 400` bodies for the same logical

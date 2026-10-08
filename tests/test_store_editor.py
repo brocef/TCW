@@ -14,15 +14,9 @@ import pytest
 import yaml
 
 from tcw.store.base import (
-    TAXONOMY_EDITABLE_FIELDS, WORK_ARTIFACTS, WORK_SIDECARS, WORK_LEVELS,
-    _UNSET, ArtifactResource, CapabilityDetail, SidecarResource, StaleRevision,
-    TermDetail, WorkDetail,
+    TAXONOMY_EDITABLE_FIELDS, CapabilityDetail, StaleRevision, TermDetail,
 )
-from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, FsWorkStore,
-    _revision, _revision_multi, _atomic_write_all, _mkdir_owned,
-    init, write_sentinel,
-)
+from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revision_multi, _atomic_write_all, _mkdir_owned, init, write_sentinel)
 # Federation setup is non-trivial and already written next door; the rollback
 # test that needs it belongs in this file, with the other fault-injection tests.
 from test_capabilities_federation import child_of
@@ -88,63 +82,6 @@ def test_revision_multi_order_dependent():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_get_detail_returns_full_revision_map(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", body="request\n")
-    d = st.path(item.slug)
-    (d / "spec.md").write_text("spec content\n")
-    (d / "capabilities.yaml").write_text("links:\n- web\n")
-
-    detail = st.get_detail(item.slug)
-
-    assert isinstance(detail, WorkDetail)
-    assert detail.item.slug == item.slug
-    assert detail.core_revision != ""
-    assert "spec" in detail.artifact_revisions
-    assert "capabilities.yaml" in detail.sidecar_revisions
-    # present because this item was created *with* a request; creation no longer
-    # templates one for an item that has no body yet
-    assert "initial-request" in detail.artifact_revisions
-
-
-def test_get_detail_unknown_slug_returns_none(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    assert st.get_detail("no-such-slug") is None
-
-
-def test_get_detail_retries_a_transient_loss_at_find(tmp_path, monkeypatch):
-    """Supersedes an earlier test that asserted `None` here.
-
-    Losing the item between `get_detail`'s two lookups once used to be
-    `None / "state.yaml"` → `TypeError`, and `None` was then the honest answer
-    because nothing looked again. It is no longer: the item exists, so a snapshot
-    that restarts finds it, and answering `None` would be the same
-    vanished-versus-absent confusion this whole item is about.
-    """
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-
-    real_find = FsWorkStore._find
-    calls = {"n": 0}
-
-    def missing_on_the_second_lookup(self, slug):
-        calls["n"] += 1
-        return None if calls["n"] == 2 else real_find(self, slug)
-
-    monkeypatch.setattr(FsWorkStore, "_find", missing_on_the_second_lookup)
-    detail = st.get_detail(item.slug)
-    assert detail is not None and detail.item.slug == item.slug
-
-
-def test_get_detail_gives_up_when_the_item_never_settles(tmp_path, monkeypatch):
-    """The retry is bounded. A slug that never resolves is absent, not a hang."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-
-    monkeypatch.setattr(FsWorkStore, "_find", lambda self, slug: None)
-    assert st.get_detail(item.slug) is None
-
-
 # ── a composite write whose read-back loses the race ─────────────────────────
 #
 # `get_detail` and its siblings are `-> … | None`; the four composite writers
@@ -154,166 +91,9 @@ def test_get_detail_gives_up_when_the_item_never_settles(tmp_path, monkeypatch):
 # forced to `None`.
 
 
-def test_create_work_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-    with pytest.raises(ValueError, match="could not be read back"):
-        st.create_work("Task", created="2026-01-01")
-
-
-def test_create_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
-    """`create` is the `WorkItem`-returning face over `create_work`, and it
-    dereferences `.item` — the site that used to raise `AttributeError`."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-    with pytest.raises(ValueError, match="could not be read back"):
-        st.create("Task", created="2026-01-01")
-
-
-def test_update_work_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-    with pytest.raises(ValueError, match="could not be read back"):
-        st.update_work(item.slug, title="Renamed")
-
-
-def test_update_work_no_change_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
-    """The early return taken when nothing was asked for and nothing written —
-    which is why the message stops short of claiming the write landed."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-    with pytest.raises(ValueError, match="could not be read back"):
-        st.update_work(item.slug)
-
-
-def test_update_work_error_names_the_slug(tmp_path, monkeypatch):
-    """The ref is the point: after a failed `tcw work new` it is the only place
-    the user learns the slug of the item that now exists."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    monkeypatch.setattr(FsWorkStore, "get_detail", lambda self, slug: None)
-    with pytest.raises(ValueError, match=item.slug):
-        st.update_work(item.slug, title="Renamed")
-
-
-def test_get_detail_core_changes_after_field_write(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    rev1 = st.get_detail(item.slug).core_revision
-    st.set_field(item.slug, "priority", 5)
-    rev2 = st.get_detail(item.slug).core_revision
-    assert rev1 != rev2
-
-
-def test_get_detail_core_distinguishes_intake_from_request(tmp_path):
-    """Identical text in the other file is a different editable resource, so the
-    revision must differ — otherwise a guarded write survives a promotion."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    (d / "intake.md").write_text("same text\n", encoding="utf-8")
-    as_intake = st.get_detail(item.slug).core_revision
-
-    (d / "initial-request.md").write_text("same text\n", encoding="utf-8")
-    as_request = st.get_detail(item.slug).core_revision
-
-    assert as_intake != as_request
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FsWorkStore — create_work (composite)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-def test_create_work_sets_all_fields(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work(
-        "Big Feature",
-        body="Do the thing.",
-        priority=7,
-        effort="high",
-        complexity="medium",
-        initiative="epic-slug",
-    )
-    item = detail.item
-    assert item.title == "Big Feature"
-    assert item.priority == 7
-    assert item.effort == "high"
-    assert item.complexity == "medium"
-    assert item.initiative == "epic-slug"
-    assert detail.core_revision != ""
-
-
-def test_create_work_with_blockers(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    blocker = st.create("Blocker", created="2026-01-01")
-    detail = st.create_work(
-        "Dependent",
-        blockers=[blocker.slug, "external-ticket"],
-    )
-    item = detail.item
-    slugs = [b.get("slug") for b in item.blocked_by if "slug" in b]
-    externals = [b.get("external") for b in item.blocked_by if "external" in b]
-    assert blocker.slug in slugs
-    assert "external-ticket" in externals
-
-
-def test_create_work_with_parent(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    parent = st.create("Parent", created="2026-01-01")
-    detail = st.create_work("Child", parent=parent.slug)
-    assert detail.item.parent == parent.slug
-
-
-def test_create_work_epic_type(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work("Epic Thing", type="epic")
-    assert detail.item.type == "epic"
-
-
-def test_create_work_rejects_bad_effort(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="invalid level"):
-        st.create_work("X", effort="bogus")
-    # Nothing persisted
-    assert st.query() == []
-
-
-def test_create_work_rejects_bad_complexity(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="invalid level"):
-        st.create_work("X", complexity="xl")
-    assert st.query() == []
-
-
-def test_create_work_rejects_bad_type(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="invalid type"):
-        st.create_work("X", type="invalid-type")
-    assert st.query() == []
-
-
-def test_create_work_rejects_unknown_parent(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="no such parent"):
-        st.create_work("Orphan", parent="no-such-slug")
-    assert st.query() == []
-
-
-def test_create_work_rejects_empty_title(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="title is required"):
-        st.create_work("")
-    assert st.query() == []
-
-
-def test_create_work_level_normalization(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work("X", effort="H", complexity="vh")
-    assert detail.item.effort == "high"
-    assert detail.item.complexity == "very-high"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -321,245 +101,14 @@ def test_create_work_level_normalization(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_update_work_partial_merge(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", priority=3)
-    st.set_field(item.slug, "effort", "low")
-    st.set_field(item.slug, "complexity", "high")
-
-    detail = st.update_work(item.slug, title="Renamed", priority=9)
-
-    assert detail.item.title == "Renamed"
-    assert detail.item.priority == 9
-    assert detail.item.effort == "low"        # unchanged
-    assert detail.item.complexity == "high"   # unchanged
-
-
-def test_update_work_null_clears_nullable(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", priority=5)
-    detail = st.update_work(item.slug, priority=None)
-    assert detail.item.priority is None
-
-
-def test_update_work_empty_string_is_explicit(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    st.set_field(item.slug, "initiative", "some-epic")
-    detail = st.update_work(item.slug, initiative="")
-    assert detail.item.initiative == ""
-
-
-def test_update_work_clears_blockers(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    st.set_field(item.slug, "blocked_by", [{"external": "vendor"}])
-    detail = st.update_work(item.slug, blockers=[])
-    assert detail.item.blocked_by == []
-
-
-def test_update_work_unchanged_when_no_fields_provided(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", priority=3)
-    detail = st.update_work(item.slug)
-    assert detail.item.priority == 3
-
-
-def test_update_work_stale_revision_rejected(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    old_rev = st.get_detail(item.slug).core_revision
-    st.set_field(item.slug, "priority", 5)  # changes the revision
-
-    with pytest.raises(StaleRevision):
-        st.update_work(item.slug, title="X", core_revision=old_rev)
-
-    # Store unchanged
-    assert st.get(item.slug).title == "Task"
-    assert st.get(item.slug).priority == 5
-
-
-def test_update_work_validation_failure_no_write(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", priority=3)
-    with pytest.raises(ValueError, match="invalid level"):
-        st.update_work(item.slug, effort="bogus")
-    # Priority unchanged
-    assert st.get(item.slug).priority == 3
-    assert st.get(item.slug).effort == ""
-
-
-def test_update_work_body(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", body="old body")
-    detail = st.update_work(item.slug, body="new body")
-    assert detail.item.body == "new body"
-
-
-def test_update_work_unknown_slug(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="no such work item"):
-        st.update_work("no-such-slug", title="X")
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FsWorkStore — artifact read / write
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_read_artifact_present(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    (d / "spec.md").write_text("my spec\n")
-
-    res = st.read_artifact(item.slug, "spec")
-
-    assert isinstance(res, ArtifactResource)
-    assert res.name == "spec"
-    assert res.content == "my spec\n"
-    assert res.media_type == "text/markdown"
-    assert res.revision == _revision("my spec\n")
-
-
-def test_read_artifact_not_present_returns_none(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    assert st.read_artifact(item.slug, "plan") is None
-
-
-def test_read_artifact_invalid_name(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="unknown artifact"):
-        st.read_artifact(item.slug, "not-real")
-
-
-def test_write_artifact_creates_and_returns_resource(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-
-    res = st.write_artifact(item.slug, "spec", "spec content\n")
-
-    assert res.content == "spec content\n"
-    assert res.revision != ""
-    # File actually written
-    d = st.path(item.slug)
-    assert (d / "spec.md").read_text() == "spec content\n"
-
-
-def test_write_artifact_stale_revision(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    res = st.write_artifact(item.slug, "spec", "v1\n")
-    old_rev = res.revision
-    # External change
-    d = st.path(item.slug)
-    (d / "spec.md").write_text("v2 externally\n")
-
-    with pytest.raises(StaleRevision):
-        st.write_artifact(item.slug, "spec", "v1 modified\n",
-                          revision=old_rev)
-
-    # Store unchanged by failed write
-    assert (d / "spec.md").read_text() == "v2 externally\n"
-
-
-def test_write_artifact_invalid_name(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="unknown artifact"):
-        st.write_artifact(item.slug, "not-real", "content")
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # FsWorkStore — sidecar read / write
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-def test_read_sidecar_present(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    (d / "capabilities.yaml").write_text("links:\n- web\n")
-
-    res = st.read_sidecar(item.slug, "capabilities.yaml")
-
-    assert isinstance(res, SidecarResource)
-    assert res.name == "capabilities.yaml"
-    assert res.media_type == "application/yaml"
-    assert res.revision != ""
-
-
-def test_read_sidecar_not_present(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    assert st.read_sidecar(item.slug, "capabilities.yaml") is None
-
-
-def test_read_sidecar_invalid_name(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="unknown sidecar"):
-        st.read_sidecar(item.slug, "not-real.yaml")
-
-
-def test_write_sidecar_valid_yaml(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    content = "links:\n- web\n- api\n"
-
-    res = st.write_sidecar(item.slug, "capabilities.yaml", content)
-
-    assert res.content == content
-    assert res.media_type == "application/yaml"
-    d = st.path(item.slug)
-    assert (d / "capabilities.yaml").read_text() == content
-
-
-def test_write_sidecar_invalid_yaml_rejected(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    bad = "{not: valid: yaml:"
-
-    with pytest.raises(ValueError, match="not valid YAML"):
-        st.write_sidecar(item.slug, "capabilities.yaml", bad)
-
-    # File should not exist (no write)
-    d = st.path(item.slug)
-    assert not (d / "capabilities.yaml").exists()
-
-
-def test_write_sidecar_yaml_not_mapping(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    arr_yaml = "- just a list\n"
-
-    with pytest.raises(ValueError, match="must be a YAML mapping"):
-        st.write_sidecar(item.slug, "capabilities.yaml", arr_yaml)
-
-
-def test_write_sidecar_invalid_name(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="unknown sidecar"):
-        st.write_sidecar(item.slug, "not-real.yaml", "content")
-
-
-def test_write_sidecar_stale_revision(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    res = st.write_sidecar(item.slug, "capabilities.yaml", "links: []\n")
-    old_rev = res.revision
-    # External change
-    d = st.path(item.slug)
-    (d / "capabilities.yaml").write_text("links: [changed]\n")
-
-    with pytest.raises(StaleRevision):
-        st.write_sidecar(item.slug, "capabilities.yaml",
-                         "links: [new]\n", revision=old_rev)
-
-    assert (d / "capabilities.yaml").read_text() == "links: [changed]\n"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -901,29 +450,6 @@ def test_update_capability_inherited_revision_tracks_override_body(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_work_update_validation_no_partial_write(tmp_path):
-    """update_work with invalid effort should not change any field."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01", priority=3)
-    state_before = (st.path(item.slug) / "state.yaml").read_bytes()
-
-    with pytest.raises(ValueError):
-        st.update_work(item.slug, effort="bogus", title="Changed")
-
-    state_after = (st.path(item.slug) / "state.yaml").read_bytes()
-    assert state_before == state_after
-
-
-def test_sidecar_write_validation_no_file_created(tmp_path):
-    """write_sidecar with invalid YAML must not create the file."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    with pytest.raises(ValueError):
-        st.write_sidecar(item.slug, "capabilities.yaml", "{bad yaml")
-    assert not (d / "capabilities.yaml").exists()
-
-
 def test_taxonomy_update_validation_no_partial_write(tmp_path):
     """update_term with dangling relatesTo should not write anything."""
     root = _tax_node(tmp_path)
@@ -1201,145 +727,14 @@ def test_set_removes_override_when_staging_fails(tmp_path, monkeypatch):
     assert list(child.rglob("*.tmp")) == []
 
 
-def test_update_work_body_failure_leaves_state_and_body_unchanged(tmp_path,
-                                                                  monkeypatch):
-    """AC 5 — a failed body write leaves state.yaml byte-for-byte as it was."""
-    root = _work_node(tmp_path)
-    st = FsWorkStore.open(root)
-    detail = st.create_work("Task", created="2026-01-01", body="original\n")
-    d = st.path(detail.item.slug)
-    state_before = (d / "state.yaml").read_bytes()
-    body_before = (d / "initial-request.md").read_bytes()
-
-    _fail_writing(monkeypatch, "initial-request.md")
-    with pytest.raises(OSError):
-        st.update_work(detail.item.slug, title="Changed", body="new body\n")
-
-    assert (d / "state.yaml").read_bytes() == state_before
-    assert (d / "initial-request.md").read_bytes() == body_before
-    assert list(root.rglob("*.tmp")) == []
-
-
-def test_create_work_failure_leaves_no_directory(tmp_path, monkeypatch):
-    """AC 1 — a failed second write rolls the whole item directory back."""
-    root = _work_node(tmp_path)
-    st = FsWorkStore.open(root)
-    d = root / "docs/work/backlog" / st._unique_slug("2026-01-01", "Task")
-
-    _fail_writing(monkeypatch, "initial-request.md")
-    with pytest.raises(OSError):
-        st.create_work("Task", created="2026-01-01", body="request\n")
-
-    assert not d.exists()
-    assert list(root.rglob("*.tmp")) == []
-
-
-def test_create_failure_leaves_no_directory(tmp_path, monkeypatch):
-    """AC 2 — `create` inherits `create_work`'s rollback via the delegation."""
-    root = _work_node(tmp_path)
-    st = FsWorkStore.open(root)
-    d = root / "docs/work/backlog" / st._unique_slug("2026-01-01", "Task")
-
-    _fail_writing(monkeypatch, "initial-request.md")
-    with pytest.raises(OSError):
-        st.create("Task", created="2026-01-01", body="request\n")
-
-    assert not d.exists()
-    assert list(root.rglob("*.tmp")) == []
-
-
-def test_create_rejects_empty_title(tmp_path):
-    """Accepted behavioral delta of the delegation: `create_work` rejects an
-    empty title, where the old duplicate create path produced a degenerate item."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="title is required"):
-        st.create("")
-
-
-def test_artifact_write_preserves_prior_on_replace_failure(tmp_path):
-    """write_artifact with a stale revision must not overwrite the file."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    # Write initial artifact
-    st.write_artifact(item.slug, "spec", "original content\n")
-    prior = (d / "spec.md").read_bytes()
-
-    # External change
-    (d / "spec.md").write_text("externally changed\n")
-
-    with pytest.raises(StaleRevision):
-        st.write_artifact(item.slug, "spec", "should not appear\n",
-                          revision=_revision("original content\n"))
-
-    # File must still have the external content
-    assert (d / "spec.md").read_bytes() == b"externally changed\n"
-
-
-def test_sidecar_write_preserves_prior_on_replace_failure(tmp_path):
-    """write_sidecar with stale revision must not corrupt existing file."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    d = st.path(item.slug)
-    sc = st.write_sidecar(item.slug, "capabilities.yaml", "links: [a]\n")
-
-    # External change
-    (d / "capabilities.yaml").write_text("links: [externally]\n")
-
-    with pytest.raises(StaleRevision):
-        st.write_sidecar(item.slug, "capabilities.yaml", "links: [bad]\n",
-                         revision=sc.revision)
-
-    assert (d / "capabilities.yaml").read_text() == "links: [externally]\n"
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Lifecycle guardrails — start/complete through existing semantic ops
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_start_via_semantic_op(tmp_path):
-    """start() should work on items created via create_work."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work("Task")
-    result = st.start(detail.item.slug)
-    assert result.status == "active"
-
-
-def test_complete_via_semantic_op(tmp_path):
-    """complete() should work on items created via create_work."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work("Task")
-    st.start(detail.item.slug)
-    result = st.complete(detail.item.slug, "done", dod_ack=["tests"])
-    assert result.status == "completed"
-    assert result.resolution == "done"
-
-
-def test_drop_via_semantic_op(tmp_path):
-    """drop() should work on inbox/backlog items created via create_work."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    detail = st.create_work("Task")
-    st.drop(detail.item.slug)
-    assert st.get(detail.item.slug) is None
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Bounded registry enforcement
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-def test_work_artifacts_is_bounded():
-    assert "initial-request" in WORK_ARTIFACTS
-    assert "spec" in WORK_ARTIFACTS
-    assert "not-a-thing" not in WORK_ARTIFACTS
-
-
-def test_work_sidecars_has_capabilities_yaml():
-    assert "capabilities.yaml" in WORK_SIDECARS
-    sc = WORK_SIDECARS["capabilities.yaml"]
-    assert sc["media_type"] == "application/yaml"
-    assert sc["validation"] == "yaml_mapping"
 
 
 def test_taxonomy_editable_fields():
@@ -1356,22 +751,6 @@ def test_taxonomy_editable_fields():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_write_sidecar_empty_yaml_is_valid(tmp_path):
-    """Empty YAML (null) should be accepted."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    res = st.write_sidecar(item.slug, "capabilities.yaml", "")
-    assert res.content == ""
-
-
-def test_write_sidecar_yaml_list_rejected(tmp_path):
-    """YAML that parses to a list (not a mapping) must be rejected."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="must be a YAML mapping"):
-        st.write_sidecar(item.slug, "capabilities.yaml", "- item\n")
-
-
 def test_update_capability_yaml_parse_in_existing(tmp_path):
     """If the existing capability file has parseable content, update works."""
     root = _cap_node(tmp_path)
@@ -1384,80 +763,6 @@ def test_update_capability_yaml_parse_in_existing(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════
 # Review-fix regressions (dual review of the interactive web editor)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-def test_create_work_rejects_non_string_blocker(tmp_path):
-    """#1 — a non-string blocker ref (e.g. the old UI's {slug: ref}) must fail
-    loudly instead of being silently stored as a malformed external entry."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    with pytest.raises(ValueError, match="blocker refs must be strings"):
-        st.create_work("X", blockers=[{"slug": "y"}])
-    assert st.query() == []
-
-
-def test_update_work_rejects_non_string_blocker(tmp_path):
-    st = FsWorkStore.open(_work_node(tmp_path))
-    item = st.create("Task", created="2026-01-01")
-    with pytest.raises(ValueError, match="blocker refs must be strings"):
-        st.update_work(item.slug, blockers=[{"slug": "y"}])
-
-
-def test_update_work_reparent_preserves_body_edit(tmp_path):
-    """#2 — re-parenting AND editing the body in one call must land the new body
-    on the moved item (not lose it to an orphaned source directory)."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    parent = st.create("Parent", created="2026-01-01")
-    child = st.create("Child", created="2026-01-02")
-    detail = st.update_work(child.slug, parent=parent.slug, body="RELOCATED BODY")
-    assert detail.item.parent == parent.slug
-    got = st.get_detail(child.slug)
-    assert "RELOCATED BODY" in got.item.body
-    assert got.item.parent == parent.slug
-    # Exactly one item folder for the child — no orphan/duplicate left behind.
-    assert len([i for i in st.query() if i.slug == child.slug]) == 1
-
-
-def test_update_work_denest(tmp_path):
-    """#2 — clearing the parent removes the `parent:` field; the item stays in
-    its own status folder, because the relation never set its status."""
-    root = _work_node(tmp_path)
-    st = FsWorkStore.open(root)
-    parent = st.create("Parent", created="2026-01-01")
-    child = st.create("Child", created="2026-01-02", parent=parent.slug)
-    assert st.get(child.slug).parent == parent.slug
-    st.update_work(child.slug, parent="")
-    assert st.get(child.slug).parent == ""
-    assert "parent" not in yaml.safe_load((st.path(child.slug) / "state.yaml").read_text())
-    assert st.path(child.slug) == root / "docs/work/backlog" / child.slug
-    assert len([i for i in st.query() if i.slug == child.slug]) == 1
-
-
-def test_update_work_denest_moves_an_old_nested_child_to_the_top(tmp_path):
-    """A child made by an earlier version is nested in its parent's folder; clearing
-    its parent moves it to the top of its status folder, as it always did."""
-    root = _work_node(tmp_path)
-    st = FsWorkStore.open(root)
-    parent = st.create("Parent", created="2026-01-01")
-    nested = root / "docs/work/backlog" / parent.slug / "2026-01-02-old"
-    nested.mkdir()
-    (nested / "state.yaml").write_text(yaml.safe_dump(
-        {"slug": nested.name, "title": "old", "created": "2026-01-02", "resolution": None}))
-    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(root), "commit", "-qm", "old child"], check=True)
-    st.update_work(nested.name, parent="")
-    assert st.get(nested.name).parent == ""
-    assert st.path(nested.name) == root / "docs/work/backlog" / nested.name
-
-
-def test_update_work_reparent_rejects_self_and_descendant(tmp_path):
-    """#2 — an item cannot be nested under itself or one of its descendants."""
-    st = FsWorkStore.open(_work_node(tmp_path))
-    parent = st.create("Parent", created="2026-01-01")
-    child = st.create("Child", created="2026-01-02", parent=parent.slug)
-    with pytest.raises(ValueError, match="itself or a descendant"):
-        st.update_work(parent.slug, parent=parent.slug)
-    with pytest.raises(ValueError, match="itself or a descendant"):
-        st.update_work(parent.slug, parent=child.slug)
 
 
 def test_add_rejects_path_traversal(tmp_path):
@@ -1492,10 +797,6 @@ def test_add_rejects_duplicate_path(tmp_path):
 # the content is on disk. `_write_staged` undoes what the call created and
 # re-raises; it must never touch anything that was already there.
 
-def _tree_store(root: Path) -> FsWorkStore:
-    """Any FsTreeStore subclass will do — `_write_staged` is defined on the base."""
-    return FsWorkStore.open(root)
-
 
 def _boom(*a, **kw):
     raise subprocess.CalledProcessError(128, ["git", "add", "x"])
@@ -1509,92 +810,10 @@ def test_mkdir_owned_reports_who_created_the_directory(tmp_path):
     assert d.is_dir()
 
 
-def test_write_staged_removes_a_directory_it_created(tmp_path, monkeypatch):
-    root = _work_node(tmp_path)
-    st = _tree_store(root)
-    d = root / "docs" / "work" / "backlog" / "brand-new"
-    assert _mkdir_owned(d) is True
-    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        st._write_staged([(d / "state.yaml", "slug: x\n"),
-                          (d / "spec.md", "body")], owned_dir=d)
-    assert not d.exists()
-
-
-def test_write_staged_removes_only_the_files_it_created(tmp_path, monkeypatch):
-    """The hard boundary: an update whose staging is refused keeps what it
-    wrote, and a pre-existing sibling is never touched."""
-    root = _work_node(tmp_path)
-    st = _tree_store(root)
-    d = root / "docs" / "work" / "backlog" / "existing"
-    d.mkdir(parents=True)
-    kept = d / "state.yaml"
-    kept.write_text("slug: existing\n", encoding="utf-8")
-    before = kept.read_bytes()
-    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        st._write_staged([(kept, "slug: rewritten\n"), (d / "spec.md", "new")])
-
-    assert not (d / "spec.md").exists()      # absent at entry → removed
-    assert kept.is_file()                    # pre-existing → kept …
-    assert kept.read_bytes() != before       # … with the content this call wrote
-    assert d.is_dir()
-
-
-def test_write_staged_leaves_no_temp_files(tmp_path, monkeypatch):
-    root = _work_node(tmp_path)
-    st = _tree_store(root)
-    d = root / "docs" / "work" / "backlog" / "tmpcheck"
-    _mkdir_owned(d)
-    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
-    with pytest.raises(subprocess.CalledProcessError):
-        st._write_staged([(d / "state.yaml", "x")], owned_dir=d)
-    assert list(root.rglob("*.tmp")) == []
-
-
-def test_a_failing_undo_does_not_mask_the_original_error(tmp_path, monkeypatch):
-    """Criterion 11. The rollback is best-effort; the staging failure is the
-    one the user needs to see."""
-    root = _work_node(tmp_path)
-    st = _tree_store(root)
-    d = root / "docs" / "work" / "backlog" / "maskcheck"
-    d.mkdir(parents=True)
-    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
-    monkeypatch.setattr(Path, "unlink",
-                        lambda self, **kw: (_ for _ in ()).throw(PermissionError("no")))
-
-    with pytest.raises(subprocess.CalledProcessError):
-        st._write_staged([(d / "state.yaml", "x")])
-
-
 # ── what the rollback must never touch ───────────────────────────────────────
 #
 # Every case below is a path that existed before the call. Found by adversarial
 # review of the finished diff, each reproduced before being fixed.
-
-def test_write_staged_keeps_a_pre_existing_dangling_symlink(tmp_path, monkeypatch):
-    """`exists()` follows the link, so a dangling symlink read as absent, was
-    replaced by a real file, and was then unlinked — destroying a path this call
-    did not create."""
-    root = _work_node(tmp_path)
-    st = _tree_store(root)
-    d = root / "docs" / "work" / "backlog" / "danglecheck"
-    d.mkdir(parents=True)
-    link = d / "spec.md"
-    link.symlink_to("../../../../nowhere.md")
-    monkeypatch.setattr("tcw.store.fs.git_stage", _boom)
-
-    with pytest.raises(subprocess.CalledProcessError):
-        st._write_staged([(link, "new content")])
-
-    # The path survives. Atomic promotion replaces the link with a regular file
-    # holding what this call wrote — the ordinary "an update keeps what it
-    # wrote" rule. What must not happen is the path vanishing, which is what
-    # `exists()`-follows-symlinks caused: the link read as absent, so the
-    # rollback treated it as this call's own and unlinked it.
-    assert link.exists() or link.is_symlink()
 
 
 def test_atomic_write_all_does_not_consume_an_existing_tmp_path(tmp_path):

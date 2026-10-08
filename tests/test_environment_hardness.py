@@ -35,20 +35,9 @@ import pytest
 import yaml
 
 from tcw.store.fs import (
-    FsCapabilitiesStore,
-    FsTaxonomyStore,
-    FsWorkStore,
-    WORKTREES_DIR,
-    child_nodes,
-    descendant_nodes,
-    init,
-    load_yaml,
-    parent_node,
-    write_sentinel,
+    FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, child_nodes,
+    descendant_nodes, init, load_yaml, parent_node,
 )
-from tcw.store.base import WORK_STATUSES
-from tcw.store.project import FsProjectRegistry
-from tcw.work.recursion import delegate, escalate, reconcile
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -209,47 +198,6 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     return workspace, server
 
 
-def worktree_node(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path, Path]:
-    """Return (workspace, server, worktree) for the two-node graph above with a
-    linked worktree of the child at ``<server>/.worktrees/feature``."""
-    workspace, server = two_node_graph(tmp_path, absolute)
-    _git_init(server)
-    _commit_all(server, "seed")
-    wt = server / WORKTREES_DIR / "feature"
-    subprocess.run(["git", "-C", str(server), "worktree", "add", "-q",
-                    "-b", "feature", str(wt)], check=True)
-    return workspace, server, wt
-
-
-def monorepo_worktree(tmp_path: Path) -> tuple[Path, Path]:
-    """Return (repo, worktree) for ``mono-root`` + ``sub-a``/``sub-b`` in one git
-    repo, with a linked worktree of the whole repo at ``<repo>/.worktrees/f``.
-
-    Every locator here stays *inside* the checkout, so nothing may be
-    re-anchored — this is the layout the naive "always re-anchor" fix breaks.
-    """
-    repo = tmp_path / "mono"
-    repo.mkdir()
-    _git_init(repo)
-    init(["taxonomy", "capabilities", "work"], repo, "mono-root")
-    for name in ("sub-a", "sub-b"):
-        (repo / name).mkdir()
-        init(["taxonomy", "capabilities", "work"], repo / name, name)
-        (repo / name / "tcw-config.yaml").write_text(yaml.safe_dump({
-            "id": name,
-            "connected-projects": {"parent": {"mono-root": ".."}},
-        }, sort_keys=False))
-    (repo / "tcw-config.yaml").write_text(yaml.safe_dump({
-        "id": "mono-root",
-        "connected-projects": {"children": {"sub-a": "sub-a", "sub-b": "sub-b"}},
-    }, sort_keys=False))
-    _commit_all(repo, "seed")
-    wt = repo / WORKTREES_DIR / "f"
-    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "f", str(wt)],
-                   check=True)
-    return repo, wt
-
-
 # ────────────────────────────────────────────────────────────────────────
 # 1. Lone Project Environment
 # ────────────────────────────────────────────────────────────────────────
@@ -313,53 +261,6 @@ class TestLoneProject:
         FsCapabilitiesStore.open(root).add("routes/x", status="Supported")
         assert FsCapabilitiesStore.open(root).check() == []
 
-    def test_work_create_transition_lifecycle(self, tmp_path):
-        root = lone_project(tmp_path)
-        st = FsWorkStore.open(root)
-        item = st.create("Build thing", created="2026-01-01")
-        assert item.status == "backlog"
-        st.start(item.slug)
-        assert st.get(item.slug).status == "active"
-        st.complete(item.slug, "done", ["acked"])
-        assert st.get(item.slug).status == "completed"
-
-    def test_work_blocker_gating(self, tmp_path):
-        root = lone_project(tmp_path)
-        st = FsWorkStore.open(root)
-        blocker = st.create("Blocker", created="2026-01-01")
-        target = st.create("Target", created="2026-01-02")
-        st.add_blocker(target.slug, blocker.slug)
-        with pytest.raises(ValueError):
-            st.start(target.slug)
-        st.start(blocker.slug)
-        st.complete(blocker.slug, "done", [])
-        st.start(target.slug)  # now gated is clear
-
-    def test_work_priority_board_order(self, tmp_path):
-        root = lone_project(tmp_path)
-        st = FsWorkStore.open(root)
-        st.create("Low", created="2026-01-01")
-        st.create("High", created="2026-01-02", priority=10)
-        ordered = [i.slug for i in st.board()]
-        assert ordered[0].startswith("2026-01-02-high")
-
-    def test_work_drop(self, tmp_path):
-        root = lone_project(tmp_path)
-        st = FsWorkStore.open(root)
-        item = st.create("To drop", created="2026-01-01")
-        st.drop(item.slug)
-        assert st.get(item.slug) is None
-
-    def test_work_parent_child_nesting(self, tmp_path):
-        root = lone_project(tmp_path)
-        st = FsWorkStore.open(root)
-        parent = st.create("Epic", created="2026-01-01")
-        child = st.create("Task", created="2026-01-02", parent=parent.slug)
-        assert child.parent == parent.slug
-        st.start(parent.slug)
-        # A child has its own status: starting the parent leaves it in backlog.
-        assert st.get(child.slug).status == "backlog"
-        assert st.get(child.slug).parent == parent.slug
 
     def test_nodes_leaf(self, tmp_path):
         root = lone_project(tmp_path)
@@ -441,31 +342,6 @@ class TestNestedMonorepo:
         assert child_a.resolve() in found
         assert child_b.resolve() in found
 
-    def test_escalate_from_child_to_parent(self, tmp_path):
-        # Escalation UP works in a monorepo: parent_node climbs the git ancestry
-        # and finds the enclosing root node (asymmetric with child discovery).
-        root, child_a, _ = nested_monorepo(tmp_path)
-        doc = escalate(child_a, "Need help")
-        assert doc.parent == root / "docs" / "work" / "inbox"
-        assert "from: child-a" in doc.read_text()
-
-    def test_delegate_to_subfolder_child_unsupported_sp2_boundary(self, tmp_path):
-        # SP1 boundary: delegate targets a *discovered* child node; plain
-        # subfolders aren't discovered, so delegating down is unsupported until
-        # SP2 (escalation UP works — see test_escalate_from_child_to_parent).
-        root, _, _ = nested_monorepo(tmp_path)
-        with pytest.raises(ValueError):
-            delegate(root, "a", "Build this", body="details")
-
-    def test_reconcile_includes_registered_subfolder_tasks(self, tmp_path):
-        root, child_a, child_b = nested_monorepo(tmp_path)
-        epic = FsWorkStore.open(root).create("Epic", created="2026-01-01")
-        for child in (child_a, child_b):
-            task = FsWorkStore.open(child).create("Slice", created="2026-01-01")
-            FsWorkStore.open(child).set_field(task.slug, "initiative", epic.slug)
-        block = reconcile(root, epic.slug)
-        assert "2026-01-01-slice" in block
-        assert "child-a" in block and "child-b" in block
 
     def test_capabilities_standalone_in_child(self, tmp_path):
         _, child_a, _ = nested_monorepo(tmp_path)
@@ -474,13 +350,6 @@ class TestNestedMonorepo:
         assert caps.get("routes/local").status == "Supported"
         assert caps.check() == []
 
-    def test_work_standalone_in_child(self, tmp_path):
-        _, child_a, _ = nested_monorepo(tmp_path)
-        st = FsWorkStore.open(child_a)
-        item = st.create("Child task", created="2026-01-01")
-        assert item.status == "backlog"
-        st.start(item.slug)
-        assert st.get(item.slug).status == "active"
 
     def test_child_can_check_capabilities_with_inherited_taxonomy(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
@@ -555,19 +424,6 @@ class TestSiblingNodes:
         # The parent must be a node (has docs/work/) and be reachable
         assert (p / "docs" / "work").is_dir()
 
-    def test_delegate_parent_to_sibling_fails(self, tmp_path):
-        parent, left, _ = sibling_nodes(tmp_path)
-        # delegate expects a child of the *current* node
-        with pytest.raises(ValueError):
-            delegate(left, "left", "x")  # left is not a child of left
-
-    def test_work_standalone_sibling(self, tmp_path):
-        _, left, _ = sibling_nodes(tmp_path)
-        st = FsWorkStore.open(left)
-        item = st.create("Left task", created="2026-01-01")
-        st.start(item.slug)
-        st.complete(item.slug, "done", ["acked"])
-        assert st.get(item.slug).status == "completed"
 
     def test_capabilities_standalone_sibling(self, tmp_path):
         _, left, _ = sibling_nodes(tmp_path)
@@ -584,33 +440,6 @@ class TestSiblingNodes:
         st = FsTaxonomyStore.open(left)
         assert caps.check(taxonomy=st) == []
 
-    def test_sibling_escalate_to_parent(self, tmp_path):
-        parent, left, _ = sibling_nodes(tmp_path)
-        doc = escalate(left, "Cross-sibling request")
-        assert doc.parent == parent / "docs" / "work" / "inbox"
-        text = doc.read_text()
-        assert "from: left" in text
-
-    def test_delegate_parent_to_sibling_succeeds(self, tmp_path):
-        # Cross-node delegation DOWN works across separate repos (discovered as
-        # child nodes) — the success path the monorepo can't take until SP2.
-        parent, left, _ = sibling_nodes(tmp_path)
-        doc = delegate(parent, "left", "Build this", body="details")
-        assert doc.parent == left / "docs" / "work" / "inbox"
-        assert "from: parent" in doc.read_text()
-
-    def test_reconcile_scans_sibling_children(self, tmp_path):
-        # reconcile rolls up tasks from discovered child repos.
-        parent, left, right = sibling_nodes(tmp_path)
-        epic = FsWorkStore.open(parent).create("Epic", created="2026-01-01")
-        for child in (left, right):
-            task = FsWorkStore.open(child).create("Slice", created="2026-01-01")
-            FsWorkStore.open(child).set_field(task.slug, "initiative", epic.slug)
-        block = reconcile(parent, epic.slug)
-        assert "left" in block
-        assert "right" in block
-        assert "2026-01-01-slice" in block
-
 
 # ────────────────────────────────────────────────────────────────────────
 # 4. Linked Git Worktree
@@ -620,62 +449,6 @@ class TestSiblingNodes:
 class TestWorktreeNode:
     """A node operated from a linked worktree rather than its primary checkout."""
 
-    def test_every_command_exits_zero_inside_the_worktree(self, tmp_path, monkeypatch,
-                                                          capsys):
-        from tcw.cli import main
-        _, _, wt = worktree_node(tmp_path)
-        monkeypatch.chdir(wt)
-        for argv in (["work", "list"], ["work", "nodes"], ["capabilities", "list"],
-                     ["taxonomy", "list"], ["validate"]):
-            assert main(argv) == 0, argv
-        assert "validate OK" in capsys.readouterr().out
-
-    def test_work_nodes_reports_the_registered_parent(self, tmp_path, monkeypatch,
-                                                      capsys):
-        from tcw.cli import main
-        _, _, wt = worktree_node(tmp_path)
-        monkeypatch.chdir(wt)
-        assert main(["work", "nodes"]) == 0
-        assert "parent: example-app" in capsys.readouterr().out
-
-    def test_registry_reports_no_problems(self, tmp_path):
-        _, _, wt = worktree_node(tmp_path)
-        registry = FsProjectRegistry.open(wt)
-        # Specifically not a duplicate ID and not a broken back-reference: those
-        # are what a re-anchor produces if the worktree's own identity is left
-        # standing alongside its main-worktree counterpart.
-        assert registry.check() == []
-
-    def test_current_node_is_the_worktree_not_the_primary_checkout(self, tmp_path):
-        _, server, wt = worktree_node(tmp_path)
-        registry = FsProjectRegistry.open(wt)
-        assert Path(registry.current.locator) == wt.resolve()
-        assert Path(registry.current.locator) != server.resolve()
-
-    def test_work_created_inside_the_worktree_lands_there(self, tmp_path):
-        _, server, wt = worktree_node(tmp_path)
-        item = FsWorkStore.open(wt).create("Inside", created="2026-01-01")
-        assert (wt / "docs" / "work" / "backlog" / item.slug).is_dir()
-        assert not (server / "docs" / "work" / "backlog" / item.slug).exists()
-
-    def test_absolute_locators_resolve_the_same_graph(self, tmp_path):
-        _, server, wt = worktree_node(tmp_path, absolute=True)
-        inside = FsProjectRegistry.open(wt)
-        outside = FsProjectRegistry.open(server)
-        assert inside.check() == []
-        assert inside.parent().id == outside.parent().id == "example-app"
-        assert Path(inside.parent().locator) == Path(outside.parent().locator)
-
-    def test_monorepo_inside_a_worktree_is_not_re_anchored(self, tmp_path):
-        repo, wt = monorepo_worktree(tmp_path)
-        registry = FsProjectRegistry.open(wt / "sub-a")
-        assert registry.check() == []
-        parent = registry.parent()
-        assert parent.id == "mono-root"
-        # The parent is the *worktree's* repo top: a target that never leaves the
-        # checkout is a sibling on the same branch and belongs to the worktree.
-        assert Path(parent.locator) == wt.resolve()
-        assert Path(parent.locator) != repo.resolve()
 
     def test_non_git_graph_is_unaffected(self, tmp_path, monkeypatch):
         from tcw.cli import main
@@ -683,41 +456,6 @@ class TestWorktreeNode:
         monkeypatch.chdir(server)
         for argv in (["work", "list"], ["validate"], ["work", "nodes"]):
             assert main(argv) == 0, argv
-
-    def test_complete_refuses_from_inside_the_items_own_worktree(self, tmp_path,
-                                                                 monkeypatch, capsys):
-        from tcw.cli import main
-        root = lone_project(tmp_path)
-        _commit_all(root)
-        monkeypatch.chdir(root)
-        assert main(["work", "new", "Isolated"]) == 0
-        slug = capsys.readouterr().out.strip().splitlines()[-1]
-        assert main(["work", "start", slug, "--worktree"]) == 0
-        capsys.readouterr()
-        monkeypatch.chdir(root / WORKTREES_DIR / slug)
-        # Left alone this exits 0 having merged the branch into itself and
-        # silently missed the teardown — a completion that did not happen.
-        assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 1
-        assert "own worktree" in capsys.readouterr().err
-        assert (root / "docs" / "work" / "active" / slug).is_dir()
-
-    def test_complete_from_the_primary_checkout_still_merges_and_tears_down(
-        self, tmp_path, monkeypatch, capsys
-    ):
-        from tcw.cli import main
-        root = lone_project(tmp_path)
-        _commit_all(root)
-        monkeypatch.chdir(root)
-        assert main(["work", "new", "Isolated"]) == 0
-        slug = capsys.readouterr().out.strip().splitlines()[-1]
-        assert main(["work", "start", slug, "--worktree"]) == 0
-        wt = root / WORKTREES_DIR / slug
-        (wt / "feature.txt").write_text("branch work\n")
-        subprocess.run(["git", "-C", str(wt), "add", "feature.txt"], check=True)
-        subprocess.run(["git", "-C", str(wt), "commit", "-qm", "branch work"], check=True)
-        assert main(["work", "complete", slug, "--resolution", "done", "--confirm"]) == 0
-        assert (root / "feature.txt").is_file()       # merged back
-        assert not wt.exists()                        # torn down
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -844,177 +582,16 @@ class TestCrossEnvironment:
         st.add("test/cap", status="Supported")
         assert st.get("test/cap").status == "Supported"
 
-    def test_work_create_and_transition(self, env):
-        root, _ = env
-        st = FsWorkStore.open(root)
-        item = st.create("Test task", created="2026-01-01")
-        st.start(item.slug)
-        st.complete(item.slug, "done", ["done"])
-        assert st.get(item.slug).resolution == "done"
-
-    def test_check_clean_all_components(self, env):
-        root, _ = env
-        # Seed minimal valid data
-        FsTaxonomyStore.open(root).add("Base")
-        FsCapabilitiesStore.open(root).add("x", status="Supported")
-        FsWorkStore.open(root).create("Task", created="2026-01-01")
-        assert FsTaxonomyStore.open(root).check() == []
-        assert FsCapabilitiesStore.open(root).check(taxonomy=FsTaxonomyStore.open(root)) == []
-
 
 # ────────────────────────────────────────────────────────────────────────
 # 5. A nested node's `work.path` inside a linked worktree
 # ────────────────────────────────────────────────────────────────────────
 
 
-def nested_node_worktree(tmp_path: Path, work_path: str | None = None,
-                         sub: str = "apps/server") -> tuple[Path, Path, Path]:
-    """Return (repo, node, worktree) for a work node at ``sub`` inside one git
-    repo, with a linked worktree of the whole repo at ``<repo>/.worktrees/f``.
-
-    ``work_path`` is written into the node's config **verbatim** — the point of
-    these tests is how a literal string is anchored, so it must not be
-    normalized on the way in. The store it names is created (``inbox`` plus
-    every status folder) so ``FsWorkStore.open`` can reach it, not only
-    ``_local_root``.
-
-    ``sub="."`` puts the node at the repository root: the shape that already
-    worked, and the regression guard for it.
-    """
-    repo = tmp_path / "repo"
-    node = (repo / sub).resolve() if sub != "." else repo
-    node.mkdir(parents=True)
-    _git_init(repo)
-    init(["work"], node, "server")
-    if work_path is not None:
-        config = load_yaml(node / "tcw-config.yaml")
-        config["work"] = {"path": work_path}
-        (node / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
-        store = (node / work_path).resolve()
-        for leaf in ("inbox", *WORK_STATUSES):
-            (store / leaf).mkdir(parents=True, exist_ok=True)
-        # A store outside the node's repo must be in a git repo of its own —
-        # `_open_at` refuses one that is not, because it has to know which
-        # repository owns the store's commits.
-        if not store.is_relative_to(repo):
-            outer = store
-            while outer.parent != tmp_path:
-                outer = outer.parent
-            _git_init(outer)
-            _commit_all(outer, "store")
-    _commit_all(repo, "seed")
-    wt = repo / WORKTREES_DIR / "f"
-    subprocess.run(["git", "-C", str(repo), "worktree", "add", "-q", "-b", "f", str(wt)],
-                   check=True)
-    return repo, node, wt
-
-
 def _resolved(node_root: Path, configured: str | None) -> Path:
     """`_local_root` as the caller invokes it — on an already-resolved node root
     (`tcw/store/fs.py` resolves before calling) — normalized for comparison."""
-    return FsWorkStore._local_root(node_root.resolve(), configured).resolve()
-
-
-class TestWorktreeWorkPathUnchanged:
-    """The shapes this must leave exactly as they are.
-
-    Written before the re-anchoring change and passing on both sides of it: an
-    absolute path names a place, the default belongs to the checkout you are
-    standing in, and a node *at* the repository root was never affected by the
-    dropped sub-path.
-    """
-
-    def test_absolute_work_path_is_never_re_anchored(self, tmp_path):
-        external = tmp_path / "external" / "work"
-        repo, node, wt = nested_node_worktree(tmp_path, str(external))
-        assert _resolved(node, str(external)) == external
-        assert _resolved(wt / "apps" / "server", str(external)) == external
-
-    def test_default_store_stays_with_its_own_checkout(self, tmp_path):
-        repo, node, wt = nested_node_worktree(tmp_path)
-        # No `work.path` at all: each checkout keeps its own `docs/work`, which
-        # is the behaviour an explicit inside-staying path must come to match.
-        assert _resolved(node, None) == (repo / "apps" / "server" / "docs" / "work")
-        assert _resolved(wt / "apps" / "server", None) == \
-            (wt / "apps" / "server" / "docs" / "work").resolve()
-
-    def test_default_store_stays_with_its_own_checkout_at_repo_root(self, tmp_path):
-        repo, node, wt = nested_node_worktree(tmp_path, sub=".")
-        assert _resolved(node, None) == repo / "docs" / "work"
-        assert _resolved(wt, None) == (wt / "docs" / "work").resolve()
-
-    def test_escaping_path_on_a_root_node_already_agreed(self, tmp_path):
-        """The case the pre-existing re-anchoring handled correctly: node at the
-        repository root, so there is no sub-path to drop."""
-        repo, node, wt = nested_node_worktree(tmp_path, "../external/work", sub=".")
-        assert _resolved(node, "../external/work") == _resolved(wt, "../external/work")
-        assert _resolved(wt, "../external/work") == (tmp_path / "external" / "work")
-
-
-class TestWorktreeWorkPathReAnchoring:
-    """A relative `work.path` follows the rule `FsProjectRegistry._target_path`
-    already applies to `connected-projects` locators: re-anchor only on escape,
-    and at *this node's* counterpart under the main worktree — never at the
-    repository root, which drops a nested node's own sub-path."""
-
-    def test_nested_node_escaping_path_resolves_to_the_same_store(self, tmp_path):
-        """The reported bug (GitHub #26): the store is outside the repository,
-        so the path was authored against the primary checkout's position and
-        has to re-anchor — but at `<main>/apps/server`, not at `<main>`."""
-        cfg = "../../../external/work"
-        repo, node, wt = nested_node_worktree(tmp_path, cfg)
-        assert _resolved(wt / "apps" / "server", cfg) == _resolved(node, cfg)
-        assert _resolved(node, cfg) == tmp_path / "external" / "work"
-
-    def test_nested_node_inside_path_stays_with_the_worktree(self, tmp_path):
-        """A path that never leaves the checkout is the node's own store on this
-        branch, so it belongs to the worktree — exactly as the default does."""
-        cfg = "docs/work"
-        repo, node, wt = nested_node_worktree(tmp_path, cfg)
-        wt_node = wt / "apps" / "server"
-        assert _resolved(wt_node, cfg) == (wt_node / "docs" / "work").resolve()
-        assert _resolved(wt_node, cfg) == _resolved(wt_node, None)
-
-    def test_root_node_inside_path_matches_the_default(self, tmp_path):
-        """The divergence this closes: `work.path: docs/work` spelled out used to
-        resolve to the primary checkout while the identical default did not."""
-        cfg = "docs/work"
-        repo, node, wt = nested_node_worktree(tmp_path, cfg, sub=".")
-        assert _resolved(wt, cfg) == (wt / "docs" / "work").resolve()
-        assert _resolved(wt, cfg) == _resolved(wt, None)
-
-    def test_the_store_is_reachable_end_to_end_from_the_worktree(self, tmp_path):
-        """`_local_root` is only the path computation; `open` validates the
-        directory downstream of it. The reporter ran a command, not a function."""
-        cfg = "../../../external/work"
-        repo, node, wt = nested_node_worktree(tmp_path, cfg)
-        st = FsWorkStore.open(wt / "apps" / "server")
-        assert st.root == (tmp_path / "external" / "work").resolve()
-
-
-class TestWorktreeTreeStorePathReAnchoring:
-    """The same rule, on the tree stores. `resolve_store` gives taxonomy and
-    capabilities a configured `<component>.path` too, and their `_local_root`
-    carried its own copy of the anchoring — so the fix has to reach both hooks
-    or the components drift apart, which is the drift the shared ladder exists
-    to prevent."""
-
-    @pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore])
-    def test_nested_node_escaping_path_resolves_to_the_same_tree(self, tmp_path, store_cls):
-        cfg = "../../../external/tree"
-        repo, node, wt = nested_node_worktree(tmp_path)
-        wt_node = wt / "apps" / "server"
-        assert store_cls._local_root(wt_node.resolve(), cfg).resolve() == \
-            store_cls._local_root(node.resolve(), cfg).resolve()
-        assert store_cls._local_root(node.resolve(), cfg).resolve() == \
-            tmp_path / "external" / "tree"
-
-    @pytest.mark.parametrize("store_cls", [FsTaxonomyStore, FsCapabilitiesStore])
-    def test_nested_node_inside_path_stays_with_the_worktree(self, tmp_path, store_cls):
-        cfg = "docs/elsewhere"
-        repo, node, wt = nested_node_worktree(tmp_path)
-        wt_node = (wt / "apps" / "server").resolve()
-        assert store_cls._local_root(wt_node, cfg).resolve() == (wt_node / cfg).resolve()
+    return WorkLocation._local_root(node_root.resolve(), configured).resolve()
 
 
 # ── load_yaml's mapping contract ─────────────────────────────────────────────

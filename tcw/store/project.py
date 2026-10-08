@@ -14,14 +14,14 @@ import yaml
 from tcw.store.base import (
     ConnectedProject, Project, ProjectOverride, ProjectRegistry,
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
-    WORK_STATUSES, parse_connected_entry,
+    parse_connected_entry,
 )
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import load as _load_named_yaml
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-RESERVED_PROJECT_IDS = {"t", "c", "w", "local", *WORK_STATUSES}
+RESERVED_PROJECT_IDS = {"t", "c", "w", "local"}
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):

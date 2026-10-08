@@ -28,7 +28,7 @@ ALL_MODULES = NEW_MODULES + TOP_MODULES + [MODEL]
 # Not in the process guard: `open.py` reads `git status` and `cli.py` reaches
 # hooks through `advance`.
 BACKEND_MODULES = [PACKAGE / "work" / f"{name}.py" for name in
-                   ("fs_backend", "open", "cli")]
+                   ("fs_backend", "open", "record", "cli")]
 
 STAGE_NAME = re.compile(r"\b(" + "|".join(s.name for s in STAGES) + r")\b")
 GIT_WRITERS = {"_git", "_git_index", "git_stage", "git_rm", "git_mv",

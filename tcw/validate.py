@@ -6,8 +6,8 @@ or a single `[path]`):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
       (duplicate keys included); a parse error is a problem. Any shape is
-      accepted, *except* that a file TCW writes as a record (``state.yaml`` and
-      friends, ``OWNED_YAML_NAMES``) must be a mapping.
+      accepted, *except* that a file TCW writes as a record
+      (``OWNED_YAML_NAMES``) must be a mapping.
   (b) ``tcw://`` links — every ``*.md`` link-target ``](tcw://…)`` resolves
       (code spans stripped first, so examples that teach the scheme don't fail).
   (c) component ``check()`` — taxonomy + capabilities, unless (a) hit a syntax

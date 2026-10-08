@@ -23,10 +23,7 @@ from tcw.store.base import (
 )
 from tcw.cli import main
 from tcw.store import checkouts, fs
-from tcw.store.fs import (
-    STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore,
-    FsWorkStore, init,
-)
+from tcw.store.fs import (STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore, WorkLocation, init)
 from tcw.validate import validate
 
 
@@ -116,32 +113,6 @@ def test_a_relative_path_is_normalized_not_merely_accepted():
 
 
 # ── the declaration on a node ────────────────────────────────────────────────
-
-def test_a_node_reads_back_its_declaration(tmp_path):
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    _write_config(code, repository={"url": "git@host:me/orchestrator.git",
-                                    "path": "docs/work/corelib"})
-    store = FsWorkStore.open(code)
-    declaration = store.repository_declaration()
-    assert declaration is not None
-    assert declaration.url == "git@host:me/orchestrator.git"
-    assert store.repository_problems() == []
-
-
-def test_a_malformed_declaration_is_reported_by_check_not_by_opening(tmp_path):
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    _write_config(code, repository={"path": "docs/work/corelib"})   # no url
-
-    store = FsWorkStore.open(code)          # must not raise: reading is not validating
-    assert store.repository_declaration() is None
-
-    problems = store.repository_problems()
-    assert len(problems) == 1
-    assert "work.repository.url" in problems[0]
-    assert "tcw-config.yaml" in problems[0]
-    assert problems[0] in store.check()
 
 
 def test_store_not_provisioned_is_a_value_error():
@@ -437,7 +408,7 @@ def test_a_store_already_here_wins_over_the_declaration(tmp_path):
                   repository={"url": str(_remote_with_store(tmp_path)),
                               "path": "docs/work/corelib"})
 
-    assert FsWorkStore.open(code).root == here.resolve()
+    assert WorkLocation.open(code).root == here.resolve()
     assert not (tmp_path / "cache" / "tcw").exists(), \
         "resolution must not provision, and must not even look in the cache"
 
@@ -498,47 +469,7 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
 def test_a_store_in_a_project_the_registry_located_is_used(tmp_path, monkeypatch):
     code, _orchestration, store = _flat_workspace(tmp_path, monkeypatch)
 
-    assert FsWorkStore.open(code).root == store.resolve()
-
-
-def test_a_store_found_through_the_registry_does_not_publish(tmp_path, monkeypatch):
-    """It is on the user's own disk and they push it themselves — the same
-    reason a store at a configured `work.path` does not publish. The rung
-    achieves it by not passing the declaration, which is all `publishes` reads.
-    """
-    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
-
-    store = FsWorkStore.open(code)
-
-    assert store.declaration is None
-    assert store.publishes is False
-
-
-def test_the_registry_rung_never_touches_the_cache(tmp_path, monkeypatch):
-    code, _orchestration, _store = _flat_workspace(tmp_path, monkeypatch)
-    calls = _count_git(monkeypatch)
-
-    FsWorkStore.open(code)
-
-    assert not (tmp_path / "cache" / "tcw").exists(), \
-        "a repository already on disk must never be re-cloned"
-    assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
-
-
-@pytest.mark.parametrize("component,inner,store_cls", [
-    ("work", "docs/work/corelib", FsWorkStore),
-    ("taxonomy", "trees/taxonomy", FsTaxonomyStore),
-    ("capabilities", "trees/capabilities", FsCapabilitiesStore),
-])
-def test_the_registry_rung_serves_all_three_components(
-    tmp_path, monkeypatch, component, inner, store_cls,
-):
-    """The ladder is one function for one contract, so a taxonomy or
-    capabilities store declared in a sibling repository has the same problem."""
-    code, _orchestration, store = _flat_workspace(
-        tmp_path, monkeypatch, component=component, inner=inner)
-
-    assert store_cls.open(code).root == store.resolve()
+    assert WorkLocation.open(code).root == store.resolve()
 
 
 def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, capsys):
@@ -548,7 +479,7 @@ def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, c
     subprocess.run(["git", "-C", str(orchestration), "checkout", "-q", "-b", "other"],
                    check=True)
 
-    assert FsWorkStore.open(code).root == store.resolve()
+    assert WorkLocation.open(code).root == store.resolve()
     assert "ref" not in capsys.readouterr().err
 
 
@@ -591,98 +522,6 @@ def test_provision_reports_a_local_store_without_contacting_the_remote(
     assert not (tmp_path / "cache" / "tcw").exists()
 
 
-def test_an_absent_local_store_falls_through_to_the_provisioned_one(tmp_path):
-    """The cloud session: the same config, on a machine that has only the code."""
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    declaration = RepositoryDeclaration(url=str(_remote_with_store(tmp_path)),
-                                        path="docs/work/corelib")
-    _write_config(code, path="../orchestrator-that-is-not-here/stores/corelib",
-                  repository={"url": declaration.url, "path": declaration.path})
-
-    with pytest.raises(StoreNotProvisioned):
-        FsWorkStore.open(code)
-
-    FsStoreProvisioner(code, "work", declaration).ensure_available()
-
-    assert FsWorkStore.open(code).root == fs.provisioned_store_root(
-        code, declaration).resolve()
-
-
-def test_not_provisioned_names_the_remote_and_the_command(tmp_path):
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    _write_config(code, path="../nowhere/stores/corelib",
-                  repository={"url": "https://example.invalid/orchestrator.git"})
-
-    with pytest.raises(StoreNotProvisioned) as caught:
-        FsWorkStore.open(code)
-
-    message = str(caught.value)
-    assert "https://example.invalid/orchestrator.git" in message
-    assert "tcw provision" in message
-    assert "not a directory" not in message, \
-        "a declared store that simply is not here yet is not a misconfiguration"
-
-
-def test_the_not_provisioned_error_names_a_broken_configured_path(tmp_path):
-    """Two configuration problems, and only one used to be reported.
-
-    A `work.path` that exists but holds no store, beside a declaration that has
-    not been provisioned. The declaration is genuinely unprovisioned, so that
-    half of the message is right — what was missing is any word about the path
-    the user actually wrote, which they will keep believing is fine.
-    """
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    half = tmp_path / "half-a-store"
-    (half / "backlog").mkdir(parents=True)
-    _write_config(code, path=str(half),
-                  repository={"url": "https://example.invalid/orchestrator.git"})
-
-    with pytest.raises(StoreNotProvisioned) as caught:
-        FsWorkStore.open(code)
-
-    message = str(caught.value)
-    assert "https://example.invalid/orchestrator.git" in message
-    assert "tcw provision" in message
-    assert str(half) in message, \
-        "the configured path is the second problem and must be named"
-    assert "inbox" in message, "and why it is unusable, not merely that it is"
-
-
-def test_the_not_provisioned_error_stays_quiet_about_an_absent_path(tmp_path):
-    """The normal case a declaration exists for.
-
-    Stronger than the neighbouring test's assertion about one phrase: nothing
-    about the configured path may appear at all, because on a machine that has
-    only the code repository this is not a problem and saying so would make
-    every provisioned node noisy.
-    """
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    _write_config(code, path="../nowhere/stores/corelib",
-                  repository={"url": "https://example.invalid/orchestrator.git"})
-
-    with pytest.raises(StoreNotProvisioned) as caught:
-        FsWorkStore.open(code)
-
-    assert "nowhere" not in str(caught.value)
-
-
-def test_without_a_declaration_a_broken_path_still_says_what_it_always_said(tmp_path):
-    """The compatibility guarantee: with nothing declared, not one byte moves."""
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    _write_config(code, path="../nowhere/stores/corelib")
-
-    with pytest.raises(ValueError) as caught:
-        FsWorkStore.open(code)
-
-    assert not isinstance(caught.value, StoreNotProvisioned)
-    assert "work.path is not a directory" in str(caught.value)
-
-
 def test_a_declared_node_whose_default_store_exists_uses_it(tmp_path):
     """`work.path` unset, `docs/work` present, a declaration alongside: the real
     store on this machine still wins."""
@@ -691,24 +530,7 @@ def test_a_declared_node_whose_default_store_exists_uses_it(tmp_path):
     _write_config(code, repository={"url": str(_remote_with_store(tmp_path)),
                                     "path": "docs/work/corelib"})
 
-    assert FsWorkStore.open(code).root == (code / "docs" / "work").resolve()
-
-
-def test_a_provisioned_store_commits_in_its_own_repository(tmp_path):
-    """The store's repository owns its commits, not the code repository — the
-    same split a local `work.path` in another repository already gets."""
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    declaration = RepositoryDeclaration(url=str(_remote_with_store(tmp_path)),
-                                        path="docs/work/corelib")
-    _write_config(code, repository={"url": declaration.url, "path": declaration.path})
-    (code / "docs" / "work").rename(code / "docs" / "work-moved-aside")
-    FsStoreProvisioner(code, "work", declaration).ensure_available()
-
-    store = FsWorkStore.open(code)
-
-    assert store.store_git_root == fs.checkout_root(code, declaration).resolve()
-    assert store.node_root == code.resolve()
+    assert WorkLocation.open(code).root == (code / "docs" / "work").resolve()
 
 
 # ── what the user is told ────────────────────────────────────────────────────
@@ -759,18 +581,6 @@ def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypa
     assert "no tcw work node here" not in err
     assert "tcw init" not in err
     assert "work.repository.url" in err, err
-
-
-def test_a_malformed_declaration_is_a_declaration_error_not_a_bare_value_error(tmp_path):
-    """The seam itself. `find_node` must be able to tell "this config is wrong"
-    apart from "this is not a node", and only a distinct type carries that."""
-    code = _declared_but_malformed(tmp_path)
-
-    with pytest.raises(StoreDeclarationError):
-        FsWorkStore.open(code)
-
-    with pytest.raises(StoreDeclarationError):
-        fs.find_node("work", code)
 
 
 def test_a_misconfigured_sibling_node_does_not_break_a_topology_listing(tmp_path):
@@ -1113,34 +923,6 @@ def test_an_unknown_component_is_still_refused(tmp_path, monkeypatch):
     monkeypatch.chdir(_repo(tmp_path / "code"))
     with pytest.raises(SystemExit):
         main(["provision", "--component", "nonsense"])
-
-
-def test_a_local_store_outside_git_is_reported_not_silently_replaced(tmp_path):
-    """A complete store outside a repository is *present and wrong*, not absent.
-
-    It used to fall through to the declaration, so every `tcw work` command read
-    and wrote a store the user had not configured, their items invisible and
-    nothing said anywhere. The class matters as much as the refusal: `find_node`
-    re-raises only `StoreNotProvisioned` and `StoreDeclarationError`, so a plain
-    `ValueError` would make `tcw work list` answer "run `tcw init`" for a node
-    that plainly is one.
-    """
-    code = _repo(tmp_path / "code")
-    init(["work"], code, "corelib")
-    local = _local_store(tmp_path / "not-a-repository" / "work")
-    declaration = RepositoryDeclaration(
-        url=str(_remote_with_store(tmp_path)), path="docs/work/corelib")
-    _write_config(
-        code,
-        path=str(local),
-        repository={"url": declaration.url, "path": declaration.path},
-    )
-    FsStoreProvisioner(code, "work", declaration).ensure_available()
-
-    with pytest.raises(StoreDeclarationError) as excinfo:
-        FsWorkStore.open(code)
-    assert "work.path is not inside a Git repository" in str(excinfo.value)
-    assert "tcw provision" not in str(excinfo.value)
 
 
 def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_path):
@@ -2039,18 +1821,6 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     assert "legacy extends map is unsupported" in message
     assert "tcw provision" not in message
     assert not isinstance(excinfo.value, StoreNotProvisioned)
-
-
-def test_a_location_that_holds_no_store_still_falls_through_to_the_declaration(tmp_path):
-    """The other half: rule 1 must still yield when there is simply no store
-    where it looked, or the declaration could never answer for anything."""
-    node = _repo(tmp_path / "node")
-    init(["work"], node, "node-project")
-    _write_config(node, path="nowhere",
-                  repository={"url": "https://example.invalid/board.git"})
-    with pytest.raises(StoreNotProvisioned) as excinfo:
-        FsWorkStore.open(node)
-    assert "tcw provision" in str(excinfo.value)
 
 
 # ── a declaration this machine cannot turn into a path ──────────────────────

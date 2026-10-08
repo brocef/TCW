@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.fs import anchor_configured_path, worktree_node_root
+from tcw.store.fs import anchor_configured_path
 from test_override_in_linked_worktree import linked
 from test_worktree_sibling_nodes import validate, workspace  # noqa: F401
 
@@ -62,16 +62,6 @@ def test_a_store_path_escaping_the_worktree_is_anchored_in_any_letter_case(works
     as_typed = anchor_configured_path(_upper_app(wt / "pkg-a", app), escaping)
     assert as_git.samefile(app / "pkg-a")
     assert as_typed.samefile(as_git), (as_typed, as_git)
-
-
-def test_the_worktree_node_root_is_found_in_any_letter_case(workspace):  # noqa: F811
-    app, _wt = linked(workspace)
-    typed = _upper_app(app / "pkg-a", app)
-    found = worktree_node_root(typed, ".worktrees/x")
-    expected = worktree_node_root(app / "pkg-a", ".worktrees/x")
-    assert found is not None and expected is not None
-    assert str(found).lower() == str(expected).lower(), (found, expected)
-
 
 
 def test_an_override_naming_the_worktree_copy_in_other_letter_case(workspace, monkeypatch):  # noqa: F811

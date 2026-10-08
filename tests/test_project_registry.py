@@ -32,7 +32,7 @@ def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None
 
 @pytest.mark.parametrize(
     "value",
-    ["Upper", "two_words", "-leading", "trailing-", "two--hyphens", "local", "active",
+    ["Upper", "two_words", "-leading", "trailing-", "two--hyphens", "local",
      # `a_b` and `A-b` are here for a second reason, and it is the one that
      # would be missed if they were ever pruned as duplicates of `two_words`
      # and `Upper`. `override_variable` maps an id to an environment variable by
@@ -46,6 +46,13 @@ def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None
 def test_invalid_or_reserved_project_ids(value):
     with pytest.raises(ValueError):
         validate_project_id(value)
+
+
+@pytest.mark.parametrize("value", ["active", "backlog", "completed"])
+def test_a_former_status_name_is_a_valid_project_id(value):
+    """TCW 3.0 has no status folders, so their names mean nothing to a
+    project ID (TCW-70 Design 9)."""
+    assert validate_project_id(value) == value
 
 
 def test_the_override_variable_name_follows_the_id():

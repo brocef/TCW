@@ -5,19 +5,12 @@ thin adapter glue over the existing FS stores that never propagates a store
 exception to a link-scanning caller.
 """
 
-import shutil
 import subprocess
 import yaml
 from pathlib import Path
 
 from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
-from tcw.store.base import Tombstone
-from tcw.store.fs import (
-    FsCapabilitiesStore,
-    FsTaxonomyStore,
-    FsWorkStore,
-    init,
-)
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 
 
 # ── parse: grammar round-trips ────────────────────────────────────────────────
@@ -150,13 +143,6 @@ def test_resolve_local_capability(tmp_path):
     assert r.ok and r.axis == "C" and r.key == "auth/login"
 
 
-def test_resolve_local_work(tmp_path):
-    root = node(tmp_path)
-    item = FsWorkStore.open(root).create("A task", created="2026-01-01")
-    r = resolve_tcw_ref(root, f"tcw://W/{item.slug}")
-    assert r.ok and r.axis == "W" and r.key == item.slug
-
-
 # ── resolve: federation (extends alias) ───────────────────────────────────────
 
 def test_resolve_federated_capability(tmp_path):
@@ -170,40 +156,6 @@ def test_resolve_federated_capability(tmp_path):
 
 
 # ── resolve: foreign work (resolves in the graph; hosting is the viewer's call) ─
-
-def test_resolve_foreign_work_resolves_and_reports_project(tmp_path):
-    """Both spellings of a foreign work ref resolve and carry the owning project.
-
-    `parse_tcw_uri` reads `tcw://<id>/W/<slug>` with a parsed namespace and
-    `tcw://W/<id>/<slug>` as a bare ref whose qualifier is a project id; both must
-    land on the same qualified key and expose `project`, so the SPA can gate on
-    whether it hosts that project.
-    """
-    root = node(tmp_path)
-    sub = subnode(root, "sub/proj")
-    item = FsWorkStore.open(sub).create("Child task", created="2026-01-01")
-    for uri in (f"tcw://proj/W/{item.slug}", f"tcw://W/proj/{item.slug}"):
-        r = resolve_tcw_ref(root, uri)
-        assert r.ok and r.axis == "W" and r.key == f"proj/{item.slug}"
-        assert r.project == "proj"
-
-
-def test_resolve_local_work_reports_no_project(tmp_path):
-    root = node(tmp_path)
-    item = FsWorkStore.open(root).create("Local", created="2026-01-01")
-    r = resolve_tcw_ref(root, f"tcw://W/{item.slug}")
-    assert r.ok and r.key == item.slug and r.project == ""
-
-
-def test_resolve_parent_work_from_child(tmp_path):
-    """The cross-node epic back-link: a child slice points at the parent's epic
-    (GitHub issue #7). Resolves upward, and marks the parent as the owning project.
-    """
-    root = node(tmp_path)
-    sub = subnode(root, "proj")
-    epic = FsWorkStore.open(root).create("Parent epic", created="2026-01-01")
-    r = resolve_tcw_ref(sub, f"tcw://W/repo/{epic.slug}")
-    assert r.ok and r.axis == "W" and r.project == "repo"
 
 
 def test_resolve_dangling_work_slug(tmp_path):
@@ -270,26 +222,6 @@ def test_resolve_ambiguous_does_not_raise(tmp_path):
 
 # ── resolved work: a reference to finished work is not a typo ─────────────────
 
-def test_resolve_a_tombstoned_slug_resolves_and_says_it_is_archived(tmp_path):
-    """A resolved item's folder leaves the tracked tree, so `get` stops
-    answering for it in every clone but the one that ran the transition. Failing
-    here reported finished work in the same words as a misspelling — and made
-    `tcw validate`'s verdict depend on which machine ran it."""
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    slug = st.create_work("A thing").item.slug
-    st.start(slug, owner="t")
-    st.complete(slug, "done", [])
-    subprocess.run(["git", "-C", str(root), "rm", "-r", "-q", "--ignore-unmatch",
-                    f"docs/work/completed/{slug}"], check=True)
-    shutil.rmtree(root / "docs" / "work" / "completed" / slug, ignore_errors=True)
-
-    r = resolve_tcw_ref(root, f"tcw://W/{slug}")
-    assert r.ok is True
-    assert r.archived is True
-    assert r.resolution == "done"
-    assert r.key == slug
-
 
 def test_resolve_a_slug_that_never_existed_still_fails_unchanged(tmp_path):
     """The distinction the graveyard exists to draw. Recording resolved work
@@ -301,32 +233,3 @@ def test_resolve_a_slug_that_never_existed_still_fails_unchanged(tmp_path):
     assert r.reason == "no such work item: 2026-01-01-never-created"
 
 
-def test_a_live_item_resolves_without_being_marked_archived(tmp_path):
-    root = node(tmp_path)
-    st = FsWorkStore.open(root)
-    slug = st.create_work("A live thing").item.slug
-    r = resolve_tcw_ref(root, f"tcw://W/{slug}")
-    assert r.ok is True and r.archived is False
-
-
-def test_resolution_needs_only_get_tombstone_and_renamed(tmp_path, monkeypatch):
-    """The litmus test, in code. A store exposing nothing but three reads —
-    `get`, `tombstone` and `renamed`, with no filesystem, no git, no paths —
-    drives the same resolution, which is what "could a non-filesystem store
-    implement this?" means concretely."""
-    class StoreWithNoFilesystem:
-        node_root = tmp_path.resolve()
-
-        def get(self, slug):
-            return None                      # resolved items are not live
-
-        def tombstone(self, slug):
-            return Tombstone(slug=slug, resolution="wontfix", resolved="2025-01-01")
-
-        def renamed(self, slug):
-            return None                      # never renamed
-
-    monkeypatch.setattr("tcw.refs.resolve_qualified_work_ref",
-                        lambda anchor, ref: (StoreWithNoFilesystem(), ref))
-    r = resolve_tcw_ref(tmp_path, "tcw://W/anything-at-all")
-    assert r.ok is True and r.archived is True and r.resolution == "wontfix"

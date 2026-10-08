@@ -15,16 +15,20 @@ from pathlib import Path
 
 import pytest
 
-from tcw.store.base import PROCEDURE_IDS, STAGE_IDS
+from tcw.store.base import PROCEDURE_IDS
+from tcw.work.model import STAGES
 from tcw.work.resolve import load_builtins
 
-SHIPPED = set(STAGE_IDS)
+# Every stage of TCW-69's table that takes a prompt, except the two whose text
+# TCW-74 writes.
+TCW_74 = {"review", "qa"}
+SHIPPED = {s.name for s in STAGES if s.prompt} - TCW_74
 REPO = Path(__file__).resolve().parent.parent
 
 
 def test_every_stage_ships_a_prompt():
     """The set is the derivation, never a hand-written list: a stage added to
-    `STAGE_IDS` with no prompt file has to fail here.
+    the stage table with no prompt file has to fail here.
 
     `inbox` is **in** the set. It runs before an item exists, which is why it
     long shipped nothing — but "no item to resolve against" was never a reason
@@ -94,8 +98,13 @@ def test_a_missing_prompt_file_is_a_loud_failure(monkeypatch):
     import tcw.work.resolve as resolve
 
     class _Missing:
+        """Listed but unreadable: `load_builtins` reads every stage whose file
+        is there, and the read is what fails."""
         def __truediv__(self, _part):
             return self
+
+        def is_file(self):
+            return True
 
         def read_text(self, **_kw):
             raise FileNotFoundError
@@ -150,7 +159,8 @@ def test_the_prompts_are_in_the_built_wheel(tmp_path):
     with zipfile.ZipFile(wheels[0]) as z:
         members = {n for n in z.namelist()
                    if n.startswith("tcw/work/prompts/") and n.endswith(".md")}
-        assert {Path(n).stem for n in members} == SHIPPED
+        # A superset: `verify.md` still ships until TCW-74 rewrites the prompts.
+        assert SHIPPED <= {Path(n).stem for n in members}
         for name in members:
             assert z.read(name).decode("utf-8").strip()
         # The procedure defaults travel the same way (checked here rather than

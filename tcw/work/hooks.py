@@ -1,12 +1,4 @@
-"""Execution of configured lifecycle bindings.
-
-**Deliberately not in the store.** A `WorkStore` method that shells out is one no
-remote adapter could honor, so running a command is a CLI concern. There is a
-second, sharper reason: `complete()` writes the resolution *before* it moves the
-item, so a `pre` hook evaluated inside the store would leave a resolution on an
-unmoved item when it aborts — an item reading as closed while sitting in
-`active`. Running hooks from the CLI, before the store is touched at all, is what
-makes that impossible. No transaction concept and no interface change required.
+"""Running configured `pre` and `post` command bindings.
 
 **Trust model.** `tcw-config.yaml` lives in the user's own repository and is
 trusted exactly as much as any other file there — a `Makefile`, a git hook, a
@@ -17,57 +9,11 @@ stated plainly so nobody mistakes it for a sandbox.
 handler on a button click is a meaningfully worse posture than a CLI the user
 invoked deliberately.
 """
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from tcw.store.base import Binding, LifecyclePolicy
-from tcw.work.resolve import select
-
-
-def hook_env(node_root: Path, slug: str, status: str, transition: str,
-             item_path: "Path | str | None" = None,
-             resolution: str = "") -> dict[str, str]:
-    """The caller's environment plus the `TCW_*` variables, so a hook can act
-    without re-deriving context it cannot see.
-
-    `TCW_ITEM_PATH` and `TCW_RESOLUTION` are **omitted** rather than exported
-    empty when the caller has nothing to put in them, so a script can test for
-    presence instead of for emptiness. `TCW_RESOLUTION` is conditional on the
-    transition: only `complete`, `discard` and `auto-delete` have a resolution.
-    `TCW_ITEM_PATH` is conditional on the *state*: every transition has an item
-    folder and every caller passes what the store answers, but that answer is
-    None once the item is gone — which is the state `tcw work delete` resumes
-    into, and the one case where the variable is genuinely absent. The docstring
-    once said `start` and `submit` had neither, and while it said so `complete`
-    passed neither either, so a binding testing `[ -n "$TCW_ITEM_PATH" ]`
-    concluded there was no item folder for the one transition most likely to
-    want it.
-
-    The path is the item's location *at the moment the hook runs* — before the
-    move for a `pre`, after it for a `post` — because that is the only answer a
-    hook can act on. It is passed in by the caller, always the store's own answer
-    for the item, and is never composed here from `TCW_NODE_ROOT`: the work store
-    may live in a different repository entirely, which is the standing rule for
-    store paths everywhere in this codebase. A binding that must work on the
-    resume path therefore has to tolerate the variable being absent — an archive
-    command written as `tar -C "$TCW_ITEM_PATH"` will fail there rather than
-    silently archiving the working directory, which is the behaviour the presence
-    test exists to give it.
-    """
-    env = {
-        **os.environ,
-        "TCW_SLUG": slug,
-        "TCW_STATUS": status,
-        "TCW_TRANSITION": transition,
-        "TCW_NODE_ROOT": str(node_root),
-    }
-    if item_path is not None:
-        env["TCW_ITEM_PATH"] = str(item_path)
-    if resolution:
-        env["TCW_RESOLUTION"] = resolution
-    return env
+from tcw.work.config import Binding
 
 
 def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
@@ -110,33 +56,3 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
     return None
 
 
-def run_pre(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-            status: str, item=None, item_path=None, resolution: str = "") -> str | None:
-    """`pre` hooks for a transition. A failure means **do not touch the store**.
-
-    Callers must invoke this before any `set_field`, not merely before the move:
-    that is the whole reason execution lives outside the store.
-
-    `item` is what a binding's `when:` is matched against. It is optional so the
-    existing callers keep working, and a conditional binding without one simply
-    does not match — a check that cannot be evaluated must not silently run.
-    """
-    return run_bindings(select(policy.transition(transition).pre, item), node_root,
-                        hook_env(node_root, slug, status, transition, item_path,
-                                 resolution),
-                        policy.timeout, f"{transition} pre")
-
-
-def run_post(policy: LifecyclePolicy, transition: str, node_root: Path, slug: str,
-             status: str, item=None, item_path=None, resolution: str = "") -> str | None:
-    """`post` hooks for a transition. A failure **never rolls back**.
-
-    The move and its commit have already happened, and unwinding a committed
-    transition is worse than the failure. The caller reports it and exits
-    non-zero so nothing downstream mistakes it for success — but the item stays
-    where it moved to.
-    """
-    return run_bindings(select(policy.transition(transition).post, item), node_root,
-                        hook_env(node_root, slug, status, transition, item_path,
-                                 resolution),
-                        policy.timeout, f"{transition} post")

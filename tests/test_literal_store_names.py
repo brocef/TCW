@@ -11,7 +11,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.serve import TcwServer
-from tcw.store.fs import FsWorkStore, git_commit_result, git_mv, git_stage, init
+from tcw.store.fs import init
 
 
 def git(root: Path, *args: str) -> str:
@@ -33,14 +33,6 @@ def root(tmp_path, monkeypatch, capsys) -> Path:
 
 
 # ── criterion 1: a slug that is not one path segment ────────────────────────
-
-@pytest.mark.parametrize("slug", ["/etc/passwd", "", "a/b", ".."])
-def test_a_path_shaped_slug_is_no_such_item(root, slug):
-    st = FsWorkStore.open(root)
-    assert st.get(slug) is None
-    for call in (lambda: st.start(slug, owner="x"), lambda: st.submit(slug)):
-        with pytest.raises(ValueError, match="no such work item"):
-            call()
 
 
 def test_the_web_answers_404_for_an_encoded_slash(root):
@@ -80,27 +72,6 @@ def pair(root) -> tuple[Path, Path, Path]:
     git(root, "add", "-A")
     git(root, "commit", "-qm", "seed")
     return root, root / "d" / "x[b]", root / "d" / "xb"
-
-
-def test_stage_and_commit_take_only_the_named_path(pair):
-    root, glob_named, neighbour = pair
-    for d in (glob_named, neighbour, root / "d" / "q?", root / "d" / "qz"):
-        (d / "f").write_text("2\n")
-    git_stage(root, glob_named / "f", root / "d" / "q?" / "f")
-    assert sorted(git(root, "diff", "--cached", "--name-only").split()) == [
-        "d/q?/f", "d/x[b]/f"]
-    assert git_commit_result(root, "one", "d/x[b]", "d/q?") is None
-    assert sorted(git(root, "show", "--name-only", "--format=", "HEAD").split()) == [
-        "d/q?/f", "d/x[b]/f"]
-    assert sorted(git(root, "diff", "--name-only").split()) == ["d/qz/f", "d/xb/f"]
-
-
-def test_a_move_takes_only_the_named_folder(pair):
-    root, glob_named, neighbour = pair
-    (neighbour / "new").write_text("untracked\n")
-    git_mv(root, glob_named, root / "d" / "moved")
-    assert git(root, "diff", "--cached", "--name-status").split() == [
-        "R100", "d/x[b]/f", "d/moved/f"]
 
 
 @pytest.mark.parametrize("setting", ["1", "true"])
