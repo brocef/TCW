@@ -154,7 +154,7 @@ class JiraBackend:
         self.jira = jira
         self.client = client or JiraClient(jira)
         self.report = report or _warn
-        self.layout = Layout(self.work_path, config.enabled, self.external_stages)
+        self.layout = Layout(self.work_path, config.enabled, self.external_stages, "Jira")
         self._metadata: Metadata | None = None
         self._me: Any = _UNREAD
         #: Display names of accounts seen in this command, for `user_name`.

@@ -1,7 +1,11 @@
-"""What every work backend does, run against each one (TCW-70 AC 1).
+"""What every work backend does, run against each one (TCW-70 AC 1, TCW-71
+AC 25): the in-memory backend, the filesystem backend, and the Jira backend
+over the fake.
 
-TCW-71 adds the Jira backend as a third parameter. A case that depends on how
-a backend names folders takes the name from what `create` returned.
+A case that depends on how a backend names folders takes the name from what
+`create` returned. A case resting on a fact a backend declares differently
+skips by reading that fact, never by naming the backend (TCW-71 Design 15.3a);
+no case here needs to today.
 """
 
 from datetime import date, datetime, timezone
@@ -13,10 +17,17 @@ from tcw.errors import NotFound, UsageError
 from tcw.work.backend import Query, WorkBackend
 from tcw.work.config import parse_work_config
 from tcw.work.fs_backend import FsWorkBackend
-from tcw.work.model import Changes, Slug
+from tcw.work.jira.backend import JiraBackend
+from tcw.work.jira.config import parse_jira_config
+from tcw.work.model import Changes
+from tests.work.jira.conftest import EMAIL_ENV, STATUSES, TOKEN_ENV, jira_config
+from tests.work.jira.fake import FakeJira
 from tests.work.memory_backend import MemoryBackend
 
 TAGS = ["bug", "docs", "ui", "api"]
+
+#: `make()` with no user: each backend's ordinary setup.
+DEFAULT = object()
 
 
 class _Clock:
@@ -27,12 +38,13 @@ class _Clock:
         return self.at
 
 
-def _memory(tmp_path, user):
-    backend = MemoryBackend(tmp_path / "work", user=user)
+def _memory(tmp_path, monkeypatch, user):
+    backend = MemoryBackend(tmp_path / "work", user=None if user is DEFAULT else user)
     return backend, backend.set_reported_stage
 
 
-def _filesystem(tmp_path, user):
+def _filesystem(tmp_path, monkeypatch, user):
+    user = None if user is DEFAULT else user
     config, problems = parse_work_config({"tags": TAGS})
     assert problems == []
     backend = FsWorkBackend("tcw", tmp_path / "work", config, user,
@@ -48,9 +60,36 @@ def _filesystem(tmp_path, user):
     return backend, put_stage
 
 
-@pytest.fixture(params=[_memory, _filesystem], ids=["memory", "filesystem"])
-def make(request, tmp_path):
-    return lambda user=None: request.param(tmp_path, user)
+def _jira(tmp_path, monkeypatch, user):
+    """The fake's account is `user`; with `user=None` the credential
+    variables are unset, which is how Jira mode has no user (R3)."""
+    fake = FakeJira().install(monkeypatch)
+    if user is None:
+        monkeypatch.delenv(EMAIL_ENV, raising=False)
+        monkeypatch.delenv(TOKEN_ENV, raising=False)
+    else:
+        monkeypatch.setenv(EMAIL_ENV, "dev@example.test")
+        monkeypatch.setenv(TOKEN_ENV, "token")
+        fake.account("dev@example.test", "acct-dev" if user is DEFAULT else user, "Dev")
+    config, problems = parse_work_config(jira_config(tags=TAGS))
+    assert problems == []
+    jira, problems = parse_jira_config(config.jira)
+    assert problems == []
+    backend = JiraBackend("tcw", tmp_path / "work", config, jira,
+                          report=lambda line: None)
+    fake.projects["TCW"].statuses += ("Backlog",)
+
+    def put_stage(folder, stage):
+        key = folder.split("-", 2)
+        ticket = fake.tickets[f"{key[0]}-{key[1]}"]
+        ticket.status = "Backlog" if stage is None else STATUSES[stage]
+
+    return backend, put_stage
+
+
+@pytest.fixture(params=[_memory, _filesystem, _jira], ids=["memory", "filesystem", "jira"])
+def make(request, tmp_path, monkeypatch):
+    return lambda user=DEFAULT: request.param(tmp_path, monkeypatch, user)
 
 
 @pytest.fixture
@@ -59,7 +98,13 @@ def backend(make):
 
 
 def new(backend, title, stage="request", **props):
-    return backend.create(title, Changes(**props), stage=stage, request=None)
+    """An item at `stage`: made at request, then moved, since a Jira item can
+    only be made at request (TCW-71 Design 4.1)."""
+    item = backend.create(title, Changes(**props), stage="request", request=None)
+    if stage == "request":
+        return item
+    backend.set_stage(item.slug.folder, stage, None)
+    return backend.read(item.slug.folder)
 
 
 def test_it_satisfies_the_protocol(backend):
@@ -164,10 +209,11 @@ def test_rename_keeps_the_prefix(backend):
 
 
 def test_the_request(backend):
-    with_request = backend.create("a", Changes(), stage="request", request="Do X.\n")
+    with_request = backend.create("a", Changes(), stage="request",
+                                  request="Do X.\n\nThen Y,\nand Z.")
     without = new(backend, "b")
     empty = backend.create("c", Changes(), stage="request", request="")
-    assert backend.read_request(with_request.slug.folder) == "Do X.\n"
+    assert backend.read_request(with_request.slug.folder) == "Do X.\n\nThen Y,\nand Z."
     assert backend.read_request(without.slug.folder) is None
     assert backend.read_request(empty.slug.folder) is None
 
