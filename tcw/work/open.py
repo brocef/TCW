@@ -22,6 +22,7 @@ from tcw.store.fs import (
 )
 from tcw.work.backend import WorkBackend
 from tcw.work.config import WorkConfig, parse_work_config
+from tcw.work.jira.config import JiraConfig, parse_jira_config
 from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Changes, inbox_stage
 
@@ -50,16 +51,26 @@ def read_work_config(project_root: Path) -> WorkConfig:
     return config
 
 
+def read_jira_config(project_root: Path, config: WorkConfig) -> JiraConfig:
+    """`work.jira` of a project whose `work.backend` is `jira`, parsed;
+    `BackendError` naming every problem."""
+    jira, problems = parse_jira_config(config.jira)
+    if problems:
+        raise BackendError(f"{Path(project_root) / SENTINEL}: " +
+                           "; ".join(str(p) for p in problems))
+    return jira
+
+
 def open_backend(project_root: Path, *,
                  report: Callable[[str], None] | None = None) -> WorkBackend:
     """The work backend of the project at `project_root`, from its tracked
     `tcw-config.yaml`."""
     root = Path(project_root)
     config = read_work_config(root)
-    if config.backend != "filesystem":
-        raise BackendError(f"{root / SENTINEL}: work.backend is "
-                           f"{config.backend!r}; the Jira backend arrives with "
-                           f"TCW-71")
+    if config.backend == "jira":
+        read_jira_config(root, config)
+        raise BackendError(f"{root / SENTINEL}: work.backend is 'jira'; the Jira "
+                           f"backend arrives with TCW-71")
     try:
         project = FsProjectRegistry.open(root).current.id
         path = work_path(root)

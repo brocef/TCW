@@ -47,7 +47,10 @@ def test_the_jira_backend_is_not_here_yet(tmp_path):
     statuses = ["inbox", "request", "spec", "plan", "implement", "review", "qa",
                 "completed", "discarded"]
     p = make_project(tmp_path, "p", config={
-        "backend": "jira", "jira": {},
+        "backend": "jira", "jira": {
+            "site": "https://x.atlassian.net", "project": "PP",
+            "credentials": {"email-env": "E", "token-env": "T"},
+            "fields": {"project": "TCW Project", "item": "TCW Item"}},
         "stages": {name: {"status": name.title()} for name in statuses}})
     with pytest.raises(BackendError, match="TCW-71"):
         open_backend(p)
