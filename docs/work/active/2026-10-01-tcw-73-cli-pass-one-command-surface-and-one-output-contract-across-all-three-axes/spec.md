@@ -335,6 +335,14 @@ renames a command, those slices update the text that names it (Design 9.4).
    - **[Decision] Removing a folder** prints one `removed <path>` line per file
      removed, and no line for the folder itself. So the lines name exactly the
      files that changed, which is what criterion 9 compares.
+   - **[Review finding, 2026-10-13] Renaming a work item folder** prints one
+     line, `moved <old> to <new>`, with both paths shown as above. A rename
+     changes every file under the folder without changing any file's content,
+     so naming each file twice (`removed` under the old name, `wrote` under the
+     new) would say less clearly what happened. The contract test treats the
+     line as naming every path under both folders. This form was already what
+     `tcw work rename` printed in both backends; the review found this rule did
+     not list it.
    - **[Decision] Where the names come from.** The writer reports them; the
      command line layer does not compare the disk before and after (that would
      mean reading whole stores on every write). In the filesystem tree stores,
@@ -804,6 +812,15 @@ The 2.x checks for retention (`tcw/validate.py:370-371`) and tracker configurati
 | `error` | malformed YAML; a broken `tcw://` link; an unreadable `item.yaml` (R11); a taxonomy or capabilities check problem, including a capability record still carrying `Planning doc` or `Tracker` (Design 8.6, R14); a config problem; a records problem (TCW-69's mid-work check reports only real faults) | 1 |
 | `warning` | an invalid latest verdict round; a reference to a missing item, or to a project nothing declares (TCW-70 spec, Design 10); a stage ahead of its artifacts; a registry warning; a tracked personal file (once TCW-72 lands); a `--remote` move that could not be checked | 0 |
 | `unresolved` | a reference into a project not reachable here; a declared project not present here. Nothing else: a check that was skipped is not a finding, and stderr says what was skipped (review decision R16) | 0 |
+
+**[Implement finding, 2026-10-13; recorded at review]** A reference into a project
+that is present here but whose work store cannot be opened or read is reported
+as a `warning` (plan choice 9), not `unresolved` and not skipped. It is not
+`unresolved`, because the project is reachable; the question has an answer that
+the broken store hides. It is not a silently skipped check (R16), because the
+reader would then see a clean result while a reference may be dangling. A
+warning keeps the exit code 0, as a skipped check would, while saying on stdout
+which reference could not be checked and why.
 
 #### 6.3 Output
 
