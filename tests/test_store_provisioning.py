@@ -1935,15 +1935,10 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
     assert "taxonomy" not in config
 
 
-def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
-    """Spec criterion 4, and the reason it is a test of its own.
-
-    `tcw-config.yaml` belongs to the node; the tree can be in a different
-    repository, and `git add` refuses a path outside the repository it runs in.
-    Staging this against the store's repository is what made `tcw work tags add`
-    fail with *is outside repository at …*, so the whole verb was unusable in
-    the orchestrator layout. A single-repository fixture reproduces none of it.
-    """
+def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_path):
+    """`tcw-config.yaml` belongs to the node; the tree can be in a different
+    repository. Since TCW-73 neither is staged: the node's config is written
+    and both indexes stay as they were."""
     store_repo = _repo(tmp_path / "store-repo")
     (store_repo / "taxonomy").mkdir(parents=True)
     consumer, _ = _federation_pair(tmp_path, taxonomy_path=str(store_repo / "taxonomy"))
@@ -1954,7 +1949,7 @@ def test_extends_add_stages_in_the_nodes_repository_not_the_stores(tmp_path):
 
     staged = subprocess.run(["git", "-C", str(consumer), "diff", "--cached", "--name-only"],
                             capture_output=True, text=True, check=True).stdout.split()
-    assert "tcw-config.yaml" in staged
+    assert staged == []
     assert _porcelain(store_repo) == ""
 
     # `taxonomy.path` shares the section `extends` is written into, and losing it

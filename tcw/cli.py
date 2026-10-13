@@ -6,8 +6,6 @@ implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 
 import argparse
 import os
-import shlex
-import subprocess
 import sys
 from pathlib import Path
 
@@ -18,7 +16,7 @@ from tcw import projects_cli
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
-    COMPONENTS, NOT_A_REPOSITORY, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
+    COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
     declared_repository, find_node_root, git_root, init,
     provisioned_store_root,
 )
@@ -48,11 +46,6 @@ def run_init(components: list[str], project_id: str | None = None,
     """Scaffold `docs/<component>/` trees under the current directory, mark it a
     node, and report. Shared by `tcw init` and each `tcw <component> init`."""
     root = Path.cwd()
-    if git_root(root) is None:                 # returns the repo root for any dir inside it
-        # Checked here rather than in the store, because init runs before one
-        # exists. The wording is the store's, so every write says the same thing.
-        print(f"tcw init: {NOT_A_REPOSITORY}", file=sys.stderr)
-        return 1
     unknown = [c for c in components if c not in COMPONENTS]
     if unknown:
         print(f"tcw init: unknown component(s): {', '.join(unknown)}. "
@@ -643,20 +636,6 @@ def main(argv: list[str] | None = None) -> int:
             os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         except (OSError, ValueError):
             pass                       # stdout is not a file descriptor here
-        return 1
-    except subprocess.CalledProcessError as error:
-        # Deliberately generic: the only policy here is "a git subprocess
-        # failed", which is true of every component. The index-touching calls
-        # capture git's output (so a retried failure does not print once per
-        # try), and it is printed here; an uncaptured call has already shown it.
-        # `cmd` is a sequence *or* a string (stdlib contract); joining a string
-        # iterates its characters.
-        cmd = error.cmd if isinstance(error.cmd, str) else \
-            shlex.join(str(a) for a in error.cmd)
-        print(f"{command}: git command failed (exit {error.returncode}): {cmd}",
-              file=sys.stderr)
-        if isinstance(error.stderr, str) and error.stderr.strip():
-            print(error.stderr.rstrip("\n"), file=sys.stderr)
         return 1
     except OSError as error:
         # A file TCW could not read or write — permissions, a full disk, a

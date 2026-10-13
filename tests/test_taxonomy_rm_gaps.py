@@ -101,13 +101,15 @@ def test_a_node_without_capabilities_removes_as_before(tmp_path, monkeypatch, ca
 
 # ── a child the listing counts but git does not track ────────────────────────
 
-def test_an_unstaged_child_term_refuses_the_removal(tmp_path, monkeypatch, capsys):
+def test_a_child_term_refuses_the_removal_whatever_git_knows(tmp_path, monkeypatch, capsys):
+    """A nested term is a folder holding a `meta.yaml`, decided from the disk
+    (TCW-73 Design 8.2): one never added to git refuses like any other."""
     root = node(tmp_path)
     term(root, "zed")
     term(root, "zed/kid", stage=False)
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "zed/kid" in err and "git add" in err, err
-    assert "Removed" not in err and lists(root, "zed") and lists(root, "zed/kid")
+    assert code == 3 and "nested under it: zed/kid" in err, err
+    assert lists(root, "zed") and lists(root, "zed/kid")
 
 
 def test_os_metadata_is_removed_with_the_term(tmp_path, monkeypatch, capsys):
@@ -126,25 +128,23 @@ def test_os_metadata_is_removed_with_the_term(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("where", ["notes.md", "kid/notes.md"])
-def test_any_other_untracked_file_refuses_before_anything_is_removed(
-        tmp_path, monkeypatch, capsys, where):
+def test_any_other_file_goes_with_the_term(tmp_path, monkeypatch, capsys, where):
     root = node(tmp_path)
     term(root, "zed")
     stray = root / "docs" / "taxonomy" / "zed" / where
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_text("mine")
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and f"zed/{where}" in err and "delete it" in err, err
-    assert lists(root, "zed") and stray.exists()
-    assert (root / "docs" / "taxonomy" / "zed" / "meta.yaml").exists()   # untouched
+    assert code == 0, err
+    assert not lists(root, "zed") and not stray.exists()
 
 
-def test_a_term_never_staged_is_refused_in_tcw_words(tmp_path, monkeypatch, capsys):
+def test_a_term_never_added_to_git_is_removed(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     term(root, "zed", stage=False)
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "not tracked" in err, err
-    assert "fatal:" not in err and lists(root, "zed")
+    assert code == 0, err
+    assert not lists(root, "zed")
 
 
 # ── every caller: the guard is the store's, not the command's ────────────────
@@ -160,29 +160,7 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     assert lists(root, "zed")
 
 
-# ── review fold-in: symlinks and a malformed capability ──────────────────────
-
-def test_an_untracked_symlink_to_a_tracked_file_refuses_before_removing(tmp_path, monkeypatch, capsys):
-    root = node(tmp_path)
-    term(root, "zed")
-    folder = root / "docs" / "taxonomy" / "zed"
-    (folder / "alias.yaml").symlink_to("meta.yaml")
-    code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "zed/alias.yaml" in err, err
-    assert (folder / "meta.yaml").exists() and lists(root, "zed")
-
-
-def test_a_tracked_symlink_does_not_vouch_for_its_untracked_target(tmp_path, monkeypatch, capsys):
-    root = node(tmp_path)
-    term(root, "zed")
-    folder = root / "docs" / "taxonomy" / "zed"
-    (folder / "mine.md").write_text("mine")
-    (folder / "link.md").symlink_to("mine.md")
-    git(root, "add", str(folder / "link.md"))
-    code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 3 and "zed/mine.md" in err, err
-    assert (folder / "meta.yaml").exists() and lists(root, "zed")
-
+# ── review fold-in: a malformed capability ───────────────────────────────────
 
 def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)

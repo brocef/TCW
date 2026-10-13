@@ -47,7 +47,10 @@ def test_the_web_answers_404_for_an_encoded_slash(root):
         httpd.server_close()
 
 
-# ── criterion 2: a glob-named capability stages and commits only itself ─────
+# ── criterion 2: a glob-named capability writes only itself ─────────────────
+#
+# Its staging half went with TCW-73, which stages nothing: what is left is that
+# writing `a*` changes `a*` and never its neighbour.
 
 def test_writing_a_glob_named_capability_leaves_its_neighbour_alone(root, capsys):
     assert main(["capabilities", "add", "a*", "Star"]) == 0
@@ -57,29 +60,7 @@ def test_writing_a_glob_named_capability_leaves_its_neighbour_alone(root, capsys
     neighbour = root / "docs" / "capabilities" / "abc" / "meta.yaml"
     neighbour.write_text(neighbour.read_text() + "# mine, not yet saved\n")
     assert main(["capabilities", "set", "a*", "--field", "Status=Partial"]) == 0
-    assert git(root, "diff", "--cached", "--name-only").split() == [
-        "docs/capabilities/a*/meta.yaml"]
-    assert "docs/capabilities/abc/meta.yaml" in git(root, "diff", "--name-only")
-
-
-# ── criteria 3-4: the git helpers, directly ─────────────────────────────────
-
-@pytest.fixture
-def pair(root) -> tuple[Path, Path, Path]:
-    for name in ("x[b]", "xb", "q?", "qz"):
-        (root / "d" / name).mkdir(parents=True)
-        (root / "d" / name / "f").write_text("1\n")
-    git(root, "add", "-A")
-    git(root, "commit", "-qm", "seed")
-    return root, root / "d" / "x[b]", root / "d" / "xb"
-
-
-@pytest.mark.parametrize("setting", ["1", "true"])
-def test_an_inherited_literal_pathspecs_setting_still_writes(root, monkeypatch, setting):
-    """Git exports GIT_LITERAL_PATHSPECS to hooks and aliases run under
-    `git --literal-pathspecs`; with it on, git reads `:(literal)` as part of the
-    file name, so the prefix must be left off."""
-    monkeypatch.setenv("GIT_LITERAL_PATHSPECS", setting)
-    assert main(["capabilities", "add", "a*", "Star"]) == 0
-    assert main(["capabilities", "add", "abc", "Abc"]) == 0
-    assert "docs/capabilities/a*/meta.yaml" in git(root, "diff", "--cached", "--name-only")
+    assert git(root, "diff", "--cached", "--name-only") == ""
+    assert sorted(git(root, "diff", "--name-only").split()) == [
+        "docs/capabilities/a*/meta.yaml", "docs/capabilities/abc/meta.yaml"]
+    assert neighbour.read_text().endswith("# mine, not yet saved\n")

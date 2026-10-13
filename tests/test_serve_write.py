@@ -752,51 +752,31 @@ class TestTargetedPostWriteWarnings:
 # ── Tests: work tags (registry endpoint + create/update validation) ──────────
 
 
-# ── Non-git node: every write route refuses, nothing lands ───────────────────
+# ── A project that is not a git repository saves like any other ─────────────
 
 
-def _manifest(root: Path) -> dict[str, str]:
-    """Every path under `root`, directories included — an empty directory left
-    behind is a partial write too."""
-    import hashlib
-    return {
-        str(p.relative_to(root)):
-            "<dir>" if p.is_dir() else hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in sorted(root.rglob("*"))
-    }
-
-
-def test_every_write_route_refuses_outside_a_repository(tmp_path):
-    """Serve inherits the store's guard, so the browser gets the refusal itself.
-
-    It used to get HTTP 500 whose body was a raw `git add …` command line, and
-    the node kept whatever the store had written before staging failed.
-    """
+def test_every_write_route_works_outside_a_repository(tmp_path):
+    """The stores write files and stage nothing (TCW-73 Design 8.1), so a
+    project that is not a git repository saves like any other."""
     import shutil
 
     root = _node(tmp_path)
     _seed(root)
     shutil.rmtree(root / ".git")
     httpd, base = _start_server(root)
-    before = _manifest(root)
     try:
         calls = [
             ("POST", "/api/taxonomy", {"name": "Gadget", "slug": "gadget"}),
             ("POST", "/api/capabilities", {"path": "a/b", "name": "Thing"}),
         ]
         for method, path, body in calls:
-            # Raw bytes, not parsed JSON: the routes disagree about whether an
-            # error body is JSON or plain text, and that is not this test's
-            # business — the message reaching the browser is.
-            data = json.dumps(body).encode("utf-8") if body is not None else b""
-            status, raw = _req_raw(base, method, path, data,
-                                   {"Content-Type": "application/json"})
-            assert 400 <= status < 500, (method, path, status, raw)
-            assert b"not inside a git repository" in raw, (method, path, raw)
+            status, _ = _req(base, method, path, body)
+            assert status == HTTPStatus.CREATED, (method, path, status)
     finally:
         httpd.shutdown()
         httpd.server_close()
-    assert _manifest(root) == before
+    assert (root / "docs" / "taxonomy" / "gadget" / "meta.yaml").is_file()
+    assert (root / "docs" / "capabilities" / "a" / "b" / "meta.yaml").is_file()
 
 
 # ── A child's parent and status through the web app ──────────────────────────

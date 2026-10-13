@@ -12,8 +12,9 @@ Allowances name the class or function the literal sits in, never a file:
 - `FsStoreProvisioner`, for `tcw provision`: `clone`, `checkout`, `fetch`, and
   `merge`, which `--refresh` uses as `merge --ff-only` to fast-forward its own
   checkout. The spec's allowance (AC 12) named the first three only.
-- Until TCW-73: `git_stage` (`add`) and `git_rm` (`rm`), which the taxonomy and
-  capabilities stores still use to stage their writes.
+
+Nothing else: since TCW-73 the taxonomy and capabilities stores write files
+and stage nothing, and the scan covers their CLI modules too.
 """
 
 import ast
@@ -26,6 +27,7 @@ import tcw
 PACKAGE = Path(tcw.__file__).resolve().parent
 SCANNED = sorted([*(PACKAGE / "work").rglob("*.py"), PACKAGE / "validate.py",
                   PACKAGE / "refs.py", PACKAGE / "capabilities" / "cli.py",
+                  PACKAGE / "taxonomy" / "cli.py", PACKAGE / "cli.py",
                   *(PACKAGE / "store").rglob("*.py")])
 SCANNED = [p for p in SCANNED if (PACKAGE / "work" / "jira") not in p.parents]
 
@@ -34,8 +36,6 @@ WRITERS = {"add", "commit", "mv", "rm", "reset", "checkout", "merge", "push",
            "worktree remove"}
 ALLOWED = {
     "FsStoreProvisioner": {"clone", "checkout", "fetch", "merge"},
-    "git_stage": {"add"},          # until TCW-73
-    "git_rm": {"rm"},              # until TCW-73
 }
 
 
@@ -129,7 +129,6 @@ def test_the_scan_sees_the_allowed_writes():
         found = git_writes(PACKAGE / "store" / "fs.py")
     finally:
         ALLOWED.update(saved)
-    assert any("git add" in f and "git_stage" in f for f in found)
     assert any("git clone" in f and "FsStoreProvisioner" in f for f in found)
 
 

@@ -530,7 +530,7 @@ def _fail_writing(monkeypatch, name, exc=OSError(28, "No space left on device"))
     """Make `Path.write_text` raise for one target file.
 
     Matching on the target's *name* is deterministic where a call counter is not
-    — `_stage`, git, and fixture setup do their own writes. Temps are
+    — git and fixture setup do their own writes. Temps are
     `<name>.tmp`, so `startswith` catches the staged write too.
     """
     real = Path.write_text
@@ -659,34 +659,6 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
     assert list(child.rglob("*.tmp")) == []
 
 
-def test_update_capability_removes_override_when_staging_fails(tmp_path, monkeypatch):
-    """A refused stage removes the override folder this call materialized.
-
-    **This reverses what it used to assert.** Named
-    `test_update_capability_keeps_override_when_staging_fails` until
-    `2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`,
-    it pinned the opposite: a failed `git add` left the freshly created folder
-    on disk, because the rollback keyed on whether content had landed. That was
-    the defect — a git refusal reported failure and left a partial write behind.
-    The folder was created by this call, so removing it destroys nothing the
-    caller had before. A folder that already existed is still never removed;
-    its sibling below pins that."""
-    base, child = child_of(tmp_path, {
-        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    d = child / "docs" / "capabilities" / "moderation" / "report-content"
-
-    def boom(*a, **kw):
-        raise OSError("fatal: Unable to create '.git/index.lock': File exists")
-
-    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
-    with pytest.raises(OSError):
-        FsCapabilitiesStore.open(child).update_capability(
-            "moderation/report-content", body="override body\n")
-
-    assert not d.exists()
-    assert list(child.rglob("*.tmp")) == []
-
-
 def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
     """`capabilities set` — the CLI path — materializes a fresh override too, and
     writes only `meta.yaml`. A failed write must not leave the empty directory."""
@@ -700,30 +672,6 @@ def test_set_failure_removes_override_it_materialized(tmp_path, monkeypatch):
             "moderation/report-content", {"Status": "Missing"})
 
     assert excinfo.value.errno == 28
-    assert not d.exists()
-    assert list(child.rglob("*.tmp")) == []
-
-
-def test_set_removes_override_when_staging_fails(tmp_path, monkeypatch):
-    """A refused stage removes the override folder `set` materialized.
-
-    **This reverses what it used to assert.** Named
-    `test_set_keeps_override_when_staging_fails` until
-    `2026-08-20-a-git-refusal-after-the-filesystem-write-still-leaves-a-partial-write`;
-    it pinned the `meta.yaml` surviving a failed `git add`. Same reasoning as
-    its sibling above: the folder is this call's own."""
-    base, child = child_of(tmp_path, {
-        "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
-    d = child / "docs" / "capabilities" / "moderation" / "report-content"
-
-    def boom(*a, **kw):
-        raise OSError("fatal: Unable to create '.git/index.lock': File exists")
-
-    monkeypatch.setattr("tcw.store.fs.git_stage", boom)
-    with pytest.raises(OSError):
-        FsCapabilitiesStore.open(child).set(
-            "moderation/report-content", {"Status": "Missing"})
-
     assert not d.exists()
     assert list(child.rglob("*.tmp")) == []
 
@@ -791,16 +739,10 @@ def test_add_rejects_duplicate_path(tmp_path):
         st.add("routes/login", name="Sign in")
 
 
-# ── the write-then-stage chokepoint ──────────────────────────────────────────
+# ── the write chokepoint ─────────────────────────────────────────────────────
 #
-# A repository that exists and *refuses* — a held index.lock, a rejecting hook,
-# a permissions error — is only discovered when staging fails, which is after
-# the content is on disk. `_write_staged` undoes what the call created and
+# `_write_files` undoes what the call created when a write fails and
 # re-raises; it must never touch anything that was already there.
-
-
-def _boom(*a, **kw):
-    raise subprocess.CalledProcessError(128, ["git", "add", "x"])
 
 
 def test_mkdir_owned_reports_who_created_the_directory(tmp_path):
@@ -842,25 +784,17 @@ def test_atomic_write_all_keeps_the_targets_mode(tmp_path):
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
-def test_the_body_clear_branch_stages_once_and_rolls_back(tmp_path, monkeypatch):
-    """`update_capability`'s body-clear branch used to stage twice — the meta
-    write, then the directory, to record the `description.md` it deleted. The
-    second call sat outside the rollback, so a refusal there left the freshly
-    materialized override behind. Staging the directory now rides inside the
-    same protected call, so there is no second `git add` to refuse."""
+def test_the_body_clear_branch_rolls_back(tmp_path, monkeypatch):
+    """`update_capability`'s body-clear branch deletes `description.md` and
+    writes `meta.yaml` into an override it materialized; a failed write leaves
+    no folder behind."""
     base, child = child_of(tmp_path, {
         "moderation/report-content": {"id": "cap-aaa111", "Status": "Supported"}})
     d = child / "docs" / "capabilities" / "moderation" / "report-content"
-    calls = []
 
-    def counting_boom(*a, **kw):
-        calls.append(a)
-        raise subprocess.CalledProcessError(128, ["git", "add", "x"])
-
-    monkeypatch.setattr("tcw.store.fs.git_stage", counting_boom)
-    with pytest.raises(subprocess.CalledProcessError):
+    _fail_writing(monkeypatch, "meta.yaml")
+    with pytest.raises(OSError):
         FsCapabilitiesStore.open(child).update_capability(
             "moderation/report-content", body="")
 
-    assert len(calls) == 1, "the branch staged twice; the second is unprotected"
     assert not d.exists()

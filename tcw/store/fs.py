@@ -18,7 +18,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import uuid
 from datetime import datetime, timezone
 from contextlib import suppress
@@ -139,12 +138,6 @@ def _capability_resources(folder: Path, meta: dict) -> list[Path]:
 
 # ── git + node helpers (FS-adapter local details, not store-interface ops) ──
 
-#: How to read git's `-z` path output. `-z` prints a path's raw bytes, and one
-#: that is not UTF-8 must not crash the decode; `surrogateescape` round-trips it
-#: back to the same bytes when it becomes a `Path` again.
-_GIT_PATHS = {"encoding": "utf-8", "errors": "surrogateescape"}
-
-
 def _git(*args, **kwargs):
     """Run a `git` command with stdin closed.
 
@@ -160,75 +153,6 @@ def _git(*args, **kwargs):
     """
     stdin = kwargs.pop("stdin", subprocess.DEVNULL)
     return subprocess.run(*args, stdin=stdin, **kwargs)
-
-
-INDEX_LOCK_RETRY = 2.0
-
-
-def _git_index(args: list, check: bool = False, **kwargs) -> "subprocess.CompletedProcess":
-    """Run a git command that takes the index (`add`, `mv`, `rm`, `commit`),
-    retrying briefly while another git process holds `index.lock`.
-
-    Another session's commit, an editor's git integration, or a `git status`
-    can hold the index for a moment. This store's own writers are kept apart
-    by `_store_lock`; nothing can keep them apart from git run by something
-    else, so a failure is retried for up to `INDEX_LOCK_RETRY` seconds while
-    the lock file exists. The test is the file, never git's message, which is
-    translated and changes between versions. A lock that outlives the wait —
-    often one a crashed git left behind — is named in the error.
-
-    Always captures output, so a retried failure does not print once per try.
-    `check=True` raises `CalledProcessError` carrying git's own stderr."""
-    kwargs.setdefault("capture_output", True)
-    kwargs.setdefault("text", True)
-    root = args[args.index("-C") + 1] if "-C" in args else "."
-    deadline = time.monotonic() + INDEX_LOCK_RETRY
-    lock = None
-    while True:
-        r = _git(args, **kwargs)
-        if r.returncode == 0:
-            return r
-        if lock is None:
-            where = _git(["git", "-C", str(root), "rev-parse", "--git-path", "index.lock"],
-                         capture_output=True, text=True)
-            lock = (Path(root) / where.stdout.strip()) if where.returncode == 0 else Path()
-        # Retried while the lock file is there, or on git's exit 128 — what a
-        # lock it could not create exits with — since the other process may
-        # have finished between the failure and this check. A refusing
-        # `pre-commit` hook exits 1 and is never run twice.
-        held = bool(lock.name) and lock.exists()
-        if not (held or r.returncode == 128) or time.monotonic() >= deadline:
-            break
-        time.sleep(0.1)
-    if lock is not None and lock.name and lock.exists():
-        note = (f"\n{lock} is still there after {INDEX_LOCK_RETRY:g}s. If no other git "
-                f"process is running, a crashed one left it behind: delete it by hand "
-                f"and retry.")
-        if isinstance(r.stderr, str):
-            r = subprocess.CompletedProcess(r.args, r.returncode, r.stdout,
-                                            r.stderr.rstrip("\n") + note)
-    if check:
-        raise subprocess.CalledProcessError(r.returncode, args, r.stdout, r.stderr)
-    return r
-
-
-def _literal(path: "str | Path") -> str:
-    """`path` as a git pathspec that means only itself.
-
-    Git reads every path argument as a pattern, even after `--`, so a store
-    folder named `a*` would also match `abc`. Per path rather than
-    `--literal-pathspecs`: that flag works by exporting `GIT_LITERAL_PATHSPECS`,
-    which the hooks `git commit` runs would inherit, and a user's hook filtering
-    on `'*.py'` would then silently match nothing. Not for `git mv`, which takes
-    plain paths and rejects the prefix.
-
-    Plain when `GIT_LITERAL_PATHSPECS` is already on — git exports it to hooks
-    and aliases run under `git --literal-pathspecs` — because git then reads the
-    prefix as part of a file name, and every path is literal anyway."""
-    setting = os.environ.get("GIT_LITERAL_PATHSPECS", "").strip().lower()
-    if setting in ("true", "yes", "on") or (setting.isdecimal() and int(setting)):
-        return str(path)
-    return f":(literal){path}"
 
 
 def git_root(start: Path | None = None) -> Path | None:
@@ -298,28 +222,6 @@ def find_node_root(start: Path | None = None) -> Path | None:
         if d == d.parent:                  # filesystem-root fixpoint
             return None
         d = d.parent
-
-
-# Files an operating system writes into any folder a file browser opens. Named
-# exactly, never by pattern: removing a term deletes these if nothing else is
-# left, and a pattern would reach files a person made.
-OS_METADATA_FILES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
-
-
-def _untracked_under(folder: Path, tracked: set[Path]) -> list[Path]:
-    """Files (and symlinks) under `folder` that are not in `tracked`, skipping
-    operating-system metadata files. Symlinks are listed, never followed, and
-    compared as themselves: `tracked` holds paths with their folders resolved
-    and their last component as git lists it."""
-    found: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(folder, followlinks=False):
-        base = Path(dirpath)
-        links = [n for n in dirnames if (base / n).is_symlink()]
-        for name in [*filenames, *links]:
-            path = base / name              # `base` is under the resolved folder
-            if name not in OS_METADATA_FILES and path not in tracked:
-                found.append(path)
-    return sorted(found)
 
 
 def find_node(component: str, start: Path | None = None) -> Path | None:
@@ -576,49 +478,6 @@ def registered_project_id(anchor: Path, target: Path) -> str:
     raise ValueError(f"{target} is not registered from project '{registry.current.id}'")
 
 
-def _warn_hidden(node_root: Path, *paths: Path) -> None:
-    """Say on stderr that an ignore rule is hiding a write we just made.
-
-    A rule can be written at any time, so this is checked at write time:
-    the file is still written, and the user is just told git has no record.
-
-    Advisory, on stderr, warn-and-proceed.
-
-    # ponytail: no de-duplication — a command staging two hidden paths in two
-    # calls prints two lines. Only happens in an already-broken setup, and a
-    # cache is state this function does not otherwise carry.
-    """
-    hidden = list(paths)
-    shown = []
-    for p in hidden:
-        try:
-            shown.append(str(p.relative_to(node_root)))
-        except ValueError:
-            shown.append(str(p))
-    print(f"tcw: a .gitignore rule hides {', '.join(shown)}; it is on disk but "
-          f"git will not record it. Remove the rule, or run `git add -f` on it.",
-          file=sys.stderr)
-
-
-def git_stage(node_root: Path, *paths: Path) -> None:
-    """Stage paths, dropping any git ignores: `git add` on an ignored path
-    fails outright rather than no-opping. A dropped path is reported — see
-    `_warn_hidden`."""
-    ignored = [p for p in paths if git_ignored(node_root, p)]
-    # Only paths that are actually there: `start` stages the *vacated* source
-    # folder as a deletion, and warning about one that no longer exists would
-    # be false. Sound as well as convenient — plain `check-ignore` reports a
-    # tracked path as not ignored, so a dropped path is always untracked.
-    live = [str(p) for p in paths if p not in ignored]
-    if live:
-        _git_index(["git", "-C", str(node_root), "add", "--", *map(_literal, live)],
-                   check=True)
-    # After the `git add`, not before: if staging the live paths is refused the
-    # caller rolls the whole write back, and a warning already on stderr saying
-    # the dropped path "is on disk" would be false by the time it is read.
-    _warn_hidden(node_root, *(p for p in ignored if p.exists() or p.is_symlink()))
-
-
 def _same_folder(a: Path, b: Path) -> bool:
     """Whether `a` and `b` are one folder. One gone since it was listed or
     resolved is not a match; any other error leaves the question open, so it
@@ -627,45 +486,6 @@ def _same_folder(a: Path, b: Path) -> bool:
         return a.samefile(b)
     except FileNotFoundError:
         return False
-
-
-def git_rm(node_root: Path, path: Path) -> None:
-    # -f so a term staged-but-not-yet-committed (just `add`ed) can still be removed.
-    # Literal: `--` ends options but a path is still a glob to git, so removing
-    # a folder named `a*` would also delete `abc`.
-    _git_index(["git", "-C", str(node_root), "rm", "-rfq", "--", _literal(path)],
-               check=True)
-
-
-NOT_A_REPOSITORY = "not inside a git repository. Run `git init` first."
-
-
-def require_repository(root: Path) -> None:
-    """Refuse a filesystem-store write outside git.
-
-    A filesystem-adapter precondition, not a model concept — a remote store has
-    no repository to require, so nothing about this belongs in the abstract
-    interface. `ValueError` because that is already how the store interface says
-    "this write is refused", which means every existing CLI and HTTP handler
-    reports it without new plumbing.
-    """
-    if git_root(root) is None:
-        raise ValueError(NOT_A_REPOSITORY)
-
-
-def git_ignored(node_root: Path, path: Path, *, no_index: bool = False) -> bool:
-    """Whether `.gitignore` excludes `path`. False outside a repository.
-
-    `no_index=True` asks the ignore *rules* instead. Plain `check-ignore` reports
-    a tracked path as not ignored however the rules read, which is what the
-    staging callers want — it mirrors what `git add` is about to do — and the
-    wrong question for anyone asking whether files written there later will be
-    recorded at all.
-    """
-    return _git(
-        ["git", "-C", str(node_root), "check-ignore", "-q",
-         *(["--no-index"] if no_index else []), "--", str(path)],
-        capture_output=True).returncode == 0
 
 
 def init(components: list[str], root: Path, project_id: str | None = None,
@@ -724,19 +544,6 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     replacing_default_store = False
     if work_path is not None and "work" in components:
         target = work_path if work_path.is_absolute() else root / work_path
-        # Probed at the nearest *existing* ancestor, not at the target:
-        # `git_root` shells out to `git -C <path>`, which fails on a path that
-        # does not exist — and the target usually does not, since this call is
-        # what creates it. Probing the target directly would refuse a good
-        # `--work-path <repo>/new/nested/dir`. `is_symlink()` alongside
-        # `exists()` because the latter follows the link: a dangling symlink
-        # reads as absent, and skipping past it accepted a target that `mkdir`
-        # then died on.
-        probe = next((c for c in (target, *target.parents)
-                      if c.exists() or c.is_symlink()), root)
-        target_git = git_root(probe)
-        if target_git is None:
-            raise ValueError(f"work.path target is not inside a Git repository: {target}")
         if default_root.exists() and default_root.resolve() != target.resolve():
             # `is_symlink` first: replacing a default store means deleting it,
             # and a symlink is someone else's directory. Anything in it but
@@ -1320,6 +1127,11 @@ class FsTreeStore:
         # in its own node, and are not for a configured or provisioned one.
         self.node_root = node_root or root.parent.parent
         self.store_git_root = store_git_root or git_root(root) or self.node_root
+        # What this store's writes changed on disk, in order: `("wrote", path)`,
+        # `("removed", path)` or `("created", path)`. The filesystem adapter's
+        # own record (TCW-73 Design 1.2), read by the commands to name every
+        # file they touched; a store kept somewhere else has nothing to list.
+        self.changed: list[tuple[str, Path]] = []
         # This component's section of the *node's* config, not a file inside the
         # store. Re-read here rather than threaded down from `resolve_store`,
         # because `tcw/validate.py` builds a store by calling `_open_at`
@@ -1442,14 +1254,6 @@ class FsTreeStore:
         except (OSError, RuntimeError):       # broken symlink; loop on < 3.13
             return False
 
-    def _write_git_root(self) -> Path:
-        """The repository a write here has to land in — the store's own, which is
-        the node's only while the store sits inside it."""
-        return self.store_git_root
-
-    def _require_repository(self) -> None:
-        """Deliberately stateless — see `test_non_git_writes.py`'s no-state pin."""
-        require_repository(self._write_git_root())
 
     # -- the node's own `tcw-config.yaml` --
     #
@@ -1528,75 +1332,33 @@ class FsTreeStore:
         return f"{self._config_path()}: {self.COMPONENT}.extends"
 
     def _write_node_config(self, edits: list) -> None:
-        """Apply `edits` to the node sentinel and stage it in the **node's**
-        repository.
-
-        The store root and the node root are different repositories in the
-        orchestrator layout, and `git add` refuses a path outside the repository
-        it is run in — staging this against the store's repository is what made
-        `tcw work tags add` fail with *is outside repository at …*, so the whole
-        verb was unusable there.
-
-        The `None` branch is narrower than it looks: callers run
-        `_require_repository` first, which refuses a non-git node whose store is
-        its own default folder. What reaches it is the node that is not a
-        repository while its *store* is — an external `<component>.path`
-        pointing into one — where writing the file is the whole of what can be
-        done.
+        """Apply `edits` to the node sentinel and write it. Nothing is staged:
+        TCW 3.0 writes files and leaves git to the user (TCW-73 Design 8.1).
 
         Only the lines of the keys being changed are touched — comments and
         formatting everywhere else survive — and a file that cannot be edited
         that way is refused, not rewritten (`config_edit`). Edits that change
-        nothing write and stage nothing.
+        nothing write nothing.
         """
         config_path = self._config_path()
         self._config()                           # a malformed file refuses as before
         text = config_edit.edit_text(config_path, config_edit.read_text(config_path), edits)
         if text is None:
             return
-        node_repository = git_root(config_path.parent)
-        payload = [(config_path, text)]
-        if node_repository is None:
-            _atomic_write_all(payload)
-        else:
-            self._write_staged(payload, stage_root=node_repository)
+        self._write_files([(config_path, text)])
 
-    def _stage(self, *paths: Path) -> None:
-        self._require_repository()
-        git_stage(self.store_git_root, *paths)
+    def _write_files(self, pairs: list[tuple[Path, str]], *,
+                     owned_dir: Path | None = None,
+                     removed: tuple[Path, ...] = ()) -> None:
+        """Write every `(path, content)`, undoing what *this call* created if
+        the write fails, then re-raising; on success, record each path written
+        and each path in `removed` (a deletion the caller made just before).
 
-    def _write_staged(self, pairs: list[tuple[Path, str]], *,
-                      owned_dir: Path | None = None,
-                      also_stage: tuple[Path, ...] = (),
-                      stage_root: Path | None = None) -> None:
-        """Write every `(path, content)` and stage the lot, undoing what *this
-        call* created if either half fails, then re-raising.
-
-        A repository that exists and *refuses* — a held `index.lock`, a rejecting
-        hook, a permissions error — is only discovered when staging fails, which
-        is after the content is on disk. A precondition cannot help: it cannot
-        predict a lock acquired a millisecond later. So this rolls back instead.
-
-        **Never removes a path that was already there.** An update whose staging
-        is refused keeps what it just wrote, because deleting it would turn a
-        recoverable failure into real data loss. `owned_dir` is a directory the
-        caller proved it created (`_mkdir_owned`) and is removed whole;
-        everything else is per file, and only files absent when this call began.
-
-        `also_stage` are paths to stage alongside the written ones but not to
-        write — a deletion this call made, which git records by staging the path
-        it used to occupy. They ride inside the same `try` on purpose: staging
-        them afterwards would put a second `git add` outside the rollback, and a
-        refusal there would leave the write standing.
-
-        Best-effort and silent: the undo must not mask the original error, and
-        must not add a second line to a refusal whose one-line shape is pinned.
-
-        `stage_root` names the repository to stage in, for the one write that is
-        not a store file: the node's own `tcw-config.yaml`. The store root and
-        the node root vary independently — in the orchestrator layout they are
-        different repositories — and `git add` refuses a path outside the
-        repository it is given. Everything else defaults to the store's.
+        **Never removes a path that was already there.** `owned_dir` is a
+        directory the caller proved it created (`_mkdir_owned`) and is removed
+        whole; everything else is per file, and only files absent when this
+        call began. Best-effort and silent: the undo must not mask the original
+        error.
         """
         # `exists() or is_symlink()`: `exists()` follows the link, so a
         # pre-existing *dangling* symlink read as absent, was replaced by a real
@@ -1605,12 +1367,6 @@ class FsTreeStore:
         new = [p for p, _ in pairs if not (p.exists() or p.is_symlink())]
         try:
             _atomic_write_all(pairs)
-            paths = (*(p for p, _ in pairs), *also_stage)
-            if stage_root is None:
-                self._stage(*paths)
-            else:
-                self._require_repository()
-                git_stage(stage_root, *paths)
         except BaseException:
             if owned_dir is not None:
                 shutil.rmtree(owned_dir, ignore_errors=True)
@@ -1619,10 +1375,19 @@ class FsTreeStore:
                     with suppress(OSError):
                         p.unlink()
             raise
+        self.changed += [("removed", p) for p in removed]
+        self.changed += [("wrote", p) for p, _ in pairs]
 
     def _rm(self, path: Path) -> None:
-        self._require_repository()
-        git_rm(self.store_git_root, path)
+        """Delete a folder node from disk, whatever git knows of it, recording
+        one `removed` line per file it held."""
+        if path.is_symlink():
+            path.unlink()
+            self.changed.append(("removed", path))
+            return
+        files = sorted(f for f in path.rglob("*") if f.is_file() or f.is_symlink())
+        shutil.rmtree(path)
+        self.changed += [("removed", f) for f in files]
 
 
     # -- shared folder-node anatomy (meta.yaml + description.md + attachments) --
@@ -1725,20 +1490,18 @@ class FsTreeStore:
     def _write_node(self, d: Path, meta: dict, description: str) -> None:
         """Create/overwrite a folder node's meta + description, atomically, staged.
 
-        Rollback is `_write_staged`'s, and it spans the staging phase too: a git
-        refusal after both files landed undoes this call's work rather than
-        leaving an untracked node behind. What it removes depends on who made
-        the directory — the whole folder when this call did, only the files it
-        created when the node already existed. Same applies to `_write_meta`.
+        Rollback is `_write_files`'s: a failed write undoes this call's work.
+        What it removes depends on who made the directory — the whole folder
+        when this call did, only the files it created when the node already
+        existed. Same applies to `_write_meta`.
         """
-        self._require_repository()          # ahead of the mkdir, not the stage
         # `_mkdir_owned` rather than `exist_ok=True` + a prior `d.exists()`:
         # exactly one process's `mkdir` succeeds, so this is an ownership proof
         # with no check-then-act window — retiring the TOCTOU the old `existed`
         # probe carried, where a second writer creating the node between our
         # check and our failure would have had its directory removed.
         owned = _mkdir_owned(d)
-        self._write_staged(
+        self._write_files(
             [(d / "meta.yaml",
               yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)),
              (d / "description.md", description)],
@@ -1933,54 +1696,20 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             raise Refused(f"cannot remove inherited term '{term.qualified}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
-        # Refused, never cascaded: `_rm` is a `git rm -rf` of the whole folder.
-        # Asked of git rather than the disk, because git's answer is what gets
-        # deleted: a folder holding only untracked files (a `.DS_Store` left in a
-        # removed child's folder) is deleted by nothing, and refusing over it
-        # would name a "term" no `rm` can reach.
-        self._require_repository()
-        listed = _git(["git", "-C", str(self.store_git_root),
-                       "ls-files", "-z", "--", _literal(d)],
-                      capture_output=True, check=True, **_GIT_PATHS).stdout
-        here, top = d.resolve(), self.root.resolve()
-        # The folder resolved, the name kept: resolving the last component would
-        # let a symlink stand in for its target, or the target for the link.
-        tracked = [(self.store_git_root / f).parent.resolve() / Path(f).name
-                   for f in listed.split("\0") if f]
-        if not any(f.parent == here for f in tracked):
-            # `git rm` would fail with git's own words; say it in ours.
-            raise Refused(f"cannot remove '{term.slug}': its files are not tracked "
-                             f"by git; `git add` them first, or delete the folder")
-        nested = sorted({str(f.parent.relative_to(top)) for f in tracked
-                         if here in f.parent.parents})
+        # Refused, never cascaded, and decided from the disk (TCW-73 Design
+        # 8.2): a nested term is a folder under this one holding a `meta.yaml`.
+        # Everything else in the folder — attachments, files an operating
+        # system writes on its own, files git has never seen — goes with it.
+        nested = sorted({str(m.parent.relative_to(self.root))
+                         for m in d.rglob("meta.yaml") if m.parent != d})
         if nested:
             raise Refused(f"cannot remove '{term.slug}': nested under it: "
-                             f"{', '.join(nested)} (remove those first)")
-        # What `git rm` would leave behind: untracked files anywhere under the
-        # term. The listing counts any folder as a term, so a leftover would keep
-        # the term listed after "Removed". Refused here, before anything is
-        # touched, except for files an operating system writes into folders on
-        # its own, which are deleted with the term (below) — refusing over those
-        # would make every folder a file browser has opened unremovable.
-        untracked = _untracked_under(here, set(tracked))
-        if untracked:
-            names = ", ".join(str(p.relative_to(top)) for p in untracked)
-            raise Refused(
-                f"cannot remove '{term.slug}': {names} under it is not tracked by "
-                f"git; `git add` it (`git add -f` if ignored) and remove it first, "
-                f"or delete it")
+                          f"{', '.join(nested)} (remove those first)")
         referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
         if referrers:
             raise Refused(f"cannot remove '{term.slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
         self._rm(d)
-        if d.exists() and not _untracked_under(d.resolve(), set()):
-            shutil.rmtree(d)                    # only OS metadata files are left
-        if term.slug in self._local_slugs():
-            # A safety net: the check above found nothing to leave, so only a
-            # file written meanwhile gets here.
-            raise BackendError(f"removed the tracked files of '{term.slug}', but it "
-                             f"still lists: files git does not track remain in {d}")
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
         """`capability <path> (Subject|Feature)` for every local capability whose
@@ -2046,7 +1775,6 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         return out
 
     def extends_add(self, project_id: str) -> None:
-        self._require_repository()
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
@@ -2064,7 +1792,6 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         self._persist_extends(extends)
 
     def extends_remove(self, project_id: str) -> None:
-        self._require_repository()
         extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
             raise NotFound(f"no such extends project: {project_id}")
@@ -2707,8 +2434,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return out
 
     def _write_meta(self, d: Path, meta: dict, *,
-                    also_stage: tuple[Path, ...] = ()) -> None:
-        """Write a node's meta, staged, rolling back what this call created.
+                    removed: tuple[Path, ...] = ()) -> None:
+        """Write a node's meta, rolling back what this call created.
 
         Owns the `mkdir` so it can prove whether the directory is its own:
         `set` materializing a *fresh* override is the path where a refused write
@@ -2716,12 +2443,11 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         existing capability is the path where removing the folder would take
         files this call never wrote.
         """
-        self._require_repository()
         owned = _mkdir_owned(d)
-        self._write_staged(
+        self._write_files(
             [(d / "meta.yaml",
               yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))],
-            owned_dir=d if owned else None, also_stage=also_stage)
+            owned_dir=d if owned else None, removed=removed)
 
     def _write_target(self, identifier: str) -> tuple[Path, dict, bool]:
         """Resolve a write to `(folder, meta, is_override)`.
@@ -2776,7 +2502,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return meta
 
     def set(self, identifier: str, fields: dict) -> Capability:
-        self._require_repository()
         norm = self._validate_fields(fields)           # validate before touching disk
         d, meta, is_override = self._write_target(identifier)
         # `_write_meta` owns the mkdir and the rollback: `_write_target` can
@@ -2788,7 +2513,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- federation config --
 
     def extends_add(self, project_id: str) -> None:
-        self._require_repository()
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
@@ -2806,7 +2530,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         self._persist_extends(extends)
 
     def extends_remove(self, project_id: str) -> None:
-        self._require_repository()
         extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
             raise NotFound(f"no such extends project: {project_id}")
@@ -3098,7 +2821,6 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
                           core_revision: str | None = None) -> "CapabilityDetail":
-        self._require_repository()
         norm = self._validate_fields(fields) \
             if fields is not _UNSET and fields is not None else {}
 
@@ -3125,13 +2847,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # body (which is what makes append-only overrides work). So clearing
             # an override's body drops the delta and re-inherits, rather than
             # leaving an empty file that silently means the same thing.
+            had_body = desc.exists() or desc.is_symlink()
             desc.unlink(missing_ok=True)
-            # `also_stage=(d,)` rather than a second `self._stage(d)` after the
-            # write: staging the directory is what records the unlink above, and
-            # a separate call would sit outside `_write_meta`'s rollback — so a
-            # refusal there left a freshly materialized override behind, which
-            # is the class this item exists to close.
-            self._write_meta(d, meta, also_stage=(d,))
+            self._write_meta(d, meta, removed=(desc,) if had_body else ())
         elif body is _UNSET and not desc.exists():
             self._write_meta(d, meta)          # pure delta — no empty body file
         else:

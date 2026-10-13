@@ -83,7 +83,7 @@ def _assert_nothing_removed(root: Path, before: str) -> None:
 
 # ── deletes ──────────────────────────────────────────────────────────────────
 
-def test_remove_deletes_local_capability_and_stages_it(tmp_path):
+def test_remove_deletes_local_capability_and_stages_nothing(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
@@ -91,7 +91,7 @@ def test_remove_deletes_local_capability_and_stages_it(tmp_path):
     assert store(root).get("x") is None
     status = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
                             capture_output=True, text=True, check=True).stdout
-    assert "D  docs/capabilities/x/meta.yaml" in status
+    assert " D docs/capabilities/x/meta.yaml" in status        # deleted, not staged
 
 
 def test_remove_ignores_unresolvable_reference_tokens(tmp_path):
