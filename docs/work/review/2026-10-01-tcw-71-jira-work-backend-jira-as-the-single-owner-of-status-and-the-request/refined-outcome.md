@@ -78,6 +78,13 @@ Two inbox entries (`817ddc8a`):
 - Documentation beyond the release-notes and changelog entries goes to TCW-74
   and TCW-75, as the spec's non-goals say.
 
+## Capabilities
+
+The three new records and the changed delegation record were written on the
+branch (Task 16) and pass the records gate there (`outcome.md`). They reach
+`main`'s ledger only when the epic merges, so `tcw work complete` on `main`
+cannot resolve them and was run with `--force` for that reason alone.
+
 ## Closeout route
 
 The branch `work/2026-10-01-tcw-71-…` fast-forwards `epic/tcw-3.0`; its worktree
