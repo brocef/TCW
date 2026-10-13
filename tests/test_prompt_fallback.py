@@ -1,48 +1,26 @@
-"""A node that configures nothing must see byte-identical stage instructions.
+"""A project that configures nothing must see byte-identical stage instructions.
 
-The baseline in `tests/fixtures/prompt_fallback/` was captured from the CLI
-**before** documentation entries could reach a prompt, in its own commit. That
-ordering is the whole value: the expected bytes could not be edited into
-agreement with a regression without the edit showing up in the diff as a fixture
-change.
+The baseline in `tests/fixtures/prompt_fallback/` was captured from the CLI in
+a commit of its own. That ordering is the whole value: the expected bytes could
+not be edited into agreement with a regression without the edit showing up in
+the diff as a fixture change.
 
-It passes trivially on the tree it was captured from. That is the point — it is a
-tripwire armed ahead of the change, not a description of it.
+It passes trivially on the tree it was captured from. That is the point: it is
+a tripwire armed ahead of later changes, not a description of them.
 
 The recorded bytes normalize the item's slug to `<slug>`, and the replay
-normalizes the same way. Since 2.0.0 the prompt's gate header and next-step
-footer quote the reference back, and a slug carries the date it was created —
-without this the fixture would expire at midnight rather than when the text
-actually changed.
+normalizes the same way, because the header and footer quote the slug and a
+slug carries the date it was created.
 
-The whole file was **re-captured** by 2.0.0, which wrapped every resolved prompt
-in those bookends. That moved the text deliberately, so the old bytes would have
-asserted something false. What it pins from here is the bookended output; it no
-longer says anything about the verb split that preceded it, which was
-text-preserving and hand-edited the `argv` arrays alone.
-
-Before that, the `spec`, `plan`, and `postmortem` entries were **re-baselined
-once**, by
-`2026-08-19-name-the-item-s-actual-body-artifact-in-the-builtin-spec-and-plan-stage-prompts`,
-which rewrote those prompts to name the item's own body artifact. Only those
-stdouts were replaced, and only after asserting the remaining stages were
-byte-identical — so what this fixture still proves about the documentation
-substitution is intact. A prompt rewrite is the one reason to touch these bytes;
-a *substitution* changing them is the regression, and re-baselining to hide that
-is the thing the file exists to prevent.
-
-The `implement` and `verify` entries were re-baselined once more by issue #58,
-which added one sentence to each telling the agent to write in the item's folder
-wherever it currently lives (`tcw work path <slug>`). That sentence is the whole
-difference; every other stage stayed byte-identical.
+**Re-captured by TCW-74**, which rewrote every prompt for the 3.0 stages and
+added the generated footer. That moved the text deliberately, so the 2.x bytes
+would have asserted something false. A prompt rewrite is the one reason to
+touch these bytes; a *substitution* changing them is the regression, and
+re-baselining to hide that is what this file exists to prevent.
 """
 
-import pytest
-
-pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
-
-
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -53,60 +31,55 @@ BASELINE = json.loads((FIXTURES / "unconfigured.json").read_text(encoding="utf-8
 
 # Mirrors capture.py; duplicated rather than imported so a change to the capture
 # script cannot silently redefine what the replay checks.
-WALK = [("request", "backlog"), ("spec", "backlog"), ("plan", "backlog"),
-        ("implement", "active"), ("verify", "review"), ("postmortem", "review")]
-INTO = {"active": "start", "review": "submit"}
+STAGES = ["inbox", "request", "spec", "plan", "implement", "review", "qa",
+          "postmortem"]
 
 
 @pytest.fixture(scope="module")
 def replayed(tmp_path_factory):
-    root = tmp_path_factory.mktemp("fallback") / "unconfigured"
+    scratch = tmp_path_factory.mktemp("fallback")
+    env = {**os.environ, "HOME": str(scratch / "home"),
+           "XDG_CONFIG_HOME": str(scratch / "home" / "xdg"),
+           "TCW_NO_PERSONAL_CONFIG": "1"}
+    root = scratch / "unconfigured"
     root.mkdir(parents=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    for k, v in (("user.email", "t@t"), ("user.name", "t")):
-        subprocess.run(["git", "-C", str(root), "config", k, v], check=True)
     subprocess.run(["tcw", "init", "--id", "fallback", "work"], cwd=root,
-                   capture_output=True, check=True, stdin=subprocess.DEVNULL)
+                   capture_output=True, check=True, stdin=subprocess.DEVNULL,
+                   env=env)
     slug = subprocess.run(["tcw", "work", "new", "Baseline item"], cwd=root,
                           capture_output=True, text=True, check=True,
-                          stdin=subprocess.DEVNULL).stdout.strip()
-
-    out, current = {}, "backlog"
-    for stage, status in WALK:
-        if status != current:
-            subprocess.run(["tcw", "work", INTO[status], slug], cwd=root,
-                           capture_output=True, check=True,
-                           stdin=subprocess.DEVNULL)
-            current = status
-        r = subprocess.run(["tcw", "work", "stage", "prompt", stage, slug],
-                           cwd=root,
-                           capture_output=True, text=True,
-                           stdin=subprocess.DEVNULL)
+                          stdin=subprocess.DEVNULL, env=env).stdout.strip()
+    out = {}
+    for stage in STAGES:
+        reference = [] if stage == "inbox" else [slug]
+        r = subprocess.run(["tcw", "work", "stage", "prompt", stage, *reference],
+                           cwd=root, capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, env=env)
         out[stage] = {"returncode": r.returncode,
                       "stdout": r.stdout.replace(slug, "<slug>"),
                       "stderr": r.stderr.replace(slug, "<slug>")}
     return out
 
 
-@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][-2])
-def test_an_unconfigured_node_sees_the_recorded_bytes(expected, replayed):
-    stage = expected["argv"][-2]
+@pytest.mark.parametrize("expected", BASELINE, ids=lambda e: e["argv"][3])
+def test_an_unconfigured_project_sees_the_recorded_bytes(expected, replayed):
+    stage = expected["argv"][3]
     actual = replayed[stage]
-    assert actual["returncode"] == expected["returncode"]
+    assert actual["returncode"] == expected["returncode"] == 0
     assert actual["stdout"] == expected["stdout"], (
-        f"stage '{stage}' output changed for a node that configures nothing")
+        f"stage '{stage}' output changed for a project that configures nothing")
 
 
-def test_the_baseline_covers_the_two_prompts_that_will_change():
-    """Guards the fixture itself: if the corpus ever stopped covering `plan` and
-    `implement`, the tripwire would pass while protecting nothing."""
-    covered = {e["argv"][-2] for e in BASELINE}
-    assert {"plan", "implement"} <= covered
+def test_the_baseline_covers_every_stage_with_a_prompt():
+    """Guards the fixture itself: a corpus that stopped covering a stage would
+    pass while protecting nothing."""
+    from tcw.work.model import STAGES as TABLE
+    assert [e["argv"][3] for e in BASELINE] == [s.name for s in TABLE if s.prompt]
 
 
 def test_the_documentation_sentence_is_where_the_spec_says_it_is():
-    """The fallback text this item preserves lives in exactly two prompts.
-    Recorded so that 'byte-identical' has a named subject rather than being a
-    claim about opaque bytes."""
-    carrying = {e["argv"][-2] for e in BASELINE if "Documentation Sync" in e["stdout"]}
+    """The fallback text of the documentation span lives in exactly two
+    prompts. Recorded so that 'byte-identical' has a named subject."""
+    carrying = {e["argv"][3] for e in BASELINE if "Documentation Sync" in e["stdout"]}
     assert carrying == {"plan", "implement"}

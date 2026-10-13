@@ -1,141 +1,95 @@
-"""Capture `tcw work stage prompt` output on a node that configures nothing.
+"""Capture `tcw work stage prompt` output on a project that configures nothing.
 
 Run **before** a change that must not move the prompt text, and the recorded
-bytes become its back-compat tripwire: a project with no `work.documentation`
-must see byte-identical stage instructions afterwards.
+bytes become its tripwire: a project with no `work.documentation` and no
+prompt bindings must see byte-identical stage instructions afterwards.
 
     python tests/fixtures/prompt_fallback/capture.py <outdir>
 
 Captured before, this is evidence. Captured after, it would only record what the
-code now does — which is why `tests/fixtures/lifecycle_baseline/capture.py`, the
-script this is modelled on, says the same thing in its own docstring.
+code now does.
 
 **Re-capture only when a release intends the text to move, and say which one.**
-Twice so far it has been touched, and the two are opposites worth telling apart:
+The 2.x history of this file (six stages, walked through 2.x statuses) ended
+with TCW-74, which rewrote every prompt for the 3.0 stages and added the
+generated footer, so the file was re-captured from the 3.0 output in a commit
+of its own, after the text was final and before any later change to it.
 
-- Splitting the one stage verb in two hand-edited the six `argv` arrays and left
-  every recorded byte of stdout alone, because that change was text-preserving
-  and the frozen bytes were the proof.
-- 2.0.0 then wrapped every resolved prompt in a gate header and a next-step
-  footer. That moves the text on purpose, so the file was **re-captured**: the
-  old bytes would have asserted something this release makes false. What it
-  pins from here is the bookended text, and it no longer says anything about
-  the split.
-- Still before 2.0.0 shipped, the `verify` footer was corrected to name both
-  verdicts rather than acceptance alone — it had been sending a reader who
-  rejected the work to `tcw work complete`. Re-captured again for the same
-  reason: the release intends that line to move. Only the `verify` entry
-  changes; the other five are byte-identical across this re-capture, which is
-  itself worth checking if anyone repeats it.
-- `2026-09-17-stop-offering-a-version-cut-after-every-completed-work-item`
-  deleted step 9 of the `verify` stage, the instruction to offer a version cut
-  after an item completes. That release intends the step to disappear, so the
-  file was re-captured once more. Again only the `verify` entry moves, and only
-  its `stdout`; the diff is the two deleted lines and nothing else, which was
-  asserted before the new bytes were written.
+In 3.0 `stage prompt` composes the same text whatever stage the item is at, so
+the capture does not move the item: it creates one and reads every stage's
+prompt for it (inbox without a reference, since inbox takes none).
 
-  **Capture with the interpreter whose `tcw` you mean to pin.** This script
-  shells out to whatever `tcw` is first on `PATH`, and an editable install is a
-  single shared resource — a sibling worktree can own it, in which case a
-  capture silently records *that* tree's prompts and re-baselines this fixture
-  to the wrong text, with nothing failing. This re-capture was taken through a
-  throwaway venv (`python -m venv --system-site-packages`, then
-  `pip install -e <checkout> --no-deps`) with its `bin` first on `PATH`, which
-  pins the checkout without disturbing whatever the shared install points at.
-  Check `python -c "import tcw; print(tcw.__file__)"` immediately before
-  capturing, not once at setup.
-
-- `2026-09-16-stop-an-item-reaching-implement-without-a-spec-and-plan-...`
-  made `plan` legal in `active` too, so its step 7 and its footer now name the
-  already-started case. Only the `plan` entry moved; the other five were
-  checked byte-identical before the new bytes were written, through that
-  item's own venv.
-
-- `2026-09-29-say-where-a-dated-amendment-to-an-item-s-request-belongs` added
-  two lines to the `request` prompt: a re-run keeps dated `## Added` sections.
-  Only the `request` entry's `stdout` moved, and the diff was those two lines;
-  the other five were checked byte-identical before the new bytes were written.
-
-Every stage is exercised at a status where it is **legal**. Not because
-`prompt` would refuse otherwise — it refuses nothing, which is the whole point of
-the reading verb — but because an illegal stage adds a `note —` line on stderr
-and the bookend quotes the stage's own gate command back, so capturing out of
-status would pin text about the wrong situation. `gate` is the verb that
-refuses. The item walks backlog → active → review, and each stage is captured at
-the point it becomes legal.
+**Capture with the interpreter whose `tcw` you mean to pin.** This script
+shells out to whatever `tcw` is first on `PATH`, and an editable install is a
+single shared resource that a sibling worktree can own. Use a throwaway venv
+(`python -m venv --system-site-packages`, then `pip install -e <checkout>
+--no-deps`) with its `bin` first on `PATH`, and check `python -c "import tcw;
+print(tcw.__file__)"` immediately before capturing.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-# (stage id, the status the item must be in for that stage to be legal)
-WALK = [
-    ("request", "backlog"),
-    ("spec", "backlog"),
-    ("plan", "backlog"),
-    ("implement", "active"),
-    ("verify", "review"),
-    ("postmortem", "review"),
-]
+# Every stage with a built-in prompt, in the stage table's order.
+STAGES = ["inbox", "request", "spec", "plan", "implement", "review", "qa",
+          "postmortem"]
 
-
-# The item's slug carries the date it was created, and since 2.0.0 the prompt's
-# own header and footer quote it back. Recording it verbatim would make these
-# bytes expire at midnight, so every occurrence is normalized to this token on
-# the way in — and the replay normalizes the same way before comparing.
+# The item's slug carries the date it was created, and the prompt quotes it
+# back. Recording it verbatim would make these bytes expire at midnight, so
+# every occurrence is normalized to this token on the way in, and the replay
+# normalizes the same way before comparing.
 SLUG_TOKEN = "<slug>"
 
 
-def _run(root: Path, slug: str, *args: str) -> dict:
+def _env(home: Path) -> dict:
+    """No personal configuration from the person running the capture."""
+    return {**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / "xdg"),
+            "TCW_NO_PERSONAL_CONFIG": "1"}
+
+
+def _run(root: Path, slug: str, env: dict, *args: str) -> dict:
     r = subprocess.run(["tcw", *args], cwd=str(root), capture_output=True,
-                       text=True, stdin=subprocess.DEVNULL)
+                       text=True, stdin=subprocess.DEVNULL, env=env)
+
     def norm(t: str) -> str:
         return t.replace(slug, SLUG_TOKEN)
     return {"argv": [norm(a) for a in args], "returncode": r.returncode,
             "stdout": norm(r.stdout), "stderr": norm(r.stderr)}
 
 
-def build_node(root: Path) -> str:
-    """A node that configures nothing: no work.lifecycle, no work.documentation."""
+def build_project(root: Path, env: dict) -> str:
+    """A project that configures nothing beyond `tcw init`, with one item."""
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
-    subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
     subprocess.run(["tcw", "init", "--id", "fallback", "work"], cwd=str(root),
-                   capture_output=True, check=True, stdin=subprocess.DEVNULL)
+                   capture_output=True, check=True, stdin=subprocess.DEVNULL,
+                   env=env)
     r = subprocess.run(["tcw", "work", "new", "Baseline item"], cwd=str(root),
                        capture_output=True, text=True, check=True,
-                       stdin=subprocess.DEVNULL)
+                       stdin=subprocess.DEVNULL, env=env)
     return r.stdout.strip()
 
 
-# The transition that reaches each status from the one before it.
-INTO = {"active": "start", "review": "submit"}
-
-
-def capture_one(root: Path, slug: str) -> list[dict]:
+def capture_one(root: Path, slug: str, env: dict) -> list[dict]:
     out = []
-    current = "backlog"
-    for stage, status in WALK:
-        if status != current:                 # only on a change: `verify` and
-            subprocess.run(                   # `postmortem` share `review`, and
-                ["tcw", "work", INTO[status], slug],   # review → review is not
-                cwd=str(root), capture_output=True,    # a legal transition
-                check=True, stdin=subprocess.DEVNULL)
-            current = status
-        out.append(_run(root, slug, "work", "stage", "prompt", stage, slug))
+    for stage in STAGES:
+        reference = [] if stage == "inbox" else [slug]
+        out.append(_run(root, slug, env, "work", "stage", "prompt", stage,
+                        *reference))
     return out
 
 
 def main(outdir: Path, scratch: Path) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
+    env = _env(scratch / "home")
     root = scratch / "unconfigured"
-    slug = build_node(root)
+    slug = build_project(root, env)
     (outdir / "unconfigured.json").write_text(
-        json.dumps(capture_one(root, slug), indent=2) + "\n")
-    print(f"captured unconfigured ({len(WALK)} stages)")
+        json.dumps(capture_one(root, slug, env), indent=2) + "\n")
+    print(f"captured unconfigured ({len(STAGES)} stages)")
 
 
 if __name__ == "__main__":
