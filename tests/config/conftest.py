@@ -1,0 +1,63 @@
+"""Fixtures for the personal-configuration tests (TCW-72).
+
+`personal` switches the personal layers back on for one test (the suite-wide
+fixture switches them off) and gives the paths of both personal files, with
+`XDG_CONFIG_HOME` and `HOME` inside the test's own folder.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+import yaml
+
+
+@dataclass
+class Personal:
+    root: Path        # the acting project
+    xdg: Path         # $XDG_CONFIG_HOME
+    home: Path        # $HOME
+
+    @property
+    def user_file(self) -> Path:
+        return self.xdg / "tcw" / "config.yaml"
+
+    @property
+    def local_file(self) -> Path:
+        return self.root / "tcw-config.local.yaml"
+
+    @property
+    def project_file(self) -> Path:
+        return self.root / "tcw-config.yaml"
+
+    def project(self, mapping: dict) -> None:
+        self.project_file.write_text(yaml.safe_dump({"id": "p", **mapping},
+                                                     sort_keys=False))
+
+    def user(self, mapping) -> None:
+        self.user_file.parent.mkdir(parents=True, exist_ok=True)
+        self.user_file.write_text(mapping if isinstance(mapping, str)
+                                  else yaml.safe_dump(mapping, sort_keys=False))
+
+    def local(self, mapping) -> None:
+        self.local_file.write_text(mapping if isinstance(mapping, str)
+                                   else yaml.safe_dump(mapping, sort_keys=False))
+
+
+@pytest.fixture
+def personal(tmp_path, monkeypatch) -> Personal:
+    root = tmp_path / "p"
+    root.mkdir()
+    (root / "tcw-config.yaml").write_text("id: p\n")
+    xdg, home = tmp_path / "xdg", tmp_path / "home"
+    home.mkdir()
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG", raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.setenv("HOME", str(home))
+    return Personal(root, xdg, home)
+
+
+def problem_lines(config) -> list[str]:
+    return [str(p) for p in config.problems]

@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from tcw.config import dotted
 from tcw.store.base import (MIGRATION_GUIDE, PROCEDURE_IDS, DocEntry, normalize_tag,
                             parse_documentation_entries)
 from tcw.work.model import SIDE, STAGES, stage as table_stage
@@ -57,7 +58,7 @@ _REMOVED_WORK_KEYS = {
     "retain": "TCW no longer deletes finished items",
 }
 
-KeyPath = tuple[str, ...]
+KeyPath = tuple  # of str keys and int list indexes
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ class ConfigProblem:
     message: str
 
     def __str__(self) -> str:
-        return f"{'.'.join(self.key_path)}: {self.message}"
+        return f"{dotted(self.key_path)}: {self.message}"
 
 
 @dataclass(frozen=True)
@@ -81,12 +82,13 @@ class When:
 @dataclass(frozen=True)
 class Binding:
     """One configured entry: its kind, the text, file, command or skill it
-    names, an optional condition, and an opaque label for where it came from."""
+    names, an optional condition, and where it came from: a `tcw.config.Origin`
+    when it was read through the layered loader, else None."""
 
     kind: str
     value: str
     when: When | None = None
-    origin: str | None = field(default=None, compare=False)
+    origin: Any = field(default=None, compare=False)
 
     @property
     def ref(self) -> str:
@@ -189,7 +191,7 @@ def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
     return When(lists["tags"], lists["not_tags"])
 
 
-def _parse_binding(raw: Any, where: KeyPath, role: str, origin: str | None,
+def _parse_binding(raw: Any, where: KeyPath, role: str, origin: Any,
                    problems: _Problems) -> Binding | None:
     legal = LEGAL_KINDS[role]
     if not isinstance(raw, dict):
@@ -249,19 +251,24 @@ def _parse_binding(raw: Any, where: KeyPath, role: str, origin: str | None,
 
 
 def parse_bindings(raw: Any, where: KeyPath, role: str, problems: list,
-                   origin: str | None = None) -> tuple[Binding, ...]:
+                   origin: Any = None,
+                   origins: Mapping | None = None) -> tuple[Binding, ...]:
     """A list of bindings for `role` (`prompt`, `procedure`, `pre` or `post`).
 
     Every entry that parses is kept, in order, and duplicates are allowed. An
-    empty list is a valid, deliberate value.
+    empty list is a valid, deliberate value. Each binding's origin is
+    `origins[<its key path>]` when given, else `origin`: a merged list holds
+    entries from several layers.
     """
+    origins = origins or {}
     found = _Problems()
     out: list[Binding] = []
     if not isinstance(raw, list):
         found.add(where, f"expected a list of bindings, got {_describe(raw)}")
     else:
         for i, entry in enumerate(raw):
-            binding = _parse_binding(entry, (*where, str(i)), role, origin, found)
+            binding = _parse_binding(entry, (*where, i), role,
+                                     origins.get((*where, i), origin), found)
             if binding is not None:
                 out.append(binding)
     problems.extend(found)
@@ -356,7 +363,7 @@ def _parse_stage(name: str, raw: Any, jira: bool, origins: Mapping,
         if role in raw and role in allowed:
             path = (*where, role)
             lists[role] = parse_bindings(raw[role], path, role, problems,
-                                         origins.get(path))
+                                         origins.get(path), origins)
         else:
             lists[role] = None
     return StageConfig(enabled, status, **lists)
@@ -413,7 +420,7 @@ def _parse_procedures(raw: Any, origins: Mapping,
                                f"{', '.join(PROCEDURE_IDS)}")
             continue
         out[name] = parse_bindings(value, path, "procedure", problems,
-                                   origins.get(path))
+                                   origins.get(path), origins)
     return out
 
 
@@ -436,12 +443,13 @@ def _parse_tags(raw: Any, problems: _Problems) -> tuple[str, ...]:
     return tuple(tags)
 
 
-def parse_work_config(mapping: Any, origins: Mapping[KeyPath, str] | None = None
+def parse_work_config(mapping: Any, origins: Mapping[KeyPath, Any] | None = None
                       ) -> tuple[WorkConfig, list[ConfigProblem]]:
     """Read the mapping under `work:`. Never raises.
 
-    `origins` maps a key path to a label (which file it came from); every
-    binding built from a list at that path carries the label.
+    `origins` maps a key path to where its value came from (a
+    `tcw.config.Origin`); every binding carries the origin recorded for its
+    own entry, or else for its list.
     """
     origins = origins or {}
     problems = _Problems()
