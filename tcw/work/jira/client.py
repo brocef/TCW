@@ -89,13 +89,17 @@ class Transition:
 
     `fields` are the ids of every field on the transition's screen and
     `required` the ids of those Jira marks required; both are empty for a
-    transition with no screen."""
+    transition with no screen, and also for one whose screen holds only the
+    comment box. `has_screen` is the only thing that tells those two apart, and
+    it matters: Jira silently discards a comment sent with a transition that has
+    no screen (TCW-71 live check)."""
     id: str
     name: str
     to_status: str
     to_status_id: str = ""
     fields: tuple[str, ...] = ()
     required: tuple[str, ...] = ()
+    has_screen: bool = False
 
 
 @dataclass(frozen=True)
@@ -261,6 +265,7 @@ class JiraClient:
                 fields=tuple(str(f) for f in screen),
                 required=tuple(str(f) for f, meta in screen.items()
                                if isinstance(meta, dict) and meta.get("required")),
+                has_screen=raw.get("hasScreen") is True,
             ))
         return out
 

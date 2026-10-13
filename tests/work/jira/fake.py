@@ -70,8 +70,18 @@ class Transition:
     #: None for a global transition (offered from every status), else the
     #: statuses it is offered from.
     sources: tuple[str, ...] | None = None
-    #: field id -> required, for the transition's screen; empty for no screen.
+    #: field id -> required, for the transition's screen; empty for no screen,
+    #: and also for a screen holding only the comment box, which Jira does not
+    #: list among the expanded fields.
     screen: dict = field(default_factory=dict)
+    #: Whether the transition has a screen; None means "if `screen` names a
+    #: field". Jira keeps a comment sent with a transition only when it has one,
+    #: and otherwise answers 204 and discards it (the TCW-71 live check).
+    has_screen: bool | None = None
+
+    @property
+    def shows_screen(self) -> bool:
+        return bool(self.screen) if self.has_screen is None else self.has_screen
 
 
 @dataclass
@@ -87,7 +97,10 @@ class Project:
 
     def __post_init__(self):
         if not self.transitions:
-            self.transitions = [Transition(str(31 + i), f"Move to {s}", s)
+            # As on TCWTEST: only the move into Planning has a screen, and it
+            # holds nothing but the comment box.
+            self.transitions = [Transition(str(31 + i), f"Move to {s}", s,
+                                           has_screen=s == "Planning")
                                 for i, s in enumerate(self.statuses)]
 
     def type_by(self, ref: dict | str | None) -> IssueType | None:
@@ -438,6 +451,7 @@ class FakeJira:
         offered = []
         for transition in self._offered(ticket):
             entry = {"id": transition.id, "name": transition.name,
+                     "hasScreen": transition.shows_screen,
                      "to": {"name": transition.to, "id": str(
                          100 + self.projects[ticket.project].statuses.index(transition.to))}}
             if transition.screen:
@@ -654,7 +668,7 @@ class FakeJira:
         if missing:
             raise self._error(400, route, f"{missing[0]} is required.")
         ticket.status = chosen.to
-        for entry in comments:
+        for entry in comments if chosen.shows_screen else ():
             self._comment(ticket, None, entry["add"]["body"])
         self._touch(ticket)
         return None

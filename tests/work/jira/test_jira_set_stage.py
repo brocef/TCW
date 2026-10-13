@@ -43,6 +43,36 @@ def test_one_transition_carries_the_note(item):
     assert comment_texts(project, key) == [NOTE]
 
 
+def test_a_screenless_move_posts_the_note_after_it(item):
+    """Jira answers 204 to a comment sent with a transition that has no screen,
+    and discards it (the live check), so the note goes in its own request."""
+    project, key, folder = item
+    assert project.backend().set_stage(folder, "implement", NOTE) == "implement"
+    post, = transition_posts(project, key)
+    assert "update" not in post
+    assert project.fake.writes() == [("POST", f"/rest/api/3/issue/{key}/transitions"),
+                                     ("POST", f"/rest/api/3/issue/{key}/comment")]
+    assert comment_texts(project, key) == [NOTE]
+
+
+def test_a_screenless_move_whose_note_cannot_be_posted(item, monkeypatch):
+    project, key, folder = item
+
+    def refused(*args, **kwargs):
+        raise jira._for_status(400, {}, "no", "/x")
+    monkeypatch.setattr(project.fake, "_comment", refused)
+    with pytest.raises(MovedWithoutNote):
+        project.backend().set_stage(folder, "implement", NOTE)
+    assert project.fake.tickets[key].status == "In Progress"
+
+
+def test_a_screenless_move_dropped_after_landing_still_posts_the_note(item):
+    project, key, folder = item
+    project.fake.drop_after_next_write()
+    assert project.backend().set_stage(folder, "implement", NOTE) == "implement"
+    assert comment_texts(project, key) == [NOTE]
+
+
 def test_without_a_note_no_comment_is_sent(item):
     project, key, folder = item
     project.backend().set_stage(folder, "plan", None)

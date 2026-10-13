@@ -85,8 +85,16 @@ def test_transitions_and_a_screen_field(client, fake):
 
 def test_a_transition_with_a_comment_and_the_refusal_switch(client, fake):
     key = create(client)
+    planning = next(t for t in client.transitions(key) if t.to_status == "Planning")
+    assert planning.has_screen and planning.fields == ()
+    client.apply_transition(key, planning.id, text_document("why"))
+    assert client.issue(key)["fields"]["status"]["name"] == "Planning"
+    assert len(client.comments(key, 5)) == 1
+    # As Jira does: a comment sent with a transition that has no screen is
+    # accepted and discarded.
     target = next(t for t in client.transitions(key) if t.to_status == "Triage")
-    client.apply_transition(key, target.id, text_document("why"))
+    assert not target.has_screen
+    client.apply_transition(key, target.id, text_document("lost"))
     assert client.issue(key)["fields"]["status"]["name"] == "Triage"
     assert len(client.comments(key, 5)) == 1
     fake.refuse_commented_transitions = True

@@ -901,16 +901,27 @@ class JiraBackend:
         if isinstance(chosen, Refusal):
             raise Refused(f"cannot move {slug} to {stage}: {chosen.message}")
         document = text_document(note) if note is not None and note.strip() else None
+        # Jira answers 204 to a comment sent with a transition that has no screen
+        # and discards it, so there the note is posted after the move (Design 5
+        # step 3, a live finding).
+        separate = document is not None and not chosen.has_screen
         try:
-            self.client.apply_transition(key, chosen.id, document)
+            self.client.apply_transition(key, chosen.id, None if separate else document)
         except TrackerRequestInvalid as error:
             return self._after_refusal(key, slug, stage, status, chosen, note, document,
                                        error)
         except TrackerUnavailable as error:
-            return self._after_drop(key, slug, stage, status, note, document, error)
+            moved = self._after_drop(key, slug, stage, status,
+                                     None if separate else note,
+                                     None if separate else document, error)
+            if separate:
+                self._post_note(key, slug, stage, note)
+            return moved
         except TrackerError:
             with _jira():
                 raise
+        if separate:
+            self._post_note(key, slug, stage, note)
         return self._stage_now(key)
 
     def _stage_now(self, key: str) -> str | None:
