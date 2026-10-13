@@ -1,41 +1,58 @@
 # Stage: request
 
-**Purpose.** Record what is being asked for and why, in the requester's terms,
-before anyone decides what to build — intent a conversation otherwise loses.
+**Purpose.** Record what is being asked for and why, at a product level and for
+any reader, before anyone decides what to build. Keep code references light
+unless the work is technical by nature.
 
-**Inputs.** `intake.md` when the item has one: the raw input it started from.
-Intake is not a request; this stage writes the first one. Repository discovery
-is unrestricted.
+**Inputs.** What the item asks for, as `tcw work show <slug>` prints it, and the
+person asking. Repository discovery is unrestricted.
 
-**Produce** `initial-request.md`, at the item's folder root. Required: a title,
-and enough of the request that someone resuming cold knows what was wanted.
-Optional `## Notes` — anything worth keeping that has no home in the request
-itself. Optional `## References` — material the requester considers relevant (a
-link, a repo path, another work item), each with a one-line _why it matters_.
-The `spec` stage reads that section; bare URLs with no reason save it nothing.
-If `initial-request.md` already exists, keep its dated `## Added` sections: they
-are amendments recorded after it was written.
+**Resuming.** Read the newest handoff first, as a description of the work when
+it was written, and check for anything newer before trusting it.
+<!-- backend: filesystem -->
+It is the newest `handoff-*.md` beside the file `tcw work path <slug> request`
+names. To leave one, write it to `tcw work path <slug> request --handoff`.
+<!-- /backend -->
+<!-- backend: jira -->
+It is the newest comment in `tcw work show <slug>` whose first line is
+`Handoff`. To leave one, post it with `tcw work comment <slug>`, `Handoff` as
+its first line.
+<!-- /backend -->
+
+**Produce** the request, in five sections:
+
+- **What and why**: the change, and the reason for it.
+- **Product changes**: what users will be able to do differently, and what the
+  change adds, changes or removes. "None" is a valid answer; write it as such.
+- **Out of scope**: what is deliberately left out.
+- **Constraints**: deadlines, compatibility, anything that limits the answer.
+- **References**: each with one line on why it matters.
+<!-- backend: filesystem -->
+Write it to `tcw work path <slug> request`. Keep any dated `## Added`
+sections already there: they are amendments made after it was written.
+<!-- /backend -->
+<!-- backend: jira -->
+The request is the ticket's description, and Jira owns it: never rewrite it.
+When a section is missing or unclear, post a comment with
+`tcw work comment <slug>` listing what is missing and proposing wording, for
+the requester to adopt.
+<!-- /backend -->
 
 ## Steps
 
-1. **Ask the user what is unclear.** This stage exists to obtain input only
-   they have.
-2. **Ask the requester for reference material** — docs, a spec, an issue, prior
-   art, an in-repo file, a related item — each recorded with a one-line reason.
-   Do not fetch, validate, or summarize it here; a link is context for `spec`,
-   not a decision it must accept. If they have none, write "asked; none
-   provided" in `## Notes`, so `spec` can tell that apart from a stage that
-   never asked.
-3. Write the request in the requester's terms. Resist specifying a solution:
-   that is `spec`'s job, and pre-empting it here hides the alternatives.
-4. Record constraints, deadlines, and anything explicitly out of scope.
-5. Commit `initial-request.md` on its own.
+1. **Ask the user what is unclear.** This stage exists to get input only they
+   have.
+2. **Ask for reference material**: docs, an issue, prior work, a related item.
+   Do not fetch or judge it here. If there is none, write "asked; none
+   provided" under References, so spec can tell that from never asking.
+3. Write in the requester's terms. Do not specify a solution; that is spec's
+   job, and doing it here hides the alternatives.
 
 ## Exit badly
 
-- _The request contradicts something already true of the codebase._ Say so and
-  ask, rather than writing down a request that cannot be satisfied.
+- _The request contradicts something already true of the product._ Say so and
+  ask, rather than recording a request nobody can satisfy.
 - _The work is larger than one item._ Say so now; splitting after a spec is
   written wastes the spec.
-- _There is no user to ask._ Write from the available evidence and mark the
-  assumptions in `## Notes`, so `spec` knows which parts are inference.
+- _There is no user to ask._ Write from the evidence available and mark each
+  assumption, so spec knows which parts are inference.

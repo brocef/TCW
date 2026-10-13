@@ -39,24 +39,37 @@ class Builtins:
 def load_builtins() -> Builtins:
     """TCW's shipped text, loaded once per process.
 
-    The stages are those of TCW-69's table that ship a prompt file (`review`
-    and `qa` arrive with TCW-74), never a literal list. `importlib.resources`
-    rather than a path off `__file__`: the latter assumes an unpacked
-    directory and breaks under a zipimport-style install.
+    The stages are exactly those of TCW-69's table whose `prompt` column is
+    yes, never a literal list, and the procedures exactly `PROCEDURE_IDS`.
+    Both directions are refused by name: a listed stage or procedure with no
+    file, and a file in either folder that nothing lists (TCW-74 Design 1.2).
+    `importlib.resources` rather than a path off `__file__`: the latter
+    assumes an unpacked directory and breaks under a zipimport-style install.
     """
     from tcw.work.model import STAGES
     root = files("tcw.work")
-    shipped = [s.name for s in STAGES
-               if s.prompt and (root / "prompts" / f"{s.name}.md").is_file()]
-    return Builtins(stage_prompts=_load_texts(root, "prompts", shipped,
+    stages = [s.name for s in STAGES if s.prompt]
+    return Builtins(stage_prompts=_load_texts(root, "prompts", stages,
                                               "prompt for stage"),
                     procedures=_load_texts(root, "procedures", PROCEDURE_IDS,
                                            "text for procedure"))
 
 
 def _load_texts(root, folder: str, ids: Sequence[str], what: str) -> dict[str, str]:
-    """`<folder>/<id>.md` for every id, refusing a missing or empty file by name.
-    One loop for stage prompts and procedures, so the two refusals cannot drift."""
+    """`<folder>/<id>.md` for every id, refusing a missing or empty file, and a
+    `.md` file no id names, by name. One loop for stage prompts and procedures,
+    so the refusals cannot drift."""
+    try:
+        present = {entry.name for entry in (root / folder).iterdir()
+                   if entry.name.endswith(".md")}
+    except (FileNotFoundError, OSError) as e:
+        raise ResolveError(f"the built-in folder tcw/work/{folder} is missing "
+                           f"from the installed package: {e}")
+    stray = sorted(present - {f"{sid}.md" for sid in ids})
+    if stray:
+        raise ResolveError(
+            f"tcw/work/{folder}/{stray[0]} is not a built-in {what} TCW knows; "
+            f"expected only {', '.join(f'{sid}.md' for sid in sorted(ids))}")
     texts = {}
     for sid in sorted(ids):
         rel = f"{folder}/{sid}.md"
@@ -238,15 +251,20 @@ PACKAGED_KINDS = ("prompts", "procedures")
 
 def packaged_text(kind: str, name: str) -> str:
     """TCW's own text for a stage (`prompts`) or a procedure (`procedures`),
-    read from the installed package. A missing file is an error naming it."""
+    read from the installed package through `load_builtins`, so a broken
+    install (a file missing, or one nothing names) fails every read, naming
+    the file."""
     if kind not in PACKAGED_KINDS:
         raise ValueError(f"unknown packaged text kind {kind!r}")
-    rel = f"tcw/work/{kind}/{name}.md"
     try:
-        return (files("tcw.work") / kind / f"{name}.md").read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError):
-        raise BackendError(f"TCW's built-in text {rel} is missing from the "
-                           f"installed package") from None
+        builtins = load_builtins()
+    except ResolveError as error:
+        raise BackendError(str(error)) from None
+    texts = builtins.stage_prompts if kind == "prompts" else builtins.procedures
+    if name not in texts:
+        raise BackendError(f"TCW's built-in text tcw/work/{kind}/{name}.md is "
+                           f"missing from the installed package")
+    return texts[name]
 
 
 def substitute_request(text: str, request: str | None) -> str:

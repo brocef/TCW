@@ -32,10 +32,11 @@ NO_CEFAILURES_ROOTS = [
 
 # The two stages where AGENTS.md requires the skill: `plan` names a task per
 # trigger expected to fire, and `implement` evaluates them before the work is
-# reported complete. Retargeted from the retired task/epic lifecycle documents.
+# reported complete. The stage prompts are the one source of stage text since
+# TCW-74 deleted the work skill's stage documents.
 LIFECYCLE_REFS = [
-    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-plan.md",
-    REPO / "skills" / "work" / "references" / "lifecycle" / "stage-implement.md",
+    REPO / "tcw" / "work" / "prompts" / "plan.md",
+    REPO / "tcw" / "work" / "prompts" / "implement.md",
 ]
 
 

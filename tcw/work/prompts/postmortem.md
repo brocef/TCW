@@ -1,42 +1,52 @@
 # Stage: postmortem
 
 **Purpose.** Find which stage first missed a problem. Not blame and not a
-summary — the question is _where would this have been cheapest to catch_.
+summary: the question is _where would this have been cheapest to catch_. This
+stage never moves the item, nothing waits on it, and it applies to any item
+that was not discarded, finished or not.
 
-**Inputs.** The whole artifact spine, read **backwards**: `refined-outcome.md`
-and any `rework.md` first, then `outcome.md`, `plan.md`, `spec.md`, and last the
-body the item started from — `initial-request.md`, or the `intake.md` beneath it
-when the `request` stage never ran. **`## Notes` across the spine is the primary
-trail** — where each stage recorded what it knew at the time, and usually where
-the miss is visible in hindsight. Discovery is unrestricted, including git
-history.
+**Inputs.** The item, read **backwards**: qa rounds, then review rounds, then
+implement rounds (`tcw work path <slug> <stage>` for each); then the plan, the
+spec and the request; then the item's comments, from `tcw work show <slug>`.
+**`## Notes` across them is the primary trail**: where each stage recorded what
+it knew at the time, often a detail noticed and not pursued. Also read:
 
-**Produce** `post-mortem.md`, in the item's folder wherever that folder
-currently lives. Required: what went wrong; which stage could first have caught
-it; what would have had to be different; and whether that change is worth
-making. A post-mortem that recommends "be more careful" has not finished.
-Optional `## Notes`.
+- what an implement round says the plan or spec got wrong: was it knowably
+  wrong when it was written?
+- the spec's acceptance criteria: if work that met every one was rejected, the
+  criteria were the defect;
+- a missing document: a spec absent from an item that needed one is itself the
+  finding.
 
-## This stage is out-of-band
+**Resuming.** Read the newest `handoff-*.md` beside the file
+`tcw work path <slug> postmortem` names, as a description of the work when it
+was written, and check for anything newer before trusting it. To leave one,
+write it to `tcw work path <slug> postmortem --handoff`.
 
-It **never changes status**, and it is never a gate — nothing waits on it. It
-is legal on an item in `review` and on one already `completed`, where it is the
-single permitted write into a folder that is otherwise immutable. It is not
-legal on a discarded item. Both timings are deliberate: the need for a
-post-mortem is often only obvious after the work has shipped.
+**Produce** the postmortem, at `tcw work path <slug> postmortem`: what went
+wrong; which stage could first have caught it; what would have had to be
+different; and whether that change is worth making.
 
 ## Steps
 
-1. Read the spine backwards and locate the earliest artifact that could have
-   surfaced the problem.
-2. Distinguish _nobody could have known_ from _nobody checked_. Only the second
-   is actionable, and conflating them produces process nobody needs.
-3. Write `post-mortem.md` and commit it.
-4. Create follow-up work items for anything worth changing.
+1. Find the earliest stage whose documents could have shown the problem.
+2. **Tell "nobody could have known" from "nobody checked."** Ask of that
+   stage: was the information there at that point? If the code that disproved
+   a spec claim existed and was readable, the spec could have checked:
+   actionable. If the failure showed only once it was built, no earlier stage
+   could have caught it, and the honest finding is that the process worked.
+3. Write the postmortem. Create follow-up items with `tcw work new` for
+   anything worth changing.
+4. **What the request missed.** Only when the project's instructions for this
+   stage ask for it: post a comment with `tcw work comment <slug>` saying what
+   the request missed, written in the request's own language for its readers.
 
 ## Exit badly
 
-- _The artifacts needed are missing._ Say so — a spine with no `outcome.md` is
-  itself the finding.
-- _The problem is a one-off._ Record that and stop. Manufacturing a process
-  change for a non-recurring miss costs more than the miss.
+Stop without a recommendation, and say why, when:
+
+- the cause is a one-off; record it and stop;
+- the only recommendation left is "be more careful", which is a wish, not a
+  change: the cause has not been found yet;
+- the fix costs more than the failures it would prevent; that is a real
+  conclusion, not a failure to reach one.

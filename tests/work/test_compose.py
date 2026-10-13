@@ -13,6 +13,7 @@ from tcw.work.config import parse_work_config
 from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.layout import Layout
 from tcw.work.model import Changes
+from tcw.work.passages import filter_backend
 from tcw.work.record import item_record
 from tcw.work.resolve import (
     generate_payload, packaged_text, procedure_prompt, stage_header,
@@ -46,7 +47,7 @@ def compose(cfg, stage, root, **kw):
 def test_no_prompt_key_is_the_packaged_text(tmp_path):
     # With no item, the packaged request span shows its own inner text.
     assert compose(loaded(tmp_path), "spec", tmp_path) == substitute_request(
-        packaged_text("prompts", "spec").rstrip(), None)
+        filter_backend(packaged_text("prompts", "spec"), "filesystem").rstrip(), None)
 
 
 def test_a_list_without_builtin_replaces_the_packaged_text(tmp_path):
@@ -68,7 +69,16 @@ def test_an_explicit_empty_list_composes_to_nothing(tmp_path):
     assert compose(cfg, "spec", tmp_path) == ""
 
 
-def test_a_missing_packaged_prompt_names_the_file(tmp_path):
+def test_a_broken_install_names_the_file(tmp_path, monkeypatch):
+    """Every read of TCW's own text goes through the strict loader, so a
+    package with a prompt file missing fails, naming it (TCW-74 Design 1.2)."""
+    import tcw.work.resolve as resolve
+
+    def broken():
+        raise resolve.ResolveError("built-in prompt for stage 'review' is missing "
+                                   "from the installed package "
+                                   "(tcw/work/prompts/review.md)")
+    monkeypatch.setattr(resolve, "load_builtins", broken)
     with pytest.raises(BackendError, match="tcw/work/prompts/review.md"):
         compose(loaded(tmp_path), "review", tmp_path)
 
@@ -77,7 +87,7 @@ def test_a_procedure_composes_the_same_way(tmp_path):
     cfg = config(procedures={"search": [{"blob": "Look."}]})
     assert procedure_prompt(cfg, "search", project_root=tmp_path).text == "Look."
     assert procedure_prompt(loaded(tmp_path), "search", project_root=tmp_path).text \
-        == packaged_text("procedures", "search").rstrip()
+        == filter_backend(packaged_text("procedures", "search"), "filesystem").rstrip()
 
 
 def test_without_the_loader_an_absent_list_is_nothing(tmp_path):

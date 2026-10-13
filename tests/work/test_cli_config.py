@@ -107,11 +107,19 @@ def test_no_request_shows_the_span_text(tcw, tmp_path):
     root = spec_prompt(tmp_path)
     tcw(["new", "X"], root)
     r = tcw(["stage", "prompt", "spec", f"{TODAY}-x"], root)
-    assert "the item's body artifact" in r.out
+    assert "The request, read as filed:\n\n`tcw work show " in r.out
+    assert "` prints it.\n" in r.out
     assert "{{tcw:request}}" not in r.out
 
 
-def test_a_stage_whose_text_is_missing_fails(tcw, tmp_path):
+def test_a_stage_whose_text_is_missing_fails(tcw, tmp_path, monkeypatch):
+    import tcw.work.resolve as resolve
+
+    def broken():
+        raise resolve.ResolveError("built-in prompt for stage 'review' is missing "
+                                   "from the installed package "
+                                   "(tcw/work/prompts/review.md)")
+    monkeypatch.setattr(resolve, "load_builtins", broken)
     root = spec_prompt(tmp_path)
     r = tcw(["stage", "prompt", "review"], root)
     assert r.code == 1
