@@ -481,9 +481,14 @@ implementation:
    **[Decision]** The first case uses a lone candidate even when its screen has a
    required field: the request then fails, and Design 13 reports it. Refusing it
    here instead would hide Jira's own message about which field is missing.
-3. **Apply it, with the note in the same request:** `POST …/transitions` with
-   `{"transition": {"id": …}}`, plus, when `note` is given,
-   `{"update": {"comment": [{"add": {"body": <ADF of note>}}]}}`.
+3. **Apply it, with the note in the same request when the transition has a
+   screen:** `POST …/transitions` with `{"transition": {"id": …}}`, plus, when
+   `note` is given and the transition's `hasScreen` is true,
+   `{"update": {"comment": [{"add": {"body": <ADF of note>}}]}}`. When the
+   transition has no screen, the transition is applied alone and the note is
+   then posted with `comment`; if posting fails, `MovedWithoutNote`
+   (TCW-69 Design 5.2). The transition read in step 1 carries `hasScreen`
+   for this.
 4. **Read the status back** (`GET` the issue, status only), and return the stage it
    maps to, or `None`. `advance` compares that with the target (TCW-69 Design 6.7).
 
@@ -513,6 +518,16 @@ live check settles it (Design 15.4). The retry costs one request, and without it
 first such workflow would refuse every forced move. When the comment is accepted,
 which is the common case, the note and the move are one request, as the owner decided
 for TCW-69.
+
+**[Live finding, 2026-10-13, amends step 3]** The live check against `TCWTEST`
+settled it the other way: Jira does not refuse a comment on a transition with no
+screen. It answers 204, applies the move, and **discards the comment without
+saying so**. A comment on a transition whose screen holds no fields is kept.
+`expand=transitions.fields` returns an empty `fields` for both, so only
+`hasScreen` tells them apart. Sending the comment with a screenless transition
+would therefore lose every rejection and forced-move reason on a workflow like
+`TCWTEST`'s, where only Planning has a screen; step 3 now sends it separately
+there. The retry above stays for a site that does refuse.
 
 **When the connection fails mid-request** (`Unreachable`), the request may have
 landed. TCW reads the status once more:
