@@ -1,0 +1,54 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/issue",
+  "request": {
+    "fields": {
+      "customfield_10076": "tcw-test-live",
+      "description": {
+        "content": [
+          {
+            "content": [
+              {
+                "text": "Please do this.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          },
+          {
+            "content": [
+              {
+                "text": "It matters.",
+                "type": "text"
+              }
+            ],
+            "type": "paragraph"
+          }
+        ],
+        "type": "doc",
+        "version": 1
+      },
+      "issuetype": {
+        "id": "10010"
+      },
+      "labels": [
+        "ui"
+      ],
+      "priority": {
+        "name": "High"
+      },
+      "project": {
+        "key": "TCWTEST"
+      },
+      "summary": "Scenario 114639"
+    }
+  },
+  "response": {
+    "id": "10368",
+    "key": "TCWTEST-62",
+    "self": "https://acme.atlassian.net/rest/api/3/issue/10368"
+  },
+  "richness": 4,
+  "status": 201,
+  "template": "/rest/api/3/issue"
+}

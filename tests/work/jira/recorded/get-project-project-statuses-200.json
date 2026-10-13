@@ -1,0 +1,545 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/project/TCWTEST/statuses",
+  "request": null,
+  "response": [
+    {
+      "id": "10010",
+      "name": "Task",
+      "self": "https://acme.atlassian.net/rest/api/3/issuetype/10010",
+      "statuses": [
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10013",
+          "name": "In Review",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10013",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Review"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10041",
+          "name": "Won't Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10041",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Won't Do"
+        },
+        {
+          "description": "TCW spec stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10042",
+          "name": "Specifying",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10042",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Specifying"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/inprogress.png",
+          "id": "3",
+          "name": "In Progress",
+          "self": "https://acme.atlassian.net/rest/api/3/status/3",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Progress"
+        },
+        {
+          "description": "TCW qa stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10044",
+          "name": "In QA",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10044",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In QA"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10011",
+          "name": "Triage",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10011",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "Triage"
+        },
+        {
+          "description": "TCW plan stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10043",
+          "name": "Planning",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10043",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Planning"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/generic.png",
+          "id": "10009",
+          "name": "Done",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10009",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Done"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10012",
+          "name": "To Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10012",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "To Do"
+        }
+      ],
+      "subtask": false
+    },
+    {
+      "id": "10011",
+      "name": "Sub-task",
+      "self": "https://acme.atlassian.net/rest/api/3/issuetype/10011",
+      "statuses": [
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10013",
+          "name": "In Review",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10013",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Review"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10041",
+          "name": "Won't Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10041",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Won't Do"
+        },
+        {
+          "description": "TCW spec stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10042",
+          "name": "Specifying",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10042",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Specifying"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/inprogress.png",
+          "id": "3",
+          "name": "In Progress",
+          "self": "https://acme.atlassian.net/rest/api/3/status/3",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Progress"
+        },
+        {
+          "description": "TCW qa stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10044",
+          "name": "In QA",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10044",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In QA"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10011",
+          "name": "Triage",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10011",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "Triage"
+        },
+        {
+          "description": "TCW plan stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10043",
+          "name": "Planning",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10043",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Planning"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/generic.png",
+          "id": "10009",
+          "name": "Done",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10009",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Done"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10012",
+          "name": "To Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10012",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "To Do"
+        }
+      ],
+      "subtask": true
+    },
+    {
+      "id": "10005",
+      "name": "Story",
+      "self": "https://acme.atlassian.net/rest/api/3/issuetype/10005",
+      "statuses": [
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/inprogress.png",
+          "id": "3",
+          "name": "In Progress",
+          "self": "https://acme.atlassian.net/rest/api/3/status/3",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Progress"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/generic.png",
+          "id": "10009",
+          "name": "Done",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10009",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Done"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10012",
+          "name": "To Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10012",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "To Do"
+        }
+      ],
+      "subtask": false
+    },
+    {
+      "id": "10012",
+      "name": "Bug",
+      "self": "https://acme.atlassian.net/rest/api/3/issuetype/10012",
+      "statuses": [
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/inprogress.png",
+          "id": "3",
+          "name": "In Progress",
+          "self": "https://acme.atlassian.net/rest/api/3/status/3",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Progress"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/generic.png",
+          "id": "10009",
+          "name": "Done",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10009",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Done"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10012",
+          "name": "To Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10012",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "To Do"
+        }
+      ],
+      "subtask": false
+    },
+    {
+      "id": "10000",
+      "name": "Epic",
+      "self": "https://acme.atlassian.net/rest/api/3/issuetype/10000",
+      "statuses": [
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10013",
+          "name": "In Review",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10013",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Review"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10041",
+          "name": "Won't Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10041",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Won't Do"
+        },
+        {
+          "description": "TCW spec stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10042",
+          "name": "Specifying",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10042",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Specifying"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/inprogress.png",
+          "id": "3",
+          "name": "In Progress",
+          "self": "https://acme.atlassian.net/rest/api/3/status/3",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In Progress"
+        },
+        {
+          "description": "TCW qa stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10044",
+          "name": "In QA",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10044",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "In QA"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10011",
+          "name": "Triage",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10011",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "Triage"
+        },
+        {
+          "description": "TCW plan stage",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10043",
+          "name": "Planning",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10043",
+          "statusCategory": {
+            "colorName": "yellow",
+            "id": 4,
+            "key": "indeterminate",
+            "name": "In Progress",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/4"
+          },
+          "untranslatedName": "Planning"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/images/icons/statuses/generic.png",
+          "id": "10009",
+          "name": "Done",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10009",
+          "statusCategory": {
+            "colorName": "green",
+            "id": 3,
+            "key": "done",
+            "name": "Done",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+          },
+          "untranslatedName": "Done"
+        },
+        {
+          "description": "",
+          "iconUrl": "https://acme.atlassian.net/",
+          "id": "10012",
+          "name": "To Do",
+          "self": "https://acme.atlassian.net/rest/api/3/status/10012",
+          "statusCategory": {
+            "colorName": "blue-gray",
+            "id": 2,
+            "key": "new",
+            "name": "To Do",
+            "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+          },
+          "untranslatedName": "To Do"
+        }
+      ],
+      "subtask": false
+    }
+  ],
+  "richness": 20,
+  "status": 200,
+  "template": "/rest/api/3/project/{project}/statuses"
+}

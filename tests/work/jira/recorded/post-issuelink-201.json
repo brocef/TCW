@@ -1,0 +1,19 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/issueLink",
+  "request": {
+    "inwardIssue": {
+      "key": "TCWTEST-62"
+    },
+    "outwardIssue": {
+      "key": "TCWTEST-63"
+    },
+    "type": {
+      "name": "Blocks"
+    }
+  },
+  "response": null,
+  "richness": 0,
+  "status": 201,
+  "template": "/rest/api/3/issueLink"
+}

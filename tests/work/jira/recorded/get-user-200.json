@@ -1,0 +1,33 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/user?accountId=acct-2",
+  "request": null,
+  "response": {
+    "accountId": "acct-2",
+    "accountType": "atlassian",
+    "active": true,
+    "applicationRoles": {
+      "items": [],
+      "size": 1
+    },
+    "avatarUrls": {
+      "16x16": "https://avatar.example/a.png",
+      "24x24": "https://avatar.example/a.png",
+      "32x32": "https://avatar.example/a.png",
+      "48x48": "https://avatar.example/a.png"
+    },
+    "displayName": "Person 1",
+    "emailAddress": "person-1",
+    "expand": "groups,applicationRoles",
+    "groups": {
+      "items": [],
+      "size": 10
+    },
+    "locale": "en_US",
+    "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
+    "timeZone": "America/New_York"
+  },
+  "richness": 21,
+  "status": 200,
+  "template": "/rest/api/3/user"
+}

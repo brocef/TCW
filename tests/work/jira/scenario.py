@@ -226,6 +226,7 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
     the answers by question, for the implement round."""
     from tcw.work.jira import client as jira
     from tcw.work.jira.jql import field, keys_query, quote
+    from tcw.work.jira.mapping import read_fields
 
     backend = open_backend(project_root)
     client, ids = backend.client, backend.metadata().field_ids
@@ -251,8 +252,14 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
         return None
 
     # 1. Blocks direction: on the blocked ticket, which side holds the blocker.
-    edited = result.keys["edited"]
+    # The child has a parent; with estimates and the link it is read whole,
+    # directly and by search, so recorded/ holds every shape `read` uses.
+    edited = result.keys["child"]
+    client.edit_issue(edited, {ids["effort"]: {"value": "high"},
+                               ids["complexity"]: {"value": "low"}})
     client.add_link("Blocks", result.keys["item"], edited)
+    client.issue(edited)
+    client.search(keys_query([edited]), read_fields(ids))
     links = client.issue(edited, ["issuelinks"])["fields"]["issuelinks"]
     link = next(l for l in links if l["type"]["name"] == "Blocks")
     side = "inwardIssue" if "inwardIssue" in link else "outwardIssue"
@@ -332,6 +339,19 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
             ask(question, f"answered, with {got}")
         except jira.TrackerError as error:
             ask(question, f"refused: {type(error).__name__}: {error}")
+
+    # Error bodies, for recorded/: a ticket that does not exist, and a
+    # transition the ticket does not offer.
+    errors = []
+    for attempt in (lambda: client.issue(f"{project}-999999"),
+                    lambda: client.apply_transition(result.keys["item"], "999999")):
+        try:
+            attempt()
+            errors.append("answered")
+        except jira.TrackerError as error:
+            errors.append(type(error).__name__)
+    ask("error bodies", f"a missing ticket: {errors[0]}; an invalid transition: "
+                        f"{errors[1]}")
 
     # 8. lag: a new ticket (step 1), and a ticket just given a TCW Item value.
     key = new_ticket(f"Probe item lag {stamp}")

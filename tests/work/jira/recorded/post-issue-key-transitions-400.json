@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/issue/TCWTEST-62/transitions",
+  "request": {
+    "transition": {
+      "id": "999999"
+    }
+  },
+  "response": {
+    "errorMessages": [
+      "Transition id '999999' is not valid for this issue."
+    ],
+    "errors": {}
+  },
+  "richness": 4,
+  "status": 400,
+  "template": "/rest/api/3/issue/{key}/transitions"
+}

@@ -1,0 +1,9 @@
+{
+  "method": "DELETE",
+  "path": "/rest/api/3/issueLink/10045",
+  "request": null,
+  "response": null,
+  "richness": 0,
+  "status": 204,
+  "template": "/rest/api/3/issueLink/{id}"
+}

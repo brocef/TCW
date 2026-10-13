@@ -1,0 +1,40 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/issueLinkType",
+  "request": null,
+  "response": {
+    "issueLinkTypes": [
+      {
+        "id": "10000",
+        "inward": "is blocked by",
+        "name": "Blocks",
+        "outward": "blocks",
+        "self": "https://acme.atlassian.net/rest/api/3/issueLinkType/10000"
+      },
+      {
+        "id": "10001",
+        "inward": "is cloned by",
+        "name": "Cloners",
+        "outward": "clones",
+        "self": "https://acme.atlassian.net/rest/api/3/issueLinkType/10001"
+      },
+      {
+        "id": "10002",
+        "inward": "is duplicated by",
+        "name": "Duplicate",
+        "outward": "duplicates",
+        "self": "https://acme.atlassian.net/rest/api/3/issueLinkType/10002"
+      },
+      {
+        "id": "10003",
+        "inward": "relates to",
+        "name": "Relates",
+        "outward": "relates to",
+        "self": "https://acme.atlassian.net/rest/api/3/issueLinkType/10003"
+      }
+    ]
+  },
+  "richness": 8,
+  "status": 200,
+  "template": "/rest/api/3/issueLinkType"
+}

@@ -1,0 +1,100 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/project/TCWTEST",
+  "request": null,
+  "response": {
+    "assigneeType": "PROJECT_LEAD",
+    "avatarUrls": {
+      "16x16": "https://avatar.example/a.png",
+      "24x24": "https://avatar.example/a.png",
+      "32x32": "https://avatar.example/a.png",
+      "48x48": "https://avatar.example/a.png"
+    },
+    "components": [],
+    "description": "Throwaway fixture for testing the TCW external tracker bridge. Not real work.",
+    "entityId": "de6d2850-1c65-41d5-aa82-53a429077f46",
+    "expand": "description,lead,issueTypes,url,projectKeys,permissions,insight",
+    "id": "10003",
+    "isPrivate": false,
+    "issueTypes": [
+      {
+        "avatarId": 10318,
+        "description": "A small, distinct piece of work.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10318?size=medium",
+        "id": "10010",
+        "name": "Task",
+        "self": "https://acme.atlassian.net/rest/api/3/issuetype/10010",
+        "subtask": false
+      },
+      {
+        "avatarId": 10316,
+        "description": "A small piece of work that's part of a larger task.",
+        "hierarchyLevel": -1,
+        "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10316?size=medium",
+        "id": "10011",
+        "name": "Sub-task",
+        "self": "https://acme.atlassian.net/rest/api/3/issuetype/10011",
+        "subtask": true
+      },
+      {
+        "avatarId": 10300,
+        "description": "Stories track functionality or features expressed as user goals.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10300?size=medium",
+        "id": "10005",
+        "name": "Story",
+        "self": "https://acme.atlassian.net/rest/api/3/issuetype/10005",
+        "subtask": false
+      },
+      {
+        "avatarId": 10303,
+        "description": "A problem or error.",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10303?size=medium",
+        "id": "10012",
+        "name": "Bug",
+        "self": "https://acme.atlassian.net/rest/api/3/issuetype/10012",
+        "subtask": false
+      },
+      {
+        "description": "A big user story that needs to be broken down. Created by Jira Software - do not edit or delete.",
+        "hierarchyLevel": 1,
+        "iconUrl": "https://acme.atlassian.net/images/icons/issuetypes/epic.svg",
+        "id": "10000",
+        "name": "Epic",
+        "self": "https://acme.atlassian.net/rest/api/3/issuetype/10000",
+        "subtask": false
+      }
+    ],
+    "key": "TCWTEST",
+    "lead": {
+      "accountId": "acct-1",
+      "active": true,
+      "avatarUrls": {
+        "16x16": "https://avatar.example/a.png",
+        "24x24": "https://avatar.example/a.png",
+        "32x32": "https://avatar.example/a.png",
+        "48x48": "https://avatar.example/a.png"
+      },
+      "displayName": "Person 1",
+      "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-1"
+    },
+    "name": "TCW Bridge Test",
+    "projectTypeKey": "software",
+    "properties": {},
+    "roles": {
+      "Administrators": "https://acme.atlassian.net/rest/api/3/project/10003/role/10002",
+      "atlassian-addons-project-access": "https://acme.atlassian.net/rest/api/3/project/10003/role/10003",
+      "jira-guest-member": "https://acme.atlassian.net/rest/api/3/project/10003/role/10014"
+    },
+    "self": "https://acme.atlassian.net/rest/api/3/project/10003",
+    "simplified": false,
+    "style": "classic",
+    "uuid": "de6d2850-1c65-41d5-aa82-53a429077f46",
+    "versions": []
+  },
+  "richness": 46,
+  "status": 200,
+  "template": "/rest/api/3/project/{project}"
+}

@@ -1,0 +1,90 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/issue/TCWTEST-62/comment",
+  "request": {
+    "body": {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "Moved from qa to implement.",
+              "type": "text"
+            },
+            {
+              "type": "hardBreak"
+            },
+            {
+              "text": "Reason: Fails on narrow screens",
+              "type": "text"
+            }
+          ],
+          "type": "paragraph"
+        }
+      ],
+      "type": "doc",
+      "version": 1
+    }
+  },
+  "response": {
+    "author": {
+      "accountId": "acct-2",
+      "accountType": "atlassian",
+      "active": true,
+      "avatarUrls": {
+        "16x16": "https://avatar.example/a.png",
+        "24x24": "https://avatar.example/a.png",
+        "32x32": "https://avatar.example/a.png",
+        "48x48": "https://avatar.example/a.png"
+      },
+      "displayName": "Person 1",
+      "emailAddress": "person-1",
+      "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
+      "timeZone": "America/New_York"
+    },
+    "body": {
+      "content": [
+        {
+          "content": [
+            {
+              "text": "Moved from qa to implement.",
+              "type": "text"
+            },
+            {
+              "type": "hardBreak"
+            },
+            {
+              "text": "Reason: Fails on narrow screens",
+              "type": "text"
+            }
+          ],
+          "type": "paragraph"
+        }
+      ],
+      "type": "doc",
+      "version": 1
+    },
+    "created": "2026-10-13T11:46:51.977-0400",
+    "id": "10045",
+    "jsdPublic": true,
+    "self": "https://acme.atlassian.net/rest/api/3/issue/10368/comment/10045",
+    "updateAuthor": {
+      "accountId": "acct-2",
+      "accountType": "atlassian",
+      "active": true,
+      "avatarUrls": {
+        "16x16": "https://avatar.example/a.png",
+        "24x24": "https://avatar.example/a.png",
+        "32x32": "https://avatar.example/a.png",
+        "48x48": "https://avatar.example/a.png"
+      },
+      "displayName": "Person 1",
+      "emailAddress": "person-1",
+      "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
+      "timeZone": "America/New_York"
+    },
+    "updated": "2026-10-13T11:46:51.977-0400"
+  },
+  "richness": 42,
+  "status": 201,
+  "template": "/rest/api/3/issue/{key}/comment"
+}

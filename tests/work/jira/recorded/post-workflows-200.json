@@ -1,0 +1,337 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/workflows",
+  "request": {
+    "projectAndIssueTypes": [
+      {
+        "issueTypeId": "10010",
+        "projectId": "10003"
+      }
+    ]
+  },
+  "response": {
+    "statuses": [
+      {
+        "description": "TCW qa stage",
+        "id": "10044",
+        "name": "In QA",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "IN_PROGRESS",
+        "statusReference": "10044"
+      },
+      {
+        "description": "",
+        "id": "10041",
+        "name": "Won't Do",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "DONE",
+        "statusReference": "10041"
+      },
+      {
+        "description": "TCW plan stage",
+        "id": "10043",
+        "name": "Planning",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "IN_PROGRESS",
+        "statusReference": "10043"
+      },
+      {
+        "description": "",
+        "id": "10013",
+        "name": "In Review",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "IN_PROGRESS",
+        "statusReference": "10013"
+      },
+      {
+        "description": "",
+        "id": "10011",
+        "name": "Triage",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "TODO",
+        "statusReference": "10011"
+      },
+      {
+        "description": "",
+        "id": "3",
+        "name": "In Progress",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "IN_PROGRESS",
+        "statusReference": "3"
+      },
+      {
+        "description": "",
+        "id": "10012",
+        "name": "To Do",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "TODO",
+        "statusReference": "10012"
+      },
+      {
+        "description": "TCW spec stage",
+        "id": "10042",
+        "name": "Specifying",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "IN_PROGRESS",
+        "statusReference": "10042"
+      },
+      {
+        "description": "",
+        "id": "10009",
+        "name": "Done",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "statusCategory": "DONE",
+        "statusReference": "10009"
+      }
+    ],
+    "workflows": [
+      {
+        "description": "Nine TCW stage statuses with a global transition into each (TCW-71 live check)",
+        "id": "19ccd58a-6ea1-49ff-b707-e0288d3495d7",
+        "isEditable": true,
+        "name": "TCWTEST: TCW lifecycle workflow (Task, Sub-task)",
+        "scope": {
+          "type": "GLOBAL"
+        },
+        "startPointLayout": {},
+        "statuses": [
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 0.0
+            },
+            "properties": {},
+            "statusReference": "10011"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 100.0
+            },
+            "properties": {},
+            "statusReference": "10012"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 200.0
+            },
+            "properties": {},
+            "statusReference": "10042"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 300.0
+            },
+            "properties": {},
+            "statusReference": "10043"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 400.0
+            },
+            "properties": {},
+            "statusReference": "3"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 500.0
+            },
+            "properties": {},
+            "statusReference": "10013"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 600.0
+            },
+            "properties": {},
+            "statusReference": "10044"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 700.0
+            },
+            "properties": {},
+            "statusReference": "10009"
+          },
+          {
+            "deprecated": false,
+            "layout": {
+              "x": 0.0,
+              "y": 800.0
+            },
+            "properties": {},
+            "statusReference": "10041"
+          }
+        ],
+        "transitions": [
+          {
+            "actions": [],
+            "description": "",
+            "id": "11",
+            "links": [],
+            "name": "Triage",
+            "properties": {},
+            "toStatusReference": "10011",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "21",
+            "links": [],
+            "name": "To Do",
+            "properties": {},
+            "toStatusReference": "10012",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "31",
+            "links": [],
+            "name": "Specifying",
+            "properties": {},
+            "toStatusReference": "10042",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "41",
+            "links": [],
+            "name": "Planning",
+            "properties": {},
+            "toStatusReference": "10043",
+            "transitionScreen": {
+              "id": "0b124593-a799-4e51-bf1e-62a7454678cf",
+              "parameters": {
+                "screenId": "10049"
+              },
+              "ruleKey": "system:transition-screen"
+            },
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "51",
+            "links": [],
+            "name": "In Progress",
+            "properties": {},
+            "toStatusReference": "3",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "61",
+            "links": [],
+            "name": "In Review",
+            "properties": {},
+            "toStatusReference": "10013",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "71",
+            "links": [],
+            "name": "In QA",
+            "properties": {},
+            "toStatusReference": "10044",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "81",
+            "links": [],
+            "name": "Done",
+            "properties": {},
+            "toStatusReference": "10009",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "91",
+            "links": [],
+            "name": "Won't Do",
+            "properties": {},
+            "toStatusReference": "10041",
+            "triggers": [],
+            "type": "GLOBAL",
+            "validators": []
+          },
+          {
+            "actions": [],
+            "description": "",
+            "id": "1",
+            "links": [],
+            "name": "Create",
+            "properties": {},
+            "toStatusReference": "10012",
+            "triggers": [],
+            "type": "INITIAL",
+            "validators": []
+          }
+        ],
+        "version": {
+          "id": "5d348f1c-9833-41f0-b4c9-d3dd63cee77f",
+          "versionNumber": 0
+        }
+      }
+    ]
+  },
+  "richness": 47,
+  "status": 200,
+  "template": "/rest/api/3/workflows"
+}

@@ -1,0 +1,433 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/issue/createmeta/TCWTEST/issuetypes/10010?startAt=0&maxResults=100",
+  "request": null,
+  "response": {
+    "fields": [
+      {
+        "autoCompleteUrl": "https://acme.atlassian.net/rest/api/3/user/assignable/search?project=TCWTEST&query=",
+        "fieldId": "assignee",
+        "hasDefaultValue": true,
+        "key": "assignee",
+        "name": "Assignee",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "system": "assignee",
+          "type": "user"
+        }
+      },
+      {
+        "fieldId": "attachment",
+        "hasDefaultValue": false,
+        "key": "attachment",
+        "name": "Attachment",
+        "operations": [
+          "set",
+          "copy"
+        ],
+        "required": false,
+        "schema": {
+          "items": "attachment",
+          "system": "attachment",
+          "type": "array"
+        }
+      },
+      {
+        "allowedValues": [],
+        "fieldId": "components",
+        "hasDefaultValue": false,
+        "key": "components",
+        "name": "Components",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ],
+        "required": false,
+        "schema": {
+          "items": "component",
+          "system": "components",
+          "type": "array"
+        }
+      },
+      {
+        "autoCompleteUrl": "https://acme.atlassian.net/gateway/api/v1/recommendations",
+        "fieldId": "customfield_10001",
+        "hasDefaultValue": false,
+        "key": "customfield_10001",
+        "name": "Team",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "configuration": {
+            "com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team": true
+          },
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team",
+          "customId": 10001,
+          "type": "team"
+        }
+      },
+      {
+        "fieldId": "customfield_10015",
+        "hasDefaultValue": false,
+        "key": "customfield_10015",
+        "name": "Start date",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:datepicker",
+          "customId": 10015,
+          "type": "date"
+        }
+      },
+      {
+        "fieldId": "customfield_10020",
+        "hasDefaultValue": false,
+        "key": "customfield_10020",
+        "name": "Sprint",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.pyxis.greenhopper.jira:gh-sprint",
+          "customId": 10020,
+          "items": "json",
+          "type": "array"
+        }
+      },
+      {
+        "fieldId": "customfield_10042",
+        "hasDefaultValue": false,
+        "key": "customfield_10042",
+        "name": "TCW Item",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+          "customId": 10042,
+          "type": "string"
+        }
+      },
+      {
+        "fieldId": "customfield_10076",
+        "hasDefaultValue": false,
+        "key": "customfield_10076",
+        "name": "TCW Project",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:textfield",
+          "customId": 10076,
+          "type": "string"
+        }
+      },
+      {
+        "allowedValues": [
+          {
+            "id": "10020",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10020",
+            "value": "low"
+          },
+          {
+            "id": "10021",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10021",
+            "value": "medium"
+          },
+          {
+            "id": "10022",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10022",
+            "value": "high"
+          },
+          {
+            "id": "10023",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10023",
+            "value": "very-high"
+          }
+        ],
+        "fieldId": "customfield_10077",
+        "hasDefaultValue": false,
+        "key": "customfield_10077",
+        "name": "Effort",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+          "customId": 10077,
+          "type": "option"
+        }
+      },
+      {
+        "allowedValues": [
+          {
+            "id": "10024",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10024",
+            "value": "low"
+          },
+          {
+            "id": "10025",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10025",
+            "value": "medium"
+          },
+          {
+            "id": "10026",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10026",
+            "value": "high"
+          },
+          {
+            "id": "10027",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10027",
+            "value": "very-high"
+          }
+        ],
+        "fieldId": "customfield_10078",
+        "hasDefaultValue": false,
+        "key": "customfield_10078",
+        "name": "Complexity",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:select",
+          "customId": 10078,
+          "type": "option"
+        }
+      },
+      {
+        "fieldId": "description",
+        "hasDefaultValue": false,
+        "key": "description",
+        "name": "Description",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "system": "description",
+          "type": "string"
+        }
+      },
+      {
+        "fieldId": "duedate",
+        "hasDefaultValue": false,
+        "key": "duedate",
+        "name": "Due date",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "system": "duedate",
+          "type": "date"
+        }
+      },
+      {
+        "allowedValues": [],
+        "fieldId": "fixVersions",
+        "hasDefaultValue": false,
+        "key": "fixVersions",
+        "name": "Fix versions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "required": false,
+        "schema": {
+          "items": "version",
+          "system": "fixVersions",
+          "type": "array"
+        }
+      },
+      {
+        "autoCompleteUrl": "https://acme.atlassian.net/rest/api/3/issue/picker?currentProjectId=&showSubTaskParent=true&showSubTasks=true&currentIssueKey=null&query=",
+        "fieldId": "issuelinks",
+        "hasDefaultValue": false,
+        "key": "issuelinks",
+        "name": "Linked work items",
+        "operations": [
+          "add",
+          "copy"
+        ],
+        "required": false,
+        "schema": {
+          "items": "issuelinks",
+          "system": "issuelinks",
+          "type": "array"
+        }
+      },
+      {
+        "allowedValues": [
+          {
+            "avatarId": 10318,
+            "description": "A small, distinct piece of work.",
+            "hierarchyLevel": 0,
+            "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10318?size=medium",
+            "id": "10010",
+            "name": "Task",
+            "self": "https://acme.atlassian.net/rest/api/3/issuetype/10010",
+            "subtask": false
+          }
+        ],
+        "fieldId": "issuetype",
+        "hasDefaultValue": false,
+        "key": "issuetype",
+        "name": "Issue Type",
+        "operations": [],
+        "required": true,
+        "schema": {
+          "system": "issuetype",
+          "type": "issuetype"
+        }
+      },
+      {
+        "autoCompleteUrl": "https://acme.atlassian.net/rest/api/1.0/labels/suggest?query=",
+        "fieldId": "labels",
+        "hasDefaultValue": false,
+        "key": "labels",
+        "name": "Labels",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ],
+        "required": false,
+        "schema": {
+          "items": "string",
+          "system": "labels",
+          "type": "array"
+        }
+      },
+      {
+        "fieldId": "parent",
+        "hasDefaultValue": false,
+        "key": "parent",
+        "name": "Parent",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "system": "parent",
+          "type": "issuelink"
+        }
+      },
+      {
+        "allowedValues": [
+          {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/highest_new.svg",
+            "id": "1",
+            "name": "Highest",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/1"
+          },
+          {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/high_new.svg",
+            "id": "2",
+            "name": "High",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/2"
+          },
+          {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/medium_new.svg",
+            "id": "3",
+            "name": "Medium",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/3"
+          },
+          {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/low_new.svg",
+            "id": "4",
+            "name": "Low",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/4"
+          },
+          {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/lowest_new.svg",
+            "id": "5",
+            "name": "Lowest",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/5"
+          }
+        ],
+        "defaultValue": {
+          "iconUrl": "https://acme.atlassian.net/images/icons/priorities/medium_new.svg",
+          "id": "3",
+          "name": "Medium",
+          "self": "https://acme.atlassian.net/rest/api/3/priority/3"
+        },
+        "fieldId": "priority",
+        "hasDefaultValue": true,
+        "key": "priority",
+        "name": "Priority",
+        "operations": [
+          "set"
+        ],
+        "required": false,
+        "schema": {
+          "system": "priority",
+          "type": "priority"
+        }
+      },
+      {
+        "allowedValues": [
+          {
+            "avatarUrls": {
+              "16x16": "https://avatar.example/a.png",
+              "24x24": "https://avatar.example/a.png",
+              "32x32": "https://avatar.example/a.png",
+              "48x48": "https://avatar.example/a.png"
+            },
+            "id": "10003",
+            "key": "TCWTEST",
+            "name": "TCW Bridge Test",
+            "projectTypeKey": "software",
+            "self": "https://acme.atlassian.net/rest/api/3/project/10003",
+            "simplified": false
+          }
+        ],
+        "fieldId": "project",
+        "hasDefaultValue": false,
+        "key": "project",
+        "name": "Project",
+        "operations": [
+          "set"
+        ],
+        "required": true,
+        "schema": {
+          "system": "project",
+          "type": "project"
+        }
+      },
+      {
+        "fieldId": "summary",
+        "hasDefaultValue": false,
+        "key": "summary",
+        "name": "Summary",
+        "operations": [
+          "set"
+        ],
+        "required": true,
+        "schema": {
+          "system": "summary",
+          "type": "string"
+        }
+      }
+    ],
+    "maxResults": 100,
+    "startAt": 0,
+    "total": 20
+  },
+  "richness": 46,
+  "status": 200,
+  "template": "/rest/api/3/issue/createmeta/{project}/issuetypes/{id}"
+}

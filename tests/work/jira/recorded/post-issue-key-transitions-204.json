@@ -1,0 +1,13 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/issue/TCWTEST-62/transitions",
+  "request": {
+    "transition": {
+      "id": "11"
+    }
+  },
+  "response": null,
+  "richness": 0,
+  "status": 204,
+  "template": "/rest/api/3/issue/{key}/transitions"
+}

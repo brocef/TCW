@@ -1,0 +1,13 @@
+{
+  "method": "PUT",
+  "path": "/rest/api/3/issue/TCWTEST-62",
+  "request": {
+    "fields": {
+      "customfield_10042": "tcw-test-live/TCWTEST-62-scenario-114639"
+    }
+  },
+  "response": null,
+  "richness": 0,
+  "status": 204,
+  "template": "/rest/api/3/issue/{key}"
+}

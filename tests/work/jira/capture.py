@@ -4,7 +4,8 @@ plan Task 15).
 The live scenario installs this when `TCW_JIRA_CAPTURE=<dir>` is set. It wraps
 `urllib.request.urlopen`, the one call `JiraClient._request` makes, so it sees
 error bodies as well as successful ones, and writes one file per endpoint and
-status: the first answer seen, with the request that produced it.
+status: the answer with the most distinct key paths, with the request that
+produced it.
 
 Before writing, it replaces every account id, email address, display name and
 the site's host with fixed values, so that `test_recorded_shapes.py` can fail
@@ -44,6 +45,32 @@ def file_name(method: str, route: str, status: int) -> str:
     route = route.removeprefix("/rest/api/3/")
     words = re.sub(r"[^a-z0-9]+", "-", route.replace("{", "").replace("}", "").lower())
     return f"{method.lower()}-{words.strip('-')}-{status}.json"
+
+
+#: Stands in for every avatar URL: a Gravatar URL holds a hash of the person's
+#: email address, and the fallback names their initial.
+AVATAR = "https://avatar.example/a.png"
+
+
+def without_avatars(value):
+    """`value` with every `avatarUrls` entry pointing at `AVATAR`."""
+    if isinstance(value, dict):
+        return {k: ({size: AVATAR for size in v} if k == "avatarUrls"
+                    and isinstance(v, dict) else without_avatars(v))
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [without_avatars(v) for v in value]
+    return value
+
+
+def key_paths(value, prefix: str = "") -> set[str]:
+    """Every key path in a JSON value, with `*` for list elements."""
+    if isinstance(value, dict):
+        return {prefix} | {p for k, v in value.items()
+                           for p in key_paths(v, f"{prefix}.{k}")}
+    if isinstance(value, list):
+        return {prefix} | {p for v in value for p in key_paths(v, f"{prefix}.*")}
+    return {prefix}
 
 
 class Recorder:
@@ -94,7 +121,14 @@ class Recorder:
         path = url.removeprefix(self.site)
         route = template(path, self.project)
         target = self.directory / file_name(method, route, status)
-        if target.exists():
+        # The answer with the most distinct key paths is kept: it shows the most
+        # of the endpoint's shape (a ticket with a parent, a link and estimates,
+        # rather than one read for its status alone).
+        try:
+            richness = len(key_paths(json.loads(body))) if body else 0
+        except ValueError:
+            richness = 0
+        if target.exists() and json.loads(target.read_text())["richness"] >= richness:
             return
         try:
             response = json.loads(body) if body else None
@@ -105,8 +139,9 @@ class Recorder:
             "template": route,
             "path": path,
             "status": status,
+            "richness": richness,
             "request": json.loads(sent) if sent else None,
-            "response": response,
+            "response": without_avatars(response),
         }
         self.directory.mkdir(parents=True, exist_ok=True)
         target.write_text(self.scrub(json.dumps(entry, indent=2, sort_keys=True)) + "\n",

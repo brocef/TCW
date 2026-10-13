@@ -1,0 +1,14 @@
+{
+  "method": "GET",
+  "path": "/rest/api/3/issue/TCWTEST-999999",
+  "request": null,
+  "response": {
+    "errorMessages": [
+      "Issue does not exist or you do not have permission to see it."
+    ],
+    "errors": {}
+  },
+  "richness": 4,
+  "status": 404,
+  "template": "/rest/api/3/issue/{key}"
+}

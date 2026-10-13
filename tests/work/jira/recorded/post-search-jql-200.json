@@ -1,0 +1,186 @@
+{
+  "method": "POST",
+  "path": "/rest/api/3/search/jql",
+  "request": {
+    "fields": [
+      "summary",
+      "status",
+      "created",
+      "priority",
+      "labels",
+      "assignee",
+      "parent",
+      "issuelinks",
+      "issuetype",
+      "customfield_10076",
+      "customfield_10042",
+      "customfield_10077",
+      "customfield_10078"
+    ],
+    "jql": "key IN (\"TCWTEST-65\")",
+    "maxResults": 100
+  },
+  "response": {
+    "isLast": true,
+    "issues": [
+      {
+        "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+        "fields": {
+          "assignee": {
+            "accountId": "acct-1",
+            "accountType": "atlassian",
+            "active": true,
+            "avatarUrls": {
+              "16x16": "https://avatar.example/a.png",
+              "24x24": "https://avatar.example/a.png",
+              "32x32": "https://avatar.example/a.png",
+              "48x48": "https://avatar.example/a.png"
+            },
+            "displayName": "Person 1",
+            "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-1",
+            "timeZone": "America/New_York"
+          },
+          "created": "2026-10-13T11:47:12.614-0400",
+          "customfield_10042": "tcw-test-live/TCWTEST-65-scenario-child-114639",
+          "customfield_10076": "tcw-test-live",
+          "customfield_10077": {
+            "id": "10022",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10022",
+            "value": "high"
+          },
+          "customfield_10078": {
+            "id": "10024",
+            "self": "https://acme.atlassian.net/rest/api/3/customFieldOption/10024",
+            "value": "low"
+          },
+          "issuelinks": [
+            {
+              "id": "10046",
+              "inwardIssue": {
+                "fields": {
+                  "issuetype": {
+                    "avatarId": 10318,
+                    "description": "A small, distinct piece of work.",
+                    "hierarchyLevel": 0,
+                    "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10318?size=medium",
+                    "id": "10010",
+                    "name": "Task",
+                    "self": "https://acme.atlassian.net/rest/api/3/issuetype/10010",
+                    "subtask": false
+                  },
+                  "priority": {
+                    "iconUrl": "https://acme.atlassian.net/images/icons/priorities/high_new.svg",
+                    "id": "2",
+                    "name": "High",
+                    "self": "https://acme.atlassian.net/rest/api/3/priority/2"
+                  },
+                  "status": {
+                    "description": "",
+                    "iconUrl": "https://acme.atlassian.net/",
+                    "id": "10041",
+                    "name": "Won't Do",
+                    "self": "https://acme.atlassian.net/rest/api/3/status/10041",
+                    "statusCategory": {
+                      "colorName": "green",
+                      "id": 3,
+                      "key": "done",
+                      "name": "Done",
+                      "self": "https://acme.atlassian.net/rest/api/3/statuscategory/3"
+                    }
+                  },
+                  "summary": "Scenario 114639"
+                },
+                "id": "10368",
+                "key": "TCWTEST-62",
+                "self": "https://acme.atlassian.net/rest/api/3/issue/10368"
+              },
+              "self": "https://acme.atlassian.net/rest/api/3/issueLink/10046",
+              "type": {
+                "id": "10000",
+                "inward": "is blocked by",
+                "name": "Blocks",
+                "outward": "blocks",
+                "self": "https://acme.atlassian.net/rest/api/3/issueLinkType/10000"
+              }
+            }
+          ],
+          "issuetype": {
+            "avatarId": 10318,
+            "description": "A small, distinct piece of work.",
+            "hierarchyLevel": 0,
+            "iconUrl": "https://acme.atlassian.net/rest/api/2/universal_avatar/view/type/issuetype/avatar/10318?size=medium",
+            "id": "10010",
+            "name": "Task",
+            "self": "https://acme.atlassian.net/rest/api/3/issuetype/10010",
+            "subtask": false
+          },
+          "labels": [],
+          "parent": {
+            "fields": {
+              "issuetype": {
+                "description": "A big user story that needs to be broken down. Created by Jira Software - do not edit or delete.",
+                "hierarchyLevel": 1,
+                "iconUrl": "https://acme.atlassian.net/images/icons/issuetypes/epic.svg",
+                "id": "10000",
+                "name": "Epic",
+                "self": "https://acme.atlassian.net/rest/api/3/issuetype/10000",
+                "subtask": false
+              },
+              "priority": {
+                "iconUrl": "https://acme.atlassian.net/images/icons/priorities/medium_new.svg",
+                "id": "3",
+                "name": "Medium",
+                "self": "https://acme.atlassian.net/rest/api/3/priority/3"
+              },
+              "status": {
+                "description": "",
+                "iconUrl": "https://acme.atlassian.net/",
+                "id": "10011",
+                "name": "Triage",
+                "self": "https://acme.atlassian.net/rest/api/3/status/10011",
+                "statusCategory": {
+                  "colorName": "blue-gray",
+                  "id": 2,
+                  "key": "new",
+                  "name": "To Do",
+                  "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+                }
+              },
+              "summary": "Scenario epic 114639"
+            },
+            "id": "10370",
+            "key": "TCWTEST-64",
+            "self": "https://acme.atlassian.net/rest/api/3/issue/10370"
+          },
+          "priority": {
+            "iconUrl": "https://acme.atlassian.net/images/icons/priorities/medium_new.svg",
+            "id": "3",
+            "name": "Medium",
+            "self": "https://acme.atlassian.net/rest/api/3/priority/3"
+          },
+          "status": {
+            "description": "",
+            "iconUrl": "https://acme.atlassian.net/",
+            "id": "10011",
+            "name": "Triage",
+            "self": "https://acme.atlassian.net/rest/api/3/status/10011",
+            "statusCategory": {
+              "colorName": "blue-gray",
+              "id": 2,
+              "key": "new",
+              "name": "To Do",
+              "self": "https://acme.atlassian.net/rest/api/3/statuscategory/2"
+            }
+          },
+          "summary": "Scenario child 114639"
+        },
+        "id": "10371",
+        "key": "TCWTEST-65",
+        "self": "https://acme.atlassian.net/rest/api/3/issue/10371"
+      }
+    ]
+  },
+  "richness": 133,
+  "status": 200,
+  "template": "/rest/api/3/search/jql"
+}
