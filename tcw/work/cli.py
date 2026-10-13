@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from datetime import timezone
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import NO_PROJECT, BackendError, NotFound, Refused, UsageError
+from tcw.errors import (NO_PROJECT, BackendError, ConfigError, NotFound, Refused,
+                        UsageError)
 from tcw.output import print_json, wrote
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_project_root
@@ -71,6 +73,27 @@ def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
         raise Refused(f"{slug} belongs to project '{slug.project}'; run the "
                       f"command in that project")
     return backend
+
+
+def _me(backend: WorkBackend) -> str:
+    """Who is running the command, as the backend compares it with an item's
+    assignee (TCW-72 Design 9). The CLI never interprets the value; with
+    none configured, one message names every remedy, whatever the backend."""
+    from tcw.config import LOCAL_FILE, user_config_label
+    me = backend.current_user()
+    if me is None:
+        raise ConfigError(
+            f"no identity is configured: set `user.name` in {user_config_label()} "
+            f"or in {LOCAL_FILE}, or, in a Jira project, set the environment "
+            f"variables named by `work.jira.credentials`")
+    return me
+
+
+def _alone(args, flag: str) -> None:
+    """`--mine` and `--assign-me` each say who; `--assignee` beside one of
+    them would say it twice."""
+    if args.assignee is not None:
+        raise UsageError(f"{flag} cannot be used with --assignee; give one of them")
 
 
 # -- flag values ---------------------------------------------------------------------------
@@ -134,12 +157,17 @@ def _new(args) -> int:
     stage = args.stage or start_stage()
     if stage != inbox_stage() and args.stage is not None:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
+    if args.assign_me:
+        _alone(args, "--assign-me")
     request = read_piped_stdin()
     request = request if request.strip() else None
     if args.project:
         if args.project == FsProjectRegistry.open(root).current.id:
             raise UsageError(f"--project {args.project} names this project; "
                              f"leave --project out to create the item here")
+        if args.assign_me:
+            raise UsageError(f"--assign-me cannot be used with --project; "
+                             f"project '{args.project}' assigns its own items")
         given = [f for f in PROPERTY_FLAGS if getattr(args, f) is not None]
         if given:
             flag = "--" + given[0].replace("_", "-")
@@ -153,9 +181,10 @@ def _new(args) -> int:
         raise UsageError(f"--stage {inbox_stage()} is for a filesystem-mode "
                          f"project; in Jira mode a new ticket waits in Jira "
                          f"until `tcw work tickets adopt` takes it")
+    assignee = _me(backend) if args.assign_me else _optional(args.assignee)
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),
-        complexity=_optional(args.complexity), assignee=_optional(args.assignee),
+        complexity=_optional(args.complexity), assignee=assignee,
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
     # A failure after creation carries the name; `tcw.cli.main` prints it.
@@ -167,15 +196,18 @@ def _new(args) -> int:
 def _list(args) -> int:
     for name in args.stage or ():
         table_stage(name)              # an unknown stage is a usage error
+    if args.mine:
+        _alone(args, "--mine")
     root = project_root()
     backend = open_backend(root)
+    assignee = _me(backend) if args.mine else args.assignee
     tags = frozenset(args.tag) if args.tag else None
     for tag in sorted(tags or ()):
         if tag not in backend.config.tags:
             _say(f"warning: tag '{tag}' is not in this project's registry")
     parent = Slug.parse(args.parent, backend.project) if args.parent else None
     query = Query(stages=frozenset(args.stage) if args.stage else None,
-                  parent=parent, assignee=args.assignee, tags=tags,
+                  parent=parent, assignee=assignee, tags=tags,
                   all=args.all)
     items = backend.list(query)
     if args.json:
@@ -255,6 +287,8 @@ def _path(args) -> int:
 
 
 def _edit(args) -> int:
+    if args.assign_me:
+        _alone(args, "--assign-me")
     slug, backend, root = resolve_item(args.slug)
     changes = Changes(
         title=_optional(args.title), priority=_optional(args.priority),
@@ -264,9 +298,13 @@ def _edit(args) -> int:
         add_blocked_by=tuple(args.blocked_by or ()),
         remove_blocked_by=tuple(args.unblocked_by or ()))
     targets = [Slug.parse(t, slug.project) for t in args.blocks or ()]
-    if changes == Changes() and not targets:
+    if changes == Changes() and not targets and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
     own = _own(slug, backend, root)
+    if args.assign_me:
+        # Asked of this project's own backend, after `_own` has refused
+        # another project's item.
+        changes = replace(changes, assignee=_me(own))
     own.read(slug.folder)
     # Every target is opened and read before anything is written, so a
     # refused or missing one (exit 3 or 4) leaves every item as it was.
@@ -592,6 +630,8 @@ def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
     p.add_argument("--tag", type=_tag, action="append",
                    help="a registered tag; repeat the option for more")
     p.add_argument("--assignee", help=f"who the item is assigned to{clear}")
+    p.add_argument("--assign-me", dest="assign_me", action="store_true",
+                   help="assign it to you: user.name, or your Jira account")
     p.add_argument("--parent", help=f"the item this one belongs under (a slug){clear}")
     p.add_argument("--blocked-by", dest="blocked_by", action="append",
                    help="an item that must finish first (a slug); repeat for more")
@@ -640,6 +680,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    help="list items carrying this tag; repeat for any of several")
     p.add_argument("--parent", help="only items under this item (a slug)")
     p.add_argument("--assignee", help="only items assigned to this person")
+    p.add_argument("--mine", action="store_true",
+                   help="only items assigned to you: user.name, or your Jira account")
     p.add_argument("--all", action="store_true",
                    help="include items that have ended")
     p.add_argument("--json", action="store_true",

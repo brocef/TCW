@@ -35,7 +35,7 @@ from tcw.cli import build_parser, main
 from tcw.errors import BackendError, Refused
 from tcw.work.jira.backend import JiraBackend
 from tcw.work.model import Item, Slug
-from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV, fake, jira_config  # noqa: F401
+from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV, fake, jira_config  # noqa: F401
 from tests.work.jira.fake import SITE
 
 TODAY = date.today().isoformat()
@@ -71,6 +71,10 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "capabilities drift": (["capabilities", "drift"], 1),
     "work new": (["work", "new", "A b"], 1),
     "work list": (["work", "list"], 1),
+    # Flags that need an identity get rows of their own (TCW-72).
+    "work list --mine": (["work", "list", "--mine"], 1),
+    "work new --assign-me": (["work", "new", "A b", "--assign-me"], 1),
+    "work edit --assign-me": (["work", "edit", "fx/2026-10-01-a", "--assign-me"], 1),
     "work show": (["work", "show", "fx/2026-10-01-a"], 1),
     "work path": (["work", "path"], 1),
     "work edit": (["work", "edit", "fx/2026-10-01-a", "--priority", "high"], 1),
@@ -227,7 +231,8 @@ def test_every_command_outside_a_project(tmp_path, command):
     assert result.code == expected, (command, result)
     if expected == 1:
         assert result.out == ""
-        assert result.err.startswith(f"tcw {command}: "), result.err
+        words = " ".join(w for w in command.split() if not w.startswith("--"))
+        assert result.err.startswith(f"tcw {words}: "), result.err
     assert snapshot(tmp_path) == {}
 
 
@@ -690,6 +695,23 @@ def test_the_writing_work_commands_in_a_project(fx):
     assert removed.err == "wrote tcw-config.yaml\n", removed.err
 
 
+def test_the_identity_flags_in_a_project(fx, monkeypatch):
+    """`--mine` and `--assign-me` with `user.name` in the local file (TCW-72)."""
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
+    (fx / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    mine = checked(fx, "work", "new", "Mine", "--assign-me",
+                   out=lambda o: re.fullmatch(rf"fx/{TODAY}-mine\n", o)).out.strip()
+    new(fx, "Theirs", "--assignee", "brian")
+    later = new(fx, "Later")
+    checked(fx, "work", "list", "--mine", out=mine + "\n")
+    checked(fx, "work", "edit", later, "--assign-me", out="")
+    assert sorted(ok(fx, "work", "list", "--mine").lines) == sorted([mine, later])
+    for argv in (["list", "--mine"], ["new", "X", "--assign-me"],
+                 ["edit", later, "--assign-me"]):
+        refused = written(fx, "work", *argv, "--assignee", "x", code=2)
+        assert refused.out == "" and "--assignee" in refused.err, refused
+
+
 def test_tags_rm_of_an_unregistered_tag_is_not_found(fx):
     """Review fix C2: exit 4 naming each tag that is not registered, and the
     whole call refused: a registered tag given with it stays."""
@@ -756,3 +778,17 @@ def test_jira_tickets_adopt(jira_fx, fake):  # noqa: F811
     key = fake.ticket("Fix the login").key
     adopted = jira_written(jira_fx, "work", "tickets", "adopt", key)
     assert adopted.out == f"fx/{key}-fix-the-login\n", adopted
+
+
+def test_jira_identity_flags(jira_fx, fake):  # noqa: F811
+    """In Jira mode the identity is the credentials' account (TCW-72)."""
+    mine = jira_written(jira_fx, "work", "new", "Mine", "--assign-me").out.strip()
+    key = mine.split("/", 1)[1].rsplit("-mine", 1)[0]
+    assert fake.tickets[key].assignee == ME
+    later = jira_written(jira_fx, "work", "new", "Later").out.strip()
+    later_key = later.split("/", 1)[1].rsplit("-later", 1)[0]
+    assert fake.tickets[later_key].assignee is None
+    listed = jira_fx("work", "list", "--mine")
+    assert (listed.code, listed.out) == (0, mine + "\n"), listed
+    assert jira_written(jira_fx, "work", "edit", later, "--assign-me").out == ""
+    assert fake.tickets[later_key].assignee == ME
