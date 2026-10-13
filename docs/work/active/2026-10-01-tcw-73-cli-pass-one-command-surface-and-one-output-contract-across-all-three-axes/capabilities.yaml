@@ -1,0 +1,71 @@
+new:
+  - cli/rely-on-one-output-contract
+  - cli/list-connected-projects
+  - cli/validate-a-project
+  # renamed from work/declare-capability-changes-in-a-child-nodes-ledger
+  - work/declare-capability-changes-in-a-child-projects-ledger
+changed:
+  - cli/declare-a-connected-projects-home-repository
+  - cli/get-a-suggestion-for-a-mistyped-command
+  - cli/host-multiple-projects-in-one-repo
+  - cli/locate-tcw-storage-folders
+  - cli/point-tcw-at-a-project-i-already-have
+  - cli/provision-declared-stores
+  - cli/read-from-an-upstream-project
+  - cli/reference-a-tcw-object
+  - cli/run-from-a-git-worktree
+  - cli/scaffold-the-doc-trees
+  - taxonomy/add-a-term
+  - taxonomy/browse-the-term-forest
+  - taxonomy/configure-the-taxonomy-store-location
+  - taxonomy/declare-the-taxonomy-stores-home-repository
+  - taxonomy/federate-shared-vocabulary
+  - taxonomy/read-a-term
+  - taxonomy/remove-a-local-term
+  - taxonomy/search-terms
+  - taxonomy/validate-the-taxonomy
+  - capabilities/add-a-capability
+  - capabilities/browse-capabilities-by-status
+  - capabilities/configure-the-capabilities-store-location
+  - capabilities/declare-the-capabilities-stores-home-repository
+  - capabilities/federate
+  - capabilities/override-inherited
+  - capabilities/read-a-capability
+  - capabilities/remove-a-capability
+  - capabilities/reset-an-override
+  - capabilities/search-capabilities
+  - capabilities/set-a-capabilitys-status
+  - capabilities/validate-capabilities
+  - work/declare-which-documents-track-which-changes
+  - work/inspect-the-lifecycle-contract
+  - work/run-a-lifecycle-stage
+  - work/run-a-procedure
+  - work/tag-a-work-item
+  - work/read-a-work-item
+  # the "node" to "project" sweep (spec, Capability changes)
+  - work/configure-the-work-store-location
+  - work/declare-the-work-stores-home-repository
+  - work/view-the-board
+  - work/delegate-a-work-item-to-another-project
+  - web
+removed:
+  - cli/use-shorthand-to-read-an-item
+  - cli/validate-a-node
+  - work/inspect-the-node-topology
+  - work/declare-capability-changes-in-a-child-nodes-ledger
+taxonomy:
+  new:
+    - project
+    - project-registry
+  changed:
+    - cli
+    - configurable-component-store-location
+    - configure-skill
+    - local-web-app
+    - provisioned-component-stores
+    - setup-skill
+    - upstream-project
+    - work-item/lifecycle-hook
+  removed:
+    - node
+    - connected-project-registry
