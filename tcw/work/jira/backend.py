@@ -909,7 +909,7 @@ class JiraBackend:
             self.client.apply_transition(key, chosen.id, None if separate else document)
         except TrackerRequestInvalid as error:
             return self._after_refusal(key, slug, stage, status, chosen, note, document,
-                                       error)
+                                       error, separate=separate)
         except TrackerUnavailable as error:
             moved = self._after_drop(key, slug, stage, status,
                                      None if separate else note,
@@ -942,16 +942,18 @@ class JiraBackend:
                                    f"failed: {error}") from None
 
     def _after_refusal(self, key, slug, stage, status, chosen, note, document,
-                       error) -> str | None:
+                       error, *, separate: bool = False) -> str | None:
         """Jira answered 400. Its text is never read to decide what happened;
         the status is (Design 5)."""
         with _jira():
             current = self._status(key)
         if current == status:
             # Someone else made the move first, or Jira refused only the comment.
+            # A note meant to go separately was never sent, so a matching
+            # comment can only be someone else's: post it without looking.
             if document is not None:
                 try:
-                    found = self._note_found(key, note)
+                    found = not separate and self._note_found(key, note)
                 except TrackerError:
                     found = False
                 if not found:

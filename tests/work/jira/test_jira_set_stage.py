@@ -73,6 +73,21 @@ def test_a_screenless_move_dropped_after_landing_still_posts_the_note(item):
     assert comment_texts(project, key) == [NOTE]
 
 
+def test_a_screenless_lost_race_posts_the_note_despite_a_matching_comment(
+        item, monkeypatch):
+    """The note was never sent, so an older comment with the same words is
+    someone else's, not this move's."""
+    project, key, folder = item
+    project.backend().comment(folder, NOTE)
+
+    def lost_race(ticket, body, route):
+        ticket.status = "In Progress"
+        raise jira._for_status(400, {}, "Transition is not valid", route)
+    monkeypatch.setattr(project.fake, "_transition", lost_race)
+    assert project.backend().set_stage(folder, "implement", NOTE) == "implement"
+    assert comment_texts(project, key) == [NOTE, NOTE]
+
+
 def test_without_a_note_no_comment_is_sent(item):
     project, key, folder = item
     project.backend().set_stage(folder, "plan", None)
