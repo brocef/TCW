@@ -39,6 +39,8 @@ REMOVED_COMMANDS = (
     "tcw work nodes",
     "tcw taxonomy init",
     "tcw taxonomy check",
+    "tcw capabilities init",
+    "tcw capabilities check",
 )
 
 # Flags TCW-70 removed from commands that survive, as (command, flag). A
@@ -62,6 +64,16 @@ REMOVED_FLAGS = (
     ("tcw work edit", "--untags"),
     ("tcw taxonomy add", "-s"),
     ("tcw taxonomy add", "-p"),
+    ("tcw capabilities list", "--local-only"),
+    ("tcw capabilities add", "-s"),
+)
+
+# Whole invocations whose spelling TCW-73 removed while the command itself
+# survives under a new shape (its Design 2): `capabilities extends <id>` is
+# now `extends add <id>`. A documented invocation starting with one of these
+# is not checked; each must fail to parse.
+REMOVED_FORMS = (
+    "tcw capabilities extends web-frontend",
 )
 
 # Configuration keys TCW-69's parser refuses that documents still name.

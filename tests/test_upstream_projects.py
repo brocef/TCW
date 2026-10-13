@@ -291,7 +291,7 @@ def _reader(path: Path, project_id: str, connected: dict) -> Path:
 
 def _assert_reads_core(app: Path, term_slug: str = "argument") -> None:
     for command in (("taxonomy", "extends", "add", "core"),
-                    ("capabilities", "extends", "core")):
+                    ("capabilities", "extends", "add", "core")):
         out = _tcw(app, *command)
         assert out.returncode == 0, (command, out.stderr)
     out = _tcw(app, "taxonomy", "show", f"core/{term_slug}")

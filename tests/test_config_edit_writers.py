@@ -129,14 +129,14 @@ def test_taxonomy_extends_add_changes_only_its_own_lines(tmp_path, monkeypatch):
 
 def test_capabilities_extends_appends_a_missing_section(tmp_path, monkeypatch):
     child = federated(tmp_path, ANNOTATED)
-    assert run(child, monkeypatch, "capabilities", "extends", "base") == 0
+    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
     assert config(child) == ANNOTATED + b"capabilities:\n    extends:\n        - base\n"
 
 
 def test_capabilities_extends_goes_before_a_document_end_marker(tmp_path, monkeypatch):
     before = (PARENT + "...\n").encode()
     child = federated(tmp_path, before)
-    assert run(child, monkeypatch, "capabilities", "extends", "base") == 0
+    assert run(child, monkeypatch, "capabilities", "extends", "add", "base") == 0
     assert config(child) == (PARENT + "capabilities:\n    extends:\n"
                              "        - base\n...\n").encode()
 

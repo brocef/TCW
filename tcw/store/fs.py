@@ -30,7 +30,8 @@ from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
-    CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
+    CAP_FIELDS, CAP_LIFECYCLES, CAP_MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
+    RETIRED_CAP_FIELDS,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
     CapabilityDetail, RefError, slugify, StaleRevision, parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
@@ -2613,7 +2614,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             else:
                 seen_ids[cap.id] = cap.path
             for key in f:
-                if key not in CAP_FIELDS:
+                if key in RETIRED_CAP_FIELDS:
+                    found(f"field '{key}' was retired in TCW 3.0 — see "
+                          f"{CAP_MIGRATION_GUIDE}")
+                elif key not in CAP_FIELDS:
                     found(f"unknown field '{key}'")
             status = f.get("Status")
             if status is None:

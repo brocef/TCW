@@ -87,7 +87,7 @@ def test_cli_path_outside_capabilities_node_prints_no_path(tmp_path, monkeypatch
     assert main(["capabilities", "path"]) == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert "no tcw capabilities node here" in output.err
+    assert "no capabilities store here" in output.err
 
 
 class AmbiguousFeatureTax(FeatureTax):
@@ -296,15 +296,15 @@ def test_check_duplicate_id(tmp_path):
     assert any("duplicate id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
-def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
+def test_check_with_taxonomy(tmp_path):
+    """A Subject naming a real term is no finding (the old `capabilities
+    check` command is now part of `tcw validate`)."""
+    from tcw.store.fs import FsTaxonomyStore
     root = node(tmp_path)
     (root / "docs" / "taxonomy" / "user").mkdir(parents=True)
     (root / "docs" / "taxonomy" / "user" / "meta.yaml").write_text("name: User\n")
     write_cap(root, "routes/x", Status="Supported", Subject="user")
-    monkeypatch.chdir(root)
-    assert main(["capabilities", "check"]) == 0
-    assert "capabilities OK" in capsys.readouterr().out
+    assert FsCapabilitiesStore.open(root).check(FsTaxonomyStore.open(root)) == []
 
 
 # ── drift (unreviewed inherited + shipped-but-Missing) ───────────────────────
@@ -536,17 +536,13 @@ def test_cli_drift_is_silent_when_the_record_kept_no_resolution(
 
 def test_cli_drift_ignores_a_planning_doc_naming_a_slug_that_never_existed(
         tmp_path, monkeypatch, capsys):
-    """Spec criterion 5, and a regression guard rather than a defect test — it
-    passes before and after. It is the case that separates "resolved" from
-    "typo", which is the distinction the whole tombstone mechanism exists to
-    draw, so it is worth pinning where the drift lookup can see it."""
+    """Drift never reads a `Planning doc` field (TCW-69). The field is retired
+    for writing (TCW-73 Design 8.6), so the record carries it as 2.x left it."""
     from tcw.cli import main
     from tcw.store.fs import init
     root = node(tmp_path)
     init(["work"], root)
-    write_cap(root, "auth/login", Status="Missing")
-    FsCapabilitiesStore.open(root).set("auth/login",
-                                       {"Planning doc": "2026-01-01-never-was"})
+    write_cap(root, "auth/login", Status="Missing", **{"Planning doc": "2026-01-01-never-was"})
     monkeypatch.chdir(root)
 
     assert main(["capabilities", "drift"]) == 0
@@ -561,15 +557,13 @@ def test_cli_drift_no_work_node_no_error(tmp_path, monkeypatch, capsys):
     assert main(["capabilities", "drift"]) == 0       # degrades to silence
 
 
-def test_cli_drift_does_not_affect_check(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
+def test_drift_does_not_affect_check(tmp_path):
     base = node(tmp_path, "base")
     write_cap(base, "auth/login", Status="Supported")
     child = node(tmp_path, "child")
     connect(base, child)
     FsCapabilitiesStore.open(child).extends_add("base")
-    monkeypatch.chdir(child)
-    assert main(["capabilities", "check"]) == 0        # unreviewed ≠ structural fault
+    assert FsCapabilitiesStore.open(child).check() == []   # unreviewed ≠ structural fault
 
 
 # ── set (the ledger-flip affordance) ──────────────────────────────────────────
@@ -587,10 +581,24 @@ def test_set_updates_status(tmp_path):
 def test_set_inserts_new_field(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("auth/google", name="Sign in with Google", body="User clicks.")
-    st.set("auth/google", {"Planning doc": "2026-01-01-google-sso"})
+    st.set("auth/google", {"Gaps": "no refresh tokens"})
     cap = st.get("auth/google")
-    assert cap.fields.get("Planning doc") == "2026-01-01-google-sso"
+    assert cap.fields.get("Gaps") == "no refresh tokens"
     assert cap.body.startswith("User clicks")
+
+
+def test_set_refuses_a_retired_field_and_keeps_an_existing_one(tmp_path):
+    """TCW-73 Design 8.6: `Planning doc` and `Tracker` cannot be written, and
+    a write of other fields leaves a 2.x line in place for the migration."""
+    from tcw.errors import UsageError
+    root = node(tmp_path)
+    write_cap(root, "auth/google", Status="Missing", Tracker="X-1")
+    st = FsCapabilitiesStore.open(root)
+    for key in ("Planning doc", "Tracker"):
+        with pytest.raises(UsageError):
+            st.set("auth/google", {key: "x"})
+    st.set("auth/google", {"Status": "Supported"})
+    assert st.get("auth/google").fields["Tracker"] == "X-1"
 
 
 def test_set_clears_field_with_none(tmp_path):
@@ -630,7 +638,7 @@ def test_cli_set_not_rewritten_to_show(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     FsCapabilitiesStore.open(root).add("routes/login", name="Sign in")
     assert main(["capabilities", "set", "routes/login", "--status", "Supported"]) == 0
-    assert "Set" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
     assert FsCapabilitiesStore.open(root).get("routes/login").status == "Supported"
 
 
@@ -648,7 +656,7 @@ def test_cli_set_inherited_path(tmp_path, monkeypatch, capsys):
 
     assert main(["capabilities", "set", "base/moderation/report-content",
                  "--status", "Missing"]) == 0
-    assert "Set" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
     assert FsCapabilitiesStore.open(child).get(
         "moderation/report-content").status == "Missing"
     assert FsCapabilitiesStore.open(base).get(
@@ -678,19 +686,6 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "ambiguous" in err and "x/thing" in err     # not a bare, unexplained path
     assert main(["capabilities", "set", "one/x/thing", "--status", "Missing"]) == 0
-
-
-def test_cli_capabilities_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-    root = tmp_path / "fresh"
-    root.mkdir()
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    monkeypatch.chdir(root)
-    assert main(["capabilities", "init", "--id", "fresh"]) == 0
-    comp_out = capsys.readouterr().out
-    assert (root / "docs" / "capabilities" / ".gitkeep").is_file()
-    assert main(["init", "capabilities"]) == 0
-    assert comp_out == capsys.readouterr().out
 
 
 def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):

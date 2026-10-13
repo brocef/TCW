@@ -28,7 +28,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests.doc_allowance import REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS
+from tests.doc_allowance import (REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS,
+                                  REMOVED_FORMS)
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -245,7 +246,7 @@ def _allowed(span: str) -> bool:
     (`tests/doc_allowance.py`)."""
     command = " ".join(span[INVOCATION.search(span).start():].split())
     return any(command == removed or command.startswith(removed + " ")
-               for removed in REMOVED_COMMANDS)
+               for removed in (*REMOVED_COMMANDS, *REMOVED_FORMS))
 
 
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))

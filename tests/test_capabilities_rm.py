@@ -357,8 +357,10 @@ def test_cli_rm_removes_and_reports(tmp_path, monkeypatch, capsys):
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     monkeypatch.chdir(root)
     assert main(["capabilities", "rm", "x"]) == 0
-    assert capsys.readouterr().out.strip() == "Removed capability x"
-    assert main(["capabilities", "show", "x"]) == 1
+    printed = capsys.readouterr()
+    assert printed.out == ""
+    assert "removed docs/capabilities/x/meta.yaml" in printed.err.splitlines()
+    assert main(["capabilities", "show", "x"]) == 4
 
 
 def test_cli_rm_unknown_path(tmp_path, monkeypatch, capsys):

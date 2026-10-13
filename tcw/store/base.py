@@ -456,9 +456,15 @@ CAP_STATUSES = {"Supported", "Partial", "Missing", "Blocked", "Omitted"}
 CAP_PRIORITIES = {"P0", "P1", "P2", "P3"}
 CAP_LIFECYCLES = {"Experimental", "Stable", "Deprecated"}
 CAP_FIELDS = {
-    "Status", "Priority", "Lifecycle", "Superseded by", "Tracker", "Subject",
-    "Feature", "Roles", "When", "Gaps", "Blocked by", "Planning doc",
+    "Status", "Priority", "Lifecycle", "Superseded by", "Subject",
+    "Feature", "Roles", "When", "Gaps", "Blocked by",
 }
+# Fields 2.x accepted that 3.0 retired (TCW-73 Design 8.6): both pointed from
+# the ledger into the work axis, which now links the other way, through each
+# work item's `capabilities.yaml`. A record still carrying one is a check error
+# naming the migration guide.
+RETIRED_CAP_FIELDS = {"Planning doc", "Tracker"}
+CAP_MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"
 
 
 @dataclass

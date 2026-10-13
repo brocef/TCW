@@ -1,172 +1,154 @@
-"""`tcw capabilities` — the user stories. Path-addressed folder capabilities."""
+"""`tcw capabilities` — the user stories. Path-addressed folder capabilities.
+
+stdout carries each command's product and nothing else (TCW-73 Design 1):
+`add` prints the new capability's qualified path, `list` and `search` one path
+per line, `show` the record, `path` the store folder; `set`, `reset`, `rm` and
+`extends add|rm` print nothing. Every file a write changed is named on stderr.
+A failure is raised for the top-level handler to print and turn into its exit
+code.
+"""
 
 import argparse
 import sys
 
+from tcw import exit as codes
+from tcw.errors import BackendError, NotFound, UsageError
+from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
-from tcw.store.base import Capability, RefError
-from tcw.store.base import AmbiguousRef
-from tcw.store.fs import FsCapabilitiesStore, find_node, git_root
+from tcw.store.base import Capability
+from tcw.store.fs import FsCapabilitiesStore, find_node
 
 NAME = "capabilities"
-SUBCOMMANDS = {"init", "list", "show", "path", "add", "search", "check", "set", "reset", "rm",
-               "extends", "drift"}
-DEFAULT_SUBCOMMAND = "show"  # `tcw capabilities <path>` == `tcw capabilities show <path>`
 
 
-def _init(args: argparse.Namespace) -> int:
-    from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME], args.id)
-
-
-def _store() -> FsCapabilitiesStore | None:
+def _node():
     node = find_node(NAME)
     if node is None:
-        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return None
-    return FsCapabilitiesStore.open(node)
+        raise BackendError("no capabilities store here — run `tcw init capabilities "
+                           "--id <id>` in the project folder")
+    return node
+
+
+def _store() -> FsCapabilitiesStore:
+    return FsCapabilitiesStore.open(_node())
+
+
+def _record(cap: Capability) -> dict:
+    return {"path": cap.qualified, "name": cap.name, "status": cap.status,
+            "origin": cap.origin}
+
+
+def _detail(cap: Capability) -> dict:
+    return {**_record(cap), "id": cap.id, "fields": dict(cap.fields), "body": cap.body}
 
 
 def _fmt(v) -> str:
     return ", ".join(v) if isinstance(v, list) else str(v)
 
 
-def _print_cap(cap: Capability) -> None:
-    tag = f"  [{cap.origin}]" if cap.origin != "local" else ""
-    print(f"## {cap.name}  ({cap.qualified}){tag}")
-    if cap.id:
-        print(f"**id:** {cap.id}")
-    for k, v in cap.fields.items():
-        print(f"**{k}:** {_fmt(v)}")
-    body = cap.body.strip()
-    if body:
-        print()
-        print(body)
+def _print_caps(caps: list[Capability], as_json: bool) -> int:
+    if as_json:
+        print_json("capabilities", [_record(c) for c in caps])
+    else:
+        for c in caps:
+            print(c.qualified)
+    return codes.OK
 
 
 def _list(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    for c in st.list_all(status=args.status, namespace=args.namespace,
-                         local_only=args.local_only):
-        print(f"[{c.status}]\t{c.qualified}\t{c.name}")
-    return 0
+    return _print_caps(_store().list_all(status=args.status, namespace=args.namespace,
+                                         local_only=args.local), args.json)
+
+
+def _search(args: argparse.Namespace) -> int:
+    return _print_caps(_store().search(args.query), args.json)
 
 
 def _show(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    try:
-        cap = st.get(args.id)
-    except (RefError, AmbiguousRef) as e:
-        print(f"tcw capabilities show: {e}", file=sys.stderr)
-        return 1
+    cap = _store().get(args.id)
     if cap is None:
-        print(f"tcw capabilities show: no such capability: {args.id}", file=sys.stderr)
-        return 1
-    _print_cap(cap)
-    return 0
+        raise NotFound(f"no such capability: '{args.id}'")
+    if args.json:
+        print_json("capability", _detail(cap))
+        return codes.OK
+    lines = [f"path: {cap.qualified}", f"name: {cap.name}", f"origin: {cap.origin}"]
+    if cap.id:
+        lines.append(f"id: {cap.id}")
+    lines += [f"{k}: {_fmt(v)}" for k, v in cap.fields.items()]
+    body = cap.body.strip()
+    if body:
+        lines += ["", "body:", *(f"  {line}" if line else "" for line in body.splitlines())]
+    print("\n".join(lines))
+    return codes.OK
 
 
 def _path(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    print(st.root)
-    return 0
+    print(_store().root)
+    return codes.OK
 
 
 def _add(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
-    except ValueError as e:
-        print(f"tcw capabilities add: {e}", file=sys.stderr)
-        return 1
-    print(f"Added capability {cap.path} ({cap.id})")
-    return 0
+    cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
+    changed(st.changed)
+    print(cap.qualified)
+    return codes.OK
+
+
+def _fields(args: argparse.Namespace) -> dict:
+    """`--status` and each `--field K=V`, one field per use. A key given twice,
+    `--status` together with `--field Status=`, or a `--field` with no `=` is
+    a usage error; the value is kept whole, as the record file writes it."""
+    fields: dict = {}
+    pairs = [("Status", args.status)] if args.status else []
+    for kv in args.field or []:
+        if "=" not in kv:
+            raise UsageError(f"--field takes K=V, got '{kv}'")
+        k, v = kv.split("=", 1)
+        pairs.append((k.strip(), v.strip()))
+    for k, v in pairs:
+        if k in fields:
+            raise UsageError(f"field '{k}' given more than once")
+        fields[k] = v
+    if not fields:
+        raise UsageError("give --status or at least one --field")
+    return fields
 
 
 def _set(args: argparse.Namespace) -> int:
+    fields = _fields(args)
     st = _store()
-    if st is None:
-        return 1
-    fields: dict = {}
-    if args.status:
-        fields["Status"] = args.status
-    for kv in (args.field or []):
-        if "=" not in kv:
-            print(f"tcw capabilities set: --field must be K=V: {kv}", file=sys.stderr)
-            return 1
-        k, v = kv.split("=", 1)
-        fields[k.strip()] = v.strip()
-    if not fields:
-        print("tcw capabilities set: need --status or at least one --field", file=sys.stderr)
-        return 1
-    try:
-        cap = st.set(args.id, fields)
-    except ValueError as e:
-        print(f"tcw capabilities set: {e}", file=sys.stderr)
-        return 1
-    print(f"Set {cap.path}")
-    return 0
+    st.set(args.id, fields)
+    changed(st.changed)
+    return codes.OK
 
 
 def _reset(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        st.reset(args.id)
-    except ValueError as e:
-        print(f"tcw capabilities reset: {e}", file=sys.stderr)
-        return 1
-    print(f"reset {args.id}")
-    return 0
+    st.reset(args.id)
+    changed(st.changed)
+    return codes.OK
 
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        st.remove(args.id)
-    except ValueError as e:              # AmbiguousRef carries its own message
-        print(f"tcw capabilities rm: {e}", file=sys.stderr)
-        return 1
-    print(f"Removed capability {args.id}")
-    return 0
+    st.remove(args.id)
+    changed(st.changed)
+    return codes.OK
 
 
-def _search(args: argparse.Namespace) -> int:
+def _extends_add(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    for c in st.search(args.query):
-        print(f"{c.qualified}\t{c.name}")
-    return 0
+    st.extends_add(args.project_id)
+    changed(st.changed)
+    return codes.OK
 
 
-def _extends(args: argparse.Namespace) -> int:
+def _extends_rm(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        if args.rm:
-            st.extends_remove(args.project_id)
-            print(f"Removed extends project {args.project_id}")
-        else:
-            st.extends_add(args.project_id)
-            print(f"Added extends project {args.project_id}")
-    except ValueError as e:
-        print(f"tcw capabilities extends: {e}", file=sys.stderr)
-        return 1
-    return 0
+    st.extends_remove(args.project_id)
+    changed(st.changed)
+    return codes.OK
 
 
 def _drift(args: argparse.Namespace) -> int:
@@ -174,11 +156,7 @@ def _drift(args: argparse.Namespace) -> int:
     (status is the master default, never locally ruled on), and what completed
     work items declared in their `capabilities.yaml` that today's records no
     longer show. Read-only; exits non-zero when any drift is found."""
-    node = find_node(NAME)
-    if node is None:
-        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return 1
+    node = _node()
     st = FsCapabilitiesStore.open(node)
 
     unreviewed = st.unreviewed_inherited()
@@ -228,61 +206,78 @@ def _completed_but_missing(node) -> list[str]:
     return problems
 
 
-def _check(args: argparse.Namespace) -> int:
-    node = find_node(NAME)
-    if node is None:
-        print("tcw capabilities: no tcw capabilities node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return 1
-    problems = FsCapabilitiesStore.open(node).check()
-    for p in problems:
-        print(p, file=sys.stderr)
-    if problems:
-        print(f"{len(problems)} problem(s).", file=sys.stderr)
-        return 1
-    print("capabilities OK")
-    return 0
+def _completed_but_missing(node) -> list[str]:
+    """What the finished items declared in `capabilities.yaml` that today's
+    records no longer show, through TCW-69's `drift_problems`, plus one finding
+    per unreadable `item.yaml`. It never reads a `Planning doc` field, and is
+    empty for a project with no work store."""
+    from tcw.errors import BackendError
+    from tcw.store.fs import FsProjectRegistry, _has_work_store
+    from tcw.work.fs_backend import FsWorkBackend, read_all
+    from tcw.work.gates import drift_problems, project_reader
+    from tcw.work.model import completion_stage
+    from tcw.work.open import open_backend
+
+    if not _has_work_store(node):
+        return []
+    try:
+        backend = open_backend(node)
+    except BackendError as error:
+        return [str(error)]
+    if not isinstance(backend, FsWorkBackend):
+        return []
+    items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
+    finished = [i for i in items if i.stage == completion_stage()]
+    problems = [f"{u.path}: cannot be read, so its declarations were not "
+                f"checked: {u.message}" for u in unreadable]
+    if finished:
+        registry = FsProjectRegistry.open(node)
+        problems += drift_problems(backend.layout, finished,
+                                   project_reader(node, registry))
+    return problems
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="the user stories — what a user can do")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pi = g.add_parser("init", help="scaffold docs/capabilities/ (mirror of `tcw init capabilities`)")
-    pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
-    pi.set_defaults(func=_init)
-
-    pl = g.add_parser("list", help="list capabilities, flagged by status + origin")
-    pl.add_argument("--status")
-    pl.add_argument("--namespace")
-    pl.add_argument("--local-only", action="store_true",
-                    help="exclude inherited (federated) capabilities")
+    pl = g.add_parser("list", help="every capability's path, one per line")
+    pl.add_argument("--status", help="only capabilities with this status")
+    pl.add_argument("--namespace", help="only capabilities under this namespace folder")
+    pl.add_argument("--local", action="store_true",
+                    help="local capabilities only, none inherited")
+    pl.add_argument("--json", action="store_true",
+                    help='print {"schema": 1, "capabilities": [...]}')
     pl.set_defaults(func=_list)
 
     ps = g.add_parser("show", help="read a capability by path")
     ps.add_argument("id", metavar="path",
                     help="capability path, e.g. web/login (alias-prefixed if inherited)")
+    ps.add_argument("--json", action="store_true",
+                    help='print {"schema": 1, "capability": {...}}')
     ps.set_defaults(func=_show)
 
-    g.add_parser("path", help="print the capabilities store folder path").set_defaults(func=_path)
+    g.add_parser("path", help="print the capabilities store folder").set_defaults(func=_path)
 
-    pa = g.add_parser("add", help="scaffold a capability folder")
+    pa = g.add_parser("add", help="create a capability; its body is read from stdin")
     pa.add_argument("path", metavar="namespace/path",
                     help="path for the new capability, namespace folder first")
     pa.add_argument("name", nargs="?",
                     help="display name (default: titled from the last path segment)")
-    pa.add_argument("-s", "--status", default="Missing")
+    pa.add_argument("--status", default="Missing",
+                    help="initial status (default: Missing)")
     pa.set_defaults(func=_add)
 
-    pset = g.add_parser("set", help="update a capability's status/fields in place")
+    pset = g.add_parser("set", help="update a capability's status or fields in place")
     pset.add_argument("id", metavar="path",
                       help="capability path to update; an inherited one gains a local override")
-    pset.add_argument("--status", help="shorthand for --field Status=<S>")
+    pset.add_argument("--status", help="the same as --field Status=<status>")
     pset.add_argument("--field", action="append", metavar="K=V",
-                      help="set a metadata field (repeatable; Subject accepts a,b,c)")
+                      help="set one metadata field; repeat for more fields "
+                           "(a list field such as Subject takes a,b,c)")
     pset.set_defaults(func=_set)
 
-    prst = g.add_parser("reset", help="drop a local override, re-inheriting upstream")
+    prst = g.add_parser("reset", help="drop a local override, inheriting again")
     prst.add_argument("id", metavar="path", help="path of the local override to drop")
     prst.set_defaults(func=_reset)
 
@@ -290,17 +285,21 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     prm.add_argument("id", metavar="path", help="path of the local capability to remove")
     prm.set_defaults(func=_rm)
 
-    pse = g.add_parser("search", help="search names + bodies")
+    pse = g.add_parser("search", help="capabilities whose name or body holds the text")
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
+    pse.add_argument("--json", action="store_true",
+                     help='print {"schema": 1, "capabilities": [...]}')
     pse.set_defaults(func=_search)
 
-    pe = g.add_parser("extends", help="federate another project's capabilities")
-    pe.add_argument("project_id", help="registered project ID whose capabilities to federate")
-    pe.add_argument("--rm", action="store_true", help="remove the project instead")
-    pe.set_defaults(func=_extends)
+    pe = g.add_parser("extends", help="inherit another project's capabilities")
+    eg = pe.add_subparsers(dest="ecmd", required=True)
+    pea = eg.add_parser("add", help="inherit a registered project's capabilities")
+    pea.add_argument("project_id", help="registered project ID whose capabilities to inherit")
+    pea.set_defaults(func=_extends_add)
+    per = eg.add_parser("rm", help="stop inheriting a project's capabilities")
+    per.add_argument("project_id", help="registered project ID to stop inheriting")
+    per.set_defaults(func=_extends_rm)
 
-    pc = g.add_parser("check", help="validate paths, subject/feature refs, federation, metadata")
-    pc.set_defaults(func=_check)
-
-    pd = g.add_parser("drift", help="report unreviewed inherited + shipped-but-Missing capabilities")
+    pd = g.add_parser("drift", help="report unreviewed inherited and shipped-but-missing "
+                                    "capabilities")
     pd.set_defaults(func=_drift)

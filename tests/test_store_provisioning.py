@@ -1109,7 +1109,7 @@ TREE_COMMANDS = [
     ["taxonomy", "list"], ["taxonomy", "path"], ["taxonomy", "show", "anything"],
     ["taxonomy", "search", "anything"],
     ["capabilities", "list"], ["capabilities", "path"],
-    ["capabilities", "show", "anything"], ["capabilities", "check"],
+    ["capabilities", "show", "anything"], ["capabilities", "search", "anything"],
 ]
 
 

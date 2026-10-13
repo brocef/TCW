@@ -543,9 +543,9 @@ class TestCLISmoke:
         subprocess.run(["git", "-C", str(left), "add", "docs"], check=True)
         subprocess.run(["git", "-C", str(left), "commit", "-qm", "l"], check=True)
 
-        monkeypatch.chdir(left)
-        assert main(["capabilities", "check"]) == 0
-        assert "capabilities OK" in capsys.readouterr().out
+        # The old `capabilities check` is part of `tcw validate` now; the
+        # sibling's Subject-free capability checks clean against its store.
+        assert FsCapabilitiesStore.open(left).check() == []
 
 
 # ────────────────────────────────────────────────────────────────────────

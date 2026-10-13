@@ -11,7 +11,8 @@ import pytest
 
 from tcw.cli import build_parser
 from tcw.work.config import parse_work_config
-from tests.doc_allowance import REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS
+from tests.doc_allowance import (REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS,
+                                  REMOVED_FORMS)
 
 
 def _commands(parser: argparse.ArgumentParser, path=("tcw",)):
@@ -59,3 +60,10 @@ def test_a_removed_flag_is_gone(command, flag, commands):
     assert command in commands, f"{command} is not a command at all"
     assert flag not in commands[command], \
         f"{command} still takes {flag}; take it out of REMOVED_FLAGS"
+
+
+@pytest.mark.parametrize("form", REMOVED_FORMS)
+def test_a_removed_form_no_longer_parses(form):
+    with pytest.raises(SystemExit) as stop:
+        build_parser().parse_args(form.split()[1:])
+    assert stop.value.code == 2, f"{form} parses; take it out of REMOVED_FORMS"
