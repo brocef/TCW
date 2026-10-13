@@ -588,6 +588,17 @@ Four terms used below:
    This is how a person finds the line that is stopping every other command.
    A broken `tcw-config.yaml` still makes `--origin` exit 1 with nothing on
    stdout, because nothing above it can be merged without it.
+4. **[Review finding, 2026-10-13] A pasted token is never printed.** Plain
+   and `--origin` output print a value under any key ending in `-env` that
+   is not shaped like an environment variable's name (TCW-71's
+   `^[A-Z_][A-Z0-9_]*$`, Design 4.7) as `(value not shown)`, the placeholder
+   the set-aside block already uses, both in the configuration and in that
+   block. This is the one value whose printed form deliberately differs from
+   the effective value, so for that key 8.1's and 8.2's "reads back as
+   exactly `values`" does not hold. The reason: 4.7 keeps a token pasted
+   where its variable's name belongs out of the problem message, and
+   `--origin` prints even when that problem is present, so without this rule
+   the same token would be echoed on the very run a person makes to find it.
 
 ### 9. Identity
 
@@ -609,6 +620,15 @@ Four terms used below:
      (TCW-71 Design 10), and `None` when its credential variables are unset
      (R3). An error talking to Jira (credentials rejected, Jira unreachable)
      is not "no identity"; TCW-71 reports it as for any other operation.
+     **[Review finding, 2026-10-13]** This settles the disagreement with
+     TCW-71, whose `current_user()` answered `None` with a warning on stderr
+     when Jira could not say, so `--mine` then printed "no identity is
+     configured" when Jira was the problem. `current_user()` now returns
+     `None` only when a credential variable is unset; Jira unreachable (or
+     limiting requests) raises `Unreachable` (exit 5), and credentials
+     rejected or any other Jira error raises `BackendError` (exit 1) with
+     Jira's reason. TCW-71's `test_current_user_never_raises` was replaced by
+     `test_current_user_raises_when_jira_cannot_say`.
    - **[Decision]** When `current_user()` returns `None`, the command raises
      `ConfigError` (exit 1, Design 2.3) with one message: "no identity is
      configured: set `user.name` in `<user-wide path>` or in
@@ -720,10 +740,20 @@ Four terms used below:
    tcw-config.local.yaml`, the same read-only status command review decision
    R4 allows for the uncommitted-changes check, limited to that one file. The
    file is tracked when it exists and that command reports it neither as
-   untracked (`??`) nor as ignored (`!!`). The warning is a `warning`-level
-   `Finding` ("a tracked personal file", TCW-73 Design 6.2; review decision
-   R14), printed as a finding line on stdout (TCW-73 Design 6.3) with exactly
-   this text: `warning: tcw-config.local.yaml: tracked; personal
+   untracked (`??`) nor as ignored (`!!`).
+   **[Review finding, 2026-10-13]** The command is `git --no-optional-locks
+   status --porcelain --ignored --untracked-files=all --
+   tcw-config.local.yaml`. With `status.showUntrackedFiles=no` set, git
+   prints nothing for an untracked or ignored file, the same as for a
+   tracked one, so the command above gave a false warning;
+   `--untracked-files=all` overrides that setting. `--ignored` stays: without
+   it an ignored file also prints nothing and would be called tracked. Still
+   read only, with stdin closed.
+
+   The warning is a `warning`-level `Finding` ("a tracked personal file",
+   TCW-73 Design 6.2; review decision R14), printed as a finding line on
+   stdout (TCW-73 Design 6.3) with exactly this text:
+   `warning: tcw-config.local.yaml: tracked; personal
    configuration should stay out of version control (stop tracking it and
    list it in .gitignore)`.
    Outside a repository there is nothing to check and nothing is printed.

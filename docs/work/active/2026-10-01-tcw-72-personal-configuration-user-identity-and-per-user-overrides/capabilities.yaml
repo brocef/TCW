@@ -12,3 +12,6 @@ changed:
   - cli/validate-a-project
   # the .gitignore line tcw init writes
   - cli/scaffold-the-doc-trees
+  # --assign-me among new's flags, and --mine among list's filters (review, 2026-10-13)
+  - work/open-a-work-item
+  - work/view-the-board
