@@ -486,9 +486,12 @@ class FakeJira:
              "schema": {"type": "array", "items": "string", "system": "labels"}},
             {"fieldId": "assignee", "name": "Assignee", "required": False,
              "schema": {"type": "user", "system": "assignee"}},
-            {"fieldId": "parent", "name": "Parent", "required": kind.subtask,
-             "schema": {"type": "issuelink", "system": "parent"}},
         ]
+        # As Jira does: the top level of the hierarchy (Epic) has no Parent field,
+        # since nothing can sit above it.
+        if kind.level < max(t.level for t in project.issue_types):
+            fields.append({"fieldId": "parent", "name": "Parent", "required": kind.subtask,
+                           "schema": {"type": "issuelink", "system": "parent"}})
         if project.priority:
             fields.append({"fieldId": "priority", "name": "Priority", "required": False,
                            "schema": {"type": "priority", "system": "priority"},

@@ -90,6 +90,19 @@ def test_tcw_item_off_an_edit_screen_and_an_unsampled_type(jira_project, monkeyp
            "TCW to sample" in run.lines
 
 
+def test_the_top_level_type_needs_no_parent_field(clean, monkeypatch, capsys):
+    """Jira gives an Epic no Parent field, since nothing sits above it; the
+    Task below it still needs one."""
+    clean.item("An epic", "e", issue_type="Epic")
+    run = remote(clean, monkeypatch, capsys)
+    assert not [line for line in run.lines if "Epic edit screen" in line], run.lines
+    assert not [line for line in run.lines if "Parent is not on" in line], run.lines
+    clean.fake.off_edit_screen.add(("Task", "parent"))
+    run = remote(clean, monkeypatch, capsys)
+    assert "error: work.jira: Parent is not on the Task edit screen (read on TCW-1), " \
+           "so TCW cannot change it" in run.lines
+
+
 def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, capsys):
     (clean.work / "TCW-50-gone").mkdir()
     clean.fake.refuse_missing_key_search = True

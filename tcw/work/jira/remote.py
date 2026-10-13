@@ -252,6 +252,9 @@ def _needed_fields(ids: Mapping[str, str], has_priority: bool) -> list[tuple[str
 def _edit_screens(run: _Run, kinds: Iterable[IssueType], ids: Mapping[str, str],
                   has_priority: bool) -> None:
     needed = _needed_fields(ids, has_priority)
+    # Nothing sits above the top level of the hierarchy, so Jira gives that type
+    # (an Epic, usually) no Parent field to require (the TCW-71 live check).
+    top = max((t.level for t in run.backend.metadata().issue_types), default=None)
     for kind in kinds:
         key = run.sample(kind, None)
         if key is None:
@@ -261,6 +264,8 @@ def _edit_screens(run: _Run, kinds: Iterable[IssueType], ids: Mapping[str, str],
         with _jira():
             screen = run.backend.client.edit_metadata(key)
         for wanted, label in needed:
+            if wanted == "parent" and kind.level == top:
+                continue
             if wanted not in screen:
                 run.error(PROJECT_WIDE, f"{label} is not on the {kind.name} edit screen "
                                         f"(read on {key}), so TCW cannot change it")
