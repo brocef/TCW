@@ -182,12 +182,10 @@ def parse(jql: str) -> Query:
 
 def select(jql: str, tickets: list, getter: Callable[[Any, str], Any], *,
            ignore_label_case: bool = False, statuses=None) -> list:
-    """The tickets the query selects, in its order. Like Jira, a status
-    value the site does not have is an error, when `statuses` is given."""
+    """The tickets the query selects, in its order. Like Jira's `search/jql`
+    (the TCW-71 live check), a status value the site does not have matches
+    nothing and is not an error; `statuses` is kept for callers that pass it."""
     query = parse(jql)
-    unknown = [v for v in query.statuses if statuses is not None and v not in statuses]
-    if unknown:
-        raise JqlError(f"The value '{unknown[0]}' does not exist for the field 'status'.")
     found = [t for t in tickets
              if query.predicate(lambda name, t=t: getter(t, name), ignore_label_case)]
     if query.order:

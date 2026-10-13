@@ -214,3 +214,144 @@ def run(project_root: Path, *, live: bool, say: Callable[[str], None] = print) -
     say(f"step 10: validate --remote exited {result.validate[0]}")
     return result
 
+
+
+# -- the live check's questions (Design 15.4), asked after the scenario ---------------
+
+
+def probe(project_root: Path, result: Result, *, other_parent: str,
+          say: Callable[[str], None] = print) -> dict[str, str]:
+    """Ask the real site what only it can answer, printing the evidence for
+    each question. `other_parent` is an epic in another Jira project. Returns
+    the answers by question, for the implement round."""
+    from tcw.work.jira import client as jira
+    from tcw.work.jira.jql import field, keys_query, quote
+
+    backend = open_backend(project_root)
+    client, ids = backend.client, backend.metadata().field_ids
+    project, kind = backend.jira.project, backend.metadata().issue_type
+    stamp = datetime.now().strftime("%H%M%S")
+    answers: dict[str, str] = {}
+
+    def ask(question: str, answer: str) -> None:
+        answers[question] = answer
+        say(f"{question}: {answer}")
+
+    def new_ticket(summary: str, **fields) -> str:
+        return client.create_issue({"project": {"key": project},
+                                    "issuetype": {"id": kind.id},
+                                    "summary": summary, **fields})["key"]
+
+    def wait_for(jql: str, wanted: set[str], limit: float = LAG_LIMIT) -> float | None:
+        started = time.monotonic()
+        while time.monotonic() - started < limit:
+            if wanted <= {i["key"] for i in client.search(jql, ["summary"])}:
+                return time.monotonic() - started
+            time.sleep(1)
+        return None
+
+    # 1. Blocks direction: on the blocked ticket, which side holds the blocker.
+    edited = result.keys["edited"]
+    client.add_link("Blocks", result.keys["item"], edited)
+    links = client.issue(edited, ["issuelinks"])["fields"]["issuelinks"]
+    link = next(l for l in links if l["type"]["name"] == "Blocks")
+    side = "inwardIssue" if "inwardIssue" in link else "outwardIssue"
+    ask("blocks", f"add_link(Blocks, inward={result.keys['item']}, outward={edited}); "
+                  f"on {edited} the blocker {link[side]['key']} is under {side}, "
+                  f"type inward={link['type']['inward']!r}")
+    client.delete_link(link["id"])
+
+    # 2. a comment sent with a transition, with no screen and with a comment-only one.
+    key = new_ticket(f"Probe comments {stamp}")
+    offered = {t.to_status: t for t in client.transitions(key)}
+    seen = []
+    for status in ("In Review", "Planning"):
+        chosen = offered[status] if status in offered else None
+        if chosen is None:
+            seen.append(f"{status}: not offered")
+            continue
+        before = len(client.comments(key, None))
+        client.apply_transition(key, chosen.id, jira_document(f"probe {status}"))
+        after = len(client.comments(key, None))
+        seen.append(f"{status} (hasScreen={chosen.has_screen}, fields={chosen.fields}): "
+                    f"accepted, comments {before}->{after}")
+        offered = {t.to_status: t for t in client.transitions(key)}
+    ask("comment on a transition", "; ".join(seen))
+
+    # 3. a parent in another Jira project.
+    try:
+        child = new_ticket(f"Probe cross-project parent {stamp}",
+                           parent={"key": other_parent})
+    except jira.TrackerError as error:
+        ask("cross-project parent", f"refused: {type(error).__name__}: {error}")
+    else:
+        parent = (client.issue(child, ["parent"])["fields"].get("parent") or {}).get("key")
+        try:
+            client.edit_issue(child, {"parent": None})
+            undone = "parent removed again"
+        except jira.TrackerError as error:
+            undone = f"could not remove the parent: {error}"
+        ask("cross-project parent", f"accepted: {child} created with parent {parent}; "
+                                    f"{undone}")
+
+    # 4. the workflow definition, and the shape of its INITIAL transition.
+    meta = backend.metadata()
+    try:
+        definition = client.workflows(client.project(project)["id"], kind.id)
+    except jira.TrackerError as error:
+        ask("workflow definition", f"refused: {type(error).__name__}: {error}")
+    else:
+        moves = [t for w in definition["workflows"] for t in w.get("transitions", [])]
+        initial = [{k: t.get(k) for k in ("type", "links", "toStatusReference", "name")}
+                   for t in moves if t.get("type") == "INITIAL"]
+        ask("workflow definition", f"read as an administrator; {len(moves)} transitions; "
+                                   f"INITIAL: {initial}. A non-administrator was not "
+                                   f"available to try")
+
+    # 5. expand=transitions.fields for no screen and a comment-only screen: in (2).
+
+    # 6. `~` on TCW Project with a hyphenated id.
+    values = {"tcw-test-live": None, "tcw-test": None, "live": None}
+    for value in values:
+        values[value] = new_ticket(f"Probe word search {value} {stamp}",
+                                   **{ids["project"]: value})
+    jql = f"project = {quote(project)} AND {field(ids['project'])} ~ {quote('tcw-test-live')}"
+    wait_for(jql, {values["tcw-test-live"]}, 30)
+    found = {i["key"] for i in client.search(jql, ["summary"])}
+    ask("~ on TCW Project", ", ".join(f"{v}: {'found' if k in found else 'not found'}"
+                                      for v, k in values.items()))
+
+    # 7. `key in` naming a key that does not exist; and an unknown status.
+    for question, jql in (("key in with a missing key",
+                           keys_query([result.keys["item"], f"{project}-999999"])),
+                          ("an unknown status in JQL",
+                           f"project = {quote(project)} AND status = "
+                           f"{quote('No Such Status')}")):
+        try:
+            got = [i["key"] for i in client.search(jql, ["summary"])]
+            ask(question, f"answered, with {got}")
+        except jira.TrackerError as error:
+            ask(question, f"refused: {type(error).__name__}: {error}")
+
+    # 8. lag: a new ticket (step 1), and a ticket just given a TCW Item value.
+    key = new_ticket(f"Probe item lag {stamp}")
+    client.edit_issue(key, {ids["item"]: f"{backend.project}/{key}-probe"})
+    lag = wait_for(f"key = {quote(key)} AND {field(ids['item'])} IS NOT EMPTY", {key})
+    ask("search lag", f"a new ticket: {result.lag:.1f}s (step 1); a ticket just given "
+                      f"a TCW Item: {'not within the limit' if lag is None else f'{lag:.1f}s'}")
+
+    # 9. the offset on `created`, against the account's profile time zone.
+    me = client.myself()
+    created = client.issue(result.keys["item"], ["created"])["fields"]["created"]
+    ask("created offset", f"created={created}; the account's time zone is "
+                          f"{me.get('timeZone')}")
+
+    # 10. translated status names.
+    ask("translated status names", "not asked: no account with a non-English profile "
+                                   "language is available (tcwtest-checklist.md step 7)")
+    return answers
+
+
+def jira_document(text: str) -> dict:
+    from tcw.work.jira.mapping import text_document
+    return text_document(text)
