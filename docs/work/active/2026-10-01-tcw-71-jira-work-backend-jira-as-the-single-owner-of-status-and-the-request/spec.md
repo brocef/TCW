@@ -930,6 +930,10 @@ This runs every offline check, then the checks below for each Jira-mode project 
      the type. **[Live finding, 2026-10-13]** Parent is not required of the type
      at the project's highest hierarchy level (an Epic): nothing can sit above
      it, so Jira gives it no Parent field, and requiring one was a false error.
+     The same holds for its create screen, when it is the configured type. Only
+     a highest level of 1 or more counts: in a project with no Epic type, a
+     Task can still take a parent in another project, and an answer with no
+     levels reads every type as level 0, so nothing is spared.
      **[Decision]** The cost of finding field IDs through create metadata
      is that a team cannot keep TCW Item off the create screen. Finding them in
      the site-wide field list instead could not tell apart two team-managed fields
