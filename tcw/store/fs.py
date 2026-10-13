@@ -1465,9 +1465,9 @@ class FsTreeStore:
             left = [f for f in files if f not in gone]
             what = (", ".join(_shown(f) for f in left) if left
                     else f"the folder {_shown(path)}")
-            raise TcwError(f"the removal was partial: {len(gone)} of {len(files)} "
-                           f"files removed; still present: {what} "
-                           f"({e.strerror or e})") from None
+            raise BackendError(f"the removal was partial: {len(gone)} of {len(files)} "
+                               f"files removed; still present: {what} "
+                               f"({e.strerror or e})") from None
         self.changed += [("removed", f) for f in files]
 
 
