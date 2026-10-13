@@ -207,3 +207,85 @@ one.
 - **TCW-77:** the viewer's project `user` field can come from
   `current_user()` in both modes.
 - **Originating issue:** none; TCW-72 came from Jira, not GitHub.
+
+## Review fixes (2026-10-13)
+
+An adversarial review found fourteen problems. All were fixed on the branch in
+three commits: `12a7c1c7` (loader), `7c3bccd2` (commands) and `f8ec7f45`
+(records). Every fix began with a test that failed for the reason the review
+gave.
+
+| Finding | Commit | Test |
+| --- | --- | --- |
+| L1: delegating into an on-disk Jira-mode project read the person's own files into the target | `12a7c1c7` | `tests/work/jira/test_jira_delegation.py::test_the_targets_local_file_is_not_read`, `::test_a_user_wide_token_name_does_not_reach_the_target` |
+| L2: a mapping no lower layer holds kept a literal `inherit` entry | `12a7c1c7` | `tests/config/test_personal_merge.py::test_a_new_stage_mapping_resolves_its_chain_lists` (completed, discarded), `::test_a_local_stage_mapping_resolves_when_the_project_sets_nothing` |
+| L3: an empty mapping had no origin; Design 5.2's third rule was untested | `12a7c1c7` | `test_personal_merge.py::test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it`, `::test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it` |
+| L4: a file that is not UTF-8 raised out of `load_config` | `12a7c1c7` | `tests/config/test_personal_problems.py::test_a_local_file_that_is_not_utf8_is_a_problem_naming_it`, `::test_a_project_file_that_is_not_utf8_is_unreadable`, `::test_config_show_origin_names_a_file_that_is_not_utf8` |
+| L5: `tcw serve` kept the once-per-command configuration for its whole life | `12a7c1c7` | `tests/test_serve.py::test_the_resolver_sees_a_configuration_change_while_serving` |
+| L6: lines 2 and later of several problems had no `tcw <words>: ` prefix | `12a7c1c7` | `test_personal_problems.py::test_every_problem_is_its_own_prefixed_line` |
+| C1: `config show` could print a token pasted into a `-env` key | `7c3bccd2` | `tests/config/test_config_show.py::test_a_pasted_token_is_never_printed` (project, local), `::test_a_variable_name_is_printed_as_itself`, `::test_a_refused_token_is_never_printed` |
+| C2: a blob of `...` made `config show` fail with a parser error | `7c3bccd2` | `test_config_show.py::test_config_show_prints_a_blob_of_three_dots`, `::test_a_hostile_string_reads_back_as_itself[...]` |
+| C3: emoji written as surrogate pairs; `.inf` and dates lost their type | `7c3bccd2` | `test_config_show.py::test_a_hostile_string_reads_back_as_itself` (47 strings), `::test_values_of_unknown_keys_keep_their_type` |
+| C4: a broken `tcw-config.yaml` gave two `validate` errors | `7c3bccd2` | `tests/config/test_personal_validate_init.py::test_a_broken_project_file_is_one_validate_error` (duplicate key, bad YAML, a list, not UTF-8) |
+| C5: `--mine` said "no identity" when Jira was the problem | `7c3bccd2` | `tests/work/jira/test_jira_read.py::test_current_user_raises_when_jira_cannot_say`, `::test_mine_says_jira_was_the_problem` |
+| C6: false "tracked" warning under `status.showUntrackedFiles=no` | `7c3bccd2` | `test_personal_validate_init.py::test_validate_ignores_the_setting_that_hides_untracked_files` |
+| C7: records out of step with the fixes | `f8ec7f45` | records; `tests/test_ledger_3_0.py` and `tests/test_capability_ref_wording.py` pass |
+| C8: `edit <missing> --assign-me` exited 1, not 4; `new --project` usage errors waited for piped input | `7c3bccd2` | `tests/config/test_personal_identity.py::test_edit_of_a_missing_item_says_it_is_missing_before_who`, `::test_a_project_usage_error_does_not_wait_for_piped_input` |
+
+**Narrowed.** C4: the second error came from the project graph's check
+(`tcw/store/project.py`), not from the file scan. `config_findings` now leaves
+out its own copy when `tcw-config.yaml` cannot be read, so the line from before
+TCW-72 is kept. That check also now names a file that is not UTF-8 instead of
+failing. C6: the suggested command, `--untracked-files=all` without
+`--ignored`, prints nothing for an ignored file and would call it tracked,
+which is the usual case after `tcw init`. The command keeps `--ignored`. A
+mutation that dropped it turned both tracked-file tests red.
+
+**Left as noted.** C3: a `!!binary` value from an unknown key would be written
+over several lines. Nothing TCW reads takes one, so it was not fixed.
+
+**Mutation checks** (each broke the guard, went red for the reason given, and
+was put back):
+- L1, L2, L4, L5, L6, C4, C5, C6, C8: the new tests failed against the
+  unfixed code, each with the fault the review described.
+- L3: with the origin of an empty mapping not recorded,
+  `test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it` failed. With
+  `_origin_for`'s third rule changed to "lowest layer",
+  `test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it` failed.
+- C1: without the mask on the configuration, both pasted-token tests failed.
+  Without the mask on set-aside values, the refused-token test failed.
+- C2: with the YAML error no longer caught, the `...` cases failed. C3: with
+  quoting by `json.dumps` again, the emoji cases failed.
+- C4: with the filter turned off, all four broken-file cases failed.
+- C5: with Jira errors swallowed, the raise tests failed.
+- C6: with `--ignored` dropped, both tracked-file tests failed.
+
+One mutation run reused a stale `.pyc` (the `min`/`max` swap kept the file
+size and the restore landed in the same second). Clearing the cache confirmed
+the restored code passes. Later mutation runs used `PYTHONDONTWRITEBYTECODE=1`.
+
+**Decisions taken in review.**
+- C1: `config show` prints `(value not shown)` for a value under a key ending
+  in `-env` that is not shaped like a variable's name, in the configuration
+  and in the set-aside block. That is the one place its output does not read
+  back as the effective configuration (spec Design 8.4).
+- C5: `JiraBackend.current_user()` returns None only when a credential
+  variable is unset. Otherwise it raises `Unreachable` (exit 5) or
+  `BackendError` (exit 1) with Jira's reason. TCW-71's
+  `test_current_user_never_raises` was replaced (spec Design 9.2 note).
+- C6: the tracked check runs `git --no-optional-locks status --porcelain
+  --ignored --untracked-files=all -- tcw-config.local.yaml` (spec Design 10.3
+  note).
+
+The spec notes are in `a1b028d6` on `main`, along with `capabilities.yaml`
+adding `work/open-a-work-item` and `work/view-the-board` to `changed`.
+
+**Tests run** (worktree, private venv): the standing guard files,
+`tests/config/`, `tests/work/` (with `tests/work/jira/`), `tests/test_serve.py`,
+`tests/test_refs.py`, `tests/test_validate*.py` and `tests/test_project*.py`
+gave 2361 passed and 17 skipped. The capability, wording and init tests gave
+94 passed and 9 skipped. `pytest --collect-only` collected 3899 tests with no
+errors.
+
+**Out of scope, as directed:** the unhashable-key `TypeError` in
+`UniqueKeyLoader` and `yaml_source._no_dup_keys`, which predates this change.
