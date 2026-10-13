@@ -455,7 +455,7 @@ def _resolved(compose_call):
 
 
 def _stage_prompt(args) -> int:
-    from tcw.work.resolve import stage_header, stage_prompt
+    from tcw.work.resolve import stage_footer, stage_header, stage_prompt
     step = table_stage(args.stage)
     if not step.prompt:
         raise UsageError(f"'{step.name}' has no instructions; it is where an item "
@@ -473,8 +473,15 @@ def _stage_prompt(args) -> int:
     _personal_note(backend, root, ("work", "stages", step.name, "prompt"))
     label = f"stage {step.name}"
     if not args.no_exec and res.text:
-        target = str(item.slug) if item is not None else "<slug>"
-        res.text = f"{stage_header(step.name, target)}\n\n{res.text}"
+        parts = [stage_header("<slug>"), res.text]
+        footer = stage_footer(step, backend.external_stages, "<slug>")
+        if footer is not None:
+            parts.append(footer)
+        res.text = "\n\n".join(parts)
+        if item is not None:
+            # Every `<slug>` in the output names this item (TCW-74 Design
+            # 4.2): the same full slug hooks receive as TCW_SLUG.
+            res.text = res.text.replace("<slug>", str(item.slug))
     return _print_resolution(res, label, args.no_exec)
 
 

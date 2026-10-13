@@ -425,10 +425,39 @@ def procedure_prompt(config, procedure_id: str, *, item=None, record=None,
                    execute=execute)
 
 
-def stage_header(stage: str, target: str) -> str:
-    """The line printed above a stage's prompt: reading instructions checks
-    nothing, and `advance --dry-run` is what does."""
-    return (f"> **This text ran no checks.** `tcw work stage prompt {stage}` "
-            f"resolves instructions and gates nothing. Run "
-            f"`tcw work advance {target} --dry-run` to see whether the item may "
-            f"move on, and what would stop it.")
+# The text printed around every stage's prompt (TCW-74 Design 4.1). It is
+# derived from the stage table's columns and the backend's declared external
+# stages, and names no stage and no backend, so a project that disables a
+# stage, or a backend that keeps different stages, gets the right text without
+# a change here. `<slug>` is filled in by the caller when an item is named.
+
+def stage_header(target: str) -> str:
+    """Above every prompt: reading instructions checks nothing."""
+    return (f"> **This text ran no checks.** Gates run when an item moves; "
+            f"`tcw work advance {target} --dry-run` reports whether the next "
+            f"move would pass, and what would stop it.")
+
+
+def stage_footer(row, external, target: str) -> str | None:
+    """Below a prompt: how the item moves on once this stage's work is done,
+    or None when nothing is printed. `row` is the stage's table row and
+    `external` the stages the configured backend keeps itself. The first rule
+    that applies wins."""
+    from tcw.work.model import NO_ARTIFACT, SIDE
+    if row.kind == SIDE:
+        return ("> **Nothing follows this stage.** It never moves the item; "
+                "write its document and stop.")
+    if row.artifact == NO_ARTIFACT:
+        return None              # how an arrival becomes work differs by backend
+    if row.name in external:
+        text = ("> **When this stage's work is done, a person moves the item on "
+                "in the backend.** Do not move it yourself.")
+        if row.verdict:
+            text += " The verdict is that move."
+        return text
+    text = (f"> **When this stage's output is written, run "
+            f"`tcw work advance {target}`.**")
+    if row.verdict:
+        text += (" The verdict decides where the item goes, so write the round "
+                 "first.")
+    return text

@@ -216,6 +216,6 @@ def test_planning_runs_nothing(tmp_path, monkeypatch):
 
 
 def test_the_header_names_advance_dry_run():
-    header = stage_header("spec", "p/2026-10-02-x")
+    header = stage_header("p/2026-10-02-x")
     assert "tcw work advance p/2026-10-02-x --dry-run" in header
     assert "stage gate" not in header

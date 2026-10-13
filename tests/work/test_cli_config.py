@@ -39,8 +39,14 @@ def tcw(monkeypatch, capsys):
     return run
 
 
-def packaged_lines(name):
-    return [line for line in packaged_text("prompts", name).splitlines()
+def packaged_lines(name, slug=None):
+    """TCW's own lines for a stage on a filesystem project, as `stage prompt`
+    prints them for an item: backend passages filtered and `<slug>` filled in
+    (TCW-74 Design 3 and 4.2)."""
+    from tcw.work.passages import filter_backend
+    text = filter_backend(packaged_text("prompts", name), "filesystem")
+    slug = f"p/{TODAY}-x" if slug is None else slug
+    return [line.replace("<slug>", slug) for line in text.splitlines()
             if line.strip() and "{{" not in line]
 
 
@@ -90,7 +96,7 @@ def test_an_empty_list_composes_to_nothing(tcw, tmp_path):
 def test_no_prompt_key_is_the_packaged_text(tcw, tmp_path):
     root = spec_prompt(tmp_path)
     r = tcw(["stage", "prompt", "spec"], root)
-    assert all(line in r.out for line in packaged_lines("spec"))
+    assert all(line in r.out for line in packaged_lines("spec", "<slug>"))
 
 
 # -- AC 21: the request span ---------------------------------------------------------------
