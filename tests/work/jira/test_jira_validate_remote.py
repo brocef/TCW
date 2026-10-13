@@ -107,6 +107,13 @@ def test_the_top_level_type_needs_no_parent_field(clean, monkeypatch, capsys):
            "so TCW cannot change it" in run.lines
 
 
+def test_an_epic_configured_type_needs_no_parent_on_create(tmp_path, fake, monkeypatch,
+                                                          capsys):
+    project = configured(tmp_path, fake, lambda c: c["jira"].update(**{"issue-type": "Epic"}))
+    run = remote(project, monkeypatch, capsys)
+    assert not any("Parent is not on" in line for line in run.lines), run.out
+
+
 def test_without_an_epic_type_a_task_still_needs_parent(clean, monkeypatch, capsys):
     """Only a top level of 1 or more is spared Parent: a Task in a project with
     no Epic type can still take a parent in another project."""
@@ -310,3 +317,12 @@ def test_an_empty_definition_is_sampled_rather_than_failed(clean, monkeypatch, c
     run = remote(clean, monkeypatch, capsys)
     assert not any("no transition makes" in line for line in run.lines), run.out
     assert "or an empty answer" in run.err
+
+
+@pytest.mark.parametrize("entry, expected", [
+    ({"fieldId": "customfield_1", "key": "customfield_1"}, "customfield_1"),
+    ({"key": "customfield_2"}, "customfield_2"),        # an older answer
+])
+def test_field_id_reads_field_id_then_key(entry, expected):
+    from tcw.work.jira.backend import field_id
+    assert field_id(entry) == expected

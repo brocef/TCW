@@ -126,8 +126,15 @@ def _checks(run: _Run, layout: Layout, reader: Any,
         return
     subtask = next((t for t in types if t.subtask), None)
 
+    # Nothing sits above the top of the hierarchy, so Jira gives that type (an
+    # Epic, usually) no Parent field (the TCW-71 live check). Only a level of 1
+    # or more counts: with no Epic type in this project, a Task can still take a
+    # parent elsewhere, and missing levels all read as 0.
+    top = max((t.level for t in types), default=0)
+    top = top if top >= 1 else None
+
     # 2. Fields, on the create screen.
-    ids, has_priority, fields_ok = _create_screens(run, configured, subtask)
+    ids, has_priority, fields_ok = _create_screens(run, configured, subtask, top)
 
     # 6. Checked issue types, from the items' tickets (read once, for 7 and 8).
     folders = _folders(backend.work_path)
@@ -144,12 +151,7 @@ def _checks(run: _Run, layout: Layout, reader: Any,
 
     # 2. Fields, on the edit screen.
     edit_types = checked + ([subtask] if subtask and subtask not in checked else [])
-    # Nothing sits above the top of the hierarchy, so Jira gives that type (an
-    # Epic, usually) no Parent field (the TCW-71 live check). Only a level of 1
-    # or more counts: with no Epic type in this project, a Task can still take a
-    # parent elsewhere, and missing levels all read as 0.
-    top = max((t.level for t in types), default=0)
-    _edit_screens(run, edit_types, ids, has_priority, top if top >= 1 else None)
+    _edit_screens(run, edit_types, ids, has_priority, top)
 
     # 3. Statuses.
     present = _statuses(run, checked)
@@ -176,10 +178,11 @@ def _checks(run: _Run, layout: Layout, reader: Any,
 # -- 2. fields -----------------------------------------------------------------------
 
 
-def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
-                    ) -> tuple[dict[str, str], bool, bool]:
+def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None,
+                    top: int | None) -> tuple[dict[str, str], bool, bool]:
     """Field ids by role, whether Priority exists, and whether every
-    configured field was found as it should be."""
+    configured field was found as it should be. `top` is the level of the type
+    that needs no Parent, or None."""
     jira = run.backend.jira
     client = run.backend.client
     with _jira():
@@ -230,9 +233,12 @@ def _create_screens(run: _Run, configured: IssueType, subtask: IssueType | None
                 run.error(PROJECT_WIDE, f"priority {name!r} (work.jira.priorities."
                                         f"{model}) is not a priority of {jira.project}")
     needed = _needed_fields(ids, priority is not None)
+    levels = {kind.name: kind.level for kind in (configured, subtask) if kind}
     for type_name, screen in screens.items():
         present = {field_id(f) for f in screen if isinstance(f, dict)}
         for wanted, label in needed:
+            if wanted == "parent" and levels[type_name] == top:
+                continue
             if wanted not in present:
                 run.error(PROJECT_WIDE, f"{label} is not on the {type_name} create screen, "
                                         f"so a new ticket cannot set it")
