@@ -26,8 +26,9 @@ PACKAGE = Path(tcw.__file__).resolve().parent
 SOURCES = sorted(p for p in PACKAGE.rglob("*.py") if "serve" not in
                  p.relative_to(PACKAGE).parts)
 
-GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted)?|push(?:es|ed)?|pull(?:s|ed)?|"
-                       r"worktrees?|trunks?|branch(?:es|ed)?)\b", re.IGNORECASE)
+GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted|ting)?|push(?:es|ed|ing)?|"
+                       r"pull(?:s|ed|ing)?|worktrees?|trunks?|"
+                       r"branch(?:es|ed|ing)?)\b", re.IGNORECASE)
 
 # (module, qualified name): the functions whose messages may name git.
 EXEMPT = {
@@ -121,21 +122,30 @@ def test_the_guard_sees_a_git_word_in_the_taxonomy_commands():
     """Mutation check (AC 5): `"run git commit first"` in any `tcw/taxonomy/`
     function is reported."""
     source = (PACKAGE / "taxonomy/cli.py").read_text(encoding="utf-8")
-    broken = source.replace("    st = _store()\n    st.remove(args.path)\n",
-                            "    st = _store()\n    print(\"run git commit first\")\n"
-                            "    st.remove(args.path)\n", 1)
+    broken = source.replace("        st.remove(args.path)\n",
+                            "        print(\"run git commit first\")\n"
+                            "        st.remove(args.path)\n", 1)
     assert broken != source
     assert git_word_offenders("taxonomy/cli.py", broken)
 
 
 def _reads_stdin(tree: ast.AST) -> list[int]:
+    """Lines that call `input()` or reach `sys.stdin`, however `sys` or
+    `stdin` was imported (`import sys as s`, `from sys import stdin as x`)."""
+    sys_names = {"sys"} | {alias.asname for node in ast.walk(tree)
+                           if isinstance(node, ast.Import)
+                           for alias in node.names
+                           if alias.name == "sys" and alias.asname}
     lines = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
                 and node.func.id == "input":
             lines.append(node.lineno)
         if isinstance(node, ast.Attribute) and node.attr == "stdin" \
-                and isinstance(node.value, ast.Name) and node.value.id == "sys":
+                and isinstance(node.value, ast.Name) and node.value.id in sys_names:
+            lines.append(node.lineno)
+        if isinstance(node, ast.ImportFrom) and node.module == "sys" \
+                and any(alias.name in ("stdin", "*") for alias in node.names):
             lines.append(node.lineno)
     return lines
 
@@ -150,6 +160,16 @@ def test_nothing_but_the_stdin_module_reads_standard_input():
 def test_the_stdin_guard_sees_a_prompt():
     assert _reads_stdin(ast.parse("x = input('name? ')\n"))
     assert _reads_stdin(ast.parse("import sys\nsys.stdin.read()\n"))
+    assert _reads_stdin(ast.parse("from sys import stdin\nstdin.read()\n"))
+    assert _reads_stdin(ast.parse("from sys import stdin as s\ns.read()\n"))
+    assert _reads_stdin(ast.parse("import sys as y\ny.stdin.read()\n"))
+    assert not _reads_stdin(ast.parse("proc.stdin.write(b'x')\n"))
+
+
+def test_the_guard_sees_an_ing_form_of_a_git_word():
+    """Review fix S4: "-ing" forms are git words too."""
+    for word in ("committing", "pushing", "pulling", "branching"):
+        assert git_word_offenders("x.py", f"x = 'do this before {word}'\n"), word
 
 
 def _backticked_values(source: str) -> list[int]:

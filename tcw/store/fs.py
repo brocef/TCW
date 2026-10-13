@@ -28,6 +28,7 @@ import yaml
 
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
+from tcw.output import shown as _shown
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
@@ -487,6 +488,17 @@ def _same_folder(a: Path, b: Path) -> bool:
         return a.samefile(b)
     except FileNotFoundError:
         return False
+
+
+def _in_folder(a: Path, target: Path, root: Path) -> bool:
+    """Whether `a` is the folder `target` or a folder inside it, walking up no
+    further than `root`. Compared by folder identity, like `_same_folder`."""
+    while True:
+        if _same_folder(a, target):
+            return True
+        if a == root or a.parent == a or root not in a.parents:
+            return False
+        a = a.parent
 
 
 def init(components: list[str], root: Path, project_id: str | None = None,
@@ -1395,7 +1407,20 @@ class FsTreeStore:
             self.changed.append(("removed", path))
             return
         files = sorted(f for f in path.rglob("*") if f.is_file() or f.is_symlink())
-        shutil.rmtree(path)
+        try:
+            shutil.rmtree(path)
+        except OSError as e:
+            # A delete that stops partway has still deleted files, and each one
+            # must be named. Which ones went is read back from the disk, so the
+            # lines name exactly what changed.
+            gone = [f for f in files if not (f.exists() or f.is_symlink())]
+            self.changed += [("removed", f) for f in gone]
+            left = [f for f in files if f not in gone]
+            what = (", ".join(_shown(f) for f in left) if left
+                    else f"the folder {_shown(path)}")
+            raise TcwError(f"the removal was partial: {len(gone)} of {len(files)} "
+                           f"files removed; still present: {what} "
+                           f"({e.strerror or e})") from None
         self.changed += [("removed", f) for f in files]
 
 
@@ -1709,6 +1734,10 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # 8.2): a nested term is a folder under this one holding a `meta.yaml`.
         # Everything else in the folder — attachments, files an operating
         # system writes on its own, files git has never seen — goes with it.
+        # A sub-folder without a `meta.yaml` still lists as a term, so the
+        # reference checks below cover it too: a term or capability naming
+        # `invoice/sub` refuses the removal of `invoice` exactly as one naming
+        # `invoice` does, and nothing is left pointing at a deleted folder.
         nested = sorted({str(m.parent.relative_to(self.root))
                          for m in d.rglob("meta.yaml") if m.parent != d})
         if nested:
@@ -1722,8 +1751,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
         """`capability <path> (Subject|Feature)` for every local capability whose
-        reference resolves to the term folder `target` — what `tcw capabilities
-        check` would report dangling once it is gone.
+        reference resolves to the term folder `target` or a folder inside it —
+        what `tcw capabilities check` would report dangling once it is gone.
 
         The project's capabilities store is found by the normal resolution. None
         here: nothing to ask. One that cannot be opened or read refuses the
@@ -1752,7 +1781,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 except AmbiguousRef:
                     continue
                 if (hit is not None and hit.origin == "local"
-                        and _same_folder(self.root / hit.slug, target)):
+                        and _in_folder(self.root / hit.slug, target, self.root)):
                     named.add(field)
             out += [f"{label} ({field})"
                     for field in ("Subject", "Feature") if field in named]
@@ -1760,13 +1789,14 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def _referrers(self, target: Path) -> list[str]:
         """`<term> (<field>)` for every other local term whose `relatesTo` or
-        `vocabulary` resolves to the local term folder `target` — exactly the
-        refs `check` would report dangling once it is gone. Compared by folder
+        `vocabulary` resolves to the local term folder `target` or a folder
+        inside it — exactly the refs `check` would report dangling once it is
+        gone. Compared by folder
         identity, not spelling, so `admin/permission` never matches a top-level
         `permission`."""
         out = []
         for term in self.list_all(local_only=True):
-            if _same_folder(self.root / term.slug, target):
+            if _in_folder(self.root / term.slug, target, self.root):
                 continue
             # `vocabulary` only on a Feature, the one kind `check` reads it on.
             vocabulary = term.vocabulary if term.kind == "Feature" else []
@@ -1778,13 +1808,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                     except AmbiguousRef:
                         continue
                     if (hit is not None and hit.origin == "local"
-                            and _same_folder(self.root / hit.slug, target)):
+                            and _in_folder(self.root / hit.slug, target, self.root)):
                         out.append(f"{term.slug} ({field})")
                         break
         return out
 
     def extends_add(self, project_id: str) -> None:
-        project_id = validate_project_id(project_id)
+        try:
+            project_id = validate_project_id(project_id)
+        except ValueError as e:
+            raise UsageError(str(e)) from None             # a malformed name (Design 4)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")
@@ -2522,7 +2555,10 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- federation config --
 
     def extends_add(self, project_id: str) -> None:
-        project_id = validate_project_id(project_id)
+        try:
+            project_id = validate_project_id(project_id)
+        except ValueError as e:
+            raise UsageError(str(e)) from None             # a malformed name (Design 4)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")

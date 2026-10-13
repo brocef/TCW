@@ -111,3 +111,14 @@ def test_show_json(project, run):
                                   ["taxonomy", "add", "X", "-s", "x"]])
 def test_removed_spellings(project, run, argv):
     assert run(project, *argv)[0] == 2
+
+
+@pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
+def test_extends_add_of_a_malformed_name_is_a_usage_error(tmp_path, run, axis):
+    """Review fix S3: a name that cannot be a project ID is a usage error (2),
+    not a failure (1)."""
+    project = make_project(tmp_path, "fx")
+    init([axis], project, "fx")
+    code, out, err = run(project, axis, "extends", "add", "Bad ID!")
+    assert (code, out) == (2, ""), err
+    assert err.startswith(f"tcw {axis} extends add: project ID must match"), err

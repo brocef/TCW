@@ -109,8 +109,11 @@ def _add(args: argparse.Namespace) -> int:
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    st.remove(args.path)
-    changed(st.changed)
+    try:
+        st.remove(args.path)
+    finally:
+        # A removal that stops partway has still deleted files; name them.
+        changed(st.changed)
     return codes.OK
 
 

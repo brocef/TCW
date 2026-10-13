@@ -171,3 +171,34 @@ def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypat
     code, err = rm(root, monkeypatch, capsys, "zed")
     assert code == 3 and "capabilities that might name it cannot be read" in err, err
     assert lists(root, "zed")
+
+
+# ── review fix S1: a sub-folder without a meta.yaml still lists as a term ────
+
+def test_a_reference_to_a_folder_under_the_term_refuses_the_removal(
+        tmp_path, monkeypatch, capsys):
+    """`taxonomy list` counts a folder with no `meta.yaml` as a term, so a
+    capability can name `zed/sub`. Removing `zed` would delete that folder and
+    leave the capability pointing at nothing, so the removal is refused."""
+    root = node(tmp_path)
+    term(root, "zed")
+    sub = root / "docs" / "taxonomy" / "zed" / "sub"
+    sub.mkdir()
+    (sub / "f").write_text("x")
+    assert lists(root, "zed/sub")
+    cap(root, "pay", Subject=["zed/sub"])
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 3 and "capability pay (Subject)" in err, err
+    assert lists(root, "zed") and lists(root, "zed/sub")
+
+
+def test_a_term_naming_a_folder_under_the_term_refuses_the_removal(
+        tmp_path, monkeypatch, capsys):
+    root = node(tmp_path)
+    term(root, "zed")
+    (root / "docs" / "taxonomy" / "zed" / "sub").mkdir()
+    term(root, "other")
+    meta = root / "docs" / "taxonomy" / "other" / "meta.yaml"
+    meta.write_text(yaml.safe_dump({"name": "other", "relatesTo": ["zed/sub"]}))
+    code, err = rm(root, monkeypatch, capsys, "zed")
+    assert code == 3 and "other (relatesTo)" in err, err

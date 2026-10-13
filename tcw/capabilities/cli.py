@@ -126,15 +126,21 @@ def _set(args: argparse.Namespace) -> int:
 
 def _reset(args: argparse.Namespace) -> int:
     st = _store()
-    st.reset(args.id)
-    changed(st.changed)
+    try:
+        st.reset(args.id)
+    finally:
+        # A removal that stops partway has still deleted files; name them.
+        changed(st.changed)
     return codes.OK
 
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    st.remove(args.id)
-    changed(st.changed)
+    try:
+        st.remove(args.id)
+    finally:
+        # A removal that stops partway has still deleted files; name them.
+        changed(st.changed)
     return codes.OK
 
 
