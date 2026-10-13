@@ -71,6 +71,17 @@ What was created, so it can be removed later:
   Screen Scheme`'s only screen), which serves create, edit and view for Task,
   Sub-task and Story.
 
+**Added during the live run** (`live-check.md`), where the checklist fell
+short: adopting an Epic needs the TCW statuses and fields too, so
+
+- **Epic** was mapped to the TCW lifecycle workflow in scheme 10040 (through a
+  draft, published; the Epics kept their statuses), and
+- the four TCW fields were added to screen 10015 (`TCWTEST: Scrum Epic Screen
+  Scheme`'s screen). Story and Bug still use the simplified workflow.
+
+A checklist for another project should name every issue type an item can be,
+including the epic type, for both the workflow and the screens.
+
 Verified afterwards: `/project/TCWTEST/statuses` lists the nine for Task and
 Sub-task; `TCWTEST-1` offers a transition into all nine, only Planning with a
 screen and that screen with no fields; create and edit metadata for Task and
