@@ -125,6 +125,30 @@ def test_a_reader_gone_before_short_output_exits_quietly(fx, argv):
     assert (done.returncode, done.stderr) == (1, b""), done.stderr.decode()
 
 
+
+def test_a_reader_gone_before_a_failure_names_what_it_made(fx):
+    """The name a failure prints on stdout (Design 1.8) is flushed inside the
+    handler too, so a reader that has gone still meets a quiet exit 1 rather
+    than "Exception ignored ... BrokenPipeError" and exit 120."""
+    import subprocess
+    script = (
+        "import sys, tcw.cli as cli\n"
+        "from tcw.errors import BackendError\n"
+        "def fail(*a, **k):\n"
+        "    raise BackendError('stopped after creating it', name='TCW-9')\n"
+        "cli.refuse_retired_config = fail\n"
+        "sys.exit(cli.main(['projects', 'list']))\n")
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    try:
+        done = subprocess.run([sys.executable, "-c", script], cwd=fx,
+                              stdout=write_end, stderr=subprocess.PIPE,
+                              stdin=subprocess.DEVNULL, timeout=60)
+    finally:
+        os.close(write_end)
+    assert done.returncode == 1, done.stderr.decode()
+    assert b"Exception ignored" not in done.stderr, done.stderr.decode()
+
 def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
     """Review fix N2: a create that fails after writing `item.yaml` removes
     its folder, naming each file removed and not the folder (Design 1.2)."""

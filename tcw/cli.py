@@ -591,18 +591,36 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     command = getattr(args, "_command", "tcw")
     try:
+        code = _dispatch(args, command)
+        # Flushed here, inside the `try`, so a reader that closed the pipe
+        # before reading a short output is met by the handler below rather
+        # than by the interpreter's own flush at exit, which prints
+        # "Exception ignored ..." and exits 120. This covers what a failure
+        # printed too: the name a failed create still prints on stdout.
+        sys.stdout.flush()
+        return code
+    except BrokenPipeError:
+        # Whoever read stdout stopped reading (`tcw work list | head -1`).
+        # Nothing to say about it: point stdout at the null device so the
+        # interpreter's own flush at exit cannot fail a second time, and exit
+        # 1 as Python's documentation on SIGPIPE recommends.
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (OSError, ValueError):
+            pass                       # stdout is not a file descriptor here
+        return 1
+
+
+def _dispatch(args: argparse.Namespace, command: str) -> int:
+    """Run the command and turn every expected failure into one line on
+    stderr and its exit code. A closed stdout is left to `main`."""
+    try:
         # One place for every command: a config still holding the 2.x key is
         # refused before anything reads it (Design 9.3). `validate` reports it
         # as one of its findings instead.
         if args.group != "validate":
             refuse_retired_config()
-        code = args.func(args)
-        # Flushed here, inside the `try`, so a reader that closed the pipe
-        # before reading a short output is met by the handler below rather
-        # than by the interpreter's own flush at exit, which prints
-        # "Exception ignored ..." and exits 120.
-        sys.stdout.flush()
-        return code
+        return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout
         # exactly as success would (Design 1.8).
@@ -621,21 +639,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{command}: {error}", file=sys.stderr)
         return 1
     except BrokenPipeError:
-        # Whoever read stdout stopped reading (`tcw work list | head -1`).
-        # Nothing to say about it: point stdout at the null device so the
-        # interpreter's own flush at exit cannot fail a second time, and exit
-        # 1 as Python's documentation on SIGPIPE recommends.
-        try:
-            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
-        except (OSError, ValueError):
-            pass                       # stdout is not a file descriptor here
-        return 1
+        raise                          # an OSError, but `main` handles it
     except OSError as error:
         # A file TCW could not read or write — permissions, a full disk, a
         # path that vanished — is reported in one line, not as a traceback.
         print(f"{command}: {error}", file=sys.stderr)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
