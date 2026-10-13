@@ -1213,10 +1213,10 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
 
     assert main(["validate"]) == 1
 
-    err = capsys.readouterr().err
-    assert f"error: tcw-config.yaml: {component}: " in err, err
-    assert "has not been provisioned here" in err, err
-    assert "tcw provision" in err, err
+    out = capsys.readouterr().out
+    assert f"error: tcw-config.yaml: {component}: " in out, out
+    assert "has not been provisioned here" in out, out
+    assert "tcw provision" in out, out
 
 
 # ── the provisioning verb, across components ────────────────────────────────

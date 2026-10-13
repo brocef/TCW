@@ -94,8 +94,8 @@ def test_a_leftover_at_the_default_location_is_reported_by_check(
     monkeypatch.chdir(consumer)
     assert main(["validate"]) == 1
     printed = capsys.readouterr()
-    _assert_one_leftover((printed.out + printed.err).splitlines(), component,
-                         f"docs/{component}/{name}", prefix="[consumer] error: ")
+    _assert_one_leftover(printed.out.splitlines(), component,
+                         f"docs/{component}/{name}")
 
 
 @pytest.mark.parametrize("component,moved", [
@@ -281,17 +281,21 @@ def test_a_yaml_error_elsewhere_does_not_hide_the_leftover(tmp_path):
                          _check_prefix("capabilities"))
 
 
-def test_validate_names_the_descendant_that_holds_the_leftover(
+def test_validate_in_the_project_that_holds_the_leftover_names_it(
         tmp_path, monkeypatch, capsys):
+    """`validate` checks the current project only (TCW-73 Design 6), so the
+    leftover in an inherited project is reported by that project's own run."""
     consumer = _federated(tmp_path)
     shared = tmp_path / "shared"
     (shared / "docs" / "taxonomy" / "config.yaml").write_text("extends: []\n")
 
     monkeypatch.chdir(consumer)
+    main(["validate"])
+    assert _leftover_lines(capsys.readouterr().out.splitlines()) == []
+    monkeypatch.chdir(shared)
     assert main(["validate"]) == 1
-    _assert_one_leftover(capsys.readouterr().err.splitlines(), "taxonomy",
-                         "docs/taxonomy/config.yaml",
-                         f"[shared] {_check_prefix('taxonomy')}")
+    _assert_one_leftover(capsys.readouterr().out.splitlines(), "taxonomy",
+                         "docs/taxonomy/config.yaml", _check_prefix("taxonomy"))
 
 
 def test_a_moved_store_that_cannot_open_is_reported_once_instead(

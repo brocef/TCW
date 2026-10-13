@@ -1,8 +1,8 @@
-"""`tcw validate [path]` — one aggregate soundness pass over a TCW node.
+"""`tcw validate` — one aggregate soundness pass over the current project.
 
-Passes over the scan roots (the node's taxonomy, capabilities and work stores
-wherever each resolves — moved by `<c>.path` or kept in another repository —
-or a single `[path]`):
+Passes over the scan roots (the project's taxonomy, capabilities and work
+stores wherever each resolves — moved by `<c>.path` or kept in another
+repository):
 
   (a) YAML well-formedness — every ``*.yaml`` loads via the unique-key loader
       (duplicate keys included); a parse error is a problem. Any shape is
@@ -14,7 +14,8 @@ or a single `[path]`):
       error or a record of the wrong shape (they re-load the file and raise).
   (d) when (a) skipped (c): each tree store's open failure or leftover pre-2.5.0
       store config file, so malformed YAML cannot hide either.
-  (e) the work checks (TCW-70 Design 10.1).
+  (e) the work checks (TCW-70 Design 10.1), and an invalid latest verdict
+      round in any item (TCW-73 Design 6.1.7).
 
 Every problem is a `Finding` (TCW-73 Design 6.3) with a severity of `error`,
 `warning` or `unresolved`; only errors fail the command. What is said about
@@ -112,22 +113,7 @@ def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
     return roots
 
 
-def _intended_root(node_root: Path, comp: str) -> Path:
-    """Where `comp`'s store is configured to be, whether or not it opens."""
-    try:
-        config = load_yaml(node_root / "tcw-config.yaml", unique=True)
-    except Exception:
-        config = {}
-    section = config.get(comp) if isinstance(config, dict) else None
-    configured = section.get("path") if isinstance(section, dict) else None
-    return STORE_CLASSES[comp]._local_root(
-        node_root, configured if isinstance(configured, str) and configured.strip()
-        else None)
-
-
-def _scan_roots(node_root: Path, path, trees: dict) -> list[Path]:
-    if path is not None:
-        return [Path(path)]
+def _scan_roots(node_root: Path, trees: dict) -> list[Path]:
     roots = [r for r in trees.values() if isinstance(r, Path)]
     try:
         roots.append(WorkLocation.open(node_root).root)
@@ -159,25 +145,6 @@ def _claims_work(node_root: Path) -> bool:
     return section.get("path") is not None or section.get("repository") is not None
 
 
-def _components_to_check(node_root: Path, path, trees: dict) -> list[str]:
-    """Which tree-store check()s to run: every tree store the node has when
-    scanning the whole node — one that cannot open included, so `_run_check`
-    says why — else the one whose tree the path falls under. The work store is
-    not among them: its checks are `_work_findings`, run by `_checks_work`."""
-    if path is None:
-        return list(trees)
-    p = Path(path).resolve()
-    for c, root in trees.items():
-        # A store that will not open is still matched where it was meant to be
-        # — its configured path, or its default folder — so the reason it will
-        # not open is reported rather than nothing.
-        where = ([root] if isinstance(root, Path)
-                 else [_intended_root(node_root, c), node_root / "docs" / c])
-        if any(_under(p, w.resolve()) for w in where):
-            return [c]
-    return []
-
-
 def _work_root(node_root: Path) -> Path | None:
     try:
         return WorkLocation.open(node_root).root
@@ -185,9 +152,9 @@ def _work_root(node_root: Path) -> Path | None:
         return None
 
 
-def _checks_work(node_root: Path, path) -> bool:
-    """Whether to run the work checks: on a whole-node scan of a node that has
-    a work store or claims one, or on a path inside the work store.
+def _checks_work(node_root: Path) -> bool:
+    """Whether to run the work checks: on a project that has a work store or
+    claims one.
 
     A node that *claims* a work store and cannot open one has to say why — a
     declared-but-unprovisioned board, a `work.path` typo — rather than silently
@@ -197,8 +164,6 @@ def _checks_work(node_root: Path, path) -> bool:
     `path` or `repository`, or a tree on disk.
     """
     root = _work_root(node_root)
-    if path is not None:
-        return root is not None and _under(Path(path).resolve(), root)
     return (root is not None or (node_root / "docs" / "work").exists()
             or _claims_work(node_root))
 
@@ -295,16 +260,12 @@ def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
     return store._validation_resources(target.ref)
 
 
-def validate(node_root: Path, path: Path | None = None, *,
-             target: ValidationTarget | None = None,
+def validate(node_root: Path, *, target: ValidationTarget | None = None,
              notes: list[str] | None = None) -> list[Finding]:
-    """Every finding for the node ([] = clean). Lines about the run itself are
-    appended to `notes` when given."""
+    """Every finding for the project ([] = clean). Lines about the run itself
+    are appended to `notes` when given."""
     notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
-
-    if path is not None and target is not None:
-        raise ValueError("path and target are mutually exclusive validation selectors")
 
     graph_problems = FsProjectRegistry.open(node_root).check()
     if graph_problems:
@@ -323,7 +284,7 @@ def validate(node_root: Path, path: Path | None = None, *,
         if not roots:
             return [Finding("error", target.ref, f"no such {target.axis} object")]
     else:
-        roots = [r for r in _scan_roots(node_root, path, trees) if r.exists()]
+        roots = [r for r in _scan_roots(node_root, trees) if r.exists()]
     problems: list[Finding] = []
     yaml_syntax_error = False
 
@@ -396,8 +357,9 @@ def validate(node_root: Path, path: Path | None = None, *,
         notes.append("taxonomy and capabilities checks skipped: a YAML problem "
                      "above stops them")
     else:
-        components = ([target.axis] if target is not None
-                      else _components_to_check(node_root, path, trees))
+        # Every tree store, one that cannot open included, so `_run_check`
+        # says why. The work store is not among them: its checks are (e).
+        components = [target.axis] if target is not None else list(trees)
         for comp in components:
             # Before the component's own check, so a node reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
@@ -411,7 +373,7 @@ def validate(node_root: Path, path: Path | None = None, *,
     # still says whether it can open and whether a pre-2.5.0 store config is
     # left in it. Only that much: a migration message that malformed YAML
     # elsewhere could hide would be found only after fixing something unrelated.
-    if yaml_syntax_error and path is None and target is None:
+    if yaml_syntax_error and target is None:
         for comp, root in trees.items():
             if isinstance(root, ValueError):
                 problems.append(Finding("error", _config_file(node_root),
@@ -422,7 +384,7 @@ def validate(node_root: Path, path: Path | None = None, *,
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
     # work store, and an unreadable item is one of their own findings.
-    if target is None and _checks_work(node_root, path):
+    if target is None and _checks_work(node_root):
         findings, note = _work_findings(node_root, registry)
         problems += findings
         if note is not None:
@@ -460,12 +422,15 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         return [Finding("error", config_file, str(error)), *blocks], None
     if isinstance(backend, JiraBackend):
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
-        return [*blocks, *jira_store_problems(backend.work_path, backend.jira)], None
+        # Rounds are files in both modes, so they are checked here too.
+        return [*blocks, *jira_store_problems(backend.work_path, backend.jira),
+                *round_findings(backend.work_path, backend.project, backend.layout)], None
     if not isinstance(backend, FsWorkBackend):
         return blocks, None
     layout = backend.layout
     findings = [*blocks, *work_store_problems(backend.work_path, backend.project,
-                                              backend.config)]
+                                              backend.config),
+                *round_findings(backend.work_path, backend.project, layout)]
     items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
 
     def item_file(slug) -> str:
@@ -494,6 +459,36 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         note = ("references in these files were not checked, because the files "
                 "could not be read: " + ", ".join(str(u.path) for u in unreadable))
     return findings, note
+
+
+def round_findings(work_path: Path, project: str, layout, folders=None) -> list[Finding]:
+    """A warning for each verdict stage whose latest round is invalid, naming
+    the round file (TCW-73 Design 6.1.7). Older rounds are history and are not
+    read. `folders` narrows the check to those item folders' names."""
+    from tcw.work.layout import INVALID
+    from tcw.work.model import STAGES, Slug
+
+    stages = [s.name for s in STAGES if s.verdict and s.name in layout.enabled]
+    work_path = Path(work_path)
+    if not stages or not work_path.is_dir():
+        return []
+    findings = []
+    for entry in sorted(work_path.iterdir(), key=lambda p: p.name):
+        if entry.name.startswith(".") or not entry.is_dir():
+            continue
+        if folders is not None and entry.name not in folders:
+            continue
+        slug = Slug(project, entry.name)
+        for name in stages:
+            if layout.current_verdict(slug, name) != INVALID:
+                continue
+            _, latest = layout.latest_round(slug, name)
+            findings.append(Finding(
+                "warning", str(latest),
+                f"the latest {name} round is invalid: its front matter needs "
+                f"`verdict: accepted` or `verdict: rejected` and a whole-number "
+                f"`judges`, and `tcw work advance` refuses past {name} until it has them"))
+    return findings
 
 
 def _shared_work_paths(registry) -> list[Finding]:

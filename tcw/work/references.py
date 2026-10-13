@@ -12,6 +12,10 @@ from tcw.work.model import DOCUMENT, FLOW, ROUNDS, STAGES, Item, Slug, position,
 
 WARNING, UNRESOLVED = "warning", "unresolved"
 FOUND, MISSING = "found", "missing"
+# The project is on this machine but its work store could not be opened or
+# read: a fault in that project, reported here as a warning so this project's
+# run does not fail for it (TCW-73 plan choice 9).
+BROKEN = "broken"
 
 
 @dataclass(frozen=True)
@@ -27,8 +31,9 @@ def reference_problems(items: Iterable[Item], current_project: str,
 
     Pass **every** item, finished ones included, or a reference to a completed
     blocker looks missing. A reference into another project goes through
-    `resolve`, which answers `found`, `missing` or `unresolved` (that project
-    cannot be reached from here).
+    `resolve`, which answers `found`, `missing`, `unresolved` (that project
+    cannot be reached from here) or `broken` (it is here, and its work store
+    cannot be read).
     """
     items = list(items)
     known = {item.slug for item in items}
@@ -48,6 +53,11 @@ def reference_problems(items: Iterable[Item], current_project: str,
                 problems.append(Problem(UNRESOLVED, item.slug,
                                         f"{field} {ref} is in a project that "
                                         f"cannot be reached from here"))
+            elif answer == BROKEN:
+                problems.append(Problem(WARNING, item.slug,
+                                        f"{field} {ref} could not be checked, because "
+                                        f"project '{ref.project}' cannot be read; run "
+                                        f"`tcw validate` there"))
     return problems
 
 

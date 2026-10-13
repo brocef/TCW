@@ -17,4 +17,8 @@ class Finding:
     message: str
 
     def __str__(self) -> str:
-        return f"{self.severity}: {self.where}: {self.message}"
+        """One line, whatever the message holds: `validate` prints one finding
+        per stdout line (TCW-73 Design 6.3), and a YAML parser's message spans
+        several, pointing at the column."""
+        message = " ".join(" ".join(self.message.split("\n")).split())
+        return f"{self.severity}: {self.where}: {message}"

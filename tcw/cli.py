@@ -392,86 +392,75 @@ def _not_yet(name: str):
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
+    """Findings on stdout, one per line; overrides in effect, what was skipped
+    and the closing count on stderr (TCW-73 Design 6). Exit 1 with any error,
+    5 when `--remote` could not reach Jira, else 0."""
+    from tcw.errors import BackendError, UsageError
+    from tcw.findings import Finding
+    from tcw.validate import validate
     node_root = find_node_root()
     if node_root is None:
-        print("tcw validate: no tcw node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return 1
+        raise BackendError("no TCW project here — run `tcw init --id <id>` in the "
+                           "project folder")
+    if args.remote and not _jira_mode(node_root):
+        raise UsageError("--remote checks a Jira-mode project, and this project's "
+                         "work.backend is filesystem")
     registry = FsProjectRegistry.open(node_root)
-    # Before the problem block, not after it, and that ordering is the point.
-    # An override is set in an environment rather than in any file this checkout
-    # holds, so a graph that resolves because of one resolves for a reason no
-    # reader can grep — and an override that landed on the *wrong* node names a
-    # path that appears in no config at all. This block returns as soon as it
-    # finds a problem, so anything printed below it is absent from exactly the
-    # run where the reader needs it most.
-    #
-    # Never counted and never fatal, like `unreachable()` and `misdirected()`:
-    # an override is a statement about this machine, not a defect.
+    # An override is set in an environment rather than in any file this
+    # checkout holds, so a graph that resolves because of one resolves for a
+    # reason no reader can grep. Narration, never a finding: an override is a
+    # statement about this machine, not a defect. Said first, because a graph
+    # problem below ends the run.
     for override in registry.overrides():
         print(f"connected project '{override.id}' is overridden by "
               f"{override.source} to {override.locator}", file=sys.stderr)
         if override.warning:
             print(f"  warning: {override.warning}", file=sys.stderr)
-    registry_problems = registry.check()
-    if registry_problems:
-        for problem in registry_problems:
-            print(str(problem), file=sys.stderr)
-        print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
-        return 1
-    # Reported, never counted, and never fatal. These are declarations this
-    # checkout cannot follow, not defects, so they are printed every run rather
-    # than behind a flag.
+    graph = registry.check()
+    if graph:
+        return _report(graph)
+    findings: list[Finding] = []
     for absent in registry.unreachable():
         if absent.declaration is not None:
-            print(f"{absent.declared_in}: connected project '{absent.id}' is "
-                  f"declared in {absent.declaration.url} but has not been "
-                  f"provisioned here; run `tcw provision` to obtain it",
-                  file=sys.stderr)
+            message = (f"connected project '{absent.id}' is declared in "
+                       f"{absent.declaration.url} but has not been provisioned "
+                       f"here; run `tcw provision` to obtain it")
         else:
-            print(f"{absent.declared_in}: connected project '{absent.id}' is declared "
-                  f"but not reachable in this checkout ({absent.locator})",
-                  file=sys.stderr)
-    # The locators that do not resolve here for a project that is here. Also
-    # never fatal: it is how a genuine typo surfaces — reciprocity abstains on an
-    # absent target, and `unreachable()` filters these out because the project is
-    # in the graph, so nothing said anything at all — but it is equally the shape
-    # of a locator that is simply right for another machine. Both facts, no
-    # conclusion.
+            message = (f"connected project '{absent.id}' is declared but not "
+                       f"reachable in this checkout ({absent.locator})")
+        findings.append(Finding("unresolved", str(absent.declared_in), message))
+    # A locator that does not resolve here, for a project that is here: a typo,
+    # or a locator right for another machine. Both facts, no conclusion.
     for entry in registry.misdirected():
-        print(f"{entry.declared_in}: connected project '{entry.id}' is declared "
-              f"at {entry.locator}, which is not in this checkout; it was found "
-              f"at {registry.get(entry.id).locator}", file=sys.stderr)
+        findings.append(Finding(
+            "warning", str(entry.declared_in),
+            f"connected project '{entry.id}' is declared at {entry.locator}, which "
+            f"is not in this checkout; it was found at {registry.get(entry.id).locator}"))
     for warning in registry.warnings():
-        print(f"warning: {warning}", file=sys.stderr)
-    from tcw.validate import validate
-    if args.remote and not _jira_mode(node_root):
-        print("tcw validate: --remote checks a Jira-mode project, and this project's "
-              "work.backend is filesystem", file=sys.stderr)
-        return 2
-    recurse = args.path is None and not args.no_recurse
-    projects = [registry.current, *registry.descendants()] if recurse else [registry.current]
-    problems: list[str] = []
-    failures = 0
-    for project in projects:
-        notes: list[str] = []
-        findings = validate(Path(project.locator), args.path, notes=notes)
-        # Warnings and unresolved references are printed and never counted:
-        # only errors fail the command (TCW-70 Design 10.2).
-        failures += sum(1 for finding in findings if finding.severity == "error")
-        project_problems = [str(finding) for finding in findings] + notes
-        if len(projects) > 1:
-            project_problems = [f"[{project.id}] {problem}" for problem in project_problems]
-        problems.extend(project_problems)
-    for p in problems:
-        print(p, file=sys.stderr)
+        findings.append(Finding("warning", SENTINEL, warning))
+    notes: list[str] = []
+    findings += validate(node_root, notes=notes)
+    for note in notes:
+        print(note, file=sys.stderr)
     if args.remote:
-        return _validate_remote(projects, failures)
-    if failures:
-        print(f"{failures} problem(s).", file=sys.stderr)
-        return 1
-    print("validate OK")
-    return 0
+        remote, unreachable = _validate_remote(node_root)
+        findings += remote
+        code = _report(findings)
+        return 5 if unreachable else code
+    return _report(findings)
+
+
+def _report(findings) -> int:
+    """Print each finding on stdout and the closing count on stderr; 1 when
+    any is an error."""
+    counts = {"error": 0, "warning": 0, "unresolved": 0}
+    for finding in findings:
+        print(finding)
+        counts[finding.severity] += 1
+    plural = {"error": "errors", "warning": "warnings", "unresolved": "unresolved"}
+    print(", ".join(f"{n} {name if n == 1 else plural[name]}"
+                    for name, n in counts.items()), file=sys.stderr)
+    return 1 if counts["error"] else 0
 
 
 def _jira_mode(project_root: Path) -> bool:
@@ -483,43 +472,31 @@ def _jira_mode(project_root: Path) -> bool:
         return False
 
 
-def _validate_remote(projects, failures: int) -> int:
-    """The remote checks of every Jira-mode project visited (TCW-71 Design
-    9.2): findings on stdout, one per line, and what passed or was skipped
-    on stderr. Exit 5 when Jira could not be reached, else 1 with any error."""
+def _validate_remote(root: Path):
+    """The remote checks of this Jira-mode project (TCW-71 Design 9.2; TCW-73
+    Design 6.1): its findings, and whether Jira could not be reached. What
+    passed or was skipped goes to stderr."""
     from tcw.errors import TcwError
-    from tcw.store.fs import FsProjectRegistry
     from tcw.work.gates import project_reader
     from tcw.work.jira.backend import JiraBackend
     from tcw.work.jira.remote import remote_findings
     from tcw.work.open import open_backend, reference_resolver
-    unreachable = False
-    for project in projects:
-        root = Path(project.locator)
-        if not _jira_mode(root):
-            continue
-        try:
-            backend = open_backend(root)
-        except TcwError:
-            continue                 # the offline checks have reported it
-        if not isinstance(backend, JiraBackend):
-            continue
-        reader = project_reader(root, FsProjectRegistry.open(root))
-        findings, narration = remote_findings(backend, backend.layout, reader,
-                                              reference_resolver(root))
-        for line in narration:
-            print(line, file=sys.stderr)
-        for finding in findings:
-            print(finding)
-        failures += sum(1 for f in findings if f.severity == "error")
-        unreachable = unreachable or any(f.severity == "unresolved" for f in findings)
-    if unreachable:
-        return 5
-    if failures:
-        print(f"{failures} problem(s).", file=sys.stderr)
-        return 1
-    print("validate OK", file=sys.stderr)
-    return 0
+    try:
+        backend = open_backend(root)
+    except TcwError:
+        return [], False             # the offline checks have reported it
+    if not isinstance(backend, JiraBackend):
+        return [], False
+    reader = project_reader(root, FsProjectRegistry.open(root))
+    findings, narration = remote_findings(backend, backend.layout, reader,
+                                          reference_resolver(root))
+    for line in narration:
+        print(line, file=sys.stderr)
+    # `remote_findings` reports Jira out of reach as one `unresolved` finding
+    # located at the project itself; every other finding names a slug or a key.
+    unreachable = any(f.severity == "unresolved" and f.where == backend.project
+                      for f in findings)
+    return findings, unreachable
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
@@ -563,16 +540,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_provision.set_defaults(func=_cmd_provision)
 
     p_validate = sub.add_parser(
-        "validate", help="check YAML soundness, tcw:// links, and component integrity")
-    p_validate.add_argument("path", nargs="?",
-                            help="narrow the active project scan to one file or directory (disables recursion)")
-    p_validate.add_argument(
-        "--no-recurse", action="store_true",
-        help="validate only the active project, excluding registered descendants",
-    )
+        "validate", help="check this project's files, stores and work items")
     p_validate.add_argument(
         "--remote", action="store_true",
-        help="also check each Jira-mode project against Jira itself (reads only)",
+        help="also check this Jira-mode project against Jira itself (reads only)",
     )
     p_validate.set_defaults(func=_cmd_validate)
 

@@ -154,21 +154,15 @@ def test_component_check_failure_surfaces(tmp_path):
                for p in problems), problems
 
 
-def test_path_narrows_scan_and_runs_that_check(tmp_path):
-    root = node(tmp_path)
-    # Break taxonomy, but scan only docs/capabilities -> taxonomy check not run.
-    _vocabless_feature(root, "search")
-    problems = [str(f) for f in validate(root, root / "docs" / "capabilities")]
-    assert not any(p.startswith("taxonomy check:") for p in problems)
-
-
 # ── CLI exit codes ───────────────────────────────────────────────────────────
 
 def test_cli_clean_exits_0(tmp_path, monkeypatch, capsys):
     root = node(tmp_path)
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
-    assert "validate OK" in capsys.readouterr().out
+    printed = capsys.readouterr()
+    assert printed.out == ""
+    assert printed.err.splitlines()[-1] == "0 errors, 0 warnings, 0 unresolved"
 
 
 def test_cli_problem_exits_1(tmp_path, monkeypatch, capsys):
@@ -178,7 +172,9 @@ def test_cli_problem_exits_1(tmp_path, monkeypatch, capsys):
     assert main(["validate"]) == 1
 
 
-def test_cli_recurses_through_registered_descendants(tmp_path, monkeypatch, capsys):
+def test_cli_checks_only_the_current_project(tmp_path, monkeypatch, capsys):
+    """TCW-73 Design 6: no walk over descendants; a broken child is the
+    child's own run to report."""
     root = node(tmp_path, "root", "root")
     child = node(tmp_path, "child", "child")
     grandchild = node(tmp_path, "grandchild", "grandchild")
@@ -187,58 +183,11 @@ def test_cli_recurses_through_registered_descendants(tmp_path, monkeypatch, caps
     _body(grandchild, "signin", "Broken [x](tcw://C/nope).")
 
     monkeypatch.chdir(root)
-    assert main(["validate"]) == 1
-    error = capsys.readouterr().err
-    assert "[grandchild]" in error
-    assert "tcw://C/nope" in error
-
-
-def test_cli_recursive_validation_succeeds_when_all_nodes_are_clean(
-    tmp_path, monkeypatch, capsys
-):
-    root = node(tmp_path, "root", "root")
-    child = node(tmp_path, "child", "child")
-    grandchild = node(tmp_path, "grandchild", "grandchild")
-    connect(root, child)
-    connect(child, grandchild)
-
-    monkeypatch.chdir(root)
     assert main(["validate"]) == 0
-    assert capsys.readouterr().out == "validate OK\n"
-
-
-def test_cli_no_recurse_ignores_descendant_problems(tmp_path, monkeypatch, capsys):
-    root = node(tmp_path, "root", "root")
-    child = node(tmp_path, "child", "child")
-    connect(root, child)
-    _body(child, "signin", "Broken [x](tcw://C/nope).")
-
-    monkeypatch.chdir(root)
-    assert main(["validate", "--no-recurse"]) == 0
-    assert capsys.readouterr().out == "validate OK\n"
-
-
-def test_cli_path_selector_does_not_recurse(tmp_path, monkeypatch, capsys):
-    root = node(tmp_path, "root", "root")
-    child = node(tmp_path, "child", "child")
-    connect(root, child)
-    _body(child, "signin", "Broken [x](tcw://C/nope).")
-
-    monkeypatch.chdir(root)
-    assert main(["validate", "docs/capabilities"]) == 0
-    assert capsys.readouterr().out == "validate OK\n"
-
-
-def test_cli_recurses_into_descendant_without_work_store(tmp_path, monkeypatch, capsys):
-    root = node(tmp_path, "root", "root")
-    child = node(tmp_path, "child", "child", components=["taxonomy"])
-    connect(root, child)
-    _vocabless_feature(child, "search")
-
-    monkeypatch.chdir(root)
+    assert capsys.readouterr().out == ""
+    monkeypatch.chdir(grandchild)
     assert main(["validate"]) == 1
-    error = capsys.readouterr().err
-    assert "[child] error: docs/taxonomy/search: " in error
+    assert "tcw://C/nope" in capsys.readouterr().out
 
 
 # ── the same verdict in every checkout ────────────────────────────────────────
@@ -316,9 +265,9 @@ def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeyp
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(root)
     assert main(["validate"]) == 0
-    err = capsys.readouterr().err
-    assert "gone-project" in err
-    assert "not reachable in this checkout" in err
+    [line] = capsys.readouterr().out.splitlines()
+    assert line.startswith("unresolved: ")
+    assert "gone-project" in line and "not reachable in this checkout" in line
 
 
 def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
@@ -335,7 +284,7 @@ def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
-    assert "duplicate key" in capsys.readouterr().err
+    assert "duplicate key" in capsys.readouterr().out
 
 
 # ── a node that keeps no board ───────────────────────────────────────────────

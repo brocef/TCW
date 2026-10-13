@@ -203,8 +203,9 @@ def open_for_update(project_id: str, here: Path) -> WorkBackend:
 def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
     """How `validate` answers a reference into another project: `found`,
     `missing` or `unresolved`, opening each project once. A Jira-mode project
-    is answered by its folders, so no reference needs Jira (TCW-71 R20)."""
-    from tcw.work.references import FOUND, MISSING, UNRESOLVED
+    is answered by its folders, so no reference needs Jira (TCW-71 R20). A
+    project that is here but cannot be opened or read answers `broken`."""
+    from tcw.work.references import BROKEN, FOUND, MISSING, UNRESOLVED
     opened: dict[str, object] = {}
 
     def resolve(ref: Slug) -> str:
@@ -213,8 +214,10 @@ def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
                 opened[ref.project] = open_project(ref.project, project_root)
             except NotFound:
                 opened[ref.project] = MISSING
-            except (Unreachable, BackendError):
+            except Unreachable:
                 opened[ref.project] = UNRESOLVED
+            except BackendError:
+                opened[ref.project] = BROKEN
         other = opened[ref.project]
         if isinstance(other, str):
             return other
@@ -225,7 +228,7 @@ def reference_resolver(project_root: Path) -> Callable[[Slug], str]:
         except NotFound:
             return MISSING
         except BackendError:
-            return UNRESOLVED
+            return BROKEN
         return FOUND
 
     return resolve

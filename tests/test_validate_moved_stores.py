@@ -89,13 +89,6 @@ def test_a_moved_capabilities_store_is_checked(tmp_path):
     assert any("Bogus" in p for p in lines), lines
 
 
-def test_path_mode_matches_a_moved_store(tmp_path):
-    root, store = moved(tmp_path, "taxonomy")
-    term(store, "payment", relatesTo=["invoice"])
-    lines = check_lines(validate(root, store), "taxonomy", root)
-    assert any("invoice" in p for p in lines), lines
-
-
 # ── criterion 4: capabilities see a moved taxonomy ──────────────────────────
 
 def test_a_capability_subject_is_checked_against_a_moved_taxonomy(tmp_path, monkeypatch, capsys):
@@ -143,6 +136,8 @@ def test_a_node_without_tree_stores_reports_nothing_new(tmp_path, config):
 # ── criterion 8: a shared store is reported by each project ──────────────────
 
 def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatch, capsys):
+    """Each project's own run reports the shared store's problem (TCW-73
+    Design 6: `validate` checks the current project only)."""
     parent = repo(tmp_path / "parent", "parent")
     child = repo(tmp_path / "child", "child")
     (parent / "tcw-config.yaml").write_text(
@@ -154,13 +149,12 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
     term(shared, "payment", relatesTo=["invoice"])
     for root in (parent, child):
         set_component_key(root, "taxonomy", "path", str(shared))
-    monkeypatch.chdir(parent)
-    assert main(["validate"]) == 1
-    out = capsys.readouterr()
-    text = out.out + out.err
-    reported = [line for line in text.splitlines() if "invoice" in line]
-    assert len(reported) == 2, text
-    assert any("[parent]" in r for r in reported) and any("[child]" in r for r in reported), text
+    for root in (parent, child):
+        monkeypatch.chdir(root)
+        assert main(["validate"]) == 1
+        out = capsys.readouterr().out
+        reported = [line for line in out.splitlines() if "invoice" in line]
+        assert len(reported) == 1, out
 
 
 # ── review findings: nothing that used to be reported goes quiet ──────────────
@@ -191,14 +185,6 @@ def test_a_broken_extends_without_a_local_tree_is_reported(tmp_path, component):
     assert any("ghost" in p for p in lines), lines
 
 
-def test_path_mode_reports_a_store_that_will_not_open(tmp_path):
-    root = repo(tmp_path / "node")
-    (root / "docs" / "taxonomy").mkdir(parents=True)
-    set_component_key(root, "taxonomy", "path", "nowhere")
-    lines = check_lines(validate(root, root / "docs" / "taxonomy"), "taxonomy", root)
-    assert any("nowhere" in p for p in lines), lines
-
-
 def test_a_work_only_node_reports_nothing_new(tmp_path):
     from tcw.store.fs import init
     root = repo(tmp_path / "node")
@@ -206,8 +192,3 @@ def test_a_work_only_node_reports_nothing_new(tmp_path):
     assert validate(root) == []
 
 
-def test_path_mode_reports_a_moved_store_that_will_not_open(tmp_path):
-    root, store = moved(tmp_path, "taxonomy", "tax")
-    set_component_key(root, "taxonomy", "extends", ["ghost"])
-    lines = check_lines(validate(root, store), "taxonomy", root)
-    assert any("ghost" in p for p in lines), lines

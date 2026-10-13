@@ -19,12 +19,6 @@ def _node(tmp_path: Path) -> Path:
     return root
 
 
-def test_rejects_path_and_target_together(tmp_path):
-    root = _node(tmp_path)
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        validate(root, root / "docs", target=ValidationTarget("taxonomy", "missing"))
-
-
 @pytest.mark.parametrize("axis", ["taxonomy", "capabilities"])
 def test_missing_target_is_explicit(tmp_path, axis):
     root = _node(tmp_path)

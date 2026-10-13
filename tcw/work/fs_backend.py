@@ -20,7 +20,7 @@ import re
 import shutil
 import sys
 import tempfile
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -71,7 +71,10 @@ def is_item_folder(path: Path) -> bool:
 # Reading and writing item.yaml
 
 
-class _Unreadable(Exception):
+class Unreadable(Exception):
+    """An `item.yaml` that cannot be read, naming the key at fault when there
+    is one: raised by the reader, and returned as a value by `read_all`."""
+
     def __init__(self, path: Path, key: str | None, message: str):
         super().__init__(message)
         self.path, self.key, self.message = path, key, message
@@ -79,17 +82,6 @@ class _Unreadable(Exception):
     def __str__(self) -> str:
         where = f"{self.path}" + (f" ({self.key})" if self.key else "")
         return f"{where}: {self.message}"
-
-
-@dataclass(frozen=True)
-class Unreadable:
-    path: Path
-    key: str | None
-    message: str
-
-    def __str__(self) -> str:
-        return f"{self.path}" + (f" ({self.key})" if self.key else "") + \
-            f": {self.message}"
 
 
 def _reads_as_stage(raw: str, enabled: frozenset[str]) -> bool:
@@ -102,27 +94,27 @@ def _reads_as_stage(raw: str, enabled: frozenset[str]) -> bool:
 def _load(folder: Path, project: str,
           enabled: frozenset[str]) -> tuple[Item, str]:
     """The item and the raw `stage` string as written. Strict: anything wrong
-    raises `_Unreadable` naming the key."""
+    raises `Unreadable` naming the key."""
     path = folder / ITEM_FILE
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
-        raise _Unreadable(path, None, f"cannot be read: {error}") from None
+        raise Unreadable(path, None, f"cannot be read: {error}") from None
     if not isinstance(raw, dict):
-        raise _Unreadable(path, None, "must be a mapping of the item's properties")
+        raise Unreadable(path, None, "must be a mapping of the item's properties")
     for key in raw:
         if key not in KEYS:
-            raise _Unreadable(path, str(key), f"unknown key; the keys are "
+            raise Unreadable(path, str(key), f"unknown key; the keys are "
                                               f"{', '.join(KEYS)}")
 
     def text(key: str, required: bool = False) -> str | None:
         value = raw.get(key)
         if value is None:
             if required:
-                raise _Unreadable(path, key, "is required")
+                raise Unreadable(path, key, "is required")
             return None
         if not isinstance(value, str) or not value.strip():
-            raise _Unreadable(path, key, "must be a non-empty string")
+            raise Unreadable(path, key, "must be a non-empty string")
         return value
 
     def scale(key: str, values: tuple[str, ...]) -> str | None:
@@ -130,7 +122,7 @@ def _load(folder: Path, project: str,
         if value is None:
             return None
         if not isinstance(value, str) or value not in values:
-            raise _Unreadable(path, key, f"must be one of {', '.join(values)}; "
+            raise Unreadable(path, key, f"must be one of {', '.join(values)}; "
                                          f"got {value!r}")
         return value
 
@@ -138,25 +130,25 @@ def _load(folder: Path, project: str,
         try:
             return Slug.parse(value, project)
         except UsageError as error:
-            raise _Unreadable(path, key, str(error)) from None
+            raise Unreadable(path, key, str(error)) from None
 
     title = text("title", required=True)
     raw_stage = text("stage", required=True)
     priority = scale("priority", PRIORITIES) or DEFAULT_PRIORITY
     tags_raw = raw.get("tags") or []
     if not isinstance(tags_raw, list):
-        raise _Unreadable(path, "tags", "must be a list of tags")
+        raise Unreadable(path, "tags", "must be a list of tags")
     tags: list[str] = []
     for value in tags_raw:
         try:
             tag = normalize_tag(value)
         except (ValueError, AttributeError):
-            raise _Unreadable(path, "tags", f"{value!r} is not a tag") from None
+            raise Unreadable(path, "tags", f"{value!r} is not a tag") from None
         if tag not in tags:
             tags.append(tag)
     blocked_raw = raw.get("blocked-by") or []
     if not isinstance(blocked_raw, list):
-        raise _Unreadable(path, "blocked-by", "must be a list of slugs")
+        raise Unreadable(path, "blocked-by", "must be a list of slugs")
     parent = raw.get("parent")
     item = Item(
         slug=Slug(project, folder.name),
@@ -211,8 +203,8 @@ def read_all(work_path: Path, project: str,
             continue
         try:
             items.append(_load(entry, project, enabled)[0])
-        except _Unreadable as error:
-            bad.append(Unreadable(error.path, error.key, error.message))
+        except Unreadable as error:
+            bad.append(error)
     return items, bad
 
 
@@ -273,7 +265,7 @@ class FsWorkBackend:
         path = self._folder(folder)
         try:
             return _load(path, self.project, self.enabled)
-        except _Unreadable as error:
+        except Unreadable as error:
             raise BackendError(str(error)) from None
 
     def _write(self, item: Item, raw_stage: str) -> None:
@@ -467,7 +459,7 @@ class FsWorkBackend:
                     blocked_by=tuple(new_slug if s == old_slug else s
                                      for s in item.blocked_by))
                 self._write(item, raw_stage)
-            except (OSError, _Unreadable) as error:
+            except (OSError, Unreadable) as error:
                 failed.append(f"{name} ({error})")
         if failed:
             raise BackendError(f"moved {folder} to {new}, but these items still "
@@ -549,7 +541,7 @@ def work_store_problems(work_path: Path, project: str,
             continue
         try:
             item, raw_stage = _load(entry, project, config.enabled)
-        except _Unreadable as error:
+        except Unreadable as error:
             key = f" ({error.key})" if error.key else ""
             findings.append(Finding("error", str(error.path),
                                     f"unreadable{key}: {error.message}"))

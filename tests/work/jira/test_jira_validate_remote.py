@@ -129,8 +129,11 @@ def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, c
     (clean.work / "TCW-50-gone").mkdir()
     clean.fake.refuse_missing_key_search = True
     run = remote(clean, monkeypatch, capsys)
-    assert run.lines == ["error: tcw/TCW-50-gone: its ticket TCW-50 does not exist in "
-                         "Jira, or this account cannot see it"], run.out
+    # The offline check's line for the folder's missing `item.yaml` shares
+    # stdout with the remote findings since TCW-73 (Design 6.3).
+    remote_lines = [line for line in run.lines if "item.yaml" not in line]
+    assert remote_lines == ["error: tcw/TCW-50-gone: its ticket TCW-50 does not exist in "
+                            "Jira, or this account cannot see it"], run.out
 
 
 def test_search_lag_gives_a_new_item_no_finding(clean, monkeypatch, capsys):
@@ -149,6 +152,19 @@ def test_records_problems_mid_work_only(clean, monkeypatch, capsys):
     assert run.code == 1
     assert any(line.startswith(f"error: tcw/{open_}:") for line in run.lines), run.out
     assert not any(f"tcw/{done}" in line for line in run.lines), run.out
+
+
+def test_records_problems_wait_for_remote_offline(clean, monkeypatch, capsys):
+    """TCW-73 AC 15: the stage that decides whether the records check runs is
+    in Jira, so plain `tcw validate` leaves it to `--remote` and asks Jira
+    nothing."""
+    _, open_ = clean.item("Open", "open", status="In Progress")
+    (clean.work / open_ / "capabilities.yaml").write_text("no-such-key: 1\n")
+    clean.fake.log.clear()
+    monkeypatch.chdir(clean.root)
+    assert main(["validate"]) == 0
+    assert "capabilities.yaml" not in capsys.readouterr().out
+    assert clean.fake.log == []
 
 
 def test_a_stage_status_missing_from_the_project(tmp_path, fake, monkeypatch, capsys):

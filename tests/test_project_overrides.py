@@ -85,33 +85,34 @@ def test_validate_reports_the_override_beside_the_error_it_explains(
         workspace, capsys, monkeypatch):
     """An override that landed on the wrong node names a path in no config.
 
-    `_cmd_validate` returns from inside its problem block, so an override line
-    printed after it never appears on precisely the run where the reader most
-    needs it. This asserts the ordering, not merely the presence.
+    The graph problem ends the run, so the override is said before it: the
+    narration on stderr comes ahead of the closing count, and the error
+    itself is on stdout.
     """
     tmp_path, _orchestrator, _core = workspace
     _node(tmp_path / "wrong", "id: other-project\n")
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(tmp_path / "wrong"))
     assert main(["validate"]) == 1
-    err = capsys.readouterr().err
-    assert "TCW_PROJECT_CORE_PROJECT" in err
-    assert "other-project" in err
-    assert err.index("TCW_PROJECT_CORE_PROJECT") < err.index("project graph problem")
+    printed = capsys.readouterr()
+    assert "TCW_PROJECT_CORE_PROJECT" in printed.err
+    assert "other-project" in printed.out
+    lines = printed.err.splitlines()
+    assert "TCW_PROJECT_CORE_PROJECT" in lines[0]
+    assert lines[-1].endswith("0 warnings, 0 unresolved") and "0 errors" not in lines[-1]
 
 
 def test_validate_with_no_override_says_nothing_about_one(workspace, capsys):
     """The rung is absent, not empty.
 
     Exit 0: the declared locator resolves nothing, which is a declaration this
-    checkout cannot follow rather than a defect, and that was true before this
-    feature existed. The assertion that matters is that no override vocabulary
-    reaches a run that has none.
+    checkout cannot follow rather than a defect. The assertion that matters is
+    that no override vocabulary reaches a run that has none.
     """
     assert main(["validate"]) == 0
-    err = capsys.readouterr().err
-    assert "declared but not reachable" in err       # the pre-existing report
-    assert "TCW_PROJECT" not in err
-    assert "overridden" not in err
+    printed = capsys.readouterr()
+    assert "declared but not reachable" in printed.out       # an `unresolved` line
+    assert "TCW_PROJECT" not in printed.out + printed.err
+    assert "overridden" not in printed.out + printed.err
 
 
 # --- provisioning, and the commands that resolve a graph ----------------------

@@ -335,7 +335,7 @@ def test_a_public_upstream_is_provisioned_into_a_reader_only_checkout(
         "path": "../not-here", "repository": {"url": str(remote), "ref": "main"}}}})
     env = {"XDG_CACHE_HOME": str(cache)}
     before = _tcw(app, "validate", env=env)
-    assert before.returncode == 0 and "tcw provision" in before.stderr, before.stderr
+    assert before.returncode == 0 and "tcw provision" in before.stdout, before.stdout
     out = _tcw(app, "provision", env=env)
     assert out.returncode == 0, out.stderr
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
@@ -443,7 +443,7 @@ def test_reading_an_upstream_item_is_allowed(tmp_path, where):
 def test_a_link_into_an_upstream_item_resolves(tmp_path):
     root, slug = _cli_family(tmp_path)
     (root / "a" / "docs" / "note.md").write_text(f"See tcw://W/core/{slug}.\n")
-    out = _tcw(root / "a", "validate", "--no-recurse")
+    out = _tcw(root / "a", "validate")
     assert out.returncode == 0, out.stderr
 
 
@@ -609,7 +609,7 @@ def test_an_incomplete_tracker_with_no_parent_says_so(tmp_path):
 def test_an_incomplete_tracker_with_a_parent_does_not(tmp_path):
     root, _ = _cli_family(tmp_path)
     _set_tracker(root / "a", {"candidate-query": "project = X"})
-    out = _tcw(root / "a", "validate", "--no-recurse")
+    out = _tcw(root / "a", "validate")
     text = out.stdout + out.stderr
     assert "required" in text and _NO_PARENT not in text, text
 
