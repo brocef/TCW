@@ -529,6 +529,14 @@ would therefore lose every rejection and forced-move reason on a workflow like
 `TCWTEST`'s, where only Planning has a screen; step 3 now sends it separately
 there. The retry above stays for a site that does refuse.
 
+When the note goes separately, the refusal and dropped-connection cases above
+read as follows (verify review, 2026-10-13). A refusal with the status already
+at the target posts the note **without looking for it first**, since TCW never
+sent it and a matching comment can only be someone else's. A refusal with the
+status unchanged retries the same request once, which is harmless, and then
+posts the note. A dropped connection that landed posts the note; one that did
+not raises `Unreachable` with no note posted.
+
 **When the connection fails mid-request** (`Unreachable`), the request may have
 landed. TCW reads the status once more:
 
