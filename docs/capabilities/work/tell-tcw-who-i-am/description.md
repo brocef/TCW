@@ -1,0 +1,7 @@
+As a user, I tell TCW who I am once, so I can list and take the work items that are mine without typing my name each time.
+
+In a project that keeps its items in files, I set `user.name` in a personal configuration file — the user-wide file or the project's `tcw-config.local.yaml` — and TCW compares it with an item's assignee exactly, letter for letter and case for case. In a project that keeps its items in Jira, I am the account my Jira credentials belong to, and nothing else needs setting. TCW never takes my name from version control settings or from an environment variable such as the `TCW_WORK_OWNER` of earlier versions.
+
+`tcw work list --mine` lists the items assigned to me, one full slug per line, as `list` always prints. `tcw work new --assign-me` and `tcw work edit <item> --assign-me` assign the item to me. Each is a usage error (exit 2) beside `--assignee`, which would say who twice, and `--assign-me` with `new --project` is a usage error too, because another project assigns its own items.
+
+With no identity configured, each of these stops with exit 1 and one message naming every remedy: setting `user.name` in either personal file, or, in a Jira project, the environment variables named by `work.jira.credentials`. Nothing is created.

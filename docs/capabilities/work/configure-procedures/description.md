@@ -1,6 +1,6 @@
 As a user, I replace or extend the text of one of TCW's procedures in `tcw-config.yaml` under `work.procedures`, keyed by procedure id, so a TCW skill follows my team's practice — my advisors, my review, my git workflow — rather than one TCW chose for everyone.
 
-`work.procedures` sits beside `work.lifecycle`, not inside it, and each id holds a plain list of bindings in the same grammar a stage's `prompt:` uses: `blob:`, `file:`, `generate:`, `builtin: true` and `skill:`, each optionally carrying `when: {tags, not_tags, type}`. Every binding that applies is used, in the order I wrote them.
+`work.procedures` sits beside `work.lifecycle`, not inside it, and each id holds a plain list of bindings in the same grammar a stage's `prompt:` uses: `blob:`, `file:`, `generate:`, `inherit: true` and `skill:`, each optionally carrying `when: {tags, not_tags, type}`. Every binding that applies is used, in the order I wrote them.
 
 ```yaml
 work:
@@ -8,7 +8,7 @@ work:
         unattended-work:
             - file: docs/procedures/unattended-work.md
         documentation-sync:
-            - builtin: true
+            - inherit: true
             - blob: "Also update docs/guide/ when a CLI flag changes."
 ```
 

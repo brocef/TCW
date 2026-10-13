@@ -1,0 +1,10 @@
+name: Personal configuration
+kind: Feature
+relatesTo:
+- configurable-work-lifecycle
+- configure-skill
+vocabulary:
+- config-layer
+- user-identity
+- work-item/lifecycle-stage
+- work-item/lifecycle-hook

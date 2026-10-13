@@ -1,0 +1,6 @@
+id: cap-ee0f02
+name: Show the effective configuration
+Status: Supported
+Subject:
+    - config-layer
+Feature: personal-configuration

@@ -1,0 +1,1 @@
+One of the places TCW reads a project's configuration from, read in a fixed order: TCW's own defaults (built-in), the team's tcw-config.yaml, the person's user-wide file, and the person's tcw-config.local.yaml beside the project's own file. A value in a later layer wins over the same value in an earlier one, and a person's two layers may set only the keys TCW lists as personal.

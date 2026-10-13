@@ -16,8 +16,11 @@ There are three severities, and only one fails the run:
 - `error` — malformed YAML, a broken `tcw://` link, an `item.yaml` that cannot be
   read, a taxonomy or capabilities problem (including a capability record that
   still carries the retired `Planning doc` or `Tracker` field), or a
-  configuration problem. Any error makes `tcw validate` exit 1.
-- `warning` — for example a parent or blocker that names no item, an item whose
+  configuration problem in any layer — `tcw-config.yaml`, the user-wide file
+  or `tcw-config.local.yaml` — named by its file and key. Any error makes
+  `tcw validate` exit 1.
+- `warning` — for example a `tcw-config.local.yaml` that version control is
+  tracking, which should stay personal; a parent or blocker that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project

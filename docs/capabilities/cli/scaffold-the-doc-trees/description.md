@@ -9,7 +9,11 @@ conflicting value is rejected. I can backfill a marker that has no ID with
 
 `init` prints nothing on standard output. Every file it writes and every folder
 it creates is named on standard error (`wrote <path>`, `created <path>/`), and it
-stages and commits nothing: committing the result is mine to do.
+stages and commits nothing: committing the result is mine to do. Inside a
+repository it adds `/tcw-config.local.yaml` to the `.gitignore` beside
+`tcw-config.yaml`, unless that rule is already there with or without the `/`,
+so a person's own configuration stays out of version control. Outside one it
+says, in a `note:` line, that keeping that file out is mine to do.
 
 Each store is one folder, with an empty `.gitkeep` so git keeps it while it is
 empty. The work store is one folder of item folders: there are no status folders

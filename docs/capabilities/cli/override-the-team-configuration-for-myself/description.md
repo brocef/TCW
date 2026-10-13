@@ -1,0 +1,11 @@
+As a user, I keep my own additions to a project's configuration in files that are mine, so I can shape TCW's instructions to the way I work without changing what my team gets.
+
+**Two personal files.** A user-wide file, `$XDG_CONFIG_HOME/tcw/config.yaml` (or `~/.config/tcw/config.yaml` when `XDG_CONFIG_HOME` is not set), applies to every project I work in. A `tcw-config.local.yaml` beside a project's `tcw-config.yaml` applies to that project only. TCW reads, in order, its own defaults, `tcw-config.yaml`, the user-wide file and the local file; a later file wins. `tcw init` adds `/tcw-config.local.yaml` to the project's `.gitignore`, and `tcw validate` warns when the file is tracked by version control anyway.
+
+**What I may set.** Only what affects me alone: `user.name`, a stage's `prompt` and `post` lists, a procedure's list, and the names of the environment variables holding my Jira credentials. Everything else is the team's. A personal file that sets anything else — the project ID, the work store, the backend, a stage's `pre` checks — is a problem naming the file and the key, and every command that reads the configuration stops on it with exit 1. `TCW_NO_PERSONAL_CONFIG=1` makes TCW read neither personal file, for a clean run.
+
+**Adding rather than replacing.** A list I set replaces the one below it. An entry `inherit: true` stands for the list the layer below resolved, so `[{blob: "my note"}, {inherit: true}]` puts my note above the team's instructions and keeps them. In `tcw-config.yaml`, `inherit: true` stands for TCW's own text, which replaces the `builtin: true` of earlier versions; writing `builtin:` is now an error that names `docs/migration-guide-2.8-to-3.0.0.md`.
+
+**Paths and commands.** A `file:` path is read relative to the folder of the file that declares it, and may not leave that folder. A command from any layer runs from the project root, with `TCW_CONFIG_DIR` naming the declaring file's folder so my own scripts can find their neighbors.
+
+**I can tell when my files changed something.** `tcw work stage prompt` and `tcw work procedure` add a `note:` line on standard error naming my files when they changed the list being composed, and a failed `post` command names the file it came from. My files apply only to the project I am acting in; a connected project is always read as its team configured it.

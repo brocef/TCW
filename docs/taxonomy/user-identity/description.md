@@ -1,0 +1,1 @@
+Who the person running a command is, in the form the work backend compares with a work item's assignee: user.name from a personal configuration file when items are kept in files, and the account the credentials belong to when they are kept in Jira.
