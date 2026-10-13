@@ -29,6 +29,7 @@ import yaml
 
 from tcw.errors import BackendError, MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.findings import Finding
+from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.store.fs import _atomic_write_all, _umask
 from tcw.work.backend import Comment, Query
@@ -278,7 +279,7 @@ class FsWorkBackend:
     def _write(self, item: Item, raw_stage: str) -> None:
         path = self.work_path / item.slug.folder / ITEM_FILE
         _replace_file(path, _dump(item, raw_stage))
-        self.report(f"wrote {path}")
+        self.report(f"wrote {shown(path)}")
 
     def _parent_of(self, slug: Slug) -> Slug | None:
         if slug.project != self.project:
@@ -312,7 +313,7 @@ class FsWorkBackend:
                           f"title")
         self.work_path.mkdir(parents=True, exist_ok=True)
         path.mkdir()
-        self.report(f"created {path}")
+        self.report(f"created {shown(path)}")
         try:
             base = Item(slug=Slug(self.project, folder), title=title, stage=stage,
                         created=date.fromisoformat(folder[:10]),
@@ -324,10 +325,10 @@ class FsWorkBackend:
                 document = self._request_path(item.slug)
                 document.parent.mkdir(parents=True, exist_ok=True)
                 _replace_file(document, request)
-                self.report(f"wrote {document}")
+                self.report(f"wrote {shown(document)}")
         except BaseException:
             shutil.rmtree(path, ignore_errors=True)
-            self.report(f"removed {path}")
+            self.report(f"removed {shown(path)}")
             raise
         return self.read(folder)
 
@@ -389,7 +390,7 @@ class FsWorkBackend:
                 break
         finally:
             os.unlink(tmp)
-        self.report(f"wrote {path}")
+        self.report(f"wrote {shown(path)}")
         return path
 
     @staticmethod
@@ -452,7 +453,7 @@ class FsWorkBackend:
                        if i.parent == old_slug or old_slug in i.blocked_by]
 
         os.rename(old_path, new_path)
-        self.report(f"moved {old_path} to {new_path}")
+        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
 
         failed: list[str] = []
         for name in referencing:
@@ -470,7 +471,8 @@ class FsWorkBackend:
                 failed.append(f"{name} ({error})")
         if failed:
             raise BackendError(f"moved {folder} to {new}, but these items still "
-                               f"name the old slug: {', '.join(failed)}")
+                               f"name the old slug: {', '.join(failed)}",
+                               name=str(new_slug))
 
         report_mentions(self.work_path, folder, self.report)
         self.report(f"items in other projects that name {old_slug} are not "

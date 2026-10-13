@@ -3,7 +3,7 @@
 Every stdout line is a full slug, a stage, a path, a record or composed text,
 so a script can read it; everything said to a person goes to stderr. A failure
 is a `TcwError` carrying its exit code, which `tcw.cli.main` turns into
-`tcw: <message>` on stderr.
+`tcw work <command>: <message>` on stderr.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.errors import BackendError, NotFound, Refused, UsageError
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_node_root
 from tcw.stdin import read_piped_stdin
@@ -146,14 +146,8 @@ def _new(args) -> int:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
-        try:
-            made = delegate(args.project, args.title, request, args.priority,
-                            here=root, report=_say)
-        except TcwError as error:
-            if error.name:
-                print(error.name)      # the ticket created before it stopped
-            raise
-        print(made)
+        print(delegate(args.project, args.title, request, args.priority,
+                       here=root, report=_say))
         return codes.OK
     backend = open_backend(root)
     changes = Changes(
@@ -161,12 +155,8 @@ def _new(args) -> int:
         complexity=_optional(args.complexity), assignee=_optional(args.assignee),
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
-    try:
-        item = backend.create(args.title, changes, stage=stage, request=request)
-    except TcwError as error:
-        if error.name:
-            print(error.name)          # what was created before it stopped
-        raise
+    # A failure after creation carries the name; `tcw.cli.main` prints it.
+    item = backend.create(args.title, changes, stage=stage, request=request)
     print(item.slug)
     return codes.OK
 

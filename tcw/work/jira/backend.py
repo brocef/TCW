@@ -27,6 +27,7 @@ from tcw.errors import (
     BackendError, MovedWithoutNote, NotFound, Refused, TcwError, Unreachable, UsageError,
 )
 from tcw.findings import Finding
+from tcw.output import shown
 from tcw.store.base import normalize_tag
 from tcw.work.backend import Comment, Query
 from tcw.work.config import WorkConfig
@@ -543,11 +544,11 @@ class JiraBackend:
             raise NotFound(f"no one assignable in Jira project {self.jira.project} "
                            f"matches {value!r}")
         if len(found) > 1:
-            shown = ", ".join(f"{u.get('displayName')} ({u['accountId']})"
-                              for u in found[:SHOWN_MATCHES])
+            listed = ", ".join(f"{u.get('displayName')} ({u['accountId']})"
+                               for u in found[:SHOWN_MATCHES])
             more = " and more" if len(found) > SHOWN_MATCHES else ""
             raise Refused(f"{value!r} matches several people in Jira project "
-                          f"{self.jira.project}: {shown}{more}; give one account id")
+                          f"{self.jira.project}: {listed}{more}; give one account id")
         if isinstance(found[0].get("displayName"), str):
             self.names[found[0]["accountId"]] = found[0]["displayName"]
         return str(found[0]["accountId"])
@@ -631,10 +632,10 @@ class JiraBackend:
         path = self.work_path / folder
         if not (resume and path.is_dir()):
             path.mkdir(parents=True)
-            self.report(f"created {path}")
+            self.report(f"created {shown(path)}")
         document = path / ITEM_FILE
         document.write_text(f"ticket: {self.jira.site}/browse/{key}\n", encoding="utf-8")
-        self.report(f"wrote {document}")
+        self.report(f"wrote {shown(document)}")
 
     # -- create (Design 4.1) -------------------------------------------------------
 
@@ -882,7 +883,7 @@ class JiraBackend:
                             f"to {old_slug} ({again})")
             raise BackendError(f"could not move {old_path} to {new_path}: {error}; "
                                f"{restored}") from None
-        self.report(f"moved {old_path} to {new_path}")
+        self.report(f"moved {shown(old_path)} to {shown(new_path)}")
         report_mentions(self.work_path, folder, self.report)
         return self.read(new)
 
@@ -1012,8 +1013,8 @@ class Refusal:
 
 
 def _describe(transition: Transition) -> str:
-    shown = f" (screen: {', '.join(transition.fields)})" if transition.fields else ""
-    return f"{transition.name} → {transition.to_status}{shown}"
+    screen = f" (screen: {', '.join(transition.fields)})" if transition.fields else ""
+    return f"{transition.name} → {transition.to_status}{screen}"
 
 
 def choose_transition(transitions: Iterable[Transition],

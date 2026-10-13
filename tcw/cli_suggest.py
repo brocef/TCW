@@ -31,6 +31,11 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "get": ("show",),
     "cat": ("show",),
     "ls": ("list",),
+    # The 2.x lifecycle commands, which `advance` replaced (TCW-73 Design 2).
+    "start": ("advance",),
+    "submit": ("advance",),
+    "rework": ("advance",),
+    "complete": ("advance",),
 }
 
 # Never offered by any rule, and never answered either: pointing somebody at a
@@ -83,6 +88,9 @@ class SuggestingParser(argparse.ArgumentParser):
     parent's. `attach_index` gives the whole tree what the hint needs."""
 
     def __init__(self, *args, **kwargs):
+        # No abbreviated options: `--ta` is not `--tag`. Each option has one
+        # spelling (TCW-73 Design 5.5), which abbreviations would make false.
+        kwargs.setdefault("allow_abbrev", False)
         super().__init__(*args, **kwargs)
         # Python 3.14 has argparse's own close-spelling hint. Off, explicitly,
         # so a later default cannot print a second, different suggestion.
@@ -182,6 +190,9 @@ def attach_index(root: SuggestingParser) -> None:
     def walk(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
         parser._tcw_root = root
         parser._tcw_path = path
+        # What an error line starts with: `tcw work advance: …`. The deepest
+        # parser that parsed sets it last, so it names the leaf command.
+        parser.set_defaults(_command=" ".join(path))
         parsers[path] = parser
         action = _subparsers(parser)
         if action is None:

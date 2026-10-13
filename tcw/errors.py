@@ -19,7 +19,10 @@ class TcwError(Exception):
     """
 
     code = codes.ERROR
-    name: str | None = None
+
+    def __init__(self, message: str = "", *, name: str | None = None):
+        super().__init__(message)
+        self.name = name
 
 
 class BackendError(TcwError):
@@ -43,10 +46,6 @@ class Refused(TcwError):
     """
 
     code = codes.REFUSED
-
-    def __init__(self, message: str, *, name: str | None = None):
-        super().__init__(message)
-        self.name = name
 
 
 class NotFound(TcwError):

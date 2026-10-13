@@ -5,6 +5,7 @@ implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 """
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -609,25 +610,35 @@ def _normalize(argv: list[str]) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(_normalize(argv))
+    command = getattr(args, "_command", "tcw")
     try:
         return args.func(args)
     except TcwError as error:
-        print(f"tcw: {error}", file=sys.stderr)
+        # A failure after something was created still names it, on stdout
+        # exactly as success would (Design 1.8).
+        if error.name:
+            print(error.name)
+        print(f"{command}: {error}", file=sys.stderr)
         return error.code
     except (ValueError, MultipleMatch) as error:
-        # `MultipleMatch` is not a `ValueError`, so a verb that does not catch it
-        # itself — `start`, `submit` — printed a traceback for a slug two folders
-        # hold. Its message names both folders; this is only the safety net.
-        print(f"tcw: {error}", file=sys.stderr)
+        # A fault that reached here unclassified, not an answer: exit 1.
+        print(f"{command}: {error}", file=sys.stderr)
         return 1
     except yaml.YAMLError as error:
         # A malformed YAML file is the user's, not a bug in TCW, so it reads as
-        # a message rather than a traceback. Here rather than at each of the
-        # twenty-odd `load_yaml` calls that do not catch it: refusing is already
-        # the right answer at every one of them — `init` must not overwrite a
-        # config it cannot read — and only the presentation was wrong. The
-        # loader's message names the file (`tcw.store.yaml_source.load`).
-        print(f"tcw: {error}", file=sys.stderr)
+        # a message rather than a traceback. The loader's message names the
+        # file (`tcw.store.yaml_source.load`).
+        print(f"{command}: {error}", file=sys.stderr)
+        return 1
+    except BrokenPipeError:
+        # Whoever read stdout stopped reading (`tcw work list | head -1`).
+        # Nothing to say about it: point stdout at the null device so the
+        # interpreter's own flush at exit cannot fail a second time, and exit
+        # 1 as Python's documentation on SIGPIPE recommends.
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (OSError, ValueError):
+            pass                       # stdout is not a file descriptor here
         return 1
     except subprocess.CalledProcessError as error:
         # Deliberately generic: the only policy here is "a git subprocess
@@ -635,12 +646,10 @@ def main(argv: list[str] | None = None) -> int:
         # capture git's output (so a retried failure does not print once per
         # try), and it is printed here; an uncaptured call has already shown it.
         # `cmd` is a sequence *or* a string (stdlib contract); joining a string
-        # iterates its characters. No shipped raiser passes one, but a handler
-        # whose whole justification is that it assumes nothing about its caller
-        # cannot assume that either.
+        # iterates its characters.
         cmd = error.cmd if isinstance(error.cmd, str) else \
             shlex.join(str(a) for a in error.cmd)
-        print(f"tcw: git command failed (exit {error.returncode}): {cmd}",
+        print(f"{command}: git command failed (exit {error.returncode}): {cmd}",
               file=sys.stderr)
         if isinstance(error.stderr, str) and error.stderr.strip():
             print(error.stderr.rstrip("\n"), file=sys.stderr)
@@ -648,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as error:
         # A file TCW could not read or write — permissions, a full disk, a
         # path that vanished — is reported in one line, not as a traceback.
-        print(f"tcw: {error}", file=sys.stderr)
+        print(f"{command}: {error}", file=sys.stderr)
         return 1
 
 
