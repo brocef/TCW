@@ -59,12 +59,29 @@ Two contracts are easy to leave implicit and are worth asserting wherever they
 apply, rather than in a scenario of their own:
 
 - **`path`-style commands emit exactly one absolute path and a newline on
-  stdout, and nothing on stderr.** `tcw work path`, `tcw taxonomy path`,
-  `tcw capabilities path`, `tcw work inbox path` and `tcw work scaffold` are all
-  consumed as `$(…)`. "Prints a directory that exists" is a weaker claim than the
-  one callers actually depend on.
+  stdout, and nothing on stderr.** `tcw work path`, `tcw taxonomy path` and
+  `tcw capabilities path` are all consumed as `$(…)`. "Prints a directory that
+  exists" is a weaker claim than the one callers actually depend on.
 - **Stream discipline.** Any command whose stdout is captured must keep progress
   and warnings on stderr. Assert stdout exactly, not with `grep`.
+
+## What is here, and why only two
+
+TCW 3.0 (TCW-73) kept two of the fourteen scenarios written for 2.x:
+
+- **`06-stdin-and-process-boundaries.md`**: a held-open pipe cannot be
+  reproduced inside one Python process, so nothing in pytest replaces it.
+- **`13-release-integrity.md`**: it tests the installed wheel and sdist, which
+  every in-process test bypasses.
+
+The other twelve described commands 3.0 removed (`<axis> init`, `stage gate`,
+`scaffold`, `reconcile`, the worktree merge-back, the 2.x stage transitions) or
+behaviour that `tests/test_cli_contract.py` now holds for every command, run
+as a subprocess: the stdout of each command, the files it names on stderr, its
+exit codes, and its behaviour outside a project. The web viewer's scenario
+goes with TCW-77, which rewrites the viewer. Conventions 2 and 6 below still
+read "git" and "node" from 2.x; a scenario for 3.0 runs outside a git
+repository unless it is about git, and says "project".
 
 ## Status
 
@@ -76,4 +93,4 @@ node before being accepted, and all are folded in. A local-model pass is
 outstanding.
 
 **No scripts exist yet** — that is deliberate. The scenarios are the
-specification, and an error here becomes thirteen wrong scripts.
+specification, and an error here becomes a wrong script.

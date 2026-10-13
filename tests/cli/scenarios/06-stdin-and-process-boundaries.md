@@ -5,8 +5,9 @@ end open is not reproducible inside one Python process.
 
 ## Functionality covered
 
-- Piped intake into `tcw work new`, `work delegate`, `work escalate`,
-  `taxonomy add`, `capabilities add` — all five entry points
+- Piped text into the four commands that read it: `tcw work new` (the
+  request), `tcw work comment` (the comment), `tcw taxonomy add` (the
+  description) and `tcw capabilities add` (the body)
 - `TCW_STDIN_TIMEOUT`
 - Refusal on a truncated read
 - Inherited-but-open stdin (the reported hang)
@@ -16,9 +17,9 @@ end open is not reproducible inside one Python process.
 
 | # | Assertion |
 | - | --------- |
-| 1 | `echo "body" \| tcw work new "Title"` creates the item **and** stores the piped text as the item's raw intake. |
-| 2 | The same for `taxonomy add` (piped description) and `capabilities add`. `taxonomy add`'s positional `description` still wins when given — the pipe does not override an explicit argument. |
-| 3 | `tcw work new "Title" </dev/null` creates the item with **no** intake artifact, exit 0. |
+| 1 | `echo "body" \| tcw work new "Title"` creates the item **and** stores the piped text as its request: `tcw work show <slug>` prints it under `request:`. stdout of `new` is exactly the full slug. |
+| 2 | The same for `taxonomy add` (piped description) and `capabilities add` (piped body); each prints exactly the new entry's path on stdout. `taxonomy add` takes its description from stdin only: a second positional argument is a usage error (exit 2). |
+| 3 | `tcw work new "Title" </dev/null` creates the item with **no** request (`request: none` in `show`), exit 0. `tcw work comment <slug> </dev/null` is a usage error (exit 2): a comment needs text. |
 | 4 | **The reported bug.** `tcw work new "Title"` invoked with a stdin that is an open pipe **nobody ever writes to and nobody closes** completes within a few seconds, exit 0, item created. Measured with a hard `timeout`; a timeout kill is the failure. |
 | 5 | The same held-open-pipe invocation prints a note on **stderr** saying it proceeded without input — a silent proceed is indistinguishable from lost input. stdout still carries only the slug. |
 | 6 | A producer that is **slow to start** but then writes (`(sleep 1; echo body) \| tcw work new "Title"`) has its text read in full. The bound measures a gap in the stream, not total duration. |
@@ -28,8 +29,8 @@ end open is not reproducible inside one Python process.
 | 10 | `TCW_STDIN_TIMEOUT=10` on a producer that first writes after 3s reads the text (proving the knob raises the bound, not just that it is parsed). |
 | 11 | A malformed `TCW_STDIN_TIMEOUT` (`abc`, `-1`) falls back to the default **silently** and still creates the item — a bad environment variable must not break item creation. |
 | 12 | Interactive use is unchanged: with a pty (or, if that is too heavy, with stdin bound to `/dev/tty` where available), no intake is read and nothing blocks. If a pty is impractical in the harness, **skip explicitly with a message** rather than pretending to cover it. |
-| 13 | Every intake entry point behaves identically for cases 3, 4 and 8 — the fix is one implementation, and a table-driven loop over all five commands proves it rather than assuming it. |
-| 14 | A transition that runs `git commit` with `tcw`'s stdin held open by a pipe completes promptly, with a repository `pre-commit` hook present that reads stdin. |
+| 13 | Every entry point that reads stdin behaves identically for cases 4 and 8 — the reading is one implementation (`tcw/stdin.py`), and a table-driven loop over all four commands proves it rather than assuming it. |
+| 14 | A `post` hook on a stage that reads its own stdin, run by `tcw work advance` with `tcw`'s stdin held open by a pipe, completes promptly: hooks are given no stdin. |
 
 ## Refusals asserted
 
@@ -37,8 +38,9 @@ end open is not reproducible inside one Python process.
 
 ## Explicitly not covered here
 
-Timeouts on `git` subprocesses. A hung `git` is a different failure and is
-deliberately out of scope for 1.0.0.
+Timeouts on the read-only `git` calls TCW still makes (finding the repository
+root, the uncommitted-changes check). A hung `git` is a different failure and
+is out of scope here.
 
 ## Notes for the implementer
 
@@ -58,7 +60,7 @@ Do **not** substitute `< /dev/null` or a closed descriptor anywhere in this file
 background holder in the `EXIT` trap; a leaked `sleep` outliving the run is a
 bug in the test, not a harmless leftover.
 
-Assertion 14 documents something already measured and found **not** to be a
-hang: git redirects its hooks' stdin. Keep the assertion anyway — it is cheap,
-and it pins the behaviour of a component TCW does not control and could change.
-Word its comment so nobody later reads it as evidence of a bug that was fixed.
+Assertion 14 pins that a hook never inherits `tcw`'s stdin. Since TCW 3.0 TCW
+changes no git state itself, so a project that records its changes does it in
+a hook, and that hook must not be able to stall on a pipe it was handed by
+accident.
