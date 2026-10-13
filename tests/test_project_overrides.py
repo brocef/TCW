@@ -263,7 +263,7 @@ def test_the_override_is_honoured_by_every_command(provisionable, monkeypatch, c
     assert main(["work", "list", "--include-descendants"]) == 0
     assert "core-project" in capsys.readouterr().out
 
-    assert main(["work", "nodes"]) == 0
+    assert main(["projects", "list"]) == 0
     assert "core-project" in capsys.readouterr().out
 
     assert main(["taxonomy", "list"]) == 0

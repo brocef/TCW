@@ -557,81 +557,6 @@ def _tags_rm(args) -> int:
     return _write_tags(lambda tags: tags - given)
 
 
-# -- the project graph and init --------------------------------------------------------
-
-
-def _nodes(args) -> int:
-    from tcw.store.fs import (
-        _has_work_store, child_nodes, parent_node, registered_children,
-        registered_parent, registered_project_id, unreachable_children,
-        unreachable_parent,
-    )
-    node = project_root()
-    if not _has_work_store(node):
-        raise BackendError("this project has no work store here — run `tcw init` "
-                           "in the project folder")
-    parent = parent_node(node)
-    print(f"node:   {registered_project_id(node, node)}")
-    if parent is not None:
-        print(f"parent: {registered_project_id(node, parent)}")
-    else:
-        registered = registered_parent(node)
-        if registered is not None:
-            print(f"parent: {registered_project_id(node, registered)}"
-                  f"{_no_store_note(registered)}")
-        elif (absent := unreachable_parent(node)) is not None:
-            print(f"parent: {absent.id}  (not in this checkout)")
-        else:
-            print("parent: (none — root)")
-    children = registered_children(node)
-    absent_children = unreachable_children(node)
-    if children or absent_children:
-        print("children:")
-        with_store = {c.resolve() for c in child_nodes(node)}
-        for c in children:
-            print(f"  {registered_project_id(node, c)}"
-                  f"{'' if c.resolve() in with_store else _no_store_note(c)}")
-        for entry in absent_children:
-            print(f"  {entry.id}  (not in this checkout)")
-    else:
-        print("children: (none — leaf)")
-    _print_upstreams(node)
-    return codes.OK
-
-
-def _print_upstreams(node: Path) -> None:
-    """The projects this one reads but may not write, each with who declared it
-    and where it is. Printed only when there is one."""
-    import os
-    try:
-        registry = FsProjectRegistry.open(node)
-    except ValueError:
-        return
-    here = registry.current.id
-    lines = []
-    for declarer in [here, *(a.id for a in registry.ancestors(here))]:
-        for upstream_id in registry.declared_upstream_ids(declarer):
-            project = registry.get(upstream_id)
-            where = (os.path.relpath(project.locator, node) if project is not None
-                     else "(not in this checkout)")
-            lines.append(f"  {upstream_id}  (declared by {declarer})  {where}")
-    if lines:
-        print("upstream (read-only):")
-        print("\n".join(lines))
-
-
-def _no_store_note(child: Path) -> str:
-    """Why a registered child keeps no usable work store here."""
-    from tcw.store.fs import declared_repository
-    try:
-        declaration, _ = declared_repository(child, "work")
-    except Exception:
-        declaration = None
-    if declaration is not None:
-        return "  (work store not provisioned here)"
-    return "  (no work store)"
-
-
 # -- the parser ------------------------------------------------------------------------------
 
 
@@ -765,6 +690,3 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = verbs.add_parser("adopt", help="make a ticket an item")
     p.add_argument("key", help="the ticket's Jira key")
     p.set_defaults(func=_tickets_adopt)
-
-    p = cmds.add_parser("nodes", help="this project's parent and child projects")
-    p.set_defaults(func=_nodes)

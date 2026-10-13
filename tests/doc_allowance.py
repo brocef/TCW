@@ -36,6 +36,7 @@ REMOVED_COMMANDS = (
     # TCW-73 (its Design 9.4). `tcw work procedure prompt <id>` needs no
     # entry: `prompt` parses as a procedure name, refused when the command runs.
     "tcw work init",
+    "tcw work nodes",
 )
 
 # Flags TCW-70 removed from commands that survive, as (command, flag). A

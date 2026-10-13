@@ -109,80 +109,28 @@ def test_a_routing_node_is_a_legal_graph(tmp_path):
         FsProjectRegistry.open(root).require_valid()
 
 
-def test_nodes_reports_a_registered_parent_that_keeps_no_board(tmp_path, monkeypatch, capsys):
+def _projects(monkeypatch, capsys, where):
+    """`tcw projects list --json` run in `where`, as `{id: relation}`."""
+    import json
     from tcw.cli import main
 
+    monkeypatch.chdir(where)
+    assert main(["projects", "list", "--json"]) == 0
+    return {p["id"]: p["relation"] for p in json.loads(capsys.readouterr().out)["projects"]}
+
+
+def test_a_registered_parent_that_keeps_no_board_is_listed(tmp_path, monkeypatch, capsys):
     a, b, c = _routing_graph(tmp_path)
-    monkeypatch.chdir(c)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    # Two spaces before the marker, the same spacing the children lines use —
-    # the parent branch used to hardcode its own note with one.
-    assert "parent: b-project  (no work store)" in out
-
-    monkeypatch.chdir(a)
-    assert main(["work", "nodes"]) == 0
-    assert "parent: (none — root)" in capsys.readouterr().out
+    assert _projects(monkeypatch, capsys, c)["b-project"] == "parent"
+    assert "parent" not in _projects(monkeypatch, capsys, a).values()
 
 
-def test_nodes_lists_a_registered_child_that_keeps_no_board(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-
+def test_a_registered_child_that_keeps_no_board_is_listed(tmp_path, monkeypatch, capsys):
     a, b, c = _routing_graph(tmp_path)
-
-    monkeypatch.chdir(a)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    assert "children:" in out
-    assert "b-project  (no work store)" in out
-    assert "(none — leaf)" not in out
-
-    # `tcw work nodes` is a work subcommand and refuses at a node with no work
-    # store, so the routing node itself cannot be queried. Recorded rather than
-    # asserted away: it is existing behaviour and out of this item's scope.
-    monkeypatch.chdir(b)
-    assert main(["work", "nodes"]) == 1
-
-    monkeypatch.chdir(c)
-    assert main(["work", "nodes"]) == 0
-    assert "children: (none — leaf)" in capsys.readouterr().out
-
-
-def test_the_parent_marker_says_which_reason_applies(tmp_path, monkeypatch, capsys):
-    """A declared-but-unobtained board is not the same as no board at all.
-
-    The children lines have distinguished the two since they were added; the
-    parent line hardcoded "no work store" and so reported the wrong reason for a
-    parent whose board this machine simply has not fetched.
-    """
-    import subprocess
-    import yaml
-    from tcw.cli import main
-    from tcw.store.fs import init
-
-    parent = tmp_path / "parent"
-    child = tmp_path / "parent" / "child"
-    child.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(parent)], check=True)
-    subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
-    subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
-    init(["work"], parent, "parent-project")
-    init(["work"], child, "child-project")
-
-    # The parent's board is declared and not here.
-    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
-    doc["connected-projects"] = {"children": {"child-project": "child"}}
-    doc.setdefault("work", {})["path"] = str(tmp_path / "absent")
-    doc["work"]["repository"] = {"url": "https://example.invalid/boards.git"}
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
-    child_doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
-    child_doc["connected-projects"] = {"parent": {"parent-project": ".."}}
-    (child / "tcw-config.yaml").write_text(yaml.safe_dump(child_doc, sort_keys=False))
-
-    monkeypatch.chdir(child)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    assert "parent: parent-project  (work store not provisioned here)" in out
+    assert _projects(monkeypatch, capsys, a)["b-project"] == "child"
+    # Unlike 2.8's `tcw work nodes`, the routing project itself can be asked.
+    assert _projects(monkeypatch, capsys, b)["c-project"] == "child"
+    assert "child" not in _projects(monkeypatch, capsys, c).values()
 
 
 # ── an unreachable relation is named, never erased ──────────────────────────
@@ -212,11 +160,7 @@ def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
     from tcw.cli import main
 
     child = _child_missing_its_parent(tmp_path)
-    monkeypatch.chdir(child)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    assert "away-project" in out
-    assert "(none — root)" not in out
+    assert _projects(monkeypatch, capsys, child)["away-project"] == "parent"
 
 
 def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
@@ -236,10 +180,6 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
     (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
 
-    monkeypatch.chdir(parent)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    assert "away-project" in out
-    assert "(none — leaf)" not in out
+    assert _projects(monkeypatch, capsys, parent)["away-project"] == "child"
 
 

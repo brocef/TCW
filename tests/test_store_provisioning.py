@@ -560,7 +560,7 @@ def _declared_but_malformed(tmp_path: Path) -> Path:
 
 @pytest.mark.parametrize("argv", [
     ["work", "list"], ["work", "show", "anything"], ["work", "path"],
-    ["work", "nodes"], ["work", "reconcile", "anything"],
+    ["work", "reconcile", "anything"],
     ["work", "escalate", "anything"],
 ])
 def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypatch,
@@ -607,7 +607,7 @@ def test_the_board_no_longer_misdirects_to_tcw_init(tmp_path, monkeypatch, capsy
 
 @pytest.mark.parametrize("argv", [
     ["work", "list"], ["work", "show", "anything"], ["work", "path"],
-    ["work", "nodes"], ["work", "reconcile", "anything"],
+    ["work", "reconcile", "anything"],
     ["work", "escalate", "anything"],
 ])
 def test_every_work_command_says_the_same_actionable_thing(tmp_path, monkeypatch,
@@ -659,14 +659,11 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
         path.write_text(yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.chdir(parent)
-    assert main(["work", "nodes"]) == 0
+    assert main(["projects", "list"]) == 0
 
-    out = capsys.readouterr().out
-    assert "parent-project" in out
-    assert "child-project  (work store not provisioned here)" in out, \
-        ("a registered child is listed even when its store is not usable here — "
-         "omitting it made a node with children read as a leaf — and the marker "
-         "says which of the two reasons applies")
+    # A registered child is listed even when its store is not usable here:
+    # omitting it made a project with children read as having none.
+    assert capsys.readouterr().out.split() == ["parent-project", "child-project"]
 
 
 # ── the `tcw provision` verb ─────────────────────────────────────────────────
@@ -789,7 +786,7 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
 
 @pytest.mark.parametrize("argv", [
     ["work", "list"], ["work", "show", "an-item"], ["work", "path"],
-    ["work", "nodes"], ["work", "docs"], ["validate"],
+    ["projects", "list"], ["work", "docs"], ["validate"],
 ])
 def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, argv):
     """A repository's config can name a URL. Nothing but the provisioning verb

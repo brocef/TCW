@@ -454,7 +454,7 @@ class TestWorktreeNode:
         from tcw.cli import main
         _, server = two_node_graph(tmp_path)          # no _git_init anywhere
         monkeypatch.chdir(server)
-        for argv in (["work", "list"], ["validate"], ["work", "nodes"]):
+        for argv in (["work", "list"], ["validate"], ["projects", "list"]):
             assert main(argv) == 0, argv
 
 
@@ -514,17 +514,16 @@ class TestCLISmoke:
         from tcw.cli import main
         root, child_a, _ = nested_monorepo(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["work", "nodes"]) == 0
-        out = capsys.readouterr().out
+        assert main(["projects", "list"]) == 0
+        out = capsys.readouterr().out.split()
         assert "child-a" in out and "child-b" in out
 
     def test_lone_cli_nodes_leaf(self, tmp_path, monkeypatch, capsys):
         from tcw.cli import main
         root = lone_project(tmp_path)
         monkeypatch.chdir(root)
-        assert main(["work", "nodes"]) == 0
-        out = capsys.readouterr().out
-        assert "leaf" in out
+        assert main(["projects", "list"]) == 0
+        assert len(capsys.readouterr().out.split()) == 1
 
     def test_nested_cli_delegate_subfolder_unsupported_sp2_boundary(self, tmp_path, monkeypatch, capsys):
         from tcw.cli import main

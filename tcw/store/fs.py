@@ -450,7 +450,7 @@ def routed_unreachable_children(root: Path) -> "list[UnreachableProject]":
 def parent_node(root: Path) -> Path | None:
     """Direct registered parent that contains a work store.
 
-    The *direct* question, for callers that mean it — `tcw work nodes` prints
+    The *direct* question, for callers that mean it — `tcw projects list` prints
     this node's parent, not the nearest one that happens to keep a board. A walk
     up the graph wants `nearest_work_ancestor` instead.
     """
@@ -465,7 +465,7 @@ def parent_node(root: Path) -> Path | None:
 def registered_parent(root: Path) -> Path | None:
     """Direct registered parent, board or no board.
 
-    What `parent_node` answers before the store filter. `tcw work nodes` needs
+    What `parent_node` answers before the store filter. `tcw projects list` needs
     both to tell "no parent registered" apart from "the registered parent keeps
     no board", which used to print identically.
     """
@@ -476,7 +476,7 @@ def registered_parent(root: Path) -> Path | None:
 def registered_children(root: Path) -> list[Path]:
     """Direct registered children, board or no board.
 
-    What `child_nodes` answers before the store filter. `tcw work nodes` needs
+    What `child_nodes` answers before the store filter. `tcw projects list` needs
     the unfiltered list: a routing node that keeps no board is still a child, and
     omitting it made a node with one read as a leaf.
     """
@@ -488,7 +488,7 @@ def unreachable_parent(root: Path) -> "UnreachableProject | None":
     """The declared parent this checkout does not have, or None.
 
     What `registered_parent` cannot answer: it returns a path, and a project
-    that is not here has none. Without this, `tcw work nodes` printed
+    that is not here has none. Without this, `tcw projects list` printed
     `(none — root)` for a node whose config plainly names a parent — the exact confusion the comment above
     `child_nodes` forbids, and which `docs/guide/multi-repo.md` promises does
     not happen.

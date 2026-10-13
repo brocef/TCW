@@ -534,31 +534,31 @@ def test_delegate_into_an_upstream_is_refused(tmp_path, where):
     _assert_core_untouched(tmp_path)
 
 
+def _listed(where):
+    import json
+    out = _tcw(where, "projects", "list", "--json")
+    assert out.returncode == 0, out.stderr
+    return {p["id"]: p for p in json.loads(out.stdout)["projects"]}
+
+
 @pytest.mark.parametrize("where", ["a", "a/pkg"])
-def test_nodes_lists_the_upstream_under_its_own_heading(tmp_path, where):
+def test_projects_list_names_the_upstream(tmp_path, where):
     root, _ = _cli_family(tmp_path)
     _with_package(root)
-    out = _tcw(root / where, "work", "nodes")
-    assert out.returncode == 0, out.stderr
-    assert "upstream (read-only):" in out.stdout, out.stdout
-    section = out.stdout.split("upstream (read-only):", 1)[1]
-    assert "core" in section and "declared by a" in section, out.stdout
+    assert _listed(root / where)["core"]["relation"] == "upstream"
 
 
-def test_nodes_names_an_absent_upstream(tmp_path):
+def test_projects_list_names_an_absent_upstream(tmp_path):
     root, _ = _cli_family(tmp_path)
     import shutil
     shutil.rmtree(tmp_path / "core")
-    out = _tcw(root / "a", "work", "nodes")
-    section = out.stdout.split("upstream (read-only):", 1)[1]
-    assert "core" in section and "not in this checkout" in section, out.stdout
+    core = _listed(root / "a")["core"]
+    assert (core["relation"], core["present"]) == ("upstream", False)
 
 
-def test_nodes_without_an_upstream_is_unchanged(tmp_path):
+def test_projects_list_without_an_upstream(tmp_path):
     root, _ = _cli_family(tmp_path)
-    out = _tcw(root / "b", "work", "nodes")
-    assert out.returncode == 0, out.stderr
-    assert "upstream" not in out.stdout, out.stdout
+    assert "upstream" not in {p["relation"] for p in _listed(root / "b").values()}
 
 
 def test_the_upstream_stays_off_the_familys_lists(tmp_path):

@@ -64,12 +64,12 @@ def stacked(tmp_path) -> Path:
 
 # ── criterion 4: the topology view is unchanged ─────────────────────────────
 
-def test_nodes_still_prints_the_direct_topology(routed, monkeypatch, capsys):
+def test_projects_list_prints_the_direct_topology(routed, monkeypatch, capsys):
+    import json
     monkeypatch.chdir(routed)
-    assert main(["work", "nodes"]) == 0
-    out = capsys.readouterr().out
-    assert [ln.split()[0] for ln in out.split("children:", 1)[1].splitlines() if ln.strip()] \
-        == ["mid"], out                    # the direct topology, as before
+    assert main(["projects", "list", "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)["projects"]
+    assert [p["id"] for p in rows if p["relation"] == "child"] == ["mid"]
 
 
 # ── review finding: one registry, opened at the root ───────────────────────

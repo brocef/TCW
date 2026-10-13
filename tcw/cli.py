@@ -14,6 +14,7 @@ from pathlib import Path
 from tcw.cli_suggest import SuggestingParser, attach_index
 from tcw.errors import TcwError
 from tcw import __version__
+from tcw import projects_cli
 from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
@@ -587,6 +588,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="do not open a browser automatically")
     p_serve.set_defaults(func=_cmd_serve)
 
+    projects_cli.add_subparser(sub)
     for mod in _BUILT:
         mod.add_subparser(sub)
     for name in _STUBBED:
