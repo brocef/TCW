@@ -5,13 +5,13 @@ made from `epic/tcw-3.0` at `8bf085a3`, in sixteen commits (`c81306ad` to
 `7d464442`), one per plan task. Task 1 (the `TCWTEST` checklist) was committed on
 main as `9644f8e4`.
 
-**One part is not done yet: Task 15, the live check against `TCWTEST` (AC 23, 24).**
-It waits for the owner to apply `tcwtest-checklist.md`. Read on 2026-10-08,
-`TCWTEST` still has only the statuses `To Do`, `In Progress` and `Done` for every
-issue type, and none of the TCW Project, TCW Item, Effort or Complexity fields on
-the Task create screen. So the scenario cannot run there yet. `tests/work/jira/capture.py`,
-`tests/work/jira/recorded/` and `test_recorded_shapes.py` come from that run and
-do not exist yet. Everything else in the plan is done.
+**Task 15, the live check against `TCWTEST` (AC 23, 24), ran on 2026-10-13**,
+after `TCWTEST` was prepared through the Jira API at the owner's request
+(`tcwtest-checklist.md`). Its answers, findings and output are in
+`live-check.md`. It found two defects, both fixed on the branch with the spec
+amended on main: Jira silently discards a comment sent with a transition that
+has no screen, and `validate --remote` required a Parent field on Epics, which
+have none. It also corrected the fake on two points of Jira's behavior.
 
 ## What was built
 
@@ -30,6 +30,7 @@ do not exist yet. Everything else in the plan is done.
 | 12 | `740629fe` | Offline `validate` and links into Jira-mode projects, with no request. |
 | 13 | `b27e37ba` | `tcw validate --remote`. |
 | 14 | `3db0cb0f` | The scenario against the fake; the guards for AC 21 and 22. |
+| 15 | `579e57af`, `24f112b4`, `7be0e850`, `14338f5f` | The live check: two fixes from its findings, `capture.py` and the probes, `recorded/` and the shape test. |
 | 16 | `1862683a`, `7d464442` | Capability and taxonomy records; their declaration, kept on main. |
 | 17 | `05b1cf6a` | Release-notes and changelog entries. |
 
@@ -64,8 +65,8 @@ do not exist yet. Everything else in the plan is done.
 | 20 Errors | `test_jira_errors.py` |
 | 21 2.x is gone | `test_jira_guards.py`; the records gate over `capabilities.yaml` (below) |
 | 22 Never changes git state | `test_jira_guards.py` |
-| 23 Live check | **Not yet: waits for the checklist (Task 15).** The fake half passes: `test_jira_scenario.py::test_the_scenario_against_the_fake`. |
-| 24 Shape agreement | **Not yet: needs the recorded responses from the live run.** |
+| 23 Live check | `test_jira_scenario.py::test_the_scenario_live` against `TCWTEST`: every step passes and `validate --remote` exits 0 (`live-check.md`); the fake half, `test_the_scenario_against_the_fake`. |
+| 24 Shape agreement | `test_recorded_shapes.py` over the 20 files in `tests/work/jira/recorded/`. |
 | 25 The rest of the suite | Bare `pytest` from the branch checkout: 3178 passed, 131 skipped, exit 0. |
 | 26 The three reads | `test_jira_read.py`, `test_jira_tickets.py` |
 | 27 Release notes and allowance | `test_upcoming_entries.py`, the doc-allowance guard |
@@ -84,7 +85,12 @@ For `validate --remote`, each of these mutations failed the tests: passing a
 move with several candidates without sampling it; no direct reads for keys a
 search missed; no edit-screen check; checking records on finished items; and no
 handling of an unreachable Jira. Dropping the note from `set_stage` fails the
-scenario. The earlier tasks' checks are recorded in their commit messages.
+scenario. For Task 15: posting a screenless move's note as part of the
+transition again fails the three new `set_stage` tests; requiring Parent of
+the top-level type again fails `test_the_top_level_type_needs_no_parent_field`;
+dropping `hasScreen` from the fake, or reversing its `Blocks` direction, fails
+`test_recorded_shapes.py`. The earlier tasks' checks are recorded in their
+commit messages.
 
 ## Records gate
 
