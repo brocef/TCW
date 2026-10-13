@@ -86,9 +86,8 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     """
     node_root = find_node_root()
     if node_root is None:
-        print("tcw provision: no tcw node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return 1
+        from tcw.errors import NO_PROJECT, BackendError
+        raise BackendError(NO_PROJECT)
 
     # An override that is present and wrong refuses here too, and it has to be
     # said here rather than left to the registry. Every other command reaches a
@@ -378,13 +377,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     """Findings on stdout, one per line; overrides in effect, what was skipped
     and the closing count on stderr (TCW-73 Design 6). Exit 1 with any error,
     5 when `--remote` could not reach Jira, else 0."""
-    from tcw.errors import BackendError, UsageError
+    from tcw.errors import NO_PROJECT, BackendError, UsageError
     from tcw.findings import Finding
     from tcw.validate import validate
     node_root = find_node_root()
     if node_root is None:
-        raise BackendError("no TCW project here — run `tcw init --id <id>` in the "
-                           "project folder")
+        raise BackendError(NO_PROJECT)
     if args.remote and not _jira_mode(node_root):
         raise UsageError("--remote checks a Jira-mode project, and this project's "
                          "work.backend is filesystem")
@@ -487,9 +485,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     # `tcw work list --include-descendants`).
     node_root = find_node_root()
     if node_root is None:
-        print("tcw serve: no tcw node here — run `tcw init --id <project-id>`.",
-              file=sys.stderr)
-        return 1
+        from tcw.errors import NO_PROJECT, BackendError
+        raise BackendError(NO_PROJECT)
     FsProjectRegistry.open(node_root).require_valid()
     return serve(port=args.port, open_browser=not args.no_open,
                  include_descendants=True)

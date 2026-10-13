@@ -12,7 +12,7 @@ import argparse
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import BackendError
+from tcw.errors import NO_PROJECT, BackendError
 from tcw.output import print_json
 
 NAME = "projects"
@@ -52,8 +52,7 @@ def _list(args: argparse.Namespace) -> int:
     from tcw.store.fs import find_node_root
     root = find_node_root(Path.cwd())
     if root is None:
-        raise BackendError("no tcw project here — run `tcw init --id <id>` in "
-                           "the project folder")
+        raise BackendError(NO_PROJECT)
     rows = connected(root)
     if args.json:
         print_json("projects", rows)

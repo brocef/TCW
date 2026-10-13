@@ -518,9 +518,9 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # would replace what the user typed (`./store`, `~/store`) with its
     # normalized, home-expanded form.
     read_from_config: set[str] = set()
-    # Every component, not only `work`: `tcw taxonomy init` used to scaffold
-    # `docs/taxonomy` under a configured `taxonomy.path`, so the "run `tcw
-    # init`" advice for a configured-but-absent store never came true.
+    # Every component, not only `work`: initializing the taxonomy alone used to
+    # scaffold `docs/taxonomy` under a configured `taxonomy.path`, so the "run
+    # `tcw init`" advice for a configured-but-absent store never came true.
     configured_text: dict[str, str] = {}
     for c in components:
         if c in paths:

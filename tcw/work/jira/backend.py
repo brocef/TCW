@@ -633,7 +633,7 @@ class JiraBackend:
         path = self.work_path / folder
         if not (resume and path.is_dir()):
             path.mkdir(parents=True)
-            self.report(f"created {shown(path)}")
+            self.report(f"created {shown(path)}/")
         document = path / ITEM_FILE
         document.write_text(f"ticket: {self.jira.site}/browse/{key}\n", encoding="utf-8")
         self.report(f"wrote {shown(document)}")

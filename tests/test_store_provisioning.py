@@ -761,13 +761,13 @@ def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, cap
     assert "git clone failed" in capsys.readouterr().err
 
 
-def test_provision_outside_a_node_says_so(tmp_path, monkeypatch, capsys):
+def test_provision_outside_a_project_says_so(tmp_path, monkeypatch, capsys):
     plain = tmp_path / "not-a-node"
     plain.mkdir()
     monkeypatch.chdir(plain)
 
     assert main(["provision"]) == 1
-    assert "no tcw node here" in capsys.readouterr().err
+    assert "tcw provision: no TCW project here" in capsys.readouterr().err
 
 
 def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):

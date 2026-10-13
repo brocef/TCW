@@ -305,7 +305,7 @@ class FsWorkBackend:
                           f"title")
         self.work_path.mkdir(parents=True, exist_ok=True)
         path.mkdir()
-        self.report(f"created {shown(path)}")
+        self.report(f"created {shown(path)}/")
         try:
             base = Item(slug=Slug(self.project, folder), title=title, stage=stage,
                         created=date.fromisoformat(folder[:10]),

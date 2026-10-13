@@ -14,7 +14,7 @@ from datetime import timezone
 from pathlib import Path
 
 from tcw import exit as codes
-from tcw.errors import BackendError, NotFound, Refused, UsageError
+from tcw.errors import NO_PROJECT, BackendError, NotFound, Refused, UsageError
 from tcw.output import print_json, wrote
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_node_root
@@ -26,7 +26,8 @@ from tcw.work.jira.backend import KEY, JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
 from tcw.work.model import (
-    STAGES, UNSET, Changes, Slug, inbox_stage, stage as table_stage, start_stage,
+    STAGES, UNSET, Changes, Slug, completion_stage, inbox_stage, stage as table_stage,
+    start_stage,
 )
 from tcw.work.open import (delegate, open_backend, open_for_update, open_project,
                            read_work_config)
@@ -41,8 +42,7 @@ NAME = "work"
 def project_root(here: Path | None = None) -> Path:
     root = find_node_root(here or Path.cwd())
     if root is None:
-        raise BackendError("no tcw project here — run `tcw init` in the project "
-                           "folder")
+        raise BackendError(NO_PROJECT)
     return root
 
 
@@ -599,17 +599,19 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="the new item's full slug (a ticket key when it stopped "
                        "after creating a ticket)",
                 writes="the item, and in Jira mode its ticket",
-                examples=["new 'Refund a payment' --priority high < request.md",
+                examples=["new 'Refund a payment' --priority high < ask.md",
                           "new 'Support SSO' --project platform --tag auth"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
     p.add_argument("--project", help="create it in this connected project instead")
-    p.add_argument("--stage", help="inbox, to start it there (filesystem mode only)")
+    p.add_argument("--stage", help=f"{inbox_stage()}, to start it there (filesystem "
+                                   f"mode only)")
     _properties(p, editing=False)
     p.set_defaults(func=_new)
 
     p = command(cmds, "list", help="list items",
                 prints="one full slug per line, or --json", writes="nothing",
-                examples=["list", "list --stage implement --tag auth", "list --all --json"])
+                examples=["list", f"list --stage {start_stage()} --tag auth",
+                          "list --all --json"])
     p.add_argument("--stage", action="append",
                    help=f"only items at this stage; repeat for more ({stages})")
     p.add_argument("--tag", type=_tag, action="append",
@@ -617,25 +619,27 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--parent", help="only items under this item (a slug)")
     p.add_argument("--assignee", help="only items assigned to this person")
     p.add_argument("--all", action="store_true",
-                   help="include finished and discarded items")
+                   help="include items that have ended")
     p.add_argument("--json", action="store_true",
                    help='print {"schema": 1, "items": [...]}')
     p.set_defaults(func=_list)
 
-    p = command(cmds, "show", help="an item's record, request and comments",
-                prints="the item's properties, its request and its comments, newest "
-                       "first, or --json", writes="nothing",
+    p = command(cmds, "show", help="an item's record, what it asks for, and its "
+                                   "comments",
+                prints="the item's properties, what it asks for and its comments, "
+                       "newest first, or --json", writes="nothing",
                 examples=["show 2026-10-01-refund-a-payment",
                           "show 2026-10-01-refund-a-payment --json"])
     p.add_argument("slug", help=SLUG_HELP)
     p.add_argument("--json", action="store_true",
-                   help='print {"schema": 1, "item": ..., "request": ..., "comments": [...]}')
+                   help="print one JSON object: the item, what it asks for, and "
+                        "its comments")
     p.set_defaults(func=_show)
 
     p = command(cmds, "path", help="a path in the work store",
                 prints="the path", writes="nothing",
                 examples=["path", "path 2026-10-01-refund-a-payment",
-                          "path 2026-10-01-refund-a-payment review --next"])
+                          f"path 2026-10-01-refund-a-payment {start_stage()} --next"])
     p.add_argument("slug", nargs="?",
                    help=f"{SLUG_HELP}; without one, the work store folder")
     p.add_argument("stage", nargs="?",
@@ -660,9 +664,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                        "the target stage when the move would be allowed",
                 writes="the item's stage, and the trace comment",
                 examples=["advance 2026-10-01-refund-a-payment",
-                          "advance 2026-10-01-refund-a-payment --to review --dry-run",
-                          "advance 2026-10-01-refund-a-payment --to plan --force "
-                          "--reason 'spec agreed in person'"])
+                          f"advance 2026-10-01-refund-a-payment --to {completion_stage()} "
+                          f"--dry-run",
+                          f"advance 2026-10-01-refund-a-payment --to {completion_stage()} "
+                          f"--force --reason 'agreed in person'"])
     p.add_argument("slug", help=SLUG_HELP)
     p.add_argument("--to", help=f"the stage to move to (default: the next one; {stages})")
     p.add_argument("--force", action="store_true",
@@ -698,8 +703,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     verbs = p.add_subparsers(dest="stage_verb", required=True)
     p = command(verbs, "prompt", help="print a stage's instructions, running no checks",
                 prints="the instructions", writes="nothing",
-                examples=["stage prompt spec", "stage prompt implement "
-                          "2026-10-01-refund-a-payment"])
+                examples=[f"stage prompt {start_stage()}",
+                          f"stage prompt {start_stage()} 2026-10-01-refund-a-payment"])
     p.add_argument("stage", help="a stage (`tcw work lifecycle` lists them)")
     p.add_argument("slug", nargs="?",
                    help=f"optional; {SLUG_HELP}, so the text is composed for it")
@@ -721,7 +726,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = command(cmds, "lifecycle", help="the stage table and its bindings",
                 prints="every stage with its kind, whether it is enabled, and its "
                        "bindings, or --json", writes="nothing",
-                examples=["lifecycle", "lifecycle --stage review --json"])
+                examples=["lifecycle", f"lifecycle --stage {start_stage()} --json"])
     p.add_argument("--stage", help=f"one stage only ({stages})")
     p.add_argument("--json", action="store_true",
                    help='print {"schema": 1, "hooks": {...}, "stages": [...]}')

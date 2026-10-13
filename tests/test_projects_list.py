@@ -77,7 +77,7 @@ def test_a_lone_project_lists_itself(tmp_path, monkeypatch, capsys):
 def test_outside_a_project(tmp_path, monkeypatch, capsys):
     code, out, err = run(monkeypatch, capsys, tmp_path, "projects", "list")
     assert (code, out) == (1, "")
-    assert err.startswith("tcw projects list: no tcw project here")
+    assert err.startswith("tcw projects list: no TCW project here")
 
 
 def test_work_nodes_is_gone(graph, monkeypatch, capsys):

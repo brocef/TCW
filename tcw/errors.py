@@ -10,6 +10,9 @@ from __future__ import annotations
 from tcw import exit as codes
 
 
+NO_PROJECT = "no TCW project here — run `tcw init --id <id>` in the project folder"
+
+
 class TcwError(Exception):
     """Base class: a failure the CLI turns into its `code`.
 
