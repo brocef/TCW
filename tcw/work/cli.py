@@ -485,9 +485,13 @@ def _procedure(args) -> int:
         raise UsageError(f"unknown procedure '{args.procedure}'; expected one of "
                          f"{', '.join(PROCEDURE_IDS)}")
     if args.slug is None and find_project_root(Path.cwd()) is None:
-        # No project, so nothing to compose: TCW's own text. Skills that also
-        # run outside TCW projects (documentation-sync) rely on this.
-        print(packaged_text("procedures", args.procedure).rstrip())
+        # No project, so nothing to compose: TCW's own text, with every
+        # backend passage removed since there is no backend (TCW-74 Design
+        # 3.2). Skills that also run outside TCW projects (documentation-sync)
+        # rely on this.
+        from tcw.work.passages import filter_backend
+        print(filter_backend(packaged_text("procedures", args.procedure),
+                             None).rstrip())
         return codes.OK
     backend, item, record, request, layout, root = _prompt_target(args)
     res = _resolved(lambda: procedure_prompt(

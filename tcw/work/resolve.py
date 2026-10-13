@@ -20,6 +20,7 @@ from tcw.errors import BackendError
 from tcw.store.base import DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, DocEntry
 from tcw.work.generate import GenerateError, run_generate
 from tcw.work.hooks import config_dir
+from tcw.work.passages import filter_backend
 
 
 class ResolveError(Exception):
@@ -318,12 +319,22 @@ def _prompt_env(item, stage: str | None, layout, project_root: Path) -> dict:
     return env
 
 
+def _binding_label(b, role: str, hook_id: str) -> str:
+    """How a refusal names a binding: TCW's own text by role and name, any
+    other binding by its kind, its value and the file that declared it."""
+    if b.kind == "builtin":
+        return f"TCW's built-in {role} for {hook_id}"
+    where = f" (from {b.origin})" if b.origin is not None else ""
+    return f"the {b.kind} binding '{b.ref}'{where}"
+
+
 def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
             record: dict | None, request: str | None, project_root: Path,
             config, documentation, env: dict, execute: bool = True) -> Resolution:
-    """Every binding that applies to `item`, in order, joined, then the
-    documentation and request spans substituted. With `execute` false, nothing
-    is read or run: the plan says what would be."""
+    """Every binding that applies to `item`, in order, each filtered for the
+    project's backend (TCW-74 Design 3), joined, then the documentation and
+    request spans substituted. With `execute` false, nothing is read or run:
+    the plan says what would be."""
     from tcw.work.advance import binding_applies
     res = Resolution()
     parts: list[str] = []
@@ -358,7 +369,11 @@ def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
             raise ResolveError(f"cannot resolve a '{b.kind}' binding in a "
                                f"{role} position")
         res.plan.append(PlanEntry(b.kind, b.ref, True, ran))
-        parts.append(text)
+        try:
+            parts.append(filter_backend(text, config.backend))
+        except BackendError as error:
+            raise ResolveError(f"{_binding_label(b, role, hook_id)}: "
+                               f"{error}") from None
     res.text = substitute_request(
         substitute_documentation(_join(parts), documentation), request)
     return res
