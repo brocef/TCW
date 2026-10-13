@@ -1107,7 +1107,7 @@ def test_a_malformed_tree_declaration_names_the_line(tmp_path):
 
 TREE_COMMANDS = [
     ["taxonomy", "list"], ["taxonomy", "path"], ["taxonomy", "show", "anything"],
-    ["taxonomy", "check"],
+    ["taxonomy", "search", "anything"],
     ["capabilities", "list"], ["capabilities", "path"],
     ["capabilities", "show", "anything"], ["capabilities", "check"],
 ]
@@ -1159,14 +1159,14 @@ def test_a_malformed_tree_declaration_names_the_line_from_every_command(
 
 def test_a_node_without_the_component_still_says_so(tmp_path, monkeypatch, capsys):
     """Criterion 6's edge. Nothing declared and no `docs/taxonomy` — the answer
-    is still "no tcw taxonomy node here", exactly as before this work."""
+    is still that there is no taxonomy store here."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     monkeypatch.chdir(code)
 
     assert main(["taxonomy", "list"]) == 1
 
-    assert "no tcw taxonomy node here" in capsys.readouterr().err
+    assert "no taxonomy store here" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("argv", TREE_COMMANDS)

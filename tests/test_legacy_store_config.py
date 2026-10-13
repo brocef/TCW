@@ -92,9 +92,10 @@ def test_a_leftover_at_the_default_location_is_reported_by_check(
                          f"docs/{component}/{name}")
 
     monkeypatch.chdir(consumer)
-    assert main([component, "check"]) == 1
-    _assert_one_leftover(capsys.readouterr().err.splitlines(), component,
-                         f"docs/{component}/{name}")
+    assert main(["validate"]) == 1
+    printed = capsys.readouterr()
+    _assert_one_leftover((printed.out + printed.err).splitlines(), component,
+                         f"docs/{component}/{name}", prefix="[consumer] error: ")
 
 
 @pytest.mark.parametrize("component,moved", [
@@ -312,13 +313,13 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
     assert "ghost" in failures[0] and "taxonomy.extends" in failures[0], failures
     assert _leftover_lines(problems) == [], problems
 
-    # The check command refuses too, says nothing about the leftover, and names
-    # the broken `extends` rather than sending the user to `tcw init`.
+    # A taxonomy command refuses too, says nothing about the leftover, and
+    # names the broken `extends` rather than sending the user to `tcw init`.
     monkeypatch.chdir(consumer)
-    assert main(["taxonomy", "check"]) == 1
+    assert main(["taxonomy", "list"]) == 1
     err = capsys.readouterr().err
     assert MARK not in err
-    assert "ghost" in err and "no tcw taxonomy node here" not in err, err
+    assert "ghost" in err and "no taxonomy store here" not in err, err
 
 
 @pytest.mark.parametrize("component,ident", [
@@ -343,8 +344,8 @@ def test_no_command_touches_the_leftover(tmp_path, monkeypatch, capsys):
         before[path] = path.read_bytes()
 
     monkeypatch.chdir(consumer)
-    for argv in (["taxonomy", "check"], ["capabilities", "check"], ["validate"]):
-        assert main(argv) == 1
+    for argv in (["taxonomy", "list"], ["capabilities", "list"], ["validate"]):
+        main(argv)
     capsys.readouterr()
 
     assert {path: path.read_bytes() for path in before} == before

@@ -37,6 +37,8 @@ REMOVED_COMMANDS = (
     # entry: `prompt` parses as a procedure name, refused when the command runs.
     "tcw work init",
     "tcw work nodes",
+    "tcw taxonomy init",
+    "tcw taxonomy check",
 )
 
 # Flags TCW-70 removed from commands that survive, as (command, flag). A
@@ -58,6 +60,8 @@ REMOVED_FLAGS = (
     ("tcw work new", "--tags"),
     ("tcw work edit", "--tags"),
     ("tcw work edit", "--untags"),
+    ("tcw taxonomy add", "-s"),
+    ("tcw taxonomy add", "-p"),
 )
 
 # Configuration keys TCW-69's parser refuses that documents still name.

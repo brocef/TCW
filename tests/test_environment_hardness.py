@@ -506,8 +506,7 @@ class TestCLISmoke:
         # List from left — should see the inherited term (slug + origin flag)
         assert main(["taxonomy", "list"]) == 0
         left_out = capsys.readouterr().out
-        assert "platform" in left_out
-        assert "(parent)" in left_out
+        assert "parent/platform" in left_out.split()     # qualified by its origin
         assert "platform" in parent_out
 
     def test_nested_cli_nodes_command(self, tmp_path, monkeypatch, capsys):

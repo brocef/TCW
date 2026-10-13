@@ -96,21 +96,6 @@ def test_piped_intake_still_lands_verbatim(node):
     assert "no piped input" not in result.stderr
 
 
-def test_a_positional_description_short_circuits_past_stdin(node):
-    """`args.description or read_piped_stdin()` — a description given on the
-    command line means stdin is never touched, so a held-open descriptor cannot
-    even delay it. `description` is positional, not a flag."""
-    r, w = _held_open_pipe()
-    try:
-        result = _run(node, ["taxonomy", "add", "Flagged",
-                             "given on the command line"], stdin=r)
-    finally:
-        os.close(r)
-        os.close(w)
-    assert result.returncode == 0, result.stderr
-    assert "no piped input" not in result.stderr
-
-
 # -- the truncation arm ------------------------------------------------------
 
 def test_a_stalled_producer_is_refused_and_creates_nothing(node):

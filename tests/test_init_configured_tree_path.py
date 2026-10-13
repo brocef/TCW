@@ -43,7 +43,7 @@ def test_init_scaffolds_at_the_configured_path(root, capsys, component, where):
     """Spelled so that normalizing it would change it: a path written back
     through `Path` loses the `./` and the trailing slash."""
     configure(root, **{component: {"path": where}})
-    code, _out, err = cli(capsys, component, "init")
+    code, _out, err = cli(capsys, "init", component)
     assert code == 0, err
     assert (root / where).is_dir()
     assert not (root / "docs" / component).exists()
@@ -61,14 +61,14 @@ def test_init_of_both_at_once_honors_both(root, capsys):
 
 def test_a_path_that_is_not_a_string_is_refused(root, capsys):
     configure(root, taxonomy={"path": 7})
-    code, _out, err = cli(capsys, "taxonomy", "init")
+    code, _out, err = cli(capsys, "init", "taxonomy")
     assert code == 1 and "taxonomy.path" in err, err
     assert not (root / "docs" / "taxonomy").exists()
 
 
 def test_a_declared_repository_is_not_shadowed_by_an_empty_local_store(root, capsys):
     configure(root, taxonomy={"repository": {"url": "git@host:o/terms.git"}})
-    code, _out, err = cli(capsys, "taxonomy", "init")
+    code, _out, err = cli(capsys, "init", "taxonomy")
     assert code == 1 and "tcw provision" in err, err
     assert not (root / "docs" / "taxonomy").exists()
 
@@ -114,6 +114,6 @@ def test_a_provisioned_repository_is_not_sent_back_to_provision(root, capsys, tm
     configure(root, taxonomy={"repository": {"url": str(remote), "path": "trees/taxonomy",
                                              "checkout": str(tmp_path / "co")}})
     assert cli(capsys, "provision", "--component", "taxonomy")[0] == 0
-    code, _out, err = cli(capsys, "taxonomy", "init")
+    code, _out, err = cli(capsys, "init", "taxonomy")
     assert code == 1 and "already provided" in err and "tcw provision" not in err, err
     assert not (root / "docs" / "taxonomy").exists()

@@ -1,224 +1,177 @@
-"""`tcw taxonomy` — the nouns. Subcommands per phase-2-taxonomy B.2."""
+"""`tcw taxonomy` — the nouns.
+
+stdout carries each command's product and nothing else (TCW-73 Design 1):
+`add` prints the new term's qualified path, `list` and `search` one path per
+line, `show` the record, `path` the store folder; `rm` and `extends add|rm`
+print nothing. Every file a write changed is named on stderr. A failure is
+raised for the top-level handler to print and turn into its exit code.
+"""
 
 import argparse
-import sys
 
+from tcw import exit as codes
+from tcw.errors import BackendError, NotFound
+from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
-from tcw.store.base import AmbiguousRef, Term
+from tcw.store.base import Term
 from tcw.store.fs import FsTaxonomyStore, find_node
 
 NAME = "taxonomy"
-SUBCOMMANDS = {"init", "list", "add", "show", "path", "rm", "search", "check", "extends"}
-DEFAULT_SUBCOMMAND = "show"  # `tcw taxonomy <path>` == `tcw taxonomy show <path>`
 
 
-def _init(args: argparse.Namespace) -> int:
-    from tcw.cli import run_init      # function-local: top-level cli imports this module
-    return run_init([NAME], args.id)
-
-
-def _store() -> FsTaxonomyStore | None:
+def _store() -> FsTaxonomyStore:
     node = find_node(NAME)
     if node is None:
-        print("tcw taxonomy: no tcw taxonomy node here — run `tcw init` in the project folder.",
-              file=sys.stderr)
-        return None
+        raise BackendError("no taxonomy store here — run `tcw init taxonomy --id <id>` "
+                           "in the project folder")
     return FsTaxonomyStore.open(node)
 
 
-def _print_term(term: Term) -> None:
-    print(f"{term.name}  ({term.qualified}, {term.origin})")
-    print(f"kind: {term.kind}")
-    if term.vocabulary:
-        print(f"vocabulary: {', '.join(term.vocabulary)}")
-    if term.relates_to:
-        print(f"relatesTo: {', '.join(term.relates_to)}")
-    if term.attachments:
-        print(f"attachments: {', '.join(term.attachments)}")
-    body = term.description.strip()
-    if body:
-        print()
-        print("\n".join(body.splitlines()[:10]))
+def _record(term: Term) -> dict:
+    return {"path": term.qualified, "name": term.name, "kind": term.kind,
+            "origin": term.origin}
+
+
+def _detail(term: Term) -> dict:
+    return {**_record(term), "vocabulary": list(term.vocabulary),
+            "relatesTo": list(term.relates_to), "attachments": list(term.attachments),
+            "description": term.description}
+
+
+def _get(st: FsTaxonomyStore, ref: str) -> Term:
+    term = st.get(ref)
+    if term is None:
+        raise NotFound(f"no such term: '{ref}'")
+    return term
+
+
+def _ordered(terms: list[Term]) -> list[Term]:
+    # Sort on the SEGMENT TUPLE, never the joined path: `-` (0x2D) sorts before
+    # `/` (0x2F), so keying on `qualified` puts a hyphen-extended root slug
+    # (`event-reporting`) between `event` and `event/log-batch`. `origin`
+    # groups each inherited tree separately: every `extends` alias is a
+    # distinct store with its own slug namespace.
+    return sorted(terms, key=lambda t: (t.origin != "local", t.origin,
+                                        tuple(t.slug.split("/"))))
+
+
+def _print_terms(terms: list[Term], as_json: bool) -> int:
+    if as_json:
+        print_json("terms", [_record(t) for t in terms])
+    else:
+        for t in terms:
+            print(t.qualified)
+    return codes.OK
 
 
 def _list(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    # Sort on the SEGMENT TUPLE, never the joined path: `-` (0x2D) sorts before
-    # `/` (0x2F), so keying on `qualified` puts a hyphen-extended root slug
-    # (`event-reporting`) between `event` and `event/log-batch` — inheriting an
-    # indentation that claims a parent it does not have. A parent's tuple is a
-    # strict prefix of its children's, so this is a true depth-first pre-order
-    # and the `count("/")` depth below is correct for every row.
-    # `origin` groups each inherited tree separately: every `extends` alias is a
-    # distinct store with its own slug namespace, so their trees must not splice.
-    for t in sorted(st.list_all(local_only=args.local),
-                    key=lambda t: (t.origin != "local", t.origin, tuple(t.slug.split("/")))):
-        indent = "  " * t.slug.count("/")
-        marker = {"Feature": "F", "Vocabulary": "V"}.get(t.kind, "?")
-        print(f"{indent}{t.slug.rsplit('/', 1)[-1]}  [{marker}] ({t.origin})")
-    return 0
+    return _print_terms(_ordered(_store().list_all(local_only=args.local)), args.json)
+
+
+def _search(args: argparse.Namespace) -> int:
+    return _print_terms(list(_store().search(args.query)), args.json)
+
+
+def _show(args: argparse.Namespace) -> int:
+    term = _get(_store(), args.path)
+    detail = _detail(term)
+    if args.json:
+        print_json("term", detail)
+        return codes.OK
+    lines = [f"path: {term.qualified}", f"name: {term.name}", f"kind: {term.kind}",
+             f"origin: {term.origin}"]
+    for key in ("vocabulary", "relatesTo", "attachments"):
+        if detail[key]:
+            lines.append(f"{key}: {', '.join(detail[key])}")
+    body = term.description.strip()
+    if body:
+        lines += ["", "description:",
+                  *(f"  {line}" if line else "" for line in body.splitlines())]
+    print("\n".join(lines))
+    return codes.OK
+
+
+def _path(args: argparse.Namespace) -> int:
+    print(_store().root)
+    return codes.OK
 
 
 def _add(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        term = st.add(args.name, slug=args.slug, parent=args.parent,
-                      description=args.description or read_piped_stdin(),
-                      kind=args.kind, vocabulary=args.vocab)
-    except ValueError as e:
-        print(f"tcw taxonomy add: {e}", file=sys.stderr)
-        return 1
-    print(f"Added term {term.slug}")
-    return 0
-
-
-def _show(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    try:
-        term = st.get(args.path)
-    except AmbiguousRef:
-        print(f"tcw taxonomy show: ambiguous ref '{args.path}' — qualify with an alias.",
-              file=sys.stderr)
-        return 1
-    if term is None:
-        print(f"tcw taxonomy show: no such term: {args.path}", file=sys.stderr)
-        return 1
-    _print_term(term)
-    return 0
-
-
-def _path(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    print(st.root)
-    return 0
+    term = st.add(args.name, slug=args.slug, parent=args.parent,
+                  description=read_piped_stdin(), kind=args.kind,
+                  vocabulary=args.vocab)
+    changed(st.changed)
+    print(term.qualified)
+    return codes.OK
 
 
 def _rm(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        term = st.get(args.path)
-    except AmbiguousRef:
-        print(f"tcw taxonomy rm: ambiguous ref '{args.path}'.", file=sys.stderr)
-        return 1
-    if term is None:
-        print(f"tcw taxonomy rm: no such term: {args.path}", file=sys.stderr)
-        return 1
-    try:
-        st.remove(args.path)
-    except ValueError as e:
-        print(f"tcw taxonomy rm: {e}", file=sys.stderr)
-        return 1
-    print(f"Removed term {term.slug}")
-    return 0
-
-
-def _search(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    for t in st.search(args.query):
-        print(f"{t.qualified}\t{t.name}")
-    return 0
-
-
-def _check(args: argparse.Namespace) -> int:
-    st = _store()
-    if st is None:
-        return 1
-    problems = st.check()
-    for p in problems:
-        print(p, file=sys.stderr)
-    if problems:
-        print(f"{len(problems)} problem(s).", file=sys.stderr)
-        return 1
-    print("taxonomy OK")
-    return 0
+    st.remove(args.path)
+    changed(st.changed)
+    return codes.OK
 
 
 def _extends_add(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        st.extends_add(args.project_id)
-    except ValueError as e:
-        print(f"tcw taxonomy extends add: {e}", file=sys.stderr)
-        return 1
-    print(f"Extends project '{args.project_id}' (taxonomy.extends in "
-          "tcw-config.yaml). Run `tcw taxonomy check`.")
-    return 0
+    st.extends_add(args.project_id)
+    changed(st.changed)
+    return codes.OK
 
 
 def _extends_rm(args: argparse.Namespace) -> int:
     st = _store()
-    if st is None:
-        return 1
-    try:
-        st.extends_remove(args.project_id)
-    except ValueError as e:
-        print(f"tcw taxonomy extends rm: {e}", file=sys.stderr)
-        return 1
-    print(f"Removed extends project '{args.project_id}'")
-    return 0
+    st.extends_remove(args.project_id)
+    changed(st.changed)
+    return codes.OK
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser(NAME, help="vocabulary and feature entries")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pi = g.add_parser("init", help="scaffold docs/taxonomy/ (mirror of `tcw init taxonomy`)")
-    pi.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
-    pi.set_defaults(func=_init)
-
-    pl = g.add_parser("list", help="list entries as a tree, flagged by kind and origin")
+    pl = g.add_parser("list", help="every entry's path, one per line")
     pl.add_argument("--local", action="store_true", help="local entries only")
+    pl.add_argument("--json", action="store_true",
+                    help='print {"schema": 1, "terms": [...]}')
     pl.set_defaults(func=_list)
 
-    pa = g.add_parser("add", help="create a vocabulary term or feature")
+    pa = g.add_parser("add", help="create a vocabulary term or feature; the "
+                                  "description is read from stdin")
     pa.add_argument("name", help="display name of the entry (source of the default slug)")
-    pa.add_argument("description", nargs="?",
-                    help="description body (default: read from piped stdin)")
-    pa.add_argument("-s", "--slug", help="leaf slug (default: slugified name)")
-    pa.add_argument("-p", "--parent", help="parent term path (default: root)")
+    pa.add_argument("--slug", help="leaf slug (default: the name, slugified)")
+    pa.add_argument("--parent", help="parent term path (default: the root)")
     pa.add_argument("--kind", choices=("vocabulary", "feature"), default="vocabulary",
                     help="taxonomy object kind (default: vocabulary)")
     pa.add_argument("--vocab", action="append", metavar="REF",
-                    help="vocabulary ref involved by a feature (repeatable)")
+                    help="vocabulary ref a feature involves; repeat for more")
     pa.set_defaults(func=_add)
 
     ps = g.add_parser("show", help="read an entry")
     ps.add_argument("path",
                     help="term path, e.g. event/log-batch (alias-prefixed if inherited)")
+    ps.add_argument("--json", action="store_true",
+                    help='print {"schema": 1, "term": {...}}')
     ps.set_defaults(func=_show)
 
-    g.add_parser("path", help="print the taxonomy store folder path").set_defaults(func=_path)
+    g.add_parser("path", help="print the taxonomy store folder").set_defaults(func=_path)
 
     pr = g.add_parser("rm", help="remove a local entry")
     pr.add_argument("path", help="path of the local term to remove")
     pr.set_defaults(func=_rm)
 
-    pse = g.add_parser("search", help="search entry names + descriptions")
+    pse = g.add_parser("search", help="entries whose name or description holds the text")
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
+    pse.add_argument("--json", action="store_true",
+                     help='print {"schema": 1, "terms": [...]}')
     pse.set_defaults(func=_search)
-
-    pc = g.add_parser("check", help="validate aliases + references")
-    pc.set_defaults(func=_check)
 
     pe = g.add_parser("extends", help="declare taxonomy inheritance (federation)")
     eg = pe.add_subparsers(dest="ecmd", required=True)
     pea = eg.add_parser("add", help="inherit a registered project's taxonomy")
     pea.add_argument("project_id", help="registered project ID whose taxonomy to inherit")
     pea.set_defaults(func=_extends_add)
-    per = eg.add_parser("rm", help="remove an inherited project")
+    per = eg.add_parser("rm", help="stop inheriting a project's taxonomy")
     per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)

@@ -34,7 +34,7 @@ from tcw.work import cli as work_cli
 # adapters that make the other two values honest, never ahead of them.
 PROVISION_COMPONENTS = COMPONENTS
 
-# Component CLI modules (each exposes NAME / SUBCOMMANDS / DEFAULT_SUBCOMMAND /
+# Component CLI modules (each exposes NAME and
 # add_subparser). All three components are now built.
 _BUILT = [taxonomy_cli, capabilities_cli, work_cli]
 _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
@@ -594,19 +594,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _normalize(argv: list[str]) -> list[str]:
-    """Sugar: `tcw <component> <path>` → `tcw <component> show <path>`."""
-    if len(argv) >= 2 and not argv[1].startswith("-"):
-        for mod in _BUILT:
-            default = getattr(mod, "DEFAULT_SUBCOMMAND", None)
-            if default and argv[0] == mod.NAME and argv[1] not in mod.SUBCOMMANDS:
-                return [argv[0], default, *argv[1:]]
-    return argv
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    args = build_parser().parse_args(_normalize(argv))
+    args = build_parser().parse_args(argv)
     command = getattr(args, "_command", "tcw")
     try:
         return args.func(args)

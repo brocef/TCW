@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -579,13 +580,15 @@ def test_check_unknown_extends_project(tmp_path):
 
 # ── CLI smoke (bare-path sugar) ─────────────────────────────────────────────
 
-def test_cli_bare_path_is_show(tmp_path, monkeypatch, capsys):
+def test_cli_bare_path_is_not_show(tmp_path, monkeypatch, capsys):
+    """The `tcw taxonomy <path>` shorthand is gone (TCW-73 Design 2)."""
     from tcw.cli import main
     root = node(tmp_path, "repo")
     monkeypatch.chdir(root)
     main(["taxonomy", "add", "Admin"])
-    assert main(["taxonomy", "admin"]) == 0          # bare path → show
-    assert "Admin" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as stop:
+        main(["taxonomy", "admin"])
+    assert stop.value.code == 2
 
 
 def test_cli_path_prints_resolved_store_root_and_reserves_command(tmp_path, monkeypatch,
@@ -611,7 +614,7 @@ def test_cli_path_outside_taxonomy_node_prints_no_path(tmp_path, monkeypatch, ca
     assert main(["taxonomy", "path"]) == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert "no tcw taxonomy node here" in output.err
+    assert "no taxonomy store here" in output.err
 
 
 def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
@@ -619,16 +622,13 @@ def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
     root = node(tmp_path, "repo")
     monkeypatch.chdir(root)
     assert main(["taxonomy", "add", "User"]) == 0
-    capsys.readouterr()
     assert main(["taxonomy", "add", "Password", "--slug", "password"]) == 0
-    capsys.readouterr()
     assert main(["taxonomy", "add", "User Authentication", "--kind", "feature",
                  "--vocab", "user", "--vocab", "password"]) == 0
     capsys.readouterr()
-    assert main(["taxonomy", "list"]) == 0
-    out = capsys.readouterr().out
-    assert "user  [V]" in out
-    assert "user-authentication  [F]" in out
+    assert main(["taxonomy", "list", "--json"]) == 0
+    kinds = {t["path"]: t["kind"] for t in json.loads(capsys.readouterr().out)["terms"]}
+    assert kinds["user"] == "Vocabulary" and kinds["user-authentication"] == "Feature"
     assert main(["taxonomy", "show", "user-authentication"]) == 0
     out = capsys.readouterr().out
     assert "kind: Feature" in out
@@ -639,11 +639,8 @@ def test_cli_list_does_not_interleave_hyphen_sibling_with_subtree(tmp_path, monk
     """A hyphen-extended root slug must not capture another root's children.
 
     `-` (0x2D) sorts before `/` (0x2F), so keying the sort on the joined path put
-    `event-reporting` between `event` and `event/log-batch` while indentation was
-    derived independently from the segment count — rendering `event`'s children
-    as though they belonged to `event-reporting`. The full ordered output is
-    asserted, not mere membership: this was an ordering defect, so a membership
-    assertion passes against the broken code.
+    `event-reporting` between `event` and `event/log-batch`. The full ordered
+    output is asserted, not mere membership: this was an ordering defect.
     """
     from tcw.cli import main
     root = node(tmp_path, "repo")
@@ -654,15 +651,15 @@ def test_cli_list_does_not_interleave_hyphen_sibling_with_subtree(tmp_path, monk
     monkeypatch.chdir(root)
     assert main(["taxonomy", "list"]) == 0
     assert capsys.readouterr().out == (
-        "event  [V] (local)\n"
-        "  log-batch  [V] (local)\n"
-        "  stat  [V] (local)\n"
-        "event-reporting  [F] (local)\n"
+        "event\n"
+        "event/log-batch\n"
+        "event/stat\n"
+        "event-reporting\n"
     )
 
 
 def test_cli_list_is_depth_first_preorder_at_three_levels(tmp_path, monkeypatch, capsys):
-    """Every term renders immediately after its parent, before the parent's next
+    """Every term prints immediately after its parent, before the parent's next
     sibling, at any depth — and siblings stay alphabetical within a level."""
     from tcw.cli import main
     root = node(tmp_path, "repo")
@@ -670,14 +667,7 @@ def test_cli_list_is_depth_first_preorder_at_three_levels(tmp_path, monkeypatch,
         write_term(root, slug, name=slug)
     monkeypatch.chdir(root)
     assert main(["taxonomy", "list"]) == 0
-    assert capsys.readouterr().out == (
-        "a  [V] (local)\n"
-        "  b  [V] (local)\n"
-        "    c  [V] (local)\n"
-        "    c2  [V] (local)\n"
-        "  d  [V] (local)\n"
-        "a-sibling  [V] (local)\n"
-    )
+    assert capsys.readouterr().out == "a\na/b\na/b/c\na/b/c2\na/d\na-sibling\n"
 
 
 def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, monkeypatch, capsys):
@@ -689,34 +679,21 @@ def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, m
     write_term(cons, "argument-local", name="Argument Local")
     monkeypatch.chdir(cons)
     assert main(["taxonomy", "list"]) == 0
-    out = capsys.readouterr().out
-    assert out == (
-        "argument-local  [V] (local)\n"
-        "Argument  [V] (shared)\n"
-        "  nested  [V] (shared)\n"
+    assert capsys.readouterr().out == (
+        "argument-local\n"
+        "shared/Argument\n"
+        "shared/Argument/nested\n"
     )
 
 
-def test_cli_list_unknown_kind_uses_unknown_marker(tmp_path, monkeypatch, capsys):
+def test_cli_list_reports_an_unknown_kind_as_written(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = node(tmp_path, "repo")
     write_term(root, "mystery", name="Mystery", kind="Mystery")
     monkeypatch.chdir(root)
-    assert main(["taxonomy", "list"]) == 0
-    assert "mystery  [?]" in capsys.readouterr().out
-
-
-def test_cli_taxonomy_init_mirrors_top_level(tmp_path, monkeypatch, capsys):
-    from tcw.cli import main
-    root = tmp_path / "fresh"
-    root.mkdir()
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    monkeypatch.chdir(root)
-    assert main(["taxonomy", "init", "--id", "fresh"]) == 0
-    comp_out = capsys.readouterr().out
-    assert (root / "docs" / "taxonomy" / ".gitkeep").is_file()
-    assert main(["init", "taxonomy"]) == 0          # idempotent; same report
-    assert comp_out == capsys.readouterr().out
+    assert main(["taxonomy", "list", "--json"]) == 0
+    [term] = json.loads(capsys.readouterr().out)["terms"]
+    assert term["kind"] == "Mystery"
 
 
 # ── extends (federation) write path ───────────────────────────────────────────
@@ -851,10 +828,10 @@ def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path
     assert [t.slug for t in FsTaxonomyStore.open(root).list_all()] == ["local"]
 
 
-def test_extends_add_names_the_key_not_a_store_path(tmp_path, capsys):
+def test_extends_add_names_the_config_file_not_a_store_path(tmp_path, capsys):
     """Spec criterion 8. The old line hard-coded `docs/taxonomy/config.yaml`,
-    which was already wrong whenever `taxonomy.path` pointed elsewhere — so the
-    absence of that string is asserted, not just the presence of the new one."""
+    which was wrong whenever `taxonomy.path` pointed elsewhere. Since TCW-73 the
+    command prints nothing and names the file it wrote on stderr."""
     from tcw.cli import main
     shared = node(tmp_path, "shared")
     write_term(shared, "Argument")
@@ -869,10 +846,9 @@ def test_extends_add_names_the_key_not_a_store_path(tmp_path, capsys):
         assert main(["taxonomy", "extends", "add", "shared"]) == 0
     finally:
         os.chdir(cwd)
-    out = capsys.readouterr().out
-    assert "taxonomy.extends" in out and "tcw-config.yaml" in out
-    assert "docs/taxonomy/config.yaml" not in out
-    assert "config.yaml" not in out.replace("tcw-config.yaml", "")
+    out = capsys.readouterr()
+    assert out.out == ""
+    assert out.err.splitlines() == ["wrote tcw-config.yaml"]
 
 
 @pytest.mark.parametrize("declared,expected", [
