@@ -372,6 +372,20 @@ def _prompt_target(args):
             _layout(backend), root)
 
 
+def _personal_note(backend: WorkBackend, root: Path, key_path: tuple) -> None:
+    """Say on stderr when a personal file set the list being composed (TCW-72
+    Design 7.3). Only for the project the command acts on: another
+    project's lists never come from this person's files."""
+    from tcw.config import effective
+    from tcw.output import shown
+    if backend.project != open_backend(root).project:
+        return
+    files = effective(root).personal_files(key_path)
+    if files:
+        _say("note: this prompt was changed by personal configuration: "
+             + ", ".join(shown(f) for f in files))
+
+
 def _print_resolution(res, label: str, no_exec: bool) -> int:
     """The composed text on stdout, or with `--no-exec` the plan on stderr and
     nothing on stdout. `label` names what was composed (`stage spec`); a note
@@ -415,6 +429,7 @@ def _stage_prompt(args) -> int:
     res = _resolved(lambda: stage_prompt(
         backend.config, step.name, item=item, record=record, request=request,
         layout=layout, project_root=root, execute=not args.no_exec))
+    _personal_note(backend, root, ("work", "stages", step.name, "prompt"))
     label = f"stage {step.name}"
     if not args.no_exec and res.text:
         target = str(item.slug) if item is not None else "<slug>"
@@ -438,6 +453,7 @@ def _procedure(args) -> int:
         backend.config, args.procedure, item=item, record=record,
         request=request, layout=layout, project_root=root,
         execute=not args.no_exec))
+    _personal_note(backend, root, ("work", "procedures", args.procedure))
     return _print_resolution(res, f"procedure {args.procedure}",
                              args.no_exec)
 

@@ -20,7 +20,7 @@ from tcw.errors import MovedWithoutNote, NotFound, Refused, UsageError
 from tcw.work.backend import WorkBackend
 from tcw.work.config import Binding, WorkConfig
 from tcw.work.gates import RecordsReader, completion_gate, records_gate
-from tcw.work.hooks import run_bindings
+from tcw.work.hooks import HookFailure, run_bindings
 from tcw.work.layout import ACCEPTED, REJECTED, Layout
 from tcw.work.model import (
     COMPLETION_GATE, FLOW, RECORDS_GATE, SIDE, TERMINAL, Item, Slug,
@@ -37,6 +37,9 @@ class Outcome:
     stage: str | None  # the stage the backend reports afterwards
     messages: tuple[str, ...] = ()
     overridden: tuple[str, ...] = ()  # gate failures a forced move went past
+    #: `(binding, origin, detail)` for each `post` hook that failed after the
+    #: move, so the layer that declared it can be named (TCW-72 Design 7.2).
+    post_failures: tuple = ()
 
 
 def _blank(text: str | None) -> bool:
@@ -181,15 +184,16 @@ def _bindings(bindings: tuple[Binding, ...] | None, item: Item) -> list[Binding]
 
 
 def run_post(config: WorkConfig, layout: Layout, project_root: Path, item: Item,
-             stage: str, *, env: dict[str, str] | None = None) -> str | None:
+             stage: str, *, env: dict[str, str] | None = None) -> HookFailure | None:
     """Run the `post` bindings of a move of `item` into `stage`, `item` as it
     was before the move (its stage is TCW_FROM_STAGE). Returns what failed,
-    or None. `advance` calls it after every move; Jira's `tickets adopt` calls
-    it when a ticket arrives at the request stage (TCW-71 Design 7.2)."""
+    naming the file that declared it, or None. `advance` calls it after every
+    move; Jira's `tickets adopt` calls it when a ticket arrives at the
+    request stage (TCW-71 Design 7.2)."""
     if env is None:
         env = hook_env(item, stage, layout, project_root)
     return run_bindings(_bindings(config.stage(stage).post, item), project_root, env,
-                        config.hooks.timeout, f"{stage} post")
+                        config.hooks.timeout, f"{stage} post", name_origin=True)
 
 
 def _run_gates(item: Item, target: str, force: bool, config: WorkConfig,
@@ -216,8 +220,8 @@ def _run_gates(item: Item, target: str, force: bool, config: WorkConfig,
                                config.hooks.timeout, f"{target} pre")
         if failure:
             if not force:
-                return _refuse(item, failure)
-            failures.append(failure)
+                return _refuse(item, str(failure))
+            failures.append(str(failure))
     return failures
 
 
@@ -289,11 +293,14 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
                         f"it reports {reported}",), overridden)
 
     failure = run_post(config, layout, project_root, item, target, env=env)  # 6.8
+    post_failures = ()
     if failure:
         code = codes.MOVED_WITH_PROBLEM
         messages.append(f"moved to {target}, but {failure}")
+        post_failures = ((failure.binding, failure.binding.origin, failure.message),)
 
-    return Outcome(code, reported, tuple(messages), overridden)     # 6.9
+    return Outcome(code, reported, tuple(messages), overridden,     # 6.9
+                   post_failures)
 
 
 def discard(backend: WorkBackend, config: WorkConfig, layout: Layout,

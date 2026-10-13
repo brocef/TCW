@@ -19,6 +19,7 @@ from typing import Mapping, Sequence
 from tcw.errors import BackendError
 from tcw.store.base import DEFAULT_OUTPUT_CAP, PROCEDURE_IDS, DocEntry
 from tcw.work.generate import GenerateError, run_generate
+from tcw.work.hooks import config_dir
 
 
 class ResolveError(Exception):
@@ -89,7 +90,10 @@ class Resolution:
 
 
 def _confined(project_root: Path, rel: str) -> Path:
-    """Resolve a project-relative path and refuse one that leaves the project.
+    """Resolve a path relative to the declaring file's folder (`project_root`
+    here: the project root, or a personal file's folder) and refuse one that
+    leaves it. The loader refuses such a path too, when the configuration is
+    read (TCW-72 Design 6.1); this is the same check where the file is read.
 
     Both sides are resolved with symlinks followed, because a symlink *inside*
     the project pointing out of it passes any lexical `..` check while reading
@@ -101,7 +105,7 @@ def _confined(project_root: Path, rel: str) -> Path:
     target = (root / rel).resolve()
     if target != root and root not in target.parents:
         raise ResolveError(
-            f"file '{rel}' resolves outside the project root ({target})")
+            f"file '{rel}' resolves outside {root} ({target})")
     return target
 
 
@@ -335,7 +339,7 @@ def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
         elif b.kind == "builtin":
             text = packaged_text(builtin_kind, hook_id)
         elif b.kind == "file":
-            text = _read_file(project_root, b.value) if execute else ""
+            text = _read_file(config_dir(b, project_root), b.value) if execute else ""
         elif b.kind == "generate":
             text = ""
             if execute:
@@ -344,7 +348,8 @@ def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
                 try:
                     result = run_generate(
                         b.value, project_root,
-                        _hook_env(env, role, b.kind, hook_id, "prompt"),
+                        {**_hook_env(env, role, b.kind, hook_id, "prompt"),
+                         "TCW_CONFIG_DIR": str(config_dir(b, project_root))},
                         stdin_text, config.hooks.timeout, config.hooks.output_cap)
                 except GenerateError as error:
                     raise ResolveError(str(error))
