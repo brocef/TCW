@@ -431,10 +431,8 @@ class FakeJira:
             visible = [t for t in self.tickets.values()
                        if not self.search_lag or t.written is None
                        or t.written <= len(self.log) - self.search_lag - 1]
-            known = {s for p in self.projects.values() for s in p.statuses}
             found = fake_jql.select(query, visible, self._value,
-                                    ignore_label_case=self.ignore_label_case,
-                                    statuses=known)
+                                    ignore_label_case=self.ignore_label_case)
         except fake_jql.JqlError as error:
             raise self._error(400, route, str(error)) from None
         start = int(body.get("nextPageToken") or 0)
@@ -489,7 +487,8 @@ class FakeJira:
         ]
         # As Jira does: the top level of the hierarchy (Epic) has no Parent field,
         # since nothing can sit above it.
-        if kind.level < max(t.level for t in project.issue_types):
+        top = max(t.level for t in project.issue_types)
+        if not (kind.level == top and top >= 1):
             fields.append({"fieldId": "parent", "name": "Parent", "required": kind.subtask,
                            "schema": {"type": "issuelink", "system": "parent"}})
         if project.priority:

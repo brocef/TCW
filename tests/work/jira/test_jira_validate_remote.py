@@ -76,6 +76,10 @@ def test_a_missing_tcw_item_field(tmp_path, fake, monkeypatch, capsys):
     assert run.code == 1
     assert any("work.jira.fields.item 'No Such Field' is not on the Task create screen"
                in line for line in run.lines), run.out
+    # The checks after the fields still run: one missing field does not stop them.
+    assert not any("remaining remote checks did not run" in line
+                   for line in run.lines), run.out
+    assert "items and tickets were not checked" in run.err, run.err
 
 
 def test_tcw_item_off_an_edit_screen_and_an_unsampled_type(jira_project, monkeypatch,
@@ -101,6 +105,17 @@ def test_the_top_level_type_needs_no_parent_field(clean, monkeypatch, capsys):
     run = remote(clean, monkeypatch, capsys)
     assert "error: work.jira: Parent is not on the Task edit screen (read on TCW-1), " \
            "so TCW cannot change it" in run.lines
+
+
+def test_without_an_epic_type_a_task_still_needs_parent(clean, monkeypatch, capsys):
+    """Only a top level of 1 or more is spared Parent: a Task in a project with
+    no Epic type can still take a parent in another project."""
+    flow = clean.fake.projects["TCW"]
+    flow.issue_types = tuple(t for t in flow.issue_types if t.level < 1)
+    clean.fake.off_edit_screen.add(("Task", "parent"))
+    run = remote(clean, monkeypatch, capsys)
+    assert "error: work.jira: Parent is not on the Task edit screen (read on TCW-1), " \
+           "so TCW cannot change it" in run.lines, run.out
 
 
 def test_a_refused_key_search_reports_only_the_gone_ticket(clean, monkeypatch, capsys):
@@ -256,6 +271,10 @@ def test_a_missing_status_without_the_definition_keeps_every_finding(
     assert "error: work.jira: status 'In Quality' (stage qa) is not a status of Task " \
            "in TCW" in run.lines
     assert not any("did not run" in line for line in run.lines), run.out
+    # Moves into or out of the missing status are not sampled: no ticket can
+    # be there, and Jira's search just answers with none.
+    assert not any("unchecked:" in line and "In Quality" in line
+                   for line in run.lines), run.out
 
 
 def test_a_refused_read_keeps_what_was_found(tmp_path, fake, monkeypatch, capsys):

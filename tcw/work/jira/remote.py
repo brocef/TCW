@@ -144,7 +144,12 @@ def _checks(run: _Run, layout: Layout, reader: Any,
 
     # 2. Fields, on the edit screen.
     edit_types = checked + ([subtask] if subtask and subtask not in checked else [])
-    _edit_screens(run, edit_types, ids, has_priority)
+    # Nothing sits above the top of the hierarchy, so Jira gives that type (an
+    # Epic, usually) no Parent field (the TCW-71 live check). Only a level of 1
+    # or more counts: with no Epic type in this project, a Task can still take a
+    # parent elsewhere, and missing levels all read as 0.
+    top = max((t.level for t in types), default=0)
+    _edit_screens(run, edit_types, ids, has_priority, top if top >= 1 else None)
 
     # 3. Statuses.
     present = _statuses(run, checked)
@@ -250,11 +255,9 @@ def _needed_fields(ids: Mapping[str, str], has_priority: bool) -> list[tuple[str
 
 
 def _edit_screens(run: _Run, kinds: Iterable[IssueType], ids: Mapping[str, str],
-                  has_priority: bool) -> None:
+                  has_priority: bool, top: int | None) -> None:
+    """`top` is the level of the type that needs no Parent, or None."""
     needed = _needed_fields(ids, has_priority)
-    # Nothing sits above the top level of the hierarchy, so Jira gives that type
-    # (an Epic, usually) no Parent field to require (the TCW-71 live check).
-    top = max((t.level for t in run.backend.metadata().issue_types), default=None)
     for kind in kinds:
         key = run.sample(kind, None)
         if key is None:
@@ -363,7 +366,7 @@ def _moves(run: _Run, kinds: Iterable[IssueType], project_id: str,
         for a, b in moves:
             source, target = statuses[a], statuses[b]
             if source not in have or target not in have:
-                continue                 # already an error; Jira refuses its JQL
+                continue                 # already an error, and no ticket can be there
             where = f"the move from {source!r} to {target!r} ({a} to {b}) for {kind.name}"
             if routes is not None:
                 candidates = [r for r in routes if r.to == target

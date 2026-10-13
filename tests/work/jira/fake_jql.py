@@ -181,10 +181,10 @@ def parse(jql: str) -> Query:
 
 
 def select(jql: str, tickets: list, getter: Callable[[Any, str], Any], *,
-           ignore_label_case: bool = False, statuses=None) -> list:
+           ignore_label_case: bool = False) -> list:
     """The tickets the query selects, in its order. Like Jira's `search/jql`
     (the TCW-71 live check), a status value the site does not have matches
-    nothing and is not an error; `statuses` is kept for callers that pass it."""
+    nothing and is not an error."""
     query = parse(jql)
     found = [t for t in tickets
              if query.predicate(lambda name, t=t: getter(t, name), ignore_label_case)]
