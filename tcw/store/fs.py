@@ -29,7 +29,7 @@ import yaml
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.output import shown as _shown
-from tcw.store.yaml_source import load as _load_named_yaml
+from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
     RETIRED_CAP_FIELDS, retired_key_problem,
@@ -691,23 +691,9 @@ def init(components: list[str], root: Path, project_id: str | None = None,
 
 # ── YAML helpers ────────────────────────────────────────────────────────────
 
-class _UniqueKeyLoader(yaml.SafeLoader):
-    """SafeLoader that errors on duplicate mapping keys (PyYAML silently keeps
-    the last) — so `check` can flag a duplicate `extends` alias."""
-
-
-def _no_dup_keys(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:
-    mapping: dict = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=True)
-        if key in mapping:
-            raise yaml.YAMLError(f"duplicate key: {key!r}")
-        mapping[key] = loader.construct_object(value_node, deep=True)
-    return mapping
-
-
-_UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_dup_keys)
+# The duplicate-key refusal lives with the named-file loader, so the project
+# registry and this module share one copy.
+_UniqueKeyLoader = UniqueKeyLoader
 
 
 #: The YAML filenames TCW writes as records, held to `load_yaml`'s mapping

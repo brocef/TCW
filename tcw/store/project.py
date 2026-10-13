@@ -18,30 +18,11 @@ from tcw.store.base import (
     parse_connected_entry, retired_key_problem,
 )
 from tcw.store.checkouts import normalized_url, provisioned_root
-from tcw.store.yaml_source import load as _load_named_yaml
+from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
 SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 RESERVED_PROJECT_IDS = {"t", "c", "w", "local"}
-
-
-class _UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-
-def _unique_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:
-    mapping: dict = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=True)
-        if key in mapping:
-            raise yaml.YAMLError(f"duplicate key: {key!r}")
-        mapping[key] = loader.construct_object(value_node, deep=True)
-    return mapping
-
-
-_UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping
-)
 
 
 def validate_project_id(project_id: str) -> str:

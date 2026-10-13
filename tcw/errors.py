@@ -34,6 +34,24 @@ class BackendError(TcwError):
     code = codes.ERROR
 
 
+class ConfigError(BackendError):
+    """The configuration of the project a command acts on has problems, in
+    `tcw-config.yaml`, a personal file, or the environment that switches
+    personal files off. Every command that loads the configuration stops on
+    it before doing anything else (TCW-72 Design 2.3).
+
+    A `BackendError`, so code that already treats a broken backend as broken
+    keeps doing so for a project whose configuration cannot be read.
+    """
+
+    code = codes.ERROR
+
+    def __init__(self, problems, *, name: str | None = None):
+        problems = [problems] if isinstance(problems, str) else list(problems)
+        self.problems = problems
+        super().__init__("\n".join(str(p) for p in problems), name=name)
+
+
 class UsageError(TcwError):
     """The request cannot be made at all; nothing was read or written."""
 

@@ -143,6 +143,20 @@ def _cache_in_tmp(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
 
 
+@pytest.fixture(autouse=True)
+def _no_personal_config(tmp_path, monkeypatch):
+    """No test reads the developer's own personal configuration (TCW-72 AC 19).
+
+    `TCW_NO_PERSONAL_CONFIG=1` skips both personal files, and
+    `XDG_CONFIG_HOME` points the user-wide file into the test's own folder, so
+    a test that switches personal files back on (`monkeypatch.delenv`) still
+    reads nothing from the real home folder. A test of the home-folder path
+    sets `HOME` itself.
+    """
+    monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+
+
 def pytest_collection_modifyitems(config, items):
     """Skip the 2.x work tests TCW-70 did not port (`tests/not_ported.py`)."""
     from tests.not_ported import NOT_PORTED, REASON
