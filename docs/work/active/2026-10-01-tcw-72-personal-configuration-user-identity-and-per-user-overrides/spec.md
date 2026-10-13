@@ -624,10 +624,12 @@ Four terms used below:
      TCW-71, whose `current_user()` answered `None` with a warning on stderr
      when Jira could not say, so `--mine` then printed "no identity is
      configured" when Jira was the problem. `current_user()` now returns
-     `None` only when a credential variable is unset; Jira unreachable (or
-     limiting requests) raises `Unreachable` (exit 5), and credentials
-     rejected or any other Jira error raises `BackendError` (exit 1) with
-     Jira's reason. TCW-71's `test_current_user_never_raises` was replaced by
+     `None` only when a credential variable is unset; any failure to ask Jira
+     raises as any other Jira operation does: unreachable (or limiting
+     requests) is `Unreachable` (exit 5), rejected credentials are
+     `BackendError` (exit 1) with Jira's reason, and the other answers map
+     through the same table (a 404 is exit 4, a 5xx is exit 5). Wording
+     corrected after the confirming review, 2026-10-13. TCW-71's `test_current_user_never_raises` was replaced by
      `test_current_user_raises_when_jira_cannot_say`.
    - **[Decision]** When `current_user()` returns `None`, the command raises
      `ConfigError` (exit 1, Design 2.3) with one message: "no identity is
