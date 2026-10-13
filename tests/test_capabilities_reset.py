@@ -10,6 +10,7 @@ import yaml
 
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
+from tcw.errors import TcwError
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -114,20 +115,20 @@ def test_reset_qualified_placement_variant(tmp_path):
 def test_reset_refuses_standalone_local(tmp_path):
     base, child = federated(tmp_path)
     write_cap(child, "extra", id="cap-loc001", Status="Missing")
-    with pytest.raises(ValueError, match="local capability"):
+    with pytest.raises(TcwError, match="local capability"):
         store(child).reset("extra")
     assert (child / "docs/capabilities/extra").is_dir()
 
 
 def test_reset_refuses_uninherited_verbatim(tmp_path):
     base, child = federated(tmp_path)                              # no override yet
-    with pytest.raises(ValueError, match="no local override"):
+    with pytest.raises(TcwError, match="no local override"):
         store(child).reset("auth/login")
 
 
 def test_reset_unknown_path(tmp_path):
     base, child = federated(tmp_path)
-    with pytest.raises(ValueError, match="no such capability"):
+    with pytest.raises(TcwError, match="no such capability"):
         store(child).reset("does/not/exist")
 
 

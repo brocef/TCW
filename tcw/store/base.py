@@ -19,12 +19,14 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
+from tcw.errors import NotFound, UsageError
 
-class RefError(Exception):
+
+class RefError(NotFound):
     """A reference could not be resolved cleanly."""
 
 
-class AmbiguousRef(RefError):
+class AmbiguousRef(UsageError, RefError):
     """A bare reference matches more than one namespace — author must qualify.
 
     Carries its own message: callers print `str(e)`, and the bare ref alone
@@ -340,7 +342,18 @@ class Term:
 
 
 class TaxonomyStore(ABC):
-    """The taxonomy axis: a forest of terms, optionally federated via `extends`."""
+    """The taxonomy axis: a forest of terms, optionally federated via `extends`.
+
+    Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
+    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
+    Status or field outside the list, a reference that does not resolve or is
+    ambiguous, a project nothing registers); `Refused` (3) when the input is
+    fine but the store's state forbids it (the name is taken, the entry is
+    inherited, has nested entries or is still referenced, the `extends` entry
+    already exists); `BackendError` (1) for a fault reading back what was
+    written. An adapter for another kind of store raises the same classes.
+    """
 
     @abstractmethod
     def list_all(self, local_only: bool = False) -> list[Term]:
@@ -481,6 +494,16 @@ class CapabilitiesStore(ABC):
 
     Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
     body + named-fields + named-attachments nodes on the shared tree-store core.
+
+    Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
+    `NotFound` (4) when the entry or `extends` ID named does not exist;
+    `UsageError` (2) when the input itself is wrong (a bad ID or path, a kind,
+    Status or field outside the list, a reference that does not resolve or is
+    ambiguous, a project nothing registers); `Refused` (3) when the input is
+    fine but the store's state forbids it (the name is taken, the entry is
+    inherited, has nested entries or is still referenced, the `extends` entry
+    already exists); `BackendError` (1) for a fault reading back what was
+    written. An adapter for another kind of store raises the same classes.
     """
 
     @abstractmethod

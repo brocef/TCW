@@ -25,6 +25,7 @@ import yaml
 
 from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
+from tcw.errors import TcwError
 
 
 def node(tmp_path, name="repo"):
@@ -218,7 +219,7 @@ def test_set_refuses_an_unresolvable_ref_and_writes_nothing(
     meta = root / "docs" / "capabilities" / "web" / "editing" / "meta.yaml"
     before = meta.read_bytes()
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store.set("web/editing", {field: value})
     assert expected in str(e.value)
     assert meta.read_bytes() == before, "a refused write must write nothing"
@@ -227,7 +228,7 @@ def test_set_refuses_an_unresolvable_ref_and_writes_nothing(
 def test_set_reports_every_bad_ref_not_just_the_first(tmp_path):
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store.set("web/editing", {"Subject": "no-such-term", "Feature": "also-bogus"})
     parts = set(str(e.value).split("; "))
     assert parts == {"Subject → dangling ref 'no-such-term'",
@@ -256,7 +257,7 @@ def test_the_refusal_and_check_agree_word_for_word(tmp_path):
     """One renderer, checked behaviourally across both consumers."""
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store.set("web/editing", {"Subject": "no-such-term"})
     write_cap(root, "mirror", Status="Supported", Subject="no-such-term")
     from_check = [p.removeprefix("mirror: ")
@@ -273,7 +274,7 @@ def test_a_taxonomy_less_node_still_accepts_subject_but_refuses_blocked_by(tmp_p
     write_cap(root, "x", Status="Supported")
     store = FsCapabilitiesStore.open(root)
     store.set("x", {"Subject": "anything"})
-    with pytest.raises(ValueError, match="Blocked by"):
+    with pytest.raises(TcwError, match="Blocked by"):
         store.set("x", {"Blocked by": "nope"})
 
 
@@ -289,7 +290,7 @@ def test_add_with_bad_fields_creates_no_folder(tmp_path, fields, status):
     class — bad ref, unknown field and invalid Status alike — not one input."""
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         store.add("new/thing", name="Thing", status=status, fields=fields)
     assert not (root / "docs" / "capabilities" / "new" / "thing").exists()
 
@@ -363,7 +364,7 @@ def test_a_non_string_ref_is_refused_rather_than_crashing(tmp_path):
     AttributeError — an HTTP 500 rather than the documented 422 refusal."""
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store.set("web/editing", {"Feature": 1})
     assert "Feature → dangling ref '1'" in str(e.value)
 
@@ -371,7 +372,7 @@ def test_a_non_string_ref_is_refused_rather_than_crashing(tmp_path):
 def test_a_non_string_subject_is_refused_rather_than_crashing(tmp_path):
     root = _node_with_taxonomy(tmp_path)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store.set("web/editing", {"Subject": [1, 2]})
     assert "Subject → dangling ref '1'" in str(e.value)
 

@@ -11,6 +11,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init
 from nodeconfig import set_component_key
+from tcw.errors import TcwError
 
 
 def git(root: Path, *args: str) -> None:
@@ -64,7 +65,7 @@ def test_a_capability_naming_the_term_refuses_the_removal(tmp_path, monkeypatch,
     term(root, "zed")
     cap(root, "login", **{field: value})
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "login" in err and field in err, err
+    assert code == 3 and "login" in err and field in err, err
     assert lists(root, "zed")
 
 
@@ -83,7 +84,7 @@ def test_an_unopenable_capabilities_store_refuses_the_removal(tmp_path, monkeypa
     term(root, "zed")
     set_component_key(root, "capabilities", "path", "nowhere")
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "nowhere" in err, err
+    assert code == 3 and "nowhere" in err, err
     assert lists(root, "zed")
 
 
@@ -105,7 +106,7 @@ def test_an_unstaged_child_term_refuses_the_removal(tmp_path, monkeypatch, capsy
     term(root, "zed")
     term(root, "zed/kid", stage=False)
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "zed/kid" in err and "git add" in err, err
+    assert code == 3 and "zed/kid" in err and "git add" in err, err
     assert "Removed" not in err and lists(root, "zed") and lists(root, "zed/kid")
 
 
@@ -133,7 +134,7 @@ def test_any_other_untracked_file_refuses_before_anything_is_removed(
     stray.parent.mkdir(parents=True, exist_ok=True)
     stray.write_text("mine")
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and f"zed/{where}" in err and "delete it" in err, err
+    assert code == 3 and f"zed/{where}" in err and "delete it" in err, err
     assert lists(root, "zed") and stray.exists()
     assert (root / "docs" / "taxonomy" / "zed" / "meta.yaml").exists()   # untouched
 
@@ -142,7 +143,7 @@ def test_a_term_never_staged_is_refused_in_tcw_words(tmp_path, monkeypatch, caps
     root = node(tmp_path)
     term(root, "zed", stage=False)
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "not tracked" in err, err
+    assert code == 3 and "not tracked" in err, err
     assert "fatal:" not in err and lists(root, "zed")
 
 
@@ -154,7 +155,7 @@ def test_the_store_refuses_for_any_caller(tmp_path):
     root = node(tmp_path)
     term(root, "zed")
     cap(root, "login", Subject=["zed"])
-    with pytest.raises(ValueError, match="capability login"):
+    with pytest.raises(TcwError, match="capability login"):
         FsTaxonomyStore.open(root).remove("zed")
     assert lists(root, "zed")
 
@@ -167,7 +168,7 @@ def test_an_untracked_symlink_to_a_tracked_file_refuses_before_removing(tmp_path
     folder = root / "docs" / "taxonomy" / "zed"
     (folder / "alias.yaml").symlink_to("meta.yaml")
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "zed/alias.yaml" in err, err
+    assert code == 3 and "zed/alias.yaml" in err, err
     assert (folder / "meta.yaml").exists() and lists(root, "zed")
 
 
@@ -179,7 +180,7 @@ def test_a_tracked_symlink_does_not_vouch_for_its_untracked_target(tmp_path, mon
     (folder / "link.md").symlink_to("mine.md")
     git(root, "add", str(folder / "link.md"))
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "zed/mine.md" in err, err
+    assert code == 3 and "zed/mine.md" in err, err
     assert (folder / "meta.yaml").exists() and lists(root, "zed")
 
 
@@ -190,5 +191,5 @@ def test_a_malformed_capability_names_the_capabilities_check(tmp_path, monkeypat
     bad.mkdir()
     (bad / "meta.yaml").write_text("Subject: [unclosed\n")
     code, err = rm(root, monkeypatch, capsys, "zed")
-    assert code == 1 and "capabilities that might name it cannot be read" in err, err
+    assert code == 3 and "capabilities that might name it cannot be read" in err, err
     assert lists(root, "zed")

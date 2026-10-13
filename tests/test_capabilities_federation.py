@@ -11,6 +11,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 
 
 from nodeconfig import declare_extends
+from tcw.errors import TcwError
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -146,7 +147,7 @@ def test_override_null_clears_field(tmp_path):
 def test_remove_inherited_raises(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    with pytest.raises(ValueError, match="cannot remove inherited"):
+    with pytest.raises(TcwError, match="cannot remove inherited"):
         store(child).remove("auth/login")
 
 
@@ -314,9 +315,9 @@ def test_set_local_unchanged_by_override_machinery(tmp_path):
 def test_set_inherited_validates_status(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    with pytest.raises(ValueError, match="invalid Status"):
+    with pytest.raises(TcwError, match="invalid Status"):
         store(child).set("auth/login", {"Status": "Bogus"})
-    with pytest.raises(ValueError, match="unknown field"):
+    with pytest.raises(TcwError, match="unknown field"):
         store(child).set("auth/login", {"Nonsense": "x"})
     assert not (child / "docs" / "capabilities" / "auth" / "login").exists()
 
@@ -324,7 +325,7 @@ def test_set_inherited_validates_status(tmp_path):
 def test_set_unknown_path_still_raises(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    with pytest.raises(ValueError, match="no such capability"):
+    with pytest.raises(TcwError, match="no such capability"):
         store(child).set("nope/missing", {"Status": "Missing"})
 
 
@@ -412,7 +413,7 @@ def test_remove_inherited_still_refuses_after_override(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     store(child).set("auth/login", {"Status": "Missing"})
-    with pytest.raises(ValueError, match="cannot remove inherited"):
+    with pytest.raises(TcwError, match="cannot remove inherited"):
         store(child).remove("auth/login")
 
 
@@ -496,7 +497,7 @@ def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     (child / "tcw-config.yaml").write_text(
         "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
     )
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(TcwError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
     assert "not reachable in this checkout" in str(excinfo.value)
 

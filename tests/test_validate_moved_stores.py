@@ -95,7 +95,7 @@ def test_a_capability_subject_is_checked_against_a_moved_taxonomy(tmp_path, monk
     assert any("ghost" in p for p in check_lines(validate(root), "capabilities"))
 
     monkeypatch.chdir(root)
-    assert main(["capabilities", "set", "x", "--field", "Subject=nobody"]) == 1
+    assert main(["capabilities", "set", "x", "--field", "Subject=nobody"]) == 2
     assert "nobody" in capsys.readouterr().err
 
 

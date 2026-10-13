@@ -85,7 +85,7 @@ def _add(args: argparse.Namespace) -> int:
         return 1
     try:
         cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
-    except (ValueError, RefError) as e:
+    except ValueError as e:
         print(f"tcw capabilities add: {e}", file=sys.stderr)
         return 1
     print(f"Added capability {cap.path} ({cap.id})")
@@ -110,7 +110,7 @@ def _set(args: argparse.Namespace) -> int:
         return 1
     try:
         cap = st.set(args.id, fields)
-    except (ValueError, RefError) as e:
+    except ValueError as e:
         print(f"tcw capabilities set: {e}", file=sys.stderr)
         return 1
     print(f"Set {cap.path}")
@@ -123,7 +123,7 @@ def _reset(args: argparse.Namespace) -> int:
         return 1
     try:
         st.reset(args.id)
-    except (ValueError, RefError) as e:
+    except ValueError as e:
         print(f"tcw capabilities reset: {e}", file=sys.stderr)
         return 1
     print(f"reset {args.id}")
@@ -136,7 +136,7 @@ def _rm(args: argparse.Namespace) -> int:
         return 1
     try:
         st.remove(args.id)
-    except (ValueError, RefError) as e:              # AmbiguousRef carries its own message
+    except ValueError as e:              # AmbiguousRef carries its own message
         print(f"tcw capabilities rm: {e}", file=sys.stderr)
         return 1
     print(f"Removed capability {args.id}")
@@ -163,7 +163,7 @@ def _extends(args: argparse.Namespace) -> int:
         else:
             st.extends_add(args.project_id)
             print(f"Added extends project {args.project_id}")
-    except (ValueError, RefError) as e:
+    except ValueError as e:
         print(f"tcw capabilities extends: {e}", file=sys.stderr)
         return 1
     return 0

@@ -16,6 +16,7 @@ import subprocess
 import pytest
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, write_sentinel
+from tcw.errors import TcwError
 
 
 def _repo(tmp_path, name="repo"):
@@ -177,7 +178,7 @@ def test_taxonomy_add_through_a_symlinked_parent_writes_nothing_outside(tmp_path
     root = _repo(tmp_path)
     secret = _plant(root)
     store = FsTaxonomyStore.open(root)
-    with pytest.raises(ValueError, match="parent term does not exist"):
+    with pytest.raises(TcwError, match="parent term does not exist"):
         store.add("Planted", slug="planted", parent="alpha/link")
     assert not (secret / "planted").exists()
 
@@ -232,7 +233,7 @@ def test_capabilities_set_through_a_symlink_mutates_nothing_outside(tmp_path):
     outside = _cap_link(root)
     before = (outside / "meta.yaml").read_bytes()
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         store.set("link", {"Status": "Omitted"})
     assert (outside / "meta.yaml").read_bytes() == before
 
@@ -241,7 +242,7 @@ def test_capabilities_add_through_a_symlink_creates_nothing_outside(tmp_path):
     root = _repo(tmp_path)
     outside = _cap_link(root, target_has_meta=False)
     store = FsCapabilitiesStore.open(root)
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         store.add("link/planted", name="Planted")
     assert not (outside / "planted").exists()
 

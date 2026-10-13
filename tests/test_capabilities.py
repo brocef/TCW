@@ -8,6 +8,7 @@ import yaml
 
 from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
+from tcw.errors import TcwError
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -137,7 +138,7 @@ def test_add_mints_unique_ids(tmp_path):
 def test_add_refuses_duplicate(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("components/footer")
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.add("components/footer")
 
 
@@ -604,15 +605,15 @@ def test_set_clears_field_with_none(tmp_path):
 def test_set_rejects_invalid_status_and_unknown_field(tmp_path):
     st = FsCapabilitiesStore.open(node(tmp_path))
     st.add("routes/login", name="Sign in")
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.set("routes/login", {"Status": "Broken"})
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.set("routes/login", {"Frobnicate": "x"})
 
 
 def test_set_dangling_path_errors(tmp_path):
     root = node(tmp_path)
-    with pytest.raises((ValueError, RefError)):
+    with pytest.raises(TcwError):
         FsCapabilitiesStore.open(root).set("routes/nope", {"Status": "Supported"})
 
 
@@ -673,7 +674,7 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(child)
     from tcw.cli import main
 
-    assert main(["capabilities", "set", "x/thing", "--status", "Missing"]) == 1
+    assert main(["capabilities", "set", "x/thing", "--status", "Missing"]) == 2
     err = capsys.readouterr().err
     assert "ambiguous" in err and "x/thing" in err     # not a bare, unexplained path
     assert main(["capabilities", "set", "one/x/thing", "--status", "Missing"]) == 0

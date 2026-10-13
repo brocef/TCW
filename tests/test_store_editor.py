@@ -20,6 +20,7 @@ from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revi
 # Federation setup is non-trivial and already written next door; the rollback
 # test that needs it belongs in this file, with the other fault-injection tests.
 from test_capabilities_federation import child_of
+from tcw.errors import TcwError
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ def test_update_term_read_back_lost_is_a_valueerror(tmp_path, monkeypatch):
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
     monkeypatch.setattr(FsTaxonomyStore, "get_term_detail", lambda self, ref: None)
-    with pytest.raises(ValueError, match="could not be read back"):
+    with pytest.raises(TcwError, match="could not be read back"):
         st.update_term("admin", description="Manage users")
 
 
@@ -215,7 +216,7 @@ def test_update_term_refuses_inherited(tmp_path):
     )
     FsTaxonomyStore.open(cons).extends_add("shared")
     st = FsTaxonomyStore.open(cons)
-    with pytest.raises(ValueError, match="cannot update inherited"):
+    with pytest.raises(TcwError, match="cannot update inherited"):
         st.update_term("shared/widget", name="X")
 
 
@@ -223,7 +224,7 @@ def test_update_term_dangling_relatesto_rejected(tmp_path):
     root = _tax_node(tmp_path)
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
-    with pytest.raises(ValueError, match="does not resolve"):
+    with pytest.raises(TcwError, match="does not resolve"):
         st.update_term("admin", relates_to=["no-such-term"])
 
 
@@ -231,7 +232,7 @@ def test_update_term_bad_kind_rejected(tmp_path):
     root = _tax_node(tmp_path)
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
-    with pytest.raises(ValueError, match="invalid taxonomy kind"):
+    with pytest.raises(TcwError, match="invalid taxonomy kind"):
         st.update_term("admin", kind="Bogus")
 
 
@@ -240,7 +241,7 @@ def test_update_term_feature_requires_vocabulary(tmp_path):
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
     # Set kind to Feature without vocabulary
-    with pytest.raises(ValueError, match="Feature requires"):
+    with pytest.raises(TcwError, match="Feature requires"):
         st.update_term("admin", kind="Feature", vocabulary=[])
 
 
@@ -273,7 +274,7 @@ def test_update_capability_read_back_lost_is_a_valueerror(tmp_path, monkeypatch)
     st.add("routes/login", name="Sign in")
     monkeypatch.setattr(FsCapabilitiesStore, "get_capability_detail",
                         lambda self, identifier: None)
-    with pytest.raises(ValueError, match="could not be read back"):
+    with pytest.raises(TcwError, match="could not be read back"):
         st.update_capability("routes/login", body="Updated body text.")
 
 
@@ -313,7 +314,7 @@ def test_update_capability_invalid_field_rejected(tmp_path):
     root = _cap_node(tmp_path)
     st = FsCapabilitiesStore.open(root)
     st.add("routes/login", name="Sign in")
-    with pytest.raises(ValueError, match="unknown field"):
+    with pytest.raises(TcwError, match="unknown field"):
         st.update_capability("routes/login", fields={"Bogus": "x"})
 
 
@@ -321,13 +322,13 @@ def test_update_capability_invalid_status_rejected(tmp_path):
     root = _cap_node(tmp_path)
     st = FsCapabilitiesStore.open(root)
     st.add("routes/login", name="Sign in")
-    with pytest.raises(ValueError, match="invalid Status"):
+    with pytest.raises(TcwError, match="invalid Status"):
         st.update_capability("routes/login", fields={"Status": "Broken"})
 
 
 def test_add_invalid_status(tmp_path):
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
-    with pytest.raises(ValueError, match="invalid Status"):
+    with pytest.raises(TcwError, match="invalid Status"):
         st.add("x", status="NotAStatus")
 
 
@@ -457,7 +458,7 @@ def test_taxonomy_update_validation_no_partial_write(tmp_path):
     st.add("Admin")
     meta_before = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.update_term("admin", name="X", relates_to=["ghost"])
 
     meta_after = (root / "docs/taxonomy/admin/meta.yaml").read_bytes()
@@ -769,7 +770,7 @@ def test_add_rejects_path_traversal(tmp_path):
     """#3 — a caller-supplied path must not escape the store root."""
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
     for bad in ["../evil", "/tmp/evil", "a/../../evil", "..\\evil"]:
-        with pytest.raises(ValueError, match="invalid path"):
+        with pytest.raises(TcwError, match="invalid path"):
             st.add(bad, name="Do X")
     assert list(tmp_path.rglob("evil*")) == []
 
@@ -777,7 +778,7 @@ def test_add_rejects_path_traversal(tmp_path):
 def test_taxonomy_add_rejects_path_traversal(tmp_path):
     """#3 — a caller-supplied taxonomy slug must not escape the store root."""
     st = FsTaxonomyStore.open(_tax_node(tmp_path))
-    with pytest.raises(ValueError, match="invalid slug"):
+    with pytest.raises(TcwError, match="invalid slug"):
         st.add("Evil", slug="../evil")
     assert list(tmp_path.rglob("evil*")) == []
 
@@ -786,7 +787,7 @@ def test_add_rejects_duplicate_path(tmp_path):
     """#5 — adding a capability at an existing path must fail, not overwrite."""
     st = FsCapabilitiesStore.open(_cap_node(tmp_path))
     st.add("routes/login", name="Sign in")
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(TcwError, match="already exists"):
         st.add("routes/login", name="Sign in")
 
 

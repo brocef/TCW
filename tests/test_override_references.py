@@ -11,6 +11,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from test_capabilities_federation import child_of, write_cap
+from tcw.errors import TcwError
 
 UPSTREAM = {"auth/login": {"id": "cap-aaa111", "Status": "Supported"}}
 
@@ -83,11 +84,11 @@ def test_rm_refuses_a_term_an_override_names(tmp_path, monkeypatch, capsys,
     root = node(tmp_path)
     term(root, "zed", kind)
     override(root, **{field: value})
-    with pytest.raises(ValueError, match=rf"capability override ov \({field}\)"):
+    with pytest.raises(TcwError, match=rf"capability override ov \({field}\)"):
         FsTaxonomyStore.open(root).remove("zed")
     monkeypatch.chdir(root)
     capsys.readouterr()
-    assert main(["taxonomy", "rm", "zed"]) == 1
+    assert main(["taxonomy", "rm", "zed"]) == 3
     assert f"capability override ov ({field})" in capsys.readouterr().err
     assert FsTaxonomyStore.open(root).get("zed") is not None
 
@@ -108,7 +109,7 @@ def test_a_malformed_override_refuses_the_removal_readably(tmp_path, monkeypatch
     (root / "docs" / "capabilities" / "ov" / "meta.yaml").write_text("overrides: [unclosed\n")
     monkeypatch.chdir(root)
     capsys.readouterr()
-    assert main(["taxonomy", "rm", "zed"]) == 1
+    assert main(["taxonomy", "rm", "zed"]) == 3
     err = capsys.readouterr().err
     assert "capabilities that might name it cannot be read" in err and "Traceback" not in err, err
     assert FsTaxonomyStore.open(root).get("zed") is not None

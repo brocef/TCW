@@ -8,6 +8,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
 from nodeconfig import declare_extends, set_component_key
+from tcw.errors import TcwError
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -97,7 +98,7 @@ def test_add_feature_with_vocabulary_refs(tmp_path):
 def test_add_refuses_unresolvable_vocab_ref(tmp_path):
     root = node(tmp_path, "repo")
     st = FsTaxonomyStore.open(root)
-    with pytest.raises(ValueError, match="'this-does-not-exist' does not resolve"):
+    with pytest.raises(TcwError, match="'this-does-not-exist' does not resolve"):
         st.add("F", kind="Feature", vocabulary=["this-does-not-exist"])
     assert not (root / "docs/taxonomy/f").exists()      # no partial folder
 
@@ -105,7 +106,7 @@ def test_add_refuses_unresolvable_vocab_ref(tmp_path):
 def test_add_requires_a_vocabulary_ref_on_a_feature(tmp_path):
     root = node(tmp_path, "repo")
     st = FsTaxonomyStore.open(root)
-    with pytest.raises(ValueError, match="Feature requires at least one vocabulary ref"):
+    with pytest.raises(TcwError, match="Feature requires at least one vocabulary ref"):
         st.add("F", kind="Feature")
     assert not (root / "docs/taxonomy/f").exists()
 
@@ -115,7 +116,7 @@ def test_add_refuses_vocab_ref_pointing_at_a_feature(tmp_path):
     st = FsTaxonomyStore.open(root)
     st.add("User")
     st.add("User Authentication", kind="Feature", vocabulary=["user"])
-    with pytest.raises(ValueError, match="expected Vocabulary"):
+    with pytest.raises(TcwError, match="expected Vocabulary"):
         st.add("Password Reset", kind="Feature", vocabulary=["user-authentication"])
     assert not (root / "docs/taxonomy/password-reset").exists()
 
@@ -136,7 +137,7 @@ def test_add_ambiguous_leaf_slug_names_both_candidates(tmp_path):
     for parent in ("alpha", "beta"):
         st.add(parent.title())
         st.add("Zeta", parent=parent)
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(TcwError) as excinfo:
         st.add("F", kind="Feature", vocabulary=["zeta"])
     message = str(excinfo.value)
     assert "ambiguous" in message
@@ -170,7 +171,7 @@ def test_add_refuses_collision(tmp_path):
     root = node(tmp_path, "repo")
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.add("Admin")
 
 
@@ -367,7 +368,7 @@ def test_rm_refuses_ref_escaping_the_store(tmp_path):
     (outside / "meta.yaml").write_text("name: Thing\n")
     st = FsTaxonomyStore.open(root)
     assert st.get("../capabilities/thing") is None
-    with pytest.raises(ValueError, match="no such term"):
+    with pytest.raises(TcwError, match="no such term"):
         st.remove("../capabilities/thing")
     assert outside.is_dir()
 
@@ -388,10 +389,10 @@ def test_rm_refuses_nested_terms(tmp_path, monkeypatch, capsys):
     st = FsTaxonomyStore.open(root)
     st.add("Admin")
     st.add("Permission", parent="admin")
-    with pytest.raises(ValueError, match="nested under it: admin/permission"):
+    with pytest.raises(TcwError, match="nested under it: admin/permission"):
         st.remove("admin")
     monkeypatch.chdir(root)
-    assert main(["taxonomy", "rm", "admin"]) == 1
+    assert main(["taxonomy", "rm", "admin"]) == 3
     captured = capsys.readouterr()
     assert "admin/permission" in captured.err and captured.out == ""
     assert st.get("admin") is not None and st.get("admin/permission") is not None
@@ -403,7 +404,7 @@ def test_rm_refuses_a_relatesto_referrer(tmp_path):
     write_term(root, "payment", name="Payment", relates_to=["invoice"])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
     st = FsTaxonomyStore.open(root)
-    with pytest.raises(ValueError, match=r"still referenced by payment \(relatesTo\)"):
+    with pytest.raises(TcwError, match=r"still referenced by payment \(relatesTo\)"):
         st.remove("invoice")
     assert st.get("invoice") is not None and st.check() == []
 
@@ -413,7 +414,7 @@ def test_rm_refuses_a_vocabulary_referrer(tmp_path):
     st = FsTaxonomyStore.open(root)
     st.add("Invoice")
     st.add("PDF Export", kind="feature", vocabulary=["invoice"])
-    with pytest.raises(ValueError, match=r"still referenced by pdf-export \(vocabulary\)"):
+    with pytest.raises(TcwError, match=r"still referenced by pdf-export \(vocabulary\)"):
         st.remove("invoice")
     assert st.get("invoice") is not None
 
@@ -485,7 +486,7 @@ def test_rm_refuses_a_case_variant_spelling(tmp_path):
     st.add("Admin")
     if not (root / "docs/taxonomy/ADMIN").is_dir():
         pytest.skip("case-sensitive filesystem: the variant resolves to nothing anyway")
-    with pytest.raises(ValueError, match="no such term"):
+    with pytest.raises(TcwError, match="no such term"):
         st.remove("ADMIN")
     assert (root / "docs/taxonomy/admin").is_dir()
 
@@ -493,7 +494,7 @@ def test_rm_refuses_a_case_variant_spelling(tmp_path):
 def test_rm_refuses_inherited(tmp_path):
     cons, _ = consumer_with_shared(tmp_path)
     st = FsTaxonomyStore.open(cons)
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         st.remove("shared/Argument")
 
 
@@ -737,11 +738,11 @@ def test_extends_add_refuses(tmp_path):
     connect_sources(consumer, base)
     FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)
-    with pytest.raises(ValueError):               # duplicate alias
+    with pytest.raises(TcwError):               # duplicate alias
         st.extends_add("base")
-    with pytest.raises(ValueError):               # missing target repo
+    with pytest.raises(TcwError):               # missing target repo
         st.extends_add("nope")
-    with pytest.raises(ValueError):               # self-reference
+    with pytest.raises(TcwError):               # self-reference
         st.extends_add("consumer")
 
 
@@ -753,7 +754,7 @@ def test_extends_remove(tmp_path):
     st = FsTaxonomyStore.open(consumer)
     st.extends_remove("base")
     assert "base" not in (FsTaxonomyStore.open(consumer).config.get("extends") or [])
-    with pytest.raises(ValueError):               # absent alias
+    with pytest.raises(TcwError):               # absent alias
         FsTaxonomyStore.open(consumer).extends_remove("base")
 
 
@@ -769,7 +770,7 @@ def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
     import yaml as _yaml
     _cfg = _yaml.safe_load((consumer / "tcw-config.yaml").read_text())
     assert _cfg["taxonomy"]["extends"] == ["base"]
-    assert main(["taxonomy", "extends", "add", "base"]) == 1
+    assert main(["taxonomy", "extends", "add", "base"]) == 3
     assert "already exists" in capsys.readouterr().err
     assert main(["taxonomy", "extends", "rm", "base"]) == 0
 
@@ -779,7 +780,7 @@ def test_cli_extends_is_not_treated_as_a_term_path(tmp_path, monkeypatch, capsys
     root = node(tmp_path, "repo")
     monkeypatch.chdir(root)
     # "extends" must dispatch to the subcommand, not the `taxonomy <path>` show-sugar
-    assert main(["taxonomy", "extends", "rm", "ghost"]) == 1   # absent alias → handled error, not "no such term"
+    assert main(["taxonomy", "extends", "rm", "ghost"]) == 4   # absent alias → handled error, not "no such term"
     assert "no such term" not in capsys.readouterr().err
 
 
@@ -1036,7 +1037,7 @@ def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(
     original = _yaml.safe_dump(raw, sort_keys=False)
     cfg.write_text(original)
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(TcwError) as excinfo:
         FsTaxonomyStore.open(cons).extends_add("shared")
     assert "taxonomy must be a mapping" in str(excinfo.value)
     assert cfg.read_text() == original       # nothing written

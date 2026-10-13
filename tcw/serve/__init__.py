@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from tcw.errors import TcwError
 from tcw.store.base import (
     CAP_FIELDS, CAP_STATUSES, _UNSET,
     IllegalTransition, MultipleMatch, RefError, StaleRevision,
@@ -133,7 +134,9 @@ def _with_warnings(response: dict, node_root: Path, axis: str, ref: str) -> dict
 def _map_store_error(e: Exception) -> tuple[int, bytes]:
     """Map store-level exceptions to HTTP status codes and JSON error bodies.
 
-    "no such" / "no heading" ValueError messages → 404.
+    "no such" / "no heading" ValueError or `TcwError` messages → 404. The
+    tree stores raise `TcwError` classes for the CLI's exit codes (TCW-73);
+    the viewer keeps the HTTP statuses it gave when they raised `ValueError`.
     StaleRevision → 409, with `"code": "stale-revision"`.
     IllegalTransition / validation ValueError / RefError → 422.
     Everything else → 500.
@@ -151,7 +154,7 @@ def _map_store_error(e: Exception) -> tuple[int, bytes]:
         return _err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
     if isinstance(e, RefError):
         return _err(HTTPStatus.UNPROCESSABLE_ENTITY, str(e))
-    if isinstance(e, ValueError):
+    if isinstance(e, (ValueError, TcwError)):
         # "no such" errors (unknown slug/ref) are 404
         if "no such" in msg or "no heading" in msg:
             return _err(HTTPStatus.NOT_FOUND, str(e))
@@ -538,7 +541,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 }
                 self._send_json(HTTPStatus.CREATED, _with_warnings(
                     response, taxonomy.node_root, "taxonomy", ref))
-            except (ValueError, RefError) as e:
+            except (ValueError, TcwError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
             except Exception as e:
@@ -566,7 +569,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 }
                 self._send_json(HTTPStatus.CREATED, _with_warnings(
                     response, capabilities.node_root, "capabilities", cap_path))
-            except (ValueError, RefError) as e:
+            except (ValueError, TcwError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
             except Exception as e:
@@ -695,7 +698,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 }
                 self._send_json(HTTPStatus.OK, _with_warnings(
                     response, taxonomy.node_root, "taxonomy", detail.term.slug))
-            except (ValueError, StaleRevision, RefError) as e:
+            except (ValueError, TcwError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
             except Exception as e:
@@ -728,7 +731,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, _with_warnings(
                     response, capabilities.node_root, "capabilities",
                     detail.capability.path))
-            except (ValueError, StaleRevision, RefError) as e:
+            except (ValueError, TcwError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
             except Exception as e:

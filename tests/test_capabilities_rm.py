@@ -10,6 +10,7 @@ import yaml
 
 from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
+from tcw.errors import TcwError
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -107,7 +108,7 @@ def test_remove_succeeds_after_referrer_repointed(tmp_path):
     write_cap(root, "new", id="cap-new001", Status="Supported")
     write_cap(root, "other", id="cap-oth001", Status="Supported",
               **{"Superseded by": "old"})
-    with pytest.raises(ValueError):
+    with pytest.raises(TcwError):
         store(root).remove("old")
     store(root).set("other", {"Superseded by": "new"})
     store(root).remove("old")
@@ -120,7 +121,7 @@ def test_remove_unknown_path_changes_nothing(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x00001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(ValueError, match="no such capability: nope"):
+    with pytest.raises(TcwError, match="no such capability: nope"):
         store(root).remove("nope")
     _assert_nothing_removed(root, before)
 
@@ -132,7 +133,7 @@ def test_remove_path_escaping_store_changes_nothing(tmp_path):
     outside.mkdir(parents=True)
     (outside / "meta.yaml").write_text("id: cap-out001\nname: Thing\nStatus: Supported\n")
     before = tree_hash(root)
-    with pytest.raises(ValueError, match="no such capability"):
+    with pytest.raises(TcwError, match="no such capability"):
         store(root).remove("../taxonomy/thing")
     _assert_nothing_removed(root, before)
     assert (outside / "meta.yaml").is_file()
@@ -142,7 +143,7 @@ def test_remove_path_escaping_store_changes_nothing(tmp_path):
 def test_remove_inherited_refuses_bare_and_qualified(tmp_path, ref):
     base, child = federated(tmp_path)
     before_base, before_child = tree_hash(base), tree_hash(child)
-    with pytest.raises(ValueError, match="cannot remove inherited capability"):
+    with pytest.raises(TcwError, match="cannot remove inherited capability"):
         store(child).remove(ref)
     _assert_nothing_removed(base, before_base)
     _assert_nothing_removed(child, before_child)
@@ -154,7 +155,7 @@ def test_remove_overridden_inherited_names_reset(tmp_path):
     override = child / "docs" / "capabilities" / "auth" / "login"
     assert (override / "meta.yaml").is_file()
     before = tree_hash(child)
-    with pytest.raises(ValueError, match="tcw capabilities reset"):
+    with pytest.raises(TcwError, match="tcw capabilities reset"):
         store(child).remove("auth/login")
     _assert_nothing_removed(child, before)
 
@@ -180,7 +181,7 @@ def test_remove_refuses_nested_capability(tmp_path):
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/login", id="cap-log001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(ValueError, match="routes/login"):
+    with pytest.raises(TcwError, match="routes/login"):
         store(root).remove("routes")
     _assert_nothing_removed(root, before)
     assert store(root).get("routes") is not None
@@ -193,7 +194,7 @@ def test_remove_refuses_capability_nested_in_a_dot_directory(tmp_path):
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/.drafts/login", id="cap-log001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(ValueError, match=r"routes/\.drafts/login"):
+    with pytest.raises(TcwError, match=r"routes/\.drafts/login"):
         store(root).remove("routes")
     _assert_nothing_removed(root, before)
 
@@ -263,7 +264,7 @@ def test_remove_refuses_non_canonical_path_spelling(tmp_path, ref):
     write_cap(root, "routes", id="cap-rou001", Status="Supported")
     write_cap(root, "routes/login", id="cap-log001", Status="Supported")
     before = tree_hash(root)
-    with pytest.raises(ValueError, match="no such capability"):
+    with pytest.raises(TcwError, match="no such capability"):
         store(root).remove(ref)
     _assert_nothing_removed(root, before)
 
@@ -274,7 +275,7 @@ def test_remove_refuses_nested_override_folder(tmp_path):
     store(child).set("auth/login", {"Status": "Missing"})   # override lands at auth/login
     assert (child / "docs" / "capabilities" / "auth" / "login" / "meta.yaml").is_file()
     before = tree_hash(child)
-    with pytest.raises(ValueError, match="auth/login"):
+    with pytest.raises(TcwError, match="auth/login"):
         store(child).remove("auth")
     _assert_nothing_removed(child, before)
 
@@ -298,7 +299,7 @@ def test_remove_refuses_referenced_target(tmp_path, field, target, value):
     write_cap(root, "roles/other", id="cap-oth001", Status="Supported")
     write_cap(root, "billing/refund", id="cap-ref001", Status="Supported", **{field: value})
     before = tree_hash(root)
-    with pytest.raises(ValueError) as e:
+    with pytest.raises(TcwError) as e:
         store(root).remove(target)
     assert f"billing/refund ({field})" in str(e.value)
     _assert_nothing_removed(root, before)
@@ -343,7 +344,7 @@ def test_remove_refuses_reference_held_by_override(tmp_path):
     write_cap(child, "roles/admin", id="cap-adm001", Status="Supported")
     store(child).set("auth/login", {"Roles": "roles/admin"})
     before = tree_hash(child)
-    with pytest.raises(ValueError, match=r"auth/login \(Roles\)"):
+    with pytest.raises(TcwError, match=r"auth/login \(Roles\)"):
         store(child).remove("roles/admin")
     _assert_nothing_removed(child, before)
 
@@ -364,7 +365,7 @@ def test_cli_rm_unknown_path(tmp_path, monkeypatch, capsys):
     from tcw.cli import main
     root = repo(tmp_path, "solo")
     monkeypatch.chdir(root)
-    assert main(["capabilities", "rm", "nope"]) == 1
+    assert main(["capabilities", "rm", "nope"]) == 4
     out, err = capsys.readouterr()
     assert out == ""
     assert "tcw capabilities rm: no such capability: nope" in err
@@ -382,7 +383,7 @@ def test_cli_rm_ambiguous(tmp_path, monkeypatch, capsys):
     st.extends_add("base-a")
     st.extends_add("base-b")
     monkeypatch.chdir(child)
-    assert main(["capabilities", "rm", "auth/login"]) == 1
+    assert main(["capabilities", "rm", "auth/login"]) == 2
     assert "tcw capabilities rm: ambiguous ref 'auth/login'" in capsys.readouterr().err
 
 
@@ -393,7 +394,7 @@ def test_cli_rm_refusal_reports_referrer(tmp_path, monkeypatch, capsys):
     write_cap(root, "other", id="cap-oth001", Status="Supported",
               **{"Superseded by": "old"})
     monkeypatch.chdir(root)
-    assert main(["capabilities", "rm", "old"]) == 1
+    assert main(["capabilities", "rm", "old"]) == 3
     err = capsys.readouterr().err
     assert err.startswith("tcw capabilities rm: ")
     assert "other (Superseded by)" in err

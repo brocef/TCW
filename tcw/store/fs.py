@@ -27,6 +27,7 @@ from pathlib import Path
 
 import yaml
 
+from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
@@ -1148,7 +1149,7 @@ def _require_detail(detail, kind: str, ref: str):
     learns the slug of the item that now exists.
     """
     if detail is None:
-        raise ValueError(f"{kind} '{ref}' could not be read back: another process "
+        raise BackendError(f"{kind} '{ref}' could not be read back: another process "
                          f"moved or removed it. Re-read it.")
     return detail
 
@@ -1166,12 +1167,12 @@ def _safe_store_id(value: str, label: str) -> str:
     input rule in the spec forbids escaping the store root.)"""
     v = (value or "").strip()
     if not v:
-        raise ValueError(f"{label} is required")
+        raise UsageError(f"{label} is required")
     if v.startswith(("/", "\\")) or "\\" in v or "\x00" in v:
-        raise ValueError(f"invalid {label}: {value!r}")
+        raise UsageError(f"invalid {label}: {value!r}")
     for seg in v.split("/"):
         if seg in ("", ".", "..") or seg != seg.strip():
-            raise ValueError(f"invalid {label}: {value!r}")
+            raise UsageError(f"invalid {label}: {value!r}")
     return v
 
 
@@ -1502,7 +1503,7 @@ class FsTreeStore:
             # user typed with a mapping of our own. `taxonomy: docs/taxonomy` is
             # someone reaching for `taxonomy: {path: docs/taxonomy}`, and telling
             # them so costs less than silently deleting it.
-            raise ValueError(
+            raise Refused(
                 f"{self._config_path()}: {self.COMPONENT} must be a mapping, "
                 f"found {type(section).__name__}")
         # `Remove` drops a section that is left holding nothing, so removing the
@@ -1801,7 +1802,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # so a raise here would crash `check` on a taxonomy that already holds one.
         try:
             slug = _safe_store_id(slug, "term ref")
-        except ValueError:
+        except UsageError:
             return None
         d = self.root / slug
         # Order matters: the cheap stat first, so a miss pays no `resolve()`;
@@ -1883,24 +1884,24 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             parent = _safe_store_id(parent, "parent")
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
         if parent and not (self.root / parent).is_dir():
-            raise ValueError(f"parent term does not exist: {parent}")
+            raise UsageError(f"parent term does not exist: {parent}")
         kind = _normalize_taxonomy_kind(kind)
         if kind not in TAXONOMY_KINDS:
-            raise ValueError(f"invalid taxonomy kind '{kind}' "
+            raise UsageError(f"invalid taxonomy kind '{kind}' "
                              f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
         d = self.root / full
         # Before `d.exists()` and before the first mkdir: one guard covers a
         # symlinked `--parent` and a symlinked leaf alike, and it keeps the
         # fail-closed contract below (a rejected write leaves no partial folder).
         if not self._within_store(d):
-            raise ValueError(f"parent term does not exist: {parent or full}")
+            raise UsageError(f"parent term does not exist: {parent or full}")
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
-            raise ValueError(f"term already exists: {full}")
+            raise Refused(f"term already exists: {full}")
         # Fail closed on refs *before* the first mkdir: a rejected write must
         # leave no partial folder behind. The same rules `check` applies, so a
         # term that `add` accepted never fails the very next `check`.
         if kind == "Feature" and not vocabulary:
-            raise ValueError("Feature requires at least one vocabulary ref")
+            raise UsageError("Feature requires at least one vocabulary ref")
         meta = {"name": name, "kind": kind, "relatesTo": []}
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
@@ -1915,9 +1916,9 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if term is not None and term.origin == "local" and term.slug not in self._local_slugs():
             term = None
         if term is None:
-            raise ValueError(f"no such term: {ref}")
+            raise NotFound(f"no such term: {ref}")
         if term.origin != "local":
-            raise ValueError(f"cannot remove inherited term '{term.qualified}' "
+            raise Refused(f"cannot remove inherited term '{term.qualified}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
         # Refused, never cascaded: `_rm` is a `git rm -rf` of the whole folder.
@@ -1936,12 +1937,12 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                    for f in listed.split("\0") if f]
         if not any(f.parent == here for f in tracked):
             # `git rm` would fail with git's own words; say it in ours.
-            raise ValueError(f"cannot remove '{term.slug}': its files are not tracked "
+            raise Refused(f"cannot remove '{term.slug}': its files are not tracked "
                              f"by git; `git add` them first, or delete the folder")
         nested = sorted({str(f.parent.relative_to(top)) for f in tracked
                          if here in f.parent.parents})
         if nested:
-            raise ValueError(f"cannot remove '{term.slug}': nested under it: "
+            raise Refused(f"cannot remove '{term.slug}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
         # What `git rm` would leave behind: untracked files anywhere under the
         # term. The listing counts any folder as a term, so a leftover would keep
@@ -1952,13 +1953,13 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         untracked = _untracked_under(here, set(tracked))
         if untracked:
             names = ", ".join(str(p.relative_to(top)) for p in untracked)
-            raise ValueError(
+            raise Refused(
                 f"cannot remove '{term.slug}': {names} under it is not tracked by "
                 f"git; `git add` it (`git add -f` if ignored) and remove it first, "
                 f"or delete it")
         referrers = self._referrers(d) + self._capability_referrers(d, term.slug)
         if referrers:
-            raise ValueError(f"cannot remove '{term.slug}': still referenced by "
+            raise Refused(f"cannot remove '{term.slug}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those first)")
         self._rm(d)
         if d.exists() and not _untracked_under(d.resolve(), set()):
@@ -1966,7 +1967,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if term.slug in self._local_slugs():
             # A safety net: the check above found nothing to leave, so only a
             # file written meanwhile gets here.
-            raise ValueError(f"removed the tracked files of '{term.slug}', but it "
+            raise BackendError(f"removed the tracked files of '{term.slug}', but it "
                              f"still lists: files git does not track remain in {d}")
 
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
@@ -1986,8 +1987,8 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             # An override's references become the composed capability's own, so
             # a term one names is as named as one a local capability names.
             overrides = caps._override_fields()
-        except (ValueError, yaml.YAMLError) as e:
-            raise ValueError(f"cannot remove '{slug}': the capabilities that might "
+        except (ValueError, TcwError, yaml.YAMLError) as e:
+            raise Refused(f"cannot remove '{slug}': the capabilities that might "
                              f"name it cannot be read: {e}") from None
         referrers = ([(f"capability {cap.path}", cap.fields) for cap in local]
                      + [(f"capability override {path}", fields)
@@ -2037,16 +2038,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
-            raise ValueError(f"extends project already exists: {project_id}")
+            raise Refused(f"extends project already exists: {project_id}")
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
             note = unreachable_project_note(registry, project_id)
-            raise ValueError(note or f"project '{project_id}' is not registered")
+            raise UsageError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
-            raise ValueError("a taxonomy cannot extend itself")
+            raise Refused("a taxonomy cannot extend itself")
         if not (Path(project.locator) / "docs" / "taxonomy").is_dir():
-            raise ValueError(f"project '{project_id}' has no docs/taxonomy/")
+            raise UsageError(f"project '{project_id}' has no docs/taxonomy/")
         extends.append(project_id)
         self._persist_extends(extends)
 
@@ -2054,7 +2055,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         self._require_repository()
         extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
-            raise ValueError(f"no such extends project: {project_id}")
+            raise NotFound(f"no such extends project: {project_id}")
         extends.remove(project_id)
         self._persist_extends(extends)
 
@@ -2083,11 +2084,11 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         """`_ref_problem` in raising form — the write paths (`add`, `update_term`)."""
         term, problem = self._ref_problem(ref, expect_vocabulary)
         if problem == "dangling":
-            raise ValueError(f"{label} ref '{ref}' does not resolve")
+            raise UsageError(f"{label} ref '{ref}' does not resolve")
         if problem == "ambiguous":
-            raise ValueError(f"{label} ref '{ref}' is ambiguous")
+            raise UsageError(f"{label} ref '{ref}' is ambiguous")
         if problem == "kind":
-            raise ValueError(_wrong_kind_ref(ref, term.kind))
+            raise UsageError(_wrong_kind_ref(ref, term.kind))
         return term
 
     def _resolve_vocab_ref(self, ref: str) -> str:
@@ -2105,7 +2106,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if self._ref_problem(ref, expect_vocabulary=True)[1] == "dangling":
             matches = [s for s in self._local_slugs() if s.rsplit("/", 1)[-1] == ref]
             if len(matches) > 1:
-                raise ValueError(f"vocabulary ref '{ref}' is ambiguous: "
+                raise UsageError(f"vocabulary ref '{ref}' is ambiguous: "
                                  f"{', '.join(matches)}")
             if matches:
                 ref = matches[0]
@@ -2155,7 +2156,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         """Filesystem resources bounded to one taxonomy object."""
         try:
             identifier = _safe_store_id(identifier, "taxonomy target")
-        except ValueError:
+        except UsageError:
             return []
         local_folder = self.root / identifier
         if local_folder.is_dir() and self._within_store(local_folder):
@@ -2196,9 +2197,9 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # Resolve the term (must be local)
         term = self.get(ref)
         if term is None:
-            raise ValueError(f"no such term: {ref}")
+            raise NotFound(f"no such term: {ref}")
         if term.origin != "local":
-            raise ValueError(f"cannot update inherited term '{term.qualified}' "
+            raise Refused(f"cannot update inherited term '{term.qualified}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
 
@@ -2209,7 +2210,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                          ("kind", kind)]:
             if val is not _UNSET:
                 if key not in TAXONOMY_EDITABLE_FIELDS:
-                    raise ValueError(f"field '{key}' is not editable")
+                    raise UsageError(f"field '{key}' is not editable")
                 provided[key] = val
 
         # Stale revision check
@@ -2239,7 +2240,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if "kind" in provided:
             new_kind = _normalize_taxonomy_kind(provided["kind"])
             if provided["kind"] is not None and new_kind not in TAXONOMY_KINDS:
-                raise ValueError(f"invalid taxonomy kind '{new_kind}' "
+                raise UsageError(f"invalid taxonomy kind '{new_kind}' "
                                  f"(choose: {', '.join(sorted(TAXONOMY_KINDS))})")
             meta["kind"] = new_kind if provided["kind"] is not None else "Vocabulary"
 
@@ -2249,7 +2250,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if meta.get("kind", "Vocabulary") == "Feature":
             vocs = meta.get("vocabulary", [])
             if not vocs:
-                raise ValueError("Feature requires at least one vocabulary ref")
+                raise UsageError("Feature requires at least one vocabulary ref")
             for r in vocs:
                 self._require_ref(r, "vocabulary", expect_vocabulary=True)
 
@@ -2541,13 +2542,13 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             fields=None) -> Capability:
         path = _safe_store_id(identifier, "path")
         if status not in CAP_STATUSES:
-            raise ValueError(f"invalid Status '{status}' "
+            raise UsageError(f"invalid Status '{status}' "
                              f"(choose: {', '.join(sorted(CAP_STATUSES))})")
         d = self.root / path
         if not self._within_store(d):
-            raise ValueError(f"no such capability: {path}")
+            raise NotFound(f"no such capability: {path}")
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
-            raise ValueError(f"capability already exists: {path}")
+            raise Refused(f"capability already exists: {path}")
         # After the cheap string and stat refusals, because this one may open a
         # taxonomy store — and before `_write_node`, which is the point: a create
         # carrying a field the store would reject must leave nothing behind.
@@ -2576,9 +2577,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if cap is not None and cap.origin == "local" and cap.path not in self._local_paths():
             cap = None
         if cap is None:
-            raise ValueError(f"no such capability: {identifier}")
+            raise NotFound(f"no such capability: {identifier}")
         if cap.origin != "local":
-            raise ValueError(f"cannot remove inherited capability '{cap.qualified}' "
+            raise Refused(f"cannot remove inherited capability '{cap.qualified}' "
                              f"(edit it at its source; to drop a local override use "
                              f"`tcw capabilities reset`)")
         d = self.root / cap.path
@@ -2588,11 +2589,11 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         nested = sorted(str(m.parent.relative_to(self.root))
                         for m in d.rglob("meta.yaml") if m.parent != d)
         if nested:
-            raise ValueError(f"cannot remove '{cap.path}': nested under it: "
+            raise Refused(f"cannot remove '{cap.path}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
         referrers = self._referrers(d)
         if referrers:
-            raise ValueError(f"cannot remove '{cap.path}': still referenced by "
+            raise Refused(f"cannot remove '{cap.path}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those fields first)")
         self._rm(d)
 
@@ -2639,17 +2640,17 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     def reset(self, identifier: str) -> None:
         # A standalone local capability is not an override — `remove` deletes it.
         if self.get_local(identifier) is not None:
-            raise ValueError(f"'{identifier}' is a local capability, not an override "
+            raise Refused(f"'{identifier}' is a local capability, not an override "
                              f"(use `tcw capabilities rm` to delete it)")
         cap = self.get(identifier)                     # federated; may raise AmbiguousRef
         if cap is None:
-            raise ValueError(f"no such capability: {identifier}")
+            raise NotFound(f"no such capability: {identifier}")
         # Find the override by the same upstream-id keys `_write_target` writes,
         # so we drop whatever folder `set` materialized (bare or alias-qualified).
         ov_index = self._override_index()
         ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
         if ov is None:
-            raise ValueError(f"no local override at '{identifier}' to reset "
+            raise Refused(f"no local override at '{identifier}' to reset "
                              f"(it inherits '{cap.qualified}' verbatim)")
         self._rm(ov[0])                                # remove only the local override folder
 
@@ -2657,12 +2658,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         out = {}
         for k, v in fields.items():
             if k not in CAP_FIELDS:
-                raise ValueError(f"unknown field '{k}' (not in the locked vocabulary)")
+                raise UsageError(f"unknown field '{k}' (not in the locked vocabulary)")
             if v is None:
                 out[k] = None                            # clear sentinel
                 continue
             if k == "Status" and v not in CAP_STATUSES:
-                raise ValueError(f"invalid Status '{v}' "
+                raise UsageError(f"invalid Status '{v}' "
                                  f"(choose: {', '.join(sorted(CAP_STATUSES))})")
             out[k] = _as_list(v) if k == "Subject" else v
         # Fail closed on refs, in the one seam both `set` and `update_capability`
@@ -2687,7 +2688,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # that reported one at a time would cost a round trip per bad ref.
             # No message contains "no such", so `_map_store_error` keeps these
             # at 422 rather than 404.
-            raise ValueError("; ".join(problems))
+            raise UsageError("; ".join(problems))
         return out
 
     def _write_meta(self, d: Path, meta: dict, *,
@@ -2723,7 +2724,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             return d, load_yaml(d / "meta.yaml"), False
         cap = self.get(identifier)                     # federated; may raise AmbiguousRef
         if cap is None:
-            raise ValueError(f"no such capability: {identifier}")
+            raise NotFound(f"no such capability: {identifier}")
         ov_index = self._override_index()
         ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
         if ov is not None:
@@ -2735,14 +2736,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             # accepts this ref, so `set` has to as well.
             d = self.root / cap.origin / cap.path
         if self._is_capability(d):
-            raise ValueError(
+            raise Refused(
                 f"cannot override '{cap.qualified}': both '{cap.path}' and "
                 f"'{cap.origin}/{cap.path}' are already taken")
         # The mirror is the one write not downstream of a guarded lookup: a local
         # symlink shadowing the first segment of the upstream path would have it
         # create the folder and its meta.yaml outside the store.
         if not self._within_store(d):
-            raise ValueError(f"no such capability: {identifier}")
+            raise NotFound(f"no such capability: {identifier}")
         return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
 
     def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
@@ -2776,16 +2777,16 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         project_id = validate_project_id(project_id)
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
-            raise ValueError(f"extends project already exists: {project_id}")
+            raise Refused(f"extends project already exists: {project_id}")
         registry = FsProjectRegistry.open(self.node_root).require_valid()
         project = registry.get(project_id)
         if project is None:
             note = unreachable_project_note(registry, project_id)
-            raise ValueError(note or f"project '{project_id}' is not registered")
+            raise UsageError(note or f"project '{project_id}' is not registered")
         if project_id == registry.current.id:
-            raise ValueError("a capabilities store cannot extend itself")
+            raise Refused("a capabilities store cannot extend itself")
         if not (Path(project.locator) / "docs" / "capabilities").is_dir():
-            raise ValueError(f"project '{project_id}' has no docs/capabilities/")
+            raise UsageError(f"project '{project_id}' has no docs/capabilities/")
         extends.append(project_id)
         self._persist_extends(extends)
 
@@ -2793,7 +2794,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         self._require_repository()
         extends = _extends_ids(self.config, self._extends_label())
         if project_id not in extends:
-            raise ValueError(f"no such extends project: {project_id}")
+            raise NotFound(f"no such extends project: {project_id}")
         extends.remove(project_id)
         self._persist_extends(extends)
 
@@ -2928,7 +2929,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """Filesystem resources bounded to one capability object."""
         try:
             identifier = _safe_store_id(identifier, "capability target")
-        except ValueError:
+        except UsageError:
             return []
         local_folder = self.root / identifier
         if (local_folder / "meta.yaml").is_file() and self._node_readable(local_folder):
