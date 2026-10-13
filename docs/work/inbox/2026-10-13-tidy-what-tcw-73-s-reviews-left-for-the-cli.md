@@ -33,6 +33,20 @@ already true before TCW-73; none blocks the epic.
    should run the `tcw` of the interpreter under test (`sys.executable -m tcw`
    or the same folder's script).
 
+7. **`list` and `rm` disagree about a sub-folder with no `meta.yaml`.**
+   `_local_slugs` (`tcw/store/fs.py`) counts any readable folder as a term, so
+   `taxonomy list` shows `invoice/sub`; but `rm invoice` treats it as part of
+   `invoice` and deletes it (naming each file) when nothing refers to it.
+   TCW-73 Design 8.2 defines a nested term by its `meta.yaml`, so `list`
+   should probably agree.
+8. **The retired-key message names a bare `tcw-config.yaml`.** Run from a
+   sub-folder such as `p/docs`, `refuse_retired_config` names a file that is
+   not in the current directory. It should name the path from the project root.
+9. **`tcw work list` does not notice a child project's retired key.** The
+   parent's own key is refused by every command, and `projects list`,
+   `provision`, `taxonomy list` and `validate` refuse a child's; `work list`
+   never opens the registry, so it exits 0.
+
 Already assigned elsewhere, listed so they are not lost: `tcw serve` prints
 `Serving TCW at <url>` rather than only the URL and never flushes standard
 output, so a piped URL arrives only when the server exits (TCW-77); the
