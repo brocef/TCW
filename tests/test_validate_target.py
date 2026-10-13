@@ -99,9 +99,51 @@ def test_axis_semantics_are_object_local(tmp_path):
     assert not any("other" in problem for problem in cap_problems)
 
 
-def test_the_work_axis_is_not_a_target(tmp_path):
-    """`tcw serve`'s work routes were its only caller; TCW-77 adds what its own
-    routes need."""
+# -- one work item (TCW-73 Design 6.4; AC 24) ---------------------------------
+
+
+def _spec_item(root: Path, name: str) -> Path:
+    from tests.work.projects import write_item
+    folder = write_item(root, name, {"title": name, "stage": "spec",
+                                     "blocked-by": [f"{name}-gone"]})
+    (folder / "spec").mkdir()
+    (folder / "spec" / "spec.md").write_text("See [x](tcw://C/nowhere).\n")
+    (folder / "review").mkdir()
+    (folder / "review" / "round-1.md").write_text("---\nverdict: accepted\n---\n")
+    (folder / "capabilities.yaml").write_text("added: [x/y]\n")
+    return folder
+
+
+def test_one_work_item_reports_its_own_problems_only(tmp_path):
     root = _node(tmp_path)
-    with pytest.raises(ValueError, match="'work' axis"):
-        validate(root, target=ValidationTarget("work", "anything"))
+    _spec_item(root, "2026-10-01-a")
+    _spec_item(root, "2026-10-01-b")
+    found = validate(root, target=ValidationTarget("work", "2026-10-01-a"))
+    assert found and all(type(f) is Finding for f in found), found
+    assert not any("2026-10-01-b" in f.where or "2026-10-01-b" in f.message
+                   for f in found), found
+    by_file = {Path(f.where).name: f for f in found}
+    assert by_file["spec.md"].severity == "error" and "tcw://C/nowhere" in by_file["spec.md"].message
+    assert by_file["round-1.md"].severity == "warning"
+    assert by_file["capabilities.yaml"].severity == "error"
+    assert by_file["item.yaml"].severity == "warning" and "2026-10-01-a-gone" in \
+        by_file["item.yaml"].message
+    assert len(found) == 4, found
+
+
+def test_one_work_item_uses_the_item_it_is_given(tmp_path):
+    """The caller's item decides the stage: a terminal one skips the records
+    check that `item.yaml`'s stage would run."""
+    from dataclasses import replace
+    from tcw.work.open import open_backend
+    root = _node(tmp_path)
+    _spec_item(root, "2026-10-01-a")
+    item = replace(open_backend(root).read("2026-10-01-a"), stage="discarded")
+    found = validate(root, target=ValidationTarget("work", "2026-10-01-a", item=item))
+    assert not any(Path(f.where).name == "capabilities.yaml" for f in found), found
+
+
+def test_a_missing_work_item_is_explicit(tmp_path):
+    root = _node(tmp_path)
+    assert validate(root, target=ValidationTarget("work", "2026-10-01-none")) == [
+        Finding("error", "2026-10-01-none", "no such work object")]

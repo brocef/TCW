@@ -136,3 +136,18 @@ def test_a_filesystem_item_naming_a_jira_item_stays_offline(offline, tmp_path, m
     # A reference to a missing item is a warning (TCW-69); one that exists is fine.
     assert "parent references a missing item, tcw/TCW-7-gone" in text
     assert "TCW-1-x" not in text
+
+
+def test_one_item_without_its_item_contacts_nothing(offline):
+    """TCW-73 AC 24: with no `Item`, the stage- and link-dependent checks are
+    skipped, and nothing is asked of Jira (`offline` fails on any request)."""
+    from tcw.findings import Finding
+    from tcw.validate import ValidationTarget, validate as validate_one
+    _, name = offline.item("At spec", "spec")
+    (offline.work / name / "capabilities.yaml").write_text("added: [x/y]\n")
+    (offline.work / name / "review").mkdir()
+    (offline.work / name / "review" / "round-1.md").write_text("---\nverdict: x\n---\n")
+    found = validate_one(offline.root, target=ValidationTarget("work", name))
+    assert all(type(f) is Finding for f in found)
+    assert [f.severity for f in found] == ["warning"], found
+    assert found[0].where.endswith("review/round-1.md")

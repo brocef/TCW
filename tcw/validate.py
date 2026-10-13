@@ -26,9 +26,9 @@ the `notes` list a caller passes, for stderr.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import yaml
 
@@ -40,6 +40,9 @@ from tcw.store.fs import (
     OWNED_YAML_NAMES, STORE_CLASSES, FsCapabilitiesStore, FsTaxonomyStore,
     WorkLocation, _UniqueKeyLoader, load_yaml,
 )
+
+if TYPE_CHECKING:
+    from tcw.work.model import Item
 
 _COMPONENTS = ("taxonomy", "capabilities", "work")
 _LINK_RE = re.compile(r"\]\((tcw://[^)\s]+)\)")
@@ -53,10 +56,14 @@ _INLINE_CODE_RE = re.compile(r"(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)", re.DOTALL)
 
 @dataclass(frozen=True)
 class ValidationTarget:
-    """Storage-neutral identity of one object to validate."""
+    """Storage-neutral identity of one object to validate.
 
-    axis: Literal["taxonomy", "capabilities"]
+    For `axis="work"`, `ref` is the item's folder name and `item` the item as
+    the caller last read or wrote it, when it has one (TCW-73 Design 6.4)."""
+
+    axis: Literal["taxonomy", "capabilities", "work"]
     ref: str
+    item: "Item | None" = field(default=None, compare=False)
 
 
 def _strip_code(md: str) -> str:
@@ -250,7 +257,8 @@ def _run_check(node_root: Path, comp: str,
 
 
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
-    """Resolve an abstract target through the filesystem adapter's private view."""
+    """Resolve a taxonomy or capabilities target through the filesystem
+    adapter's private view."""
     if target.axis == "taxonomy":
         store = FsTaxonomyStore.open(node_root)
     elif target.axis == "capabilities":
@@ -260,34 +268,12 @@ def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
     return store._validation_resources(target.ref)
 
 
-def validate(node_root: Path, *, target: ValidationTarget | None = None,
-             notes: list[str] | None = None) -> list[Finding]:
-    """Every finding for the project ([] = clean). Lines about the run itself
-    are appended to `notes` when given."""
-    notes = [] if notes is None else notes
-    from tcw.store.project import FsProjectRegistry
-
-    graph_problems = FsProjectRegistry.open(node_root).check()
-    if graph_problems:
-        return graph_problems
-    registry = FsProjectRegistry.open(node_root).require_valid()
-    # Over the projects this checkout can open. A partial graph makes this scan
-    # narrower, never wrong: it can miss a collision a complete checkout would
-    # catch, and cannot invent one. The unreachable edges themselves are reported
-    # by `tcw validate`'s caller, so they are not silently dropped here.
-    shared = _shared_work_paths(registry)
-    if shared:
-        return shared
-    trees = _tree_roots(node_root) if target is None else {}
-    if target is not None:
-        roots = _target_roots(node_root, target)
-        if not roots:
-            return [Finding("error", target.ref, f"no such {target.axis} object")]
-    else:
-        roots = [r for r in _scan_roots(node_root, trees) if r.exists()]
+def _file_findings(node_root: Path, roots: list[Path]) -> tuple[list[Finding], bool]:
+    """(a) and (b) over `roots`: YAML well-formedness, and `tcw://` links.
+    Also whether a YAML problem was found that the component checks would
+    raise on re-reading."""
     problems: list[Finding] = []
     yaml_syntax_error = False
-
     # (a) YAML well-formedness, and the shape of the files TCW writes
     #
     # Parsed here rather than through `load_yaml`, because this loop must keep
@@ -351,6 +337,37 @@ def validate(node_root: Path, *, target: ValidationTarget | None = None,
                 else:
                     problems.append(Finding("error", _rel(f, node_root),
                                             f"tcw:// {uri} → {r.reason}"))
+    return problems, yaml_syntax_error
+
+
+def validate(node_root: Path, *, target: ValidationTarget | None = None,
+             notes: list[str] | None = None) -> list[Finding]:
+    """Every finding for the project ([] = clean). Lines about the run itself
+    are appended to `notes` when given."""
+    notes = [] if notes is None else notes
+    from tcw.store.project import FsProjectRegistry
+
+    graph_problems = FsProjectRegistry.open(node_root).check()
+    if graph_problems:
+        return graph_problems
+    registry = FsProjectRegistry.open(node_root).require_valid()
+    # Over the projects this checkout can open. A partial graph makes this scan
+    # narrower, never wrong: it can miss a collision a complete checkout would
+    # catch, and cannot invent one. The unreachable edges themselves are reported
+    # by `tcw validate`'s caller, so they are not silently dropped here.
+    shared = _shared_work_paths(registry)
+    if shared:
+        return shared
+    if target is not None and target.axis == "work":
+        return _work_target_findings(node_root, registry, target)
+    trees = _tree_roots(node_root) if target is None else {}
+    if target is not None:
+        roots = _target_roots(node_root, target)
+        if not roots:
+            return [Finding("error", target.ref, f"no such {target.axis} object")]
+    else:
+        roots = [r for r in _scan_roots(node_root, trees) if r.exists()]
+    problems, yaml_syntax_error = _file_findings(node_root, roots)
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
     if yaml_syntax_error:
@@ -395,6 +412,71 @@ def validate(node_root: Path, *, target: ValidationTarget | None = None,
 
 # ---------------------------------------------------------------------------
 # The work checks (TCW-70 Design 10.1).
+
+
+def _work_target_findings(project_root: Path, registry,
+                          target: ValidationTarget) -> list[Finding]:
+    """The checks of one work item that need no network in either mode
+    (TCW-73 Design 6.4): YAML and `tcw://` links over its folder, the
+    backend's offline check of that folder, and an invalid latest round.
+
+    Two checks need the item's stage or links: the records check on its
+    `capabilities.yaml` (when the stage is not terminal) and its `parent` and
+    `blocked-by` within this project. They use `target.item` when given; in
+    filesystem mode they read `item.yaml` otherwise; in Jira mode, with no
+    item, they are skipped, so this never contacts Jira. References into
+    other projects are left to a full `tcw validate`."""
+    from tcw.errors import TcwError
+    from tcw.work.fs_backend import FsWorkBackend, work_store_problems
+    from tcw.work.gates import project_reader, records_problems
+    from tcw.work.jira.backend import JiraBackend, jira_store_problems
+    from tcw.work.model import TERMINAL, Slug, stage as table_stage
+    from tcw.work.open import open_backend
+
+    config_file = str(project_root / "tcw-config.yaml")
+    try:
+        backend = open_backend(project_root)
+    except TcwError as error:
+        return [Finding("error", config_file, str(error))]
+    folder = Path(backend.work_path) / target.ref
+    if "/" in target.ref or target.ref.startswith(".") or not folder.is_dir():
+        return [Finding("error", target.ref, "no such work object")]
+    # (a) leaves `item.yaml` to the backend's own check, below.
+    problems, _ = _file_findings(project_root, [folder])
+    if isinstance(backend, JiraBackend):
+        store = jira_store_problems(backend.work_path, backend.jira)
+    elif isinstance(backend, FsWorkBackend):
+        store = work_store_problems(backend.work_path, backend.project, backend.config)
+    else:
+        store = []
+    problems += [p for p in store if _under(Path(p.where), folder)]
+    layout = backend.layout
+    problems += round_findings(backend.work_path, backend.project, layout,
+                               folders={target.ref})
+
+    item = target.item
+    if item is None and isinstance(backend, FsWorkBackend):
+        try:
+            item = backend.read(target.ref)
+        except TcwError:
+            item = None              # the backend's check above has said why
+    if item is None:
+        return problems
+    if item.stage is not None and table_stage(item.stage).kind != TERMINAL \
+            and layout.capabilities_file(item.slug).exists():
+        reader = project_reader(project_root, registry)
+        problems += [Finding("error", str(layout.capabilities_file(item.slug)), message)
+                     for message in records_problems(layout, item.slug, reader,
+                                                     finished=False)]
+    refs = ([("parent", item.parent)] if item.parent else []) + \
+        [("blocked-by", ref) for ref in item.blocked_by]
+    for name, ref in refs:
+        if ref.project != backend.project:
+            continue
+        if not (Path(backend.work_path) / ref.folder).is_dir():
+            problems.append(Finding("warning", str(layout.item_dir(item.slug) / "item.yaml"),
+                                    f"{name} references a missing item, {ref}"))
+    return problems
 
 
 def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
