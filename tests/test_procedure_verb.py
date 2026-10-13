@@ -54,7 +54,7 @@ def test_an_unconfigured_node_prints_every_default(tmp_path):
 def test_configured_bindings_compose_in_declaration_order(tmp_path):
     """Criterion 3."""
     root = _node(tmp_path)
-    _configure(root, {"search": [{"blob": "A"}, {"builtin": True}, {"blob": "B"}],
+    _configure(root, {"search": [{"blob": "A"}, {"inherit": True}, {"blob": "B"}],
                       "delegation": [{"blob": "ONLY"}]})
     r = _run(root, "search")
     assert r.returncode == 0, r.stderr

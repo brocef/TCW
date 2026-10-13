@@ -29,8 +29,7 @@ NODE = re.compile(r"node", re.IGNORECASE)
 # (module, qualified function): the functions that hold a node in a sense that
 # is not a project's. Each must exist and must show which sense it holds.
 YAML_FUNCTIONS = {
-    ("store/project.py", "_unique_mapping"),
-    ("store/fs.py", "_no_dup_keys"),
+    ("store/yaml_source.py", "_no_dup_keys"),
     ("store/config_edit.py", "_Document.end_of"),
     ("store/config_edit.py", "_Document.is_null"),
 }

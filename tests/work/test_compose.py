@@ -26,6 +26,17 @@ def config(**work):
     return parsed
 
 
+def loaded(root: Path):
+    """The configuration of a project with nothing configured, read through
+    the layered loader, which is what puts TCW's own text in each list
+    (TCW-72 Design 3.3)."""
+    from tcw.config import load_config
+    (root / "tcw-config.yaml").write_text("id: p\n")
+    layered = load_config(root)
+    assert layered.problems == [], layered.problems
+    return layered.work
+
+
 def compose(cfg, stage, root, **kw):
     return stage_prompt(cfg, stage, project_root=root, **kw).text
 
@@ -34,7 +45,7 @@ def compose(cfg, stage, root, **kw):
 
 def test_no_prompt_key_is_the_packaged_text(tmp_path):
     # With no item, the packaged request span shows its own inner text.
-    assert compose(config(), "spec", tmp_path) == substitute_request(
+    assert compose(loaded(tmp_path), "spec", tmp_path) == substitute_request(
         packaged_text("prompts", "spec").rstrip(), None)
 
 
@@ -59,14 +70,20 @@ def test_an_explicit_empty_list_composes_to_nothing(tmp_path):
 
 def test_a_missing_packaged_prompt_names_the_file(tmp_path):
     with pytest.raises(BackendError, match="tcw/work/prompts/review.md"):
-        compose(config(), "review", tmp_path)
+        compose(loaded(tmp_path), "review", tmp_path)
 
 
 def test_a_procedure_composes_the_same_way(tmp_path):
     cfg = config(procedures={"search": [{"blob": "Look."}]})
     assert procedure_prompt(cfg, "search", project_root=tmp_path).text == "Look."
-    assert procedure_prompt(config(), "search", project_root=tmp_path).text == \
-        packaged_text("procedures", "search").rstrip()
+    assert procedure_prompt(loaded(tmp_path), "search", project_root=tmp_path).text \
+        == packaged_text("procedures", "search").rstrip()
+
+
+def test_without_the_loader_an_absent_list_is_nothing(tmp_path):
+    # No code adds TCW's own text on its own (TCW-72 Design 3.5).
+    assert compose(config(), "spec", tmp_path) == ""
+    assert procedure_prompt(config(), "search", project_root=tmp_path).text == ""
 
 
 def test_skill_and_file_bindings(tmp_path):

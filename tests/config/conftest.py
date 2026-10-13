@@ -61,3 +61,25 @@ def personal(tmp_path, monkeypatch) -> Personal:
 
 def problem_lines(config) -> list[str]:
     return [str(p) for p in config.problems]
+
+
+SOURCE = str(Path(__file__).resolve().parents[2])
+
+
+@dataclass
+class Ran:
+    code: int
+    out: str
+    err: str
+
+
+def tcw(cwd: Path, *argv: str, stdin: str = "") -> Ran:
+    """`tcw` as a shell runs it, with this checkout's code and the test's
+    environment (personal files as the test set them)."""
+    import os
+    import subprocess
+    import sys
+    env = {**os.environ, "PYTHONPATH": SOURCE}
+    done = subprocess.run([sys.executable, "-m", "tcw.cli", *argv], cwd=cwd, env=env,
+                          input=stdin, capture_output=True, text=True, timeout=60)
+    return Ran(done.returncode, done.stdout, done.stderr)

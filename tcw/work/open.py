@@ -16,14 +16,11 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from tcw.errors import BackendError, NotFound, Refused, Unreachable
-from tcw.store.fs import (
-    SENTINEL, FsProjectRegistry, WorkLocation, git_root, load_config,
-)
+from tcw.errors import BackendError, ConfigError, NotFound, Refused, Unreachable
+from tcw.store.fs import FsProjectRegistry, WorkLocation, git_root
 from tcw.work.backend import WorkBackend
-from tcw.work.config import WorkConfig, parse_work_config
+from tcw.work.config import WorkConfig
 from tcw.work.jira.backend import JiraBackend, link_exists
-from tcw.work.jira.config import JiraConfig, parse_jira_config
 from tcw.work.fs_backend import FsWorkBackend
 from tcw.work.model import Changes, Slug, inbox_stage
 
@@ -36,47 +33,43 @@ def work_path(project_root: Path) -> Path:
     return WorkLocation.open(Path(project_root)).root
 
 
-def read_work_config(project_root: Path) -> WorkConfig:
-    """The `work:` section of the project's `tcw-config.yaml`, parsed, without
-    opening the store: what the tag registry commands need."""
-    root = Path(project_root)
-    try:
-        raw = load_config(root / SENTINEL)
-    except ValueError as error:
-        raise BackendError(str(error)) from None
-    config, problems = parse_work_config(raw.get("work") if isinstance(raw, dict)
-                                         else None)
-    if problems:
-        raise BackendError(f"{root / SENTINEL}: " +
-                           "; ".join(str(p) for p in problems))
+def _layered(project_root: Path, personal: bool):
+    """The project's configuration through the layered loader; `ConfigError`
+    naming every problem. Personal layers apply only to the project a command
+    acts on (TCW-72 Design 1.7)."""
+    from tcw.config import effective, load_config
+    config = (effective(project_root) if personal
+              else load_config(project_root, personal=False))
+    if config.problems:
+        raise ConfigError(config.problems)
     return config
 
 
-def read_jira_config(project_root: Path, config: WorkConfig) -> JiraConfig:
-    """`work.jira` of a project whose `work.backend` is `jira`, parsed;
-    `BackendError` naming every problem."""
-    jira, problems = parse_jira_config(config.jira)
-    if problems:
-        raise BackendError(f"{Path(project_root) / SENTINEL}: " +
-                           "; ".join(str(p) for p in problems))
-    return jira
+def read_work_config(project_root: Path, *, personal: bool = True) -> WorkConfig:
+    """The project's parsed `work:` configuration, without opening the
+    store: what the tag registry commands need."""
+    return _layered(Path(project_root), personal).work
 
 
 def open_backend(project_root: Path, *,
-                 report: Callable[[str], None] | None = None) -> WorkBackend:
-    """The work backend of the project at `project_root`, from its tracked
-    `tcw-config.yaml`."""
+                 report: Callable[[str], None] | None = None,
+                 personal: bool = True) -> WorkBackend:
+    """The work backend of the project at `project_root`, from its effective
+    configuration. `personal=False` for any project other than the one the
+    command acts on: its backend is built from `tcw-config.yaml` alone, with
+    no `user.name`."""
     root = Path(project_root)
-    config = read_work_config(root)
-    jira = read_jira_config(root, config) if config.backend == "jira" else None
+    layered = _layered(root, personal)
+    config = layered.work
     try:
         project = FsProjectRegistry.open(root).current.id
         path = work_path(root)
     except ValueError as error:
         raise BackendError(str(error)) from None
-    if jira is not None:
-        return JiraBackend(project, path, config, jira, report=report, root=root)
-    return FsWorkBackend(project, path, config, report=report)
+    if config.backend == "jira":
+        return JiraBackend(project, path, config, layered.jira, report=report,
+                           root=root)
+    return FsWorkBackend(project, path, config, layered.user_name, report=report)
 
 
 def _registry(here: Path) -> FsProjectRegistry:
@@ -97,7 +90,7 @@ def open_project(project_id: str, here: Path) -> WorkBackend:
             raise Unreachable(f"project '{project_id}' is declared but is not on "
                               f"this machine; `tcw provision` obtains it")
         raise NotFound(f"no project '{project_id}' is declared here")
-    return open_backend(Path(project.locator))
+    return open_backend(Path(project.locator), personal=False)
 
 
 # ---------------------------------------------------------------------------
@@ -174,13 +167,14 @@ def delegate(project_id: str, title: str, request: str | None,
         from tcw.work.jira.tickets import delegate_to_jira
         return delegate_to_jira(project_id, title, request, priority,
                                 block=entry.jira, report=say)
-    if project is not None and read_work_config(Path(project.locator)).backend == "jira":
+    if project is not None and read_work_config(Path(project.locator),
+                                                personal=False).backend == "jira":
         from tcw.work.jira.tickets import delegate_to_jira
         return delegate_to_jira(project_id, title, request, priority,
                                 root=Path(project.locator), report=say)
     path = _check_target(registry, project_id)
     backend = open_backend(Path(registry.get(project_id).locator),
-                           report=_uncommitted_in(path, say))
+                           report=_uncommitted_in(path, say), personal=False)
     props = Changes() if priority is None else Changes(priority=priority)
     item = backend.create(title, props, stage=inbox_stage(), request=request)
     return str(item.slug)
@@ -195,7 +189,7 @@ def open_for_update(project_id: str, here: Path, *,
     path = _check_target(registry, project_id)
     say = report or (lambda line: print(line, file=sys.stderr))
     return open_backend(Path(registry.get(project_id).locator),
-                        report=_uncommitted_in(path, say))
+                        report=_uncommitted_in(path, say), personal=False)
 
 
 def _uncommitted_in(path: Path, say: Callable[[str], None]) -> Callable[[str], None]:

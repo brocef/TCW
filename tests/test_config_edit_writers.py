@@ -112,11 +112,12 @@ ANNOTATED = (PARENT + """\
 taxonomy:
     path: docs/taxonomy   # moved here in 2.3
 work:
-    lifecycle:
+    # A 3.0 work section, since every command now reads it (TCW-72).
+    stages:
         # the spec stage runs our checklist first
-        spec: [checklist]
-    tracker:
-        candidate-query: "project = WEB AND status in ('To Do', 'In Progress') AND labels = tcw ORDER BY rank"
+        spec:
+            pre: [{command: "./checklist.sh 'To Do' 'In Progress'"}]
+    tags: [web, api]   # the labels we use
 # end of file
 """).encode()
 

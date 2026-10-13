@@ -528,6 +528,9 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
     """
     from tcw.work.config import parse_work_config
     root = Path(project_root).absolute()
+    # The acting project's files are named relative to it; another project's
+    # by their whole path, so a message says which project to fix.
+    shown = root if personal else None
     project = Origin("project", root / SENTINEL)
     values = built_in_values()
     origins: dict = {}
@@ -538,18 +541,18 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
             written[path] = [BUILT_IN]
     config = Config(root, values, origins, None, written=written)
 
-    raw, problems = _read(project.file, True, root)
+    raw, problems = _read(project.file, True, shown)
     config.problems += problems
     if raw is None:
         config.unreadable = True
         config.work, _ = parse_work_config(values.get("work"), origins)
         return config
-    config.problems += _list_problems(raw, project, root)
+    config.problems += _list_problems(raw, project, shown)
     if "user" in raw:
         config.problems.append(Problem(
             project.file, ("user",),
             f"'user' is personal; set it in {user_config_label()} or "
-            f"{LOCAL_FILE}", root))
+            f"{LOCAL_FILE}", shown))
         raw = {k: v for k, v in raw.items() if k != "user"}
     _merge(values, origins, written, raw, project)
 
@@ -566,7 +569,7 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
             mapping = _without_credentials(mapping, origin, config.skipped)
         _merge(values, origins, written, mapping, origin)
 
-    config.problems += _confinement(values, origins, root)
+    config.problems += _confinement(values, origins, shown)
     work, parsed = parse_work_config(values.get("work"), origins)
     config.work = work
     if work.backend == "jira":
@@ -576,8 +579,38 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
     for problem in parsed:
         origin = _origin_for(problem.key_path, origins, project)
         config.problems.append(Problem(origin.file, tuple(problem.key_path),
-                                       problem.message, root))
+                                       problem.message, shown))
     return config
+
+
+# ---------------------------------------------------------------------------
+# Once per command
+
+#: The acting project's configuration, kept while one command runs so it is
+#: read and checked once (Design 2.3). None outside a command: a library
+#: caller, such as a test, always reads the files afresh.
+_EFFECTIVE: dict | None = None
+
+
+def begin_command() -> None:
+    global _EFFECTIVE
+    _EFFECTIVE = {}
+
+
+def end_command() -> None:
+    global _EFFECTIVE
+    _EFFECTIVE = None
+
+
+def effective(project_root: Path) -> Config:
+    """The configuration of the project a command acts on, personal layers
+    included, read once per command."""
+    if _EFFECTIVE is None:
+        return load_config(project_root)
+    key = Path(project_root).resolve()
+    if key not in _EFFECTIVE:
+        _EFFECTIVE[key] = load_config(project_root)
+    return _EFFECTIVE[key]
 
 
 def _personal_layers(root: Path, problems: list) -> list[Origin]:

@@ -454,13 +454,9 @@ def _binding_json(b) -> dict:
 
 
 def _phases(config, name: str) -> dict:
-    """A stage's three binding lists, `prompt` defaulting to TCW's own text."""
-    from tcw.work.config import Binding as Binding3
+    """A stage's three resolved binding lists."""
     settings = config.stage(name)
-    prompt = settings.prompt
-    if prompt is None:
-        prompt = (Binding3("builtin", ""),) if table_stage(name).prompt else ()
-    return {"pre": settings.pre or (), "prompt": prompt,
+    return {"pre": settings.pre or (), "prompt": settings.prompt or (),
             "post": settings.post or ()}
 
 

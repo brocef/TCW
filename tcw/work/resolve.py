@@ -362,12 +362,10 @@ def compose(bindings, *, role: str, hook_id: str, builtin_kind: str, item,
 def stage_prompt(config, stage: str, *, item=None, record=None, request=None,
                  layout=None, project_root: Path, execute: bool = True
                  ) -> Resolution:
-    """A stage's prompt: exactly `work.stages.<stage>.prompt`, which is TCW's
-    own text when the key is not written, and nothing for an empty list."""
-    bindings = config.stage(stage).prompt
-    if bindings is None:
-        from tcw.work.config import Binding as Binding3
-        bindings = (Binding3("builtin", ""),)
+    """A stage's prompt: exactly the resolved `work.stages.<stage>.prompt`
+    list. TCW's own text is in it only where the configuration loader put a
+    built-in entry (TCW-72 Design 3.5); an absent or empty list is nothing."""
+    bindings = config.stage(stage).prompt or ()
     return compose(bindings, role="prompt", hook_id=stage, builtin_kind="prompts",
                    item=item, record=record, request=request,
                    project_root=project_root, config=config,
@@ -380,10 +378,7 @@ def procedure_prompt(config, procedure_id: str, *, item=None, record=None,
                      request=None, layout=None, project_root: Path,
                      execute: bool = True) -> Resolution:
     """A procedure's text, composed exactly as a stage's prompt is."""
-    bindings = config.procedures.get(procedure_id)
-    if bindings is None:
-        from tcw.work.config import Binding as Binding3
-        bindings = (Binding3("builtin", ""),)
+    bindings = config.procedures.get(procedure_id) or ()
     return compose(bindings, role="procedure", hook_id=procedure_id,
                    builtin_kind="procedures", item=item, record=record,
                    request=request, project_root=project_root, config=config,

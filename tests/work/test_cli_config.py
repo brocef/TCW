@@ -62,8 +62,9 @@ def test_a_removed_key_refuses_every_command(tcw, tmp_path):
 
 # -- AC 21: which bindings compose --------------------------------------------------------
 
-def test_builtin_then_a_file(tcw, tmp_path):
-    root = spec_prompt(tmp_path, [{"builtin": True}, {"file": "house.md"}])
+def test_inherit_then_a_file(tcw, tmp_path):
+    # `inherit: true` in place of 2.x's `builtin: true` (TCW-72 AC 20).
+    root = spec_prompt(tmp_path, [{"inherit": True}, {"file": "house.md"}])
     tcw(["new", "X"], root)
     r = tcw(["stage", "prompt", "spec", f"{TODAY}-x"], root)
     assert r.code == 0, r.err

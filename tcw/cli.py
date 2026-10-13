@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from tcw.cli_suggest import SuggestingParser, attach_index
-from tcw.errors import TcwError
+from tcw.errors import ConfigError, TcwError
 from tcw import __version__
 from tcw import projects_cli
 from tcw.capabilities import cli as capabilities_cli
@@ -540,7 +540,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("--work-path", help="where the work store lives")
     p_init.add_argument("--taxonomy-path", help="where the taxonomy store lives")
     p_init.add_argument("--capabilities-path", help="where the capabilities store lives")
-    p_init.set_defaults(func=_cmd_init)
+    p_init.set_defaults(own_config=True, func=_cmd_init)
 
     p_provision = command(
         sub, "provision", help="obtain the stores and projects this project declares "
@@ -553,7 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="only this axis's store; repeat for more (default: every declared one)")
     p_provision.add_argument("--dry-run", action="store_true",
                              help="print the plan; contact nothing")
-    p_provision.set_defaults(func=_cmd_provision)
+    p_provision.set_defaults(own_config=True, func=_cmd_provision)
 
     p_validate = command(
         sub, "validate", help="check this project's files, stores and work items",
@@ -564,7 +564,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--remote", action="store_true",
         help="also check this Jira-mode project against Jira itself (reads only)",
     )
-    p_validate.set_defaults(func=_cmd_validate)
+    p_validate.set_defaults(own_config=True, func=_cmd_validate)
 
     p_serve = command(sub, "serve", help="serve a local web viewer",
                       prints="the URL", writes="what the viewer saves",
@@ -614,12 +614,21 @@ def main(argv: list[str] | None = None) -> int:
 def _dispatch(args: argparse.Namespace, command: str) -> int:
     """Run the command and turn every expected failure into one line on
     stderr and its exit code. A closed stdout is left to `main`."""
+    from tcw import config as layered
+    layered.begin_command()
     try:
         # One place for every command: a config still holding the 2.x key is
         # refused before anything reads it (Design 9.3). `validate` reports it
         # as one of its findings instead.
         if args.group != "validate":
             refuse_retired_config()
+        # And the project's configuration, every layer of it, is read and
+        # checked once before the command runs (TCW-72 Design 2.3). The few
+        # commands that must run with problems present read it themselves.
+        if not getattr(args, "own_config", False):
+            root = find_project_root()
+            if root is not None and layered.effective(root).problems:
+                raise ConfigError(layered.effective(root).problems)
         return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout
@@ -645,6 +654,8 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
         # path that vanished — is reported in one line, not as a traceback.
         print(f"{command}: {error}", file=sys.stderr)
         return 1
+    finally:
+        layered.end_command()
 
 if __name__ == "__main__":
     sys.exit(main())
