@@ -1,0 +1,14 @@
+new:
+  - cli/override-the-team-configuration-for-myself
+  - cli/show-the-effective-configuration
+  - work/tell-tcw-who-i-am
+changed:
+  # builtin: true becomes inherit: true; the last two gain the personal note
+  - work/configure-the-work-lifecycle
+  - work/configure-procedures
+  - work/run-a-lifecycle-stage
+  - work/run-a-procedure
+  # the tracked-file warning and problems in personal files
+  - cli/validate-a-project
+  # the .gitignore line tcw init writes
+  - cli/scaffold-the-doc-trees
