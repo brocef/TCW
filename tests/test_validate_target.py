@@ -33,7 +33,7 @@ def test_graph_problems_precede_target_resolution(tmp_path):
     broken.mkdir()
     (broken / "tcw-config.yaml").write_text("id: broken-node\nid: dupe\n")
     config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["connected-projects"] = {"children": {"broken-node": str(broken)}}
+    config["projects"] = {"children": {"broken-node": str(broken)}}
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     problems = validate(root, target=ValidationTarget("taxonomy", "missing"))
     assert problems and all(p.where.endswith("tcw-config.yaml") for p in problems)
@@ -48,7 +48,7 @@ def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
     """
     root = _node(tmp_path)
     config = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    config["connected-projects"] = {"children": {"missing": "missing-node"}}
+    config["projects"] = {"children": {"missing": "missing-node"}}
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     assert validate(root, target=ValidationTarget("taxonomy", "missing")) == [
         Finding("error", "missing", "no such taxonomy object")

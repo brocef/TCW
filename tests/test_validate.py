@@ -32,10 +32,10 @@ def connect(parent: Path, child: Path) -> None:
     child_config = yaml.safe_load(child_config_path.read_text())
     parent_id = parent_config["id"]
     child_id = child_config["id"]
-    parent_config.setdefault("connected-projects", {}).setdefault("children", {})[
+    parent_config.setdefault("projects", {}).setdefault("children", {})[
         child_id
     ] = str(child)
-    child_config.setdefault("connected-projects", {})["parent"] = {
+    child_config.setdefault("projects", {})["parent"] = {
         parent_id: str(parent)
     }
     parent_config_path.write_text(yaml.safe_dump(parent_config, sort_keys=False))
@@ -259,7 +259,7 @@ def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeyp
     root = node(tmp_path)
     config_path = root / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("connected-projects", {})["children"] = {
+    config.setdefault("projects", {})["children"] = {
         "gone-project": str(tmp_path / "gone")
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
@@ -277,7 +277,7 @@ def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):
     (other / "tcw-config.yaml").write_text("id: other-project\nid: dupe\n")
     config_path = root / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
-    config.setdefault("connected-projects", {})["children"] = {
+    config.setdefault("projects", {})["children"] = {
         "other-project": str(other),
         "gone-project": str(tmp_path / "gone"),
     }

@@ -464,7 +464,10 @@ CAP_FIELDS = {
 # work item's `capabilities.yaml`. A record still carrying one is a check error
 # naming the migration guide.
 RETIRED_CAP_FIELDS = {"Planning doc", "Tracker"}
-CAP_MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"
+# The 2.x name of the `projects` key in `tcw-config.yaml` (TCW-73 Design 9.3):
+# a config error naming the migration guide, never read.
+RETIRED_PROJECTS_KEY = "connected-projects"
+MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"  # removed keys and fields
 
 
 @dataclass
@@ -684,7 +687,7 @@ class RepositoryDeclaration:
 
 @dataclass(frozen=True)
 class ConnectedProject:
-    """One `connected-projects` entry: where a project is, and where it comes from.
+    """One `projects` entry: where a project is, and where it comes from.
 
     Both halves are optional individually and one of them is required. `locator`
     is the adapter locator the entry has always been — a path, for the filesystem
@@ -840,7 +843,7 @@ def parse_repository_declaration(
 def parse_connected_entry(
     project_id: str, raw: Any, where: str
 ) -> tuple["ConnectedProject | None", list[str]]:
-    """Parse one `connected-projects` entry into a `ConnectedProject` plus problems.
+    """Parse one `projects` entry into a `ConnectedProject` plus problems.
 
     Two accepted forms, and the first must never stop working:
 

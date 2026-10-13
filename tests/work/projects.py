@@ -42,13 +42,13 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
 
 
 def connect(a: Path, b: Path, relation: str) -> None:
-    """Declare `b` in `a`'s connected-projects under `relation` (parent or
+    """Declare `b` in `a`'s projects under `relation` (parent or
     children), by a path relative to `a`."""
     import os
     path = a / "tcw-config.yaml"
     document = yaml.safe_load(path.read_text())
     b_id = yaml.safe_load((b / "tcw-config.yaml").read_text())["id"]
-    section = document.setdefault("connected-projects", {}).setdefault(relation, {})
+    section = document.setdefault("projects", {}).setdefault(relation, {})
     section[b_id] = os.path.relpath(b, a)
     path.write_text(yaml.safe_dump(document, sort_keys=False))
 

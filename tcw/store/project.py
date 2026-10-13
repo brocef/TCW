@@ -15,7 +15,7 @@ from tcw.findings import Finding
 from tcw.store.base import (
     ConnectedProject, Project, ProjectOverride, ProjectRegistry,
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
-    parse_connected_entry,
+    MIGRATION_GUIDE, RETIRED_PROJECTS_KEY, parse_connected_entry,
 )
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import load as _load_named_yaml
@@ -401,7 +401,7 @@ class FsProjectRegistry(ProjectRegistry):
                 f"through '{declarer}')")
 
     def entry(self, project_id: str) -> ConnectedProject | None:
-        """The first `connected-projects` entry in this graph naming
+        """The first `projects` entry in this graph naming
         `project_id`, whether or not that project is on this machine."""
         self._load_graph()
         for cfg in self._cache.values():
@@ -619,20 +619,23 @@ class FsProjectRegistry(ProjectRegistry):
         # problem in them must not refuse a command in a project that only reads
         # it. Everything above — the file, its id — is still checked.
         before_connections = len(self._problems)
-        connected = raw.get("connected-projects")
+        if RETIRED_PROJECTS_KEY in raw:
+            self._problem(path, f"the key '{RETIRED_PROJECTS_KEY}' was renamed to "
+                                f"'projects' in TCW 3.0 — see {MIGRATION_GUIDE}")
+        connected = raw.get("projects")
         if connected is None:
             connected = {}
         if not isinstance(connected, dict):
-            self._problem(path, "connected-projects must be a mapping")
+            self._problem(path, "projects must be a mapping")
             connected = {}
         unknown = set(connected) - {"parent", "children", "upstream"}
         if unknown:
-            self._problem(path, f"unknown connected-projects keys: {', '.join(sorted(map(str, unknown)))}")
+            self._problem(path, f"unknown projects keys: {', '.join(sorted(map(str, unknown)))}")
         children = self._relation(path, connected.get("children"), "children")
         parent = self._relation(path, connected.get("parent"), "parent")
         upstream = self._relation(path, connected.get("upstream"), "upstream")
         if len(parent) > 1:
-            self._problem(path, "connected-projects.parent must contain at most one entry")
+            self._problem(path, "projects.parent must contain at most one entry")
         if quiet_connections:
             del self._problems[before_connections:]
             del self._findings[before_connections:]
@@ -650,7 +653,7 @@ class FsProjectRegistry(ProjectRegistry):
         if value is None:
             return {}
         if not isinstance(value, dict):
-            self._problem(path, f"connected-projects.{label} must be a mapping")
+            self._problem(path, f"projects.{label} must be a mapping")
             return {}
         result: dict[str, ConnectedProject] = {}
         for project_id, raw in value.items():
@@ -660,7 +663,7 @@ class FsProjectRegistry(ProjectRegistry):
                 self._problem(path, f"{label} key: {error}")
                 continue
             entry, problems = parse_connected_entry(
-                valid_id, raw, f"connected-projects.{label}.{valid_id}")
+                valid_id, raw, f"projects.{label}.{valid_id}")
             if entry is None:
                 # A declaration that is present and wrong is an error, never an
                 # unreachable edge: the difference is whether we were told
@@ -992,7 +995,7 @@ class FsProjectRegistry(ProjectRegistry):
                 cfg = self._by_id.get(project_id)
                 self._problem(
                     cfg.path if cfg else self._current_path,
-                    f"cycle in connected-projects involving '{project_id}'",
+                    f"cycle in projects involving '{project_id}'",
                 )
                 return
             if project_id in visited:

@@ -45,10 +45,10 @@ def child_of(tmp_path, base_caps: dict) -> tuple[Path, Path]:
         write_cap(base, path, **kw)
     child = repo(tmp_path, "child")
     (base / "tcw-config.yaml").write_text(
-        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+        "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     FsCapabilitiesStore.open(child).extends_add("base")
     return base, child
@@ -61,11 +61,11 @@ def store(root: Path) -> FsCapabilitiesStore:
 def connect_many(anchor: Path, *sources: Path) -> None:
     children = "".join(f"    {p.name}: ../{p.name}\n" for p in sources)
     (anchor / "tcw-config.yaml").write_text(
-        f"id: {anchor.name}\nconnected-projects:\n  children:\n{children}"
+        f"id: {anchor.name}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
         (source / "tcw-config.yaml").write_text(
-            f"id: {source.name}\nconnected-projects:\n  parent:\n"
+            f"id: {source.name}\nprojects:\n  parent:\n"
             f"    {anchor.name}: ../{anchor.name}\n"
         )
 
@@ -470,7 +470,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     """
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities",
         "extends:\n  - base\n"
@@ -490,13 +490,13 @@ def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     )
     with pytest.raises(ValueError) as excinfo:
         store(child).list_all()
-    assert "is not reachable through connected-projects" in str(excinfo.value)
+    assert "is not reachable through projects" in str(excinfo.value)
 
 
 def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     with pytest.raises(TcwError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
@@ -519,7 +519,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     (base / "docs" / "capabilities").rmdir()
     (base / "tcw-config.yaml").write_text(
         "id: base\ncapabilities:\n  path: ledger\n"
-        "connected-projects:\n  children:\n    child: ../child\n"
+        "projects:\n  children:\n    child: ../child\n"
     )
     (base / "docs" / "capabilities").mkdir(parents=True, exist_ok=True)
     write_cap(base, "auth/login", id="cap-aaa111", Status="Supported", body="Log in.")
@@ -529,7 +529,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
 
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
 
@@ -541,11 +541,11 @@ def test_a_sibling_with_no_component_names_the_project(tmp_path):
     base = repo(tmp_path, "base")
     (base / "docs" / "capabilities").rmdir()
     (base / "tcw-config.yaml").write_text(
-        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+        "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
@@ -561,11 +561,11 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
         "id: base\ncapabilities:\n"
         "  path: ledger\n"
         "  repository:\n    url: https://example.invalid/ledger.git\n"
-        "connected-projects:\n  children:\n    child: ../child\n"
+        "projects:\n  children:\n    child: ../child\n"
     )
     child = repo(tmp_path, "child")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
     with pytest.raises(ValueError) as excinfo:
@@ -590,13 +590,13 @@ def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
         write_sentinel(d, f"n{i}")
     for i in range(depth):
         d = tmp_path / f"n{i}"
-        doc = {"id": f"n{i}", "connected-projects": {}}
+        doc = {"id": f"n{i}", "projects": {}}
         if i in moved:
             doc["capabilities"] = {"path": "ledger"}
         if i + 1 < depth:
-            doc["connected-projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
+            doc["projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
         if i:
-            doc["connected-projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
+            doc["projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
         (d / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
         if i + 1 < depth:
             # On the node, not the store dir: a moved node's `capabilities.path`
@@ -651,7 +651,7 @@ def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
 def _diamond(tmp_path, levels: int):
     """`levels` pairs of nodes, each pair extending *both* nodes of the next.
 
-    Every `connected-projects` relation goes through one hub, because a node may
+    Every `projects` relation goes through one hub, because a node may
     declare only one parent — the `extends` edges are what form the DAG, which is
     the graph this measures.
     """
@@ -667,14 +667,14 @@ def _diamond(tmp_path, levels: int):
         write_sentinel(d, name)
     (tmp_path / "hub" / "tcw-config.yaml").write_text(yaml.safe_dump(
         {"id": "hub",
-         "connected-projects": {"children": {n: f"../{n}" for n in names}}},
+         "projects": {"children": {n: f"../{n}" for n in names}}},
         sort_keys=False))
     for level in range(levels):
         for side in (0, 1):
             d = tmp_path / f"n{level}x{side}"
             (d / "tcw-config.yaml").write_text(yaml.safe_dump(
                 {"id": f"n{level}x{side}",
-                 "connected-projects": {"parent": {"hub": "../hub"}}},
+                 "projects": {"parent": {"hub": "../hub"}}},
                 sort_keys=False))
             if level + 1 < levels:
                 declare_extends(d, "capabilities",
@@ -723,10 +723,10 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
     write_cap(base, "billing/refund", body="Refund a charge.")
     child = repo(tmp_path, "child")
     (base / "tcw-config.yaml").write_text(
-        "id: base\nconnected-projects:\n  children:\n    child: ../child\n"
+        "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: child\nprojects:\n  parent:\n    base: ../base\n"
         "capabilities:\n  extends:\n    - base\n"
     )
 

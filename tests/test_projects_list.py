@@ -17,7 +17,7 @@ from tests.work.projects import make_project
 def declare(root, relation, project_id, target):
     path = root / "tcw-config.yaml"
     document = yaml.safe_load(path.read_text())
-    section = document.setdefault("connected-projects", {}).setdefault(relation, {})
+    section = document.setdefault("projects", {}).setdefault(relation, {})
     section[project_id] = os.path.relpath(target, root)
     path.write_text(yaml.safe_dump(document, sort_keys=False))
 
@@ -82,3 +82,28 @@ def test_outside_a_project(tmp_path, monkeypatch, capsys):
 
 def test_work_nodes_is_gone(graph, monkeypatch, capsys):
     assert run(monkeypatch, capsys, graph, "work", "nodes")[0] == 2
+
+
+# -- the `projects:` key (Design 9.3; AC 7) -------------------------------------------
+
+
+def _rename_key(root, old, new):
+    path = root / "tcw-config.yaml"
+    document = yaml.safe_load(path.read_text())
+    document[new] = document.pop(old)
+    path.write_text(yaml.safe_dump(document, sort_keys=False))
+
+
+def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
+    code, out, err = run(monkeypatch, capsys, graph, "validate")
+    assert not [line for line in out.splitlines() if line.startswith("error: ")], out
+    assert code == 0, (out, err)
+
+
+def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
+    _rename_key(graph, "projects", "connected-projects")
+    code, out, err = run(monkeypatch, capsys, graph, "validate")
+    assert code == 1
+    text = out + err
+    assert "connected-projects" in text and "'projects'" in text
+    assert "docs/migration-guide-2.8-to-3.0.0.md" in text

@@ -142,7 +142,7 @@ def test_open_backend_names_every_problem(tmp_path):
 BLOCK = {"site": "https://acme.atlassian.net", "project": "WEB", "inbox-status": "To Do",
          "credentials": {"email-env": "E", "token-env": "T"},
          "fields": {"project": "TCW Project"}}
-WHERE = ("connected-projects", "children", "web", "jira")
+WHERE = ("projects", "children", "web", "jira")
 
 
 def test_a_delegation_block_parses():

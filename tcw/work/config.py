@@ -17,10 +17,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from tcw.store.base import PROCEDURE_IDS, DocEntry, normalize_tag, parse_documentation_entries
+from tcw.store.base import (MIGRATION_GUIDE, PROCEDURE_IDS, DocEntry, normalize_tag,
+                            parse_documentation_entries)
 from tcw.work.model import SIDE, STAGES, stage as table_stage
-
-MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"
 
 BACKENDS = ("filesystem", "jira")
 DEFAULT_BACKEND = "filesystem"

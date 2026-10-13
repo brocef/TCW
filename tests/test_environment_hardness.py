@@ -16,7 +16,7 @@ Four environments are scaffolded on ``tmp_path``:
 
 4. **Linked git worktree** — a node checked out in a linked worktree
    (``git worktree add``) rather than its primary checkout.  A relative
-   ``connected-projects`` locator was authored against the node's primary
+   ``projects`` locator was authored against the node's primary
    position on disk, so inside the worktree it is off by the worktree's nesting
    depth; the registry re-anchors it against the main worktree root and folds
    the two on-disk copies of the current node into one graph entry.  The
@@ -105,14 +105,14 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
 
     (root / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "root",
-        "connected-projects": {
+        "projects": {
             "children": {"child-a": "a", "child-b": "b"}
         },
     }, sort_keys=False))
     for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
         (child / "tcw-config.yaml").write_text(yaml.safe_dump({
             "id": child_id,
-            "connected-projects": {"parent": {"root": ".."}},
+            "projects": {"parent": {"root": ".."}},
         }, sort_keys=False))
 
     # Both children extend the root via relative paths
@@ -152,14 +152,14 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
 
     (parent / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "parent",
-        "connected-projects": {
+        "projects": {
             "children": {"left": str(left.resolve()), "right": str(right.resolve())}
         },
     }, sort_keys=False))
     for child, child_id in ((left, "left"), (right, "right")):
         (child / "tcw-config.yaml").write_text(yaml.safe_dump({
             "id": child_id,
-            "connected-projects": {"parent": {"parent": str(parent.resolve())}},
+            "projects": {"parent": {"parent": str(parent.resolve())}},
         }, sort_keys=False))
 
     # Both siblings extend parent using *absolute* paths
@@ -189,11 +189,11 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     down = str(server.resolve()) if absolute else "example-server"
     (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "example-app",
-        "connected-projects": {"children": {"example-server": down}},
+        "projects": {"children": {"example-server": down}},
     }, sort_keys=False))
     (server / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "example-server",
-        "connected-projects": {"parent": {"example-app": up}},
+        "projects": {"parent": {"example-app": up}},
     }, sort_keys=False))
     return workspace, server
 
@@ -367,14 +367,14 @@ class TestNestedMonorepo:
         init(["work"], deep, "deep")
         child_a = root / "a"
         child_cfg = yaml.safe_load((child_a / "tcw-config.yaml").read_text()) or {}
-        child_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        child_cfg.setdefault("projects", {}).setdefault("children", {})[
             "deep"
         ] = "deep"
         (child_a / "tcw-config.yaml").write_text(
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
         (deep / "tcw-config.yaml").write_text(
-            "id: deep\nconnected-projects:\n  parent:\n    child-a: ..\n"
+            "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
         )
         _commit_all(deep)
         found = descendant_nodes(root)

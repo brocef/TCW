@@ -63,8 +63,8 @@ def test_no_route_to_request_keeps_it_in_the_inbox(pair, fake, tcw):
 def block_for(p, block):
     path = p / "tcw-config.yaml"
     doc = yaml.safe_load(path.read_text())
-    entry = doc["connected-projects"]["children"]["tcw"]
-    doc["connected-projects"]["children"]["tcw"] = {"path": entry, "jira": block}
+    entry = doc["projects"]["children"]["tcw"]
+    doc["projects"]["children"]["tcw"] = {"path": entry, "jira": block}
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
 
 

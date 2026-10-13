@@ -20,11 +20,11 @@ def _monorepo(tmp_path: Path) -> Path:
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
     (tmp_path / "project-b" / "tcw-config.yaml").write_text(
-        "id: project-b\nconnected-projects:\n  children:\n"
+        "id: project-b\nprojects:\n  children:\n"
         "    project-a: ../project-a\n"
     )
     (tmp_path / "project-a" / "tcw-config.yaml").write_text(
-        "id: project-a\nconnected-projects:\n  parent:\n"
+        "id: project-a\nprojects:\n  parent:\n"
         "    project-b: ../project-b\n"
     )
     return tmp_path
@@ -90,13 +90,13 @@ def _routing_graph(tmp_path):
         (path / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
 
     a_doc = yaml.safe_load((a / "tcw-config.yaml").read_text())
-    a_doc["connected-projects"] = {"children": {"b-project": "b"}}
+    a_doc["projects"] = {"children": {"b-project": "b"}}
     config(a, a_doc)
     config(b, {"id": "b-project",
-               "connected-projects": {"parent": {"a-project": ".."},
+               "projects": {"parent": {"a-project": ".."},
                                       "children": {"c-project": "c"}}})
     c_doc = yaml.safe_load((c / "tcw-config.yaml").read_text())
-    c_doc["connected-projects"] = {"parent": {"b-project": ".."}}
+    c_doc["projects"] = {"parent": {"b-project": ".."}}
     config(c, c_doc)
     return a, b, c
 
@@ -148,7 +148,7 @@ def _child_missing_its_parent(tmp_path):
     subprocess.run(["git", "-C", str(child), "config", "user.name", "t"], check=True)
     init(["work"], child, "child-project")
     doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
-    doc["connected-projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
+    doc["projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
     (child / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
     return child
 
@@ -177,7 +177,7 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
     init(["work"], parent, "parent-project")
     doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
-    doc["connected-projects"] = {"children": {"away-project": str(tmp_path / "away")}}
+    doc["projects"] = {"children": {"away-project": str(tmp_path / "away")}}
     (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
 
     assert _projects(monkeypatch, capsys, parent)["away-project"] == "child"

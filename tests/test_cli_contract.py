@@ -315,7 +315,7 @@ def test_extends_add_prints_nothing(tmp_path, fx):
     up.mkdir()
     ok(up, "init", "--id", "up")
     document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
-    document["connected-projects"] = {"upstream": {"up": "../up"}}
+    document["projects"] = {"upstream": {"up": "../up"}}
     (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
     assert written(fx, "taxonomy", "extends", "add", "up").out == ""
 
@@ -529,7 +529,7 @@ def graph(tmp_path, fake):  # noqa: F811
              "credentials": {"email-env": EMAIL_ENV, "token-env": TOKEN_ENV},
              "fields": {"project": "TCW Project"}}
     document = yaml.safe_load((roots["fx"] / "tcw-config.yaml").read_text())
-    document["connected-projects"] = {
+    document["projects"] = {
         "children": {"other": "../other", "absent": "../absent",
                      "absentj": {"path": "../absentj", "jira": block}},
         "upstream": {"up": "../up"}}
@@ -538,7 +538,7 @@ def graph(tmp_path, fake):  # noqa: F811
         path = roots[name] / "tcw-config.yaml"
         child = yaml.safe_load(path.read_text())
         if name == "other":
-            child["connected-projects"] = {"parent": {"fx": "../fx"}}
+            child["projects"] = {"parent": {"fx": "../fx"}}
         path.write_text(yaml.safe_dump(child))
     return roots
 

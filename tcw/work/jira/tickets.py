@@ -309,7 +309,7 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
         inbox_status = backend.statuses[inbox_stage()]
     else:
         target, problems = parse_delegation_block(
-            block, ("connected-projects", project_id, "jira"))
+            block, ("projects", project_id, "jira"))
         if problems:
             raise BackendError("; ".join(str(p) for p in problems))
         site, jira_project = target.site, target.project

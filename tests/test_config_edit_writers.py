@@ -16,7 +16,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
 
-PARENT = ("id: child\nconnected-projects:\n    parent:\n        base: ../base\n"
+PARENT = ("id: child\nprojects:\n    parent:\n        base: ../base\n"
           "    children:\n        other: ../other\n")
 
 
@@ -50,9 +50,9 @@ def federated(tmp_path: Path, child_config: bytes) -> Path:
             (root / "docs" / tree).mkdir(parents=True)
             (root / "docs" / tree / ".gitkeep").touch()
     (base / "tcw-config.yaml").write_text(
-        "id: base\nconnected-projects:\n  children:\n    child: ../child\n")
+        "id: base\nprojects:\n  children:\n    child: ../child\n")
     (other / "tcw-config.yaml").write_text(
-        "id: other\nconnected-projects:\n  parent:\n    child: ../child\n")
+        "id: other\nprojects:\n  parent:\n    child: ../child\n")
     (child / "tcw-config.yaml").write_bytes(child_config)
     commit_all(other)
     commit_all(base)

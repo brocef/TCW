@@ -445,13 +445,13 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
     url = url if url is not None else "https://github.invalid/acme/orchestration.git"
 
     (orchestration / "tcw-config.yaml").write_text(
-        f"id: orchestration\nconnected-projects:\n  children:\n    core: {code}\n")
+        f"id: orchestration\nprojects:\n  children:\n    core: {code}\n")
     config = yaml.safe_load((code / "tcw-config.yaml").read_text()) or {}
     config.setdefault(component, {}).update({
         "path": configured_path,
         "repository": {"url": url, "ref": ref, "path": inner},
     })
-    config["connected-projects"] = {
+    config["projects"] = {
         "parent": {"orchestration": {
             "path": "../orchestrator",          # right for the nested layout, wrong here
             "repository": {"url": url, "ref": ref},
@@ -652,7 +652,7 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
                              (child, "parent", "parent-project")):
         path = root / "tcw-config.yaml"
         config = yaml.safe_load(path.read_text())
-        config["connected-projects"] = {key: {other: f"../{other.split('-')[0]}"}}
+        config["projects"] = {key: {other: f"../{other.split('-')[0]}"}}
         path.write_text(yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.chdir(parent)
@@ -1375,7 +1375,7 @@ def _node_repo(path: Path, project_id: str, connected: dict | None = None) -> Pa
     if connected:
         config_path = path / "tcw-config.yaml"
         config = yaml.safe_load(config_path.read_text()) or {}
-        config["connected-projects"] = connected
+        config["projects"] = connected
         config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(path), "commit", "-qm", "node"], check=True)
@@ -1522,7 +1522,7 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
     init(["work"], standing, "standing-project")
     (knower / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "knower-project",
-        "connected-projects": {
+        "projects": {
             "parent": {"away-project": {"path": "../../away-not-here",
                                         "repository": {"url": str(away), "ref": "main"}}},
             "children": {"standing-project": "../standing"},
@@ -1530,7 +1530,7 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
     }, sort_keys=False))
     (standing / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "standing-project",
-        "connected-projects": {"parent": {"knower-project": "../knower"}},
+        "projects": {"parent": {"knower-project": "../knower"}},
     }, sort_keys=False))
     assert repo_root.exists()
 
@@ -1565,7 +1565,7 @@ def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch
     )
     # Point `here` at the real `away` remote now that it exists.
     cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
-    cfg["connected-projects"]["parent"]["away-project"] = {
+    cfg["projects"]["parent"]["away-project"] = {
         "path": "../away-not-here",
         "repository": {"url": str(away), "ref": "main"},
     }
@@ -1620,7 +1620,7 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
 
     (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "top-project",
-        "connected-projects": {"children": {
+        "projects": {"children": {
             # Both declared with a repository, as a workspace root would be.
             "sibling-project": {"path": "sibling",
                                 "repository": {"url": str(sibling), "ref": "main"}},
@@ -1630,12 +1630,12 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
         }},
     }, sort_keys=False))
     for path, doc in (
-        (middle, {"id": "middle-project", "connected-projects": {
+        (middle, {"id": "middle-project", "projects": {
             "parent": {"top-project": ".."},
             "children": {"leaf-project": "pkg"}}}),
-        (leaf, {"id": "leaf-project", "connected-projects": {
+        (leaf, {"id": "leaf-project", "projects": {
             "parent": {"middle-project": ".."}}}),
-        (sibling, {"id": "sibling-project", "connected-projects": {
+        (sibling, {"id": "sibling-project", "projects": {
             "parent": {"top-project": ".."}}}),
     ):
         existing = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
@@ -1692,7 +1692,7 @@ def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
     init(["work"], top, "top-project")
     (top / "tcw-config.yaml").write_text(yaml.safe_dump({
         "id": "top-project",
-        "connected-projects": {"children": {
+        "projects": {"children": {
             # `middle` is present on disk *and* declared. It used to be skipped
             # and never read, so `far` was invisible.
             "middle-project": {"path": str(middle),
@@ -1772,7 +1772,7 @@ def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
     init(["work"], node, "node-project")
     config_path = node / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
-    config["connected-projects"] = {
+    config["projects"] = {
         "children": {
             "away-project": {
                 "path": "../away",
@@ -1799,7 +1799,7 @@ def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
     init(["work"], remote, "remote-project")
     config_path = remote / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
-    config["connected-projects"] = {
+    config["projects"] = {
         "children": {"far-project": {"path": "../far",
                                      "repository": {"path": "docs/work"}}}
     }
@@ -1811,7 +1811,7 @@ def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
     init(["work"], node, "node-project")
     config_path = node / "tcw-config.yaml"
     config = yaml.safe_load(config_path.read_text())
-    config["connected-projects"] = {
+    config["projects"] = {
         "parent": {"remote-project": {"path": "../absent",
                                       "repository": {"url": str(remote)}}}
     }
@@ -1833,10 +1833,10 @@ def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path
     (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
     (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
     (source / "tcw-config.yaml").write_text(
-        "id: source\nconnected-projects:\n  parent:\n    consumer: ../consumer\n")
+        "id: source\nprojects:\n  parent:\n    consumer: ../consumer\n")
 
     consumer = _repo(tmp_path / "consumer")
-    config = "id: consumer\nconnected-projects:\n  children:\n    source: ../source\n"
+    config = "id: consumer\nprojects:\n  children:\n    source: ../source\n"
     if taxonomy_path is not None:
         config += f"taxonomy:\n  path: {taxonomy_path}\n"
     (consumer / "tcw-config.yaml").write_text(config)
@@ -1862,7 +1862,7 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
     assert config["taxonomy"]["extends"] == ["source"]
     assert config["id"] == "consumer"
     assert config["work"]["tags"] == ["demo"]
-    assert config["connected-projects"] == {"children": {"source": "../source"}}
+    assert config["projects"] == {"children": {"source": "../source"}}
     assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
 
     FsTaxonomyStore.open(consumer).extends_remove("source")

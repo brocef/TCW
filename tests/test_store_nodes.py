@@ -20,12 +20,12 @@ def work_node(path, project_id):
 
 def connect(parent, child, parent_id, child_id, locator=None):
     parent_cfg = yaml.safe_load((parent / SENTINEL).read_text()) or {}
-    parent_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+    parent_cfg.setdefault("projects", {}).setdefault("children", {})[
         child_id
     ] = locator or str(child)
     (parent / SENTINEL).write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
     child_cfg = yaml.safe_load((child / SENTINEL).read_text()) or {}
-    child_cfg["connected-projects"] = {
+    child_cfg["projects"] = {
         "parent": {parent_id: str(parent)}
     }
     (child / SENTINEL).write_text(yaml.safe_dump(child_cfg, sort_keys=False))

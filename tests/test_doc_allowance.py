@@ -44,7 +44,15 @@ def test_a_removed_command_is_gone(command, commands):
 
 
 @pytest.mark.parametrize("key", REFUSED_KEYS)
-def test_a_refused_key_is_refused(key):
+def test_a_refused_key_is_refused(key, tmp_path):
+    if "." not in key:
+        # A top-level key: the project registry reports it when it loads.
+        from tcw.store.project import FsProjectRegistry
+        (tmp_path / "tcw-config.yaml").write_text(f"id: p\n{key}: {{}}\n")
+        problems = [str(f) for f in FsProjectRegistry.open(tmp_path).check()]
+        assert any(key in p and "TCW 3.0" in p for p in problems), \
+            f"{key} is accepted; take it out of REFUSED_KEYS"
+        return
     section, _, name = key.partition(".")
     assert section == "work"
     # The removal refusal, not any refusal: a key refused only for its value

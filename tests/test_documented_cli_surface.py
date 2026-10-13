@@ -293,12 +293,17 @@ from tcw.work.config import _REMOVED_WORK_KEYS  # noqa: E402
 
 KEY_SPELLING = re.compile(
     r"\bwork\.(" + "|".join(re.escape(k) for k in _REMOVED_WORK_KEYS) + r")\b")
+# The top-level key TCW-73 renamed to `projects`.
+from tcw.store.base import RETIRED_PROJECTS_KEY  # noqa: E402
+
+TOP_KEY_SPELLING = re.compile(rf"\b{re.escape(RETIRED_PROJECTS_KEY)}\b")
 
 
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
 def test_documents_name_no_refused_key(doc):
-    named = {f"work.{m.group(1)}"
-             for m in KEY_SPELLING.finditer(doc.read_text(encoding="utf-8"))}
+    text = doc.read_text(encoding="utf-8")
+    named = {f"work.{m.group(1)}" for m in KEY_SPELLING.finditer(text)}
+    named |= {m.group(0) for m in TOP_KEY_SPELLING.finditer(text)}
     unexpected = sorted(named - set(REFUSED_KEYS))
     assert not unexpected, (f"{doc.relative_to(REPO)} names configuration keys "
                             f"TCW 3.0 refuses: {', '.join(unexpected)}")

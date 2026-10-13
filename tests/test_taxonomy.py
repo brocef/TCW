@@ -47,11 +47,11 @@ def write_config(root: Path, text: str):
 def connect_sources(consumer: Path, *sources: Path) -> None:
     children = "".join(f"    {source.name}: ../{source.name}\n" for source in sources)
     (consumer / "tcw-config.yaml").write_text(
-        f"id: {consumer.name}\nconnected-projects:\n  children:\n{children}"
+        f"id: {consumer.name}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
         (source / "tcw-config.yaml").write_text(
-            f"id: {source.name}\nconnected-projects:\n  parent:\n"
+            f"id: {source.name}\nprojects:\n  parent:\n"
             f"    {consumer.name}: ../{consumer.name}\n"
         )
 
@@ -194,14 +194,14 @@ def transitive_taxonomy(tmp_path):
     b = node(tmp_path, "bravo")
     c = node(tmp_path, "charlie")
     (a / "tcw-config.yaml").write_text(
-        "id: alpha\nconnected-projects:\n  children:\n    bravo: ../bravo\n"
+        "id: alpha\nprojects:\n  children:\n    bravo: ../bravo\n"
     )
     (b / "tcw-config.yaml").write_text(
-        "id: bravo\nconnected-projects:\n  parent:\n    alpha: ../alpha\n"
+        "id: bravo\nprojects:\n  parent:\n    alpha: ../alpha\n"
         "  children:\n    charlie: ../charlie\n"
     )
     (c / "tcw-config.yaml").write_text(
-        "id: charlie\nconnected-projects:\n  parent:\n    bravo: ../bravo\n"
+        "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n")
     write_config(b, "extends:\n  - charlie\n")
@@ -256,14 +256,14 @@ def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     d = node(tmp_path, "delta")
     (a / "tcw-config.yaml").write_text(
-        "id: alpha\nconnected-projects:\n  children:\n"
+        "id: alpha\nprojects:\n  children:\n"
         "    bravo: ../bravo\n    delta: ../delta\n"
     )
     (d / "tcw-config.yaml").write_text(
-        "id: delta\nconnected-projects:\n  parent:\n    alpha: ../alpha\n"
+        "id: delta\nprojects:\n  parent:\n    alpha: ../alpha\n"
     )
     (c / "tcw-config.yaml").write_text(
-        "id: charlie\nconnected-projects:\n  parent:\n    bravo: ../bravo\n"
+        "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n  - delta\n")
     write_config(d, "extends:\n  - charlie\n")
@@ -288,7 +288,7 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     for entry in (b / "docs" / "taxonomy").iterdir():
         entry.rename(b / "ledger" / entry.name)
     (b / "tcw-config.yaml").write_text(
-        "id: bravo\ntaxonomy:\n  path: ledger\nconnected-projects:\n"
+        "id: bravo\ntaxonomy:\n  path: ledger\nprojects:\n"
         "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
     )
     # This rewrite replaces the whole node config, and `extends` now lives in it
@@ -782,12 +782,12 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.rmtree(base / "docs" / "taxonomy")
     (base / "tcw-config.yaml").write_text(
         "id: base\ntaxonomy:\n  path: vocabulary\n"
-        "connected-projects:\n  children:\n    consumer: ../consumer\n"
+        "projects:\n  children:\n    consumer: ../consumer\n"
     )
 
     cons = node(tmp_path, "consumer")
     (cons / "tcw-config.yaml").write_text(
-        "id: consumer\nconnected-projects:\n  parent:\n    base: ../base\n"
+        "id: consumer\nprojects:\n  parent:\n    base: ../base\n"
     )
     write_config(cons, "extends:\n  - base\n")
 

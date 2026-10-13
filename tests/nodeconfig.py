@@ -4,7 +4,7 @@
 `.config.yaml` for capabilities — and a fixture declared inheritance by writing
 that file. It now lives at `<component>.extends` in the node config, beside
 `path` and `repository`, so a fixture has to merge a key into a file that
-usually already holds `id` and `connected-projects`.
+usually already holds `id` and `projects`.
 
 One helper rather than a read-modify-write repeated at twenty sites: a fixture
 rewritten by hand that many times is where a silently-passing test comes from.

@@ -102,7 +102,7 @@ def test_malformed_records_on_a_completed_item_come_from_the_file_scan(project, 
 def test_an_absent_declared_project_is_unresolved_not_exit_5(tmp_path, run):
     p = make_project(tmp_path, "p")
     config = yaml.safe_load((p / "tcw-config.yaml").read_text())
-    config["connected-projects"] = {"children": {"gone": "../gone"}}
+    config["projects"] = {"children": {"gone": "../gone"}}
     (p / "tcw-config.yaml").write_text(yaml.safe_dump(config))
     code, out, _ = run(p)
     [line] = about(out, "'gone'")

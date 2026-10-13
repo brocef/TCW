@@ -2,7 +2,7 @@
 (spec: 2026-09-29-let-a-project-read-taxonomy-and-capabilities-from-a-connected-
 project-that-does-not-name-it-back).
 
-Every fixture writes each project's `connected-projects` in full. None defaults
+Every fixture writes each project's `projects` in full. None defaults
 a relation, a path or a repository entry: the relation is exactly the axis the
 code under test branches on."""
 
@@ -19,7 +19,7 @@ def config(root: Path, text: str) -> None:
 # ── loading ──────────────────────────────────────────────────────────────────
 
 def test_a_bare_path_upstream_loads_without_naming_the_reader(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
     config(tmp_path / "core", "id: core\n")
     registry = FsProjectRegistry.open(tmp_path / "app")
@@ -30,7 +30,7 @@ def test_a_bare_path_upstream_loads_without_naming_the_reader(tmp_path):
 
 
 def test_a_mapping_upstream_loads_by_its_path(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core:\n      path: ../core\n")
     config(tmp_path / "core", "id: core\n")
     registry = FsProjectRegistry.open(tmp_path / "app")
@@ -39,7 +39,7 @@ def test_a_mapping_upstream_loads_by_its_path(tmp_path):
 
 
 def test_the_override_variable_wins_for_an_upstream(tmp_path, monkeypatch):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
     config(tmp_path / "core", "id: core\n")
     config(tmp_path / "elsewhere", "id: core\n")
@@ -49,7 +49,7 @@ def test_the_override_variable_wins_for_an_upstream(tmp_path, monkeypatch):
 
 
 def test_an_absent_upstream_is_unreachable_not_a_problem(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
     registry = FsProjectRegistry.open(tmp_path / "app")
     assert registry.check() == []
@@ -59,11 +59,11 @@ def test_an_absent_upstream_is_unreachable_not_a_problem(tmp_path):
 def test_nothing_beyond_an_upstream_is_loaded(tmp_path):
     """The upstream's own connections are not the reader's to load, check or
     write: a project reachable only beyond it never enters the reader's graph."""
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
-    config(tmp_path / "core", "id: core\nconnected-projects:\n  children:\n"
+    config(tmp_path / "core", "id: core\nprojects:\n  children:\n"
                                "    x: x\n")
-    config(tmp_path / "core" / "x", "id: x\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "core" / "x", "id: x\nprojects:\n  parent:\n"
                                     "    core: ..\n")
     registry = FsProjectRegistry.open(tmp_path / "app")
     assert registry.get("core") is not None
@@ -72,16 +72,16 @@ def test_nothing_beyond_an_upstream_is_loaded(tmp_path):
 
 
 def test_a_broken_graph_beyond_an_upstream_does_not_block_the_reader(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
-    config(tmp_path / "core", "id: core\nconnected-projects:\n  children:\n"
+    config(tmp_path / "core", "id: core\nprojects:\n  children:\n"
                                "    x: x\n  bogus: 1\n")
     config(tmp_path / "core" / "x", "id: x\n")            # names no parent
     assert FsProjectRegistry.open(tmp_path / "app").check() == []
 
 
 def test_the_upstream_does_not_see_its_reader(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    core: ../core\n")
     config(tmp_path / "core", "id: core\n")
     registry = FsProjectRegistry.open(tmp_path / "core")
@@ -91,9 +91,9 @@ def test_the_upstream_does_not_see_its_reader(tmp_path):
 
 def test_an_upstream_reached_through_a_parent_is_found(tmp_path):
     """The proposit-app shape: a package reaches core through its parent."""
-    config(tmp_path / "repo", "id: repo\nconnected-projects:\n  children:\n"
+    config(tmp_path / "repo", "id: repo\nprojects:\n  children:\n"
                                "    pkg: pkg\n  upstream:\n    core: ../core\n")
-    config(tmp_path / "repo" / "pkg", "id: pkg\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "repo" / "pkg", "id: pkg\nprojects:\n  parent:\n"
                                        "    repo: ..\n")
     config(tmp_path / "core", "id: core\n")
     registry = FsProjectRegistry.open(tmp_path / "repo" / "pkg")
@@ -103,7 +103,7 @@ def test_an_upstream_reached_through_a_parent_is_found(tmp_path):
 
 def test_checkout_of_finds_an_upstream_by_its_repository(tmp_path):
     url = "https://example.invalid/core.git"
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               f"    core:\n      path: ../core\n      repository:\n"
                               f"        url: {url}\n        ref: main\n")
     config(tmp_path / "core", "id: core\n")
@@ -115,11 +115,11 @@ def test_checkout_of_finds_an_upstream_by_its_repository(tmp_path):
 
 def _family(tmp_path: Path) -> Path:
     """Root `r` with children `a` and `b`; `a` declares `core` upstream."""
-    config(tmp_path / "r", "id: r\nconnected-projects:\n  children:\n"
+    config(tmp_path / "r", "id: r\nprojects:\n  children:\n"
                             "    a: a\n    b: b\n")
-    config(tmp_path / "r" / "a", "id: a\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "r" / "a", "id: a\nprojects:\n  parent:\n"
                                   "    r: ..\n  upstream:\n    core: ../../core\n")
-    config(tmp_path / "r" / "b", "id: b\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "r" / "b", "id: b\nprojects:\n  parent:\n"
                                   "    r: ..\n")
     config(tmp_path / "core", "id: core\n")
     return tmp_path / "r"
@@ -157,16 +157,16 @@ def test_the_upstream_writes_to_itself_from_its_own_checkout(tmp_path):
 # ── graph rules ──────────────────────────────────────────────────────────────
 
 def test_a_self_upstream_is_a_problem(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
                               "    app: .\n")
     assert any("own upstream" in p
                for p in map(str, FsProjectRegistry.open(tmp_path / "app").check()))
 
 
 def test_an_upstream_that_is_also_a_child_is_a_problem(tmp_path):
-    config(tmp_path / "app", "id: app\nconnected-projects:\n  children:\n"
+    config(tmp_path / "app", "id: app\nprojects:\n  children:\n"
                               "    core: core\n  upstream:\n    core: core\n")
-    config(tmp_path / "app" / "core", "id: core\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "app" / "core", "id: core\nprojects:\n  parent:\n"
                                        "    app: ..\n")
     problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "app").check()]
     assert any("declared upstream" in p and "core" in p for p in problems), problems
@@ -175,21 +175,21 @@ def test_an_upstream_that_is_also_a_child_is_a_problem(tmp_path):
 def test_an_upstream_that_is_also_a_sibling_is_a_problem(tmp_path):
     """The migration's forbidden middle state: a package's parent declares core
     upstream while the root still lists core as a child."""
-    config(tmp_path / "r", "id: r\nconnected-projects:\n  children:\n"
+    config(tmp_path / "r", "id: r\nprojects:\n  children:\n"
                             "    a: a\n    core: core\n")
-    config(tmp_path / "r" / "a", "id: a\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "r" / "a", "id: a\nprojects:\n  parent:\n"
                                   "    r: ..\n  upstream:\n    core: ../core\n")
-    config(tmp_path / "r" / "core", "id: core\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "r" / "core", "id: core\nprojects:\n  parent:\n"
                                      "    r: ..\n")
     problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "r" / "a").check()]
     assert any("declared upstream" in p and "core" in p for p in problems), problems
 
 
 def test_an_upstream_that_is_also_a_grandparent_is_a_problem(tmp_path):
-    config(tmp_path / "gp", "id: gp\nconnected-projects:\n  children:\n    mid: mid\n")
-    config(tmp_path / "gp" / "mid", "id: mid\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "gp", "id: gp\nprojects:\n  children:\n    mid: mid\n")
+    config(tmp_path / "gp" / "mid", "id: mid\nprojects:\n  parent:\n"
                                      "    gp: ..\n  children:\n    kid: kid\n")
-    config(tmp_path / "gp" / "mid" / "kid", "id: kid\nconnected-projects:\n"
+    config(tmp_path / "gp" / "mid" / "kid", "id: kid\nprojects:\n"
                                              "  parent:\n    mid: ..\n"
                                              "  upstream:\n    gp: ../..\n")
     problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "gp" / "mid" / "kid").check()]
@@ -198,7 +198,7 @@ def test_an_upstream_that_is_also_a_grandparent_is_a_problem(tmp_path):
 
 def test_two_declarers_of_one_folder_are_one_project(tmp_path):
     root = _family(tmp_path)
-    config(root / "b", "id: b\nconnected-projects:\n  parent:\n"
+    config(root / "b", "id: b\nprojects:\n  parent:\n"
                         "    r: ..\n  upstream:\n    core: ../../core\n")
     assert FsProjectRegistry.open(root).check() == []
 
@@ -206,7 +206,7 @@ def test_two_declarers_of_one_folder_are_one_project(tmp_path):
 def test_two_declarers_of_different_folders_name_both(tmp_path):
     root = _family(tmp_path)
     config(tmp_path / "core2", "id: core\n")
-    config(root / "b", "id: b\nconnected-projects:\n  parent:\n"
+    config(root / "b", "id: b\nprojects:\n  parent:\n"
                         "    r: ..\n  upstream:\n    core: ../../core2\n")
     problems = [str(f) for f in FsProjectRegistry.open(root).check()]
     duplicate = [p for p in problems if "duplicate project id 'core'" in p]
@@ -217,9 +217,9 @@ def test_two_declarers_of_different_folders_name_both(tmp_path):
 
 def _moved_root(tmp_path: Path) -> Path:
     """Step 1 done: the root reads core as upstream; core still names it parent."""
-    config(tmp_path / "r", "id: r\nconnected-projects:\n  upstream:\n"
+    config(tmp_path / "r", "id: r\nprojects:\n  upstream:\n"
                             "    core: core\n")
-    config(tmp_path / "r" / "core", "id: core\nconnected-projects:\n  parent:\n"
+    config(tmp_path / "r" / "core", "id: core\nprojects:\n  parent:\n"
                                      "    r: ..\n")
     return tmp_path / "r"
 
@@ -234,7 +234,7 @@ def test_a_parent_claim_answered_by_an_upstream_declaration_is_a_warning(tmp_pat
 
 
 def test_the_reverse_migration_order_still_fails(tmp_path):
-    config(tmp_path / "r", "id: r\nconnected-projects:\n  children:\n"
+    config(tmp_path / "r", "id: r\nprojects:\n  children:\n"
                             "    core: core\n")
     config(tmp_path / "r" / "core", "id: core\n")
     assert any("nonreciprocal connection" in p
@@ -284,7 +284,7 @@ def _reader(path: Path, project_id: str, connected: dict) -> Path:
     _git(path, "config", "user.name", "t")
     init(["taxonomy", "capabilities", "work"], path, project_id)
     cfg = yaml.safe_load((path / "tcw-config.yaml").read_text())
-    cfg["connected-projects"] = connected
+    cfg["projects"] = connected
     (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     return path
 
@@ -320,7 +320,7 @@ def test_the_cli_reads_an_upstream_through_a_parent(tmp_path):
     pkg.mkdir()
     init(["taxonomy", "capabilities", "work"], pkg, "pkg")
     cfg = yaml.safe_load((pkg / "tcw-config.yaml").read_text())
-    cfg["connected-projects"] = {"parent": {"repo": ".."}}
+    cfg["projects"] = {"parent": {"repo": ".."}}
     (pkg / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     _assert_reads_core(pkg)
 
@@ -340,7 +340,7 @@ def test_a_public_upstream_is_provisioned_into_a_reader_only_checkout(
     assert out.returncode == 0, out.stderr
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     _assert_reads_core(app)
-    assert "connected-projects" not in (remote / "tcw-config.yaml").read_text()
+    assert "projects" not in (remote / "tcw-config.yaml").read_text()
 
 
 @pytest.mark.parametrize("present", [False, True])
@@ -353,7 +353,7 @@ def test_provision_does_not_follow_an_upstreams_own_connections(
     cache = tmp_path / "cache"
     private = _core_node(tmp_path / "private-root")
     remote = _core_node(tmp_path / "remote-core")
-    _edit(remote, lambda c: c.update({"connected-projects": {"parent": {"root": {
+    _edit(remote, lambda c: c.update({"projects": {"parent": {"root": {
         "path": "../not-here-either",
         "repository": {"url": str(private), "ref": "main"}}}}}))
     _git(remote, "commit", "-qam", "names its parent")
@@ -396,7 +396,7 @@ def _cli_family(tmp_path: Path) -> tuple[Path, str]:
         node.mkdir()
         init(["taxonomy", "capabilities", "work"], node, child)
         cfg = yaml.safe_load((node / "tcw-config.yaml").read_text())
-        cfg["connected-projects"] = {"parent": {"r": ".."}, **extra}
+        cfg["projects"] = {"parent": {"r": ".."}, **extra}
         (node / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "family")
@@ -514,13 +514,13 @@ def _with_package(root: Path) -> Path:
     """Give `a` a child `pkg`, so there is a node below the declarer."""
     a = root / "a"
     cfg = yaml.safe_load((a / "tcw-config.yaml").read_text())
-    cfg["connected-projects"]["children"] = {"pkg": "pkg"}
+    cfg["projects"]["children"] = {"pkg": "pkg"}
     (a / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     pkg = a / "pkg"
     pkg.mkdir()
     init(["taxonomy", "capabilities", "work"], pkg, "pkg")
     cfg = yaml.safe_load((pkg / "tcw-config.yaml").read_text())
-    cfg["connected-projects"] = {"parent": {"a": ".."}}
+    cfg["projects"] = {"parent": {"a": ".."}}
     (pkg / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     return pkg
 
@@ -645,15 +645,15 @@ def _proposit(tmp_path: Path) -> dict[str, Path]:
         if key != "shared":            # three repositories, as in the workspace
             _git(nodes[key], "init", "-q", "-b", "main")
         init(["taxonomy", "capabilities", "work"], nodes[key], pid)
-    _edit(root, lambda c: c.update({"connected-projects": {"children": {
+    _edit(root, lambda c: c.update({"projects": {"children": {
         "proposit-core": "proposit-core", "proposit-app-repo": "proposit-app"}}}))
     _set_tracker(root, dict(_ROOT_TRACKER))
-    _edit(nodes["core"], lambda c: c.update({"connected-projects": {
+    _edit(nodes["core"], lambda c: c.update({"projects": {
         "parent": {"proposit-app": ".."}}}))
     _set_tracker(nodes["core"], {"candidate-query": "project = CORE"})
-    _edit(nodes["app"], lambda c: c.update({"connected-projects": {
+    _edit(nodes["app"], lambda c: c.update({"projects": {
         "parent": {"proposit-app": ".."}, "children": {"shared": "packages/shared"}}}))
-    _edit(nodes["shared"], lambda c: c.update({"connected-projects": {
+    _edit(nodes["shared"], lambda c: c.update({"projects": {
         "parent": {"proposit-app-repo": "../.."}}}))
     assert _tcw(nodes["core"], "taxonomy", "add", "Argument").returncode == 0
     out = _tcw(nodes["shared"], "taxonomy", "extends", "add", "proposit-core")
@@ -682,19 +682,19 @@ def test_the_proposit_migration_passes_through_no_blocked_state(tmp_path):
     nodes = _proposit(tmp_path)
     _assert_state(nodes, warned=set())
 
-    step_2 = lambda c: c["connected-projects"].update(  # noqa: E731
+    step_2 = lambda c: c["projects"].update(  # noqa: E731
         {"upstream": {"proposit-core": "../proposit-core"}})
 
     # The forbidden middle state: step 2 before step 1.
     _edit(nodes["app"], step_2)
     code, text = _validate_each({"app": nodes["app"]})["app"]
     assert code == 1 and "declare one or the other" in text, text
-    _edit(nodes["app"], lambda c: c["connected-projects"].pop("upstream"))
+    _edit(nodes["app"], lambda c: c["projects"].pop("upstream"))
 
     # Step 1: the root moves core from children to upstream, one edit.
     def step_1(c):
-        c["connected-projects"]["children"].pop("proposit-core")
-        c["connected-projects"]["upstream"] = {"proposit-core": "proposit-core"}
+        c["projects"]["children"].pop("proposit-core")
+        c["projects"]["upstream"] = {"proposit-core": "proposit-core"}
     _edit(nodes["root"], step_1)
     _assert_state(nodes, warned={"root", "core", "app", "shared"})
 
@@ -703,7 +703,7 @@ def test_the_proposit_migration_passes_through_no_blocked_state(tmp_path):
     _assert_state(nodes, warned={"root", "core", "app", "shared"})
 
     # Step 5 before step 4: the tracker block has nowhere to inherit from.
-    _edit(nodes["core"], lambda c: c.pop("connected-projects"))
+    _edit(nodes["core"], lambda c: c.pop("projects"))
     code, text = _validate_each({"core": nodes["core"]})["core"]
     assert code == 1 and _NO_PARENT in text, text
 
@@ -728,11 +728,11 @@ def test_an_absent_upstream_is_a_warning_and_extends_says_unreachable(tmp_path):
 
 def test_a_project_beyond_an_upstream_cannot_be_named(tmp_path):
     core = _core_node(tmp_path / "core")
-    _edit(core, lambda c: c.update({"connected-projects": {"children": {"x": "x"}}}))
+    _edit(core, lambda c: c.update({"projects": {"children": {"x": "x"}}}))
     x = core / "x"
     x.mkdir()
     init(["taxonomy", "capabilities", "work"], x, "x")
-    _edit(x, lambda c: c.update({"connected-projects": {"parent": {"core": ".."}}}))
+    _edit(x, lambda c: c.update({"projects": {"parent": {"core": ".."}}}))
     slug = _tcw(x, "work", "new", "Deep thing").stdout.strip()
     assert slug
     app = _reader(tmp_path / "app", "app", {"upstream": {"core": "../core"}})

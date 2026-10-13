@@ -209,10 +209,10 @@ def test_update_term_refuses_inherited(tmp_path):
                    check=True)
     write_sentinel(cons, "consumer")
     (cons / "tcw-config.yaml").write_text(
-        "id: consumer\nconnected-projects:\n  children:\n    shared: ../shared\n"
+        "id: consumer\nprojects:\n  children:\n    shared: ../shared\n"
     )
     (shared / "tcw-config.yaml").write_text(
-        "id: shared\nconnected-projects:\n  parent:\n    consumer: ../consumer\n"
+        "id: shared\nprojects:\n  parent:\n    consumer: ../consumer\n"
     )
     FsTaxonomyStore.open(cons).extends_add("shared")
     st = FsTaxonomyStore.open(cons)
@@ -343,11 +343,11 @@ def _federated(tmp_path) -> tuple[Path, Path]:
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
     (child / "tcw-config.yaml").write_text(
-        f"id: child-project\nconnected-projects:\n  children:\n"
+        f"id: child-project\nprojects:\n  children:\n"
         f"    base-project: {base}\n"
     )
     (base / "tcw-config.yaml").write_text(
-        f"id: base-project\nconnected-projects:\n  parent:\n"
+        f"id: base-project\nprojects:\n  parent:\n"
         f"    child-project: {child}\n"
     )
     FsCapabilitiesStore.open(child).extends_add("base-project")

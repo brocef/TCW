@@ -30,7 +30,7 @@ from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
 from tcw.findings import Finding
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
-    CAP_FIELDS, CAP_LIFECYCLES, CAP_MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
+    CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
     RETIRED_CAP_FIELDS,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
     CapabilityDetail, RefError, slugify, StaleRevision, parse_connected_entry,
@@ -872,7 +872,7 @@ def _extended_component_stores(
             raise ValueError(
                 f"{label}: {note}" if note else
                 f"{label}: project '{project_id}' is not reachable "
-                "through connected-projects"
+                "through projects"
             )
         # Identity first: extending yourself is wrong whatever the store does,
         # and asking the store about it would make a config error depend on
@@ -1067,7 +1067,7 @@ def anchor_configured_path(node_root: Path, value: Path) -> Path:
     """The directory a relative `<component>.path` is resolved against.
 
     Inside a *linked worktree* this follows the same rule
-    `FsProjectRegistry._target_path` applies to `connected-projects` locators
+    `FsProjectRegistry._target_path` applies to `projects` locators
     (`tcw/store/project.py:322-334`), and for the same reasons:
 
     - **Re-anchor only on escape.** A relative path that stays inside the
@@ -2624,7 +2624,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             for key in f:
                 if key in RETIRED_CAP_FIELDS:
                     found(f"field '{key}' was retired in TCW 3.0 — see "
-                          f"{CAP_MIGRATION_GUIDE}")
+                          f"{MIGRATION_GUIDE}")
                 elif key not in CAP_FIELDS:
                     found(f"unknown field '{key}'")
             status = f.get("Status")
@@ -3163,7 +3163,7 @@ def declared_connected_projects(
         config = load_config(node_root / SENTINEL)
     except ValueError:
         return [], []            # likewise: it declares no connected project
-    connected = config.get("connected-projects") if isinstance(config, dict) else None
+    connected = config.get("projects") if isinstance(config, dict) else None
     if not isinstance(connected, dict):
         return [], []
     declared: list[tuple[str, RepositoryDeclaration, str]] = []
@@ -3179,7 +3179,7 @@ def declared_connected_projects(
             if not isinstance(project_id, str):
                 continue
             entry, entry_problems = parse_connected_entry(
-                project_id, raw, f"connected-projects.{label}.{project_id}")
+                project_id, raw, f"projects.{label}.{project_id}")
             problems.extend(entry_problems)
             if entry is not None and entry.repository is not None:
                 declared.append((entry.id, entry.repository, label))
@@ -3266,7 +3266,7 @@ class FsStoreProvisioner(StoreProvisioner):
         where = self.declaration.path or "."
         if self.component == NODE_TARGET:
             raise ValueError(
-                f"connected-projects: {self.declaration.url} has no tcw node at "
+                f"projects: {self.declaration.url} has no tcw node at "
                 f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")

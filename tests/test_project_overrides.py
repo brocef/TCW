@@ -55,12 +55,12 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    core-project: ./core\n",
     )
     core = _node(
         tmp_path / "core",
-        "id: core-project\nconnected-projects:\n  parent:\n"
+        "id: core-project\nprojects:\n  parent:\n"
         "    root-project: ..\n",
     )
     monkeypatch.chdir(orchestrator)
@@ -147,17 +147,17 @@ def provisionable(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     remote = _node_remote(
         tmp_path, "remote-core",
-        "id: core-project\nconnected-projects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
     )
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    core-project:\n      path: ./core\n      repository:\n"
         f"        url: {remote}\n        ref: main\n",
     )
     local_core = _node(
         tmp_path / "core",
-        "id: core-project\nconnected-projects:\n  parent:\n"
+        "id: core-project\nprojects:\n  parent:\n"
         f"    root-project: {orchestrator}\n",
     )
     monkeypatch.chdir(orchestrator)
@@ -208,7 +208,7 @@ def test_one_variable_set_serves_both_session_shapes(tmp_path, monkeypatch, caps
     """
     remote = _node_remote(
         tmp_path, "remote-core",
-        "id: core-project\nconnected-projects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
     )
 
     def session(name: str, *, attach_core: bool):
@@ -218,14 +218,14 @@ def test_one_variable_set_serves_both_session_shapes(tmp_path, monkeypatch, caps
         monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
         orchestrator = _node(
             base / "orchestrator",
-            "id: root-project\nconnected-projects:\n  children:\n"
+            "id: root-project\nprojects:\n  children:\n"
             "    core-project:\n      path: ./core\n      repository:\n"
             f"        url: {remote}\n        ref: main\n",
         )
         if attach_core:
             _node(
                 base / "core",
-                "id: core-project\nconnected-projects:\n  parent:\n"
+                "id: core-project\nprojects:\n  parent:\n"
                 f"    root-project: {orchestrator}\n",
             )
         # The same variable in both, naming the same place in the layout —
@@ -285,12 +285,12 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     orchestrator = _node(
         tmp_path / "orchestrator",
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    core-project: ./core\n",
     )
     _node(
         tmp_path / "orchestrator" / "core",
-        "id: core-project\nconnected-projects:\n  parent:\n    root-project: ..\n",
+        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
     )
     from tcw.store.project import FsProjectRegistry
 

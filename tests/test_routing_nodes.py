@@ -30,7 +30,7 @@ def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
     if children:
         links["children"] = children
     if links:
-        cfg["connected-projects"] = links
+        cfg["projects"] = links
     (path / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
     return path
 

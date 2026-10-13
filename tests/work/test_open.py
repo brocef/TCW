@@ -155,7 +155,7 @@ def test_an_upstream_project_is_read_only(tmp_path):
 
 def test_an_absent_upstream_with_a_jira_block_is_still_upstream(tmp_path):
     p = make_project(tmp_path, "p")
-    write_config(p, **{"connected-projects": {"upstream": {
+    write_config(p, **{"projects": {"upstream": {
         "r": {"path": "../r", "jira": {"site": "x"}}}}})
     with pytest.raises(Refused, match="read-only"):
         delegate("r", "T", None, None, here=p)
@@ -174,7 +174,7 @@ def test_an_absent_project_with_a_jira_block(pq, monkeypatch):
     fake = FakeJira().install(monkeypatch)
     monkeypatch.setenv("Q_EMAIL", "dev@example.test")
     monkeypatch.setenv("Q_TOKEN", "token")
-    write_config(p, **{"connected-projects": {"children": {
+    write_config(p, **{"projects": {"children": {
         "q": {"path": "../q", "jira": JIRA_BLOCK}}}})
     assert delegate("q", "T", None, None, here=p) == "TCW-1"
     assert fake.tickets["TCW-1"].status == "To Do"
@@ -185,9 +185,9 @@ def test_an_absent_project_with_a_jira_block(pq, monkeypatch):
 def test_a_malformed_jira_block_is_named(pq):
     p, q = pq
     shutil.rmtree(q)
-    write_config(p, **{"connected-projects": {"children": {
+    write_config(p, **{"projects": {"children": {
         "q": {"path": "../q", "jira": {"site": "x"}}}}})
-    with pytest.raises(BackendError, match="connected-projects.q.jira.site"):
+    with pytest.raises(BackendError, match="projects.q.jira.site"):
         delegate("q", "T", None, None, here=p)
 
 

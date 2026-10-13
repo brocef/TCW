@@ -357,7 +357,7 @@ def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):
     monkeypatch.setenv("Q_EMAIL", "dev@example.test")
     monkeypatch.setenv("Q_TOKEN", "token")
     doc = yaml.safe_load((root / "tcw-config.yaml").read_text())
-    doc["connected-projects"]["children"]["q"] = {"path": "../q", "jira": {
+    doc["projects"]["children"]["q"] = {"path": "../q", "jira": {
         "site": SITE, "project": "TCW", "inbox-status": "To Do",
         "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
         "fields": {"project": "TCW Project"}}}

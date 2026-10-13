@@ -27,12 +27,12 @@ def config(root: Path, text: str) -> None:
 def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None:
     config(
         parent,
-        f"id: {parent_id}\nconnected-projects:\n  children:\n"
+        f"id: {parent_id}\nprojects:\n  children:\n"
         f"    {child_id}: {child}\n",
     )
     config(
         child,
-        f"id: {child_id}\nconnected-projects:\n  parent:\n"
+        f"id: {child_id}\nprojects:\n  parent:\n"
         f"    {parent_id}: {parent}\n",
     )
 
@@ -92,18 +92,18 @@ def test_relative_layout_and_transitive_descendants(tmp_path):
     deep = tmp_path / "deep"
     config(
         root,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     config(
         child,
-        "id: child-project\nconnected-projects:\n"
+        "id: child-project\nprojects:\n"
         "  parent:\n    root-project: ../root\n"
         "  children:\n    deep-project: ../deep\n",
     )
     config(
         deep,
-        "id: deep-project\nconnected-projects:\n  parent:\n"
+        "id: deep-project\nprojects:\n  parent:\n"
         "    child-project: ../child\n",
     )
     registry = FsProjectRegistry.open(root).require_valid()
@@ -122,7 +122,7 @@ def test_relative_layout_and_transitive_descendants(tmp_path):
     [
         ("id: child-wrong\n", "does not match target id"),
         ("", "missing project id"),
-        ("id: child-project\nconnected-projects: []\n", "must be a mapping"),
+        ("id: child-project\nprojects: []\n", "must be a mapping"),
     ],
 )
 def test_invalid_target_fails_closed(tmp_path, target, expected):
@@ -130,7 +130,7 @@ def test_invalid_target_fails_closed(tmp_path, target, expected):
     child = tmp_path / "child"
     config(
         root,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     config(child, target)
@@ -143,7 +143,7 @@ def test_nonreciprocal_connection_fails(tmp_path):
     child = tmp_path / "child"
     config(
         root,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     config(child, "id: child-project\n")
@@ -286,7 +286,7 @@ def test_a_malformed_target_is_an_error_not_an_unreachable_edge(tmp_path):
     child = tmp_path / "child"
     config(
         root,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     config(child, "id: child-project\nid: duplicate\n")
@@ -300,7 +300,7 @@ def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
     root = tmp_path / "root"
     config(
         root,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     registry = FsProjectRegistry.open(root)
@@ -317,7 +317,7 @@ def test_an_absent_parent_leaves_the_child_usable(tmp_path):
     child = tmp_path / "a" / "b" / "child"
     config(
         child,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         "    root-project: ../../..\n",
     )
     registry = FsProjectRegistry.open(child)
@@ -334,12 +334,12 @@ def test_an_absent_counterpart_does_not_disprove_reciprocity(tmp_path):
     child = tmp_path / "child"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: nested/child\n",
     )
     config(
         child,
-        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     registry = FsProjectRegistry.open(child)
@@ -354,12 +354,12 @@ def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
     config(decoy, "id: decoy-project\n")
     config(
         parent,
-        f"id: root-project\nconnected-projects:\n  children:\n"
+        f"id: root-project\nprojects:\n  children:\n"
         f"    child-project: {decoy}\n",
     )
     config(
         child,
-        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     problems = _texts(FsProjectRegistry.open(child).check())
@@ -384,10 +384,10 @@ def test_a_mapping_entry_with_a_path_matches_the_bare_string_form(tmp_path):
         locator = "path: ../child" if style == "mapping" else "../child"
         entry = f"    child-project:\n      {locator}\n" if style == "mapping" \
             else f"    child-project: {locator}\n"
-        config(parent, f"id: root-project\nconnected-projects:\n  children:\n{entry}")
+        config(parent, f"id: root-project\nprojects:\n  children:\n{entry}")
         config(
             child,
-            "id: child-project\nconnected-projects:\n  parent:\n"
+            "id: child-project\nprojects:\n  parent:\n"
             "    root-project: ../orchestrator\n",
         )
         registry = FsProjectRegistry.open(parent)
@@ -401,13 +401,13 @@ def test_a_present_locator_wins_over_a_declaration(tmp_path, monkeypatch):
     parent, child = tmp_path / "orchestrator", tmp_path / "child"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
         "      repository:\n        url: https://example.invalid/nope.git\n",
     )
     config(
         child,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         "    root-project: ../orchestrator\n",
     )
     registry = FsProjectRegistry.open(parent)
@@ -426,12 +426,12 @@ def test_a_declaration_answers_when_the_locator_does_not(tmp_path, monkeypatch):
     obtained = provisioned_root(parent, declaration)
     config(
         obtained,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
         "      repository:\n"
         "        url: https://example.invalid/child.git\n        ref: main\n",
@@ -447,7 +447,7 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
     parent = tmp_path / "orchestrator"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
         "      repository:\n        url: https://example.invalid/child.git\n",
     )
@@ -473,7 +473,7 @@ def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected
     parent = tmp_path / "orchestrator"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         f"    child-project:\n{entry}",
     )
     problems = _texts(FsProjectRegistry.open(parent).check())
@@ -488,7 +488,7 @@ def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
     parent = tmp_path / "orchestrator"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
         "      repository:\n        url: https://example.invalid/child.git\n",
     )
@@ -504,7 +504,7 @@ def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
     parent = tmp_path / "orchestrator"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
     )
     note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
@@ -523,12 +523,12 @@ def test_a_project_another_route_resolved_is_not_reported_unreachable(tmp_path):
     child = tmp_path / "child"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: nested/child\n",          # not here
     )
     config(
         child,
-        f"id: child-project\nconnected-projects:\n  parent:\n"
+        f"id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",              # here
     )
     registry = FsProjectRegistry.open(child)
@@ -542,7 +542,7 @@ def test_a_project_no_route_resolves_is_still_reported(tmp_path):
     child = tmp_path / "child"
     config(
         child,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         "    root-project: ../nowhere\n",
     )
     registry = FsProjectRegistry.open(child)
@@ -573,7 +573,7 @@ def test_a_declared_parent_that_is_absent_is_still_a_declared_parent(tmp_path):
     this checkout has — which made "declared but not here" indistinguishable from
     "never declared", the one thing `UnreachableProject` exists to prevent."""
     child = tmp_path / "child"
-    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+    config(child, "id: child-project\nprojects:\n  parent:\n"
                   f"    away-project: {tmp_path / 'away'}\n")
     registry = FsProjectRegistry.open(child).require_valid()
     assert registry.parent() is None
@@ -583,7 +583,7 @@ def test_a_declared_parent_that_is_absent_is_still_a_declared_parent(tmp_path):
 
 def test_a_declared_child_that_is_absent_is_still_a_declared_child(tmp_path):
     parent = tmp_path / "parent"
-    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+    config(parent, "id: parent-project\nprojects:\n  children:\n"
                    f"    away-project: {tmp_path / 'away'}\n")
     registry = FsProjectRegistry.open(parent).require_valid()
     assert registry.children() == []
@@ -597,9 +597,9 @@ def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
     another machine, so it is reported and not called a problem."""
     parent = tmp_path / "parent"
     child = tmp_path / "child"
-    config(parent, "id: parent-project\nconnected-projects:\n  children:\n"
+    config(parent, "id: parent-project\nprojects:\n  children:\n"
                    f"    child-project: {child}\n")
-    config(child, "id: child-project\nconnected-projects:\n  parent:\n"
+    config(child, "id: child-project\nprojects:\n  parent:\n"
                   f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
 
     registry = FsProjectRegistry.open(parent)
@@ -651,13 +651,13 @@ def _decoy_layout(tmp_path):
     parent, real, decoy = tmp_path / "orchestrator", tmp_path / "real", tmp_path / "decoy"
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../decoy\n",
     )
     config(decoy, "id: decoy-project\n")
     config(
         real,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     return parent, real, decoy
@@ -710,12 +710,12 @@ def test_an_override_at_an_absent_path_falls_through_to_the_declaration(
     obtained = provisioned_root(parent, declaration)
     config(
         obtained,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n      repository:\n"
         "        url: https://example.invalid/child.git\n        ref: main\n",
     )
@@ -748,12 +748,12 @@ def test_an_override_at_a_directory_that_is_not_a_node_is_a_problem(
     obtained = provisioned_root(parent, declaration)
     config(
         obtained,
-        "id: child-project\nconnected-projects:\n  parent:\n"
+        "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
     config(
         parent,
-        "id: root-project\nconnected-projects:\n  children:\n"
+        "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n      repository:\n"
         "        url: https://example.invalid/child.git\n        ref: main\n",
     )
@@ -868,11 +868,11 @@ def _workspace(tmp_path: Path, url: str, *, parent_at: str = "orchestration") ->
     """
     parent = tmp_path / parent_at
     child = tmp_path / "core"
-    config(parent, f"id: orchestration\nconnected-projects:\n  children:\n    core: {child}\n")
+    config(parent, f"id: orchestration\nprojects:\n  children:\n    core: {child}\n")
     config(
         child,
         "id: core\n"
-        "connected-projects:\n"
+        "projects:\n"
         "  parent:\n"
         "    orchestration:\n"
         f"      path: {parent}\n"
@@ -924,7 +924,7 @@ def test_checkout_of_follows_an_override(tmp_path, monkeypatch):
     url = "https://github.invalid/acme/orchestration.git"
     child, declared = _workspace(tmp_path, url)
     elsewhere = tmp_path / "flat" / "orchestration"
-    config(elsewhere, f"id: orchestration\nconnected-projects:\n  children:\n    core: {child}\n")
+    config(elsewhere, f"id: orchestration\nprojects:\n  children:\n    core: {child}\n")
     monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(elsewhere))
 
     found = FsProjectRegistry.open(child).checkout_of(url)
@@ -942,7 +942,7 @@ def test_checkout_of_ignores_a_project_the_graph_does_not_hold(tmp_path):
     config(
         child,
         "id: core\n"
-        "connected-projects:\n"
+        "projects:\n"
         "  parent:\n"
         "    orchestration:\n"
         f"      path: {tmp_path / 'not-here'}\n"

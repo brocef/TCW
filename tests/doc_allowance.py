@@ -86,4 +86,6 @@ REFUSED_KEYS = (
     "work.auto-commit-transitions",
     "work.publish-transitions",
     "work.trunk-branch",
+    # TCW-73 renamed the top-level key to `projects` (Design 9.3).
+    "connected-projects",
 )

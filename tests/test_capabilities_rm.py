@@ -43,12 +43,12 @@ def connect(anchor, *sources):
         for source in sources
     )
     (anchor / "tcw-config.yaml").write_text(
-        f"id: {anchor_id}\nconnected-projects:\n  children:\n{children}"
+        f"id: {anchor_id}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
         source_id = source.name.replace("_", "-")
         (source / "tcw-config.yaml").write_text(
-            f"id: {source_id}\nconnected-projects:\n  parent:\n"
+            f"id: {source_id}\nprojects:\n  parent:\n"
             f"    {anchor_id}: ../{anchor.name}\n"
         )
 

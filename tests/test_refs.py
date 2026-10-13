@@ -112,11 +112,11 @@ def connect(anchor: Path, *others: Path) -> None:
     anchor_cfg = yaml.safe_load((anchor / "tcw-config.yaml").read_text()) or {}
     for other in others:
         other_id = (yaml.safe_load((other / "tcw-config.yaml").read_text()) or {})["id"]
-        anchor_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+        anchor_cfg.setdefault("projects", {}).setdefault("children", {})[
             other_id
         ] = str(other.resolve())
         other_cfg = yaml.safe_load((other / "tcw-config.yaml").read_text()) or {}
-        other_cfg["connected-projects"] = {
+        other_cfg["projects"] = {
             "parent": {anchor_cfg["id"]: str(anchor.resolve())}
         }
         (other / "tcw-config.yaml").write_text(

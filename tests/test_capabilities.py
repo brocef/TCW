@@ -23,11 +23,11 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
 
 def connect(parent: Path, child: Path) -> None:
     (parent / "tcw-config.yaml").write_text(
-        f"id: {parent.name}\nconnected-projects:\n  children:\n"
+        f"id: {parent.name}\nprojects:\n  children:\n"
         f"    {child.name}: ../{child.name}\n"
     )
     (child / "tcw-config.yaml").write_text(
-        f"id: {child.name}\nconnected-projects:\n  parent:\n"
+        f"id: {child.name}\nprojects:\n  parent:\n"
         f"    {parent.name}: ../{parent.name}\n"
     )
 
@@ -669,12 +669,12 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
     child = node(tmp_path, "child")
     st = FsCapabilitiesStore.open(child)
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  children:\n"
+        "id: child\nprojects:\n  children:\n"
         "    one: ../one\n    two: ../two\n"
     )
     for name in ("one", "two"):
         (tmp_path / name / "tcw-config.yaml").write_text(
-            f"id: {name}\nconnected-projects:\n  parent:\n    child: ../child\n"
+            f"id: {name}\nprojects:\n  parent:\n    child: ../child\n"
         )
     st = FsCapabilitiesStore.open(child)
     st.extends_add("one")

@@ -141,9 +141,9 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
     parent = repo(tmp_path / "parent", "parent")
     child = repo(tmp_path / "child", "child")
     (parent / "tcw-config.yaml").write_text(
-        "id: parent\nconnected-projects:\n  children:\n    child: ../child\n")
+        "id: parent\nprojects:\n  children:\n    child: ../child\n")
     (child / "tcw-config.yaml").write_text(
-        "id: child\nconnected-projects:\n  parent:\n    parent: ../parent\n")
+        "id: child\nprojects:\n  parent:\n    parent: ../parent\n")
     shared = tmp_path / "shared"
     shared.mkdir()
     term(shared, "payment", relatesTo=["invoice"])

@@ -336,10 +336,10 @@ def _two_bases(tmp_path):
     child = node(tmp_path, "child")
     children = "".join(f"    {b.name}: ../{b.name}\n" for b in bases)
     (child / "tcw-config.yaml").write_text(
-        f"id: child\nconnected-projects:\n  children:\n{children}")
+        f"id: child\nprojects:\n  children:\n{children}")
     for base in bases:
         (base / "tcw-config.yaml").write_text(
-            f"id: {base.name}\nconnected-projects:\n  parent:\n"
+            f"id: {base.name}\nprojects:\n  parent:\n"
             f"    child: ../child\n")
     for name in ("alpha", "beta"):
         FsCapabilitiesStore.open(child).extends_add(name)

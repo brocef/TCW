@@ -83,11 +83,11 @@ def test_a_malformed_connected_jira_block_is_an_error(offline, tmp_path, monkeyp
     connect(other, offline.root, "parent")
     path = offline.root / "tcw-config.yaml"
     doc = yaml.safe_load(path.read_text())
-    doc["connected-projects"]["children"]["web"] = {
-        "path": doc["connected-projects"]["children"]["web"], "jira": {"site": "x"}}
+    doc["projects"]["children"]["web"] = {
+        "path": doc["projects"]["children"]["web"], "jira": {"site": "x"}}
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
     code, text = validate(offline, monkeypatch, capsys)
-    assert code == 1 and "connected-projects.children.web.jira.site" in text, text
+    assert code == 1 and "projects.children.web.jira.site" in text, text
 
 
 # -- work links (AC 19) ----------------------------------------------------------------

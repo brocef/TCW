@@ -28,10 +28,10 @@ def _connect(anchor: Path, child: Path) -> None:
     anchor_cfg = yaml.safe_load((anchor / "tcw-config.yaml").read_text()) or {}
     child_cfg = yaml.safe_load((child / "tcw-config.yaml").read_text()) or {}
     child_id = child_cfg["id"]
-    anchor_cfg.setdefault("connected-projects", {}).setdefault("children", {})[
+    anchor_cfg.setdefault("projects", {}).setdefault("children", {})[
         child_id
     ] = str(child.resolve())
-    child_cfg["connected-projects"] = {
+    child_cfg["projects"] = {
         "parent": {anchor_cfg["id"]: str(anchor.resolve())}
     }
     (anchor / "tcw-config.yaml").write_text(yaml.safe_dump(anchor_cfg, sort_keys=False))

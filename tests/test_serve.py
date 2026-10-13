@@ -114,10 +114,10 @@ def test_inherited_taxonomy_term_detail_is_200_not_500(tmp_path):
     subprocess.run(["git", "init", "-q", str(cons)], check=True)
     init(["taxonomy", "capabilities", "work"], cons, "consumer")
     (cons / "tcw-config.yaml").write_text(
-        "id: consumer\nconnected-projects:\n  children:\n    repo: ../repo\n"
+        "id: consumer\nprojects:\n  children:\n    repo: ../repo\n"
     )
     (shared / "tcw-config.yaml").write_text(
-        "id: repo\nconnected-projects:\n  parent:\n    consumer: ../consumer\n"
+        "id: repo\nprojects:\n  parent:\n    consumer: ../consumer\n"
     )
     declare_extends(cons, "taxonomy", "extends:\n  - repo\n")
 

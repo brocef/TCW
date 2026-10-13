@@ -26,7 +26,7 @@ def config(path: Path, pid: str, *, parent: dict | None = None,
     path.mkdir(parents=True, exist_ok=True)
     text = f"id: {pid}\n"
     if parent or children:
-        text += "connected-projects:\n"
+        text += "projects:\n"
         for key, links in (("parent", parent), ("children", children)):
             if links:
                 text += f"  {key}:\n" + "".join(f"    {k}: {v}\n" for k, v in links.items())
@@ -89,7 +89,7 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
 
 def test_a_child_declared_only_by_repository_resolves_to_the_worktree(workspace):
     ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text("id: workspace\nconnected-projects:\n  children:\n    app-repo:\n"
+    ws_cfg.write_text("id: workspace\nprojects:\n  children:\n    app-repo:\n"
                       "      repository:\n        url: https://example.com/app.git\n"
                       "        checkout: app\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
