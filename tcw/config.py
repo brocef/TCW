@@ -229,6 +229,10 @@ def _read(path: Path, required: bool, root: Path) -> tuple[dict | None, list[Pro
     except OSError as error:
         return None, [Problem(path, (), f"cannot be read: {error.strerror or error}",
                               root)]
+    except UnicodeDecodeError as error:
+        bad = error.object[error.start:error.start + 1].hex()
+        return None, [Problem(path, (), f"is not valid UTF-8 text (byte 0x{bad} at "
+                                        f"position {error.start})", root)]
     try:
         data = _load_named_yaml(text, path, UniqueKeyLoader)
     except yaml.YAMLError as error:
@@ -412,8 +416,11 @@ def _clear(origins: dict, path: KeyPath) -> None:
 
 def _stamp(origins: dict, path: KeyPath, value: Any, origin: Origin) -> None:
     """Record `origin` for every scalar, list and list entry at or under
-    `path`. A mapping is recorded through its contents."""
+    `path`. A mapping is recorded through its contents, and an empty one,
+    which has none, at its own key."""
     if isinstance(value, dict):
+        if not value and path:
+            origins[path] = origin
         for key, inner in value.items():
             _stamp(origins, (*path, key), inner, origin)
         return
@@ -460,11 +467,23 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
                 origins[(*here, i)] = entry_origin
             written.setdefault(here, []).append(origin)
         elif isinstance(value, dict) and isinstance(lower, dict):
+            if value:
+                # An empty mapping below no longer speaks for this key.
+                origins.pop(here, None)
             _merge(lower, origins, written, value, origin, here)
         elif value is None and origin.layer == "project" and isinstance(lower, dict):
             # `work:` with nothing under it means "no settings", which is
             # the defaults, not "none of TCW's own text" (plan choice 6).
             continue
+        elif isinstance(value, dict):
+            # A mapping no lower layer holds is merged into an empty one, so
+            # a chain list inside it still has its `inherit` entry resolved
+            # (to nothing, Design 3.2) and is recorded as written.
+            _clear(origins, here)
+            values[key] = {}
+            _merge(values[key], origins, written, value, origin, here)
+            if not value:
+                origins[here] = origin
         else:
             _clear(origins, here)
             values[key] = copy.deepcopy(value)

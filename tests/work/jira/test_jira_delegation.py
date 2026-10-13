@@ -116,3 +116,30 @@ def test_a_refused_inbox_move_prints_the_created_key(pair, fake, tcw):
     flow.transitions = [t for t in flow.transitions if t.to != "Specifying"]
     result = tcw(["new", "Add export", "--project", "tcw"], p)
     assert (result.code, result.out.strip()) == (3, "TCW-1")
+
+
+# -- TCW-72 AC 9: a Jira-mode target is read without the person's own files -----------
+
+
+def test_the_targets_local_file_is_not_read(pair, fake, tcw, monkeypatch):
+    p, target, _ = pair
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
+    (target / "tcw-config.local.yaml").write_text("id: wrong\n")
+    commit_all(target)
+    result = tcw(["new", "Add export", "--project", "tcw"], p)
+    assert result.code == 0, result.err
+    assert result.out.strip() == "tcw/TCW-1-add-export"
+
+
+def test_a_user_wide_token_name_does_not_reach_the_target(pair, fake, tcw, monkeypatch,
+                                                          tmp_path):
+    p, _, _ = pair
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
+    user = tmp_path / "xdg-config" / "tcw" / "config.yaml"
+    user.parent.mkdir(parents=True)
+    user.write_text("work:\n  jira:\n    credentials:\n"
+                    "      token-env: TCW_TEST_NOT_SET\n")
+    monkeypatch.delenv("TCW_TEST_NOT_SET", raising=False)
+    result = tcw(["new", "Add export", "--project", "tcw"], p)
+    assert result.code == 0, result.err
+    assert result.out.strip() == "tcw/TCW-1-add-export"

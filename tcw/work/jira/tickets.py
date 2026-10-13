@@ -313,7 +313,8 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
     from tcw.work.open import open_backend
     backend: JiraBackend | None = None
     if root is not None:
-        backend = jira_backend(open_backend(root, report=report))
+        # Another project: read from its tcw-config.yaml alone (TCW-72 AC 9).
+        backend = jira_backend(open_backend(root, report=report, personal=False))
         site, jira_project = backend.jira.site, backend.jira.project
         client, priorities = backend.client, backend.jira.priorities
         meta = backend.metadata()

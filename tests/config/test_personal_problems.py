@@ -78,3 +78,48 @@ def test_an_unreadable_project_file_is_one_problem(personal):
     personal.project_file.write_text("id: [unclosed\n")
     config = load_config(personal.root)
     assert config.unreadable and len(config.problems) == 1
+
+
+# -- A file that is not UTF-8 (review finding L4) --------------------------------------
+
+
+def test_a_local_file_that_is_not_utf8_is_a_problem_naming_it(personal):
+    personal.local_file.write_bytes(b"user:\n  name: Ren\xe9\n")
+    config = load_config(personal.root)
+    assert problem_lines(config) == [
+        "tcw-config.local.yaml: is not valid UTF-8 text (byte 0xe9 at position 17)"]
+
+
+def test_a_project_file_that_is_not_utf8_is_unreadable(personal):
+    personal.project_file.write_bytes(b"id: p\xff\n")
+    config = load_config(personal.root)
+    assert config.unreadable
+    assert problem_lines(config) == [
+        "tcw-config.yaml: is not valid UTF-8 text (byte 0xff at position 5)"]
+
+
+def test_config_show_origin_names_a_file_that_is_not_utf8(personal):
+    from tests.config.conftest import tcw
+    (personal.root / "docs" / "work").mkdir(parents=True)
+    personal.user_file.parent.mkdir(parents=True)
+    personal.user_file.write_bytes(b"\xff\xfe")
+    result = tcw(personal.root, "config", "show", "--origin")
+    assert result.code == 1, result
+    assert "builtin: true" in result.out
+    assert result.err == f"tcw config show: {personal.user_file}: is not valid UTF-8 " \
+                         f"text (byte 0xff at position 0)\n"
+
+
+# -- Several problems, one line each (review finding L6) -------------------------------
+
+
+def test_every_problem_is_its_own_prefixed_line(personal):
+    from tests.config.conftest import tcw
+    (personal.root / "docs" / "work").mkdir(parents=True)
+    personal.project({"work": {"hooks": {"timeout": -1, "output-cap": -1}}})
+    personal.local({"id": "other"})
+    result = tcw(personal.root, "work", "list")
+    assert result.code == 1, result
+    lines = result.err.splitlines()
+    assert len(lines) == 3, lines
+    assert all(line.startswith("tcw work list: ") for line in lines), lines

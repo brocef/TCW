@@ -174,3 +174,26 @@ def test_private_sidecar_rejects_direct_requests(seeded_node):
         thread.join(timeout=2)
 
 
+
+
+def test_the_resolver_sees_a_configuration_change_while_serving(seeded_node, monkeypatch):
+    """`tcw serve` runs for as long as the server does, so the per-command read
+    of the configuration (TCW-72 Design 2.3) must not outlive the start-up:
+    each resolver call reads the files as they are then."""
+    import tcw.cli
+    from tcw.refs import resolve_tcw_ref
+    root, _ = seeded_node
+    seen = []
+
+    def fake_serve(**_):
+        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created").reason)
+        config = root / "tcw-config.yaml"
+        config.write_text(config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
+        seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-never-created").reason)
+        return 0
+
+    monkeypatch.setattr(tcw.cli, "serve", fake_serve)
+    monkeypatch.chdir(root)
+    assert main(["serve", "--no-open"]) == 0
+    assert "work.hooks.timeout" not in seen[0]
+    assert "work.hooks.timeout" in seen[1], seen

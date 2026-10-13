@@ -528,6 +528,11 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         from tcw.errors import NO_PROJECT, BackendError
         raise BackendError(NO_PROJECT)
     FsProjectRegistry.open(project_root).require_valid()
+    # The server outlives the start-up, and each request must see the files as
+    # they are then, so the once-per-command read of the configuration ends
+    # here (TCW-72 Design 2.3).
+    from tcw import config as layered
+    layered.end_command()
     return serve(port=args.port, open_browser=not args.no_open,
                  include_descendants=True)
 
@@ -647,7 +652,12 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
         # exactly as success would (Design 1.8).
         if error.name:
             print(error.name)
-        print(f"{command}: {error}", file=sys.stderr)
+        # Several configuration problems are several errors: one line each,
+        # each with the command's prefix (TCW-73's one-line form).
+        lines = ([str(p) for p in error.problems] if isinstance(error, ConfigError)
+                 else [str(error)])
+        for line in lines:
+            print(f"{command}: {line}", file=sys.stderr)
         return error.code
     except (ValueError, MultipleMatch) as error:
         # A fault that reached here unclassified, not an answer: exit 1.

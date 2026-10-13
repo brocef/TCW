@@ -155,3 +155,50 @@ def test_other_lists_are_replaced_whole(personal):
     config = load_config(personal.root)
     assert config.values["work"]["tags"] == ["a", "b"]
     assert config.origins[("work", "tags", 1)].layer == "project"
+
+
+# -- A mapping no lower layer holds (review finding L2) --------------------------------
+
+
+@pytest.mark.parametrize("stage", ["completed", "discarded"])
+def test_a_new_stage_mapping_resolves_its_chain_lists(personal, stage):
+    personal.project({"work": {"stages": {stage: {"post": [INHERIT, {"command": "true"}]}}}})
+    config = load_config(personal.root)
+    assert problem_lines(config) == []
+    assert config.values["work"]["stages"][stage]["post"] == [{"command": "true"}]
+    assert [o.layer for o in config.written[("work", "stages", stage, "post")]] == \
+        ["project"]
+    assert [b.value for b in config.work.stage(stage).post] == ["true"]
+
+
+def test_a_local_stage_mapping_resolves_when_the_project_sets_nothing(personal):
+    personal.local({"work": {"stages": {"completed": {"post": [INHERIT, {"command": "x"}]}}}})
+    config = load_config(personal.root)
+    assert problem_lines(config) == []
+    assert config.values["work"]["stages"]["completed"]["post"] == [{"command": "x"}]
+    assert config.personal_files(("work", "stages", "completed", "post")) == \
+        [personal.local_file]
+
+
+# -- Origins of mappings (review finding L3) ---------------------------------------------
+
+
+def test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it(personal):
+    personal.local({"work": {"procedures": {"custom": {}}}})
+    config = load_config(personal.root)
+    [problem] = config.problems
+    assert problem.key_path == ("work", "procedures", "custom")
+    assert problem.file == personal.local_file
+    from tcw.config_cli import render
+    [line] = [l for l in render(config, origin=True).splitlines() if "custom:" in l]
+    assert line.endswith("custom: {}  # local: tcw-config.local.yaml"), line
+
+
+def test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it(personal):
+    # Design 5.2's third rule: nothing at the key itself or above it has an
+    # origin, so the highest layer that wrote anything under it is named.
+    personal.project({"work": {"stages": {"nosuch": {"pre": [{"command": "a"}]}}}})
+    personal.local({"work": {"stages": {"nosuch": {"prompt": [a("x")]}}}})
+    config = load_config(personal.root)
+    blamed = [p.file for p in config.problems if p.key_path == ("work", "stages", "nosuch")]
+    assert blamed == [personal.local_file], problem_lines(config)
