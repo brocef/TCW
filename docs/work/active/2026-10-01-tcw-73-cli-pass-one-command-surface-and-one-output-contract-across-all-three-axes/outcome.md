@@ -240,3 +240,88 @@ report one.
 - **The full suite** has not been run on this branch, by instruction; run it
   before the epic merges. Tests marked "not ported in TCW-70" still name 2.x
   wording and stay skipped.
+
+## Review fixes (2026-10-13)
+
+An adversarial review of the branch at `20f0b9f4` raised the findings below.
+All are fixed on the branch except S1, which was narrowed (reason given).
+Commits on `work/2026-10-01-tcw-73-…`: `e83c759f` stores, `e7d85801` the
+retired key, `e510f3b6` records and scenarios, `090795e0` the output contract,
+`12cf7886` the config-writer test, `bde41393` the notes. Spec notes on `main`:
+`debde570`.
+
+| Finding | Commit | Test |
+| --- | --- | --- |
+| S1 `taxonomy rm` left a reference to a sub-folder without `meta.yaml` | `e83c759f` | `tests/test_taxonomy_rm_gaps.py::test_a_reference_to_a_folder_under_the_term_refuses_the_removal`, `…::test_a_term_naming_a_folder_under_the_term_refuses_the_removal` |
+| S2 a partial delete named nothing and raised a raw `[Errno 13]` | `e83c759f` | `tests/test_partial_removal.py` (taxonomy rm, capabilities rm, capabilities reset; skipped as root) |
+| S3 `extends add 'Bad ID!'` exited 1 | `e83c759f` | `tests/test_taxonomy_cli_contract.py::test_extends_add_of_a_malformed_name_is_a_usage_error` (both axes) |
+| S4 guards missed "-ing" git words and `from sys import stdin` | `e83c759f` | `tests/test_static_guards.py::test_the_guard_sees_an_ing_form_of_a_git_word`, `…::test_the_stdin_guard_sees_a_prompt` |
+| R1 the old key refused only by some commands; `projects list` hid registry problems | `e7d85801` | `tests/test_projects_list.py::test_every_command_refuses_the_2x_key` (projects list, provision, work list, work new --project, taxonomy list), `…::test_provision_refuses_the_2x_key_in_a_child`, `…::test_an_upstreams_own_2x_key_is_not_its_readers_problem`, `…::test_projects_list_reports_a_registry_problem` |
+| R2 the key pattern matched inside slugs | `e7d85801` | `tests/test_documented_cli_surface.py::test_the_top_key_pattern_matches_the_key_and_not_a_slug` |
+| D1–D5 records and scenarios | `e510f3b6` | `tests/test_ledger_3_0.py` (D4); D1, D2, D3, D5 are text |
+| C1 short output into a closed pipe exited 120 | `090795e0` | `tests/test_cli_handler.py::test_a_reader_gone_before_short_output_exits_quietly` (subprocess) |
+| C2 `tags rm` of an unregistered tag exited 0 | `090795e0`, `12cf7886` | `tests/test_cli_contract.py::test_tags_rm_of_an_unregistered_tag_is_not_found`, `tests/test_config_edit_writers.py::test_a_tags_change_that_changes_nothing_writes_nothing` |
+| C3 `validate --remote` called a broken Jira config "filesystem" | `090795e0` | `tests/work/jira/test_jira_validate_remote.py::test_a_jira_project_with_a_broken_work_config_is_not_called_filesystem` |
+| C4 a late Jira failure printed no name | `090795e0` | `tests/work/jira/test_jira_tickets.py::test_new_whose_read_back_fails_names_the_item`, `…::test_adopt_whose_read_back_fails_names_the_item`, `…::test_adopt_whose_move_fails_names_the_item` |
+| C5 the contract test was narrower than Design 10 | `090795e0` | `tests/test_cli_contract.py::test_the_reading_commands_in_a_project`, `…::test_the_writing_work_commands_in_a_project`, `…::test_the_writing_tree_commands_in_a_project`, `…::test_jira_edit_comment_and_rename`, `…::test_jira_tickets_adopt` |
+| C6 `moved <old> to <new>` was not in Design 1.2 | `debde570` (spec), `090795e0` (test) | `MOVED` and `unnamed()` in `tests/test_cli_contract.py`, exercised by the rename rows |
+| N1 notes shaped like error lines; an indented warning | `090795e0` | `tests/test_stdin.py::test_nothing_arrives_proceeds_with_a_warning`, `tests/test_project_overrides.py::test_an_override_warning_is_a_warning_line`; `checked()` in the contract test refuses an error-shaped line on success |
+| N2 a rolled-back create named the folder | `090795e0` | `tests/test_cli_handler.py::test_a_create_rolled_back_names_each_file_removed` |
+| N3 `edit --blocks` into another project lacked the uncommitted note | `090795e0` | `tests/work/test_cli_items.py::test_edit_blocks_into_another_project` |
+| N4 validate's `<where>` absolute in some findings; path repeated | `090795e0` | `tests/test_validate_command.py::test_a_config_finding_names_the_file_relative_to_the_project`, `…::test_the_former_child_warning_names_its_file_once` |
+| N5 present but unreadable project is a warning | `debde570` (spec note) | unchanged behaviour |
+| N6 duplicate-key finding dropped for one Jira item | `090795e0` | `tests/test_validate_target.py::test_one_jira_item_sharing_its_key_with_another_folder` |
+| N7 help standard 5 untested | `090795e0` | `tests/test_cli_help_standard.py::test_choices_are_shown_in_the_help` |
+
+**S1, narrowed.** The review proposed counting every listed sub-folder as a
+nested term, so `rm` would refuse. That contradicts two existing tests that
+hold Design 8.2's decision: a sub-folder holding only `.DS_Store`/`Thumbs.db`,
+or a stray `notes.md`, goes with the term (otherwise such a term could never be
+removed). The defect the review found is the dangling reference, so the fix is
+there: `rm` refuses when any term or capability names the term's folder **or
+any folder inside it**. A meta-less sub-folder nothing names still goes with the
+term.
+
+**S2, how.** `_rm` lists the files first, and when `shutil.rmtree` stops partway
+it reads back which of them are gone, records those, and raises "the removal
+was partial: N of M files removed; still present: …". No `onexc`/`onerror`
+handler was needed, so nothing depends on the Python version.
+
+**R1, how.** `refuse_retired_config` (`tcw/store/fs.py`) runs once in `main`
+before every command except `validate`, which reports the key as a finding.
+`declared_connected_projects` reports it too, so `provision` names a child that
+still holds it; an upstream's own config is not read by either.
+
+### Mutation checks for the fixes
+
+Each was applied, the named test went red for the stated reason, and the code
+was restored.
+
+- S1: `_in_folder` back to `_same_folder` in both reference checks: both S1 tests exit 0 instead of 3.
+- S2: the `except OSError` in `_rm` never matching: raw `[Errno 13]`, no `removed` lines. The handlers' `finally: changed(...)` removed: no `removed` lines.
+- S3: re-raising the `ValueError`: exit 1, not 2.
+- S4: an "-ing" git word and `from sys import stdin as _probe` added to `tcw/work/cli.py`: both guards report them.
+- R1: the `main` check removed: `work list` and `work new --project` exit 0 and 3. `require_valid` removed from `projects list`: the invalid child is silently omitted. `declared_connected_projects` ignoring the key: provision passes over the child.
+- R2: the old `\b…\b` pattern: matches `cli/list-connected-projects`.
+- C1: the flush in `main` removed: exit 120 with "Exception ignored while flushing sys.stdout".
+- C3: the old `read_work_config`-based check: exit 2 with the false usage error.
+- C4: the backend and adopt fixes reverted: all three tests print nothing on stdout.
+- N2, N3, N4, N6: each fix reverted: its test goes red (folder line printed; no "uncommitted in"; absolute `where`; path repeated; duplicate-key finding missing).
+- The reviewer's own C5 mutations, re-run against the extended contract test:
+  `print` added after success in `_path` (red: reading commands),
+  `_discard` (red: writing work commands), `_tags_list` (red: reading commands
+  and the C2 test); `print` added to `JiraBackend.comment` and to
+  `JiraBackend.update` (red: `test_jira_edit_comment_and_rename`); `wrote(path)`
+  dropped from `_write_tags` (red: writing work commands). Also: the `moved`
+  line dropped from the filesystem rename (red), and C2's refusal disabled (red).
+
+### Tests run for the fixes
+
+Not the full suite. With a private venv on the worktree: every file named in
+the table above, plus `tests/work/`, the taxonomy and capabilities test files,
+`tests/test_cli_contract.py`, `test_documented_cli_surface.py`,
+`test_static_guards.py`, the registry, provisioning, override and multiproject
+files: all pass (2018 + 684 + 295 + 373 across four runs, skips are the
+"not ported" tests). `pytest --collect-only -q`: 3632 collected, no errors.
+Note that `tests/test_stdin_cli.py`'s stdin-warning case is skipped as not
+ported, so the warning prefix is held by `tests/test_stdin.py` instead.
