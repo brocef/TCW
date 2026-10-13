@@ -7,7 +7,10 @@
     issue type's create metadata. `set_stage` makes one transition chosen by
     a fixed rule (the lone candidate, else the one whose screen asks for
     nothing but a comment, else a refusal) and decides what happened after a
-    400 or a dropped connection by reading the status back. Reads fall back
+    400 or a dropped connection by reading the status back. A note for a
+    transition with no screen is posted as its own comment after the move,
+    because Jira accepts and silently discards a comment sent with such a
+    transition (found by the live check). Reads fall back
     to direct reads for any key a search did not return. Offline checks
     (`jira_store_problems`, `link_exists`) never contact Jira.
   - `config.py`: `JiraConfig` and the connected-project `jira` block.
@@ -17,7 +20,9 @@
     after a search, never with `~`.
   - `tickets.py`: the Jira inbox, adoption, and delegation into a Jira-mode
     project.
-  - `remote.py`: the checks behind `tcw validate --remote`.
+  - `remote.py`: the checks behind `tcw validate --remote`. Parent is not
+    required on the edit screen of the top-level issue type (an Epic), which
+    Jira gives no Parent field.
 - Commands: `tcw work tickets list [--json]`, `tcw work tickets adopt KEY`,
   `tcw validate --remote`.
 
@@ -28,7 +33,8 @@
   any fields; `apply_transition` takes an optional comment; `comments(key,
   limit)` replaces `recent_comments`; new `edit_issue`, `add_link`,
   `delete_link`, `user`, `assignable_users`, `project`, `project_statuses`,
-  `create_metadata`, `edit_metadata`, `link_types`, `workflows`. `assign` and
+  `create_metadata`, `edit_metadata`, `link_types`, `workflows`. A
+  `Transition` carries `has_screen`, read from Jira's `hasScreen`. `assign` and
   `description` are gone. Error messages name `work.jira`.
 - `open_backend` returns a `JiraBackend` for `work.backend: jira`;
   `open.delegate` delegates into Jira-mode projects; `open.reference_resolver`
@@ -46,7 +52,11 @@
   global transitions, screens and switches for each failure the backend
   handles; `fake_jql.py` evaluates exactly the query shapes TCW builds.
 - `tests/work/jira/scenario.py`: Design 15.4's ten-step scenario, run against
-  the fake in CI and by hand against a real Jira project.
+  the fake in CI and by hand against a real Jira project, with probes for the
+  live check's questions.
+- `tests/work/jira/capture.py` records a real site's answers into
+  `tests/work/jira/recorded/`, with people and the site replaced;
+  `test_recorded_shapes.py` checks the fake answers in the same shapes.
 - The shared backend contract runs against `JiraBackend` with no skips.
 - Guards: no module under `tcw/` names the 2.x tracker, and no module in
   `tcw/work/jira/` starts a process.
