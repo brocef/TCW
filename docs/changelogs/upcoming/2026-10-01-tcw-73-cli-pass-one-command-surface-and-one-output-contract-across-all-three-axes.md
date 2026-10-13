@@ -29,7 +29,8 @@
   completed work through the backend in Jira mode.
 - `tcw init` and `tcw provision` say everything on stderr.
 - The configuration key `connected-projects` is `projects`; the old key is a
-  graph error naming the migration guide.
+  config error naming the migration guide, refused by every command
+  (`refuse_retired_config`, run once in `main`) and reported by `validate`.
 - "node" is "project" throughout `tcw/` (outside `tcw/serve/`): for example
   `find_project_root`, `project_root`, `child_projects`; a term or capability
   folder is an "entry" (`_load_entry`, `_write_entry`).

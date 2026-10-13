@@ -36,7 +36,8 @@ and removed commands is in `docs/migration-guide-2.8-to-3.0.0.md`.
 - **`tcw provision --refresh` is gone.** `tcw provision` obtains what is
   missing and never fetches into a checkout you already have.
 - **`connected-projects:` in `tcw-config.yaml` is now `projects:`,** with the
-  same `parent`, `children` and `upstream` entries. The old key is an error that
-  names the migration guide.
+  same `parent`, `children` and `upstream` entries. Every command refuses a
+  config that still has the old key, with an error that names the migration
+  guide.
 - **The capability fields `Planning doc` and `Tracker` are retired.** Setting
   either is refused, and `tcw validate` reports a record that still has one.
