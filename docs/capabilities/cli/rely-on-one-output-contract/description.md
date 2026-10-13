@@ -12,8 +12,11 @@ top, with any list under a named key (`"items"`, `"terms"`, `"capabilities"`,
 **Standard error carries everything said to a person**: what happened, warnings
 (lines starting `warning: `), what to do next, and every file the command wrote
 or removed, one line each, as `wrote <path>` or `removed <path>` (`created
-<path>/` for a folder made empty). An error is one line starting with the
-command's own words, for example `tcw work advance: …`. No command ever stops to
+<path>/` for a folder made empty, `moved <old> to <new>` for a work item folder
+renamed). An error is one line starting with the command's own words, for
+example `tcw work advance: …`; when the command line itself is malformed — an
+unknown option, a missing argument — the argument parser first prints a
+`usage:` block, then that error line. No command ever stops to
 ask me a question; long text — a work item's request, a comment, a term's
 description, a capability's body — is read from standard input.
 

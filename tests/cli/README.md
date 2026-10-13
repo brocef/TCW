@@ -28,9 +28,11 @@ contract only — the exit code and the stream — and leaves the internals alon
 1. **All state in a temp dir.** `mktemp -d`, removed by an `EXIT` trap. Nothing
    is written inside this repository, and no scenario depends on this
    repository's own `docs/work/` tree.
-2. **`git init` per scenario**, with `user.email`/`user.name` set locally.
-   `commit.gpgsign=false` and `init.defaultBranch=main` are forced so a
-   developer's global git config cannot change the result.
+2. **Outside git unless the scenario tests a git read.** TCW 3.0 changes no git
+   state, so a scenario runs in a plain temp dir. One that tests a git read
+   runs `git init` with `user.email`/`user.name` set locally, and forces
+   `commit.gpgsign=false` and `init.defaultBranch=main` so a developer's global
+   git config cannot change the result.
 3. **Timeout every invocation.** A hang is a failure, not a stalled suite. No
    `tcw` call runs unbounded.
 4. **`stdin` is explicit.** Every call redirects `</dev/null` unless the scenario
@@ -39,7 +41,7 @@ contract only — the exit code and the stream — and leaves the internals alon
 5. **Assert the negative too.** A scenario that only checks the happy path passes
    against a `tcw` that ignores its arguments. Each asserts at least one refusal:
    a bad input, an illegal transition, or an absent file.
-6. **No network, ever.** Federation and cross-node scenarios use sibling
+6. **No network, ever.** Scenarios across connected projects use sibling
    directories on disk.
 
 ## Layout
@@ -79,9 +81,7 @@ The other twelve described commands 3.0 removed (`<axis> init`, `stage gate`,
 behaviour that `tests/test_cli_contract.py` now holds for every command, run
 as a subprocess: the stdout of each command, the files it names on stderr, its
 exit codes, and its behaviour outside a project. The web viewer's scenario
-goes with TCW-77, which rewrites the viewer. Conventions 2 and 6 below still
-read "git" and "node" from 2.x; a scenario for 3.0 runs outside a git
-repository unless it is about git, and says "project".
+goes with TCW-77, which rewrites the viewer.
 
 ## Status
 
@@ -89,7 +89,7 @@ Scenarios are written and **reviewed**. Codex's pass found seven blocking
 specification errors, three tautological assertions, three ways a script could
 damage the developer's machine, and one product gap that made two scenarios
 unimplementable as written; all were verified against the source or a scratch
-node before being accepted, and all are folded in. A local-model pass is
+project before being accepted, and all are folded in. A local-model pass is
 outstanding.
 
 **No scripts exist yet** — that is deliberate. The scenarios are the

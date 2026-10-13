@@ -18,9 +18,11 @@ CAPABILITIES = REPO / "docs" / "capabilities"
 TAXONOMY = REPO / "docs" / "taxonomy"
 
 NEW = ("cli/rely-on-one-output-contract", "cli/list-connected-projects",
-       "cli/validate-a-project")
+       "cli/validate-a-project",
+       "work/declare-capability-changes-in-a-child-projects-ledger")
 REMOVED = ("cli/use-shorthand-to-read-an-item", "cli/validate-a-node",
-           "work/inspect-the-node-topology")
+           "work/inspect-the-node-topology",
+           "work/declare-capability-changes-in-a-child-nodes-ledger")
 RETIRED_ENTRIES = ("node", "connected-project-registry")
 
 
