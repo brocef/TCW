@@ -18,8 +18,8 @@ from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    declared_repository, find_project_root, git_root, init, refuse_retired_config,
-    provisioned_store_root,
+    LOCAL_CONFIG, declared_repository, find_project_root, git_root,
+    ignore_personal_file, init, refuse_retired_config, provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
@@ -70,7 +70,16 @@ def run_init(components: list[str], project_id: str | None = None,
     # user, whether that came from `--path` or from `work.path` in the config.
     except (ValueError, OSError, RuntimeError) as error:
         raise BackendError(str(error)) from None
-    changed(written)
+    # The personal file is kept out of version control from the start
+    # (TCW-72 Design 10.2). Outside a repository there is no ignore file to
+    # write, so the person is told to do it themselves.
+    if git_root(root) is not None:
+        written += ignore_personal_file(root)
+        changed(written)
+    else:
+        changed(written)
+        print(f"note: not inside a repository, so no ignore rule was written; "
+              f"keep {LOCAL_CONFIG} out of version control yourself", file=sys.stderr)
     return 0
 
 
@@ -380,7 +389,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     5 when `--remote` could not reach Jira, else 0."""
     from tcw.errors import NO_PROJECT, BackendError, UsageError
     from tcw.findings import Finding
-    from tcw.validate import validate
+    from tcw.validate import config_findings, validate
     project_root = find_project_root()
     if project_root is None:
         raise BackendError(NO_PROJECT)
@@ -400,7 +409,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             print(f"warning: {override.warning}", file=sys.stderr)
     graph = registry.check()
     if graph:
-        return _report(graph, project_root)
+        # `validate` is not reached, so the configuration findings it would
+        # have led with are added here.
+        return _report([*config_findings(project_root), *graph], project_root)
     findings: list[Finding] = []
     for absent in registry.unreachable():
         if absent.declaration is not None:

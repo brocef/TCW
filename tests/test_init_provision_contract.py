@@ -23,11 +23,16 @@ def test_init_prints_nothing_and_names_every_path(tmp_path, monkeypatch, capsys)
     code, out, err = run(tmp_path, monkeypatch, capsys,
                          "init", "--id", "fresh", "taxonomy", "work")
     assert (code, out) == (0, "")
+    # Outside a repository `init` also says the personal file needs keeping
+    # out of version control by hand, every time it runs (TCW-72 Design 10.2).
+    note = ("note: not inside a repository, so no ignore rule was written; keep "
+            "tcw-config.local.yaml out of version control yourself")
     assert err.splitlines() == ["wrote tcw-config.yaml",
                                 "created docs/taxonomy/", "wrote docs/taxonomy/.gitkeep",
-                                "created docs/work/", "wrote docs/work/.gitkeep"]
+                                "created docs/work/", "wrote docs/work/.gitkeep", note]
     # Again: nothing left to do, so nothing to name.
-    assert run(tmp_path, monkeypatch, capsys, "init", "taxonomy", "work") == (0, "", "")
+    assert run(tmp_path, monkeypatch, capsys, "init", "taxonomy", "work") == \
+        (0, "", note + "\n")
 
 
 def test_init_of_an_unknown_axis_lists_the_valid_ones(tmp_path, monkeypatch, capsys):

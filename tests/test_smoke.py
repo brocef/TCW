@@ -39,11 +39,12 @@ def test_init_ignores_resolved_work_folders(tmp_path, monkeypatch):
     assert not _ignored(tmp_path, "docs/work/backlog/some-item")
 
 
-def test_init_without_work_writes_no_gitignore(tmp_path, monkeypatch):
+def test_init_without_work_writes_no_work_ignore_rule(tmp_path, monkeypatch):
+    # The only rule `init` writes is the personal file's (TCW-72 Design 10.2).
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["init", "--id", "test-project", "taxonomy"]) == 0
-    assert not (tmp_path / ".gitignore").exists()
+    assert (tmp_path / ".gitignore").read_text() == "/tcw-config.local.yaml\n"
 
 
 def test_init_without_an_id_is_a_usage_error(tmp_path, monkeypatch):

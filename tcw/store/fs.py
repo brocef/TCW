@@ -157,6 +157,45 @@ def _git(*args, **kwargs):
     return subprocess.run(*args, stdin=stdin, **kwargs)
 
 
+#: The personal file beside `tcw-config.yaml` (TCW-72 Design 1). Named here
+#: as well as in `tcw.config`, which imports this module.
+LOCAL_CONFIG = "tcw-config.local.yaml"
+#: The `.gitignore` line `tcw init` writes for it; the leading `/` limits the
+#: rule to the folder holding the file.
+LOCAL_CONFIG_RULE = "/" + LOCAL_CONFIG
+
+
+def personal_file_tracked(root: Path) -> bool:
+    """Whether `tcw-config.local.yaml` in `root` is under version control
+    (TCW-72 Design 10.3). Read only: the status command run here takes no
+    lock and changes nothing. The file is tracked when it exists and the
+    status reports it neither as untracked (`??`) nor as ignored (`!!`).
+    False when the file is absent or `root` is not in a repository."""
+    if not (root / LOCAL_CONFIG).is_file() or git_root(root) is None:
+        return False
+    done = _git(["git", "--no-optional-locks", "-C", str(root), "status",
+                 "--porcelain", "--ignored", "--", LOCAL_CONFIG],
+                capture_output=True, text=True)
+    if done.returncode != 0:
+        return False
+    return not any(line[:2] in ("??", "!!") for line in done.stdout.splitlines())
+
+
+def ignore_personal_file(root: Path) -> list[tuple[str, Path]]:
+    """Add `/tcw-config.local.yaml` to the `.gitignore` in `root`, unless a
+    line already reads exactly that or `tcw-config.local.yaml` (TCW-72 Design
+    10.2). Returns what it wrote, for the caller to name. Writes the file
+    only; nothing is staged."""
+    ignore = root / ".gitignore"
+    text = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
+    if {LOCAL_CONFIG, LOCAL_CONFIG_RULE} & {line.strip() for line in text.splitlines()}:
+        return []
+    if text and not text.endswith("\n"):
+        text += "\n"
+    ignore.write_text(text + LOCAL_CONFIG_RULE + "\n", encoding="utf-8")
+    return [("wrote", ignore)]
+
+
 def git_root(start: Path | None = None) -> Path | None:
     """Top of the git work-tree containing `start` (cwd by default), or None.
 

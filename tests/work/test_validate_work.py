@@ -122,9 +122,13 @@ def test_one_unreadable_item_does_not_hide_the_rest(tmp_path):
 
 
 def test_a_config_error_is_one_finding(tmp_path):
+    # Reported once, by the configuration check that leads `validate`; the
+    # work checks no longer repeat it (TCW-72 Design 5.5).
+    from tcw.validate import config_findings
     p = make_project(tmp_path, "p", config={"tracker": {}})
-    [error] = findings(p)[0]
+    [error] = config_findings(p)
     assert error.severity == "error" and "work.tracker" in error.message
+    assert findings(p) == ([], None)
 
 
 def test_two_projects_with_one_work_path(tmp_path):

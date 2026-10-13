@@ -33,6 +33,7 @@ GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted|ting)?|push(?:es|ed|ing)?|"
 # (module, qualified name): the functions whose messages may name git.
 EXEMPT = {
     ("store/fs.py", "git_root"),                      # finding the repository root
+    ("store/fs.py", "personal_file_tracked"),         # TCW-72's read-only status check
     ("store/fs.py", "FsStoreProvisioner"),            # `tcw provision` clones
     ("cli.py", "run_provision"),
     ("cli.py", "_provision_projects"),

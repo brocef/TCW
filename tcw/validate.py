@@ -348,6 +348,24 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
     return problems, yaml_syntax_error
 
 
+TRACKED_PERSONAL_FILE = ("tracked; personal configuration should stay out of "
+                         "version control (stop tracking it and list it in "
+                         ".gitignore)")
+
+
+def config_findings(project_root: Path) -> list[Finding]:
+    """The layered configuration's problems, each an error naming its file
+    with the message starting at the key path, and a warning when the local
+    personal file is tracked (TCW-72 Design 5.5, 10.3)."""
+    from tcw.config import LOCAL_FILE, effective
+    from tcw.store.fs import personal_file_tracked
+    findings = [Finding("error", p.where or "environment", p.detail)
+                for p in effective(project_root).problems]
+    if personal_file_tracked(project_root):
+        findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
+    return findings
+
+
 def validate(project_root: Path, *, target: ValidationTarget | None = None,
              notes: list[str] | None = None) -> list[Finding]:
     """Every finding for the project ([] = clean). Lines about the run itself
@@ -355,9 +373,13 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
     notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
 
+    # The configuration first: every layer's problems, and a personal file
+    # that version control is tracking (TCW-72 Design 5.5, 10.3). A check of
+    # one object leaves them to the whole-project run.
+    configured = config_findings(project_root) if target is None else []
     graph_problems = FsProjectRegistry.open(project_root).check()
     if graph_problems:
-        return graph_problems
+        return [*configured, *graph_problems]
     registry = FsProjectRegistry.open(project_root).require_valid()
     # Over the projects this checkout can open. A partial graph makes this scan
     # narrower, never wrong: it can miss a collision a complete checkout would
@@ -365,7 +387,7 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
     # by `tcw validate`'s caller, so they are not silently dropped here.
     shared = _shared_work_paths(registry)
     if shared:
-        return shared
+        return [*configured, *shared]
     if target is not None and target.axis == "work":
         return _work_target_findings(project_root, registry, target)
     trees = _tree_roots(project_root) if target is None else {}
@@ -376,6 +398,7 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
     else:
         roots = [r for r in _scan_roots(project_root, trees) if r.exists()]
     problems, yaml_syntax_error = _file_findings(project_root, roots)
+    problems = [*configured, *problems]
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
     if yaml_syntax_error:
@@ -503,7 +526,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
 
     Unreadable items do not stop the checks: they come from `read_all`, each
     is one error, and every other check runs over the readable items."""
-    from tcw.errors import BackendError
+    from tcw.errors import BackendError, ConfigError
     from tcw.findings import Finding
     from tcw.work.fs_backend import FsWorkBackend, read_all, work_store_problems
     from tcw.work.jira.backend import JiraBackend, jira_store_problems
@@ -518,6 +541,9 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
               for problem in connected_block_problems(registry.config())]
     try:
         backend = open_backend(project_root)
+    except ConfigError:
+        # Already reported, file by file, by `config_findings`.
+        return blocks, None
     except BackendError as error:
         return [Finding("error", config_file, _config_message(error, project_root)), *blocks], None
     if isinstance(backend, JiraBackend):
