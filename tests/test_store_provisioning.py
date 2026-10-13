@@ -223,22 +223,19 @@ def test_a_dry_run_contacts_nothing_and_reports_the_plan(tmp_path, monkeypatch):
     assert not fs.checkout_root(code, provisioner.declaration).exists()
 
 
-def test_refresh_brings_an_existing_checkout_to_the_declared_ref(tmp_path):
+def test_an_available_store_is_never_fetched_into(tmp_path, monkeypatch):
+    """TCW-73 Design 8.4: keeping an available store fresh is the project's
+    own business; `ensure_available` on one runs no git at all."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     remote = _remote_with_store(tmp_path)
     provisioner = _provisioner(tmp_path, code, remote, ref="main")
     provisioner.ensure_available()
-    target = fs.provisioned_store_root(code, provisioner.declaration)
 
-    (remote / "docs" / "work" / "corelib" / "backlog" / "later.md").write_text("later\n")
-    subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
-    subprocess.run(["git", "-C", str(remote), "commit", "-qm", "add an item"], check=True)
-
-    result = provisioner.ensure_available(refresh=True)
-
-    assert result.action == "refreshed"
-    assert (target / "backlog" / "later.md").is_file()
+    def no_git(*args, **kwargs):
+        raise AssertionError(f"ran {args}")
+    monkeypatch.setattr(fs, "_git", no_git)
+    assert provisioner.ensure_available().action == "available"
 
 
 def test_an_unknown_ref_fails_and_leaves_nothing_behind(tmp_path):
@@ -494,7 +491,7 @@ def test_provision_reports_a_registry_resolved_store_as_available(
 
     assert main(["provision"]) == 0
 
-    assert "already available" in capsys.readouterr().out
+    assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
 
 
@@ -517,7 +514,7 @@ def test_provision_reports_a_local_store_without_contacting_the_remote(
     calls = _count_git(monkeypatch)
     assert main(["provision"]) == 0
 
-    assert "already available" in capsys.readouterr().out
+    assert "already available" in capsys.readouterr().err
     assert not any("clone" in argv or "fetch" in argv for argv in calls), calls
     assert not (tmp_path / "cache" / "tcw").exists()
 
@@ -705,7 +702,7 @@ def test_provision_names_the_remote_before_contacting_it(tmp_path, monkeypatch, 
 
     assert main(["provision"]) == 0
 
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert str(remote) in out
     assert out.index(str(remote)) < out.index("obtained")
 
@@ -719,7 +716,7 @@ def test_a_second_provision_reports_available_and_contacts_nothing(tmp_path,
     calls = _count_git(monkeypatch)
     assert main(["provision"]) == 0
 
-    assert "already available" in capsys.readouterr().out
+    assert "already available" in capsys.readouterr().err
     assert calls == []
 
 
@@ -730,7 +727,7 @@ def test_a_dry_run_from_the_cli_contacts_nothing(tmp_path, monkeypatch, capsys):
     calls = _count_git(monkeypatch)
     assert main(["provision", "--dry-run"]) == 0
 
-    assert "would obtain" in capsys.readouterr().out
+    assert "would obtain" in capsys.readouterr().err
     assert calls == []
     assert not (tmp_path / "cache" / "tcw").exists()
 
@@ -741,7 +738,7 @@ def test_a_node_declaring_nothing_says_so_and_succeeds(tmp_path, monkeypatch, ca
     monkeypatch.chdir(code)
 
     assert main(["provision"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().out
+    assert "Nothing to provision" in capsys.readouterr().err
 
 
 def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
@@ -779,7 +776,7 @@ def test_limiting_to_undeclared_work_is_a_no_op(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(code)
 
     assert main(["provision", "--component", "work"]) == 0
-    assert "Nothing to provision" in capsys.readouterr().out
+    assert "Nothing to provision" in capsys.readouterr().err
 
 
 # ── nothing else reaches the network ─────────────────────────────────────────
@@ -809,7 +806,6 @@ def test_no_read_command_provisions_implicitly(tmp_path, monkeypatch, capsys, ar
 
     monkeypatch.setattr(FsStoreProvisioner, "ensure_available", explode)
     monkeypatch.setattr(FsStoreProvisioner, "_obtain", explode)
-    monkeypatch.setattr(FsStoreProvisioner, "_refresh", explode)
 
     assert main(argv) == 0
 
@@ -909,7 +905,7 @@ def test_every_component_is_exposed_now_that_its_adapter_exists(
     assert main(["provision", "--component", "taxonomy"]) == 0
 
     assert (tmp_path / "co" / "trees" / "taxonomy").is_dir()
-    assert "taxonomy: obtained" in capsys.readouterr().out
+    assert "taxonomy: obtained" in capsys.readouterr().err
     # The refusal that made the narrowing necessary is gone: a tree declaration
     # is no longer measured against the work store's status folders.
     assert main(["taxonomy", "path"]) == 0
@@ -1268,7 +1264,7 @@ def test_a_local_store_wins_at_the_command_for_every_component(
     assert main(["provision", "--component", component]) == 0
 
     assert calls == [], calls
-    assert "already available" in capsys.readouterr().out
+    assert "already available" in capsys.readouterr().err
     assert not (tmp_path / "co").exists()
 
 
@@ -1294,7 +1290,7 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
 
     captured = capsys.readouterr()
     assert (tmp_path / "co-good" / "trees" / "taxonomy").is_dir()
-    assert "taxonomy: obtained" in captured.out
+    assert "taxonomy: obtained" in captured.err
     assert "capabilities" in captured.err
     assert not (tmp_path / "co-bad").exists()
 
@@ -1398,11 +1394,11 @@ def test_a_declared_connected_project_is_obtained(tmp_path, monkeypatch, capsys)
     monkeypatch.chdir(here)
 
     assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().out
+    planned = capsys.readouterr().err
     assert str(away) in planned and "would obtain" in planned
 
     assert main(["provision"]) == 0
-    assert "obtained" in capsys.readouterr().out
+    assert "obtained" in capsys.readouterr().err
 
     from tcw.store.project import FsProjectRegistry
     registry = FsProjectRegistry.open(here)
@@ -1410,7 +1406,7 @@ def test_a_declared_connected_project_is_obtained(tmp_path, monkeypatch, capsys)
     assert [c.id for c in registry.children()] == ["away-project"]
 
     assert main(["provision"]) == 0
-    assert "already available" in capsys.readouterr().out
+    assert "already available" in capsys.readouterr().err
 
 
 def test_provisioning_follows_a_declaration_inside_an_obtained_node(tmp_path, monkeypatch, capsys):
@@ -1431,14 +1427,14 @@ def test_provisioning_follows_a_declaration_inside_an_obtained_node(tmp_path, mo
     monkeypatch.chdir(a)
 
     assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().out
+    planned = capsys.readouterr().err
     assert str(b) in planned
     assert "cannot be listed until it is obtained" in planned
     # `c` is two hops away, behind a node this run has not fetched.
     assert "c-project" not in planned
 
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "b-project" in out and "c-project" in out
 
 
@@ -1540,7 +1536,7 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
 
     monkeypatch.chdir(standing)
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "away-project" in out and "obtained" in out
 
 
@@ -1578,14 +1574,14 @@ def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch
 
     monkeypatch.chdir(here)
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "here-project: already available" in out
     assert "absent-project" in out and "obtained" in out
 
     # And again as a plan, now that the declaring node is here to be read —
     # which is the shape the real reproduction had.
     assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().out
+    planned = capsys.readouterr().err
     assert "here-project: already available" in planned
     assert "here-project: would obtain" not in planned
 
@@ -1648,13 +1644,13 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
 
     monkeypatch.chdir(leaf)
     assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().out
+    planned = capsys.readouterr().err
     assert "sibling-project: already available" in planned
     assert "sibling-project: would obtain" not in planned
     assert "absent-project: would obtain" in planned
 
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "sibling-project: already available" in out
     assert "absent-project" in out and "obtained" in out
     # One working copy — the genuinely absent project — and nothing for the
@@ -1665,68 +1661,11 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
     assert names[0].endswith(_cache_suffix(str(absent))), names
 
 
-def test_refresh_does_not_fetch_a_project_the_checkout_already_has(tmp_path,
-                                                                  monkeypatch,
-                                                                  capsys):
-    """`--refresh` does not outrank "already here wins", and must not.
-
-    Refreshing means bringing a *provisioned* copy back to the declared ref, and
-    that copy is the only thing there is to refresh. A project resolved somewhere
-    else is a checkout the user has: nothing has drifted, and obtaining one
-    anyway puts a second node in the graph under a single id — which
-    `require_valid` then rejects as a duplicate, on a graph the command reported
-    success for.
-    """
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    here = _node_repo(tmp_path / "here", "here-project",
-                      {"parent": {"away-project": "../away-not-here"}})
-    away = _node_repo(
-        tmp_path / "away", "away-project",
-        {"children": {"here-project": {"path": "../here-not-here",
-                                       "repository": {"url": str(here), "ref": "main"}}}},
-    )
-    # Point `here` at the real `away` remote now that it exists.
-    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
-    cfg["connected-projects"]["parent"]["away-project"] = {
-        "path": "../away-not-here",
-        "repository": {"url": str(away), "ref": "main"},
-    }
-    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
-    subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
-
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 0
-    assert "here-project: already available" in capsys.readouterr().out
-
-    assert main(["provision", "--refresh"]) == 0
-    assert "here-project: already available" in capsys.readouterr().out
-
-    cache = tmp_path / "cache" / "tcw" / "stores"
-    assert not any(n.name.endswith(_cache_suffix(str(here)))
-                   for n in cache.iterdir()), \
-        "a second copy of the checkout we are standing in"
-    # The graph is still one node per id, which is what the duplicate would break.
-    from tcw.store.project import FsProjectRegistry
-    FsProjectRegistry.open(here).require_valid()
-
-
-def test_refresh_still_refreshes_a_provisioned_copy(tmp_path, monkeypatch, capsys):
-    """The case `--refresh` is actually for: a copy `tcw` obtained, gone stale."""
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    away = _node_repo(tmp_path / "away", "away-project",
-                      {"parent": {"here-project": "../here"}})
-    here = _node_repo(
-        tmp_path / "here", "here-project",
-        {"children": {"away-project": {"path": "../away-not-here",
-                                       "repository": {"url": str(away), "ref": "main"}}}},
-    )
-    monkeypatch.chdir(here)
-    assert main(["provision"]) == 0
-    assert "away-project: obtained" in capsys.readouterr().out
-
-    assert main(["provision", "--refresh"]) == 0
-    out = capsys.readouterr().out
-    assert "away-project: refreshed" in out
+def test_provision_refresh_is_a_usage_error(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as stop:
+        main(["provision", "--refresh"])
+    assert stop.value.code == 2
 
 
 def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
@@ -1763,7 +1702,7 @@ def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
 
     monkeypatch.chdir(top)
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "middle-project: already available" in out
     assert "far-project" in out and "obtained" in out
 
@@ -1787,7 +1726,7 @@ def test_dry_run_does_not_call_a_planned_obtain_already_available(tmp_path,
     )
     monkeypatch.chdir(here)
     assert main(["provision", "--dry-run"]) == 0
-    planned = capsys.readouterr().out
+    planned = capsys.readouterr().err
     assert "away-project: would obtain" in planned
     assert "away-project: already available" not in planned
     assert not (tmp_path / "cache").exists()

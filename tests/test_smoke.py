@@ -46,9 +46,9 @@ def test_init_without_work_writes_no_gitignore(tmp_path, monkeypatch):
     assert not (tmp_path / ".gitignore").exists()
 
 
-def test_init_refuses_outside_git(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)  # tmp_path is not a git work-tree
-    assert main(["init"]) == 1
+def test_init_without_an_id_is_a_usage_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # a new project, so `--id` is required
+    assert main(["init"]) == 2
 
 
 def test_init_rejects_unknown_component(tmp_path, monkeypatch):

@@ -491,10 +491,12 @@ def _same_folder(a: Path, b: Path) -> bool:
 
 def init(components: list[str], root: Path, project_id: str | None = None,
          work_path: Path | None = None,
-         paths: dict[str, Path] | None = None) -> list[Path]:
+         paths: dict[str, Path] | None = None) -> list[tuple[str, Path]]:
     """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
-    Returns the dirs made. A `.gitkeep` lands in each so the empty skeleton
-    survives a commit (git doesn't track empty directories).
+    Returns what it changed, as `(verb, path)` pairs (`wrote`, `created`,
+    `removed`) for the caller to name. A `.gitkeep` lands in each folder so
+    the empty skeleton survives a commit (git doesn't track empty
+    directories).
 
     The work component is one directory and its `.gitkeep`, nothing else: no
     status folders and no ignore rules (TCW-70 Design 11). Unstaged, like
@@ -634,17 +636,23 @@ def init(components: list[str], root: Path, project_id: str | None = None,
         _sentinel_edits(config_path, existing_config, project_id)
         + [config_edit.SetScalar(c, "path", str(location))
            for c, location in configured.items() if c not in read_from_config])
+    changed: list[tuple[str, Path]] = []
     if config_text is not None:
         _atomic_write_all([(config_path, config_text)])
+        changed.append(("wrote", config_path))
     if replacing_default_store:
         shutil.rmtree(default_root)
-    created: list[Path] = []
+        changed.append(("removed", default_root))
     for c, base, leaves in plan:
         for leaf in leaves:
-            leaf.mkdir(parents=True, exist_ok=True)
-            (leaf / ".gitkeep").touch()
-            created.append(leaf)
-    return created
+            if not leaf.is_dir():
+                leaf.mkdir(parents=True, exist_ok=True)
+                changed.append(("created", leaf))
+            keep = leaf / ".gitkeep"
+            if not keep.exists():
+                keep.touch()
+                changed.append(("wrote", keep))
+    return changed
 
 
 # ── YAML helpers ────────────────────────────────────────────────────────────
@@ -3215,43 +3223,35 @@ class FsStoreProvisioner(StoreProvisioner):
         return (_is_store_layout(target, self.component)
                 and (checkout / ".git").exists())
 
-    def ensure_available(self, *, refresh: bool = False,
-                         dry_run: bool = False) -> ProvisionResult:
+    def ensure_available(self, *, dry_run: bool = False) -> ProvisionResult:
         if self.declaration is None:
             return ProvisionResult(action="undeclared", available=False,
                                    detail=f"{self.component}: nothing declared")
         target = provisioned_store_root(self.node_root, self.declaration)
         checkout = checkout_root(self.node_root, self.declaration)
 
-        if self.is_available() and not refresh:
+        if self.is_available():
             return ProvisionResult(action="available", available=True,
                                    location=str(target),
                                    detail=f"{self.component}: already available")
+        if checkout.exists():
+            # Something is at the checkout and it is not a usable store. It is
+            # never fetched into or replaced (TCW-73 Design 8.4): say which of
+            # the two is wrong, contacting nothing.
+            self._require_declared_checkout(checkout)
+            self._require_store_layout(target)
+            raise ValueError(f"{self.component}.repository: {checkout} is not a "
+                             f"usable store; move it aside and run `tcw provision` "
+                             f"again")
         if dry_run:
-            verb = "refresh" if checkout.exists() else "obtain"
             # Short on purpose: the caller prints `describe()` immediately above,
             # and repeating it here read as "work: would obtain work: …".
             return ProvisionResult(action="planned", available=False,
                                    location=str(target),
-                                   detail=f"{self.component}: would {verb} into {target}")
-
-        if checkout.exists():
-            # Before any network call: this working copy must be the declared
-            # repository's. Otherwise the command prints one remote and contacts
-            # another — and fetches into a checkout that is not ours to touch.
-            self._require_declared_checkout(checkout)
-            self._refresh(checkout)
-            action = "refreshed"
-        else:
-            self._obtain(checkout)
-            action = "obtained"
-
-        # Still checked after a refresh: only `_obtain` can validate before
-        # publishing, and a pre-existing checkout is the user's, so a bad layout
-        # there is reported without deleting anything.
-        self._require_store_layout(target)
-        return ProvisionResult(action=action, available=True, location=str(target),
-                               detail=f"{self.component}: {action} at {target}")
+                                   detail=f"{self.component}: would obtain into {target}")
+        self._obtain(checkout)
+        return ProvisionResult(action="obtained", available=True, location=str(target),
+                               detail=f"{self.component}: obtained at {target}")
 
     def _require_store_layout(self, root: Path) -> None:
         """Refuse a repository that carries no store where the declaration says.
@@ -3281,8 +3281,8 @@ class FsStoreProvisioner(StoreProvisioner):
         **Everything that can refuse runs before the rename**, the store-layout
         check included. Validating after publishing left a cloned repository at
         the target whenever it carried no store at the declared path: the command
-        reported a failure and the directory stayed, so a re-run then took the
-        *refresh* branch on a checkout that was never usable.
+        reported a failure and the directory stayed, and a re-run then found a
+        checkout that was never usable.
         """
         checkout.parent.mkdir(parents=True, exist_ok=True)
         staging = checkout.parent / f".{checkout.name}.tcw-{uuid.uuid4().hex[:8]}"
@@ -3299,13 +3299,11 @@ class FsStoreProvisioner(StoreProvisioner):
             raise
 
     def _require_declared_checkout(self, checkout: Path) -> None:
-        """Refuse to refresh a working copy that is not the declared repository's.
+        """Refuse a working copy that is not the declared repository's.
 
-        Entering the refresh branch on `checkout.exists()` alone was enough to
-        make `tcw provision` fetch some *other* repository's origin while having
-        printed the declared URL — the one guarantee the explicit-verb design
-        exists to provide. A declared `checkout` is an arbitrary user-chosen
-        directory, so it can hold anything at all.
+        A declared `checkout` is an arbitrary user-chosen directory, so it can
+        hold anything at all; saying it is the declared store when it is not
+        would be the one thing `tcw provision` must never do.
 
         Comparison is on the URL as spelled, normalized only for a trailing
         slash and a `.git` suffix. Deliberately not smarter: treating `ssh` and
@@ -3329,42 +3327,6 @@ class FsStoreProvisioner(StoreProvisioner):
                 f"{self.declaration.url}; nothing was contacted. Point `checkout` at a "
                 f"different directory, or spell the declared url the way that "
                 f"checkout's origin does")
-
-    def _refresh(self, checkout: Path) -> None:
-        """Fetch, then bring the working copy to the declared version.
-
-        No `pull`: the target may be a tag or a commit, where merging is
-        meaningless. Fast-forwarding is attempted only when the checked-out ref
-        actually tracks a remote branch, and its absence is not an error.
-
-        **Something else now depends on the ff-only part.** A published store
-        refreshes here before every transition, so a remote that has moved
-        incompatibly surfaces as a refused fast-forward *before* the item moves —
-        that refusal is how divergence is reported, and it is the reason a
-        transition never creates a merge commit inside somebody's work store.
-        Relaxing this to a real merge for the tags-and-commits reason above would
-        silently move divergence from a clean refusal into an automatic merge of
-        two people's work items.
-        """
-        self._run(["git", "-C", str(checkout), "fetch", "--quiet", "--prune", "origin"])
-        target = self.declaration.ref or self._remote_head(checkout)
-        if target:
-            self._run(["git", "-C", str(checkout), "checkout", "--quiet", target])
-        upstream = _git(["git", "-C", str(checkout), "rev-parse", "--abbrev-ref",
-                         "--symbolic-full-name", "@{u}"],
-                        capture_output=True, text=True)
-        if upstream.returncode == 0 and upstream.stdout.strip():
-            self._run(["git", "-C", str(checkout), "merge", "--ff-only", "--quiet",
-                       upstream.stdout.strip()])
-
-    def _remote_head(self, checkout: Path) -> str | None:
-        """The remote's default branch, or None when the remote never advertised
-        one. None is a legitimate answer: the working copy simply stays put."""
-        probe = _git(["git", "-C", str(checkout), "symbolic-ref", "--quiet",
-                      "refs/remotes/origin/HEAD"], capture_output=True, text=True)
-        if probe.returncode != 0:
-            return None
-        return probe.stdout.strip().rpartition("/")[2] or None
 
     def _run(self, argv: list[str]) -> None:
         """Every git call goes through `_git`, so stdin stays closed and a remote

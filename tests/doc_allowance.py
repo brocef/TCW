@@ -67,6 +67,7 @@ REMOVED_FLAGS = (
     ("tcw capabilities list", "--local-only"),
     ("tcw capabilities add", "-s"),
     ("tcw validate", "--no-recurse"),
+    ("tcw provision", "--refresh"),
 )
 
 # Whole invocations whose spelling TCW-73 removed while the command itself

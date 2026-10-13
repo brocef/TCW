@@ -9,9 +9,9 @@ not scanned: its text says "add" and "comment" about HTTP calls.
 
 Allowances name the class or function the literal sits in, never a file:
 
-- `FsStoreProvisioner`, for `tcw provision`: `clone`, `checkout`, `fetch`, and
-  `merge`, which `--refresh` uses as `merge --ff-only` to fast-forward its own
-  checkout. The spec's allowance (AC 12) named the first three only.
+- `FsStoreProvisioner`, for `tcw provision`: `clone`, and `checkout` of the
+  declared ref in the fresh clone. Since TCW-73 it never fetches into or
+  merges an existing checkout (its Design 8.4: `--refresh` is gone).
 
 Nothing else: since TCW-73 the taxonomy and capabilities stores write files
 and stage nothing, and the scan covers their CLI modules too.
@@ -35,7 +35,7 @@ WRITERS = {"add", "commit", "mv", "rm", "reset", "checkout", "merge", "push",
            "pull", "fetch", "stash", "tag", "clone", "worktree add",
            "worktree remove"}
 ALLOWED = {
-    "FsStoreProvisioner": {"clone", "checkout", "fetch", "merge"},
+    "FsStoreProvisioner": {"clone", "checkout"},
 }
 
 

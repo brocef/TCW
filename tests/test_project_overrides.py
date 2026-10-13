@@ -191,7 +191,7 @@ def test_an_overridden_project_is_never_fetched(provisionable, capsys, monkeypat
     _orchestrator, local_core, cache = provisionable
     monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(local_core))
     assert main(["provision"]) == 0
-    out = capsys.readouterr().out
+    out = capsys.readouterr().err
     assert "core-project: already available" in out
     assert _cache_entries(cache) == [], "an overridden project must not be fetched"
 

@@ -43,59 +43,46 @@ _STUBBED = [c for c in COMPONENTS if c not in {m.NAME for m in _BUILT}]
 def run_init(components: list[str], project_id: str | None = None,
              work_path: str | None = None,
              paths: dict[str, str] | None = None) -> int:
-    """Scaffold `docs/<component>/` trees under the current directory, mark it a
-    node, and report. Shared by `tcw init` and each `tcw <component> init`."""
+    """Scaffold the named stores under the current directory and mark it a
+    project. Prints nothing on stdout; names each file written and folder
+    created on stderr (TCW-73 Design 1.7)."""
+    from tcw.errors import BackendError, UsageError
+    from tcw.output import changed
     root = Path.cwd()
     unknown = [c for c in components if c not in COMPONENTS]
     if unknown:
-        print(f"tcw init: unknown component(s): {', '.join(unknown)}. "
-              f"Choose from: {', '.join(COMPONENTS)}.", file=sys.stderr)
-        return 2
+        raise UsageError(f"unknown axis {', '.join(repr(c) for c in unknown)}; "
+                         f"choose from {', '.join(COMPONENTS)}")
     sentinel = root / SENTINEL
     if project_id is None:
-        try:
-            configured = (_load_named_yaml(sentinel.read_text(encoding="utf-8"), sentinel)
-                          if sentinel.exists() else {})
-        except yaml.YAMLError as error:
-            print(f"tcw init: invalid {SENTINEL}: {error}", file=sys.stderr)
-            return 1
+        configured = (_load_named_yaml(sentinel.read_text(encoding="utf-8"), sentinel)
+                      if sentinel.exists() else {})
         if not isinstance(configured, dict) or not configured.get("id"):
-            print(
-                "tcw init: new or legacy TCW nodes require `--id <project-id>`; "
-                "IDs are not inferred",
-                file=sys.stderr,
-            )
-            return 1
+            raise UsageError("a new project needs `--id <project-id>`; IDs are not "
+                             "inferred")
     try:
-        created = init(
+        written = init(
             components, root, project_id,
             Path(work_path).expanduser() if work_path is not None else None,
             {c: Path(p).expanduser() for c, p in (paths or {}).items()})
     # `RuntimeError` too: `Path.expanduser()` raises it for a `~name` naming no
     # user, whether that came from `--path` or from `work.path` in the config.
     except (ValueError, OSError, RuntimeError) as error:
-        print(f"tcw init: {error}", file=sys.stderr)
-        return 1
-    print(f"Scaffolded {len(created)} dir(s):")
-    for p in created:
-        try:
-            shown = p.relative_to(root)
-        except ValueError:
-            shown = p
-        print(f"  {shown}")
-    print(f"Node marker: {SENTINEL}")          # deterministic across runs
+        raise BackendError(str(error)) from None
+    changed(written)
     return 0
 
 
-def run_provision(components: list[str], *, refresh: bool = False,
-                  dry_run: bool = False) -> int:
+def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     """Make this node's declared component stores usable here.
 
     The only command in `tcw` that reaches the network, and it does so only
     because it was asked to. That is the whole security posture of the feature:
     a repository's config can name a URL, so nothing may act on that URL without
     an explicit instruction from the person holding the checkout. The remote is
-    printed before it is contacted, for the same reason.
+    printed before it is contacted, for the same reason. Everything it says
+    goes to stderr, `--dry-run` included: it has no product (TCW-73 Design
+    1.7). A store already here is never fetched into (Design 8.4).
     """
     node_root = find_node_root()
     if node_root is None:
@@ -151,14 +138,14 @@ def run_provision(components: list[str], *, refresh: bool = False,
         return 1
     if not declared and not declared_nodes:
         print(f"Nothing to provision: no component or connected project declares "
-              f"a home repository in {SENTINEL}.")
+              f"a home repository in {SENTINEL}.", file=sys.stderr)
         return 0
 
     failed = False
     for component, declaration in declared:
         provisioner = FsStoreProvisioner(node_root, component, declaration)
         declared_available = provisioner.is_available()
-        if not refresh and not declared_available:
+        if not declared_available:
             try:
                 # *This* component's store. Asking the work store here was
                 # correct only while the loop had one component to run: with
@@ -168,18 +155,18 @@ def run_provision(components: list[str], *, refresh: bool = False,
             except ValueError:
                 pass
             else:
-                print(f"  {component}: already available at {resolved.root}")
+                print(f"  {component}: already available at {resolved.root}", file=sys.stderr)
                 continue
-        if not declared_available or refresh:
-            print(f"→ {provisioner.describe()}")      # says what it will contact
+        if not declared_available:
+            print(f"→ {provisioner.describe()}", file=sys.stderr)      # says what it will contact
         try:
-            result = provisioner.ensure_available(refresh=refresh, dry_run=dry_run)
+            result = provisioner.ensure_available(dry_run=dry_run)
         except (ValueError, OSError) as error:
             print(f"tcw provision: {error}", file=sys.stderr)
             failed = True
             continue
-        print(f"  {result.detail}")
-    if _provision_nodes(node_root, refresh=refresh, dry_run=dry_run):
+        print(f"  {result.detail}", file=sys.stderr)
+    if _provision_nodes(node_root, dry_run=dry_run):
         failed = True
     return 1 if failed else 0
 
@@ -227,7 +214,7 @@ def _declared_nodes_in_graph(
     return found, problems
 
 
-def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
+def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
     """Obtain the connected projects this node declares, and the ones they
     declare. Returns True if anything failed.
 
@@ -275,13 +262,9 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         """Whether the graph already resolves this project somewhere other than
         the copy this declaration would create.
 
-        The distinction `--refresh` turns on. Refreshing means bringing a
-        *provisioned* copy back to the declared ref, and that copy is the only
-        thing there is to refresh. A project resolved somewhere else is a
-        checkout the user has — there is nothing drifted to fix, and obtaining
-        one anyway puts a second node in the graph under a single id, which
-        `require_valid` then rejects as a duplicate. So this case is skipped
-        whatever the flags say.
+        A project resolved somewhere else is a checkout the user has, and
+        obtaining one anyway puts a second project in the graph under a single
+        id, which `require_valid` then rejects as a duplicate.
         """
         if starting_registry is None:
             return None
@@ -326,7 +309,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
         seen.add(target)
         if project_id in have:
             # Obtained or confirmed earlier in this same run.
-            print(f"  {project_id}: already available")
+            print(f"  {project_id}: already available", file=sys.stderr)
             continue
         if (present := resolved_outside(project_id, target)) is not None:
             # A checkout of this project that is not the copy this declaration
@@ -338,30 +321,30 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
             # reading it: its own declarations are how the walk reaches anything
             # beyond it, and skipping them made a repository disappear from
             # provisioning precisely when an earlier one was already in place.
-            print(f"  {project_id}: already available")
+            print(f"  {project_id}: already available", file=sys.stderr)
             have.add(project_id)
             enqueue(present, relation)
             continue
         provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
-        if provisioner.is_available() and not refresh:
-            print(f"  {project_id}: already available at {target}")
+        if provisioner.is_available():
+            print(f"  {project_id}: already available at {target}", file=sys.stderr)
             have.add(project_id)
             enqueue(target, relation)
             continue
-        print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}")
+        print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}", file=sys.stderr)
         try:
-            result = provisioner.ensure_available(refresh=refresh, dry_run=dry_run)
+            result = provisioner.ensure_available(dry_run=dry_run)
         except (ValueError, OSError) as error:
             print(f"tcw provision: {error}", file=sys.stderr)
             failed = True
             continue
-        print(f"  {project_id}: {result.detail.split(': ', 1)[1]}")
+        print(f"  {project_id}: {result.detail.split(': ', 1)[1]}", file=sys.stderr)
         if dry_run:
             # Its own declarations live in a config we have not fetched, so
             # saying nothing here would imply there are none. Say what is
             # actually true instead.
             print(f"  {project_id}: any projects it declares cannot be listed "
-                  f"until it is obtained")
+                  f"until it is obtained", file=sys.stderr)
             continue
         # After the dry-run return, never before it: recording a *planned*
         # obtain as available made a second declaration of the same project —
@@ -374,7 +357,7 @@ def _provision_nodes(node_root: Path, *, refresh: bool, dry_run: bool) -> bool:
 
 def _cmd_provision(args: argparse.Namespace) -> int:
     return run_provision(args.component or list(PROVISION_COMPONENTS),
-                         refresh=args.refresh, dry_run=args.dry_run)
+                         dry_run=args.dry_run)
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
@@ -533,8 +516,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),
         help="limit provisioning by component (default: every declared one)")
-    p_provision.add_argument("--refresh", action="store_true",
-                             help="bring an existing working copy to the declared version")
     p_provision.add_argument("--dry-run", action="store_true",
                              help="print the plan; contact nothing")
     p_provision.set_defaults(func=_cmd_provision)

@@ -724,7 +724,6 @@ PROVISION_ACTIONS = (
     "undeclared",        # nothing declared; there was nothing to do
     "available",         # already usable here; nothing was contacted
     "obtained",          # newly made available
-    "refreshed",         # already present, brought up to the declared version
     "planned",           # dry run: this is what would have happened
 )
 
@@ -753,14 +752,14 @@ class StoreProvisioner(ABC):
         anything."""
 
     @abstractmethod
-    def ensure_available(self, *, refresh: bool = False,
-                         dry_run: bool = False) -> ProvisionResult:
+    def ensure_available(self, *, dry_run: bool = False) -> ProvisionResult:
         """Make the store usable here, and report what that took.
 
         Idempotent: an already-usable store returns `available` and contacts
-        nothing, which is what lets a caller run this unconditionally. `refresh`
-        asks for the declared version even when something usable is already
-        present. `dry_run` reports the plan and contacts nothing.
+        nothing, which is what lets a caller run this unconditionally. Keeping
+        an available store up to date is the project's own business, not
+        TCW's (TCW-73 Design 8.4). `dry_run` reports the plan and contacts
+        nothing.
         """
 
 
