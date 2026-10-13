@@ -1,1 +1,1 @@
-As a user, I run `tcw capabilities list` to see every capability flagged by its status, filterable with `--status` and `--namespace`.
+As a user, I run `tcw capabilities list` to see every capability's qualified path, one per line, local and inherited alike. `--status <status>` keeps only capabilities with that status, `--namespace <folder>` only those under one namespace folder, and `--local` leaves out inherited ones. `--json` prints `{"schema": 1, "capabilities": [...]}`, giving each capability's path, name, status and origin.

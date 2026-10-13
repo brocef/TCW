@@ -1,5 +1,6 @@
-As a user, I run `tcw capabilities extends <project-id>` to explicitly inherit
-capabilities from a registered, reachable project. The source project ID is the
+As a user, I run `tcw capabilities extends add <project-id>` to explicitly
+inherit capabilities from a declared, reachable project, and
+`tcw capabilities extends rm <project-id>` to stop. The source project ID is the
 inherited namespace, and `capabilities.extends` in `tcw-config.yaml` stores the
 list of project IDs. Inheritance is a property of the project, not of the
 ledger, so two projects whose `capabilities.path` resolves to the same folder
@@ -7,7 +8,8 @@ may inherit differently. Capability inheritance remains independent from
 taxonomy inheritance and from graph connections; legacy alias-to-path maps fail
 closed. Adding or removing a project changes only the `capabilities.extends`
 lines of `tcw-config.yaml`, keeping my comments and formatting; a file it cannot
-edit that way is refused with the exact edit to make by hand, never rewritten.
+edit that way is refused with the exact edit to make by hand, never rewritten. The file
+is named on standard error and left for me to commit.
 
 The source may be any registered project reachable here, including an
 `upstream` project that does not name this one back — see

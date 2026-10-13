@@ -1,1 +1,1 @@
-As a user, I run `tcw taxonomy list` to see every entry as an indented forest, each flagged by kind (`Vocabulary` or `Feature`) and origin (`local` or an extends alias). `--local` hides inherited entries.
+As a user, I run `tcw taxonomy list` to see every entry's qualified path, one per line, local and inherited alike; `--local` leaves out inherited entries. `--json` prints `{"schema": 1, "terms": [...]}`, giving each entry's path, name, kind (`Vocabulary` or `Feature`) and origin (`local` or the project it is inherited from).

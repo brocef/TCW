@@ -5,5 +5,5 @@ Planning doc: 2026-06-22-concurrency-safe-work-claims-for-multi-agent-repos-conf
 Feature: configurable-component-store-location
 Subject:
 - store
-- node
+- project
 - namespace

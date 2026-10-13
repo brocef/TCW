@@ -1,5 +1,5 @@
-As a user or agent, I run `tcw work lifecycle [<slug>]` to see my project's enabled stages in order, each with the `prompt`, `pre` and `post` bindings configured for it. A stage with no `prompt` key shows TCW's own text as `builtin`. It changes nothing and runs nothing.
+As a user or agent, I run `tcw work lifecycle` to see my project's stage table: every stage in order, with its kind, whether this project has it enabled (a disabled one is marked `disabled`), and the `pre`, `prompt` and `post` bindings configured for it. A stage with no `prompt` key shows TCW's own text as `builtin`. It changes nothing and runs nothing.
 
-`--json` gives the same for tooling, with the hook limits. `--stage <stage>` shows one stage, and `--phase pre|prompt|post` narrows to one list. `--stage <stage> --directive` prints one instruction line for an agent — the skills to invoke and commands to run — or nothing at all when nothing is bound; an error writes nothing to stdout, so an empty injection can never hide a typo.
+`--stage <stage>` shows one stage; an unknown stage name is a usage error (exit 2) whose message lists the stages. `--json` prints `{"schema": 1, "hooks": {...}, "stages": [...]}`: the hook limits, and for each stage its name, kind, whether it is enabled, and its bindings.
 
-With a slug from another project, it reports that project's configuration.
+It reads the current project only. To see another project's configuration, I run it in that project. What a stage tells an agent to do is `tcw work stage prompt` — see [Run a lifecycle stage](tcw://C/work/run-a-lifecycle-stage).

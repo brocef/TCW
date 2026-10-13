@@ -3,5 +3,5 @@ kind: Feature
 relatesTo: []
 vocabulary:
 - store
-- node
+- project
 - namespace

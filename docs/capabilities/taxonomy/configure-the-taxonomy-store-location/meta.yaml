@@ -4,5 +4,4 @@ Status: Supported
 Feature: configurable-component-store-location
 Subject:
 - store
-- node
-Planning doc: 2026-08-26-generalize-the-store-declaration-to-taxonomy-and-capabilities
+- project

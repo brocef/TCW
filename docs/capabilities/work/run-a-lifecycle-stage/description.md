@@ -8,6 +8,6 @@ Those instructions are opinionated where it counts. `implement` does not merely 
 
 **The item is optional and changes what resolves.** With one, `when:` conditions test its tags, a `generate:` script receives its record, and the `{{tcw:request}}` span in the text becomes the item's request. Without one, I get the stage's generic instructions and the span shows its own fallback words. `inbox` runs before an item exists, so it takes no item, and naming one is refused.
 
-Errors go to stderr and print nothing on stdout, so a pipeline receives the whole instruction or none of it. A disabled stage still prints, with a note on stderr. `--no-exec` lists on stderr what would resolve, marking the bindings a `when:` skipped, runs nothing, reads no `file:`, and prints nothing on stdout.
+Errors go to stderr and print nothing on stdout, so a pipeline receives the whole instruction or none of it. An unknown stage name is a usage error (exit 2) whose message lists the stages, and an item that does not exist exits 4. `stage prompt` is the only `tcw work stage` command; whether an item may move on is `tcw work advance <slug> --dry-run`. A disabled stage still prints, with a note on stderr. `--no-exec` lists on stderr what would resolve, marking the bindings a `when:` skipped, runs nothing, reads no `file:`, and prints nothing on stdout.
 
-An item in another project (`<project-id>/<folder>`) resolves against that project's configuration.
+I name the item by its full slug (`<project-id>/<folder>`) or its folder name, or by its ticket key when the project keeps its items in Jira. An item in another project resolves against that project's configuration.

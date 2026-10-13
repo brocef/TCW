@@ -3,10 +3,10 @@ kind: Feature
 relatesTo:
 - configurable-work-lifecycle
 - configurable-component-store-location
-- connected-project-registry
+- project-registry
 - jira-work-backend
 vocabulary:
 - skill
-- node
+- project
 - store
 - work-item/lifecycle-hook

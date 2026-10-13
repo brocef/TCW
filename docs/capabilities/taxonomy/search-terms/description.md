@@ -1,1 +1,1 @@
-As a user, I run `tcw taxonomy search <query>` to find terms whose name or description matches, across local and inherited taxonomies.
+As a user, I run `tcw taxonomy search <query>` to find entries whose name or description contains the text, ignoring case, across local and inherited taxonomies. It prints one qualified path per line, or with `--json`, `{"schema": 1, "terms": [...]}`. No match prints nothing and exits 0.

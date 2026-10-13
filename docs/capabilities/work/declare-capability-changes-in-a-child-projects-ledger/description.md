@@ -11,7 +11,7 @@ changed:
     - proposit-server/authoring/add-a-claim
 ```
 
-The child must be declared under my project's `connected-projects.children`.
+The child must be declared under my project's `projects.children`.
 When the item leaves implementation, `tcw work advance` checks each path against
 that child's own ledger, with the same rules as a local path: a `new:`
 capability must exist and no longer read `Missing`, a `changed:` one must still

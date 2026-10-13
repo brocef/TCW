@@ -1,0 +1,7 @@
+id: cap-8eb642
+name: List connected projects
+Status: Supported
+Subject:
+    - project
+    - upstream-project
+Feature: project-registry

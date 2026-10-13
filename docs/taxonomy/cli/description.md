@@ -1,1 +1,1 @@
-The single 'tcw' command surface exposing the taxonomy, capabilities, and work subcommand groups.
+The single `tcw` command surface: `tcw init`, `provision`, `validate`, `serve` and `projects list` at the top level, and the `taxonomy`, `capabilities` and `work` subcommand groups, all named as `tcw <noun> [<child noun>] <verb>` and all following one output contract — the command's product on standard output, narration and the name of every file written or removed on standard error, and one set of exit codes.

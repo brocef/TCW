@@ -1,1 +1,1 @@
-As a user, I run `tcw capabilities search <query>` to find capabilities whose name or body matches.
+As a user, I run `tcw capabilities search <query>` to find capabilities whose name or body contains the text, ignoring case, across local and inherited ledgers. It prints one qualified path per line, or with `--json`, `{"schema": 1, "capabilities": [...]}`. No match prints nothing and exits 0.

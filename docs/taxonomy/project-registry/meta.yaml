@@ -1,8 +1,8 @@
-name: Connected project registry
+name: Project registry
 kind: Feature
 relatesTo: []
 vocabulary:
-    - node
+    - project
     - namespace
     - reference
     - upstream-project

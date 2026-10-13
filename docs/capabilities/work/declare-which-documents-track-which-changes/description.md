@@ -13,7 +13,7 @@ names the trigger that collided so I can tell which of two near-identical
 entries is the accident.
 
 **`tcw validate` checks their shape, and only their shape.** A blank field, an
-absolute path, a path that escapes the node, whitespace inside a trigger, a true
+absolute path, a path that escapes the project, whitespace inside a trigger, a true
 duplicate. It deliberately does not check that `path` exists — an entry
 routinely names a file I intend to create, and a placeholder like
 `skills/<component>/SKILL.md` that resolves to no file at all is legal — and it

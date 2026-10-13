@@ -7,4 +7,4 @@ Gaps:
     inheritance is transitive.
 Subject:
     - namespace
-Feature: connected-project-registry
+Feature: project-registry

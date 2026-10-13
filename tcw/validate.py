@@ -229,6 +229,14 @@ def _config_file(project_root: Path) -> str:
     return _rel(project_root / "tcw-config.yaml", project_root)
 
 
+def _config_message(error: Exception, project_root: Path) -> str:
+    """An error about the config file, without the path its finding already
+    gives as `where`."""
+    text = str(error)
+    prefix = f"{project_root / 'tcw-config.yaml'}: "
+    return text[len(prefix):] if text.startswith(prefix) else text
+
+
 def _run_check(project_root: Path, comp: str,
                identifier: str | None = None) -> list[Finding]:
     """One component's `check()`, or the reason its store could not be opened.
@@ -433,11 +441,11 @@ def _work_target_findings(project_root: Path, registry,
     from tcw.work.model import TERMINAL, Slug, stage as table_stage
     from tcw.work.open import open_backend
 
-    config_file = str(project_root / "tcw-config.yaml")
+    config_file = _config_file(project_root)
     try:
         backend = open_backend(project_root)
     except TcwError as error:
-        return [Finding("error", config_file, str(error))]
+        return [Finding("error", config_file, _config_message(error, project_root))]
     folder = Path(backend.work_path) / target.ref
     if "/" in target.ref or target.ref.startswith(".") or not folder.is_dir():
         return [Finding("error", target.ref, "no such work object")]
@@ -495,13 +503,13 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     from tcw.work.open import open_backend, reference_resolver
     from tcw.work.references import reference_problems, stage_problems
 
-    config_file = str(project_root / "tcw-config.yaml")
+    config_file = _config_file(project_root)
     blocks = [Finding("error", config_file, str(problem))
               for problem in connected_block_problems(registry.config())]
     try:
         backend = open_backend(project_root)
     except BackendError as error:
-        return [Finding("error", config_file, str(error)), *blocks], None
+        return [Finding("error", config_file, _config_message(error, project_root)), *blocks], None
     if isinstance(backend, JiraBackend):
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
         # Rounds are files in both modes, so they are checked here too.

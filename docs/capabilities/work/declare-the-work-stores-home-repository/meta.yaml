@@ -6,4 +6,4 @@ Feature: provisioned-component-stores
 Subject:
 - store
 - store/home-repository
-- node
+- project

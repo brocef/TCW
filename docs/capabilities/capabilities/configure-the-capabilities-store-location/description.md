@@ -1,9 +1,10 @@
 As a project owner, I can keep a project's capabilities tree somewhere other than
 `docs/capabilities` by setting `capabilities.path` in `tcw-config.yaml`, using an
 absolute path or one relative to the owning project's primary checkout. Every
-`tcw capabilities` command, `tcw validate`, capability-drift lookups, and the web
-viewer follow it, and writes commit in the Git repository that actually contains
-the tree.
+`tcw capabilities` command, `tcw validate`, `tcw capabilities drift`, and the
+web viewer follow it. Writes change files in that folder and nothing else: no
+command stages or commits them, so committing them in whichever repository holds
+the tree is mine to do.
 
 Inheritance is unaffected: `extends` still resolves against my project, not
 against wherever the tree happens to sit, so federating another project's
