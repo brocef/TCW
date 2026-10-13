@@ -150,3 +150,20 @@ def test_a_verdict_about_an_older_implementation_is_stale(layout):
     assert layout.current_verdict(SLUG, "review") == "accepted"
     write(layout.stage_dir(SLUG, "implement") / "round-2.md")
     assert layout.current_verdict(SLUG, "review") == "stale"
+
+
+def test_item_folders_lists_the_folders_under_the_work_path_in_order(layout, tmp_path):
+    """The board's fallback while the backend is unavailable (TCW-77 Design
+    7.3): folder names only, sorted, hidden entries and plain files left
+    out, and no `item.yaml` read."""
+    work = tmp_path / "work"
+    for name in ("2-b", "1-a", ".hidden", "TCW-3-c"):
+        (work / name).mkdir(parents=True)
+    write(work / "stray.md", "not a folder")
+    assert layout.item_folders() == ["1-a", "2-b", "TCW-3-c"]
+    assert snapshot(work / "1-a") == []
+
+
+def test_item_folders_of_a_missing_work_path_is_empty(layout, tmp_path):
+    assert layout.item_folders() == []
+    assert not (tmp_path / "work").exists()

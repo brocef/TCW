@@ -99,6 +99,15 @@ class Layout:
     def capabilities_file(self, slug: Slug) -> Path:
         return self.item_dir(slug) / CAPABILITIES_FILE
 
+    def item_folders(self) -> list[str]:
+        """The names of the folders directly under the work path, sorted, with
+        hidden ones left out: what any backend keeps one of per item. Reads
+        no item's own files, so it answers while the backend cannot."""
+        if not self.work_root.is_dir():
+            return []
+        return sorted(entry.name for entry in self.work_root.iterdir()
+                      if entry.is_dir() and not entry.name.startswith("."))
+
     # -- rounds -------------------------------------------------------------
 
     def rounds(self, slug: Slug, stage: str) -> list[tuple[int, Path]]:

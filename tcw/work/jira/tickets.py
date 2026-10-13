@@ -284,6 +284,17 @@ def assignable_users(backend: JiraBackend, query: str,
             for u in found if isinstance(u, dict) and u.get("accountId")]
 
 
+def create_fields(backend: JiraBackend) -> tuple[str, ...]:
+    """Which of priority, effort and complexity a new ticket can carry: the
+    create screen's Priority field, and the size fields the configuration
+    maps. A form offers only these, since `new` refuses the others."""
+    backend = jira_backend(backend)
+    meta = backend.metadata()
+    found = ("priority",) if meta.has_priority else ()
+    return found + tuple(name for name in ("effort", "complexity")
+                         if name in meta.field_ids)
+
+
 # -- delegation into a Jira-mode project (Design 8) ----------------------------------------
 
 

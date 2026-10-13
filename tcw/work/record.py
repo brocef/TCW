@@ -6,8 +6,20 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from tcw.work.backend import Query
 from tcw.work.layout import Layout
 from tcw.work.model import Item, blocks_of
+
+
+def readable(backend) -> tuple[list[Item], list[str]]:
+    """Every item of the backend's project that can be read, for `blocks` and
+    `children`, and the paths of those that cannot. Only the filesystem keeps
+    unreadable items beside readable ones; any other backend answers `list`."""
+    from tcw.work.fs_backend import FsWorkBackend, read_all
+    if isinstance(backend, FsWorkBackend):
+        items, bad = read_all(backend.work_path, backend.project, backend.enabled)
+        return items, [str(b.path) for b in bad]
+    return backend.list(Query(all=True)), []
 
 
 def item_record(item: Item, items: Iterable[Item], layout: Layout) -> dict[str, Any]:

@@ -7,7 +7,9 @@ import pytest
 
 from tcw.errors import NotFound, UsageError
 from tcw.work.jira.mapping import text_document
-from tcw.work.jira.tickets import assignable_users, ticket_link, user_name
+from tcw.work.jira.tickets import (
+    assignable_users, create_fields, ticket_link, user_name,
+)
 from tests.work.jira.conftest import JiraProject, jira_config
 from tests.work.jira.fake import FIELDS
 from tests.work.projects import make_project
@@ -388,3 +390,25 @@ def test_adopt_whose_move_fails_names_the_item(jira_project, tcw, monkeypatch):
     slug = f"tcw/{key}-fix-the-login"
     assert (result.code, result.out) == (5, slug + "\n"), result
     assert (jira_project.work / f"{key}-fix-the-login" / "item.yaml").is_file()
+
+
+def test_create_fields_names_what_the_create_screen_has(jira_project, tmp_path):
+    """Which of priority, effort and complexity a new ticket can carry, so
+    the viewer's create form offers only those (TCW-77 Design 6.9)."""
+    assert create_fields(jira_project.backend()) == ("priority", "effort", "complexity")
+    jira_project.fake.projects["TCW"].priority = False
+    assert create_fields(jira_project.backend()) == ("effort", "complexity")
+
+
+def test_create_fields_leaves_out_an_unmapped_size(tmp_path, fake):
+    config = jira_config()
+    del config["jira"]["fields"]["complexity"]
+    project = JiraProject(make_project(tmp_path, "tcw", config=config), "tcw", fake)
+    assert create_fields(project.backend()) == ("priority", "effort")
+
+
+def test_create_fields_is_jira_only(tmp_path):
+    from tcw.work.open import open_backend
+    root = make_project(tmp_path, "fsp", config={"backend": "filesystem"})
+    with pytest.raises(UsageError):
+        create_fields(open_backend(root))

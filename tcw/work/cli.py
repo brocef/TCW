@@ -23,7 +23,6 @@ from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
-from tcw.work.fs_backend import FsWorkBackend, read_all
 from tcw.work.jira.backend import KEY, JiraBackend
 from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
@@ -33,7 +32,7 @@ from tcw.work.model import (
 )
 from tcw.work.open import (delegate, open_backend, open_for_update, open_project,
                            read_work_config)
-from tcw.work.record import item_record
+from tcw.work.record import item_record, readable
 
 NAME = "work"
 
@@ -136,13 +135,45 @@ def _layout(backend: WorkBackend):
 
 def _readable(backend: WorkBackend) -> list:
     """Every readable item, with one warning naming the unreadable ones."""
-    if isinstance(backend, FsWorkBackend):
-        items, bad = read_all(backend.work_path, backend.project, backend.enabled)
-        if bad:
-            _say("warning: these items could not be read, so blocks and children "
-                 "may be incomplete: " + ", ".join(str(b.path) for b in bad))
-        return items
-    return backend.list(Query(all=True))
+    items, bad = readable(backend)
+    if bad:
+        _say("warning: these items could not be read, so blocks and children "
+             "may be incomplete: " + ", ".join(bad))
+    return items
+
+
+def creation_stage(backend: WorkBackend, stage: str | None) -> str:
+    """Where a new item starts: the start stage, or the inbox stage when
+    `stage` names it and the backend keeps items there."""
+    if stage is None:
+        return start_stage()
+    if stage != inbox_stage():
+        raise UsageError(f"--stage accepts only {inbox_stage()}")
+    if not backend.inbox_items:
+        raise UsageError(f"--stage {inbox_stage()} is for a filesystem-mode "
+                         f"project; in Jira mode a new ticket waits in Jira "
+                         f"until `tcw work tickets adopt` takes it")
+    return stage
+
+
+def new_item(backend: WorkBackend, title: str, changes: Changes, *,
+             stage: str | None, request: str | None):
+    """Create an item in this project, where `creation_stage` says. What
+    `new` and the web viewer both call."""
+    return backend.create(title, changes, stage=creation_stage(backend, stage),
+                          request=request)
+
+
+def blocks_target(slug: Slug, target: Slug, backend: WorkBackend, root: Path):
+    """The backend holding `target` and the target as read, before `slug` is
+    added to its blocked-by (`edit --blocks`). Another project's item is
+    opened through `open_for_update`, which never creates anything; a refused
+    or missing target raises, having written nothing."""
+    if target == slug:
+        raise UsageError(f"{slug} cannot block itself")
+    other = backend if target.project == slug.project else \
+        open_for_update(target.project, root)
+    return other, other.read(target.folder)
 
 
 # -- commands ----------------------------------------------------------------------------
@@ -154,8 +185,7 @@ PROPERTY_FLAGS = ("effort", "complexity", "tag", "assignee", "parent", "blocked_
 
 def _new(args) -> int:
     root = project_root()
-    stage = args.stage or start_stage()
-    if stage != inbox_stage() and args.stage is not None:
+    if args.stage is not None and args.stage != inbox_stage():
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
@@ -179,10 +209,7 @@ def _new(args) -> int:
                        here=root, report=_say))
         return codes.OK
     backend = open_backend(root)
-    if stage == inbox_stage() and not backend.inbox_items:
-        raise UsageError(f"--stage {inbox_stage()} is for a filesystem-mode "
-                         f"project; in Jira mode a new ticket waits in Jira "
-                         f"until `tcw work tickets adopt` takes it")
+    creation_stage(backend, args.stage)   # its usage error before `--assign-me` asks who
     assignee = _me(backend) if args.assign_me else _optional(args.assignee)
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),
@@ -190,7 +217,7 @@ def _new(args) -> int:
         parent=_optional(args.parent), add_tags=tuple(args.tag or ()),
         add_blocked_by=tuple(args.blocked_by or ()))
     # A failure after creation carries the name; `tcw.cli.main` prints it.
-    item = backend.create(args.title, changes, stage=stage, request=request)
+    item = new_item(backend, args.title, changes, stage=args.stage, request=request)
     print(item.slug)
     return codes.OK
 
@@ -313,11 +340,7 @@ def _edit(args) -> int:
     # refused or missing one (exit 3 or 4) leaves every item as it was.
     blocked = []
     for target in targets:
-        if target == slug:
-            raise UsageError(f"{slug} cannot block itself")
-        other = backend if target.project == slug.project else \
-            open_for_update(target.project, root)
-        other.read(target.folder)
+        other, _ = blocks_target(slug, target, backend, root)
         blocked.append((other, target))
     if changes != Changes():
         own.update(slug.folder, changes)
