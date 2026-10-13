@@ -332,6 +332,11 @@ def test_edit_blocks_into_another_project(tcw, pq):
     assert (r.code, r.out) == (0, ""), r.err
     assert item_yaml(q, "2026-10-01-x")["blocked-by"] == ["p/2026-10-01-a"]
     assert sorted(os.listdir(q / "docs/work")) == [".gitkeep", "2026-10-01-x"]
+    # Review fix N3: the file written in the other repository says it is left
+    # uncommitted there, as delegation's lines do (TCW-73 Design 1.2).
+    other = [line for line in r.err.splitlines() if "2026-10-01-x/item.yaml" in line]
+    assert other and all(line.startswith("wrote ") and "(uncommitted in " in line
+                         for line in other), r.err
 
 
 def test_any_other_write_into_another_project_is_refused(tcw, pq):

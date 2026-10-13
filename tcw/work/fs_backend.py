@@ -319,8 +319,13 @@ class FsWorkBackend:
                 _replace_file(document, request)
                 self.report(f"wrote {shown(document)}")
         except BaseException:
+            # One line per file removed and none for the folder (Design 1.2),
+            # read back from the disk so only what actually went is named.
+            files = sorted(f for f in path.rglob("*") if f.is_file() or f.is_symlink())
             shutil.rmtree(path, ignore_errors=True)
-            self.report(f"removed {shown(path)}")
+            for f in files:
+                if not (f.exists() or f.is_symlink()):
+                    self.report(f"removed {shown(f)}")
             raise
         return self.read(folder)
 

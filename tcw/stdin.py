@@ -121,7 +121,7 @@ def read_piped_stdin(timeout: float | None = None) -> str:
             f"refusing to store a truncated intake. If the producer is simply "
             f"slow, raise {TIMEOUT_ENV} (seconds, currently {wait:g}).")
     if wait:                             # 0 is an explicit opt-out, not a mistake
-        print(f"tcw: no piped input after {wait:g}s — proceeding without it "
+        print(f"warning: no piped input after {wait:g}s — proceeding without it "
               f"(close stdin, or set {TIMEOUT_ENV} to wait longer)",
               file=sys.stderr)
     return ""

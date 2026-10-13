@@ -179,24 +179,31 @@ def delegate(project_id: str, title: str, request: str | None,
         return delegate_to_jira(project_id, title, request, priority,
                                 root=Path(project.locator), report=say)
     path = _check_target(registry, project_id)
-    project = registry.get(project_id)
-    root = Path(project.locator)
-    # The repository holding the work store, which is where the new files are
-    # left uncommitted; it need not be the project's own.
-    repository = git_root(path) or path
-    backend = open_backend(root, report=lambda line: say(
-        f"{line} (uncommitted in {repository})"))
+    backend = open_backend(Path(registry.get(project_id).locator),
+                           report=_uncommitted_in(path, say))
     props = Changes() if priority is None else Changes(priority=priority)
     item = backend.create(title, props, stage=inbox_stage(), request=request)
     return str(item.slug)
 
 
-def open_for_update(project_id: str, here: Path) -> WorkBackend:
+def open_for_update(project_id: str, here: Path, *,
+                    report: Callable[[str], None] | None = None) -> WorkBackend:
     """Another project's backend, so `edit --blocks` can change an existing
-    item there. It never creates anything."""
+    item there. It never creates anything. Each file it writes is named with
+    where it is left uncommitted, as delegation names its files (Design 1.2)."""
     registry = _registry(here)
-    _check_target(registry, project_id)
-    return open_backend(Path(registry.get(project_id).locator))
+    path = _check_target(registry, project_id)
+    say = report or (lambda line: print(line, file=sys.stderr))
+    return open_backend(Path(registry.get(project_id).locator),
+                        report=_uncommitted_in(path, say))
+
+
+def _uncommitted_in(path: Path, say: Callable[[str], None]) -> Callable[[str], None]:
+    """A reporter that adds, to each line, the repository holding the work
+    store at `path`, where the files are left uncommitted; it need not be the
+    project's own."""
+    repository = git_root(path) or path
+    return lambda line: say(f"{line} (uncommitted in {repository})")
 
 
 def reference_resolver(project_root: Path) -> Callable[[Slug], str]:

@@ -6,6 +6,7 @@ implemented" until their phase lands (capabilities = Phase 3, work = Phase 5).
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -383,9 +384,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     project_root = find_project_root()
     if project_root is None:
         raise BackendError(NO_PROJECT)
-    if args.remote and not _jira_mode(project_root):
+    if args.remote and _not_jira_mode(project_root):
         raise UsageError("--remote checks a Jira-mode project, and this project's "
-                         "work.backend is filesystem")
+                         "work.backend is not jira")
     registry = FsProjectRegistry.open(project_root)
     # An override is set in an environment rather than in any file this
     # checkout holds, so a graph that resolves because of one resolves for a
@@ -396,10 +397,10 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print(f"connected project '{override.id}' is overridden by "
               f"{override.source} to {override.locator}", file=sys.stderr)
         if override.warning:
-            print(f"  warning: {override.warning}", file=sys.stderr)
+            print(f"warning: {override.warning}", file=sys.stderr)
     graph = registry.check()
     if graph:
-        return _report(graph)
+        return _report(graph, project_root)
     findings: list[Finding] = []
     for absent in registry.unreachable():
         if absent.declaration is not None:
@@ -417,8 +418,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "warning", str(entry.declared_in),
             f"connected project '{entry.id}' is declared at {entry.locator}, which "
             f"is not in this checkout; it was found at {registry.get(entry.id).locator}"))
-    for warning in registry.warnings():
-        findings.append(Finding("warning", SENTINEL, warning))
+    findings += registry.warning_findings()
     notes: list[str] = []
     findings += validate(project_root, notes=notes)
     for note in notes:
@@ -426,17 +426,40 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     if args.remote:
         remote, unreachable = _validate_remote(project_root)
         findings += remote
-        code = _report(findings)
+        code = _report(findings, project_root)
         return 5 if unreachable else code
-    return _report(findings)
+    return _report(findings, project_root)
 
 
-def _report(findings) -> int:
+def _located(finding, project_root: Path):
+    """`finding` with its `where` relative to the project when it is a path
+    inside it, absolute otherwise, so every finding names a file one way. The
+    message loses a leading copy of that path, which some checks repeat."""
+    from dataclasses import replace
+    where, line = finding.where, ""
+    if not where.startswith("/"):
+        return finding
+    if (m := re.fullmatch(r"(.+?)(:\d+)", where)):
+        where, line = m.group(1), m.group(2)
+    message = finding.message
+    for spelling in (where, str(Path(where).resolve())):
+        if message.startswith(spelling + ": "):
+            message = message[len(spelling) + 2:]
+    for root in (project_root, project_root.resolve()):
+        try:
+            where = str(Path(where).relative_to(root))
+            break
+        except ValueError:
+            continue
+    return replace(finding, where=where + line, message=message)
+
+
+def _report(findings, project_root: Path) -> int:
     """Print each finding on stdout and the closing count on stderr; 1 when
     any is an error."""
     counts = {"error": 0, "warning": 0, "unresolved": 0}
     for finding in findings:
-        print(finding)
+        print(_located(finding, project_root))
         counts[finding.severity] += 1
     plural = {"error": "errors", "warning": "warnings", "unresolved": "unresolved"}
     print(", ".join(f"{n} {name if n == 1 else plural[name]}"
@@ -444,13 +467,19 @@ def _report(findings) -> int:
     return 1 if counts["error"] else 0
 
 
-def _jira_mode(project_root: Path) -> bool:
-    from tcw.errors import TcwError
-    from tcw.work.open import read_work_config
+def _not_jira_mode(project_root: Path) -> bool:
+    """Whether this project's `work.backend` is plainly something other than
+    `jira`. Read from the raw value, so a Jira-mode project whose work config
+    has some other problem is still Jira mode; a config that does not parse
+    answers False, and the config finding `validate` reports explains it."""
+    from tcw.store.fs import load_config
     try:
-        return read_work_config(project_root).backend == "jira"
-    except (TcwError, ValueError):
+        raw = load_config(project_root / SENTINEL)
+    except (ValueError, OSError):
         return False
+    work = raw.get("work") if isinstance(raw, dict) else None
+    backend = work.get("backend", "filesystem") if isinstance(work, dict) else "filesystem"
+    return backend != "jira"
 
 
 def _validate_remote(root: Path):
@@ -567,7 +596,13 @@ def main(argv: list[str] | None = None) -> int:
         # as one of its findings instead.
         if args.group != "validate":
             refuse_retired_config()
-        return args.func(args)
+        code = args.func(args)
+        # Flushed here, inside the `try`, so a reader that closed the pipe
+        # before reading a short output is met by the handler below rather
+        # than by the interpreter's own flush at exit, which prints
+        # "Exception ignored ..." and exits 120.
+        sys.stdout.flush()
+        return code
     except TcwError as error:
         # A failure after something was created still names it, on stdout
         # exactly as success would (Design 1.8).

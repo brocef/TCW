@@ -81,6 +81,18 @@ def test_validate_says_which_overrides_are_in_effect(workspace, capsys, monkeypa
     assert "problem(s)" not in err
 
 
+def test_an_override_warning_is_a_warning_line(workspace, capsys, monkeypatch):
+    """Review fix N1: the warning about an override starts with `warning: `,
+    not indented, like every other warning line (TCW-73 Design 1.3)."""
+    from tcw.store.project import FsProjectRegistry
+    _tmp, _orchestrator, core = workspace
+    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(core))
+    monkeypatch.setattr(FsProjectRegistry, "_other_branch_warning",
+                        lambda self, override, where: "read from another branch")
+    main(["validate"])
+    assert "warning: read from another branch" in capsys.readouterr().err.splitlines()
+
+
 def test_validate_reports_the_override_beside_the_error_it_explains(
         workspace, capsys, monkeypatch):
     """An override that landed on the wrong node names a path in no config.

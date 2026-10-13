@@ -104,3 +104,40 @@ def test_a_closed_stdout_exits_quietly(run, fx, monkeypatch):
         os.dup2(saved, 1)
         os.close(saved)
     assert code == 1 and err == ""
+
+
+@pytest.mark.parametrize("argv", [["projects", "list"],
+                                  ["work", "procedure", "audit-backlog"]])
+def test_a_reader_gone_before_short_output_exits_quietly(fx, argv):
+    """Review fix C1: output shorter than the pipe buffer is only written when
+    stdout is flushed, which used to happen at interpreter exit, outside the
+    handler: "Exception ignored ... BrokenPipeError" and exit 120. The read end
+    is closed before the command starts, so every write fails."""
+    import subprocess
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    try:
+        done = subprocess.run([sys.executable, "-m", "tcw.cli", *argv], cwd=fx,
+                              stdout=write_end, stderr=subprocess.PIPE,
+                              stdin=subprocess.DEVNULL, timeout=60)
+    finally:
+        os.close(write_end)
+    assert (done.returncode, done.stderr) == (1, b""), done.stderr.decode()
+
+
+def test_a_create_rolled_back_names_each_file_removed(run, fx, monkeypatch):
+    """Review fix N2: a create that fails after writing `item.yaml` removes
+    its folder, naming each file removed and not the folder (Design 1.2)."""
+    from tcw.work import fs_backend
+    real = fs_backend._replace_file
+
+    def failing(path, text):
+        if path.name == "request.md":
+            raise OSError("disk full")
+        return real(path, text)
+    monkeypatch.setattr(fs_backend, "_replace_file", failing)
+    code, out, err = run(["work", "new", "A b"], fx, stdin="Need X\n")
+    assert (code, out) == (1, ""), err
+    removed = [line for line in err.splitlines() if line.startswith("removed ")]
+    assert removed and all(line.endswith("/item.yaml") for line in removed), err
+    assert not list((fx / "docs" / "work").glob("*-a-b"))

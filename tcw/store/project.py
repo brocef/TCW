@@ -225,6 +225,7 @@ class FsProjectRegistry(ProjectRegistry):
         # when two declarers disagree about where one project lives.
         self._upstream_declarers: dict[Path, list[str]] = {}
         self._warnings: list[str] = []
+        self._warning_findings: list[Finding] = []
         # Rule 0's answer per project id, memoised. `_target_path` runs again for
         # every edge during the reciprocity walk, so without this the disk is
         # re-probed and `_overrides` grows with the graph's edge count.
@@ -364,6 +365,10 @@ class FsProjectRegistry(ProjectRegistry):
 
     def warnings(self) -> list[str]:
         return list(self._warnings)
+
+    def warning_findings(self) -> list[Finding]:
+        """The same warnings as findings, the file each concerns as `where`."""
+        return list(self._warning_findings)
 
     def read_only_reason(self, project_id: str,
                          from_id: str | None = None) -> str | None:
@@ -860,12 +865,14 @@ class FsProjectRegistry(ProjectRegistry):
                      if project_id in cfg.upstream), None)
 
     def _read_as_upstream(self, cfg: _Config, parent_id: str, reader: str) -> None:
-        warning = (f"{cfg.path}: '{cfg.project.id}' names '{parent_id}' as its parent, "
-                   f"but is read as an upstream project by '{reader}'; remove the "
-                   f"parent entry from '{cfg.project.id}' — an upstream need not "
-                   f"name its readers")
+        message = (f"'{cfg.project.id}' names '{parent_id}' as its parent, but is "
+                   f"read as an upstream project by '{reader}'; remove the parent "
+                   f"entry from '{cfg.project.id}' — an upstream need not name its "
+                   f"readers")
+        warning = f"{cfg.path}: {message}"
         if warning not in self._warnings:
             self._warnings.append(warning)
+            self._warning_findings.append(Finding("warning", str(cfg.path), message))
 
     def _validate_reciprocity(self) -> None:
         for cfg in self._cache.values():

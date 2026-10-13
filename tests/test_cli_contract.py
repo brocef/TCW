@@ -144,30 +144,42 @@ def snapshot(root: Path) -> dict[str, bytes | None]:
 
 
 NAMED = re.compile(r"^(wrote|removed|created) (.+?)/?$")
+# A work item folder renamed (Design 1.2, amended 2026-10-13): one line naming
+# both folders, which stands for every file under each.
+MOVED = re.compile(r"^moved (.+?)/? to (.+?)/?$")
 
 
 def named(err: str) -> set[str]:
     return {m.group(2) for line in err.splitlines() if (m := NAMED.match(line))}
 
 
+def moved(err: str) -> set[str]:
+    """Both folders of every `moved <old> to <new>` line."""
+    return {folder for line in err.splitlines() if (m := MOVED.match(line))
+            for folder in m.groups()}
+
+
 def unnamed(before: dict, after: dict, err: str) -> tuple[set[str], set[str]]:
     """What changed but stderr does not name, and what stderr names that did
     not change. Every file created, changed or removed must be named. A
     folder created or removed is named either itself or by a file under it,
-    since a removed folder is named one file per line (Design 1.2)."""
+    since a removed folder is named one file per line (Design 1.2). A folder
+    renamed is named by its `moved` line, which covers what is under it."""
     gone = object()
     changed = {p for p in before.keys() | after.keys()
                if before.get(p, gone) != after.get(p, gone)}
-    said = named(err)
+    said, folders = named(err), moved(err)
     missing = set()
     for path in changed:
         is_folder = after.get(path, before.get(path)) is None
         if path in said:
             continue
+        if any(path == f or path.startswith(f + "/") for f in folders):
+            continue
         if is_folder and any(s.startswith(path + "/") for s in said):
             continue
         missing.add(path)
-    return missing, said - changed
+    return missing, (said | folders) - changed
 
 
 @pytest.fixture
@@ -600,3 +612,147 @@ def test_people_by_name_in_text_and_by_id_in_json(jira_fx, fake, monkeypatch):  
     data = jira_fx("work", "show", "TCW-9", "--json").out
     assert "acct-ada" in data and "acct-bo" in data
     assert "Ada" not in data and '"Bo"' not in data
+
+
+# -- review fix C5: every command in a project (Design 10; AC 8, 9, 20) ----------
+#
+# Each case runs one command in a project and checks three things: its exit
+# code, its stdout exactly (or, where the text is long, a check on it), and
+# that stderr names exactly the files that changed (`written`). On success no
+# stderr line may look like an error line (Design 1.3).
+
+ERROR_SHAPE = re.compile(r"^tcw [a-z][a-z -]*: ")
+
+
+def checked(root: Path, *argv: str, out, stdin: str = "", code: int = 0) -> Result:
+    result = written(root, *argv, stdin=stdin, code=code)
+    if callable(out):
+        assert out(result.out), (argv, result)
+    else:
+        assert result.out == out, (argv, result)
+    if code == 0:
+        assert not [l for l in result.err.splitlines() if ERROR_SHAPE.match(l)], \
+            (argv, result.err)
+    return result
+
+
+def test_the_reading_commands_in_a_project(fx):
+    configure(fx, tags=["a", "b"])
+    slug = new(fx, "A b", stdin="Need X\n")
+    folder = slug.split("/", 1)[1]
+    ok(fx, "taxonomy", "add", "Widget", stdin="small\n")
+    ok(fx, "capabilities", "add", "ns/do-a-thing")
+    work = fx / "docs" / "work"
+
+    def is_path(expected: Path):
+        return lambda out: (out.endswith("\n") and out.count("\n") == 1
+                            and Path(out[:-1]).is_absolute()
+                            and Path(out[:-1]).samefile(expected))
+
+    checked(fx, "work", "list", out=slug + "\n")
+    checked(fx, "work", "show", slug,
+            out=lambda o: o.startswith(f"slug: {slug}\ntitle: A b\n") and "Need X" in o)
+    checked(fx, "work", "path", out=is_path(work))
+    checked(fx, "work", "path", slug, out=is_path(work / folder))
+    checked(fx, "work", "lifecycle", out=lambda o: o.startswith("inbox"))
+    checked(fx, "work", "stage", "prompt", "spec", slug, out=lambda o: len(o) > 100)
+    checked(fx, "work", "procedure", "audit-backlog", out=lambda o: len(o) > 100)
+    checked(fx, "work", "tags", "list", out="a\nb\n")
+    docs = checked(fx, "work", "docs", out="")
+    assert "agent guide" in docs.err
+    checked(fx, "projects", "list", out="fx\n")
+    checked(fx, "taxonomy", "list", out="widget\n")
+    checked(fx, "taxonomy", "show", "widget",
+            out=lambda o: o.startswith("path: widget\nname: Widget\n") and "small" in o)
+    checked(fx, "taxonomy", "search", "small", out="widget\n")
+    checked(fx, "taxonomy", "path", out=is_path(fx / "docs" / "taxonomy"))
+    checked(fx, "capabilities", "list", out="ns/do-a-thing\n")
+    checked(fx, "capabilities", "show", "ns/do-a-thing",
+            out=lambda o: "ns/do-a-thing" in o)
+    checked(fx, "capabilities", "search", "thing", out="ns/do-a-thing\n")
+    checked(fx, "capabilities", "path", out=is_path(fx / "docs" / "capabilities"))
+    checked(fx, "capabilities", "drift", out="")
+    checked(fx, "validate", out="")
+
+
+def test_the_writing_work_commands_in_a_project(fx):
+    configure(fx, tags=["a"])
+    slug = new(fx, "A b")
+    renamed = checked(fx, "work", "rename", slug, "other", out=f"fx/{TODAY}-other\n")
+    assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
+    slug = f"fx/{TODAY}-other"
+    checked(fx, "work", "discard", slug, "--reason", "r", out="discarded\n")
+
+    added = checked(fx, "work", "tags", "add", "c", out="")
+    assert added.err == "wrote tcw-config.yaml\n", added.err
+    assert checked(fx, "work", "tags", "add", "c", out="").err == ""
+    removed = checked(fx, "work", "tags", "rm", "c", out="")
+    assert removed.err == "wrote tcw-config.yaml\n", removed.err
+
+
+def test_tags_rm_of_an_unregistered_tag_is_not_found(fx):
+    """Review fix C2: exit 4 naming each tag that is not registered, and the
+    whole call refused: a registered tag given with it stays."""
+    configure(fx, tags=["a"])
+    result = checked(fx, "work", "tags", "rm", "a", "zzz", out="", code=4)
+    assert result.err.startswith("tcw work tags rm: ") and "'zzz'" in result.err
+    assert "'a'" not in result.err
+    assert ok(fx, "work", "tags", "list").out == "a\n"
+
+
+def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
+    up = tmp_path / "up"
+    up.mkdir()
+    ok(up, "init", "--id", "up")
+    ok(up, "taxonomy", "add", "Gear")
+    ok(up, "capabilities", "add", "auth/login")
+    document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
+    document["projects"] = {"upstream": {"up": "../up"}}
+    (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+
+    assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
+        "wrote tcw-config.yaml\n"
+    assert checked(fx, "taxonomy", "extends", "rm", "up", out="").err == \
+        "wrote tcw-config.yaml\n"
+    checked(fx, "capabilities", "extends", "add", "up", out="")
+    checked(fx, "capabilities", "set", "auth/login", "--status", "Missing", out="")
+    reset = checked(fx, "capabilities", "reset", "auth/login", out="")
+    assert any(l.startswith("removed ") for l in reset.err.splitlines()), reset.err
+    checked(fx, "capabilities", "extends", "rm", "up", out="")
+
+    checked(fx, "capabilities", "add", "ns/gone", out="ns/gone\n")
+    rm = checked(fx, "capabilities", "rm", "ns/gone", out="")
+    assert any(l.startswith("removed ") for l in rm.err.splitlines()), rm.err
+
+
+# -- Jira mode, through the real backend and the fake Jira (review fix C5) ----------
+
+
+def jira_written(jira_fx, *argv: str, stdin: str = "") -> Result:
+    """`written` for an in-process Jira-mode run."""
+    root = jira_fx.root
+    before = snapshot(root)
+    result = jira_fx(*argv, stdin=stdin)
+    assert result.code == 0, (argv, result)
+    assert unnamed(before, snapshot(root), result.err) == (set(), set()), \
+        (argv, result.err)
+    return result
+
+
+def test_jira_edit_comment_and_rename(jira_fx, fake):  # noqa: F811
+    made = jira_written(jira_fx, "work", "new", "Jira thing")
+    slug = made.out.strip()
+    assert re.fullmatch(r"fx/TCW-\d+-jira-thing", slug), made
+    key = slug.split("/", 1)[1].rsplit("-jira-thing", 1)[0]
+    assert jira_written(jira_fx, "work", "edit", slug, "--tag", "ui").out == ""
+    assert fake.tickets[key].labels == ["ui"]
+    assert jira_written(jira_fx, "work", "comment", slug, stdin="hello\n").out == ""
+    renamed = jira_written(jira_fx, "work", "rename", slug, "other")
+    assert renamed.out == f"fx/{key}-other\n", renamed
+    assert any(MOVED.match(l) for l in renamed.err.splitlines()), renamed.err
+
+
+def test_jira_tickets_adopt(jira_fx, fake):  # noqa: F811
+    key = fake.ticket("Fix the login").key
+    adopted = jira_written(jira_fx, "work", "tickets", "adopt", key)
+    assert adopted.out == f"fx/{key}-fix-the-login\n", adopted

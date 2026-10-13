@@ -199,10 +199,23 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
                                  f"{start_stage()}: {error}; fix the workflow, then run "
                                  f"`tcw work tickets adopt {key}` again"), str(slug)) \
                 from None
-        except TrackerError:
-            with _jira():
-                raise
-    item = backend.read(slug.folder)
+        except TrackerError as error:
+            # The folder is written, so the failure still names the item
+            # (Design 1.8).
+            try:
+                with _jira():
+                    raise error
+            except TcwError as mapped:
+                raise _named(type(mapped)(
+                    f"{slug} is made, but moving it to {start_stage()} did not "
+                    f"complete: {mapped}; run `tcw work tickets adopt {key}` again"),
+                    str(slug)) from None
+    try:
+        item = backend.read(slug.folder)
+    except TcwError as error:
+        raise _named(type(error)(f"{slug} is made, but could not be read back: "
+                                 f"{error}; check it with `tcw work show {slug}`"),
+                     str(slug)) from None
     if item.stage != start_stage():
         raise _named(BackendError(f"{slug} is made, but Jira reports it at "
                                   f"{item.stage or 'no stage'}, not {start_stage()}"),

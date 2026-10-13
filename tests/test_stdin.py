@@ -72,6 +72,8 @@ def test_nothing_arrives_proceeds_with_a_warning(at, capsys):
     assert FAST <= elapsed < FAST + 2       # it waited, then gave up
     err = capsys.readouterr().err
     assert "no piped input" in err and "TCW_STDIN_TIMEOUT" in err
+    # A warning line (TCW-73 Design 1.3), never one shaped like an error.
+    assert err.startswith("warning: no piped input"), err
     os.close(r)
     os.close(w)
 

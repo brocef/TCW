@@ -422,6 +422,15 @@ def validate(project_root: Path, *, target: ValidationTarget | None = None,
 # The work checks (TCW-70 Design 10.1).
 
 
+def _names_folder(finding: Finding, work_path: Path, name: str) -> bool:
+    """Whether a finding located at the work store itself is about the folder
+    `name`: Jira mode's "the key X names N folders: a, b" lists them after
+    its last colon."""
+    if Path(finding.where) != work_path:
+        return False
+    return name in finding.message.rsplit(": ", 1)[-1].split(", ")
+
+
 def _work_target_findings(project_root: Path, registry,
                           target: ValidationTarget) -> list[Finding]:
     """The checks of one work item that need no network in either mode
@@ -457,7 +466,8 @@ def _work_target_findings(project_root: Path, registry,
         store = work_store_problems(backend.work_path, backend.project, backend.config)
     else:
         store = []
-    problems += [p for p in store if _under(Path(p.where), folder)]
+    problems += [p for p in store if _under(Path(p.where), folder)
+                 or _names_folder(p, Path(backend.work_path), target.ref)]
     layout = backend.layout
     problems += round_findings(backend.work_path, backend.project, layout,
                                folders={target.ref})

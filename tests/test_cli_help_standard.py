@@ -121,6 +121,29 @@ def test_options_are_long_form_with_one_spelling(commands):
             assert len(spellings) <= 1, (name, spellings)
 
 
+def choices_hidden(parser) -> list[str]:
+    """Each choice of an option or argument that its command's help does not
+    show (Design 5.5: choices are shown in the help)."""
+    text = parser.format_help()
+    return [f"{action.dest}={choice}" for action in parser._actions
+            if action.choices and not isinstance(action, argparse._SubParsersAction)
+            for choice in action.choices if str(choice) not in text]
+
+
+def test_choices_are_shown_in_the_help(commands):
+    hidden = [(name, missing) for name, parser, _, _ in commands
+              if (missing := choices_hidden(parser))]
+    assert not hidden, hidden
+    with_choices = {name for name, parser, _, _ in commands for action in parser._actions
+                    if action.choices and not isinstance(action, argparse._SubParsersAction)}
+    assert {"taxonomy add", "provision"} <= with_choices, with_choices
+    # The check sees a choice its help hides: a metavar replaces the `{a,b}`
+    # list argparse would print, and the help text names neither.
+    probe = argparse.ArgumentParser()
+    probe.add_argument("--mode", choices=["alpha", "beta"], metavar="M", help="a mode")
+    assert choices_hidden(probe) == ["mode=alpha", "mode=beta"]
+
+
 def test_top_level_help_carries_the_exit_codes_and_the_stream_rule(capsys):
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--help"])

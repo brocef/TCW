@@ -75,6 +75,10 @@ def test_the_warning_never_reaches_stdout(node):
     assert result.stdout.strip().endswith("quiet-stdout")   # the slug, alone
     assert "no piped input" in result.stderr                # warning went to stderr
     assert "no piped input" not in result.stdout
+    # A warning line, never one starting with the command's words, which
+    # mark an error (TCW-73 Design 1.3).
+    assert any(line.startswith("warning: no piped input")
+               for line in result.stderr.splitlines()), result.stderr
 
 
 # -- arm B: closed stdin, unchanged ------------------------------------------

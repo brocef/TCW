@@ -200,3 +200,27 @@ def test_the_removed_spellings(project, monkeypatch, argv):
     with pytest.raises(SystemExit) as stop:
         main(["validate", *argv])
     assert stop.value.code == 2
+
+
+# -- review fix N4: one way to name the file a finding is about --------------------
+
+
+@pytest.mark.parametrize("config", ["id: p\nwork: [\n", "id: p\nconnected-projects: {}\n",
+                                    "id: p\nwork:\n  stages: 5\n"])
+def test_a_config_finding_names_the_file_relative_to_the_project(project, run, config):
+    (project / "tcw-config.yaml").write_text(config)
+    code, out, _ = run(project / "docs")
+    assert code == 1
+    assert out and all(line.startswith("error: tcw-config.yaml: ") for line in out), out
+
+
+def test_the_former_child_warning_names_its_file_once(tmp_path, run):
+    top = make_project(tmp_path, "top")
+    kid = make_project(tmp_path, "kid")
+    (top / "tcw-config.yaml").write_text("id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
+    (kid / "tcw-config.yaml").write_text("id: kid\nprojects:\n  parent:\n    top: ../top\n")
+    code, out, _ = run(top)
+    [line] = about(out, "read as an upstream")
+    assert code == 0 and line.startswith("warning: "), line
+    assert line.count("tcw-config.yaml") == 1, line
+    assert line.split(": ", 2)[1].endswith("kid/tcw-config.yaml"), line

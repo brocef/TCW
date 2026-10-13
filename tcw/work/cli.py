@@ -374,9 +374,10 @@ def _prompt_target(args):
 
 def _print_resolution(res, label: str, no_exec: bool) -> int:
     """The composed text on stdout, or with `--no-exec` the plan on stderr and
-    nothing on stdout."""
+    nothing on stdout. `label` names what was composed (`stage spec`); a note
+    never starts with the command's words, which mark an error (Design 1.3)."""
     if no_exec:
-        _say(f"{label}: --no-exec, nothing was resolved")
+        _say(f"note: {label}: --no-exec, nothing was resolved")
         for entry in res.plan:
             state = "matched" if entry.matched else "skipped (condition)"
             detail = f": {entry.ref}" if entry.kind != "builtin" else ""
@@ -385,7 +386,7 @@ def _print_resolution(res, label: str, no_exec: bool) -> int:
     if res.text:
         print(res.text)
     elif res.plan and not any(entry.matched for entry in res.plan):
-        _say(f"{label}: note — every binding carries a when: that did not "
+        _say(f"note: every binding of {label} carries a when: that did not "
              f"match, so nothing resolved")
     return codes.OK
 
@@ -414,7 +415,7 @@ def _stage_prompt(args) -> int:
     res = _resolved(lambda: stage_prompt(
         backend.config, step.name, item=item, record=record, request=request,
         layout=layout, project_root=root, execute=not args.no_exec))
-    label = f"tcw work stage prompt {step.name}"
+    label = f"stage {step.name}"
     if not args.no_exec and res.text:
         target = str(item.slug) if item is not None else "<slug>"
         res.text = f"{stage_header(step.name, target)}\n\n{res.text}"
@@ -437,7 +438,7 @@ def _procedure(args) -> int:
         backend.config, args.procedure, item=item, record=record,
         request=request, layout=layout, project_root=root,
         execute=not args.no_exec))
-    return _print_resolution(res, f"tcw work procedure {args.procedure}",
+    return _print_resolution(res, f"procedure {args.procedure}",
                              args.no_exec)
 
 
@@ -503,9 +504,9 @@ def _docs(args) -> int:
                                       for e in entries]})
         return codes.OK
     if not entries:
-        _say("tcw work docs: this project declares no `work.documentation`; "
-             "documentation entries come from the project's agent guide "
-             "(`AGENTS.md` or `CLAUDE.md`).")
+        _say("this project declares no `work.documentation`; documentation "
+             "entries come from the project's agent guide (`AGENTS.md` or "
+             "`CLAUDE.md`).")
         return codes.OK
     width = max(len(e.path) for e in entries)
     trigger_width = max(len(e.trigger) for e in entries) + 2
@@ -553,8 +554,17 @@ def _tags_add(args) -> int:
 
 
 def _tags_rm(args) -> int:
+    """Refuse the whole call, writing nothing, when any tag given is not
+    registered: not found (4), naming each one (Design 2 decision 6)."""
     given = set(args.tag)
-    return _write_tags(lambda tags: tags - given)
+
+    def change(tags: set[str]) -> set[str]:
+        missing = sorted(given - tags)
+        if missing:
+            raise NotFound("no such tag" + ("s" if len(missing) > 1 else "")
+                           + ": " + ", ".join(f"'{t}'" for t in missing))
+        return tags - given
+    return _write_tags(change)
 
 
 # -- the parser ------------------------------------------------------------------------------

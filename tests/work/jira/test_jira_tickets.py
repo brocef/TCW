@@ -344,3 +344,47 @@ def test_an_item_moved_on_whose_item_yaml_is_gone_is_not_taken_back(jira_project
     assert result.code == 3 and "already the item" in result.err, result.err
     assert jira_project.fake.writes() == []
     assert not (jira_project.work / "TCW-1-kept" / "item.yaml").exists()
+
+
+# -- review fix C4: a late failure still names the item (TCW-73 Design 1.8) ------------
+
+
+def _read_back_fails(monkeypatch, fake):
+    """Jira stops answering just as the item is read back: everything before
+    it, ticket, folder and transition, has happened."""
+    from tcw.work.jira.backend import JiraBackend
+    real = JiraBackend.read
+
+    def read(self, folder):
+        fake.unreachable()
+        return real(self, folder)
+    monkeypatch.setattr(JiraBackend, "read", read)
+
+
+def test_new_whose_read_back_fails_names_the_item(jira_project, tcw, monkeypatch):
+    _read_back_fails(monkeypatch, jira_project.fake)
+    result = tcw(["new", "Late failure"], jira_project.root)
+    key = max(jira_project.fake.tickets, key=lambda k: int(k.split("-")[1]))
+    slug = f"tcw/{key}-late-failure"
+    assert (result.code, result.out) == (5, slug + "\n"), result
+    assert f"tcw work new: created {slug}, but could not read it back" in result.err
+
+
+def test_adopt_whose_read_back_fails_names_the_item(jira_project, tcw, monkeypatch):
+    key = raw(jira_project, "Fix the login")
+    _read_back_fails(monkeypatch, jira_project.fake)
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    assert (result.code, result.out) == (5, f"tcw/{key}-fix-the-login\n"), result
+
+
+def test_adopt_whose_move_fails_names_the_item(jira_project, tcw, monkeypatch):
+    from tcw.work.jira import client as jira
+    key = raw(jira_project, "Fix the login")
+
+    def down(*args, **kwargs):
+        raise jira.TrackerUnavailable("the connection was reset")
+    monkeypatch.setattr(jira_project.fake, "_transition", down)
+    result = tcw(["tickets", "adopt", key], jira_project.root)
+    slug = f"tcw/{key}-fix-the-login"
+    assert (result.code, result.out) == (5, slug + "\n"), result
+    assert (jira_project.work / f"{key}-fix-the-login" / "item.yaml").is_file()

@@ -32,7 +32,7 @@ def run_bindings(bindings: list[Binding], project_root: Path, env: dict[str, str
     """
     for binding in bindings:
         if binding.kind == "skill":
-            print(f"tcw work: {label} binding — invoke the {binding.ref} skill "
+            print(f"{label} binding: invoke the {binding.ref} skill "
                   f"(TCW cannot run it for you)", file=sys.stderr)
             continue
         try:

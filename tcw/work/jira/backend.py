@@ -717,7 +717,14 @@ class JiraBackend:
                 f"created {slug} at {start_stage()}, but not all its blocked-by links: "
                 f"{_link_report(made, failed)}; finish with `tcw work edit {slug} "
                 f"--blocked-by …`"), str(slug))
-        return self.read(folder)
+        # The item exists by now, so a failed read-back still names it (Design
+        # 1.8): without the name a retry would make a second ticket.
+        try:
+            return self.read(folder)
+        except TcwError as error:
+            raise _named(type(error)(f"created {slug}, but could not read it back: "
+                                     f"{error}; check it with `tcw work show {slug}`"),
+                         str(slug)) from None
 
     def _route(self, key: str, status: str) -> Transition | Refusal | None:
         """None when `key` is already at `status`; else the transition the

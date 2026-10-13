@@ -1774,7 +1774,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
     def _capability_referrers(self, target: Path, slug: str) -> list[str]:
         """`capability <path> (Subject|Feature)` for every local capability whose
         reference resolves to the term folder `target` or a folder inside it —
-        what `tcw capabilities check` would report dangling once it is gone.
+        what `tcw validate` would report dangling once it is gone.
 
         The project's capabilities store is found by the normal resolution. None
         here: nothing to ask. One that cannot be opened or read refuses the

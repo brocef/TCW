@@ -147,3 +147,21 @@ def test_a_missing_work_item_is_explicit(tmp_path):
     root = _node(tmp_path)
     assert validate(root, target=ValidationTarget("work", "2026-10-01-none")) == [
         Finding("error", "2026-10-01-none", "no such work object")]
+
+
+def test_one_jira_item_sharing_its_key_with_another_folder(tmp_path):
+    """Review fix N6: the duplicate-key finding sits at the work store, not in
+    the folder, and is still reported when it concerns the item validated."""
+    from tests.work.jira.conftest import jira_config
+    from tests.work.jira.fake import SITE
+    from tests.work.projects import make_project
+    root = make_project(tmp_path, "tcw", config=jira_config())
+    for name in ("TCW-1-a", "TCW-1-b", "TCW-2-c"):
+        folder = root / "docs" / "work" / name
+        folder.mkdir(parents=True)
+        key = name.rsplit("-", 1)[0]
+        (folder / "item.yaml").write_text(yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
+    found = validate(root, target=ValidationTarget("work", "TCW-1-a"))
+    assert any("the key TCW-1 names 2 folders" in f.message for f in found), found
+    other = validate(root, target=ValidationTarget("work", "TCW-2-c"))
+    assert not any("names 2 folders" in f.message for f in other), other

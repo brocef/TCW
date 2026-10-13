@@ -60,6 +60,20 @@ def test_filesystem_mode_is_a_usage_error(tmp_path, fake, monkeypatch, capsys):
     assert fake.log == []
 
 
+def test_a_jira_project_with_a_broken_work_config_is_not_called_filesystem(
+        tmp_path, fake, monkeypatch, capsys):
+    """Review fix C3: Jira mode is read from the raw `work.backend`, so another
+    problem in the work config is reported as a config finding (exit 1), not as
+    a usage error claiming the project is in filesystem mode."""
+    root = make_project(tmp_path, "p", config={"backend": "jira", "stages": 5})
+    monkeypatch.chdir(root)
+    code = main(["validate", "--remote"])
+    captured = capsys.readouterr()
+    assert code == 1, captured
+    assert "not jira" not in captured.err and "filesystem" not in captured.err
+    assert any(line.startswith("error: ") for line in captured.out.splitlines()), captured
+
+
 def configured(tmp_path, fake, change) -> JiraProject:
     config = jira_config()
     change(config)
