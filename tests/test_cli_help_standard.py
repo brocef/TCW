@@ -20,7 +20,7 @@ from tcw.cli import build_parser
 
 # Design 2's 3.0 column, less `config show`, which TCW-72 adds with its own row.
 SURFACE = {
-    "init", "provision", "validate", "serve", "projects list",
+    "init", "provision", "validate", "serve", "projects list", "config show",
     "taxonomy list", "taxonomy add", "taxonomy show", "taxonomy path", "taxonomy rm",
     "taxonomy search", "taxonomy extends add", "taxonomy extends rm",
     "capabilities list", "capabilities show", "capabilities path", "capabilities add",
@@ -67,7 +67,7 @@ def leaves(commands):
 
 
 def test_the_surface_is_exactly_the_3_0_column(leaves):
-    assert len(SURFACE) == 42
+    assert len(SURFACE) == 43
     assert set(leaves) == SURFACE
 
 

@@ -50,6 +50,7 @@ ROWS: dict[str, tuple[list[str], int]] = {
     "validate": (["validate"], 1),
     "serve": (["serve", "--no-open", "--port", "1"], 1),
     "projects list": (["projects", "list"], 1),
+    "config show": (["config", "show"], 1),
     "taxonomy list": (["taxonomy", "list"], 1),
     "taxonomy add": (["taxonomy", "add", "Widget"], 1),
     "taxonomy show": (["taxonomy", "show", "widget"], 1),
@@ -710,6 +711,16 @@ def test_the_identity_flags_in_a_project(fx, monkeypatch):
                  ["edit", later, "--assign-me"]):
         refused = written(fx, "work", *argv, "--assignee", "x", code=2)
         assert refused.out == "" and "--assignee" in refused.err, refused
+
+
+def test_config_show_in_a_project(fx):
+    """Its text is the merged configuration, which reads back as YAML to the
+    loader's values; it writes nothing (TCW-72 Design 8)."""
+    from tcw.config import load_config
+    expected = load_config(fx).values
+    checked(fx, "config", "show", out=lambda o: yaml.safe_load(o) == expected)
+    checked(fx, "config", "show", "--origin",
+            out=lambda o: yaml.safe_load(o) == expected)
 
 
 def test_tags_rm_of_an_unregistered_tag_is_not_found(fx):
