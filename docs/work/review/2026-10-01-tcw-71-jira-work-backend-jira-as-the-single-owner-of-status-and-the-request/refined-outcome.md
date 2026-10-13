@@ -82,8 +82,12 @@ Two inbox entries (`817ddc8a`):
 
 The three new records and the changed delegation record were written on the
 branch (Task 16) and pass the records gate there (`outcome.md`). They reach
-`main`'s ledger only when the epic merges, so `tcw work complete` on `main`
-cannot resolve them and was run with `--force` for that reason alone.
+`main`'s ledger only when the epic merges, so on `main` they cannot resolve:
+`tcw work complete` refused them, and with `--force` its `tcw validate` pre
+hook refused the same four. The item was therefore completed by hand, as the
+plan's notes say and as TCW-69 and TCW-70 were: the folder moved to
+`completed/` with `resolution: done`, a graveyard entry, the folder deleted
+with its location recorded, and the Jira ticket moved to Done.
 
 ## Closeout route
 
