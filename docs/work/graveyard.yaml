@@ -1193,3 +1193,6 @@
   location: 3207f3103f73bcefe5fedfe7e3ed7d50b39bc8cb
   resolution: done
   resolved: '2026-10-08'
+2026-10-01-tcw-71-jira-work-backend-jira-as-the-single-owner-of-status-and-the-request:
+  resolution: done
+  resolved: '2026-10-13'
