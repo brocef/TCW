@@ -159,9 +159,8 @@ def _new(args) -> int:
         raise UsageError(f"--stage accepts only {inbox_stage()}")
     if args.assign_me:
         _alone(args, "--assign-me")
-    request = read_piped_stdin()
-    request = request if request.strip() else None
     if args.project:
+        # Before the read of piped input, so a usage error never waits on it.
         if args.project == FsProjectRegistry.open(root).current.id:
             raise UsageError(f"--project {args.project} names this project; "
                              f"leave --project out to create the item here")
@@ -173,6 +172,9 @@ def _new(args) -> int:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
+    request = read_piped_stdin()
+    request = request if request.strip() else None
+    if args.project:
         print(delegate(args.project, args.title, request, args.priority,
                        here=root, report=_say))
         return codes.OK
@@ -301,11 +303,12 @@ def _edit(args) -> int:
     if changes == Changes() and not targets and not args.assign_me:
         raise UsageError("nothing to change; give at least one property flag")
     own = _own(slug, backend, root)
+    own.read(slug.folder)
     if args.assign_me:
         # Asked of this project's own backend, after `_own` has refused
-        # another project's item.
+        # another project's item and the read has found it, and before
+        # anything is written.
         changes = replace(changes, assignee=_me(own))
-    own.read(slug.folder)
     # Every target is opened and read before anything is written, so a
     # refused or missing one (exit 3 or 4) leaves every item as it was.
     blocked = []

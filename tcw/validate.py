@@ -357,10 +357,17 @@ def config_findings(project_root: Path) -> list[Finding]:
     """The layered configuration's problems, each an error naming its file
     with the message starting at the key path, and a warning when the local
     personal file is tracked (TCW-72 Design 5.5, 10.3)."""
-    from tcw.config import LOCAL_FILE, effective
+    from tcw.config import LOCAL_FILE, SENTINEL, effective
     from tcw.store.fs import personal_file_tracked
+    config = effective(project_root)
+    problems = config.problems
+    if config.unreadable:
+        # The project graph's check, which every `validate` run makes, already
+        # reports a tcw-config.yaml that cannot be read; say it once.
+        problems = [p for p in problems
+                    if p.key_path or p.file != config.root / SENTINEL]
     findings = [Finding("error", p.where or "environment", p.detail)
-                for p in effective(project_root).problems]
+                for p in problems]
     if personal_file_tracked(project_root):
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
     return findings

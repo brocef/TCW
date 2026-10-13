@@ -498,8 +498,10 @@ class JiraBackend:
 
     def current_user(self) -> str | None:
         """The account the credentials belong to; None without a request when
-        either variable is unset, and None with one stderr line naming the
-        cause when Jira cannot say (R3). Read at most once."""
+        either variable is unset (R3). Jira failing to answer is not "no
+        identity": it raises as for any other operation, `Unreachable` when
+        Jira cannot be reached and `BackendError` with Jira's reason otherwise
+        (TCW-72 review finding C5). Read at most once."""
         if self._me is not _UNREAD:
             return self._me
         unset = [name for name in (self.jira.email_env, self.jira.token_env)
@@ -507,18 +509,13 @@ class JiraBackend:
         if unset:
             self._me = None
             return None
-        try:
-            me = self.client.myself()
-        except TrackerUnavailable as error:
-            _warn(f"Jira could not be reached to say who you are: {error}")
-            me = None
-        except TrackerAuthError:
-            _warn(f"Jira rejected the credentials in {self.jira.email_env} and "
-                  f"{self.jira.token_env}")
-            me = None
-        except TrackerError as error:
-            _warn(f"Jira could not say who you are: {error}")
-            me = None
+        with _jira():
+            try:
+                me = self.client.myself()
+            except TrackerAuthError as error:
+                raise BackendError(f"Jira rejected the credentials in "
+                                   f"{self.jira.email_env} and "
+                                   f"{self.jira.token_env}: {error}") from None
         account = me.get("accountId") if isinstance(me, dict) else None
         self._me = account if isinstance(account, str) and account else None
         if self._me and isinstance(me.get("displayName"), str):

@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from tcw.errors import BackendError, NotFound
+from tcw.errors import BackendError, NotFound, Unreachable
 from tcw.work.backend import Query
 from tcw.work.jira.backend import JiraBackend
 from tcw.work.jira.mapping import block_link, text_document
@@ -211,15 +211,24 @@ def test_no_identity_without_a_request(jira_project, monkeypatch, variable):
     assert jira_project.fake.log == []
 
 
-@pytest.mark.parametrize("switch, cause", [
-    (lambda f: f.unauthorized(), "rejected the credentials"),
-    (lambda f: f.unreachable(), "could not be reached"),
+# Changed by TCW-72's review (finding C5): TCW-71 answered None, with a
+# stderr line, when Jira could not say who the credentials belong to, so
+# `--mine` then said "no identity is configured" when Jira was the problem.
+# None now means only that the credential variables are unset; Jira failing
+# raises as it does for every other operation.
+@pytest.mark.parametrize("switch, error, cause", [
+    (lambda f: f.unauthorized(), BackendError, "rejected the credentials"),
+    (lambda f: f.unreachable(), Unreachable, "could not be reached"),
+    (lambda f: f.rate_limited(), Unreachable, "limiting requests"),
 ])
-def test_current_user_never_raises(jira_project, capsys, switch, cause):
+def test_current_user_raises_when_jira_cannot_say(jira_project, capsys, switch, error,
+                                                  cause):
     switch(jira_project.fake)
-    assert jira_project.backend().current_user() is None
-    err = capsys.readouterr().err
-    assert cause in err and len(err.strip().splitlines()) == 1
+    with pytest.raises(error) as raised:
+        jira_project.backend().current_user()
+    assert type(raised.value) is error
+    assert cause in str(raised.value), raised.value
+    assert capsys.readouterr().err == ""
 
 
 def test_the_backend_declares_its_facts(jira_project):
@@ -227,3 +236,16 @@ def test_the_backend_declares_its_facts(jira_project):
     assert isinstance(backend, JiraBackend)
     assert backend.external_stages == {"request", "qa"}
     assert backend.inbox_items is False
+
+
+@pytest.mark.parametrize("switch, code, cause", [
+    (lambda f: f.unauthorized(), 1, "rejected the credentials"),
+    (lambda f: f.unreachable(), 5, "could not be reached"),
+])
+@pytest.mark.parametrize("argv", [["list", "--mine"], ["new", "X", "--assign-me"]])
+def test_mine_says_jira_was_the_problem(jira_project, tcw, switch, code, cause, argv):
+    switch(jira_project.fake)
+    result = tcw(argv, jira_project.root)
+    assert (result.code, result.out) == (code, ""), result
+    assert cause in result.err and "no identity" not in result.err, result.err
+    assert len(result.err.splitlines()) == 1, result.err

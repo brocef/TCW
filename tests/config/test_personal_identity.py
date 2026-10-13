@@ -100,6 +100,36 @@ def test_assign_me_without_an_identity_creates_nothing(personal, no_identity):
     assert sorted((no_identity / "docs" / "work").rglob("*")) == before
 
 
+def test_edit_of_a_missing_item_says_it_is_missing_before_who(personal, no_identity):
+    # Review finding C8: the item is read before the identity is asked for.
+    result = tcw(no_identity, "work", "edit", "p/2026-01-01-nothing-here", "--assign-me")
+    assert (result.code, result.out) == (4, ""), result
+    assert "no identity" not in result.err
+
+
+def test_a_project_usage_error_does_not_wait_for_piped_input(tmp_path):
+    # Review finding C8: `--project` is checked before any wait for a pipe
+    # that is open but silent.
+    import os
+    import time
+    from tests.config.conftest import SOURCE
+    root = make_project(tmp_path, "p")
+    env = {**os.environ, "PYTHONPATH": SOURCE, "TCW_STDIN_TIMEOUT": "5"}
+    started = time.monotonic()
+    with subprocess.Popen([sys.executable, "-m", "tcw.cli", "work", "new", "X",
+                           "--assign-me", "--project", "other"], cwd=root, env=env,
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, text=True) as child:
+        # stdin stays open and silent until the command has exited.
+        code = child.wait(timeout=30)
+        elapsed = time.monotonic() - started
+        out, err = child.stdout.read(), child.stderr.read()
+        child.stdin.close()
+    assert (code, out) == (2, ""), err
+    assert "--assign-me cannot be used with --project" in err
+    assert elapsed < 3, elapsed
+
+
 # -- through the interface ---------------------------------------------------------------
 
 

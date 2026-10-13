@@ -130,3 +130,93 @@ def test_config_show_outside_a_project(tmp_path):
     result = tcw(tmp_path, "config", "show")
     assert (result.code, result.out) == (1, "")
     assert result.err.startswith("tcw config show: ")
+
+
+# -- A secret pasted where a variable's name belongs (review finding C1) -----------------
+
+SECRET = "ATATT3xFfGF0-secret-token"
+
+
+def _jira_work(token_env=None):
+    from tests.work.jira.conftest import jira_config
+    work = jira_config()
+    if token_env is not None:
+        work["jira"]["credentials"]["token-env"] = token_env
+    return work
+
+
+@pytest.mark.parametrize("where", ["project", "local"])
+def test_a_pasted_token_is_never_printed(personal, where):
+    root = project(personal, _jira_work(SECRET if where == "project" else None))
+    if where == "local":
+        personal.local({"work": {"jira": {"credentials": {"token-env": SECRET}}}})
+    for flags in ((), ("--origin",)):
+        result = tcw(root, "config", "show", *flags)
+        assert result.code == 1, result
+        assert SECRET not in result.out and SECRET not in result.err, result
+    shown = tcw(root, "config", "show", "--origin").out
+    [line] = [l for l in shown.splitlines() if "token-env:" in l]
+    assert '"(value not shown)"' in line, line
+    assert yaml.safe_load(shown)["work"]["jira"]["credentials"]["token-env"] == \
+        "(value not shown)"
+
+
+def test_a_variable_name_is_printed_as_itself(personal):
+    root = project(personal, _jira_work())
+    personal.local({"work": {"jira": {"credentials": {"token-env": "MY_TOKEN"}}}})
+    result = tcw(root, "config", "show")
+    assert result.code == 0, result
+    assert yaml.safe_load(result.out) == load_config(root).values
+    assert "token-env: MY_TOKEN" in result.out
+
+
+def test_a_refused_token_is_never_printed(personal):
+    root = project(personal)
+    personal.local({"projects": {"x": {"jira": {"credentials": {"token-env": SECRET}}},
+                                 "y": [{"token-env": SECRET}]}})
+    result = tcw(root, "config", "show", "--origin")
+    assert result.code == 1, result
+    assert SECRET not in result.out and SECRET not in result.err, result
+
+
+# -- Every string and value reads back (review findings C2, C3) ------------------------
+
+HOSTILE = [
+    "...", "... x", "---", "😀", "a😀b", "a b", "﻿bom", "yes", "No", "~", "null",
+    "0x1F", "0o17", "1e3", ".inf", "2026-10-13", "2026-10-13 01:02:03", " lead",
+    "trail ", "a: b", "a:b", "#", "a #b", "'single'", '"double"', "both ' and \"",
+    "line\nbreak", "tab\there", "\x00", "\x85", "René", "-", "- x", "? x", "!tag", "&a",
+    "*a", "%x", "@x", "`x", "|", ">", "a, b", "[x]", "{x}", "",
+]
+
+
+@pytest.mark.parametrize("value", HOSTILE)
+def test_a_hostile_string_reads_back_as_itself(personal, value):
+    root = project(personal, {"tags": ["a"],
+                              "stages": {"spec": {"prompt": [{"blob": value},
+                                                             {"blob": value,
+                                                              "when": {"tags": ["a"]}}]}}})
+    config = load_config(root)
+    assert config.problems == [], config.problems
+    for origin in (False, True):
+        assert yaml.safe_load(render(config, origin=origin)) == config.values
+
+
+def test_values_of_unknown_keys_keep_their_type(personal):
+    import datetime
+    root = project(personal)
+    personal.project_file.write_text(
+        "id: p\nx-extra:\n  inf: .inf\n  ninf: -.inf\n  day: 2026-10-13\n"
+        "  when: 2026-10-13 01:02:03\n  big: 100000000000000000000\n  f: 1.5\n"
+        "  list: [.inf, 2026-10-13, '...']\n")
+    config = load_config(root)
+    assert config.values["x-extra"]["day"] == datetime.date(2026, 10, 13)
+    for origin in (False, True):
+        assert yaml.safe_load(render(config, origin=origin)) == config.values
+
+
+def test_config_show_prints_a_blob_of_three_dots(personal):
+    root = project(personal, {"stages": {"spec": {"prompt": [{"blob": "..."}]}}})
+    result = tcw(root, "config", "show")
+    assert result.code == 0, result
+    assert yaml.safe_load(result.out) == load_config(root).values

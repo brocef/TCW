@@ -580,6 +580,11 @@ class FsProjectRegistry(ProjectRegistry):
         except (OSError, yaml.YAMLError) as error:
             self._problem(path, f"invalid YAML: {error}")
             return None
+        except UnicodeDecodeError as error:
+            self._problem(path, f"is not valid UTF-8 text (byte "
+                                f"0x{error.object[error.start:error.start + 1].hex()} "
+                                f"at position {error.start})")
+            return None
         if not isinstance(raw, dict):
             self._problem(path, "config must be a mapping")
             return None

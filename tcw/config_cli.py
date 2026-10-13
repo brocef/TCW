@@ -1,7 +1,10 @@
 """`tcw config show [--origin]` — the configuration a command in this project
 actually runs with, every layer merged (TCW-72 Design 8).
 
-The output is YAML that reads back as exactly the merged values. Each list
+The output is YAML that reads back as the merged values, except that a
+value under a key ending in `-env` that is not shaped like an environment
+variable's name is printed as `(value not shown)`, since it is most likely a
+token pasted in by mistake (TCW-72 review finding C1). Each list
 entry is written on one line, so a comment can follow it: `--origin` adds one
 after every value and list entry, naming the layer it came from, and a
 trailing block of comments lists what a personal file set that was refused or
@@ -11,7 +14,6 @@ skipped. Comments change nothing a YAML reader sees.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
@@ -28,20 +30,30 @@ _PLAIN = re.compile(r"[A-Za-z0-9_./][A-Za-z0-9_./ -]*")
 
 def _scalar(value: Any) -> str:
     """One value on one line, as YAML reads it back. A string is written bare
-    when that reads back as the same string, and otherwise in JSON's
-    double-quoted form, which YAML reads the same way."""
+    when that reads back as the same string, and otherwise in YAML's own
+    double-quoted form, with every character outside plain ASCII escaped. Any
+    other value (a number, `.inf`, a date) is written as YAML writes it, so
+    it keeps its type."""
     import yaml
     if value is None:
         return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return json.dumps(value)
-    text = str(value)
-    if (_PLAIN.fullmatch(text) and not text.endswith(" ")
-            and yaml.safe_load(text) == text):
-        return text
-    return json.dumps(text)
+    if not isinstance(value, str):
+        return _one_line(yaml.safe_dump(value))
+    if _PLAIN.fullmatch(value) and not value.endswith(" "):
+        try:
+            if yaml.safe_load(value) == value:
+                return value
+        except yaml.YAMLError:
+            pass                       # `...` and the like: quoted below
+    return _one_line(yaml.safe_dump(value, default_style='"', width=float("inf")))
+
+
+def _one_line(dumped: str) -> str:
+    """A scalar `yaml.safe_dump` wrote, without the newline and the `...`
+    document end it adds."""
+    return dumped.split("\n", 1)[0]
 
 
 def _flow(value: Any) -> str:
@@ -121,6 +133,28 @@ class _Writer:
                 self.lines.append(f"{label} {text}{self.comment(here, value)}")
 
 
+#: What is printed in place of a value that is not shown.
+HIDDEN = "(value not shown)"
+
+
+def _secret(key: Any, value: Any) -> bool:
+    """A value under a key ending in `-env` that is not shaped like an
+    environment variable's name: most likely a token pasted where its
+    variable's name belongs, so it is never printed."""
+    from tcw.work.jira.config import VARIABLE
+    return (isinstance(key, str) and key.endswith("-env") and value is not None
+            and not (isinstance(value, str) and VARIABLE.fullmatch(value)))
+
+
+def _masked(value: Any) -> Any:
+    """`value` with every `_secret` in it replaced by `HIDDEN`."""
+    if isinstance(value, dict):
+        return {k: HIDDEN if _secret(k, v) else _masked(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_masked(v) for v in value]
+    return value
+
+
 def _set_aside(config) -> list[str]:
     """One comment line for each value a personal file set that was not used."""
     from tcw.config import dotted, shown_in
@@ -128,7 +162,7 @@ def _set_aside(config) -> list[str]:
     for kind, settings in (("skipped", config.skipped), ("refused", config.refused)):
         for s in settings:
             hidden = s.key_path and str(s.key_path[-1]).endswith("-env")
-            value = "(value not shown)" if hidden else _flow(s.value)
+            value = HIDDEN if hidden else _flow(_masked(s.value))
             where = shown_in(s.file, config.root) if s.file is not None else ""
             lines.append(f"# {kind}: {dotted(s.key_path)}: {value} "
                          f"({s.reason}, {where})")
@@ -137,9 +171,11 @@ def _set_aside(config) -> list[str]:
 
 def render(config, *, origin: bool) -> str:
     """The configuration's merged values as YAML; with `origin`, a comment on
-    each value naming its layer and the set-aside block after them."""
+    each value naming its layer and the set-aside block after them. A
+    `_secret` is printed as `HIDDEN`: the one value whose printed form is not
+    the effective value."""
     writer = _Writer(config, origin=origin)
-    writer.mapping(config.values, (), "")
+    writer.mapping(_masked(config.values), (), "")
     lines = writer.lines
     if origin:
         lines += _set_aside(config)

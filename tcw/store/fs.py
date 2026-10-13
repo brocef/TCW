@@ -170,11 +170,15 @@ def personal_file_tracked(root: Path) -> bool:
     (TCW-72 Design 10.3). Read only: the status command run here takes no
     lock and changes nothing. The file is tracked when it exists and the
     status reports it neither as untracked (`??`) nor as ignored (`!!`).
-    False when the file is absent or `root` is not in a repository."""
+    `--untracked-files=all` overrides a `status.showUntrackedFiles=no`
+    setting, under which git prints nothing for an untracked or ignored file,
+    just as for a tracked one. False when the file is absent or `root` is not
+    in a repository."""
     if not (root / LOCAL_CONFIG).is_file() or git_root(root) is None:
         return False
     done = _git(["git", "--no-optional-locks", "-C", str(root), "status",
-                 "--porcelain", "--ignored", "--", LOCAL_CONFIG],
+                 "--porcelain", "--ignored", "--untracked-files=all", "--",
+                 LOCAL_CONFIG],
                 capture_output=True, text=True)
     if done.returncode != 0:
         return False

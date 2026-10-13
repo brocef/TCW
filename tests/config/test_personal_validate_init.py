@@ -150,6 +150,22 @@ def test_validate_warns_when_the_local_file_is_tracked(tmp_path, monkeypatch):
     assert (result.code, result.out) == (0, WARNING + "\n"), result
 
 
+def test_validate_ignores_the_setting_that_hides_untracked_files(tmp_path, monkeypatch):
+    # Review finding C6: with `status.showUntrackedFiles=no`, git's status
+    # prints nothing for an untracked file, just as for a tracked one.
+    monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
+    root = repository(tmp_path / "p")
+    git(root, "config", "status.showUntrackedFiles", "no")
+    assert tcw(root, "init", "--id", "p").code == 0
+    (root / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    assert WARNING not in _validated(root).out           # untracked and ignored
+    (root / ".gitignore").write_text("")
+    assert WARNING not in _validated(root).out           # untracked, not ignored
+    git(root, "add", "-f", "tcw-config.local.yaml")
+    result = _validated(root)
+    assert (result.code, result.out) == (0, WARNING + "\n"), result
+
+
 def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     root = tmp_path / "p"
@@ -158,3 +174,20 @@ def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
     (root / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
     result = _validated(root)
     assert (result.code, result.out) == (0, ""), result
+
+
+# -- A broken tcw-config.yaml is one error (review finding C4) -------------------------
+
+
+import pytest
+
+
+@pytest.mark.parametrize("text", [b"id: p\nid: q\n", b"id: [p\n", b"- p\n", b"id: p\xff\n"])
+def test_a_broken_project_file_is_one_validate_error(personal, text):
+    (personal.root / "docs" / "work").mkdir(parents=True)
+    personal.project_file.write_bytes(text)
+    result = tcw(personal.root, "validate")
+    assert result.code == 1, result
+    errors = [l for l in result.out.splitlines() if l.startswith("error: ")]
+    assert len(errors) == 1, result.out
+    assert errors[0].startswith("error: tcw-config.yaml: "), errors
