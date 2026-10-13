@@ -182,7 +182,9 @@ def test_the_uncommitted_message_names_the_project_once(pq):
     (q / "docs" / "work" / "stray.md").write_text("x")
     with pytest.raises(Refused) as error:
         delegate("q", "T", None, None, here=p)
-    assert str(error.value).startswith("`q`'s work store has uncommitted changes")
+    message = str(error.value)
+    assert message.startswith("the work store of 'q' has uncommitted changes")
+    assert message.count("'q'") == 1
 
 
 def test_delegation_names_the_repository_holding_the_store(tmp_path, monkeypatch,
