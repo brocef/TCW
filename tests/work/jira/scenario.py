@@ -327,6 +327,9 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
     found = {i["key"] for i in client.search(jql, ["summary"])}
     ask("~ on TCW Project", ", ".join(f"{v}: {'found' if k in found else 'not found'}"
                                       for v, k in values.items()))
+    # Cleared again, so no project named `tcw-test` or `live` sees them.
+    for key in values.values():
+        client.edit_issue(key, {ids["project"]: None})
 
     # 7. `key in` naming a key that does not exist; and an unknown status.
     for question, jql in (("key in with a missing key",
@@ -357,6 +360,7 @@ def probe(project_root: Path, result: Result, *, other_parent: str,
     key = new_ticket(f"Probe item lag {stamp}")
     client.edit_issue(key, {ids["item"]: f"{backend.project}/{key}-probe"})
     lag = wait_for(f"key = {quote(key)} AND {field(ids['item'])} IS NOT EMPTY", {key})
+    client.edit_issue(key, {ids["item"]: None})
     ask("search lag", f"a new ticket: {result.lag:.1f}s (step 1); a ticket just given "
                       f"a TCW Item: {'not within the limit' if lag is None else f'{lag:.1f}s'}")
 

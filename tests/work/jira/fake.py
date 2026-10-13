@@ -452,9 +452,10 @@ class FakeJira:
                      "hasScreen": transition.shows_screen,
                      "to": {"name": transition.to, "id": str(
                          100 + self.projects[ticket.project].statuses.index(transition.to))}}
-            if transition.screen:
-                entry["fields"] = {f: {"required": required, "name": f}
-                                   for f, required in transition.screen.items()}
+            # Expanded, Jira always sends `fields`, empty without a screen and
+            # for a comment-only one (the TCW-71 live check).
+            entry["fields"] = {f: {"required": required, "name": f}
+                               for f, required in transition.screen.items()}
             offered.append(entry)
         return {"transitions": offered}
 
@@ -512,7 +513,8 @@ class FakeJira:
         kind = project.type_by(type_id)
         if kind is None:
             raise self._error(404, route, "issue type not found")
-        fields = self._fields_for(project, kind)
+        # Jira gives each entry its id twice, as `fieldId` and `key`.
+        fields = [{**f, "key": f["fieldId"]} for f in self._fields_for(project, kind)]
         start = int(query.get("startAt", 0))
         size = int(query.get("maxResults", 50))
         return {"startAt": start, "maxResults": size, "total": len(fields),

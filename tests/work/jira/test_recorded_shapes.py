@@ -39,7 +39,7 @@ _ISSUE = ["key", "fields.summary", "fields.status.name", "fields.created",
 #: is any element of a list. Writes are absent: their answers are read only as
 #: success or failure (client.py), and so are the error bodies.
 READS = {
-    "get-myself-200.json": ["accountId"],
+    "get-myself-200.json": ["accountId", "displayName"],
     "get-user-200.json": ["accountId", "displayName"],
     "get-issue-key-200.json": _ISSUE,
     # A search never asks for the description; `read_request` reads it directly.
@@ -47,7 +47,7 @@ READS = {
                                               if p != "fields.description"],
     "get-issue-key-transitions-200.json": [
         "transitions.*.id", "transitions.*.name", "transitions.*.to.name",
-        "transitions.*.to.id", "transitions.*.hasScreen"],
+        "transitions.*.to.id", "transitions.*.hasScreen", "transitions.*.fields"],
     "get-issue-key-comment-200.json": [
         "total", "comments.*.created", "comments.*.body",
         "comments.*.author.accountId", "comments.*.author.displayName"],
@@ -56,8 +56,9 @@ READS = {
         "issueTypes.*.subtask"],
     "get-project-project-statuses-200.json": ["*.name", "*.statuses.*.name"],
     "get-issue-createmeta-project-issuetypes-id-200.json": [
-        "total", "fields.*.fieldId", "fields.*.name", "fields.*.schema.type",
-        "fields.*.allowedValues.*.value"],
+        "total", "fields.*.fieldId", "fields.*.key", "fields.*.name",
+        "fields.*.schema.type", "fields.*.allowedValues.*.value",
+        "fields.*.allowedValues.*.name"],
     "get-issue-key-editmeta-200.json": [
         "fields.summary", "fields.labels", "fields.assignee", "fields.parent",
         "fields.priority", "fields.{project}", "fields.{item}", "fields.{effort}",
@@ -69,6 +70,11 @@ READS = {
         "statuses.*.name"],
     "post-issue-201.json": ["key"],
 }
+
+#: Read, but never seen on TCWTEST, so not compared: `nextPageToken` (no
+#: search there ran past one page), a transition's
+#: `links.*.fromStatusReference` (its workflow has only global transitions), and
+#: the field entries of a transition screen (its one screen lists none).
 
 #: Paths the backend reads only when a value is set, so a recorded answer may
 #: lack them; every other listed path must be in the recording too, which
