@@ -828,6 +828,9 @@ class Finding:
 
     def __str__(self) -> str:   # the stdout line of this section
         return f"{self.severity}: {self.where}: {self.message}"
+    # [Implement finding, 2026-10-13] `__str__` joins a message that spans
+    # several lines (a YAML parser's, for one) onto one line, so that each
+    # finding is one line of stdout as this section requires.
 ```
 
 - `validate()` returns `list[Finding]` in place of `list[str]`
@@ -1249,6 +1252,10 @@ spec, Design 15.1) where the case needs Jira's own answers.
       → 1 (the table drives this case, so a command added later is covered);
       `tcw --version` and `tcw --help` → 0 there, and an argument that does not
       parse → 2 there;
+      **[Implement finding, 2026-10-13]** `tcw work procedure` is also
+      excepted: it prints TCW's own procedure text outside a project and exits
+      0, because the `documentation-sync` skill reads it in projects that do
+      not use TCW (plan choice 3). The table marks the row.
     - `tcw capabilities set ns/do-a-thing --field Subject=a,b` with `a` and `b`
       both registered terms → 0, and `capabilities show` then lists both
       subjects; `--field Status=Supported --field Status=Missing` → 2;
@@ -1362,6 +1369,12 @@ spec, Design 15.1) where the case needs Jira's own answers.
     `FsCapabilitiesStore` or the module functions defined among them; every
     `raise` there names `UsageError`, `Refused`, `NotFound` or a subclass of one.
     Mutation check: restoring one `raise ValueError` makes it fail.
+    **[Implement finding, 2026-10-13]** The test also allows `RefError` and
+    `AmbiguousRef` (themselves subclasses of `NotFound` and `UsageError`),
+    `StaleRevision` (a conflict `tcw serve` answers with its own status, not a
+    command-line exit), `StoreLocationUnusable` (raised while a store opens,
+    before any operation), `BackendError`, and a bare re-raise. The checked
+    region runs from `_revision` to the end of `FsCapabilitiesStore`.
 26. **Names after a late failure** (Design 1.8). With the stub's `create`
     raising `BackendError` that carries `fx/2026-10-02-x` after creating the
     folder, `tcw work new "x"` prints exactly that slug on stdout and exits 1.
