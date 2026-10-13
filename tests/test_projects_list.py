@@ -107,3 +107,53 @@ def test_the_2x_key_is_an_error_naming_the_guide(graph, monkeypatch, capsys):
     text = out + err
     assert "connected-projects" in text and "'projects'" in text
     assert "docs/migration-guide-2.8-to-3.0.0.md" in text
+
+
+# -- review fix R1: every command refuses the 2.x key ------------------------------
+
+
+@pytest.mark.parametrize("argv", [
+    ("projects", "list"),
+    ("provision",),
+    ("work", "list"),
+    ("work", "new", "x", "--project", "c1"),
+    ("taxonomy", "list"),
+])
+def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):
+    _rename_key(graph, "projects", "connected-projects")
+    code, out, err = run(monkeypatch, capsys, graph, *argv)
+    assert (code, out) == (1, ""), (out, err)
+    assert err.count("\n") == 1, err
+    assert err.startswith(f"tcw {' '.join(argv[:2]) if argv[0] != 'provision' else 'provision'}"), err
+    assert "connected-projects" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+
+
+def test_provision_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
+    """A child in the graph still holding the old key is reported by
+    `provision`, which reads every connected project's declarations."""
+    child = graph.parent / "c1"
+    _rename_key(child, "projects", "connected-projects")
+    code, out, err = run(monkeypatch, capsys, graph, "provision", "--dry-run")
+    assert (code, out) == (1, ""), err
+    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+
+
+def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
+    up = graph.parent / "up"
+    path = up / "tcw-config.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["connected-projects"] = {"children": {"zz": "../zz"}}
+    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    assert code == 0, err
+
+
+def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
+    """An invalid child ID is an error, not a project left off the list."""
+    path = graph / "tcw-config.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projects"]["children"]["Bad ID"] = "../c1"
+    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
+    assert (code, out) == (1, ""), (out, err)
+    assert err.startswith("tcw projects list: ") and "children key" in err, err

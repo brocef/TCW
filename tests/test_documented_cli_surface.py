@@ -296,7 +296,19 @@ KEY_SPELLING = re.compile(
 # The top-level key TCW-73 renamed to `projects`.
 from tcw.store.base import RETIRED_PROJECTS_KEY  # noqa: E402
 
-TOP_KEY_SPELLING = re.compile(rf"\b{re.escape(RETIRED_PROJECTS_KEY)}\b")
+# Not inside a longer name: a capability slug such as `list-connected-projects`,
+# a path through one, or a heading's `#connected-projects` anchor is not the key.
+TOP_KEY_SPELLING = re.compile(rf"(?<![\w/#-]){re.escape(RETIRED_PROJECTS_KEY)}(?![\w-])")
+
+
+def test_the_top_key_pattern_matches_the_key_and_not_a_slug():
+    for text in ("the `connected-projects` key", "connected-projects:\n  children:",
+                 "connected-projects."):
+        assert TOP_KEY_SPELLING.search(text), text
+    for text in ("cli/list-connected-projects", "declare-a-connected-projects-home",
+                 "docs/capabilities/cli/connected-projects/meta.yaml",
+                 "connected-projectsx", "(#connected-projects)"):
+        assert not TOP_KEY_SPELLING.search(text), text
 
 
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))

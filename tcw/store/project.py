@@ -15,7 +15,7 @@ from tcw.findings import Finding
 from tcw.store.base import (
     ConnectedProject, Project, ProjectOverride, ProjectRegistry,
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
-    MIGRATION_GUIDE, RETIRED_PROJECTS_KEY, parse_connected_entry,
+    parse_connected_entry, retired_key_problem,
 )
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import load as _load_named_yaml
@@ -619,9 +619,9 @@ class FsProjectRegistry(ProjectRegistry):
         # problem in them must not refuse a command in a project that only reads
         # it. Everything above — the file, its id — is still checked.
         before_connections = len(self._problems)
-        if RETIRED_PROJECTS_KEY in raw:
-            self._problem(path, f"the key '{RETIRED_PROJECTS_KEY}' was renamed to "
-                                f"'projects' in TCW 3.0 — see {MIGRATION_GUIDE}")
+        retired = retired_key_problem(raw)
+        if retired:
+            self._problem(path, retired)
         connected = raw.get("projects")
         if connected is None:
             connected = {}

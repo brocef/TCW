@@ -32,7 +32,7 @@ from tcw.output import shown as _shown
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
-    RETIRED_CAP_FIELDS,
+    RETIRED_CAP_FIELDS, retired_key_problem,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
     CapabilityDetail, RefError, slugify, StaleRevision, parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
@@ -224,6 +224,28 @@ def find_project_root(start: Path | None = None) -> Path | None:
         if d == d.parent:                  # filesystem-root fixpoint
             return None
         d = d.parent
+
+
+def refuse_retired_config(start: Path | None = None) -> None:
+    """Refuse when the current project's own `tcw-config.yaml` still holds a key
+    TCW 3.0 retired (TCW-73 Design 9.3): a config error, exit 1, naming the
+    migration guide. Run once for every command, before the command reads
+    anything, so no command treats the old key as "no connected projects".
+
+    Outside a project, or with a config that does not parse, it says nothing:
+    the command's own reading reports those. Another project's config is not
+    read here, so an upstream's own connections stay its own business.
+    """
+    root = find_project_root(start)
+    if root is None:
+        return
+    try:
+        config = load_config(root / SENTINEL)
+    except (ValueError, OSError):
+        return
+    retired = retired_key_problem(config)
+    if retired:
+        raise BackendError(f"{SENTINEL}: {retired}")
 
 
 def find_component_project(component: str, start: Path | None = None) -> Path | None:
@@ -3199,6 +3221,9 @@ def declared_connected_projects(
         config = load_config(project_root / SENTINEL)
     except ValueError:
         return [], []            # likewise: it declares no connected project
+    retired = retired_key_problem(config)
+    if retired:
+        return [], [retired]     # read as "declares nothing", it would report success
     connected = config.get("projects") if isinstance(config, dict) else None
     if not isinstance(connected, dict):
         return [], []

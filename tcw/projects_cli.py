@@ -22,7 +22,10 @@ def connected(root: Path) -> list[dict]:
     """This project and the ones it is connected to, in the order `list`
     prints them, each as `{id, relation, present, path}`."""
     from tcw.store.project import FsProjectRegistry
-    registry = FsProjectRegistry.open(root)
+    # A registry problem — an invalid ID, a parent that does not name this
+    # project back — is an error, as `validate` reports it, never a project
+    # quietly left off the list.
+    registry = FsProjectRegistry.open(root).require_valid()
     here = registry.current
     rows = [{"id": here.id, "relation": "current", "present": True,
              "path": str(here.locator)}]

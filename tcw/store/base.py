@@ -470,6 +470,15 @@ RETIRED_PROJECTS_KEY = "connected-projects"
 MIGRATION_GUIDE = "docs/migration-guide-2.8-to-3.0.0.md"  # removed keys and fields
 
 
+def retired_key_problem(config: object) -> str | None:
+    """The config error for a `tcw-config.yaml` mapping that still holds the 2.x
+    `connected-projects` key, or None. One wording wherever it is reported."""
+    if isinstance(config, dict) and RETIRED_PROJECTS_KEY in config:
+        return (f"the key '{RETIRED_PROJECTS_KEY}' was renamed to 'projects' in "
+                f"TCW 3.0 — see {MIGRATION_GUIDE}")
+    return None
+
+
 @dataclass
 class Capability:
     """A single user-story capability, addressed by its folder path.

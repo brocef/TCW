@@ -32,7 +32,7 @@ of the reader: only its own config is read, and problems in its connections are
 its own. A project declared as its own upstream, or declared upstream while also
 reachable as family, is an error. A former child still naming a parent that now
 reads it as an upstream is a warning, so neither project is blocked mid-change.
-The 2.x key `connected-projects` is an error naming
+The key 2.x used before `projects` was named is an error naming
 `docs/migration-guide-2.8-to-3.0.0.md`.
 
 **Stores.** Validation tells a store's three failure modes apart: a

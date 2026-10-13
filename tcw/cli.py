@@ -17,7 +17,7 @@ from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    declared_repository, find_project_root, git_root, init,
+    declared_repository, find_project_root, git_root, init, refuse_retired_config,
     provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
@@ -562,6 +562,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     command = getattr(args, "_command", "tcw")
     try:
+        # One place for every command: a config still holding the 2.x key is
+        # refused before anything reads it (Design 9.3). `validate` reports it
+        # as one of its findings instead.
+        if args.group != "validate":
+            refuse_retired_config()
         return args.func(args)
     except TcwError as error:
         # A failure after something was created still names it, on stdout
