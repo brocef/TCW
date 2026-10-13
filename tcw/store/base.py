@@ -20,6 +20,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 from tcw.errors import NotFound, UsageError
+from tcw.findings import Finding
 
 
 class RefError(NotFound):
@@ -295,8 +296,9 @@ class ProjectRegistry(ABC):
         """
 
     @abstractmethod
-    def check(self) -> list[str]:
-        """Return graph/configuration problems; empty means valid.
+    def check(self) -> "list[Finding]":
+        """Return graph/configuration problems as error findings, each
+        `where` the config file that holds it; empty means valid.
 
         Problems only. A project that is declared but not reachable here is not
         one — see ``unreachable``.
@@ -387,7 +389,7 @@ class TaxonomyStore(ABC):
         """Substring search over names + descriptions, local + inherited."""
 
     @abstractmethod
-    def check(self, identifier: str | None = None) -> list[str]:
+    def check(self, identifier: str | None = None) -> "list[Finding]":
         """Validate the taxonomy, optionally limited to one object."""
 
     @abstractmethod
@@ -569,9 +571,9 @@ class CapabilitiesStore(ABC):
 
     @abstractmethod
     def check(self, taxonomy: "TaxonomyStore | None" = None,
-              identifier: str | None = None) -> list[str]:
+              identifier: str | None = None) -> "list[Finding]":
         """Validate identifiers, metadata vocabulary, federation, and
-        (cross-component) Subject/Feature refs."""
+        (cross-component) Subject/Feature refs, as error findings."""
 
     @abstractmethod
     def get_capability_detail(self, identifier: str) -> "CapabilityDetail" | None:

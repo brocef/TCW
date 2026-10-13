@@ -160,7 +160,7 @@ def test_a_self_upstream_is_a_problem(tmp_path):
     config(tmp_path / "app", "id: app\nconnected-projects:\n  upstream:\n"
                               "    app: .\n")
     assert any("own upstream" in p
-               for p in FsProjectRegistry.open(tmp_path / "app").check())
+               for p in map(str, FsProjectRegistry.open(tmp_path / "app").check()))
 
 
 def test_an_upstream_that_is_also_a_child_is_a_problem(tmp_path):
@@ -168,7 +168,7 @@ def test_an_upstream_that_is_also_a_child_is_a_problem(tmp_path):
                               "    core: core\n  upstream:\n    core: core\n")
     config(tmp_path / "app" / "core", "id: core\nconnected-projects:\n  parent:\n"
                                        "    app: ..\n")
-    problems = FsProjectRegistry.open(tmp_path / "app").check()
+    problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "app").check()]
     assert any("declared upstream" in p and "core" in p for p in problems), problems
 
 
@@ -181,7 +181,7 @@ def test_an_upstream_that_is_also_a_sibling_is_a_problem(tmp_path):
                                   "    r: ..\n  upstream:\n    core: ../core\n")
     config(tmp_path / "r" / "core", "id: core\nconnected-projects:\n  parent:\n"
                                      "    r: ..\n")
-    problems = FsProjectRegistry.open(tmp_path / "r" / "a").check()
+    problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "r" / "a").check()]
     assert any("declared upstream" in p and "core" in p for p in problems), problems
 
 
@@ -192,7 +192,7 @@ def test_an_upstream_that_is_also_a_grandparent_is_a_problem(tmp_path):
     config(tmp_path / "gp" / "mid" / "kid", "id: kid\nconnected-projects:\n"
                                              "  parent:\n    mid: ..\n"
                                              "  upstream:\n    gp: ../..\n")
-    problems = FsProjectRegistry.open(tmp_path / "gp" / "mid" / "kid").check()
+    problems = [str(f) for f in FsProjectRegistry.open(tmp_path / "gp" / "mid" / "kid").check()]
     assert any("declared upstream" in p and "'gp'" in p for p in problems), problems
 
 
@@ -208,7 +208,7 @@ def test_two_declarers_of_different_folders_name_both(tmp_path):
     config(tmp_path / "core2", "id: core\n")
     config(root / "b", "id: b\nconnected-projects:\n  parent:\n"
                         "    r: ..\n  upstream:\n    core: ../../core2\n")
-    problems = FsProjectRegistry.open(root).check()
+    problems = [str(f) for f in FsProjectRegistry.open(root).check()]
     duplicate = [p for p in problems if "duplicate project id 'core'" in p]
     assert duplicate and "'a'" in duplicate[0] and "'b'" in duplicate[0], problems
 
@@ -238,7 +238,7 @@ def test_the_reverse_migration_order_still_fails(tmp_path):
                             "    core: core\n")
     config(tmp_path / "r" / "core", "id: core\n")
     assert any("nonreciprocal connection" in p
-               for p in FsProjectRegistry.open(tmp_path / "r").check())
+               for p in map(str, FsProjectRegistry.open(tmp_path / "r").check()))
 
 
 # ── reading through an upstream, from the CLI ────────────────────────────────

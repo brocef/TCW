@@ -379,7 +379,7 @@ def test_check_reports_escaping_ref_as_dangling(tmp_path):
     write_term(root, "user", name="User")
     write_term(root, "feature", name="Feature", kind="Feature",
                vocabulary=["../../capabilities/thing"])
-    problems = FsTaxonomyStore.open(root).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("dangling vocabulary" in p for p in problems)
 
 
@@ -508,7 +508,7 @@ def test_check_clean(tmp_path):
 def test_check_dangling_relatesto(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "thing", name="Thing", relates_to=["nope/missing"])
-    problems = FsTaxonomyStore.open(root).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("dangling" in p for p in problems)
 
 
@@ -521,7 +521,7 @@ def test_check_feature_vocabulary_refs(tmp_path):
                kind="Feature", vocabulary=["user-authentication"])
     write_term(root, "ghost-feature", name="Ghost Feature",
                kind="Feature", vocabulary=["ghost"])
-    problems = FsTaxonomyStore.open(root).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("password-reset" in p and "expected Vocabulary" in p for p in problems)
     assert any("ghost-feature" in p and "dangling vocabulary" in p for p in problems)
 
@@ -529,7 +529,7 @@ def test_check_feature_vocabulary_refs(tmp_path):
 def test_check_feature_requires_vocabulary_refs(tmp_path):
     root = node(tmp_path, "repo")
     write_term(root, "user-authentication", name="User Authentication", kind="Feature")
-    problems = FsTaxonomyStore.open(root).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(root).check()]
     assert any("Feature requires at least one vocabulary ref" in p for p in problems)
 
 
@@ -540,7 +540,7 @@ def test_check_ambiguous_relatesto(tmp_path):
     connect_sources(cons, a, b)
     write_config(cons, "extends:\n  - a\n  - b\n")
     write_term(cons, "host", relates_to=["Term"])
-    problems = FsTaxonomyStore.open(cons).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
     assert any("ambiguous" in p for p in problems)
 
 
@@ -556,7 +556,7 @@ def test_check_duplicate_project_id(tmp_path):
 def test_check_alias_collides_with_local_top_level(tmp_path):
     cons, _ = consumer_with_shared(tmp_path, alias="shared")
     write_term(cons, "shared", name="Shared (local)")
-    problems = FsTaxonomyStore.open(cons).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(cons).check()]
     assert any("collides" in p for p in problems)
 
 
@@ -566,7 +566,7 @@ def test_check_cycle(tmp_path):
     connect_sources(a, b)
     write_config(a, "extends:\n  - b\n")
     write_config(b, "extends:\n  - a\n")
-    problems = FsTaxonomyStore.open(a).check()
+    problems = [str(f) for f in FsTaxonomyStore.open(a).check()]
     assert any("cycle" in p for p in problems)
 
 
@@ -990,7 +990,7 @@ def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
 
     st = FsTaxonomyStore.open(cons)
     assert st.list_all() == []
-    problems = st.check()
+    problems = [str(f) for f in st.check()]
     assert len(problems) == 1, problems
     for part in ("docs/taxonomy/config.yaml: ", "no longer read", "taxonomy.extends",
                  "tcw-config.yaml", "then delete the file",
@@ -1014,12 +1014,13 @@ def test_a_malformed_leftover_store_config_is_still_reported(tmp_path):
     cons = node(tmp_path, "consumer")
     (cons / "docs" / "taxonomy" / "config.yaml").write_text("extends: [unclosed\n")
 
-    problems = validate(cons)
+    notes: list[str] = []
+    problems = validate(cons, notes=notes)
     parse_errors = [p for p in problems
-                    if p.startswith("docs/taxonomy/config.yaml: ")
-                    and "no longer read" not in p]
+                    if p.where == "docs/taxonomy/config.yaml"
+                    and "no longer read" not in p.message]
     assert len(parse_errors) == 1, problems
-    assert "(component checks skipped: YAML problem above)" in problems, problems
+    assert any("checks skipped" in n for n in notes), notes
 
 
 def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(tmp_path):

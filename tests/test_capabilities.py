@@ -208,7 +208,7 @@ def test_set_subject_comma_replaces(tmp_path):
 def test_check_resolves_each_subject(tmp_path):
     root = node(tmp_path)
     write_cap(root, "x", Status="Supported", Subject=["user", "ghost"])
-    problems = FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))]
     assert any("Subject" in p and "ghost" in p for p in problems)
     assert not any("Subject" in p and "'user'" in p for p in problems)
 
@@ -227,13 +227,13 @@ def test_check_dangling_superseded(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/old", Status="Supported",
               Lifecycle="Deprecated", **{"Superseded by": "routes/ghost"})
-    assert any("Superseded by" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("Superseded by" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_bad_subject_ref(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Subject="nope/missing")
-    problems = FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=StubTax("user"))]
     assert any("Subject" in p and "dangling" in p for p in problems)
 
 
@@ -246,33 +246,33 @@ def test_check_feature_ref_ok(tmp_path):
 def test_check_bad_feature_ref(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Feature="user")
-    problems = FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=FeatureTax())]
     assert any("Feature" in p and "expected Feature" in p for p in problems)
 
 
 def test_check_ambiguous_feature_ref(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Feature="user-authentication")
-    problems = FsCapabilitiesStore.open(root).check(taxonomy=AmbiguousFeatureTax())
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(taxonomy=AmbiguousFeatureTax())]
     assert any("Feature" in p and "ambiguous" in p for p in problems)
 
 
 def test_check_unknown_field(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Bogus="y")
-    assert any("unknown field" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("unknown field" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_missing_required_when_field(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Partial")
-    assert any("Partial requires Gaps" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("Partial requires Gaps" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_unresolved_role_slug(tmp_path):
     root = node(tmp_path)
     write_cap(root, "routes/x", Status="Supported", Roles="roles/ghost")
-    assert any("Roles" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("Roles" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_missing_id(tmp_path):
@@ -281,7 +281,7 @@ def test_check_missing_id(tmp_path):
     d.mkdir(parents=True)
     (d / "meta.yaml").write_text("name: X\nStatus: Supported\n")
     (d / "description.md").write_text("")
-    assert any("missing id" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("missing id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_check_duplicate_id(tmp_path):
@@ -293,7 +293,7 @@ def test_check_duplicate_id(tmp_path):
     m = yaml.safe_load(mb.read_text())
     m["id"] = yaml.safe_load((root / "docs/capabilities/a/meta.yaml").read_text())["id"]
     mb.write_text(yaml.safe_dump(m))
-    assert any("duplicate id" in p for p in FsCapabilitiesStore.open(root).check())
+    assert any("duplicate id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
 def test_cli_check_with_taxonomy(tmp_path, monkeypatch, capsys):

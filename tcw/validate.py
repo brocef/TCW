@@ -14,8 +14,12 @@ or a single `[path]`):
       error or a record of the wrong shape (they re-load the file and raise).
   (d) when (a) skipped (c): each tree store's open failure or leftover pre-2.5.0
       store config file, so malformed YAML cannot hide either.
-  (e) the work checks (TCW-70 Design 10.1), each an `error:`, `warning:` or
-      `unresolved:` line. Only errors fail the command.
+  (e) the work checks (TCW-70 Design 10.1).
+
+Every problem is a `Finding` (TCW-73 Design 6.3) with a severity of `error`,
+`warning` or `unresolved`; only errors fail the command. What is said about
+the run rather than found in it — checks skipped, files not read — goes to
+the `notes` list a caller passes, for stderr.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from typing import Literal
 
 import yaml
 
+from tcw.findings import Finding
 from tcw.refs import resolve_tcw_ref
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
@@ -248,7 +253,12 @@ def _configured_path_problem(node_root: Path, comp: str) -> str | None:
     return None
 
 
-def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> list[str]:
+def _config_file(node_root: Path) -> str:
+    return _rel(node_root / "tcw-config.yaml", node_root)
+
+
+def _run_check(node_root: Path, comp: str,
+               identifier: str | None = None) -> list[Finding]:
     """One component's `check()`, or the reason its store could not be opened.
 
     Opening is guarded for every component, not just work. A store that is
@@ -270,8 +280,8 @@ def _run_check(node_root: Path, comp: str, identifier: str | None = None) -> lis
         else:
             problems = store.check(identifier)
     except ValueError as e:
-        return [f"{comp} check: {e}"]
-    return [f"{comp} check: {p}" for p in problems]
+        return [Finding("error", _config_file(node_root), f"{comp}: {e}")]
+    return problems
 
 
 def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
@@ -286,17 +296,17 @@ def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
 
 
 def validate(node_root: Path, path: Path | None = None, *,
-             target: ValidationTarget | None = None) -> list[str]:
-    """Return a flat list of problem strings ([] = clean node)."""
+             target: ValidationTarget | None = None,
+             notes: list[str] | None = None) -> list[Finding]:
+    """Every finding for the node ([] = clean). Lines about the run itself are
+    appended to `notes` when given."""
+    notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
 
     if path is not None and target is not None:
         raise ValueError("path and target are mutually exclusive validation selectors")
 
-    graph_problems = [
-        f"project graph: {problem}"
-        for problem in FsProjectRegistry.open(node_root).check()
-    ]
+    graph_problems = FsProjectRegistry.open(node_root).check()
     if graph_problems:
         return graph_problems
     registry = FsProjectRegistry.open(node_root).require_valid()
@@ -311,10 +321,10 @@ def validate(node_root: Path, path: Path | None = None, *,
     if target is not None:
         roots = _target_roots(node_root, target)
         if not roots:
-            return [f"{target.axis} target: no such object '{target.ref}'"]
+            return [Finding("error", target.ref, f"no such {target.axis} object")]
     else:
         roots = [r for r in _scan_roots(node_root, path, trees) if r.exists()]
-    problems: list[str] = []
+    problems: list[Finding] = []
     yaml_syntax_error = False
 
     # (a) YAML well-formedness, and the shape of the files TCW writes
@@ -339,20 +349,21 @@ def validate(node_root: Path, path: Path | None = None, *,
                 continue
             text, unreadable = _read_text(f)
             if unreadable is not None:
-                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                problems.append(Finding("error", _rel(f, node_root), unreadable))
                 # The component checks would re-read it and fail the same way.
                 yaml_syntax_error = True
                 continue
             try:
                 data = _load_named_yaml(text, f, _UniqueKeyLoader)
             except yaml.YAMLError as e:
-                problems.append(f"{_rel(f, node_root)}: {e}")
+                problems.append(Finding("error", _rel(f, node_root), str(e)))
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
                     yaml_syntax_error = True
                 continue
             if f.name in OWNED_YAML_NAMES and data is not None and not isinstance(data, dict):
-                problems.append(f"{_rel(f, node_root)}: expected a mapping, "
-                                f"found {type(data).__name__}")
+                problems.append(Finding("error", _rel(f, node_root),
+                                        f"expected a mapping, found "
+                                        f"{type(data).__name__}"))
                 # Same reason a syntax error skips (c): the component check
                 # re-reads this file through `load_yaml`, which now raises on it.
                 yaml_syntax_error = True
@@ -362,7 +373,7 @@ def validate(node_root: Path, path: Path | None = None, *,
         for f in _iter(root, "*.md"):
             raw, unreadable = _read_text(f)
             if unreadable is not None:
-                problems.append(f"{_rel(f, node_root)}: {unreadable}")
+                problems.append(Finding("error", _rel(f, node_root), unreadable))
                 continue
             text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):
@@ -374,13 +385,16 @@ def validate(node_root: Path, path: Path | None = None, *,
                 # not counted (TCW-70 Design 12.1).
                 level, _, why = r.reason.partition("unresolved: ")
                 if not level and why:
-                    problems.append(f"unresolved: {_rel(f, node_root)}: tcw:// {uri} → {why}")
+                    problems.append(Finding("unresolved", _rel(f, node_root),
+                                            f"tcw:// {uri} → {why}"))
                 else:
-                    problems.append(f"{_rel(f, node_root)}: tcw:// {uri} → {r.reason}")
+                    problems.append(Finding("error", _rel(f, node_root),
+                                            f"tcw:// {uri} → {r.reason}"))
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
     if yaml_syntax_error:
-        problems.append("(component checks skipped: YAML problem above)")
+        notes.append("taxonomy and capabilities checks skipped: a YAML problem "
+                     "above stops them")
     else:
         components = ([target.axis] if target is not None
                       else _components_to_check(node_root, path, trees))
@@ -389,7 +403,8 @@ def validate(node_root: Path, path: Path | None = None, *,
             # broken" ahead of whatever the store it fell back to has to say.
             configured = _configured_path_problem(node_root, comp)
             if configured is not None:
-                problems.append(f"{comp} path: {configured}")
+                problems.append(Finding("error", _config_file(node_root),
+                                        f"{comp}.path: {configured}"))
             problems += _run_check(node_root, comp, target.ref if target else None)
 
     # (d) With the component checks skipped by a YAML problem, each tree store
@@ -399,28 +414,21 @@ def validate(node_root: Path, path: Path | None = None, *,
     if yaml_syntax_error and path is None and target is None:
         for comp, root in trees.items():
             if isinstance(root, ValueError):
-                problems.append(f"{comp} check: {root}")
+                problems.append(Finding("error", _config_file(node_root),
+                                        f"{comp}: {root}"))
                 continue
             store = STORE_CLASSES[comp].open(node_root)
-            problems += [f"{comp} check: {p}" for p in store._legacy_config_problems()]
+            problems += store._legacy_config_problems()
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
     # work store, and an unreadable item is one of their own findings.
     if target is None and _checks_work(node_root, path):
         findings, note = _work_findings(node_root, registry)
-        problems += [str(f) for f in findings]
+        problems += findings
         if note is not None:
-            problems.append(f"note: {note}")
+            notes.append(note)
 
     return problems
-
-
-#: The prefixes of `validate` lines that do not fail the command.
-NOT_FAILING = ("warning: ", "unresolved: ", "note: ")
-
-
-def is_failure(problem: str) -> bool:
-    return not problem.startswith(NOT_FAILING)
 
 
 # ---------------------------------------------------------------------------
@@ -488,7 +496,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     return findings, note
 
 
-def _shared_work_paths(registry) -> list[str]:
+def _shared_work_paths(registry) -> list[Finding]:
     """Two filesystem-mode projects in the graph whose work paths are the same
     folder, named with both IDs and the path."""
     from tcw.store.fs import SENTINEL, load_config
@@ -510,7 +518,8 @@ def _shared_work_paths(registry) -> list[str]:
             continue
         previous = seen.get(path)
         if previous is not None and previous != project.id:
-            return [f"project graph: projects '{previous}' and '{project.id}' "
-                    f"resolve to the same work path: {path}"]
+            return [Finding("error", str(root / SENTINEL),
+                            f"projects '{previous}' and '{project.id}' resolve "
+                            f"to the same work path: {path}")]
         seen[path] = project.id
     return []

@@ -423,7 +423,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     registry_problems = registry.check()
     if registry_problems:
         for problem in registry_problems:
-            print(problem, file=sys.stderr)
+            print(str(problem), file=sys.stderr)
         print(f"{len(registry_problems)} project graph problem(s).", file=sys.stderr)
         return 1
     # Reported, never counted, and never fatal. These are declarations this
@@ -451,7 +451,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
               f"at {registry.get(entry.id).locator}", file=sys.stderr)
     for warning in registry.warnings():
         print(f"warning: {warning}", file=sys.stderr)
-    from tcw.validate import is_failure, validate
+    from tcw.validate import validate
     if args.remote and not _jira_mode(node_root):
         print("tcw validate: --remote checks a Jira-mode project, and this project's "
               "work.backend is filesystem", file=sys.stderr)
@@ -461,10 +461,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     problems: list[str] = []
     failures = 0
     for project in projects:
-        project_problems = validate(Path(project.locator), args.path)
-        # Warnings, unresolved references and notes are printed and never
-        # counted: only errors fail the command (TCW-70 Design 10.2).
-        failures += sum(1 for problem in project_problems if is_failure(problem))
+        notes: list[str] = []
+        findings = validate(Path(project.locator), args.path, notes=notes)
+        # Warnings and unresolved references are printed and never counted:
+        # only errors fail the command (TCW-70 Design 10.2).
+        failures += sum(1 for finding in findings if finding.severity == "error")
+        project_problems = [str(finding) for finding in findings] + notes
         if len(projects) > 1:
             project_problems = [f"[{project.id}] {problem}" for problem in project_problems]
         problems.extend(project_problems)

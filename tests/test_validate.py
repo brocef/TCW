@@ -77,11 +77,12 @@ def test_valid_tcw_link_ok(tmp_path):
 def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
     root = node(tmp_path)
     (root / "docs" / "capabilities" / "meta.yaml").write_text("a: [unterminated\n")
-    problems = validate(root)
-    assert any("meta.yaml" in p for p in problems)
-    assert any("component checks skipped" in p for p in problems)
-    # No taxonomy/capabilities check ran.
-    assert not any(p.startswith(("taxonomy check", "capabilities check")) for p in problems)
+    notes: list[str] = []
+    findings = validate(root, notes=notes)
+    assert any("meta.yaml" in f.where for f in findings)
+    assert any("checks skipped" in n for n in notes), notes
+    # No taxonomy/capabilities check ran: the YAML error is the only finding.
+    assert len(findings) == 1, findings
 
 
 # ── (b) tcw:// links ─────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ def test_bad_yaml_syntax_does_not_crash_and_skips_checks(tmp_path):
 def test_dangling_link_is_a_problem(tmp_path):
     root = node(tmp_path)
     _body(root, "signin", "Broken [x](tcw://C/does-not-exist).")
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
     assert any("tcw://C/does-not-exist" in p for p in problems)
 
 
@@ -111,14 +112,14 @@ def test_upward_epic_link_validates(tmp_path):
 def test_link_to_unregistered_project_names_the_cause(tmp_path):
     root = node(tmp_path)
     _body(root, "signin", "Bad [x](tcw://W/ghost/2026-01-01-x).")
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
     assert any("no such project in this graph: ghost" in p for p in problems)
 
 
 def test_malformed_link_is_a_problem(tmp_path):
     root = node(tmp_path)
     _body(root, "signin", "Bad [x](tcw://no-axis-here).")
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
     assert any("tcw://no-axis-here" in p for p in problems)
 
 
@@ -149,14 +150,15 @@ def test_component_check_failure_surfaces(tmp_path):
     # A Feature with no vocabulary ref -> taxonomy check() flags it.
     _vocabless_feature(root, "search")
     problems = validate(root)
-    assert any(p.startswith("taxonomy check:") for p in problems)
+    assert any(p.where == "docs/taxonomy/search" and "vocabulary" in p.message
+               for p in problems), problems
 
 
 def test_path_narrows_scan_and_runs_that_check(tmp_path):
     root = node(tmp_path)
     # Break taxonomy, but scan only docs/capabilities -> taxonomy check not run.
     _vocabless_feature(root, "search")
-    problems = validate(root, root / "docs" / "capabilities")
+    problems = [str(f) for f in validate(root, root / "docs" / "capabilities")]
     assert not any(p.startswith("taxonomy check:") for p in problems)
 
 
@@ -236,8 +238,7 @@ def test_cli_recurses_into_descendant_without_work_store(tmp_path, monkeypatch, 
     monkeypatch.chdir(root)
     assert main(["validate"]) == 1
     error = capsys.readouterr().err
-    assert "[child]" in error
-    assert "taxonomy check:" in error
+    assert "[child] error: docs/taxonomy/search: " in error
 
 
 # ── the same verdict in every checkout ────────────────────────────────────────
@@ -297,7 +298,7 @@ def test_a_typo_reference_still_fails_in_both(tmp_path):
     clone = tmp_path / "clone"
     subprocess.run(["git", "clone", "-q", str(root), str(clone)], check=True)
     for where in (root, clone):
-        problems = validate(where)
+        problems = [str(f) for f in validate(where)]
         assert any("no such work item: 2026-01-01-never-created" in p
                    for p in problems), (where, problems)
 
@@ -370,7 +371,7 @@ def test_a_node_that_claims_a_board_it_cannot_open_still_says_so(tmp_path):
     config = yaml.safe_load(config_path.read_text())
     config["work"] = {"path": "nowhere"}
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
     assert any("work.path is not a directory" in p for p in problems)
 
 
@@ -428,7 +429,7 @@ def test_a_broken_path_and_an_unprovisioned_declaration_are_two_problems(tmp_pat
         "repository": {"url": "https://example.invalid/orchestrator.git"},
     })
 
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
 
     assert len(problems) == 2, problems
     joined = "\n".join(problems)
@@ -444,7 +445,7 @@ def test_an_absent_path_with_a_declaration_is_one_problem(tmp_path):
         "repository": {"url": "https://example.invalid/orchestrator.git"},
     })
 
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
 
     assert len(problems) == 1, problems
     assert "nowhere" not in problems[0]
@@ -481,7 +482,7 @@ def test_a_broken_path_is_reported_even_when_the_declaration_answers(tmp_path):
     FsStoreProvisioner(root, "work", RepositoryDeclaration(
         url=str(remote), path="docs/work/corelib")).ensure_available()
 
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
 
     assert any(str(half) in p for p in problems), problems
 
@@ -506,7 +507,7 @@ def test_an_owned_yaml_holding_a_falsy_non_mapping_is_reported(tmp_path):
     root = node(tmp_path)
     (_item(root) / "state.yaml").write_text("[]\n")
 
-    problems = validate(root)
+    problems = [str(f) for f in validate(root)]
 
     assert any("state.yaml" in p and "expected a mapping" in p for p in problems), problems
 
@@ -529,7 +530,7 @@ def test_the_reported_path_is_named_once(tmp_path):
     root = node(tmp_path)
     (_item(root) / "state.yaml").write_text("[]\n")
 
-    problem = next(p for p in validate(root) if "state.yaml" in p)
+    problem = next(p for p in map(str, validate(root)) if "state.yaml" in p)
 
     assert problem.count("state.yaml") == 1, problem
 
@@ -551,7 +552,7 @@ def test_a_syntax_error_is_still_reported(tmp_path):
     root = node(tmp_path)
     (_item(root) / "state.yaml").write_text("slug: [unclosed\n")
 
-    assert any("state.yaml" in p for p in validate(root))
+    assert any("state.yaml" in p for p in map(str, validate(root)))
 
 
 def test_a_duplicate_key_is_still_reported(tmp_path):
@@ -559,7 +560,7 @@ def test_a_duplicate_key_is_still_reported(tmp_path):
     root = node(tmp_path)
     (_item(root) / "state.yaml").write_text("slug: a\nslug: b\n")
 
-    assert any("duplicate key" in p for p in validate(root))
+    assert any("duplicate key" in p for p in map(str, validate(root)))
 
 
 def test_every_yaml_name_tcw_writes_is_owned_or_deliberately_not(tmp_path):

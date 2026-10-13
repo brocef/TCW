@@ -132,7 +132,8 @@ def test_two_projects_with_one_work_path(tmp_path):
     q = make_project(tmp_path, "q", config={"path": "../p/docs/work"})
     connect(p, q, "children")
     connect(q, p, "parent")
-    [line] = _shared_work_paths(FsProjectRegistry.open(p))
+    [finding] = _shared_work_paths(FsProjectRegistry.open(p))
+    line = str(finding)
     assert "'p'" in line and "'q'" in line
     assert str((p / "docs" / "work").resolve()) in line
 

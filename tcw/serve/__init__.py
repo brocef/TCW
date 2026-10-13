@@ -116,7 +116,8 @@ def _ok_json(value) -> tuple[int, bytes]:
 def _validation_warnings(node_root: Path, axis: str, ref: str) -> list[str]:
     """Run post-commit validation without turning a successful write into failure."""
     try:
-        return validate(node_root, target=ValidationTarget(axis=axis, ref=ref))
+        return [str(finding) for finding in
+                validate(node_root, target=ValidationTarget(axis=axis, ref=ref))]
     except Exception as error:
         return [f"validation could not complete: {error}"]
 

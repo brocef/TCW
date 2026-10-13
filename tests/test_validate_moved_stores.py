@@ -47,8 +47,22 @@ def moved(tmp_path: Path, component: str, folder: str = "moved") -> tuple[Path, 
     return root, store
 
 
-def check_lines(problems: list[str], component: str) -> list[str]:
-    return [p for p in problems if p.startswith(f"{component} check: ")]
+def check_lines(findings, component: str, root: Path) -> list[str]:
+    """The error findings `component` is answerable for, as text: its store
+    could not open or its `path` is wrong (the message names the component),
+    or the finding is about a file inside the store wherever it resolved."""
+    from tcw.store.fs import STORE_CLASSES
+    try:
+        store = STORE_CLASSES[component].open(root).root.resolve()
+    except ValueError:
+        store = None
+    mine = []
+    for f in findings:
+        named = f.message.startswith((f"{component}:", f"{component}.path:"))
+        inside = store is not None and (root / f.where).resolve().is_relative_to(store)
+        if f.severity == "error" and (named or inside):
+            mine.append(str(f))
+    return mine
 
 
 # ── criteria 1-3: a moved store is checked and scanned ───────────────────────
@@ -56,7 +70,7 @@ def check_lines(problems: list[str], component: str) -> list[str]:
 def test_a_moved_taxonomy_is_checked(tmp_path):
     root, store = moved(tmp_path, "taxonomy")
     term(store, "payment", relatesTo=["invoice"])            # dangling
-    lines = check_lines(validate(root), "taxonomy")
+    lines = check_lines(validate(root), "taxonomy", root)
     assert any("invoice" in p for p in lines), lines
 
 
@@ -65,20 +79,20 @@ def test_a_moved_taxonomy_is_scanned_for_yaml(tmp_path):
     (store / "broken").mkdir()
     (store / "broken" / "meta.yaml").write_text("name: [unclosed\n")
     problems = validate(root)
-    assert any(p.startswith("moved/broken/meta.yaml: ") for p in problems), problems
+    assert any(p.where == "moved/broken/meta.yaml" for p in problems), problems
 
 
 def test_a_moved_capabilities_store_is_checked(tmp_path):
     root, store = moved(tmp_path, "capabilities")
     cap(store, "x", Status="Bogus")
-    lines = check_lines(validate(root), "capabilities")
+    lines = check_lines(validate(root), "capabilities", root)
     assert any("Bogus" in p for p in lines), lines
 
 
 def test_path_mode_matches_a_moved_store(tmp_path):
     root, store = moved(tmp_path, "taxonomy")
     term(store, "payment", relatesTo=["invoice"])
-    lines = check_lines(validate(root, store), "taxonomy")
+    lines = check_lines(validate(root, store), "taxonomy", root)
     assert any("invoice" in p for p in lines), lines
 
 
@@ -90,9 +104,9 @@ def test_a_capability_subject_is_checked_against_a_moved_taxonomy(tmp_path, monk
     caps = root / "docs" / "capabilities"
     cap(caps, "x", Status="Supported", Subject=["user", "ghost"])
 
-    problems = FsCapabilitiesStore.open(root).check()
+    problems = [p.message for p in FsCapabilitiesStore.open(root).check()]
     assert any("Subject" in p and "ghost" in p for p in problems), problems
-    assert any("ghost" in p for p in check_lines(validate(root), "capabilities"))
+    assert any("ghost" in p for p in check_lines(validate(root), "capabilities", root))
 
     monkeypatch.chdir(root)
     assert main(["capabilities", "set", "x", "--field", "Subject=nobody"]) == 2
@@ -108,8 +122,8 @@ def test_a_missing_taxonomy_path_is_listed_not_raised(tmp_path):
     set_component_key(root, "taxonomy", "path", "nowhere")
     cap(root / "docs" / "capabilities", "x", Status="Supported", Subject=["user"])
     problems = validate(root)                      # raised StoreLocationUnusable
-    assert any("nowhere" in p for p in check_lines(problems, "taxonomy")), problems
-    assert any("nowhere" in p for p in check_lines(problems, "capabilities")), problems
+    assert any("nowhere" in p for p in check_lines(problems, "taxonomy", root)), problems
+    assert any("nowhere" in p for p in check_lines(problems, "capabilities", root)), problems
 
 
 # ── criterion 6: nodes without a tree store are untouched ────────────────────
@@ -156,7 +170,7 @@ def test_an_unopenable_taxonomy_costs_only_the_subject_checks(tmp_path, monkeypa
     cap(root / "docs" / "capabilities", "x", Status="Bogus", Subject=["user"])
     cap(root / "docs" / "capabilities", "y", Status="Bogus", Feature="login")
     set_component_key(root, "taxonomy", "path", "nowhere")
-    problems = FsCapabilitiesStore.open(root).check()
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check()]
     assert any("Bogus" in p for p in problems), problems
     unchecked = [p for p in problems if "Subject and Feature not checked" in p]
     assert len(unchecked) == 1 and "nowhere" in unchecked[0], problems
@@ -173,7 +187,7 @@ def test_nothing_is_said_unchecked_when_no_capability_names_a_subject(tmp_path):
 def test_a_broken_extends_without_a_local_tree_is_reported(tmp_path, component):
     root = repo(tmp_path / "node")
     set_component_key(root, component, "extends", ["ghost"])
-    lines = check_lines(validate(root), component)
+    lines = check_lines(validate(root), component, root)
     assert any("ghost" in p for p in lines), lines
 
 
@@ -181,7 +195,7 @@ def test_path_mode_reports_a_store_that_will_not_open(tmp_path):
     root = repo(tmp_path / "node")
     (root / "docs" / "taxonomy").mkdir(parents=True)
     set_component_key(root, "taxonomy", "path", "nowhere")
-    lines = check_lines(validate(root, root / "docs" / "taxonomy"), "taxonomy")
+    lines = check_lines(validate(root, root / "docs" / "taxonomy"), "taxonomy", root)
     assert any("nowhere" in p for p in lines), lines
 
 
@@ -195,5 +209,5 @@ def test_a_work_only_node_reports_nothing_new(tmp_path):
 def test_path_mode_reports_a_moved_store_that_will_not_open(tmp_path):
     root, store = moved(tmp_path, "taxonomy", "tax")
     set_component_key(root, "taxonomy", "extends", ["ghost"])
-    lines = check_lines(validate(root, store), "taxonomy")
+    lines = check_lines(validate(root, store), "taxonomy", root)
     assert any("ghost" in p for p in lines), lines

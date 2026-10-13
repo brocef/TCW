@@ -238,7 +238,7 @@ class TestLoneProject:
         st.add("Thing")
         d = root / "docs" / "taxonomy" / "thing"
         (d / "meta.yaml").write_text(yaml.safe_dump({"name": "Thing", "relatesTo": ["nope"]}))
-        problems = st.check()
+        problems = [str(f) for f in st.check()]
         assert any("dangling" in p for p in problems)
 
     def test_capabilities_add_list_search(self, tmp_path):
@@ -292,7 +292,7 @@ class TestLoneProject:
         meta["Subject"] = ["ghost"]
         meta_path.write_text(
             yaml.safe_dump(meta, sort_keys=False, allow_unicode=True))
-        problems = caps.check(taxonomy=tax)
+        problems = [str(f) for f in caps.check(taxonomy=tax)]
         assert any("dangling" in p for p in problems)
 
 

@@ -69,7 +69,8 @@ def problems_for(tmp_path, taxonomy=None, **meta):
     root = node(tmp_path)
     write_cap(root, "x", Status="Supported", **meta)
     out = FsCapabilitiesStore.open(root).check(taxonomy=taxonomy)
-    return [p.removeprefix("x: ") for p in out]
+    assert all(p.where == "docs/capabilities/x" for p in out), out
+    return [p.message for p in out]
 
 
 # ── the fifteen strings ──────────────────────────────────────────────────────
@@ -125,11 +126,13 @@ def test_feature_wrong_kind_wording_is_one_line_with_a_single_space(tmp_path):
 
 
 def test_the_location_prefix_is_the_capability_path(tmp_path):
-    """The prefix `_ref_problems` must NOT include — the caller adds it."""
+    """The location `_ref_problems` must NOT include — the caller adds it, as
+    the finding's `where`."""
     root = node(tmp_path)
     write_cap(root, "routes/login", Status="Supported", Subject="ghost")
     out = FsCapabilitiesStore.open(root).check(taxonomy=Tax({"user": "Vocabulary"}))
-    assert "routes/login: Subject → dangling ref 'ghost'" in out
+    assert ("docs/capabilities/routes/login", "Subject → dangling ref 'ghost'") \
+        in [(p.where, p.message) for p in out]
 
 
 def test_a_clean_capability_reports_nothing(tmp_path):
@@ -168,7 +171,7 @@ def test_check_without_a_taxonomy_resolves_against_the_nodes_own(tmp_path):
     (root / "docs" / "taxonomy").mkdir(parents=True)
     write_cap(root, "x", Status="Supported", Subject="ghost")
     problems = FsCapabilitiesStore.open(root).check()
-    assert any("Subject → dangling ref 'ghost'" in p for p in problems)
+    assert any("Subject → dangling ref 'ghost'" in p.message for p in problems)
 
 
 def test_an_explicitly_passed_falsey_taxonomy_still_wins(tmp_path):
@@ -260,9 +263,8 @@ def test_the_refusal_and_check_agree_word_for_word(tmp_path):
     with pytest.raises(TcwError) as e:
         store.set("web/editing", {"Subject": "no-such-term"})
     write_cap(root, "mirror", Status="Supported", Subject="no-such-term")
-    from_check = [p.removeprefix("mirror: ")
-                  for p in FsCapabilitiesStore.open(root).check()
-                  if p.startswith("mirror: ")]
+    from_check = [p.message for p in FsCapabilitiesStore.open(root).check()
+                  if p.where == "docs/capabilities/mirror"]
     assert str(e.value) in from_check
 
 
@@ -353,7 +355,7 @@ def _two_bases(tmp_path):
 def test_ambiguous_identifier_wording(tmp_path, field, value, expected):
     child = _two_bases(tmp_path)
     write_cap(child, "x", Status="Supported", **{field: value})
-    out = [p.removeprefix("x: ") for p in FsCapabilitiesStore.open(child).check()]
+    out = [p.message for p in FsCapabilitiesStore.open(child).check()]
     assert expected in out
 
 

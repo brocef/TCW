@@ -5,6 +5,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
+from tcw.findings import Finding
 from tcw.validate import ValidationTarget, validate
 
 
@@ -28,7 +29,7 @@ def test_rejects_path_and_target_together(tmp_path):
 def test_missing_target_is_explicit(tmp_path, axis):
     root = _node(tmp_path)
     assert validate(root, target=ValidationTarget(axis, "missing")) == [
-        f"{axis} target: no such object 'missing'"
+        Finding("error", "missing", f"no such {axis} object")
     ]
 
 
@@ -41,7 +42,7 @@ def test_graph_problems_precede_target_resolution(tmp_path):
     config["connected-projects"] = {"children": {"broken-node": str(broken)}}
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     problems = validate(root, target=ValidationTarget("taxonomy", "missing"))
-    assert problems and all(problem.startswith("project graph:") for problem in problems)
+    assert problems and all(p.where.endswith("tcw-config.yaml") for p in problems)
 
 
 def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
@@ -56,7 +57,7 @@ def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
     config["connected-projects"] = {"children": {"missing": "missing-node"}}
     (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
     assert validate(root, target=ValidationTarget("taxonomy", "missing")) == [
-        "taxonomy target: no such object 'missing'"
+        Finding("error", "missing", "no such taxonomy object")
     ]
 
 
@@ -67,8 +68,8 @@ def test_target_scans_only_selected_yaml_and_links(tmp_path):
     taxonomy.add("Broken", slug="broken")
     (root / "docs/taxonomy/good/description.md").write_text("[bad](tcw://T/missing)\n")
     (root / "docs/taxonomy/broken/meta.yaml").write_text("name: [\n")
-    targeted = validate(root, target=ValidationTarget("taxonomy", "good"))
-    full = validate(root)
+    targeted = [str(f) for f in validate(root, target=ValidationTarget("taxonomy", "good"))]
+    full = [str(f) for f in validate(root)]
     assert any("tcw://" in problem for problem in targeted)
     assert not any("broken/meta.yaml" in problem for problem in targeted)
     assert any("broken/meta.yaml" in problem for problem in full)
@@ -78,9 +79,11 @@ def test_target_reports_its_own_malformed_yaml(tmp_path):
     root = _node(tmp_path)
     FsCapabilitiesStore.open(root).add("broken")
     (root / "docs/capabilities/broken/meta.yaml").write_text("name: [\n")
-    problems = validate(root, target=ValidationTarget("capabilities", "broken"))
+    notes: list[str] = []
+    problems = [str(f) for f in validate(
+        root, target=ValidationTarget("capabilities", "broken"), notes=notes)]
     assert any("broken/meta.yaml" in problem for problem in problems)
-    assert any("component checks skipped" in problem for problem in problems)
+    assert any("checks skipped" in note for note in notes), notes
 
 
 def test_axis_semantics_are_object_local(tmp_path):
@@ -95,9 +98,9 @@ def test_axis_semantics_are_object_local(tmp_path):
     capability = FsCapabilitiesStore.open(root)
     capability.add("bad", status="Partial")
     capability.add("other", status="Blocked")
-    assert any("Feature requires" in problem for problem in validate(root, target=ValidationTarget("taxonomy", "feature")))
-    assert not any("other" in problem for problem in validate(root, target=ValidationTarget("taxonomy", "feature")))
-    cap_problems = validate(root, target=ValidationTarget("capabilities", "bad"))
+    assert any("Feature requires" in problem for problem in map(str, validate(root, target=ValidationTarget("taxonomy", "feature"))))
+    assert not any("other" in problem for problem in map(str, validate(root, target=ValidationTarget("taxonomy", "feature"))))
+    cap_problems = [str(f) for f in validate(root, target=ValidationTarget("capabilities", "bad"))]
     assert any("Partial requires Gaps" in problem for problem in cap_problems)
     assert not any("other" in problem for problem in cap_problems)
 

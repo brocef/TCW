@@ -57,16 +57,17 @@ def _federated(tmp_path: Path) -> Path:
     return consumer
 
 
-def _leftover_lines(problems: list[str]) -> list[str]:
-    return [p for p in problems if MARK in p]
+def _leftover_lines(problems) -> list[str]:
+    """The leftover lines among findings or printed lines, as text."""
+    return [str(p) for p in problems if MARK in str(p)]
 
 
-def _assert_one_leftover(problems: list[str], component: str, shown: str,
-                         prefix: str = "") -> str:
+def _assert_one_leftover(problems, component: str, shown: str,
+                         prefix: str = "error: ") -> str:
     """Exactly one leftover line, naming the file, the key and the whole fix.
 
-    `prefix` is what `tcw validate` puts in front of a component's problems
-    (`taxonomy check: `, and `[<project>] ` when it recurses).
+    `prefix` is what comes before the file: the finding's severity, and
+    `[<project>] ` when `tcw validate` recurses.
     """
     lines = [p for p in _leftover_lines(problems) if f"{component}.extends" in p]
     assert len(lines) == 1, problems
@@ -207,7 +208,7 @@ def test_a_node_reached_through_a_symlink_still_gets_a_relative_path(tmp_path):
 # ── `tcw validate` reports each leftover once per store ──────────────────────
 
 def _check_prefix(component: str) -> str:
-    return f"{component} check: "
+    return "error: "
 
 
 def test_validate_reports_both_leftovers_once_each(tmp_path):
@@ -256,11 +257,12 @@ def test_an_unparseable_leftover_gets_both_its_parse_error_and_the_report(tmp_pa
     consumer = _federated(tmp_path)
     (consumer / "docs" / "taxonomy" / "config.yaml").write_text("extends: [unclosed\n")
 
-    problems = validate(consumer)
+    notes: list[str] = []
+    problems = validate(consumer, notes=notes)
 
-    assert "(component checks skipped: YAML problem above)" in problems, problems
-    assert [p for p in problems if p.startswith("docs/taxonomy/config.yaml: ")
-            and MARK not in p], problems
+    assert any("checks skipped" in n for n in notes), notes
+    assert [p for p in problems if p.where == "docs/taxonomy/config.yaml"
+            and MARK not in p.message], problems
     _assert_one_leftover(problems, "taxonomy", "docs/taxonomy/config.yaml",
                          _check_prefix("taxonomy"))
 
@@ -270,9 +272,10 @@ def test_a_yaml_error_elsewhere_does_not_hide_the_leftover(tmp_path):
     (consumer / "docs" / "taxonomy" / "Local" / "meta.yaml").write_text("name: [unclosed\n")
     (consumer / "docs" / "capabilities" / ".config.yaml").write_text("extends: [shared]\n")
 
-    problems = validate(consumer)
+    notes: list[str] = []
+    problems = validate(consumer, notes=notes)
 
-    assert "(component checks skipped: YAML problem above)" in problems, problems
+    assert any("checks skipped" in n for n in notes), notes
     _assert_one_leftover(problems, "capabilities", "docs/capabilities/.config.yaml",
                          _check_prefix("capabilities"))
 
@@ -303,7 +306,8 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
     (consumer / "tax" / "config.yaml").write_text("extends: [shared]\n")
 
     problems = validate(consumer)
-    failures = [p for p in problems if p.startswith(_check_prefix("taxonomy"))]
+    failures = [str(p) for p in problems
+                if str(p).startswith("error: tcw-config.yaml: taxonomy: ")]
     assert len(failures) == 1, problems
     assert "ghost" in failures[0] and "taxonomy.extends" in failures[0], failures
     assert _leftover_lines(problems) == [], problems

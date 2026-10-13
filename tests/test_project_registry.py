@@ -12,6 +12,13 @@ from tcw.store.project import (
 )
 
 
+def _texts(findings) -> list[str]:
+    """Each registry finding as `<config file>: <message>`, after checking it
+    is an error (the registry reports nothing else)."""
+    assert all(f.severity == "error" for f in findings), findings
+    return [f"{f.where}: {f.message}" for f in findings]
+
+
 def config(root: Path, text: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / "tcw-config.yaml").write_text(text, encoding="utf-8")
@@ -127,7 +134,7 @@ def test_invalid_target_fails_closed(tmp_path, target, expected):
         "    child-project: ../child\n",
     )
     config(child, target)
-    problems = FsProjectRegistry.open(root).check()
+    problems = _texts(FsProjectRegistry.open(root).check())
     assert any(expected in problem for problem in problems)
 
 
@@ -142,14 +149,14 @@ def test_nonreciprocal_connection_fails(tmp_path):
     config(child, "id: child-project\n")
     assert any(
         "nonreciprocal connection" in problem
-        for problem in FsProjectRegistry.open(root).check()
+        for problem in _texts(FsProjectRegistry.open(root).check())
     )
 
 
 def test_duplicate_yaml_key_fails(tmp_path):
     root = tmp_path / "root"
     config(root, "id: root-project\nid: duplicate\n")
-    assert any("duplicate key" in p for p in FsProjectRegistry.open(root).check())
+    assert any("duplicate key" in p for p in _texts(FsProjectRegistry.open(root).check()))
 
 
 def test_unregistered_node_is_never_loaded(tmp_path, monkeypatch):
@@ -298,7 +305,7 @@ def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
     )
     registry = FsProjectRegistry.open(root)
     registry.require_valid()
-    assert registry.check() == []
+    assert _texts(registry.check()) == []
     assert [u.id for u in registry.unreachable()] == ["child-project"]
     assert registry.unreachable()[0].locator == (tmp_path / "child").resolve()
     assert registry.unreachable()[0].declared_in == (root / "tcw-config.yaml").resolve()
@@ -355,7 +362,7 @@ def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
         f"id: child-project\nconnected-projects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
-    problems = FsProjectRegistry.open(child).check()
+    problems = _texts(FsProjectRegistry.open(child).check())
     assert any("does not point back to" in p for p in problems)
 
 
@@ -469,7 +476,7 @@ def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected
         "id: root-project\nconnected-projects:\n  children:\n"
         f"    child-project:\n{entry}",
     )
-    problems = FsProjectRegistry.open(parent).check()
+    problems = _texts(FsProjectRegistry.open(parent).check())
     assert any(expected in problem for problem in problems), problems
     assert FsProjectRegistry.open(parent).unreachable() == []
 
@@ -554,7 +561,7 @@ def test_a_directory_that_is_not_a_node_is_still_refused(tmp_path):
     plain = tmp_path / "not-a-node"
     plain.mkdir()
     registry = FsProjectRegistry.open(plain)
-    assert registry.check(), "a directory with no sentinel validated"
+    assert _texts(registry.check()), "a directory with no sentinel validated"
     with pytest.raises(ValueError):
         registry.require_valid()
 
@@ -596,7 +603,7 @@ def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
                   f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
 
     registry = FsProjectRegistry.open(parent)
-    assert registry.check() == []                 # not a problem, deliberately
+    assert _texts(registry.check()) == []                 # not a problem, deliberately
     assert registry.unreachable() == []           # the project is here
     misdirected = registry.misdirected()
     assert [entry.id for entry in misdirected] == ["parent-project"]
@@ -662,7 +669,7 @@ def test_without_an_override_a_locator_on_the_wrong_node_is_an_error(tmp_path):
     parent, _real, _decoy = _decoy_layout(tmp_path)
     registry = FsProjectRegistry.open(parent)
     assert any("does not match target id 'decoy-project'" in p
-               for p in registry.check())
+               for p in _texts(registry.check()))
     assert registry.get("child-project") is None
 
 
@@ -715,7 +722,7 @@ def test_an_override_at_an_absent_path_falls_through_to_the_declaration(
     monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(tmp_path / "not-here"))
     registry = FsProjectRegistry.open(parent)
     registry.require_valid()
-    assert registry.check() == []
+    assert _texts(registry.check()) == []
     assert [c.id for c in registry.children()] == ["child-project"]
     assert registry.unreachable() == []
     # Nothing took effect, so nothing is listed — which is what makes a
@@ -754,7 +761,7 @@ def test_an_override_at_a_directory_that_is_not_a_node_is_a_problem(
     not_a_node.mkdir()
     monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(not_a_node))
     registry = FsProjectRegistry.open(parent)
-    problems = registry.check()
+    problems = _texts(registry.check())
     assert len(problems) == 1
     assert "TCW_PROJECT_CHILD_PROJECT" in problems[0]
     assert str(not_a_node.resolve()) in problems[0]
@@ -772,7 +779,7 @@ def test_an_override_naming_the_wrong_node_names_both_ids(tmp_path, monkeypatch)
     parent, _real, decoy = _decoy_layout(tmp_path)
     monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(decoy))
     registry = FsProjectRegistry.open(parent)
-    problems = registry.check()
+    problems = _texts(registry.check())
     assert any("child-project" in p and "decoy-project" in p for p in problems)
     with pytest.raises(ValueError):
         registry.require_valid()
@@ -800,7 +807,7 @@ def test_an_empty_override_variable_does_not_adopt_the_working_directory(
     registry = FsProjectRegistry.open(parent)
     assert registry.overrides() == []
     assert any("does not match target id 'decoy-project'" in p
-               for p in registry.check())
+               for p in _texts(registry.check()))
 
 
 def test_an_override_value_survives_stray_surrounding_whitespace(

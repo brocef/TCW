@@ -157,7 +157,7 @@ def test_check_dangling_override(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/x", overrides="cap-nope99", Status="Missing")
-    assert any("dangling id" in p for p in store(child).check())
+    assert any("dangling id" in p for p in map(str, store(child).check()))
 
 
 def test_check_unknown_alias_override_names_the_undeclared_extends(tmp_path):
@@ -169,9 +169,10 @@ def test_check_unknown_alias_override_names_the_undeclared_extends(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/x", overrides="shared/cap-aaa111", Status="Missing")
-    problems = [p for p in store(child).check() if "unknown alias" in p]
+    problems = [p for p in map(str, store(child).check()) if "unknown alias" in p]
     assert len(problems) == 1, problems
-    assert problems[0].startswith("ov/x: overrides → unknown alias 'shared'"), problems
+    assert problems[0].startswith(
+        "error: docs/capabilities/ov/x: overrides → unknown alias 'shared'"), problems
     assert "capabilities.extends" in problems[0], problems
     assert "tcw-config.yaml" in problems[0], problems
     assert problems[0] != "ov/x: overrides → unknown alias 'shared'"     # the old text
@@ -182,7 +183,7 @@ def test_check_local_target_override(tmp_path):
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "local", id="cap-loc001", Status="Missing")
     write_cap(child, "ov/x", overrides="cap-loc001", Status="Missing")
-    assert any("targets a local capability" in p for p in store(child).check())
+    assert any("targets a local capability" in p for p in map(str, store(child).check()))
 
 
 def test_check_ambiguous_override(tmp_path):
@@ -196,20 +197,20 @@ def test_check_ambiguous_override(tmp_path):
     st.extends_add("base")
     st.extends_add("base2")
     write_cap(child, "ov/x", overrides="cap-dup", Status="Missing")
-    assert any("ambiguous id" in p for p in store(child).check())
+    assert any("ambiguous id" in p for p in map(str, store(child).check()))
 
 
 def test_check_missing_attachment(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x", Status="Supported", appendedDocs=["ghost.md"])
-    assert any("missing attachment" in p for p in store(root).check())
+    assert any("missing attachment" in p for p in map(str, store(root).check()))
 
 
 def test_check_unlisted_extra_doc(tmp_path):
     root = repo(tmp_path, "solo")
     write_cap(root, "x", id="cap-x", Status="Supported",
               docs={"stray.md": "unreferenced"})
-    assert any("unlisted extra doc" in p for p in store(root).check())
+    assert any("unlisted extra doc" in p for p in map(str, store(root).check()))
 
 
 def test_check_federation_cycle(tmp_path):
@@ -218,7 +219,7 @@ def test_check_federation_cycle(tmp_path):
     connect_many(a, b)
     FsCapabilitiesStore.open(a).extends_add("b")
     FsCapabilitiesStore.open(b).extends_add("a")     # a→b→a
-    assert any("cycle in capability federation" in p for p in store(a).check())
+    assert any("cycle in capability federation" in p for p in map(str, store(a).check()))
 
 
 # ── get_by_id + qualified override target ────────────────────────────────────
@@ -643,7 +644,7 @@ def test_a_cycle_is_reported_from_the_top_of_the_chain(tmp_path):
     base, child = child_of(tmp_path, {})
     declare_extends(base, "capabilities", "extends:\n  - child\n")
     declare_extends(child, "capabilities", "extends:\n  - base\n")
-    problems = store(child).check()
+    problems = [str(f) for f in store(child).check()]
     assert any("cycle in capability federation" in p for p in problems)
 
 

@@ -633,7 +633,7 @@ def test_an_absent_node_still_gets_the_tcw_init_advice(tmp_path, monkeypatch, ca
 def test_validate_reports_the_declared_store_rather_than_a_dead_path(tmp_path, capsys):
     code = _declared_but_absent(tmp_path)
 
-    problems = validate(code)
+    problems = [str(f) for f in validate(code)]
 
     assert any("tcw provision" in p for p in problems), problems
     assert not any("is not a directory" in p for p in problems), problems
@@ -930,7 +930,7 @@ def test_validate_reports_a_malformed_declaration_when_the_store_is_absent(tmp_p
     shutil.rmtree(code / "docs" / "work")
     _write_config(code, repository={"path": "docs/work/corelib"})
 
-    problems = validate(code)
+    problems = [str(f) for f in validate(code)]
 
     assert any("work.repository.url" in problem for problem in problems), problems
 
@@ -1214,7 +1214,7 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
     assert main(["validate"]) == 1
 
     err = capsys.readouterr().err
-    assert f"{component} check:" in err, err
+    assert f"error: tcw-config.yaml: {component}: " in err, err
     assert "has not been provisioned here" in err, err
     assert "tcw provision" in err, err
 
@@ -1844,7 +1844,7 @@ def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
 
-    problems = FsProjectRegistry.open(node).check()          # must not raise
+    problems = [str(f) for f in FsProjectRegistry.open(node).check()]          # must not raise
     assert any("repository.checkout" in problem for problem in problems), problems
     assert any("nosuchuser12345" in problem for problem in problems), problems
     assert validate(node)                                    # reported, not a traceback
@@ -1985,10 +1985,10 @@ def test_a_leftover_in_a_provisioned_tree_is_reported_by_its_absolute_path(tmp_p
     FsStoreProvisioner(code, "taxonomy", declaration).ensure_available()
     leftover = str(fs.provisioned_store_root(code, declaration).resolve() / "config.yaml")
 
-    lines = [p for p in FsTaxonomyStore.open(code).check() if "no longer read" in p]
-    assert len(lines) == 1 and lines[0].startswith(f"{leftover}: "), lines
-    lines = [p for p in validate(code) if "no longer read" in p]
-    assert len(lines) == 1 and lines[0].startswith(f"taxonomy check: {leftover}: "), lines
+    lines = [p for p in map(str, FsTaxonomyStore.open(code).check()) if "no longer read" in p]
+    assert len(lines) == 1 and lines[0].startswith(f"error: {leftover}: "), lines
+    lines = [p for p in map(str, validate(code)) if "no longer read" in p]
+    assert len(lines) == 1 and lines[0].startswith(f"error: {leftover}: "), lines
 
 
 def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
@@ -2003,7 +2003,8 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
                       {"url": "https://example.invalid/orchestrator.git",
                        "path": "trees/taxonomy"})
 
-    problems = [p for p in validate(code) if p.startswith("taxonomy check: ")]
+    problems = [p for p in map(str, validate(code))
+                if p.startswith("error: tcw-config.yaml: taxonomy: ")]
     assert len(problems) == 1, problems
     assert "tcw provision" in problems[0], problems
 

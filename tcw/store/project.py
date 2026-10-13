@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from tcw.findings import Finding
 from tcw.store.base import (
     ConnectedProject, Project, ProjectOverride, ProjectRegistry,
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
@@ -211,7 +212,10 @@ class FsProjectRegistry(ProjectRegistry):
         self.node_root = node_root.resolve()
         self._cache: dict[Path, _Config] = {}
         self._by_id: dict[str, _Config] = {}
+        # The same problems twice, in step: rendered for the refusals that
+        # raise them, and as findings for `check()` (TCW-73 Design 6.3).
         self._problems: list[str] = []
+        self._findings: list[Finding] = []
         self._unreachable: list[UnreachableProject] = []
         # Configs reached only across an `upstream` edge. Loaded as far as their
         # own file and no further: their connections are not the reader's to
@@ -355,8 +359,8 @@ class FsProjectRegistry(ProjectRegistry):
                     return Path(target.project.locator).resolve()
         return None
 
-    def check(self) -> list[str]:
-        return list(self._problems)
+    def check(self) -> list[Finding]:
+        return list(self._findings)
 
     def warnings(self) -> list[str]:
         return list(self._warnings)
@@ -631,6 +635,7 @@ class FsProjectRegistry(ProjectRegistry):
             self._problem(path, "connected-projects.parent must contain at most one entry")
         if quiet_connections:
             del self._problems[before_connections:]
+            del self._findings[before_connections:]
         return _Config(
             project=Project(project_id, path.parent),
             path=path,
@@ -1070,6 +1075,7 @@ class FsProjectRegistry(ProjectRegistry):
         rendered = f"{path}: {message}"
         if rendered not in self._problems:
             self._problems.append(rendered)
+            self._findings.append(Finding("error", str(path), message))
 
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
                           locator: Path,

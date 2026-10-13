@@ -49,15 +49,16 @@ def check(root: Path) -> list[str]:
 def test_check_reports_a_dangling_feature_and_subject_in_an_override(tmp_path):
     root = node(tmp_path)
     override(root, Subject=["ghost"], Feature="nope")
-    problems = check(root)
-    assert "ov: Feature → dangling ref 'nope'" in problems, problems
-    assert "ov: Subject → dangling ref 'ghost'" in problems, problems
+    problems = [str(f) for f in check(root)]
+    assert "error: docs/capabilities/ov: Feature → dangling ref 'nope'" in problems, problems
+    assert "error: docs/capabilities/ov: Subject → dangling ref 'ghost'" in problems, problems
 
 
 def test_check_reports_a_dangling_identifier_an_override_sets(tmp_path):
     root = node(tmp_path)
     override(root, **{"Blocked by": "missing-cap"})
-    assert "ov: Blocked by → dangling identifier 'missing-cap'" in check(root)
+    assert "error: docs/capabilities/ov: Blocked by → dangling identifier 'missing-cap'" \
+        in map(str, check(root))
 
 
 def test_an_override_that_clears_fields_reports_nothing_for_them(tmp_path):
@@ -65,14 +66,14 @@ def test_an_override_that_clears_fields_reports_nothing_for_them(tmp_path):
     it would be the string 'None' — a bogus `Roles` slug."""
     root = node(tmp_path)
     override(root, Subject=None, Roles=None)
-    assert not [p for p in check(root) if p.startswith("ov:")], check(root)
+    assert not [p for p in map(str, check(root)) if p.startswith("ov:")], check(root)
 
 
 def test_an_override_naming_a_real_term_reports_nothing(tmp_path):
     root = node(tmp_path)
     term(root, "zed")
     override(root, Subject=["zed"])
-    assert not [p for p in check(root) if p.startswith("ov:")]
+    assert not [p for p in map(str, check(root)) if p.startswith("ov:")]
 
 
 # ── criteria 4–5: taxonomy rm ────────────────────────────────────────────────
@@ -124,12 +125,12 @@ def test_checking_an_overridden_capability_by_path_reports_each_problem_once(tmp
     root = node(tmp_path)
     write_cap(root, "auth/login", overrides="cap-aaa111", Subject=["ghost"])
     subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-    problems = FsCapabilitiesStore.open(root).check(identifier="auth/login")
-    assert problems.count("auth/login: Subject → dangling ref 'ghost'") == 1, problems
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(identifier="auth/login")]
+    assert problems.count("error: docs/capabilities/auth/login: Subject → dangling ref 'ghost'") == 1, problems
 
 
 def test_checking_an_inherited_capability_overridden_elsewhere_does_not_crash(tmp_path):
     root = node(tmp_path)
     override(root, Subject=["ghost"])
-    problems = FsCapabilitiesStore.open(root).check(identifier="auth/login")
-    assert "auth/login: Subject → dangling ref 'ghost'" in problems, problems
+    problems = [str(f) for f in FsCapabilitiesStore.open(root).check(identifier="auth/login")]
+    assert "error: docs/capabilities/auth/login: Subject → dangling ref 'ghost'" in problems, problems

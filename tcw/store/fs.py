@@ -28,6 +28,7 @@ from pathlib import Path
 import yaml
 
 from tcw.errors import BackendError, NotFound, Refused, TcwError, UsageError
+from tcw.findings import Finding
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES,
@@ -1660,7 +1661,21 @@ class FsTreeStore:
             names.add(self.LEGACY_CONFIG_NAME)
         return names
 
-    def _legacy_config_problems(self) -> list[str]:
+    def _where(self, path: Path | str) -> str:
+        """A finding's `where`: `path`, or an entry's slug joined onto the store
+        root, relative to the project root when it is inside it."""
+        path = self.root / path if isinstance(path, str) else path
+        try:
+            return str(path.relative_to(self.node_root))
+        except ValueError:
+            return str(path)
+
+    def _store_finding(self, message: str) -> Finding:
+        """A problem with the store's federation, which `tcw-config.yaml`
+        configures."""
+        return Finding("error", self._where(self._config_path()), message)
+
+    def _legacy_config_problems(self) -> list[Finding]:
         """The pre-2.5.0 config file at this store's root, reported, or `[]`.
 
         An upgraded project that never moved its `extends` out of this file
@@ -1678,13 +1693,10 @@ class FsTreeStore:
         path = self.root / self.LEGACY_CONFIG_NAME
         if not path.is_file():
             return []
-        try:
-            shown = str(path.relative_to(self.node_root))
-        except ValueError:
-            shown = str(path)
-        return [f"{shown}: no longer read since TCW 2.5.0 — move any needed "
-                f"extends into {self._extends_label()}, then delete the file; "
-                f"if already migrated, just delete it"]
+        return [Finding("error", self._where(path),
+                        f"no longer read since TCW 2.5.0 — move any needed "
+                        f"extends into {self._extends_label()}, then delete the "
+                        f"file; if already migrated, just delete it")]
 
     def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
         """Read a folder node → (meta mapping, description text, attachment names).
@@ -2113,16 +2125,16 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         self._require_ref(ref, "vocabulary", expect_vocabulary=True)
         return ref
 
-    def check(self, identifier: str | None = None) -> list[str]:
-        problems: list[str] = []
+    def check(self, identifier: str | None = None) -> list[Finding]:
+        problems: list[Finding] = []
         top_level = {s.split("/")[0] for s in self._local_slugs()}
         for project_id in self._federation_cycles():
-            problems.append(f"extends '{project_id}': cycle in taxonomy federation")
+            problems.append(self._store_finding(
+                f"extends '{project_id}': cycle in taxonomy federation"))
         for project_id in self._inherited_stores():
             if project_id in top_level:
-                problems.append(
-                    f"project ID '{project_id}' collides with local top-level term"
-                )
+                problems.append(self._store_finding(
+                    f"project ID '{project_id}' collides with local top-level term"))
         if identifier is None:
             # About the store, not any one term — left out of a scoped check,
             # which is how `tcw serve` validates the object it just wrote.
@@ -2131,25 +2143,28 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if identifier is not None:
             selected = self.get(identifier)
             if selected is None:
-                return [f"no such term: {identifier}"]
+                return [Finding("error", self._where(self.root),
+                                f"no such term: {identifier}")]
             terms = [selected]
         else:
             terms = self.list_all(local_only=True)
         for term in terms:
+            def found(message: str) -> None:
+                problems.append(Finding("error", self._where(term.slug), message))
             if term.kind not in TAXONOMY_KINDS:
-                problems.append(f"{term.slug}: unknown kind '{term.kind}'")
+                found(f"unknown kind '{term.kind}'")
             for ref in term.relates_to:
                 if (problem := self._ref_problem(ref)[1]):
-                    problems.append(f"{term.slug}: {problem} relatesTo ref '{ref}'")
+                    found(f"{problem} relatesTo ref '{ref}'")
             if term.kind == "Feature":
                 if not term.vocabulary:
-                    problems.append(f"{term.slug}: Feature requires at least one vocabulary ref")
+                    found("Feature requires at least one vocabulary ref")
                 for ref in term.vocabulary:
                     target, problem = self._ref_problem(ref, expect_vocabulary=True)
                     if problem == "kind":
-                        problems.append(f"{term.slug}: {_wrong_kind_ref(ref, target.kind)}")
+                        found(_wrong_kind_ref(ref, target.kind))
                     elif problem:
-                        problems.append(f"{term.slug}: {problem} vocabulary ref '{ref}'")
+                        found(f"{problem} vocabulary ref '{ref}'")
         return problems
 
     def _validation_resources(self, identifier: str) -> list[Path]:
@@ -2814,13 +2829,13 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return (FsTaxonomyStore.open(self.node_root)
                 if tree_store_present(self.node_root, "taxonomy") else None)
 
-    def check(self, taxonomy=None, identifier: str | None = None) -> list[str]:
+    def check(self, taxonomy=None, identifier: str | None = None) -> list[Finding]:
         # `is not None`, not `or`: an explicitly injected store must win even
         # when it is falsey. Without the fallback, `check()` called bare skips
         # Subject/Feature entirely, so the write path and `check` could disagree
         # about *whether* a ref is checked even once they agree about what a
         # problem is.
-        problems: list[str] = []
+        problems: list[Finding] = []
         unchecked = ""
         if taxonomy is None:
             try:
@@ -2834,18 +2849,19 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                 unchecked = f"Subject and Feature not checked: {e}"
         top_level = {s.split("/")[0] for s in self._local_paths()}
         for project_id in self._federation_cycles():
-            problems.append(f"extends '{project_id}': cycle in capability federation")
+            problems.append(self._store_finding(
+                f"extends '{project_id}': cycle in capability federation"))
         for project_id in self.extends:
             if project_id in top_level:
-                problems.append(
-                    f"project ID '{project_id}' collides with local top-level capability"
-                )
+                problems.append(self._store_finding(
+                    f"project ID '{project_id}' collides with local top-level capability"))
         if identifier is None:
             problems += self._legacy_config_problems()     # see FsTaxonomyStore.check
 
         selected = self.get(identifier) if identifier is not None else None
         if identifier is not None and selected is None:
-            return [f"no such capability: {identifier}"]
+            return [Finding("error", self._where(self.root),
+                            f"no such capability: {identifier}")]
         if selected is not None:
             seen_ids: dict[str, str] = {}
             for path in self._local_paths():
@@ -2862,33 +2878,37 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             seen_ids = {}
             caps = self.list_all(local_only=True)
         for cap in caps:
-            where = cap.path
+            where = self._where(cap.path)
+
+            def found(message: str) -> None:
+                problems.append(Finding("error", where, message))
             f = cap.fields
             if not cap.id:
-                problems.append(f"{where}: missing id")
+                found("missing id")
             elif cap.id in seen_ids:
-                problems.append(f"{where}: duplicate id '{cap.id}' (also {seen_ids[cap.id]})")
+                found(f"duplicate id '{cap.id}' (also {seen_ids[cap.id]})")
             else:
-                seen_ids[cap.id] = where
+                seen_ids[cap.id] = cap.path
             for key in f:
                 if key not in CAP_FIELDS:
-                    problems.append(f"{where}: unknown field '{key}'")
+                    found(f"unknown field '{key}'")
             status = f.get("Status")
             if status is None:
-                problems.append(f"{where}: missing Status")
+                found("missing Status")
             elif status not in CAP_STATUSES:
-                problems.append(f"{where}: invalid Status '{status}'")
+                found(f"invalid Status '{status}'")
             if "Priority" in f and f["Priority"] not in CAP_PRIORITIES:
-                problems.append(f"{where}: invalid Priority '{f['Priority']}'")
+                found(f"invalid Priority '{f['Priority']}'")
             if "Lifecycle" in f and f["Lifecycle"] not in CAP_LIFECYCLES:
-                problems.append(f"{where}: invalid Lifecycle '{f['Lifecycle']}'")
+                found(f"invalid Lifecycle '{f['Lifecycle']}'")
             if status == "Partial" and "Gaps" not in f:
-                problems.append(f"{where}: Partial requires Gaps")
+                found("Partial requires Gaps")
             if status == "Blocked" and "Blocked by" not in f:
-                problems.append(f"{where}: Blocked requires Blocked by")
-            problems += [f"{where}: {p}" for p in self._ref_problems(f, taxonomy)]
+                found("Blocked requires Blocked by")
+            for problem in self._ref_problems(f, taxonomy):
+                found(problem)
             if unchecked and (f.get("Subject") or f.get("Feature")):
-                problems.append(unchecked)
+                found(unchecked)
                 unchecked = ""
 
         # Override + attachment validation (every meta dir, incl. override folders).
@@ -2902,26 +2922,30 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             if not d.is_dir() or not self._node_readable(d):
                 continue          # `selected` bypasses the _all_meta_dirs filter
             meta = load_yaml(d / "meta.yaml")
+
+            def found(message: str) -> None:
+                problems.append(Finding("error", self._where(p), message))
             listed = _as_list(meta.get("prependedDocs")) + _as_list(meta.get("appendedDocs"))
             for fn in listed:
                 if not (d / fn).is_file():
-                    problems.append(f"{p}: missing attachment '{fn}'")
+                    found(f"missing attachment '{fn}'")
             for f in d.iterdir():
                 if (f.is_file() and f.suffix == ".md" and f.name != "description.md"
                         and f.name not in listed):
-                    problems.append(f"{p}: unlisted extra doc '{f.name}'")
+                    found(f"unlisted extra doc '{f.name}'")
             target = meta.get("overrides")
             if target and (e := self._override_problem(str(target))):
-                problems.append(f"{p}: {e}")
+                found(e)
             if target and selected is None:
                 # The references it sets, checked as a local capability's are:
                 # they become the composed capability's own. A selected
                 # capability's composed fields, override included, were checked
                 # above; checking them here too reported each problem twice.
                 fields = self._set_fields(meta)
-                problems += [f"{p}: {e}" for e in self._ref_problems(fields, taxonomy)]
+                for problem in self._ref_problems(fields, taxonomy):
+                    found(problem)
                 if unchecked and (fields.get("Subject") or fields.get("Feature")):
-                    problems.append(unchecked)
+                    found(unchecked)
                     unchecked = ""
         return problems
 
