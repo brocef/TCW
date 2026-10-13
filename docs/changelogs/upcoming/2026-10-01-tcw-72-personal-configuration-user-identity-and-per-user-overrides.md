@@ -41,6 +41,14 @@
 - `tcw validate` reports configuration problems from every layer first, once
   each; the work checks no longer repeat them.
 - The duplicate-key YAML loader exists once, in `tcw/store/yaml_source.py`.
+- `JiraBackend.current_user()` returns None only when the credential variables
+  are unset. When Jira cannot answer it raises, as every other operation
+  does: `Unreachable` (exit 5) when Jira cannot be reached, `BackendError`
+  (exit 1) with Jira's reason otherwise. TCW-71 returned None with a warning.
+- `tcw config show` prints `(value not shown)` for a value under a key ending
+  in `-env` that is not shaped like an environment variable's name.
+- Several configuration problems are printed one per line, each with the
+  command's `tcw <words>: ` prefix.
 
 ## Removed
 

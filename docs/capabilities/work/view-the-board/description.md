@@ -4,8 +4,9 @@ items with no readable stage included — and hides finished items, `completed`
 and `discarded`; `--all` shows everything.
 
 I narrow it with `--stage <stage>` (repeatable), `--tag <tag>` (repeatable;
-an item carrying any of them matches), `--parent <slug>` and `--assignee
-<name>`. `--stage` and `--all` together are refused, since they ask for two
+an item carrying any of them matches), `--parent <slug>`, `--assignee
+<name>` and `--mine`, the items assigned to me
+(`tcw://C/work/tell-tcw-who-i-am`). `--stage` and `--all` together are refused, since they ask for two
 different sets. `--json` prints each item's full record, the same one
 `tcw work show --json` gives.
 

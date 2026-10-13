@@ -29,7 +29,9 @@ then the local file; a later file wins.
 - **`tcw config show`** prints the configuration a command actually runs
   with, all files merged. `tcw config show --origin` names the file each value
   came from and lists anything your files set that was not used; it still
-  prints when something is wrong, so you can find the line to fix.
+  prints when something is wrong, so you can find the line to fix. A value
+  under a key ending in `-env` that does not look like a variable's name is
+  printed as `(value not shown)`, in case a token was pasted there.
 - **Who you are.** Set `user.name` in either personal file; in a Jira project
   you are the account your credentials belong to. `tcw work list --mine` lists
   the items assigned to you, and `--assign-me` on `tcw work new` and
