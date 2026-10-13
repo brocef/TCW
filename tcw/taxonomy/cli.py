@@ -10,6 +10,7 @@ raised for the top-level handler to print and turn into its exit code.
 import argparse
 
 from tcw import exit as codes
+from tcw.cli_help import command, group
 from tcw.errors import BackendError, NotFound
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
@@ -128,17 +129,23 @@ def _extends_rm(args: argparse.Namespace) -> int:
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser(NAME, help="vocabulary and feature entries")
+    p = group(sub, NAME, help="vocabulary and feature entries")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pl = g.add_parser("list", help="every entry's path, one per line")
+    pl = command(g, "list", help="every entry's path",
+                 prints="one qualified path per line, or --json", writes="nothing",
+                 examples=["taxonomy list", "taxonomy list --local --json"])
     pl.add_argument("--local", action="store_true", help="local entries only")
     pl.add_argument("--json", action="store_true",
                     help='print {"schema": 1, "terms": [...]}')
     pl.set_defaults(func=_list)
 
-    pa = g.add_parser("add", help="create a vocabulary term or feature; the "
-                                  "description is read from stdin")
+    pa = command(g, "add", help="create a vocabulary term or feature; the "
+                                "description is read from stdin",
+                 prints="the new entry's qualified path",
+                 writes="the entry's files, each named on stderr",
+                 examples=["taxonomy add Invoice", "taxonomy add Refund --parent invoice",
+                           "taxonomy add 'Pay an invoice' --kind feature --vocab invoice"])
     pa.add_argument("name", help="display name of the entry (source of the default slug)")
     pa.add_argument("--slug", help="leaf slug (default: the name, slugified)")
     pa.add_argument("--parent", help="parent term path (default: the root)")
@@ -148,30 +155,41 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help="vocabulary ref a feature involves; repeat for more")
     pa.set_defaults(func=_add)
 
-    ps = g.add_parser("show", help="read an entry")
+    ps = command(g, "show", help="read an entry", prints="the record, or --json",
+                 writes="nothing", examples=["taxonomy show invoice",
+                                             "taxonomy show shared/invoice --json"])
     ps.add_argument("path",
                     help="term path, e.g. event/log-batch (alias-prefixed if inherited)")
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 1, "term": {...}}')
     ps.set_defaults(func=_show)
 
-    g.add_parser("path", help="print the taxonomy store folder").set_defaults(func=_path)
+    command(g, "path", help="print the taxonomy store folder", prints="the folder",
+            writes="nothing", examples=["taxonomy path"]).set_defaults(func=_path)
 
-    pr = g.add_parser("rm", help="remove a local entry")
+    pr = command(g, "rm", help="remove a local entry", prints="nothing",
+                 writes="removes the entry's files, each named on stderr",
+                 examples=["taxonomy rm invoice/refund"])
     pr.add_argument("path", help="path of the local term to remove")
     pr.set_defaults(func=_rm)
 
-    pse = g.add_parser("search", help="entries whose name or description holds the text")
+    pse = command(g, "search", help="entries whose name or description holds the text",
+                  prints="one qualified path per line, or --json", writes="nothing",
+                  examples=["taxonomy search refund", "taxonomy search refund --json"])
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 1, "terms": [...]}')
     pse.set_defaults(func=_search)
 
-    pe = g.add_parser("extends", help="declare taxonomy inheritance (federation)")
+    pe = group(g, "extends", help="inherit other projects' taxonomies")
     eg = pe.add_subparsers(dest="ecmd", required=True)
-    pea = eg.add_parser("add", help="inherit a registered project's taxonomy")
+    pea = command(eg, "add", help="inherit a connected project's taxonomy",
+                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  examples=["taxonomy extends add shared"])
     pea.add_argument("project_id", help="registered project ID whose taxonomy to inherit")
     pea.set_defaults(func=_extends_add)
-    per = eg.add_parser("rm", help="stop inheriting a project's taxonomy")
+    per = command(eg, "rm", help="stop inheriting a project's taxonomy",
+                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  examples=["taxonomy extends rm shared"])
     per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)

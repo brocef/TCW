@@ -12,10 +12,11 @@ import argparse
 import sys
 
 from tcw import exit as codes
+from tcw.cli_help import command, group
 from tcw.errors import BackendError, NotFound, UsageError
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
-from tcw.store.base import Capability
+from tcw.store.base import CAP_STATUSES, Capability
 from tcw.store.fs import FsCapabilitiesStore, find_node
 
 NAME = "capabilities"
@@ -212,11 +213,15 @@ def _completed_work_drift(node) -> list:
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser(NAME, help="the user stories — what a user can do")
+    p = group(sub, NAME, help="the user stories — what a user can do")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pl = g.add_parser("list", help="every capability's path, one per line")
-    pl.add_argument("--status", help="only capabilities with this status")
+    pl = command(g, "list", help="every capability's path",
+                 prints="one qualified path per line, or --json", writes="nothing",
+                 examples=["capabilities list", "capabilities list --status Missing",
+                           "capabilities list --namespace billing --json"])
+    pl.add_argument("--status", choices=sorted(CAP_STATUSES),
+                    help="only capabilities with this status")
     pl.add_argument("--namespace", help="only capabilities under this namespace folder")
     pl.add_argument("--local", action="store_true",
                     help="local capabilities only, none inherited")
@@ -224,57 +229,81 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                     help='print {"schema": 1, "capabilities": [...]}')
     pl.set_defaults(func=_list)
 
-    ps = g.add_parser("show", help="read a capability by path")
+    ps = command(g, "show", help="read a capability", prints="the record, or --json",
+                 writes="nothing", examples=["capabilities show billing/refund",
+                                             "capabilities show shared/web/login --json"])
     ps.add_argument("id", metavar="path",
                     help="capability path, e.g. web/login (alias-prefixed if inherited)")
     ps.add_argument("--json", action="store_true",
                     help='print {"schema": 1, "capability": {...}}')
     ps.set_defaults(func=_show)
 
-    g.add_parser("path", help="print the capabilities store folder").set_defaults(func=_path)
+    command(g, "path", help="print the capabilities store folder", prints="the folder",
+            writes="nothing", examples=["capabilities path"]).set_defaults(func=_path)
 
-    pa = g.add_parser("add", help="create a capability; its body is read from stdin")
+    pa = command(g, "add", help="create a capability; its body is read from stdin",
+                 prints="the new capability's qualified path",
+                 writes="the capability's files, each named on stderr",
+                 examples=["capabilities add billing/refund",
+                           "capabilities add billing/refund 'Refund a payment' "
+                           "--status Supported"])
     pa.add_argument("path", metavar="namespace/path",
                     help="path for the new capability, namespace folder first")
     pa.add_argument("name", nargs="?",
                     help="display name (default: titled from the last path segment)")
-    pa.add_argument("--status", default="Missing",
+    pa.add_argument("--status", default="Missing", choices=sorted(CAP_STATUSES),
                     help="initial status (default: Missing)")
     pa.set_defaults(func=_add)
 
-    pset = g.add_parser("set", help="update a capability's status or fields in place")
+    pset = command(g, "set", help="change a capability's status or fields",
+                   prints="nothing", writes="the record, named on stderr",
+                   examples=["capabilities set billing/refund --status Supported",
+                             "capabilities set billing/refund --field Subject=invoice,payment"])
     pset.add_argument("id", metavar="path",
                       help="capability path to update; an inherited one gains a local override")
-    pset.add_argument("--status", help="the same as --field Status=<status>")
+    pset.add_argument("--status", choices=sorted(CAP_STATUSES),
+                      help="the same as --field Status=<status>")
     pset.add_argument("--field", action="append", metavar="K=V",
                       help="set one metadata field; repeat for more fields "
                            "(a list field such as Subject takes a,b,c)")
     pset.set_defaults(func=_set)
 
-    prst = g.add_parser("reset", help="drop a local override, inheriting again")
+    prst = command(g, "reset", help="drop a local override, inheriting again",
+                   prints="nothing", writes="removes the override, named on stderr",
+                   examples=["capabilities reset web/login"])
     prst.add_argument("id", metavar="path", help="path of the local override to drop")
     prst.set_defaults(func=_reset)
 
-    prm = g.add_parser("rm", help="remove a local capability")
+    prm = command(g, "rm", help="remove a local capability", prints="nothing",
+                  writes="removes its files, each named on stderr",
+                  examples=["capabilities rm billing/refund"])
     prm.add_argument("id", metavar="path", help="path of the local capability to remove")
     prm.set_defaults(func=_rm)
 
-    pse = g.add_parser("search", help="capabilities whose name or body holds the text")
+    pse = command(g, "search", help="capabilities whose name or body holds the text",
+                  prints="one qualified path per line, or --json", writes="nothing",
+                  examples=["capabilities search refund"])
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
     pse.add_argument("--json", action="store_true",
                      help='print {"schema": 1, "capabilities": [...]}')
     pse.set_defaults(func=_search)
 
-    pe = g.add_parser("extends", help="inherit another project's capabilities")
+    pe = group(g, "extends", help="inherit other projects' capabilities")
     eg = pe.add_subparsers(dest="ecmd", required=True)
-    pea = eg.add_parser("add", help="inherit a registered project's capabilities")
+    pea = command(eg, "add", help="inherit a connected project's capabilities",
+                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  examples=["capabilities extends add shared"])
     pea.add_argument("project_id", help="registered project ID whose capabilities to inherit")
     pea.set_defaults(func=_extends_add)
-    per = eg.add_parser("rm", help="stop inheriting a project's capabilities")
+    per = command(eg, "rm", help="stop inheriting a project's capabilities",
+                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  examples=["capabilities extends rm shared"])
     per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)
 
-    pd = g.add_parser("drift", help="report inherited capabilities never ruled on, and "
-                                    "what completed work declared that the records "
-                                    "do not show")
+    pd = command(g, "drift", help="inherited capabilities never ruled on, and what "
+                                  "completed work declared that the records do not show",
+                 prints="one finding per line, `<kind>: <path>: <message>`; nothing "
+                        "when clean", writes="nothing",
+                 examples=["capabilities drift"])
     pd.set_defaults(func=_drift)

@@ -64,10 +64,12 @@ def _list(args: argparse.Namespace) -> int:
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
-    p = sub.add_parser(NAME, help="the projects this one is connected to")
+    from tcw.cli_help import command, group
+    p = group(sub, NAME, help="the projects this one is connected to")
     verbs = p.add_subparsers(dest="projects_verb", required=True)
-    p = verbs.add_parser("list", help="this project and its connected projects, "
-                                      "one ID per line")
+    p = command(verbs, "list", help="this project and its connected projects",
+                prints="one project ID per line, this project first, or --json",
+                writes="nothing", examples=["projects list", "projects list --json"])
     p.add_argument("--json", action="store_true",
                    help="print each project's relation, presence and path")
     p.set_defaults(func=_list)

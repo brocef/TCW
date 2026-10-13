@@ -496,43 +496,57 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = SuggestingParser(prog="tcw", description="Taxonomy · Capabilities · Work.")
+    from tcw.cli_help import EXIT_CODES, command
+    parser = SuggestingParser(prog="tcw", description="Taxonomy · Capabilities · Work.",
+                              epilog=EXIT_CODES,
+                              formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"tcw {__version__}")
     sub = parser.add_subparsers(dest="group", required=True)
 
-    p_init = sub.add_parser("init", help="scaffold component doc trees in this git repo")
-    p_init.add_argument("components", nargs="*",
+    p_init = command(
+        sub, "init", help="make this folder a TCW project, with the named stores",
+        prints="nothing", writes="tcw-config.yaml and each store's folder, each "
+        "named on stderr",
+        examples=["init --id my-app", "init work --id my-app --work-path ../board"])
+    p_init.add_argument("components", nargs="*", metavar="axis",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")
-    p_init.add_argument("--id", help="canonical project ID (required for new/legacy nodes)")
-    p_init.add_argument("--work-path", help="filesystem location for the work store")
-    p_init.add_argument("--taxonomy-path",
-                        help="filesystem location for the taxonomy store")
-    p_init.add_argument("--capabilities-path",
-                        help="filesystem location for the capabilities store")
+    p_init.add_argument("--id", help="the project's ID; required for a new project")
+    p_init.add_argument("--work-path", help="where the work store lives")
+    p_init.add_argument("--taxonomy-path", help="where the taxonomy store lives")
+    p_init.add_argument("--capabilities-path", help="where the capabilities store lives")
     p_init.set_defaults(func=_cmd_init)
 
-    p_provision = sub.add_parser(
-        "provision", help="obtain the work store this project declares but does not have here")
+    p_provision = command(
+        sub, "provision", help="obtain the stores and projects this project declares "
+        "but does not have here",
+        prints="nothing; its plan and every remote, before it is contacted, on stderr",
+        writes="a clone of each declared repository that is missing",
+        examples=["provision", "provision --component work --dry-run"])
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),
-        help="limit provisioning by component (default: every declared one)")
+        help="only this axis's store; repeat for more (default: every declared one)")
     p_provision.add_argument("--dry-run", action="store_true",
                              help="print the plan; contact nothing")
     p_provision.set_defaults(func=_cmd_provision)
 
-    p_validate = sub.add_parser(
-        "validate", help="check this project's files, stores and work items")
+    p_validate = command(
+        sub, "validate", help="check this project's files, stores and work items",
+        prints="one finding per line, `<severity>: <where>: <message>`; nothing "
+        "when clean", writes="nothing",
+        examples=["validate", "validate --remote"])
     p_validate.add_argument(
         "--remote", action="store_true",
         help="also check this Jira-mode project against Jira itself (reads only)",
     )
     p_validate.set_defaults(func=_cmd_validate)
 
-    p_serve = sub.add_parser("serve", help="serve a local read-only web viewer")
+    p_serve = command(sub, "serve", help="serve a local web viewer",
+                      prints="the URL", writes="what the viewer saves",
+                      examples=["serve", "serve --port 8123 --no-open"])
     p_serve.add_argument("--port", type=int, default=DEFAULT_PORT,
                          help=f"loopback port to bind (default: {DEFAULT_PORT})")
     p_serve.add_argument("--no-open", action="store_true",
-                         help="do not open a browser automatically")
+                         help="do not open a browser")
     p_serve.set_defaults(func=_cmd_serve)
 
     projects_cli.add_subparser(sub)

@@ -561,91 +561,145 @@ def _tags_rm(args) -> int:
 
 
 def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
-    p.add_argument("--priority")
-    p.add_argument("--effort")
-    p.add_argument("--complexity")
+    from tcw.work.model import PRIORITIES, SIZES
+    clear = "; an empty value clears it" if editing else ""
+    p.add_argument("--priority",
+                   help=f"one of: {', '.join(PRIORITIES)}{clear}")
+    p.add_argument("--effort", help=f"one of: {', '.join(SIZES)}{clear}")
+    p.add_argument("--complexity", help=f"one of: {', '.join(SIZES)}{clear}")
     p.add_argument("--tag", type=_tag, action="append",
                    help="a registered tag; repeat the option for more")
-    p.add_argument("--assignee")
-    p.add_argument("--parent")
-    p.add_argument("--blocked-by", dest="blocked_by", action="append")
+    p.add_argument("--assignee", help=f"who the item is assigned to{clear}")
+    p.add_argument("--parent", help=f"the item this one belongs under (a slug){clear}")
+    p.add_argument("--blocked-by", dest="blocked_by", action="append",
+                   help="an item that must finish first (a slug); repeat for more")
     if editing:
-        p.add_argument("--title", type=_nonempty)
+        p.add_argument("--title", type=_nonempty, help="a new title")
         p.add_argument("--untag", type=_tag, action="append",
                        help="a tag to take off; repeat the option for more")
-        p.add_argument("--unblocked-by", dest="unblocked_by", action="append")
+        p.add_argument("--unblocked-by", dest="unblocked_by", action="append",
+                       help="an item to take off blocked-by; repeat for more")
         p.add_argument("--blocks", action="append",
-                       help="add this item to another item's blocked-by")
+                       help="add this item to another item's blocked-by; repeat "
+                            "for more")
 
 
 def add_subparser(sub: argparse._SubParsersAction) -> None:
-    work = sub.add_parser(NAME, help="work items")
+    from tcw.cli_help import command as leaf, group
+
+    def command(verbs, name, *, examples, **kwargs):
+        return leaf(verbs, name, examples=[f"work {e}" for e in examples], **kwargs)
+
+    stages = ", ".join(s.name for s in STAGES)
+    work = group(sub, NAME, help="work items")
     cmds = work.add_subparsers(dest="work_command", required=True)
 
-    p = cmds.add_parser("new", help="create an item; text piped on stdin says what it asks for")
+    p = command(cmds, "new", help="create an item; text piped on stdin says what it "
+                                  "asks for",
+                prints="the new item's full slug (a ticket key when it stopped "
+                       "after creating a ticket)",
+                writes="the item, and in Jira mode its ticket",
+                examples=["new 'Refund a payment' --priority high < request.md",
+                          "new 'Support SSO' --project platform --tag auth"])
     p.add_argument("title", help="the item's title; the folder name is made from it")
-    p.add_argument("--project")
-    p.add_argument("--stage")
+    p.add_argument("--project", help="create it in this connected project instead")
+    p.add_argument("--stage", help="inbox, to start it there (filesystem mode only)")
     _properties(p, editing=False)
     p.set_defaults(func=_new)
 
-    p = cmds.add_parser("list", help="list items, one slug per line")
-    p.add_argument("--stage", action="append")
+    p = command(cmds, "list", help="list items",
+                prints="one full slug per line, or --json", writes="nothing",
+                examples=["list", "list --stage implement --tag auth", "list --all --json"])
+    p.add_argument("--stage", action="append",
+                   help=f"only items at this stage; repeat for more ({stages})")
     p.add_argument("--tag", type=_tag, action="append",
                    help="list items carrying this tag; repeat for any of several")
-    p.add_argument("--parent")
-    p.add_argument("--assignee")
-    p.add_argument("--all", action="store_true")
-    p.add_argument("--json", action="store_true")
+    p.add_argument("--parent", help="only items under this item (a slug)")
+    p.add_argument("--assignee", help="only items assigned to this person")
+    p.add_argument("--all", action="store_true",
+                   help="include finished and discarded items")
+    p.add_argument("--json", action="store_true",
+                   help='print {"schema": 1, "items": [...]}')
     p.set_defaults(func=_list)
 
-    p = cmds.add_parser("show", help="an item's record")
+    p = command(cmds, "show", help="an item's record, request and comments",
+                prints="the item's properties, its request and its comments, newest "
+                       "first, or --json", writes="nothing",
+                examples=["show 2026-10-01-refund-a-payment",
+                          "show 2026-10-01-refund-a-payment --json"])
     p.add_argument("slug", help=SLUG_HELP)
-    p.add_argument("--json", action="store_true")
+    p.add_argument("--json", action="store_true",
+                   help='print {"schema": 1, "item": ..., "request": ..., "comments": [...]}')
     p.set_defaults(func=_show)
 
-    p = cmds.add_parser("path", help="a path in the work store")
+    p = command(cmds, "path", help="a path in the work store",
+                prints="the path", writes="nothing",
+                examples=["path", "path 2026-10-01-refund-a-payment",
+                          "path 2026-10-01-refund-a-payment review --next"])
     p.add_argument("slug", nargs="?",
                    help=f"{SLUG_HELP}; without one, the work store folder")
     p.add_argument("stage", nargs="?",
                    help="a stage whose folder or file to name")
     which = p.add_mutually_exclusive_group()
-    which.add_argument("--next", action="store_true")
-    which.add_argument("--handoff", action="store_true")
+    which.add_argument("--next", action="store_true",
+                       help="the stage's next round file")
+    which.add_argument("--handoff", action="store_true",
+                       help="the stage's handoff file")
     p.set_defaults(func=_path)
 
-    p = cmds.add_parser("edit", help="change an item's properties")
+    p = command(cmds, "edit", help="change an item's properties", prints="nothing",
+                writes="the item", examples=[
+                    "edit 2026-10-01-refund-a-payment --priority low --tag billing",
+                    "edit 2026-10-01-refund-a-payment --assignee ''"])
     p.add_argument("slug", help=SLUG_HELP)
     _properties(p, editing=True)
     p.set_defaults(func=_edit)
 
-    p = cmds.add_parser("advance", help="move an item to its next stage")
+    p = command(cmds, "advance", help="move an item to its next stage",
+                prints="the stage the item is at after the move; with --dry-run, "
+                       "the target stage when the move would be allowed",
+                writes="the item's stage, and the trace comment",
+                examples=["advance 2026-10-01-refund-a-payment",
+                          "advance 2026-10-01-refund-a-payment --to review --dry-run",
+                          "advance 2026-10-01-refund-a-payment --to plan --force "
+                          "--reason 'spec agreed in person'"])
     p.add_argument("slug", help=SLUG_HELP)
-    p.add_argument("--to")
-    p.add_argument("--force", action="store_true")
-    p.add_argument("--reason")
-    p.add_argument("--dry-run", dest="dry_run", action="store_true")
+    p.add_argument("--to", help=f"the stage to move to (default: the next one; {stages})")
+    p.add_argument("--force", action="store_true",
+                   help="move past a refusing gate; needs --reason")
+    p.add_argument("--reason", help="why, recorded in the trace comment")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="say where it would go; move nothing")
     p.set_defaults(func=_advance)
 
-    p = cmds.add_parser("discard", help="abandon an item, with a reason")
+    p = command(cmds, "discard", help="abandon an item, with a reason",
+                prints="the stage the item is at after the move",
+                writes="the item's stage, and the trace comment",
+                examples=["discard 2026-10-01-refund-a-payment --reason 'duplicate'"])
     p.add_argument("slug", help=SLUG_HELP)
-    p.add_argument("--reason", required=True)
+    p.add_argument("--reason", required=True, help="why, recorded in the trace comment")
     p.set_defaults(func=_discard)
 
-    p = cmds.add_parser("comment", help="add a comment; text from stdin")
+    p = command(cmds, "comment", help="add a comment; text from stdin",
+                prints="nothing", writes="the comment",
+                examples=["comment 2026-10-01-refund-a-payment < note.md"])
     p.add_argument("slug", help=SLUG_HELP)
     p.set_defaults(func=_comment)
 
-    p = cmds.add_parser("rename", help="rename an item's folder")
+    p = command(cmds, "rename", help="rename an item's folder",
+                prints="the item's new full slug", writes="the item's folder name",
+                examples=["rename 2026-10-01-refund-a-payment refund-an-order"])
     p.add_argument("slug", help=SLUG_HELP)
     p.add_argument("new_name", help="the new words after the date, lower case "
                                     "and hyphenated")
     p.set_defaults(func=_rename)
 
-    p = cmds.add_parser("stage", help="read a stage's instructions")
+    p = group(cmds, "stage", help="read a stage's instructions")
     verbs = p.add_subparsers(dest="stage_verb", required=True)
-    p = verbs.add_parser("prompt", help="print a stage's instructions, running "
-                                        "no checks")
+    p = command(verbs, "prompt", help="print a stage's instructions, running no checks",
+                prints="the instructions", writes="nothing",
+                examples=["stage prompt spec", "stage prompt implement "
+                          "2026-10-01-refund-a-payment"])
     p.add_argument("stage", help="a stage (`tcw work lifecycle` lists them)")
     p.add_argument("slug", nargs="?",
                    help=f"optional; {SLUG_HELP}, so the text is composed for it")
@@ -653,8 +707,10 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    help="report what would resolve; prints nothing on stdout")
     p.set_defaults(func=_stage_prompt)
 
-    p = cmds.add_parser("procedure", help="print one of TCW's procedures, "
-                                          "composed with this project's text")
+    p = command(cmds, "procedure", help="print one of TCW's procedures, composed "
+                                        "with this project's text",
+                prints="the procedure's text", writes="nothing",
+                examples=["procedure audit-backlog"])
     p.add_argument("procedure", help="one of TCW's procedure names")
     p.add_argument("slug", nargs="?",
                    help=f"optional; {SLUG_HELP}, so the text is composed for it")
@@ -662,31 +718,46 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    help="report what would resolve; prints nothing on stdout")
     p.set_defaults(func=_procedure)
 
-    p = cmds.add_parser("lifecycle", help="the stage table and its bindings")
-    p.add_argument("--stage", help="one stage only")
-    p.add_argument("--json", action="store_true")
+    p = command(cmds, "lifecycle", help="the stage table and its bindings",
+                prints="every stage with its kind, whether it is enabled, and its "
+                       "bindings, or --json", writes="nothing",
+                examples=["lifecycle", "lifecycle --stage review --json"])
+    p.add_argument("--stage", help=f"one stage only ({stages})")
+    p.add_argument("--json", action="store_true",
+                   help='print {"schema": 1, "hooks": {...}, "stages": [...]}')
     p.set_defaults(func=_lifecycle)
 
-    p = cmds.add_parser("docs", help="this project's documentation entries")
-    p.add_argument("--json", action="store_true")
+    p = command(cmds, "docs", help="this project's documentation entries",
+                prints="the entries, or --json", writes="nothing",
+                examples=["docs", "docs --json"])
+    p.add_argument("--json", action="store_true",
+                   help='print {"schema": 1, "source": ..., "entries": [...]}')
     p.set_defaults(func=_docs)
 
-    p = cmds.add_parser("tags", help="this project's tag registry")
+    p = group(cmds, "tags", help="this project's tag registry")
     verbs = p.add_subparsers(dest="tags_verb", required=True)
-    verbs.add_parser("list", help="print the registered tags").set_defaults(
-        func=_tags_list)
+    command(verbs, "list", help="print the registered tags",
+            prints="one tag per line", writes="nothing",
+            examples=["tags list"]).set_defaults(func=_tags_list)
     for verb, func, what in (("add", _tags_add, "register"),
                              ("rm", _tags_rm, "unregister")):
-        p = verbs.add_parser(verb, help=f"{what} one or more tags")
+        p = command(verbs, verb, help=f"{what} one or more tags", prints="nothing",
+                    writes="tcw-config.yaml, named on stderr",
+                    examples=[f"tags {verb} billing", f"tags {verb} billing auth"])
         p.add_argument("tag", nargs="+", type=_tag, help="a tag; one per argument")
         p.set_defaults(func=func)
 
-    p = cmds.add_parser("tickets", help="Jira tickets that are not items yet (Jira "
-                                        "mode only)")
+    p = group(cmds, "tickets", help="Jira tickets that are not items yet (Jira mode "
+                                    "only)")
     verbs = p.add_subparsers(dest="tickets_verb", required=True)
-    p = verbs.add_parser("list", help="tickets waiting to become items")
-    p.add_argument("--json", action="store_true")
+    p = command(verbs, "list", help="tickets waiting to become items",
+                prints="one ticket key per line, or --json", writes="nothing",
+                examples=["tickets list", "tickets list --json"])
+    p.add_argument("--json", action="store_true",
+                   help='print {"schema": 1, "tickets": [...]}')
     p.set_defaults(func=_tickets_list)
-    p = verbs.add_parser("adopt", help="make a ticket an item")
+    p = command(verbs, "adopt", help="make a ticket an item",
+                prints="the new item's full slug", writes="the item's folder, and "
+                       "the ticket's TCW fields", examples=["tickets adopt TCW-42"])
     p.add_argument("key", help="the ticket's Jira key")
     p.set_defaults(func=_tickets_adopt)
