@@ -405,11 +405,14 @@ def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsy
     assert not (root / "w").exists()
 
 
-@pytest.mark.parametrize("argv", [("add", "gamma"), ("rm", "missing")])
-def test_a_tags_change_that_changes_nothing_is_not_refused(tmp_path, monkeypatch, argv):
+# Removing a tag that is not registered is not found (4), not a change that
+# changes nothing (TCW-73 Design 2 decision 6, review fix C2).
+@pytest.mark.parametrize("argv, code", [(("add", "gamma"), 0), (("rm", "missing"), 4)])
+def test_a_tags_change_that_changes_nothing_writes_nothing(tmp_path, monkeypatch, argv,
+                                                          code):
     before = b"id: node\nwork:\n  tags:\n  - gamma  # hand-ordered\n  - alpha\n"
     root = work_node(tmp_path, before)
-    assert run(root, monkeypatch, "work", "tags", *argv) == 0
+    assert run(root, monkeypatch, "work", "tags", *argv) == code
     assert config(root) == before
     assert git(root, "status", "--porcelain").stdout == ""
 
