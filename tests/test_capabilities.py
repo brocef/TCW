@@ -332,7 +332,7 @@ def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):
     FsCapabilitiesStore.open(child).set("auth/login", {"Status": "Omitted"})
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 0
-    assert "no capability drift" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""          # clean prints nothing
 
 
 def test_cli_drift_flags_shipped_but_missing(tmp_path, monkeypatch, capsys):
@@ -401,7 +401,7 @@ def test_cli_drift_ignores_a_discarded_planning_doc(tmp_path, monkeypatch, capsy
     assert FsWorkStore.open(root).get(slug).status == "discarded"
     monkeypatch.chdir(root)
     assert main(["capabilities", "drift"]) == 0
-    assert "no capability drift" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""          # clean prints nothing
 
 
 def test_cli_drift_active_planning_doc_not_flagged(tmp_path, monkeypatch, capsys):
@@ -510,7 +510,7 @@ def test_cli_drift_still_ignores_a_discarded_item_whose_folder_is_gone(
     monkeypatch.chdir(root)
 
     assert main(["capabilities", "drift"]) == 0
-    assert "no capability drift" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""          # clean prints nothing
 
 
 def test_cli_drift_is_silent_when_the_record_kept_no_resolution(
@@ -531,7 +531,7 @@ def test_cli_drift_is_silent_when_the_record_kept_no_resolution(
     capsys.readouterr()
 
     assert main(["capabilities", "drift"]) == 0
-    assert "no capability drift" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""          # clean prints nothing
 
 
 def test_cli_drift_ignores_a_planning_doc_naming_a_slug_that_never_existed(
@@ -546,7 +546,7 @@ def test_cli_drift_ignores_a_planning_doc_naming_a_slug_that_never_existed(
     monkeypatch.chdir(root)
 
     assert main(["capabilities", "drift"]) == 0
-    assert "no capability drift" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""          # clean prints nothing
 
 
 def test_cli_drift_no_work_node_no_error(tmp_path, monkeypatch, capsys):

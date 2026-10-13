@@ -251,21 +251,34 @@ def completion_gate(layout: Layout, slug: Slug) -> list[str]:
 _PRESENT_KINDS = {"new", "changed"}
 
 
+class DriftProblem(NamedTuple):
+    """One drift finding: `kind` is `drift`, `ambiguous` or `unchecked`;
+    `where` the capability path, `term <name>`, or an item's slug; its `str()`
+    is the line `tcw capabilities drift` prints (TCW-73 Design 7.3)."""
+    kind: str
+    where: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.kind}: {self.where}: {self.message}"
+
+
 def drift_problems(layout: Layout, items: Iterable[Item],
-                   reader: RecordsReader) -> list[str]:
+                   reader: RecordsReader) -> list[DriftProblem]:
     """Finished items' declarations checked against today's records.
 
     For each path or term the newest declaration wins (by the item's creation
     date), so a later item that declares it differently supersedes an earlier
     one. Two newest declarations that disagree are reported as ambiguous.
     """
-    problems: list[str] = []
+    problems: list[DriftProblem] = []
     # (what, name) -> [(created, kind, slug)]; `what` is capability or term
     seen: dict[tuple[str, str], list[tuple]] = defaultdict(list)
     for item in items:
         declared = parse_declarations(layout.capabilities_file(item.slug))
         if isinstance(declared, str):
-            problems.append(f"{item.slug}: capabilities.yaml {declared}")
+            problems.append(DriftProblem("unchecked", str(item.slug),
+                                         f"capabilities.yaml {declared}"))
             continue
         for kind, name in declared.capabilities():
             seen[("capability", name)].append((item.created, kind, item.slug))
@@ -282,7 +295,8 @@ def drift_problems(layout: Layout, items: Iterable[Item],
         if "removed" in kinds and kinds & _PRESENT_KINDS:
             who = (f"items created the same day ({by}) declare"
                    if len({slug for _, slug in latest}) > 1 else f"{by} declares")
-            problems.append(f"{label}: ambiguous — {who} it both kept and removed")
+            problems.append(DriftProblem("ambiguous", label,
+                                         f"{who} it both kept and removed"))
             continue
         # A `new` among the newest declarations keeps the Missing check.
         kind = "removed" if "removed" in kinds else (
@@ -293,10 +307,11 @@ def drift_problems(layout: Layout, items: Iterable[Item],
             problem = _term_problem(kind, name, reader, finished=True)
         if problem is None:
             continue
-        if isinstance(problem, _UncheckedProblem):
-            problems.append(f"unchecked ({by}): {problem}")
-        else:
-            problems.append(f"drift ({by}): {problem}")
+        # Each problem text starts with its label, which is `where` here.
+        message = problem[len(label) + 2:] if problem.startswith(f"{label}: ") else problem
+        problems.append(DriftProblem(
+            "unchecked" if isinstance(problem, _UncheckedProblem) else "drift",
+            label, f"{message} (declared by {by})"))
     return problems
 
 

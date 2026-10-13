@@ -152,84 +152,58 @@ def _extends_rm(args: argparse.Namespace) -> int:
 
 
 def _drift(args: argparse.Namespace) -> int:
-    """Report capabilities that drifted from ground truth: inherited-but-unreviewed
-    (status is the master default, never locally ruled on), and what completed
-    work items declared in their `capabilities.yaml` that today's records no
-    longer show. Read-only; exits non-zero when any drift is found."""
+    """Capabilities that drifted from what the work says (TCW-73 Design 7):
+    inherited ones never ruled on here, then what completed work items
+    declared in their `capabilities.yaml` that today's records do not show.
+    One finding per stdout line, `<kind>: <path>: <message>`; nothing when
+    clean; exit 1 on any finding. Read-only."""
     node = _node()
     st = FsCapabilitiesStore.open(node)
-
-    unreviewed = st.unreviewed_inherited()
-    completed_missing = _completed_but_missing(node)
-
-    for c in unreviewed:
-        print(f"unreviewed\t{c.qualified}\t(inherited; status is the master default)")
-    for problem in completed_missing:
-        print(f"completed-work\t{problem}")
-
-    n = len(unreviewed) + len(completed_missing)
-    if n:
-        print(f"{n} capability(ies) drifted.", file=sys.stderr)
-        return 1
-    print("no capability drift")
-    return 0
+    found = 0
+    # Printed before the completed-work half reads anything, so an
+    # unreachable Jira (exit 5) still leaves these on stdout.
+    for c in st.unreviewed_inherited():
+        print(f"unreviewed: {c.qualified}: inherited, and its status is still the "
+              f"upstream default; never ruled on here")
+        found += 1
+    sys.stdout.flush()
+    for problem in _completed_work_drift(node):
+        print(problem)
+        found += 1
+    return codes.ERROR if found else codes.OK
 
 
-def _completed_but_missing(node) -> list[str]:
-    """What the finished items declared in `capabilities.yaml` that today's
-    records no longer show, through TCW-69's `drift_problems`, plus one finding
-    per unreadable `item.yaml`. It never reads a `Planning doc` field, and is
-    empty for a project with no work store."""
-    from tcw.errors import BackendError
+def _completed_work_drift(node) -> list:
+    """What the completed items declared in `capabilities.yaml` that today's
+    records no longer show, through TCW-69's `drift_problems`. The completed
+    items come from the backend, so in Jira mode this asks Jira and an
+    unreachable Jira propagates (exit 5). A project with no work component
+    says so on stderr and contributes nothing. It never reads a `Planning
+    doc` field."""
     from tcw.store.fs import FsProjectRegistry, _has_work_store
+    from tcw.work.backend import Query
     from tcw.work.fs_backend import FsWorkBackend, read_all
-    from tcw.work.gates import drift_problems, project_reader
+    from tcw.work.gates import DriftProblem, drift_problems, project_reader
     from tcw.work.model import completion_stage
     from tcw.work.open import open_backend
 
     if not _has_work_store(node):
+        print("completed-work drift was not checked: this project has no work "
+              "component", file=sys.stderr)
         return []
-    try:
-        backend = open_backend(node)
-    except BackendError as error:
-        return [str(error)]
-    if not isinstance(backend, FsWorkBackend):
-        return []
-    items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
-    finished = [i for i in items if i.stage == completion_stage()]
-    problems = [f"{u.path}: cannot be read, so its declarations were not "
-                f"checked: {u.message}" for u in unreadable]
-    if finished:
-        registry = FsProjectRegistry.open(node)
-        problems += drift_problems(backend.layout, finished,
-                                   project_reader(node, registry))
-    return problems
-
-
-def _completed_but_missing(node) -> list[str]:
-    """What the finished items declared in `capabilities.yaml` that today's
-    records no longer show, through TCW-69's `drift_problems`, plus one finding
-    per unreadable `item.yaml`. It never reads a `Planning doc` field, and is
-    empty for a project with no work store."""
-    from tcw.errors import BackendError
-    from tcw.store.fs import FsProjectRegistry, _has_work_store
-    from tcw.work.fs_backend import FsWorkBackend, read_all
-    from tcw.work.gates import drift_problems, project_reader
-    from tcw.work.model import completion_stage
-    from tcw.work.open import open_backend
-
-    if not _has_work_store(node):
-        return []
-    try:
-        backend = open_backend(node)
-    except BackendError as error:
-        return [str(error)]
-    if not isinstance(backend, FsWorkBackend):
-        return []
-    items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
-    finished = [i for i in items if i.stage == completion_stage()]
-    problems = [f"{u.path}: cannot be read, so its declarations were not "
-                f"checked: {u.message}" for u in unreadable]
+    backend = open_backend(node)
+    finished_stage = completion_stage()
+    problems = []
+    if isinstance(backend, FsWorkBackend):
+        # Read directly rather than through `list`, which refuses the whole
+        # board for one unreadable item: here that item is one finding.
+        items, unreadable = read_all(backend.work_path, backend.project, backend.enabled)
+        finished = [i for i in items if i.stage == finished_stage]
+        problems += [DriftProblem("unchecked", str(u.path),
+                                  f"cannot be read, so its declarations were not "
+                                  f"checked: {u.message}") for u in unreadable]
+    else:
+        finished = backend.list(Query(stages=frozenset({finished_stage})))
     if finished:
         registry = FsProjectRegistry.open(node)
         problems += drift_problems(backend.layout, finished,
@@ -300,6 +274,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)
 
-    pd = g.add_parser("drift", help="report unreviewed inherited and shipped-but-missing "
-                                    "capabilities")
+    pd = g.add_parser("drift", help="report inherited capabilities never ruled on, and "
+                                    "what completed work declared that the records "
+                                    "do not show")
     pd.set_defaults(func=_drift)

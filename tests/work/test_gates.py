@@ -164,7 +164,9 @@ def test_drift(layout):
     declare(layout, "new: [x/y]\n", first.slug)
     reader = FakeReader()
     [problem] = drift_problems(layout, [first], reader)
-    assert "x/y" in problem and "1-first" in problem
+    assert (problem.kind, problem.where) == ("drift", "x/y")
+    assert "1-first" in problem.message
+    assert str(problem).startswith("drift: x/y: ")
 
     later = item("2-later", date(2026, 2, 1))
     declare(layout, "removed: [x/y]\n", later.slug)
@@ -180,7 +182,7 @@ def test_same_day_disagreement_is_ambiguous(layout):
     declare(layout, "new: [x/y]\n", a.slug)
     declare(layout, "removed: [x/y]\n", b.slug)
     [problem] = drift_problems(layout, [a, b], FakeReader())
-    assert "ambiguous" in problem
+    assert problem.kind == "ambiguous"
 
 
 def test_a_changed_path_that_is_missing_is_not_drift(layout):
@@ -202,8 +204,8 @@ def test_one_item_declaring_both_ways_is_not_called_two_items(layout):
     a = item("1-a", date(2026, 1, 1))
     declare(layout, "new: [x/y]\nremoved: [x/y]\n", a.slug)
     [problem] = drift_problems(layout, [a], FakeReader())
-    assert "ambiguous" in problem and "same day" not in problem
-    assert "tcw/1-a" in problem
+    assert problem.kind == "ambiguous" and "same day" not in problem.message
+    assert "tcw/1-a" in problem.message
 
 
 def test_drift_covers_removals_terms_and_unchecked(layout):
@@ -214,7 +216,8 @@ def test_drift_covers_removals_terms_and_unchecked(layout):
                         removals={"gone": STILL_LOCAL}, terms={"old": Present()})
     problems = drift_problems(layout, [a], reader)
     assert len(problems) == 4
-    assert any("unchecked" in p for p in problems)
+    assert {p.kind for p in problems} == {"drift", "unchecked"}
+    assert any(p.where == "term old" for p in problems)
 
 
 # -- the production reader ----------------------------------------------------
