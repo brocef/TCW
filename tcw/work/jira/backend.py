@@ -462,7 +462,8 @@ class JiraBackend:
                     or not (self.work_path / slug.folder).is_dir():
                 _warn(f"warning: Jira ticket {issue.get('key')} names the item "
                       f"{value!r}, whose folder is not in {self.work_path}; it is "
-                      f"left out (it may have been created on another branch)")
+                      f"left out (it may exist in another copy of this "
+                      f"repository)")
                 continue
             found.append((slug, issue))
         return [item for item in self._items(found) if query.matches(item)]

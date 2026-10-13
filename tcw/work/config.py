@@ -49,9 +49,12 @@ _REMOVED_WORK_KEYS = {
         "`artifacts` template becomes a `file` binding with a `when:` "
         "condition in that stage's `prompt` list"),
     "tracker": "the Jira connection is now `backend: jira` and `work.jira`",
-    "auto-commit-transitions": "TCW no longer commits",
-    "publish-transitions": "TCW no longer pushes",
-    "trunk-branch": "TCW no longer branches or merges",
+    "auto-commit-transitions": "TCW writes files and leaves recording them to "
+                               "the project",
+    "publish-transitions": "TCW writes files and leaves sharing them to the "
+                           "project",
+    "trunk-branch": "TCW writes files in the checkout it runs in, and nowhere "
+                    "else",
     "retain": "TCW no longer deletes finished items",
 }
 

@@ -254,7 +254,7 @@ def test_warnings_alone_exit_zero(clean, monkeypatch, capsys):
     run = remote(clean, monkeypatch, capsys)
     assert run.code == 0, run.out
     assert "warning: TCW-3: names tcw/TCW-3-elsewhere, whose folder is not here; the " \
-           "item may be on another branch" in run.lines
+           "item may exist in another copy of this repository" in run.lines
     assert any(line.startswith("warning: tcw/TCW-4-waiting: its ticket is at the inbox "
                                "status") for line in run.lines)
 

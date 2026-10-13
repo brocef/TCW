@@ -111,7 +111,7 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
     be checked. Runs `git --no-optional-locks status`, which neither refreshes
     the index nor takes `index.lock` in someone else's repository.
     """
-    who = f"`{project_id}`" if project_id else "the project"
+    who = f"'{project_id}'" if project_id else "the project"
     repository = git_root(Path(path))
     if repository is None:
         raise Refused(f"{who}'s work store is not in a git repository, so TCW "
@@ -154,9 +154,8 @@ def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:
         raise Refused(f"'{project_id}' has no work store on this machine") from None
     changed = uncommitted_changes(path, project_id)
     if changed:
-        raise Refused(f"`{project_id}`'s work store has uncommitted changes: "
-                      f"{', '.join(changed)} — commit or remove them in that "
-                      f"project first")
+        raise Refused(f"the work store of '{project_id}' has uncommitted changes: "
+                      f"{', '.join(changed)} — resolve them in that project first")
     return path
 
 

@@ -496,7 +496,8 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
             continue
         if not link_exists(backend.work_path, slug.folder):
             run.warning(str(issue.get("key")), f"names {slug}, whose folder is not here; "
-                                               f"the item may be on another branch")
+                                               f"the item may exist in another copy of "
+                                               f"this repository")
     run.say(f"{backend.project}: {sum(len(n) for n in folders.values())} item folders "
             f"checked against their tickets")
 
