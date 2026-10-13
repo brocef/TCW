@@ -48,7 +48,7 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import find_node_root, init
+from tcw.store.fs import find_project_root, init
 
 PROJECT_ID = "demo-app"
 
@@ -358,7 +358,7 @@ def refuse_bare_inside_a_project(dest: Path) -> None:
     would quietly become part of the outer project. The runner calls this for
     every bare arm before spawning anything; `seed()` calls it too.
     """
-    outer = find_node_root(dest.parent)
+    outer = find_project_root(dest.parent)
     if outer is not None:
         raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
                          f"project at {outer} (its tcw-config.yaml); seed it "

@@ -2,12 +2,12 @@ import yaml
 
 from tcw.store.fs import (
     SENTINEL,
-    child_nodes,
-    descendant_nodes,
-    find_node,
-    find_node_root,
+    child_projects,
+    descendant_projects,
+    find_component_project,
+    find_project_root,
     init,
-    parent_node,
+    parent_project,
     write_sentinel,
 )
 
@@ -35,7 +35,7 @@ def test_find_node_root_nearest(tmp_path):
     write_sentinel(tmp_path, "root-project")
     sub = tmp_path / "a" / "b"
     sub.mkdir(parents=True)
-    assert find_node_root(sub) == tmp_path.resolve()
+    assert find_project_root(sub) == tmp_path.resolve()
 
 
 def test_find_node_root_nested_resolves_innermost(tmp_path):
@@ -45,22 +45,22 @@ def test_find_node_root_nested_resolves_innermost(tmp_path):
     write_sentinel(inner, "inner-project")
     deep = inner / "x"
     deep.mkdir()
-    assert find_node_root(deep) == inner.resolve()
+    assert find_project_root(deep) == inner.resolve()
 
 
 def test_find_node_root_none_when_absent(tmp_path):
-    assert find_node_root(tmp_path) is None
+    assert find_project_root(tmp_path) is None
 
 
 def test_find_node_root_requires_file(tmp_path):
     (tmp_path / SENTINEL).mkdir()
-    assert find_node_root(tmp_path) is None
+    assert find_project_root(tmp_path) is None
 
 
 def test_find_node_gates_on_component_and_valid_id(tmp_path):
     init(["work"], tmp_path, "root-project")
-    assert find_node("work", tmp_path) == tmp_path.resolve()
-    assert find_node("taxonomy", tmp_path) is None
+    assert find_component_project("work", tmp_path) == tmp_path.resolve()
+    assert find_component_project("taxonomy", tmp_path) is None
 
 
 def test_write_sentinel_idempotent_and_conflict(tmp_path):
@@ -74,9 +74,9 @@ def test_registered_topology_is_transitive_and_layout_independent(tmp_path):
     deep = work_node(tmp_path / "another" / "deep", "deep-project")
     connect(root, child, "root-project", "child-project")
     connect(child, deep, "child-project", "deep-project")
-    assert child_nodes(root) == [child]
-    assert descendant_nodes(root) == [child, deep]
-    assert parent_node(deep) == child
+    assert child_projects(root) == [child]
+    assert descendant_projects(root) == [child, deep]
+    assert parent_project(deep) == child
 
 
 def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):
@@ -85,6 +85,6 @@ def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):
     decoy = work_node(tmp_path / "root" / "node_modules" / "decoy", "decoy-project")
     worktree = work_node(tmp_path / "root" / ".worktrees" / "copy", "copy-project")
     connect(root, child, "root-project", "child-project")
-    assert descendant_nodes(root) == [child]
-    assert decoy not in descendant_nodes(root)
-    assert worktree not in descendant_nodes(root)
+    assert descendant_projects(root) == [child]
+    assert decoy not in descendant_projects(root)
+    assert worktree not in descendant_projects(root)

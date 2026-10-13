@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, find_node, init,
+    FsCapabilitiesStore, FsTaxonomyStore, find_component_project, init,
 )
 
 
@@ -39,7 +39,7 @@ def test_extends_resolves_across_sibling_subfolders(tmp_path):
     repo = _monorepo(tmp_path)
     FsTaxonomyStore.open(repo / "project-a").add("Account")
     _extend_b_onto_a(repo)
-    node = find_node("taxonomy", repo / "project-b")     # detection finds project-b
+    node = find_component_project("taxonomy", repo / "project-b")     # detection finds project-b
     assert node == (repo / "project-b").resolve()
     term = FsTaxonomyStore.open(node).get("project-a/account")
     assert term is not None and term.name == "Account"
@@ -52,7 +52,7 @@ def test_capabilities_check_resolves_sibling_taxonomy(tmp_path):
     caps = FsCapabilitiesStore.open(repo / "project-b")
     caps.add("orders", "Place an order")
     caps.set("orders", {"Subject": "project-a/account"})
-    node = find_node("capabilities", repo / "project-b")
+    node = find_component_project("capabilities", repo / "project-b")
     tax = FsTaxonomyStore.open(node)
     assert FsCapabilitiesStore.open(node).check(taxonomy=tax) == []
 
@@ -156,7 +156,7 @@ def _child_missing_its_parent(tmp_path):
 def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
                                                           capsys):
     """It printed `(none — root)` for a config that plainly names a parent —
-    the confusion `child_nodes`' own comment forbids and README promises against."""
+    the confusion `child_projects`' own comment forbids and README promises against."""
     from tcw.cli import main
 
     child = _child_missing_its_parent(tmp_path)

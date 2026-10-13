@@ -35,8 +35,8 @@ import pytest
 import yaml
 
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, child_nodes,
-    descendant_nodes, init, load_yaml, parent_node,
+    FsCapabilitiesStore, FsTaxonomyStore, WorkLocation, child_projects,
+    descendant_projects, init, load_yaml, parent_project,
 )
 
 
@@ -85,7 +85,7 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     ``tcw-config.yaml`` sentinel.  Children inherit taxonomy from root via
     *relative* paths in ``extends``.
 
-    NB: cross-node *work* discovery (``child_nodes``/``delegate``/``reconcile``)
+    NB: cross-node *work* discovery (``child_projects``/``delegate``/``reconcile``)
     is git-repo-scoped in SP1 — plain subfolders of one repo are valid single
     nodes but are not enumerated as child nodes.  Spanning subfolders is SP2
     (unbuilt); the boundary tests below pin that contract.
@@ -129,7 +129,7 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
 
     Each sibling is its own git repo.  The *parent* is a git repo that
     contains the two sibling repos as subdirectories (and has ``docs/work/``
-    so it qualifies as a node for ``parent_node`` / ``child_nodes``).
+    so it qualifies as a node for ``parent_project`` / ``child_projects``).
     Left and right extend the parent via *absolute* paths.
     """
     parent = tmp_path / "parent"
@@ -138,7 +138,7 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     # parent needs taxonomy (children extend it) and work (node-relation ops)
     init(["taxonomy", "work"], parent, "parent")
     # NB: don't _commit_all(parent) — untracked nested git repos (left/right)
-    # would block the commit. child_nodes only walks the filesystem.
+    # would block the commit. child_projects only walks the filesystem.
 
     left = parent / "left"
     left.mkdir()
@@ -264,8 +264,8 @@ class TestLoneProject:
 
     def test_nodes_leaf(self, tmp_path):
         root = lone_project(tmp_path)
-        p = parent_node(root)
-        c = child_nodes(root)
+        p = parent_project(root)
+        c = child_projects(root)
         assert p is None
         assert c == []
 
@@ -334,11 +334,11 @@ class TestNestedMonorepo:
 
     def test_child_node_relation_parent(self, tmp_path):
         root, child_a, _ = nested_monorepo(tmp_path)
-        assert parent_node(child_a).resolve() == root.resolve()
+        assert parent_project(child_a).resolve() == root.resolve()
 
     def test_registered_subfolder_children_are_discovered(self, tmp_path):
         root, child_a, child_b = nested_monorepo(tmp_path)
-        found = {p.resolve() for p in child_nodes(root)}
+        found = {p.resolve() for p in child_projects(root)}
         assert child_a.resolve() in found
         assert child_b.resolve() in found
 
@@ -377,7 +377,7 @@ class TestNestedMonorepo:
             "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
         )
         _commit_all(deep)
-        found = descendant_nodes(root)
+        found = descendant_projects(root)
         deep_path = deep.resolve()
         assert any(f.resolve() == deep_path for f in found)
 
@@ -411,15 +411,15 @@ class TestSiblingNodes:
 
     def test_child_nodes_finds_siblings(self, tmp_path):
         parent, left, right = sibling_nodes(tmp_path)
-        found = child_nodes(parent)
+        found = child_projects(parent)
         found_resolved = {p.resolve() for p in found}
         assert left.resolve() in found_resolved
         assert right.resolve() in found_resolved
 
     def test_parent_node_resolved_through_git(self, tmp_path):
         parent, left, _ = sibling_nodes(tmp_path)
-        # parent_node walks up through git worktree ancestry
-        p = parent_node(left)
+        # parent_project walks up through git worktree ancestry
+        p = parent_project(left)
         assert p is not None
         # The parent must be a node (has docs/work/) and be reachable
         assert (p / "docs" / "work").is_dir()
@@ -586,10 +586,10 @@ class TestCrossEnvironment:
 # ────────────────────────────────────────────────────────────────────────
 
 
-def _resolved(node_root: Path, configured: str | None) -> Path:
+def _resolved(project_root: Path, configured: str | None) -> Path:
     """`_local_root` as the caller invokes it — on an already-resolved node root
     (`tcw/store/fs.py` resolves before calling) — normalized for comparison."""
-    return WorkLocation._local_root(node_root.resolve(), configured).resolve()
+    return WorkLocation._local_root(project_root.resolve(), configured).resolve()
 
 
 # ── load_yaml's mapping contract ─────────────────────────────────────────────

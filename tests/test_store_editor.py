@@ -641,7 +641,7 @@ def test_update_capability_failure_removes_override_it_materialized(tmp_path,
                                                                     monkeypatch):
     """A fresh override directory rolls back too.
 
-    `update_capability` mkdirs the override itself, so `_write_node` sees a
+    `update_capability` mkdirs the override itself, so `_write_entry` sees a
     directory that already "existed" and skips its own rollback — the guard has
     to sit at the caller that created it.
     """

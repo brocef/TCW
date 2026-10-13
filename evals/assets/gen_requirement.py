@@ -3,7 +3,7 @@
 Emits a requirement whose marker is derived at run time from the work item this
 stage is being asked about, so the marker exists in no committed file. It is
 still readable by anything that can read *this* file, which lives in the node
-(`run_generate` uses `cwd=node_root`). The claim it supports is therefore the
+(`run_generate` uses `cwd=project_root`). The claim it supports is therefore the
 narrow one: the marker cannot come from repository knowledge or from training.
 
 **This script must never raise.** `_resolve_one` turns a `GenerateError` into a

@@ -6,7 +6,7 @@ lexically clean, so the join lands wherever it points. See the item spec at
 `docs/work/active/2026-07-30-resolve-taxonomy-refs-against-symlinks-not-just-lexically/`.
 
 Every fixture is a real `git init` repository: a repository precondition runs
-inside `_write_node`, so a write into a non-repository fails there rather than
+inside `_write_entry`, so a write into a non-repository fails there rather than
 at the containment guard, which would make these tests pass for the wrong
 reason.
 """

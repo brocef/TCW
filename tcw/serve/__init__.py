@@ -20,8 +20,8 @@ from tcw.store.base import (
     IllegalTransition, MultipleMatch, RefError, StaleRevision,
 )
 from tcw.store.fs import (
-    FsCapabilitiesStore, FsTaxonomyStore, descendant_nodes,
-    find_node_root, heading_slug, registered_project_id,
+    FsCapabilitiesStore, FsTaxonomyStore, descendant_projects,
+    find_project_root, heading_slug, registered_project_id,
 )
 from tcw.refs import resolve_tcw_ref
 from tcw.validate import ValidationTarget, validate
@@ -359,7 +359,7 @@ class TcwHandler(BaseHTTPRequestHandler):
         if not self.server.include_descendants:
             return set()
         anchor = self.server.node_root.resolve()
-        return {registered_project_id(anchor, root) for root in descendant_nodes(anchor)}
+        return {registered_project_id(anchor, root) for root in descendant_projects(anchor)}
 
     def _work_stub(self) -> bool:
         """Answer every `/api/work…` request until TCW-77 rebuilds the work
@@ -541,7 +541,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "coreRevision": detail.core_revision if detail else "",
                 }
                 self._send_json(HTTPStatus.CREATED, _with_warnings(
-                    response, taxonomy.node_root, "taxonomy", ref))
+                    response, taxonomy.project_root, "taxonomy", ref))
             except (ValueError, TcwError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -569,7 +569,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "coreRevision": detail.core_revision,
                 }
                 self._send_json(HTTPStatus.CREATED, _with_warnings(
-                    response, capabilities.node_root, "capabilities", cap_path))
+                    response, capabilities.project_root, "capabilities", cap_path))
             except (ValueError, TcwError) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -698,7 +698,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "coreRevision": detail.core_revision,
                 }
                 self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, taxonomy.node_root, "taxonomy", detail.term.slug))
+                    response, taxonomy.project_root, "taxonomy", detail.term.slug))
             except (ValueError, TcwError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)
                 self._send(sc, bb, "application/json; charset=utf-8")
@@ -730,7 +730,7 @@ class TcwHandler(BaseHTTPRequestHandler):
                     "coreRevision": detail.core_revision,
                 }
                 self._send_json(HTTPStatus.OK, _with_warnings(
-                    response, capabilities.node_root, "capabilities",
+                    response, capabilities.project_root, "capabilities",
                     detail.capability.path))
             except (ValueError, TcwError, StaleRevision) as e:
                 sc, bb = _map_store_error(e)

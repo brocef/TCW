@@ -16,7 +16,7 @@ from pathlib import Path
 from tcw.work.config import Binding
 
 
-def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
+def run_bindings(bindings: list[Binding], project_root: Path, env: dict[str, str],
                  timeout: int, label: str) -> str | None:
     """Run each command binding in declared order; return the first failure.
 
@@ -37,7 +37,7 @@ def run_bindings(bindings: list[Binding], node_root: Path, env: dict[str, str],
             continue
         try:
             r = subprocess.run(
-                binding.ref, shell=True, cwd=str(node_root), env=env,
+                binding.ref, shell=True, cwd=str(project_root), env=env,
                 capture_output=True, text=True, timeout=timeout,
                 # A hook reads only the stdin it was given, which is none: an
                 # inherited descriptor would let it consume the caller's piped

@@ -17,7 +17,7 @@ from tcw.work.model import DEFAULT_PRIORITY, SIZES, UNSET, Changes
 
 BLOCKS = "Blocks"
 
-#: ADF node types that sit inside a line of text rather than forming a block.
+#: Atlassian document content types that sit inside a line of text, not a block.
 INLINE = frozenset({"text", "hardBreak", "mention", "emoji", "inlineCard", "date",
                     "status"})
 

@@ -59,7 +59,7 @@ def override_variable(project_id: str) -> str:
     """The environment variable that says where `project_id` lives on this machine.
 
     The id, uppercased, with `-` as `_`: `proposit-core` →
-    `TCW_PROJECT_PROPOSIT_CORE`. **Node ids, not repository names** — the two are
+    `TCW_PROJECT_PROPOSIT_CORE`. **Project ids, not repository names** — the two are
     routinely different, and a workspace where they are crossed is what this
     mapping is most often got wrong against.
 
@@ -128,7 +128,7 @@ def _below(path: Path, root: Path) -> Path | None:
 def _config_file(path: Path) -> Path:
     """A `tcw-config.yaml` path with its folder resolved and the file itself not
     followed. A symlinked config belongs to the folder it sits in: that folder
-    is the node, and its relative locators are read from there — resolving the
+    is the project, and its relative locators are read from there — resolving the
     file took them from wherever the link pointed."""
     return path.parent.resolve() / path.name
 
@@ -208,8 +208,8 @@ def _same_repository(marker: Path, main: Path) -> bool:
 class FsProjectRegistry(ProjectRegistry):
     """A project graph loaded solely by following declared config locators."""
 
-    def __init__(self, node_root: Path):
-        self.node_root = node_root.resolve()
+    def __init__(self, project_root: Path):
+        self.project_root = project_root.resolve()
         self._cache: dict[Path, _Config] = {}
         self._by_id: dict[str, _Config] = {}
         # The same problems twice, in step: rendered for the refusals that
@@ -236,17 +236,17 @@ class FsProjectRegistry(ProjectRegistry):
         # contradicts it.
         self._override_refused: set[str] = set()
         self._loaded = False
-        # The first spelling met of each node folder, by the folder's identity: on
+        # The first spelling met of each project folder, by the folder's identity: on
         # a case-insensitive disk `Root` and `ROOT` are one folder, and keying the
         # graph by path text loaded it twice.
         self._spellings: dict[tuple[int, int], Path] = {}
-        self._current_path = self.node_root / SENTINEL
+        self._current_path = self.project_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
-        self._anchors = worktree_anchors(self.node_root)
+        self._anchors = worktree_anchors(self.project_root)
 
     @classmethod
-    def open(cls, node_root: Path) -> "FsProjectRegistry":
-        registry = cls(node_root)
+    def open(cls, project_root: Path) -> "FsProjectRegistry":
+        registry = cls(project_root)
         registry._load_graph()
         return registry
 
@@ -337,9 +337,9 @@ class FsProjectRegistry(ProjectRegistry):
         the path the config wrote, which on a machine needing this is exactly
         the path that does not exist.
 
-        A project is reached through the edges pointing at it, since a node's
+        A project is reached through the edges pointing at it, since a project's
         own repository is declared by whoever knows about that edge rather than
-        by the node itself. A declared project the graph does not hold answers
+        by the project itself. A declared project the graph does not hold answers
         None: it names a repository but no location here, and sending the store
         ladder to a path that is not there is worse than sending it nowhere.
         """
@@ -418,7 +418,7 @@ class FsProjectRegistry(ProjectRegistry):
         naming a project nothing connects to is never consulted. Listing it
         would claim the graph depends on something it does not.
 
-        Includes an override that resolved to the *wrong* node. The id mismatch
+        Includes an override that resolved to the *wrong* project. The id mismatch
         is reported separately, and a reader who sees only that message is
         looking at a path written in no config they can find.
         """
@@ -577,10 +577,10 @@ class FsProjectRegistry(ProjectRegistry):
             # Everything else below stays an error: those targets are present
             # and wrong, which is what fail-closed was written for.
             if declared_id is None and declared_in is None:
-                # The node the command was run in, not a target it declared.
+                # The project the command was run in, not a target it declared.
                 # The fail-open below is argued for *targets* — "this checkout
                 # does not have that project" — and says nothing about a
-                # directory that is not a node at all. Recording nothing for it
+                # directory that is not a project at all. Recording nothing for it
                 # made `require_valid()` accept any directory on the disk, and
                 # every helper built on it answer "no parent, no children,
                 # valid".
@@ -688,7 +688,7 @@ class FsProjectRegistry(ProjectRegistry):
         Above both sits rule 0, the environment's own statement — see
         `_override_path`. It is first, not last, and that is load-bearing: the
         case it exists for is a declared locator that resolves to the *wrong*
-        existing node, which no rung below rule 1 can reach. It is also the
+        existing project, which no rung below rule 1 can reach. It is also the
         honest ordering, since the ladder's standing rule is that the more
         specific answer wins, and *I am telling you where this is on this
         machine* is as specific as an answer gets.
@@ -737,7 +737,7 @@ class FsProjectRegistry(ProjectRegistry):
         repositories, with neither needing to know which case it is in.
 
         **Present and wrong is wrong.** A directory that is here and is not a
-        node is a mistake with no benign reading, and it is refused rather than
+        project is a mistake with no benign reading, and it is refused rather than
         skipped. Skipping it is the fail-open shape that produces "my override
         does nothing" with nothing at all to read.
 
@@ -776,7 +776,7 @@ class FsProjectRegistry(ProjectRegistry):
                                                    problem=f"{root}: {problem}"))
             return config_path
         # Recorded before the id is known to be right. An override that landed
-        # on the wrong node still explains a path the reader will otherwise find
+        # on the wrong project still explains a path the reader will otherwise find
         # in no config, and `_read_config` reports the mismatch itself, naming
         # both ids — parsing the config here to say it again would print two
         # messages for one cause.
@@ -794,7 +794,7 @@ class FsProjectRegistry(ProjectRegistry):
         top, main = self._anchors
         # Rule 1 — re-anchor only on escape, and only a *relative* locator: an
         # absolute one names a place, not an offset from the config. A target
-        # that stays inside the worktree is a sibling node on the same branch and
+        # that stays inside the worktree is a sibling project on the same branch and
         # belongs to the worktree (this is what keeps multi-project-in-one-repo
         # working). Only a target that leaves the checkout was authored against
         # the primary checkout's position on disk, so resolve it against the
@@ -812,18 +812,18 @@ class FsProjectRegistry(ProjectRegistry):
     def _worktree_copy(self, resolved: Path) -> Path:
         """Rule 2 — a config path under the main worktree, as this worktree's copy.
 
-        Nodes outside this worktree point back into its repository as the *main*
-        worktree spells it — the current node, and every sibling in the same
+        Projects outside this worktree point back into its repository as the *main*
+        worktree spells it — the current project, and every sibling in the same
         repository — so the graph would load each twice under one ID and fail
         reciprocity. A path under the main worktree whose counterpart under this
-        worktree holds a config, in this same repository, is the same node on the
+        worktree holds a config, in this same repository, is the same project on the
         checked-out branch, so it resolves there (GitHub #39). Anything else keeps
         its path, so an ID repeated across *different* repositories is still a
         duplicate — including a repository nested inside this one, which the
         branch does not hold even when a copy sits at the same place. A path
         already inside this worktree is left alone: TCW's own worktrees live under
         the primary checkout (`.worktrees/<slug>`), where every worktree path is
-        also "under main". Applied to every way a node is declared — a locator,
+        also "under main". Applied to every way a project is declared — a locator,
         absolute or relative, and a `repository:` checkout."""
         if self._anchors is None:
             return resolved
@@ -837,7 +837,7 @@ class FsProjectRegistry(ProjectRegistry):
         between = copy.parent
         while between != top and between.is_relative_to(top):
             if not _same_repository(between / ".git", main):
-                return resolved                  # another repository's node
+                return resolved                  # another repository's project
             between = between.parent
         return _config_file(copy)
 
@@ -907,8 +907,8 @@ class FsProjectRegistry(ProjectRegistry):
                     continue
                 reciprocal = parent.children.get(cfg.project.id)
                 if reciprocal is None:
-                    # The migration's middle state: the parent moved this node
-                    # from `children` to `upstream`, and this node has not yet
+                    # The migration's middle state: the parent moved this project
+                    # from `children` to `upstream`, and this project has not yet
                     # dropped its parent entry. A warning, so neither side is
                     # blocked while the two repositories catch up.
                     if (reader := self._upstream_reader(cfg.project.id)) is not None:
@@ -932,7 +932,7 @@ class FsProjectRegistry(ProjectRegistry):
     def _validate_upstreams(self) -> None:
         """An upstream is read-only, so it cannot also be something its declarer
         writes to — its own child or parent, or any project it reaches through
-        them. Checked from the declarer, not from the current node: the conflict
+        them. Checked from the declarer, not from the current project: the conflict
         is in the declarer's connections, wherever the command was run."""
         for cfg in list(self._cache.values()):
             if cfg.path in self._upstream_only:
@@ -952,11 +952,11 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _points_elsewhere(self, source_config: Path, locator: ConnectedProject,
                           expected: Path) -> bool:
-        """Whether `locator`, read from `source_config`, names a node other than
+        """Whether `locator`, read from `source_config`, names a project other than
         `expected` — as far as this machine can tell.
 
         An **absent** target cannot answer the question and must not be read as
-        "no". Two nodes routinely name each other at paths that exist only on the
+        "no". Two projects routinely name each other at paths that exist only on the
         machine whose author wrote them: a monorepo nested inside an orchestrator
         on one disk and cloned beside it on another. Comparing a path that is
         here against a path that is not decides nothing, and deciding it against
@@ -1016,8 +1016,8 @@ class FsProjectRegistry(ProjectRegistry):
 
         Run after the walk because one of the two failures cannot be seen before
         it. A directory holding no `tcw-config.yaml` is known the moment the
-        override resolves; a directory holding the *wrong* node is known only
-        once that node's config has been read, by the same mismatch check that
+        override resolves; a directory holding the *wrong* project is known only
+        once that project's config has been read, by the same mismatch check that
         catches a wrong declared locator.
 
         The test is deliberately the outcome rather than a list of failure
@@ -1037,7 +1037,7 @@ class FsProjectRegistry(ProjectRegistry):
                     self._overrides[index] = replace(override, warning=warning)
                 continue
             # Not `cfg`: that is whatever answered for this id, which is not
-            # necessarily what the override pointed at. Name the node actually
+            # necessarily what the override pointed at. Name the project actually
             # sitting at the overridden location, read from the walk's cache.
             at_location = self._cache.get(where)
             found = (f"which is '{at_location.project.id}', not '{override.id}'"
@@ -1086,14 +1086,14 @@ class FsProjectRegistry(ProjectRegistry):
         """Record a declared project that is not here, rather than a problem.
 
         `project_id` is the key the declaring config used. It can be None only
-        for the current node's own config, which is never an edge — the guard is
+        for the current project's own config, which is never an edge — the guard is
         here so a future caller cannot record a nameless entry that no message
         could ever render.
         """
         if not project_id:
             return
         if project_id in self._override_refused:
-            # Told where it is, and it is not a node. That is a refusal, not a
+            # Told where it is, and it is not a project. That is a refusal, not a
             # thing to obtain, and `run tcw provision` would contradict it.
             return
         entry = UnreachableProject(id=project_id, locator=locator,

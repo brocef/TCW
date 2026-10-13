@@ -92,9 +92,9 @@ def _cache_key(declaration: RepositoryDeclaration) -> str:
     return f"{slug}-{digest}"
 
 
-def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
+def checkout_root(project_root: Path, declaration: RepositoryDeclaration) -> Path:
     """The working copy's root for `declaration` — the declared `checkout`, or a
-    per-machine cache directory. `~` expands; a relative path is the node's.
+    per-machine cache directory. `~` expands; a relative path is the project's.
 
     A `~name` that names no user is a *declaration* error, not a crash.
     `Path.expanduser()` raises `RuntimeError` for it — not `ValueError`, not
@@ -102,7 +102,7 @@ def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
     connected project that declares a repository. So a single unresolvable `~`
     anywhere in the graph put a raw traceback out of `tcw validate` and
     `tcw work list`, and the `except Exception` guards elsewhere turned it into
-    a silently dropped node and a re-clone of projects the checkout already had.
+    a silently dropped project and a re-clone of projects the checkout already had.
     """
     if declaration.checkout:
         try:
@@ -111,17 +111,17 @@ def checkout_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
             raise StoreDeclarationError(
                 f"repository.checkout '{declaration.checkout}' cannot be "
                 f"resolved: {error}") from None
-        return value if value.is_absolute() else (node_root / value)
+        return value if value.is_absolute() else (project_root / value)
     return _cache_root() / _cache_key(declaration)
 
 
-def provisioned_root(node_root: Path, declaration: RepositoryDeclaration) -> Path:
-    """Where a provisioned *thing* — a store or a whole node — would live.
+def provisioned_root(project_root: Path, declaration: RepositoryDeclaration) -> Path:
+    """Where a provisioned *thing* — a store or a whole project — would live.
 
     `provisioned_store_root` is this function under the name its callers already
-    use. A node is the same computation with `declaration.path` naming the node's
+    use. A project is the same computation with `declaration.path` naming the project's
     directory within the repository rather than the store's, which is why there
     is one function and not two that could drift.
     """
-    root = checkout_root(node_root, declaration)
+    root = checkout_root(project_root, declaration)
     return (root / declaration.path) if declaration.path else root

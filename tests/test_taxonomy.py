@@ -19,7 +19,7 @@ def node(tmp_path: Path, name: str) -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root, name)          # mark it a node for CLI (find_node) tests
+    write_sentinel(root, name)          # mark it a node for CLI (find_component_project) tests
     return root
 
 

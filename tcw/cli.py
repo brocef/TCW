@@ -17,7 +17,7 @@ from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    declared_repository, find_node_root, git_root, init,
+    declared_repository, find_project_root, git_root, init,
     provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
@@ -74,7 +74,7 @@ def run_init(components: list[str], project_id: str | None = None,
 
 
 def run_provision(components: list[str], *, dry_run: bool = False) -> int:
-    """Make this node's declared component stores usable here.
+    """Make this project's declared component stores usable here.
 
     The only command in `tcw` that reaches the network, and it does so only
     because it was asked to. That is the whole security posture of the feature:
@@ -84,8 +84,8 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     goes to stderr, `--dry-run` included: it has no product (TCW-73 Design
     1.7). A store already here is never fetched into (Design 8.4).
     """
-    node_root = find_node_root()
-    if node_root is None:
+    project_root = find_project_root()
+    if project_root is None:
         from tcw.errors import NO_PROJECT, BackendError
         raise BackendError(NO_PROJECT)
 
@@ -97,13 +97,13 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     # override was pointing at. That is the bug the whole feature exists to stop.
     #
     # Deliberately only overrides, not graph problems at large:
-    # `_declared_nodes_in_graph` opens the registry without `require_valid` on
-    # purpose, because a graph with an unreachable node is the graph this command
+    # `_declared_projects_in_graph` opens the registry without `require_valid` on
+    # purpose, because a graph with an unreachable project is the graph this command
     # exists to complete. An override is a declaration the environment made, and
     # a declaration that is present and wrong refuses — the same rule the two
     # blocks below apply to the ones written in files.
     try:
-        failed_overrides = [o for o in FsProjectRegistry.open(node_root).overrides()
+        failed_overrides = [o for o in FsProjectRegistry.open(project_root).overrides()
                             if o.problem is not None]
     except Exception:
         failed_overrides = []
@@ -115,7 +115,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     declared: list[tuple[str, object]] = []
     problems: list[str] = []
     for component in components:
-        declaration, component_problems = declared_repository(node_root, component)
+        declaration, component_problems = declared_repository(project_root, component)
         problems += [f"{SENTINEL}: {p}" for p in component_problems]
         if declaration is not None:
             declared.append((component, declaration))
@@ -128,21 +128,21 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
             print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
 
-    declared_nodes, node_problems = _declared_nodes_in_graph(node_root)
+    declared_projects, project_problems = _declared_projects_in_graph(project_root)
     # Same rule as a component's: a declaration that is present and wrong
     # refuses, rather than reading as "nothing declared" and reporting success.
-    if node_problems:
-        for problem in node_problems:
+    if project_problems:
+        for problem in project_problems:
             print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
-    if not declared and not declared_nodes:
+    if not declared and not declared_projects:
         print(f"Nothing to provision: no component or connected project declares "
               f"a home repository in {SENTINEL}.", file=sys.stderr)
         return 0
 
     failed = False
     for component, declaration in declared:
-        provisioner = FsStoreProvisioner(node_root, component, declaration)
+        provisioner = FsStoreProvisioner(project_root, component, declaration)
         declared_available = provisioner.is_available()
         if not declared_available:
             try:
@@ -150,7 +150,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
                 # correct only while the loop had one component to run: with
                 # more, a taxonomy declaration was measured against whether the
                 # work store resolved, and would be cloned because it did not.
-                resolved = STORE_CLASSES[component].open(node_root)
+                resolved = STORE_CLASSES[component].open(project_root)
             except ValueError:
                 pass
             else:
@@ -165,24 +165,24 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
             failed = True
             continue
         print(f"  {result.detail}", file=sys.stderr)
-    if _provision_nodes(node_root, dry_run=dry_run):
+    if _provision_projects(project_root, dry_run=dry_run):
         failed = True
     return 1 if failed else 0
 
 
-def _declared_nodes_in_graph(
+def _declared_projects_in_graph(
     root: Path, seen: set[Path] | None = None
 ) -> tuple[list[tuple[Path, str, object]], list[str]]:
-    """Declarations on `root` and on every node reachable from it here.
+    """Declarations on `root` and on every project reachable from it here.
 
-    Not just the node the command was run in: a declaration lives on whichever
-    node knows about that edge, which in a monorepo is routinely a sibling
+    Not just the project the command was run in: a declaration lives on whichever
+    project knows about that edge, which in a monorepo is routinely a sibling
     package rather than the one the user happens to be standing in. Walking the
     present graph is what makes "declarations follow the graph" true from
     anywhere in it.
 
     The registry is opened without `require_valid`, deliberately — a graph with
-    an unreachable node is exactly the graph this command exists to complete, and
+    an unreachable project is exactly the graph this command exists to complete, and
     refusing to read it would be circular.
     """
     from tcw.store.fs import declared_connected_projects
@@ -213,12 +213,12 @@ def _declared_nodes_in_graph(
     return found, problems
 
 
-def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
-    """Obtain the connected projects this node declares, and the ones they
+def _provision_projects(project_root: Path, *, dry_run: bool) -> bool:
+    """Obtain the connected projects this project declares, and the ones they
     declare. Returns True if anything failed.
 
     **Transitive on purpose, and this is the one place a URL the user did not
-    write can be contacted.** A node obtained here may declare others, and that
+    write can be contacted.** A project obtained here may declare others, and that
     is what lets declarations stay where the knowledge is: a repository names
     only its own edges, and never has to know about a project two hops away.
     The safeguard is not to refuse it but to make it visible — every remote is
@@ -231,14 +231,14 @@ def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
     (url, ref), so a cycle among declarations revisits nothing and two entries
     naming one repository share one working copy.
     """
-    from tcw.store.fs import NODE_TARGET
+    from tcw.store.fs import PROJECT_TARGET
 
     failed = False
     seen: set[Path] = set()
     queue: list[tuple[Path, str, object, str]] = []
     # "A project that is already here always wins" is the rule the whole feature
     # rests on, and the walk is the one place it was not applied: a declaration
-    # is written by whichever node knows about that edge, so an ancestor
+    # is written by whichever project knows about that edge, so an ancestor
     # routinely declares where a project comes from that the *caller* is standing
     # inside, or beside. Taking that at face value re-cloned repositories the
     # user already had.
@@ -251,7 +251,7 @@ def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
     # guarantee.
     starting_registry = None
     try:
-        starting_registry = FsProjectRegistry.open(node_root)
+        starting_registry = FsProjectRegistry.open(project_root)
     except Exception:
         pass
     # Obtained during *this* run, so not in a registry read before they existed.
@@ -287,11 +287,11 @@ def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
             # project named only by something it reads — a public upstream can
             # still name the private repository it is migrating away from.
             return
-        found, problems = _declared_nodes_in_graph(root, enqueued)
+        found, problems = _declared_projects_in_graph(root, enqueued)
         for problem in problems:
             print(f"tcw provision: {problem}", file=sys.stderr)
         # Counted, not merely printed. The same malformed declaration exits 1 on
-        # the starting graph and used to exit 0 on a node obtained during the
+        # the starting graph and used to exit 0 on a project obtained during the
         # walk, so a CI step gated on `tcw provision` read the second as success.
         # A declaration that is present and wrong is present and wrong wherever
         # it was found.
@@ -299,7 +299,7 @@ def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
         queue.extend(found)
 
     enqueued: set[Path] = set()
-    enqueue(node_root)
+    enqueue(project_root)
     while queue:
         source, project_id, declaration, relation = queue.pop(0)
         target = provisioned_store_root(source, declaration)
@@ -324,7 +324,7 @@ def _provision_nodes(node_root: Path, *, dry_run: bool) -> bool:
             have.add(project_id)
             enqueue(present, relation)
             continue
-        provisioner = FsStoreProvisioner(source, NODE_TARGET, declaration)
+        provisioner = FsStoreProvisioner(source, PROJECT_TARGET, declaration)
         if provisioner.is_available():
             print(f"  {project_id}: already available at {target}", file=sys.stderr)
             have.add(project_id)
@@ -380,13 +380,13 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     from tcw.errors import NO_PROJECT, BackendError, UsageError
     from tcw.findings import Finding
     from tcw.validate import validate
-    node_root = find_node_root()
-    if node_root is None:
+    project_root = find_project_root()
+    if project_root is None:
         raise BackendError(NO_PROJECT)
-    if args.remote and not _jira_mode(node_root):
+    if args.remote and not _jira_mode(project_root):
         raise UsageError("--remote checks a Jira-mode project, and this project's "
                          "work.backend is filesystem")
-    registry = FsProjectRegistry.open(node_root)
+    registry = FsProjectRegistry.open(project_root)
     # An override is set in an environment rather than in any file this
     # checkout holds, so a graph that resolves because of one resolves for a
     # reason no reader can grep. Narration, never a finding: an override is a
@@ -420,11 +420,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     for warning in registry.warnings():
         findings.append(Finding("warning", SENTINEL, warning))
     notes: list[str] = []
-    findings += validate(node_root, notes=notes)
+    findings += validate(project_root, notes=notes)
     for note in notes:
         print(note, file=sys.stderr)
     if args.remote:
-        remote, unreachable = _validate_remote(node_root)
+        remote, unreachable = _validate_remote(project_root)
         findings += remote
         code = _report(findings)
         return 5 if unreachable else code
@@ -481,13 +481,13 @@ def _validate_remote(root: Path):
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
-    # Descendant node boards are aggregated by default (like
+    # Descendant project boards are aggregated by default (like
     # `tcw work list --include-descendants`).
-    node_root = find_node_root()
-    if node_root is None:
+    project_root = find_project_root()
+    if project_root is None:
         from tcw.errors import NO_PROJECT, BackendError
         raise BackendError(NO_PROJECT)
-    FsProjectRegistry.open(node_root).require_valid()
+    FsProjectRegistry.open(project_root).require_valid()
     return serve(port=args.port, open_browser=not args.no_open,
                  include_descendants=True)
 

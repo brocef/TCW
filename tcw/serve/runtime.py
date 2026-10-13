@@ -19,7 +19,7 @@ from importlib.resources import as_file, files
 from pathlib import Path
 from typing import TextIO
 
-from tcw.store.fs import find_node_root
+from tcw.store.fs import find_project_root
 
 HOST = "127.0.0.1"
 MINIMUM_NODE = (22, 12, 0)
@@ -119,7 +119,7 @@ def _supervise(
 def run_server(*, port: int, open_browser: bool, node_root: Path | None,
                include_descendants: bool) -> int:
     """Run the authenticated sidecar and packaged Fastify server together."""
-    root = node_root or find_node_root()
+    root = node_root or find_project_root()
     if root is None:
         print("tcw serve: no tcw node here — run `tcw init` in the project folder.",
               file=sys.stderr)

@@ -71,9 +71,9 @@ def _strip_code(md: str) -> str:
     return _INLINE_CODE_RE.sub("", _FENCE_RE.sub("", md))
 
 
-def _rel(f: Path, node_root: Path) -> str:
+def _rel(f: Path, project_root: Path) -> str:
     try:
-        return str(f.relative_to(node_root))
+        return str(f.relative_to(project_root))
     except ValueError:
         return str(f)
 
@@ -98,20 +98,20 @@ def _iter(root: Path, pattern: str):
     return sorted(root.rglob(pattern))
 
 
-def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
-    """Each tree store this node has, at its resolved root — or why it could
+def _tree_roots(project_root: Path) -> dict[str, "Path | ValueError"]:
+    """Each tree store this project has, at its resolved root — or why it could
     not be opened. Resolved once, so scanning and checking cannot disagree about
     where a store is. A store moved by `<c>.path` or kept in another repository
     is found here; testing for `docs/<c>` found neither.
 
-    The rule `find_node` uses: a store that opens is here when its root is a
+    The rule `find_component_project` uses: a store that opens is here when its root is a
     directory, and one that will not open is reported — which includes a broken
-    `extends` in a node with no tree of its own.
+    `extends` in a project with no tree of its own.
     """
     roots: dict[str, Path | ValueError] = {}
     for comp in ("taxonomy", "capabilities"):
         try:
-            root = STORE_CLASSES[comp].open(node_root).root
+            root = STORE_CLASSES[comp].open(project_root).root
         except ValueError as e:
             roots[comp] = e
             continue
@@ -120,12 +120,12 @@ def _tree_roots(node_root: Path) -> dict[str, "Path | ValueError"]:
     return roots
 
 
-def _scan_roots(node_root: Path, trees: dict) -> list[Path]:
+def _scan_roots(project_root: Path, trees: dict) -> list[Path]:
     roots = [r for r in trees.values() if isinstance(r, Path)]
     try:
-        roots.append(WorkLocation.open(node_root).root)
+        roots.append(WorkLocation.open(project_root).root)
     except ValueError:
-        roots.append(node_root / "docs" / "work")
+        roots.append(project_root / "docs" / "work")
     return roots
 
 
@@ -133,8 +133,8 @@ def _under(p: Path, d: Path) -> bool:
     return p == d or d in p.parents
 
 
-def _claims_work(node_root: Path) -> bool:
-    """Whether the node's config asks for a work store at all.
+def _claims_work(project_root: Path) -> bool:
+    """Whether the project's config asks for a work store at all.
 
     A `work:` section that configures only tags or documentation entries is not
     a claim about *where* the store is; a `path` or a `repository` is. Read
@@ -143,7 +143,7 @@ def _claims_work(node_root: Path) -> bool:
     second, worse message.
     """
     try:
-        config = load_yaml(node_root / "tcw-config.yaml", unique=True)
+        config = load_yaml(project_root / "tcw-config.yaml", unique=True)
     except Exception:
         return False
     section = config.get("work") if isinstance(config, dict) else None
@@ -152,30 +152,30 @@ def _claims_work(node_root: Path) -> bool:
     return section.get("path") is not None or section.get("repository") is not None
 
 
-def _work_root(node_root: Path) -> Path | None:
+def _work_root(project_root: Path) -> Path | None:
     try:
-        return WorkLocation.open(node_root).root
+        return WorkLocation.open(project_root).root
     except ValueError:
         return None
 
 
-def _checks_work(node_root: Path) -> bool:
+def _checks_work(project_root: Path) -> bool:
     """Whether to run the work checks: on a project that has a work store or
     claims one.
 
-    A node that *claims* a work store and cannot open one has to say why — a
+    A project that *claims* a work store and cannot open one has to say why — a
     declared-but-unprovisioned board, a `work.path` typo — rather than silently
-    skipping the check. But "has a tcw-config.yaml" is true of every node, and a
-    node may legitimately keep no board at all: a repository root registered
+    skipping the check. But "has a tcw-config.yaml" is true of every project, and a
+    project may legitimately keep no board at all: a repository root registered
     purely so its packages can reach each other. Claiming one means a `work:`
     `path` or `repository`, or a tree on disk.
     """
-    root = _work_root(node_root)
-    return (root is not None or (node_root / "docs" / "work").exists()
-            or _claims_work(node_root))
+    root = _work_root(project_root)
+    return (root is not None or (project_root / "docs" / "work").exists()
+            or _claims_work(project_root))
 
 
-def _configured_path_problem(node_root: Path, comp: str) -> str | None:
+def _configured_path_problem(project_root: Path, comp: str) -> str | None:
     """A configured `<comp>.path` that is present and holds no store, or None.
 
     **Asked independently of resolution, and that is the whole point.** The
@@ -191,7 +191,7 @@ def _configured_path_problem(node_root: Path, comp: str) -> str | None:
 
     **Silent when the path is absent.** With a declaration present that is the
     ordinary case the declaration exists for, and reporting it would make every
-    provisioned node noisy. Presence is tested here rather than inferred from
+    provisioned project noisy. Presence is tested here rather than inferred from
     the message, because `_open_at` raises the same text for a path that is
     missing and one that is a file.
 
@@ -199,7 +199,7 @@ def _configured_path_problem(node_root: Path, comp: str) -> str | None:
     looks like. A third spelling of the store layout is exactly the drift the
     shared ladder exists to prevent.
     """
-    config_path = node_root / "tcw-config.yaml"
+    config_path = project_root / "tcw-config.yaml"
     try:
         config = load_yaml(config_path, unique=True)
     except Exception:
@@ -209,11 +209,11 @@ def _configured_path_problem(node_root: Path, comp: str) -> str | None:
     if not isinstance(configured, str) or not configured.strip():
         return None
     store_cls = STORE_CLASSES[comp]
-    raw_root = store_cls._local_root(node_root, configured)
+    raw_root = store_cls._local_root(project_root, configured)
     if not raw_root.exists():
         return None
     try:
-        store_cls._open_at(raw_root, node_root, config_path,
+        store_cls._open_at(raw_root, project_root, config_path,
                            external=True, must_exist=True)
     except StoreLocationUnusable as unusable:
         return str(unusable)
@@ -225,11 +225,11 @@ def _configured_path_problem(node_root: Path, comp: str) -> str | None:
     return None
 
 
-def _config_file(node_root: Path) -> str:
-    return _rel(node_root / "tcw-config.yaml", node_root)
+def _config_file(project_root: Path) -> str:
+    return _rel(project_root / "tcw-config.yaml", project_root)
 
 
-def _run_check(node_root: Path, comp: str,
+def _run_check(project_root: Path, comp: str,
                identifier: str | None = None) -> list[Finding]:
     """One component's `check()`, or the reason its store could not be opened.
 
@@ -238,13 +238,13 @@ def _run_check(node_root: Path, comp: str,
     returning problems, and those are exactly the configuration faults
     `tcw validate` exists to report — so an unguarded `open` would abort the
     whole validation with one component's problem instead of listing it beside
-    the others. The node-root `tcw-config.yaml` is also not among the YAML-scan
+    the others. The project-root `tcw-config.yaml` is also not among the YAML-scan
     roots, so nothing else would catch it.
     """
     store_cls = {"taxonomy": FsTaxonomyStore,
                  "capabilities": FsCapabilitiesStore}[comp]
     try:
-        store = store_cls.open(node_root)
+        store = store_cls.open(project_root)
         # Inside the guard too: a check can open another store on the way — the
         # capabilities check opens the taxonomy — and that one can fail as well.
         if comp == "capabilities":
@@ -252,23 +252,23 @@ def _run_check(node_root: Path, comp: str,
         else:
             problems = store.check(identifier)
     except ValueError as e:
-        return [Finding("error", _config_file(node_root), f"{comp}: {e}")]
+        return [Finding("error", _config_file(project_root), f"{comp}: {e}")]
     return problems
 
 
-def _target_roots(node_root: Path, target: ValidationTarget) -> list[Path]:
+def _target_roots(project_root: Path, target: ValidationTarget) -> list[Path]:
     """Resolve a taxonomy or capabilities target through the filesystem
     adapter's private view."""
     if target.axis == "taxonomy":
-        store = FsTaxonomyStore.open(node_root)
+        store = FsTaxonomyStore.open(project_root)
     elif target.axis == "capabilities":
-        store = FsCapabilitiesStore.open(node_root)
+        store = FsCapabilitiesStore.open(project_root)
     else:
         raise ValueError(f"validate cannot target the {target.axis!r} axis")
     return store._validation_resources(target.ref)
 
 
-def _file_findings(node_root: Path, roots: list[Path]) -> tuple[list[Finding], bool]:
+def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding], bool]:
     """(a) and (b) over `roots`: YAML well-formedness, and `tcw://` links.
     Also whether a YAML problem was found that the component checks would
     raise on re-reading."""
@@ -285,7 +285,7 @@ def _file_findings(node_root: Path, roots: list[Path]) -> tuple[list[Finding], b
     # deliberately degrades one to empty rather than crashing the board, so
     # without a report here an item whose state file is not a state file reads
     # as healthy everywhere.
-    work_root = _work_root(node_root)
+    work_root = _work_root(project_root)
     for root in roots:
         for f in _iter(root, "*.yaml"):
             if f.name == "item.yaml" and work_root is not None \
@@ -296,19 +296,19 @@ def _file_findings(node_root: Path, roots: list[Path]) -> tuple[list[Finding], b
                 continue
             text, unreadable = _read_text(f)
             if unreadable is not None:
-                problems.append(Finding("error", _rel(f, node_root), unreadable))
+                problems.append(Finding("error", _rel(f, project_root), unreadable))
                 # The component checks would re-read it and fail the same way.
                 yaml_syntax_error = True
                 continue
             try:
                 data = _load_named_yaml(text, f, _UniqueKeyLoader)
             except yaml.YAMLError as e:
-                problems.append(Finding("error", _rel(f, node_root), str(e)))
+                problems.append(Finding("error", _rel(f, project_root), str(e)))
                 if isinstance(e, yaml.MarkedYAMLError):   # real syntax error, not dup-key
                     yaml_syntax_error = True
                 continue
             if f.name in OWNED_YAML_NAMES and data is not None and not isinstance(data, dict):
-                problems.append(Finding("error", _rel(f, node_root),
+                problems.append(Finding("error", _rel(f, project_root),
                                         f"expected a mapping, found "
                                         f"{type(data).__name__}"))
                 # Same reason a syntax error skips (c): the component check
@@ -320,37 +320,37 @@ def _file_findings(node_root: Path, roots: list[Path]) -> tuple[list[Finding], b
         for f in _iter(root, "*.md"):
             raw, unreadable = _read_text(f)
             if unreadable is not None:
-                problems.append(Finding("error", _rel(f, node_root), unreadable))
+                problems.append(Finding("error", _rel(f, project_root), unreadable))
                 continue
             text = _strip_code(raw)
             for m in _LINK_RE.finditer(text):
                 uri = m.group(1)
-                r = resolve_tcw_ref(node_root, uri)
+                r = resolve_tcw_ref(project_root, uri)
                 if r.ok:
                     continue
                 # A project declared but not on this machine is reported and
                 # not counted (TCW-70 Design 12.1).
                 level, _, why = r.reason.partition("unresolved: ")
                 if not level and why:
-                    problems.append(Finding("unresolved", _rel(f, node_root),
+                    problems.append(Finding("unresolved", _rel(f, project_root),
                                             f"tcw:// {uri} → {why}"))
                 else:
-                    problems.append(Finding("error", _rel(f, node_root),
+                    problems.append(Finding("error", _rel(f, project_root),
                                             f"tcw:// {uri} → {r.reason}"))
     return problems, yaml_syntax_error
 
 
-def validate(node_root: Path, *, target: ValidationTarget | None = None,
+def validate(project_root: Path, *, target: ValidationTarget | None = None,
              notes: list[str] | None = None) -> list[Finding]:
     """Every finding for the project ([] = clean). Lines about the run itself
     are appended to `notes` when given."""
     notes = [] if notes is None else notes
     from tcw.store.project import FsProjectRegistry
 
-    graph_problems = FsProjectRegistry.open(node_root).check()
+    graph_problems = FsProjectRegistry.open(project_root).check()
     if graph_problems:
         return graph_problems
-    registry = FsProjectRegistry.open(node_root).require_valid()
+    registry = FsProjectRegistry.open(project_root).require_valid()
     # Over the projects this checkout can open. A partial graph makes this scan
     # narrower, never wrong: it can miss a collision a complete checkout would
     # catch, and cannot invent one. The unreachable edges themselves are reported
@@ -359,15 +359,15 @@ def validate(node_root: Path, *, target: ValidationTarget | None = None,
     if shared:
         return shared
     if target is not None and target.axis == "work":
-        return _work_target_findings(node_root, registry, target)
-    trees = _tree_roots(node_root) if target is None else {}
+        return _work_target_findings(project_root, registry, target)
+    trees = _tree_roots(project_root) if target is None else {}
     if target is not None:
-        roots = _target_roots(node_root, target)
+        roots = _target_roots(project_root, target)
         if not roots:
             return [Finding("error", target.ref, f"no such {target.axis} object")]
     else:
-        roots = [r for r in _scan_roots(node_root, trees) if r.exists()]
-    problems, yaml_syntax_error = _file_findings(node_root, roots)
+        roots = [r for r in _scan_roots(project_root, trees) if r.exists()]
+    problems, yaml_syntax_error = _file_findings(project_root, roots)
 
     # (c) component checks — skipped when (a) found a file they'd re-raise on
     if yaml_syntax_error:
@@ -378,13 +378,13 @@ def validate(node_root: Path, *, target: ValidationTarget | None = None,
         # says why. The work store is not among them: its checks are (e).
         components = [target.axis] if target is not None else list(trees)
         for comp in components:
-            # Before the component's own check, so a node reads "your path is
+            # Before the component's own check, so a project reads "your path is
             # broken" ahead of whatever the store it fell back to has to say.
-            configured = _configured_path_problem(node_root, comp)
+            configured = _configured_path_problem(project_root, comp)
             if configured is not None:
-                problems.append(Finding("error", _config_file(node_root),
+                problems.append(Finding("error", _config_file(project_root),
                                         f"{comp}.path: {configured}"))
-            problems += _run_check(node_root, comp, target.ref if target else None)
+            problems += _run_check(project_root, comp, target.ref if target else None)
 
     # (d) With the component checks skipped by a YAML problem, each tree store
     # still says whether it can open and whether a pre-2.5.0 store config is
@@ -393,16 +393,16 @@ def validate(node_root: Path, *, target: ValidationTarget | None = None,
     if yaml_syntax_error and target is None:
         for comp, root in trees.items():
             if isinstance(root, ValueError):
-                problems.append(Finding("error", _config_file(node_root),
+                problems.append(Finding("error", _config_file(project_root),
                                         f"{comp}: {root}"))
                 continue
-            store = STORE_CLASSES[comp].open(node_root)
+            store = STORE_CLASSES[comp].open(project_root)
             problems += store._legacy_config_problems()
 
     # (e) The work checks. Not skipped after a YAML problem: they read only the
     # work store, and an unreadable item is one of their own findings.
-    if target is None and _checks_work(node_root):
-        findings, note = _work_findings(node_root, registry)
+    if target is None and _checks_work(project_root):
+        findings, note = _work_findings(project_root, registry)
         problems += findings
         if note is not None:
             notes.append(note)

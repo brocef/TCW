@@ -17,21 +17,21 @@ from tcw.errors import BackendError, NotFound, UsageError
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
-from tcw.store.fs import FsCapabilitiesStore, find_node
+from tcw.store.fs import FsCapabilitiesStore, find_component_project
 
 NAME = "capabilities"
 
 
-def _node():
-    node = find_node(NAME)
-    if node is None:
+def _project():
+    project = find_component_project(NAME)
+    if project is None:
         raise BackendError("no capabilities store here — run `tcw init capabilities "
                            "--id <id>` in the project folder")
-    return node
+    return project
 
 
 def _store() -> FsCapabilitiesStore:
-    return FsCapabilitiesStore.open(_node())
+    return FsCapabilitiesStore.open(_project())
 
 
 def _record(cap: Capability) -> dict:
@@ -158,8 +158,8 @@ def _drift(args: argparse.Namespace) -> int:
     declared in their `capabilities.yaml` that today's records do not show.
     One finding per stdout line, `<kind>: <path>: <message>`; nothing when
     clean; exit 1 on any finding. Read-only."""
-    node = _node()
-    st = FsCapabilitiesStore.open(node)
+    project = _project()
+    st = FsCapabilitiesStore.open(project)
     found = 0
     # Printed before the completed-work half reads anything, so an
     # unreachable Jira (exit 5) still leaves these on stdout.
@@ -168,13 +168,13 @@ def _drift(args: argparse.Namespace) -> int:
               f"upstream default; never ruled on here")
         found += 1
     sys.stdout.flush()
-    for problem in _completed_work_drift(node):
+    for problem in _completed_work_drift(project):
         print(problem)
         found += 1
     return codes.ERROR if found else codes.OK
 
 
-def _completed_work_drift(node) -> list:
+def _completed_work_drift(project) -> list:
     """What the completed items declared in `capabilities.yaml` that today's
     records no longer show, through TCW-69's `drift_problems`. The completed
     items come from the backend, so in Jira mode this asks Jira and an
@@ -188,11 +188,11 @@ def _completed_work_drift(node) -> list:
     from tcw.work.model import completion_stage
     from tcw.work.open import open_backend
 
-    if not _has_work_store(node):
+    if not _has_work_store(project):
         print("completed-work drift was not checked: this project has no work "
               "component", file=sys.stderr)
         return []
-    backend = open_backend(node)
+    backend = open_backend(project)
     finished_stage = completion_stage()
     problems = []
     if isinstance(backend, FsWorkBackend):
@@ -206,9 +206,9 @@ def _completed_work_drift(node) -> list:
     else:
         finished = backend.list(Query(stages=frozenset({finished_stage})))
     if finished:
-        registry = FsProjectRegistry.open(node)
+        registry = FsProjectRegistry.open(project)
         problems += drift_problems(backend.layout, finished,
-                                   project_reader(node, registry))
+                                   project_reader(project, registry))
     return problems
 
 

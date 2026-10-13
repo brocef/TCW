@@ -49,8 +49,8 @@ def connected(root: Path) -> list[dict]:
 
 
 def _list(args: argparse.Namespace) -> int:
-    from tcw.store.fs import find_node_root
-    root = find_node_root(Path.cwd())
+    from tcw.store.fs import find_project_root
+    root = find_project_root(Path.cwd())
     if root is None:
         raise BackendError(NO_PROJECT)
     rows = connected(root)

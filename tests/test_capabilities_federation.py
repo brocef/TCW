@@ -608,7 +608,7 @@ def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
 def test_a_moved_sibling_that_extends_further_still_resolves(tmp_path):
     """Resolving the sibling's store enabled this, and rebuilding it broke it.
 
-    The nested store used to be reconstructed from its root with no `node_root`,
+    The nested store used to be reconstructed from its root with no `project_root`,
     and `FsTreeStore` falls back to `root.parent.parent` — correct only for the
     `docs/<component>` shape this resolution exists to stop assuming. A sibling
     whose tree had moved got a node root two levels above its repo, so its own

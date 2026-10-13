@@ -1,14 +1,14 @@
-"""Change one key of a node's `tcw-config.yaml` without rewriting the file.
+"""Change one key of a project's `tcw-config.yaml` without rewriting the file.
 
 **Filesystem-adapter detail, not part of the storage-neutral model.** "Set a key
-in the node's configuration" is an operation any store could offer; keeping a
+in the project's configuration" is an operation any store could offer; keeping a
 text file's comments and layout while doing it means something only for a text
 file. So this module is private to `fs.py`, and knows nothing about stores.
 
 It used to be `yaml.safe_dump` of the whole mapping, which kept keys and values
 but deleted every comment, reflowed long strings and re-indented the file — the
 one TCW file people annotate by hand. Now the change is spliced into the
-original text at the positions PyYAML reports for each node (`yaml.compose`),
+original text at the positions PyYAML reports for each YAML node (`yaml.compose`),
 and nothing else in the file is touched.
 
 **Every edit is verified before it is returned, and refused rather than
@@ -27,9 +27,9 @@ from its documentation, and each pinned by a test in `tests/test_config_edit.py`
   comment lines that follow it, so the end of an entry is taken from its last
   scalar, never from the collection.
 - A null written as nothing (`taxonomy:` or `extends: # note`) is a zero-width
-  node right after the colon.
+  YAML node right after the colon.
 - A block scalar's end mark is the start of the following line.
-- An alias node *is* the anchored node, so its marks point at the anchor.
+- An alias YAML node *is* the anchored YAML node, so its marks point at the anchor.
 """
 
 from __future__ import annotations

@@ -15,17 +15,17 @@ from tcw.errors import BackendError, NotFound
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import Term
-from tcw.store.fs import FsTaxonomyStore, find_node
+from tcw.store.fs import FsTaxonomyStore, find_component_project
 
 NAME = "taxonomy"
 
 
 def _store() -> FsTaxonomyStore:
-    node = find_node(NAME)
-    if node is None:
+    project = find_component_project(NAME)
+    if project is None:
         raise BackendError("no taxonomy store here — run `tcw init taxonomy --id <id>` "
                            "in the project folder")
-    return FsTaxonomyStore.open(node)
+    return FsTaxonomyStore.open(project)
 
 
 def _record(term: Term) -> dict:

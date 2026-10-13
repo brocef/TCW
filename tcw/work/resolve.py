@@ -88,25 +88,25 @@ class Resolution:
     plan: list[PlanEntry] = field(default_factory=list)
 
 
-def _confined(node_root: Path, rel: str) -> Path:
-    """Resolve a node-relative path and refuse one that leaves the node.
+def _confined(project_root: Path, rel: str) -> Path:
+    """Resolve a project-relative path and refuse one that leaves the project.
 
     Both sides are resolved with symlinks followed, because a symlink *inside*
-    the node pointing out of it passes any lexical `..` check while reading
+    the project pointing out of it passes any lexical `..` check while reading
     exactly the file the check exists to prevent. This is a footgun guard, not a
     sandbox: the config is trusted, but a typo that quietly pulls an unrelated
     file into a prompt is worth refusing.
     """
-    root = node_root.resolve()
+    root = project_root.resolve()
     target = (root / rel).resolve()
     if target != root and root not in target.parents:
         raise ResolveError(
-            f"file '{rel}' resolves outside the node root ({target})")
+            f"file '{rel}' resolves outside the project root ({target})")
     return target
 
 
-def _read_file(node_root: Path, rel: str) -> str:
-    target = _confined(node_root, rel)
+def _read_file(project_root: Path, rel: str) -> str:
+    target = _confined(project_root, rel)
     try:
         return target.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -122,7 +122,7 @@ def _read_file(node_root: Path, rel: str) -> str:
 
 # The bound on the item `body` a hook receives, in UTF-8 bytes. Deliberately
 # **not** `work.lifecycle.output-cap`: that one bounds what a generator writes
-# back, and a node tightening it to keep prompts short would silently start
+# back, and a project tightening it to keep prompts short would silently start
 # truncating the request its hooks read. Two limits, two reasons, one default.
 BODY_CAP = DEFAULT_OUTPUT_CAP
 

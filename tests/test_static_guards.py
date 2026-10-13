@@ -34,7 +34,7 @@ EXEMPT = {
     ("store/fs.py", "git_root"),                      # finding the repository root
     ("store/fs.py", "FsStoreProvisioner"),            # `tcw provision` clones
     ("cli.py", "run_provision"),
-    ("cli.py", "_provision_nodes"),
+    ("cli.py", "_provision_projects"),
     ("work/open.py", "uncommitted_changes"),          # TCW-70's read-only check
     ("work/open.py", "_check_target"),                # the delegation condition using it
     ("store/project.py", "FsProjectRegistry._other_branch_warning"),

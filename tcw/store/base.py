@@ -1,7 +1,7 @@
 """Abstract store interfaces — the portable spine the CLI depends on.
 
 Per `docs/lifecycle/abstraction.md` (the litmus test) the model is storage-abstracted: a tree of
-named nodes with cross-links is implementable by any backend. The filesystem
+named entries with cross-links is implementable by any backend. The filesystem
 adapters in `fs.py` are the only realization shipped; remote adapters stay
 possible but unbuilt. The work axis has its own interface,
 `tcw.work.backend.WorkBackend`.
@@ -54,7 +54,7 @@ class StoreLocationUnusable(ValueError):
     The distinction the resolution ladder needs, and could not make before it
     existed. Rules 1 and 2 try a location and fall through when it does not work
     out, which is right for "there is no store there" and wrong for every other
-    reason a store fails to open: a federation error in a node that also declares
+    reason a store fails to open: a federation error in a project that also declares
     a repository was reported as "not provisioned; run `tcw provision`", which
     then succeeded and left the store just as unopenable, because the real error
     had been swallowed two rules earlier.
@@ -81,11 +81,11 @@ class StoreDeclarationError(ValueError):
 
     A sibling of `StoreNotProvisioned`, and a `ValueError` for the same reason:
     every existing `except ValueError` around a store keeps working, including
-    `_has_work_store`, which must answer False for a misconfigured *other* node
+    `_has_work_store`, which must answer False for a misconfigured *other* project
     rather than failing a whole topology listing.
 
-    It exists because `find_node` cannot otherwise tell "this config is wrong"
-    from "this is not a node", and flattening the first to the second is what
+    It exists because `find_component_project` cannot otherwise tell "this config is wrong"
+    from "this is not a project", and flattening the first to the second is what
     answered a typo'd `repository` block with "run `tcw init`" — the one command
     that would scaffold a second, empty store beside the real one.
     """
@@ -225,10 +225,10 @@ class ProjectRegistry(ABC):
         `project_id`, or None when it may.
 
         **The one place the write rule lives.** A project is writable from a
-        node only when the node reaches it by `parent` and `children`
+        project only when the project reaches it by `parent` and `children`
         connections alone, each followed as declared by the project it starts
         from. Anything else the graph holds was reached across an upstream
-        connection and is read-only there — however many nodes declare it, and
+        connection and is read-only there — however many projects declare it, and
         from whichever side of the family it is named. A registry with no
         upstream relation has nothing read-only."""
         return None
@@ -322,7 +322,7 @@ _UNSET = object()
 
 @dataclass
 class Term:
-    """A taxonomy node: a vocabulary term or feature addressed by its path.
+    """A taxonomy entry: a vocabulary term or feature addressed by its path.
 
     `slug` is the identity (path from the taxonomy root, e.g. `admin/permission`).
     `origin` is `"local"` or the `extends` alias the term was resolved through.
@@ -380,7 +380,7 @@ class TaxonomyStore(ABC):
         when nothing resolves, the term is inherited, another term is nested under
         it, another local term's `relatesTo` or `vocabulary` still resolves to it,
         or a local capability's `Subject` or `Feature` does — including when the
-        node's capabilities cannot be read, since that cannot then be known.
+        project's capabilities cannot be read, since that cannot then be known.
         Refusing rather than cascading is the contract, as for capabilities.
         Never reports success for a term that still exists afterwards."""
 
@@ -500,11 +500,11 @@ class Capability:
 
 
 class CapabilitiesStore(ABC):
-    """The capabilities axis: a bounded tree of user-story nodes, optionally
+    """The capabilities axis: a bounded tree of user-story entries, optionally
     federated via `extends`.
 
     Deliberately near-identical to `TaxonomyStore` — both are bounded trees of
-    body + named-fields + named-attachments nodes on the shared tree-store core.
+    body + named-fields + named-attachments entries on the shared tree-store core.
 
     Errors, by the class `tcw` turns into its exit code (TCW-73 Design 4):
     `NotFound` (4) when the entry or `extends` ID named does not exist;
@@ -655,8 +655,8 @@ class DocEntry:
     """One `work.documentation` entry: a document, when it must be updated, and
     what to write in it.
 
-    Node configuration, not store content — a tracker-backed node has these
-    exactly as a filesystem node does, the same way `work.tags` and
+    Project configuration, not store content — a tracker-backed project has these
+    exactly as a filesystem project does, the same way `work.tags` and
     `work.lifecycle` already do.
     """
     path: str
@@ -668,7 +668,7 @@ class DocEntry:
 class RepositoryDeclaration:
     """Where a component store comes from, as the project records it.
 
-    Node configuration and an **adapter locator**, exactly as a store path is —
+    Project configuration and an **adapter locator**, exactly as a store path is —
     the project registry already states the rule that canonical IDs are identity
     and filesystem locations are locators only. A tracker-backed adapter would
     read a different locator from the same slot; nothing above the adapter is
@@ -957,11 +957,11 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
             problems.append(f"{where}: 'trigger' must not contain a newline")
             continue
         if PurePosixPath(path).is_absolute() or path.startswith("/"):
-            problems.append(f"{where}: 'path' must be relative to the node, "
+            problems.append(f"{where}: 'path' must be relative to the project, "
                             f"got an absolute path")
             continue
         if any(part == ".." for part in PurePosixPath(path).parts):
-            problems.append(f"{where}: 'path' must not escape the node")
+            problems.append(f"{where}: 'path' must not escape the project")
             continue
         if any(character.isspace() for character in trigger):
             problems.append(f"{where}: 'trigger' must not contain whitespace "

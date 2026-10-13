@@ -17,7 +17,7 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
-    write_sentinel(root, name)          # mark it a node for CLI (find_node) tests
+    write_sentinel(root, name)          # mark it a node for CLI (find_component_project) tests
     return root
 
 
@@ -691,13 +691,13 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
 def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     """Why spec criterion 12 has only a taxonomy half.
 
-    `_node_reserved` names the files in a node folder that are not attachments,
+    `_entry_reserved` names the files in a node folder that are not attachments,
     and it is per-store — taxonomy reserves `config.yaml`, capabilities
     `.config.yaml`. The obvious worry when `extends` left those files was that
     changing the reservation would move the attachment surface underneath
     someone. On the capabilities side it cannot: `_capability` throws the
     attachment list away (`tcw/store/fs.py`, `meta, description, _attachments =
-    self._load_node(d)`) and `Capability` has no field to hold it. Composition
+    self._load_entry(d)`) and `Capability` has no field to hold it. Composition
     reads `prependedDocs`/`appendedDocs` **by name from meta**, never from the
     filtered listing.
 

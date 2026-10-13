@@ -322,20 +322,20 @@ def drift_problems(layout: Layout, items: Iterable[Item],
 class Route(NamedTuple):
     """Which ledger answers for a declared capability path, and the path
     within it. `owner` is the child project's id, or None for the item's own
-    node."""
+    project."""
     owner: str | None
     store: FsCapabilitiesStore
     path: str
 
 
 def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
-                          registry, node_id: str,
+                          registry, project_id: str,
                           open_child) -> "Route | str":
     """Route one declared `capabilities.yaml` path to the ledger that answers
     for it, or return a problem line.
 
-    The one place this rule lives. `own` is the item's node's ledger (None when
-    the node keeps none); `open_child(project_id)` returns a child's ledger or
+    The one place this rule lives. `own` is the item's project's ledger (None when
+    the project keeps none); `open_child(project_id)` returns a child's ledger or
     the reason it has none. In order:
 
     1. A first segment naming a project `own` extends is today's inheritance
@@ -345,7 +345,7 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
        the rest of the path to that child's own ledger, read the way the child
        reads it — unless `own` already shows capabilities under that same
        namespace, which is refused as ambiguous rather than guessed at.
-    3. Anything else is the node's own path; with no ledger of its own, nothing
+    3. Anything else is the project's own path; with no ledger of its own, nothing
        can check it.
 
     Uses only the registry's declared children and the stores it is handed, so
@@ -358,7 +358,7 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
         if not rest:
             return f"{path}: names project '{head}' but no capability"
         if own is not None:
-            # Judged over the node's resolved view — its own capabilities and
+            # Judged over the project's resolved view — its own capabilities and
             # the inherited ones `get` falls through to — so a `kid/...` path
             # that resolved through inheritance before `kid` was declared a
             # child is refused, not quietly sent to the child's ledger.
@@ -366,7 +366,7 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
             if clash:
                 more = ", …" if len(clash) > 1 else ""
                 return (f"{path}: ambiguous — '{head}' is both a child project of "
-                        f"this node and a namespace in this node's capabilities "
+                        f"this project and a namespace in this project's capabilities "
                         f"ledger ({clash[0]}{more}); rename one of them, or "
                         f"complete with --force")
         store = open_child(head)
@@ -376,7 +376,7 @@ def route_capability_path(path: str, *, own: "FsCapabilitiesStore | None",
     if own is not None:
         return Route(None, own, path)
     qualifiers = ", ".join(child_ids) or "it declares no child projects"
-    return (f"{path}: this node ('{node_id}') keeps no capabilities ledger; "
+    return (f"{path}: this project ('{project_id}') keeps no capabilities ledger; "
             f"qualify the path with a child project id ({qualifiers})")
 
 
@@ -395,7 +395,7 @@ class _LedgerReader:
         try:
             route = route_capability_path(path, own=self.own,
                                           registry=self.registry,
-                                          node_id=self.project_id,
+                                          project_id=self.project_id,
                                           open_child=self.open_child)
         except _READ_ERRORS as error:
             return Unchecked(str(error))

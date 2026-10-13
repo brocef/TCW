@@ -74,20 +74,20 @@ class WorkLocation:
         self.root = root
 
     @classmethod
-    def open(cls, node_root: Path) -> "WorkLocation":
-        return resolve_store(cls, Path(node_root))
+    def open(cls, project_root: Path) -> "WorkLocation":
+        return resolve_store(cls, Path(project_root))
 
     @classmethod
-    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
+    def _local_root(cls, project_root: Path, configured: str | None) -> Path:
         if configured is None:
-            return node_root / "docs" / cls.COMPONENT
+            return project_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
         if value.is_absolute():
             return value
-        return anchor_configured_path(node_root, value) / value
+        return anchor_configured_path(project_root, value) / value
 
     @classmethod
-    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+    def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True, declaration=None,
                  _walk=None) -> "WorkLocation":
         if not raw_root.is_dir():
@@ -97,7 +97,7 @@ class WorkLocation:
 
 
 class _StoreClasses:
-    """Lazy view over `_store_classes()`, so `find_node` and `run_provision` name
+    """Lazy view over `_store_classes()`, so `find_component_project` and `run_provision` name
     one mapping instead of each growing its own `if component ==` ladder — the
     shape that once left `run_provision` opening the work store for every
     component it looped over."""
@@ -137,7 +137,7 @@ def _capability_resources(folder: Path, meta: dict) -> list[Path]:
     return [folder / name for name in names]
 
 
-# ── git + node helpers (FS-adapter local details, not store-interface ops) ──
+# ── git + project helpers (FS-adapter local details, not store-interface ops) ──
 
 def _git(*args, **kwargs):
     """Run a `git` command with stdin closed.
@@ -175,7 +175,7 @@ def git_root(start: Path | None = None) -> Path | None:
 
 SENTINEL = "tcw-config.yaml"
 def write_sentinel(root: Path, project_id: str | None = None) -> bool:
-    """Create or backfill the node sentinel without discarding configuration.
+    """Create or backfill the project sentinel without discarding configuration.
 
     Backfilling adds one `id:` line and touches nothing else in the file. `True`
     only when it wrote.
@@ -212,9 +212,9 @@ def _sentinel_edits(p: Path, existing: dict, project_id: str | None) -> list:
     return [config_edit.SetId(validate_project_id(project_id or "test-project"))]
 
 
-def find_node_root(start: Path | None = None) -> Path | None:
+def find_project_root(start: Path | None = None) -> Path | None:
     """The nearest ancestor of `start` (cwd by default) holding a `tcw-config.yaml`
-    *file* — the node root, or None. FS-adapter-local: realizes 'locate the node'.
+    *file* — the project root, or None. FS-adapter-local: realizes 'locate the project'.
     Resolves `start` (like `git_root`) so a symlinked cwd chains identically."""
     d = (start or Path.cwd()).resolve()
     while True:
@@ -225,38 +225,38 @@ def find_node_root(start: Path | None = None) -> Path | None:
         d = d.parent
 
 
-def find_node(component: str, start: Path | None = None) -> Path | None:
-    """The node owning `component`'s store, or None. A node is the nearest
+def find_component_project(component: str, start: Path | None = None) -> Path | None:
+    """The project owning `component`'s store, or None. A project is the nearest
     ancestor marked by a `tcw-config.yaml` sentinel (FS-adapter-local). Returns
-    the node iff it has that component, preserving the prior contract.
+    the project iff it has that component, preserving the prior contract.
 
     "Has that component" is asked of the *resolved* store, never of a literal
     `docs/<component>` folder. The two answers differ in exactly the case this
     feature exists for: a checkout that cloned only the code repository has no
     `docs/taxonomy/`, because the taxonomy is in the other repository — so
     looking for the folder answered None before the resolution ladder could read
-    the declaration, and the node's own config went unread.
+    the declaration, and the project's own config went unread.
     """
-    nr = find_node_root(start)
+    nr = find_project_root(start)
     if nr is None:
         return None
     FsProjectRegistry.open(nr).require_valid()
     try:
         store = STORE_CLASSES[component].open(nr)
     except (StoreNotProvisioned, StoreDeclarationError):
-        # Not "no node here" — the node is right in front of us and says where
+        # Not "no project here" — the project is right in front of us and says where
         # its store comes from. Flattening this to None is what made `tcw work
         # list` answer a declared-but-absent store with "run `tcw init`", which
         # would scaffold a second, empty store beside the real one.
         #
-        # A *malformed* declaration is the same node with the same hazard, only
+        # A *malformed* declaration is the same project with the same hazard, only
         # the actionable message is "fix this line" rather than "run this
         # command", so it travels the same way.
         raise
     except StoreLocationUnusable:
         # The one failure that means "there is no store at this location" — the
         # ladder's own definition (see `resolve_store`). Anything else, a broken
-        # `extends` or a malformed `<component>.path`, is a node that is here and
+        # `extends` or a malformed `<component>.path`, is a project that is here and
         # wrong, and "run `tcw init`" is the wrong advice for it.
         return None
     # A work store that opened is a work store; a tree store's `open` validates
@@ -266,24 +266,24 @@ def find_node(component: str, start: Path | None = None) -> Path | None:
     return nr if component == "work" or store.root.is_dir() else None
 
 
-def tree_store_present(node_root: Path, component: str) -> bool:
-    """Whether this node has a `component` tree store to check: its default
+def tree_store_present(project_root: Path, component: str) -> bool:
+    """Whether this project has a `component` tree store to check: its default
     folder is there, or its config says where the store is (`<c>.path` or
     `<c>.repository`, any value but null — a malformed one is present and must
-    be reported, not skipped). FS-adapter-local, like `find_node`.
+    be reported, not skipped). FS-adapter-local, like `find_component_project`.
 
     Asked by `FsCapabilitiesStore._taxonomy` instead of
-    `(node_root / "docs" / component).is_dir()`, which is true of neither a moved
+    `(project_root / "docs" / component).is_dir()`, which is true of neither a moved
     store nor one kept in another repository — so capabilities never checked
     Subject or Feature against a moved taxonomy. Deliberately not "open it and
     see", which `tcw validate` uses: `extends` alone is not a location, and a
-    node that only inherits a taxonomy should not have its capability checks
+    project that only inherits a taxonomy should not have its capability checks
     fail on that inheritance.
     """
-    if (node_root / "docs" / component).is_dir():
+    if (project_root / "docs" / component).is_dir():
         return True
     try:
-        config = load_config(node_root / SENTINEL)
+        config = load_config(project_root / SENTINEL)
     except ValueError:
         return False            # a broken config is reported where it is read
     section = config.get(component) if isinstance(config, dict) else None
@@ -294,10 +294,10 @@ def tree_store_present(node_root: Path, component: str) -> bool:
 # The three helpers below enumerate the graph, and a graph may now be partial —
 # a connected project whose repository is not in this checkout is absent from it
 # rather than fatal to it. Each therefore answers for what is here, deliberately:
-# a topology is the set of nodes this machine can actually open, and a caller
+# a topology is the set of projects this machine can actually open, and a caller
 # that needs the graph complete says so in its own message. What none of them
-# may do is imply the absent node was never declared.
-def child_nodes(root: Path) -> list[Path]:
+# may do is imply the absent project was never declared.
+def child_projects(root: Path) -> list[Path]:
     """Direct registered children that contain a work store."""
     registry = FsProjectRegistry.open(root).require_valid()
     return [
@@ -308,12 +308,12 @@ def child_nodes(root: Path) -> list[Path]:
 
 
 def _routed(root: Path) -> "tuple[list[Path], list[UnreachableProject]]":
-    """One walk down `root`'s own registry: the nearest node with a work store on
+    """One walk down `root`'s own registry: the nearest project with a work store on
     each branch, and every declared child found absent on the way.
 
-    **One registry, opened at `root`.** Opening another at each routing node
+    **One registry, opened at `root`.** Opening another at each routing project
     looks equivalent and is not: worktree aliasing depends on where a registry
-    was opened, so from a linked worktree a routing node's own registry can see
+    was opened, so from a linked worktree a routing project's own registry can see
     the primary checkout's copy of `root` and refuse a graph `root`'s registry
     accepts — which broke `delegate` even to a direct child."""
     registry = FsProjectRegistry.open(root).require_valid()
@@ -331,32 +331,32 @@ def _routed(root: Path) -> "tuple[list[Path], list[UnreachableProject]]":
             if _has_work_store(child):
                 found.append(child)
             else:
-                walk(child_id)      # a routing node; `require_valid` ruled out cycles
+                walk(child_id)      # a routing project; `require_valid` ruled out cycles
     walk(None)
     return found, absent
 
 
 def routed_children(root: Path) -> list[Path]:
-    """The nearest node with a work store on each branch below `root`: a
+    """The nearest project with a work store on each branch below `root`: a
     registered child that keeps a board, or — for one that does not, a routing
-    node — its own routed children. The downward mirror of
-    `nearest_work_ancestor`, for `delegate`: coordination passes through a node
+    project — its own routed children. The downward mirror of
+    `nearest_work_ancestor`, for `delegate`: coordination passes through a project
     that only groups others, and stops at the first one that keeps a board.
     A declared but unprovisioned store counts as none, as it does going up."""
     return _routed(root)[0]
 
 
 def routed_unreachable_children(root: Path) -> "list[UnreachableProject]":
-    """`unreachable_children` of `root` and of every routing node on the way
+    """`unreachable_children` of `root` and of every routing project on the way
     down, so a target declared behind one is reported as absent, not unknown."""
     return _routed(root)[1]
 
 
-def parent_node(root: Path) -> Path | None:
+def parent_project(root: Path) -> Path | None:
     """Direct registered parent that contains a work store.
 
     The *direct* question, for callers that mean it — `tcw projects list` prints
-    this node's parent, not the nearest one that happens to keep a board. A walk
+    this project's parent, not the nearest one that happens to keep a board. A walk
     up the graph wants `nearest_work_ancestor` instead.
     """
     registry = FsProjectRegistry.open(root).require_valid()
@@ -370,7 +370,7 @@ def parent_node(root: Path) -> Path | None:
 def registered_parent(root: Path) -> Path | None:
     """Direct registered parent, board or no board.
 
-    What `parent_node` answers before the store filter. `tcw projects list` needs
+    What `parent_project` answers before the store filter. `tcw projects list` needs
     both to tell "no parent registered" apart from "the registered parent keeps
     no board", which used to print identically.
     """
@@ -381,9 +381,9 @@ def registered_parent(root: Path) -> Path | None:
 def registered_children(root: Path) -> list[Path]:
     """Direct registered children, board or no board.
 
-    What `child_nodes` answers before the store filter. `tcw projects list` needs
-    the unfiltered list: a routing node that keeps no board is still a child, and
-    omitting it made a node with one read as a leaf.
+    What `child_projects` answers before the store filter. `tcw projects list` needs
+    the unfiltered list: a routing project that keeps no board is still a child, and
+    omitting it made a project with one read as a leaf.
     """
     registry = FsProjectRegistry.open(root).require_valid()
     return [Path(project.locator) for project in registry.children()]
@@ -394,8 +394,8 @@ def unreachable_parent(root: Path) -> "UnreachableProject | None":
 
     What `registered_parent` cannot answer: it returns a path, and a project
     that is not here has none. Without this, `tcw projects list` printed
-    `(none — root)` for a node whose config plainly names a parent — the exact confusion the comment above
-    `child_nodes` forbids, and which `docs/guide/multi-repo.md` promises does
+    `(none — root)` for a project whose config plainly names a parent — the exact confusion the comment above
+    `child_projects` forbids, and which `docs/guide/multi-repo.md` promises does
     not happen.
     """
     registry = FsProjectRegistry.open(root).require_valid()
@@ -419,7 +419,7 @@ def unreachable_children(root: Path) -> "list[UnreachableProject]":
     return absent
 
 
-def descendant_nodes(root: Path) -> list[Path]:
+def descendant_projects(root: Path) -> list[Path]:
     """All registered descendants that contain a work store."""
     registry = FsProjectRegistry.open(root).require_valid()
     return [
@@ -429,20 +429,20 @@ def descendant_nodes(root: Path) -> list[Path]:
     ]
 
 
-def _has_work_store(node_root: Path) -> bool:
-    """Whether `node_root` has a usable work store. The *configured* store is the
-    only authority: a literal `docs/work` folder must not vouch for a node whose
+def _has_work_store(project_root: Path) -> bool:
+    """Whether `project_root` has a usable work store. The *configured* store is the
+    only authority: a literal `docs/work` folder must not vouch for a project whose
     `work.path` points somewhere else (or somewhere broken).
 
     A declared-but-unprovisioned store answers `False` here rather than raising,
-    unlike `find_node`. The difference is whose store is being asked about: this
-    one is asked about *other* nodes while listing a topology, and one
+    unlike `find_component_project`. The difference is whose store is being asked about: this
+    one is asked about *other* projects while listing a topology, and one
     unprovisioned child must not turn a parent's listing into a hard failure.
-    "No usable store here" is true of such a node, and it is the answer every
+    "No usable store here" is true of such a project, and it is the answer every
     caller of this function actually wants.
     """
     try:
-        WorkLocation.open(node_root)
+        WorkLocation.open(project_root)
         return True
     except ValueError:                     # StoreNotProvisioned included, by design
         return False
@@ -492,7 +492,7 @@ def _same_folder(a: Path, b: Path) -> bool:
 def init(components: list[str], root: Path, project_id: str | None = None,
          work_path: Path | None = None,
          paths: dict[str, Path] | None = None) -> list[tuple[str, Path]]:
-    """Scaffold `docs/<component>/` skeletons under `root` and mark it a node.
+    """Scaffold `docs/<component>/` skeletons under `root` and mark it a project.
     Returns what it changed, as `(verb, path)` pairs (`wrote`, `created`,
     `removed`) for the caller to name. A `.gitkeep` lands in each folder so
     the empty skeleton survives a commit (git doesn't track empty
@@ -680,7 +680,7 @@ _UniqueKeyLoader.add_constructor(
 #: contract by `tcw validate`. Named rather than inferred and kept in one place,
 #: because naming what TCW owns is narrower than exempting what it does not.
 #:
-#: `item.yaml` is a work item's record (TCW-70 Design 3.2). The node sentinel
+#: `item.yaml` is a work item's record (TCW-70 Design 3.2). The project sentinel
 #: `tcw-config.yaml` sits outside the scanned trees and is refused by
 #: `load_config` the moment anything reads it. A work item's `capabilities.yaml`
 #: is checked by the work checks in `tcw validate`, not by this list. A leftover
@@ -735,7 +735,7 @@ def load_yaml(path: Path, unique: bool = False) -> dict:
 
 
 def load_config(path: Path) -> dict:
-    """The node sentinel, read as a mapping, refusing as a `ValueError`.
+    """The project sentinel, read as a mapping, refusing as a `ValueError`.
 
     A config the user has broken is their mistake, not a failure of the YAML
     layer, and `ValueError` is the channel `tcw`'s top level already renders as
@@ -760,7 +760,7 @@ def _extends_ids(config: dict, label: str) -> list[str]:
 
     `label` is how a refusal addresses the declaration. It is the key path —
     `<path>/tcw-config.yaml: taxonomy.extends` — not just the file, because one
-    node config can hold both `taxonomy.extends` and `capabilities.extends` and
+    project config can hold both `taxonomy.extends` and `capabilities.extends` and
     naming only the file leaves the reader to guess which one is meant.
 
     All four refusals carry it, including the project-id one: `validate_project_id`
@@ -811,9 +811,9 @@ class _FederationWalk:
         self.seen = seen
         self.built = {} if built is None else built
 
-    def descend(self, node_root: Path) -> "_FederationWalk":
+    def descend(self, project_root: Path) -> "_FederationWalk":
         """The walk as seen one project further down. Shares `built`."""
-        return _FederationWalk(self.seen | {node_root}, self.built)
+        return _FederationWalk(self.seen | {project_root}, self.built)
 
 
 class _FederationCycles:
@@ -843,7 +843,7 @@ class _FederationCycles:
 
 
 def _extended_component_stores(
-    node_root: Path, config: dict, label: str, component: str,
+    project_root: Path, config: dict, label: str, component: str,
     walk: "_FederationWalk | None" = None,
 ) -> "tuple[dict[str, object], list[str]]":
     """Each extended project's component store, by project id, and the ids whose
@@ -859,8 +859,8 @@ def _extended_component_stores(
     projects, so this is also the
     honest place to detect one.
     """
-    registry = FsProjectRegistry.open(node_root).require_valid()
-    walk = (walk or _FederationWalk()).descend(node_root.resolve())
+    registry = FsProjectRegistry.open(project_root).require_valid()
+    walk = (walk or _FederationWalk()).descend(project_root.resolve())
     stores: dict[str, object] = {}
     cyclic: list[str] = []
     for project_id in _extends_ids(config, label):
@@ -877,7 +877,7 @@ def _extended_component_stores(
         # Identity first: extending yourself is wrong whatever the store does,
         # and asking the store about it would make a config error depend on
         # whether a tree happens to be provisioned.
-        if Path(project.locator).resolve() == node_root.resolve():
+        if Path(project.locator).resolve() == project_root.resolve():
             raise ValueError(f"a {component} store cannot extend itself")
         if Path(project.locator).resolve() in walk.seen:
             # The back edge of a federation cycle. Truncated here so the walk
@@ -891,7 +891,7 @@ def _extended_component_stores(
         # sibling that had moved its tree with `<component>.path` could not be
         # extended from, and one whose tree was declared but unprovisioned read
         # as having no tree at all — the confusion the ladder exists to end.
-        # Failures are re-worded for a reader standing in a *different* node than
+        # Failures are re-worded for a reader standing in a *different* project than
         # the one that failed.
         cache_key = (component, Path(project.locator).resolve())
         if (cached := walk.built.get(cache_key)) is not None:
@@ -903,7 +903,7 @@ def _extended_component_stores(
         try:
             # The store itself, not its root. Rebuilding it from the root is
             # what broke the hop past a moved tree — `FsTreeStore` falls back to
-            # `root.parent.parent` for `node_root`, correct only for the
+            # `root.parent.parent` for `project_root`, correct only for the
             # `docs/<component>` shape this resolution exists to stop assuming.
             store = STORE_CLASSES[component].open(
                 Path(project.locator), _walk=walk)
@@ -1063,7 +1063,7 @@ def _mkdir_owned(d: Path) -> bool:
         return False
 
 
-def anchor_configured_path(node_root: Path, value: Path) -> Path:
+def anchor_configured_path(project_root: Path, value: Path) -> Path:
     """The directory a relative `<component>.path` is resolved against.
 
     Inside a *linked worktree* this follows the same rule
@@ -1071,14 +1071,14 @@ def anchor_configured_path(node_root: Path, value: Path) -> Path:
     (`tcw/store/project.py:322-334`), and for the same reasons:
 
     - **Re-anchor only on escape.** A relative path that stays inside the
-      worktree is this node's store on this branch and belongs to the worktree,
+      worktree is this project's store on this branch and belongs to the worktree,
       exactly as the default `docs/<component>` does. Only a path that leaves
       the checkout was authored against the primary checkout's position on disk.
       Re-anchoring an inside-staying path used to send a worktree user to the
       primary checkout's store while the *identical* default did not.
-    - **Anchor at this node's counterpart, not at the main worktree root.**
+    - **Anchor at this project's counterpart, not at the main worktree root.**
       `worktree_anchors` returns `(current top, main root)`; using the second
-      alone drops the sub-path of a node nested inside the repository, so
+      alone drops the sub-path of a project nested inside the repository, so
       `apps/server`'s relative path got applied from the repository root and the
       store could not be found at all (GitHub #26).
 
@@ -1087,27 +1087,27 @@ def anchor_configured_path(node_root: Path, value: Path) -> Path:
     drift `resolve_store` exists to prevent. Getting it wrong silently swaps a
     worktree user's real store for a cache clone.
 
-    Returns `node_root` unchanged outside a worktree, for a node that is not in
+    Returns `project_root` unchanged outside a worktree, for a project that is not in
     a git repository, and for a path that stays inside the checkout.
     """
-    anchors = worktree_anchors(node_root)
+    anchors = worktree_anchors(project_root)
     if anchors is None:
-        return node_root
+        return project_root
     top, main = anchors
-    resolved = (node_root / value).resolve()
-    inside = _below(node_root, top)
+    resolved = (project_root / value).resolve()
+    inside = _below(project_root, top)
     if inside is not None and _below(resolved, top) is None:
         return main / inside
-    return node_root
+    return project_root
 
 
 class FsTreeStore:
     """Common FS-adapter base for the three bounded-tree stores.
 
     Captures the boilerplate every component shares — the store root, the
-    enclosing node (repo) root, config loading, the `open(node_root)` entry
+    enclosing project (repo) root, config loading, the `open(project_root)` entry
     point, and the git-plumbing methods that *effect* transitions. Component
-    specifics (node = dir vs file, identifier resolution, the status state
+    specifics (project = dir vs file, identifier resolution, the status state
     machine) stay in the subclasses (phase-4-shared-core: don't over-pull).
 
     Subclasses set `COMPONENT` (the `docs/<COMPONENT>/` dir) and optionally
@@ -1117,31 +1117,31 @@ class FsTreeStore:
     """
     COMPONENT: str
     #: The filename this component once kept its own `extends` in, before it
-    #: moved to the node's `tcw-config.yaml`. Nothing reads or writes the file
-    #: any more. The name survives on the class for two reasons: `_node_reserved`
+    #: moved to the project's `tcw-config.yaml`. Nothing reads or writes the file
+    #: any more. The name survives on the class for two reasons: `_entry_reserved`
     #: keeps it out of a folder's attachments (see the comment there), and
     #: `_legacy_config_problems` reports a copy left at the store root.
     LEGACY_CONFIG_NAME: str | None = None
 
-    def __init__(self, root: Path, *, node_root: Path | None = None,
+    def __init__(self, root: Path, *, project_root: Path | None = None,
                  store_git_root: Path | None = None):
         self.root = root                       # docs/<component>/, or wherever configured
         # Two roots, because they answer different questions and diverge the
-        # moment a store leaves its node's repository — the same split the
+        # moment a store leaves its project's repository — the same split the
         # work store has carried since `work.path` existed.
         #
-        # `node_root` is the *node*: whose config this is, and what federation
+        # `project_root` is the *project*: whose config this is, and what federation
         # resolves `extends` against. `store_git_root` is the repository a write
         # here has to land in. They are the same directory for a store sitting
-        # in its own node, and are not for a configured or provisioned one.
-        self.node_root = node_root or root.parent.parent
-        self.store_git_root = store_git_root or git_root(root) or self.node_root
+        # in its own project, and are not for a configured or provisioned one.
+        self.project_root = project_root or root.parent.parent
+        self.store_git_root = store_git_root or git_root(root) or self.project_root
         # What this store's writes changed on disk, in order: `("wrote", path)`,
         # `("removed", path)` or `("created", path)`. The filesystem adapter's
         # own record (TCW-73 Design 1.2), read by the commands to name every
         # file they touched; a store kept somewhere else has nothing to list.
         self.changed: list[tuple[str, Path]] = []
-        # This component's section of the *node's* config, not a file inside the
+        # This component's section of the *project's* config, not a file inside the
         # store. Re-read here rather than threaded down from `resolve_store`,
         # because `tcw/validate.py` builds a store by calling `_open_at`
         # directly: a threaded section would arrive empty there and that store
@@ -1149,8 +1149,8 @@ class FsTreeStore:
         self.config = self._component_config()
 
     @classmethod
-    def open(cls, node_root: Path, _walk: "_FederationWalk | None" = None):
-        """Resolve this node's store for this component. The ladder is
+    def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None):
+        """Resolve this project's store for this component. The ladder is
         `resolve_store`, shared with the work store.
 
         `_walk` is private and carries the federation walk's state: the projects
@@ -1159,22 +1159,22 @@ class FsTreeStore:
         anywhere on the walk, so a shared subtree is built once. Callers outside
         federation never pass it.
         """
-        return resolve_store(cls, node_root, _walk=_walk)
+        return resolve_store(cls, project_root, _walk=_walk)
 
     @classmethod
-    def _local_root(cls, node_root: Path, configured: str | None) -> Path:
+    def _local_root(cls, project_root: Path, configured: str | None) -> Path:
         """Where this component's tree sits on this machine, per
         `<component>.path`, or the default `docs/<component>`. A relative path
         re-anchors per `anchor_configured_path`."""
         if configured is None:
-            return node_root / "docs" / cls.COMPONENT
+            return project_root / "docs" / cls.COMPONENT
         value = Path(configured).expanduser()
         if value.is_absolute():            # names a place, not an offset
             return value
-        return anchor_configured_path(node_root, value) / value
+        return anchor_configured_path(project_root, value) / value
 
     @classmethod
-    def _open_at(cls, raw_root: Path, node_root: Path, config_path: Path, *,
+    def _open_at(cls, raw_root: Path, project_root: Path, config_path: Path, *,
                  external: bool, must_exist: bool = True,
                  declaration: "RepositoryDeclaration | None" = None,
                  _walk: "_FederationWalk | None" = None):
@@ -1206,10 +1206,10 @@ class FsTreeStore:
                 raise StoreLocationUnusable(
                     f"{config_path}: {cls.COMPONENT}.path is not a directory: {raw_root}")
         root = raw_root.resolve() if raw_root.exists() else raw_root
-        owner = (git_root(root) if external else node_root) or node_root
-        # The node stays the node — federation resolves `extends` against it —
+        owner = (git_root(root) if external else project_root) or project_root
+        # The project stays the project — federation resolves `extends` against it —
         # while writes follow the store into whatever repository holds it.
-        return cls(root, _walk=_walk, node_root=node_root,
+        return cls(root, _walk=_walk, project_root=project_root,
                    store_git_root=owner)
 
     # -- containment: a store id never names a file outside its own store --
@@ -1233,8 +1233,8 @@ class FsTreeStore:
         """
         return self.root.resolve()
 
-    def _node_readable(self, d: Path) -> bool:
-        """Whether `d` is a node this store may read — folder *and* own meta.
+    def _entry_readable(self, d: Path) -> bool:
+        """Whether `d` is an entry this store may read — folder *and* own meta.
 
         Two questions, because they fail apart: the folder can be reached
         through a symlink out of the store, or the folder can be ordinary while
@@ -1264,27 +1264,27 @@ class FsTreeStore:
             return False
 
 
-    # -- the node's own `tcw-config.yaml` --
+    # -- the project's own `tcw-config.yaml` --
     #
     # On `FsTreeStore` rather than on one component, because all three now write
     # it: `work.tags`, `taxonomy.extends` and `capabilities.extends`. It is the
-    # node's file, not any store's, and the two roots vary independently.
+    # project's file, not any store's, and the two roots vary independently.
 
     def _config_path(self) -> Path:
-        """The node sentinel's path. Not resolved — `FsTreeStore` keeps
-        `node_root` as it was handed over, and a plain join is correct either
+        """The project sentinel's path. Not resolved — `FsTreeStore` keeps
+        `project_root` as it was handed over, and a plain join is correct either
         way."""
-        return self.node_root / SENTINEL
+        return self.project_root / SENTINEL
 
     def _config(self) -> dict:
-        """Read the node sentinel config, tolerant of absence/emptiness. A
+        """Read the project sentinel config, tolerant of absence/emptiness. A
         malformed file raises a clear error naming the path rather than a raw
         YAML traceback. Plain board listing never calls this, so a broken config
         only fails operations that actually need it."""
         return load_config(self._config_path())
 
     def _component_config(self) -> dict:
-        """This component's section of the node config, as a mapping.
+        """This component's section of the project config, as a mapping.
 
         Mirrors `resolve_store` exactly, and has to: a section that is present
         but not a mapping normalizes to `{}` there (see the `isinstance` guard
@@ -1296,10 +1296,10 @@ class FsTreeStore:
         return section if isinstance(section, dict) else {}
 
     def _persist_extends(self, extends: list[str]) -> None:
-        """Write this component's `extends` to the node config, and keep the
+        """Write this component's `extends` to the project config, and keep the
         in-memory copy in step.
 
-        The in-memory update is why this is not just `_write_node_config`: a
+        The in-memory update is why this is not just `_write_project_config`: a
         second add/rm in the same process reads `self.config`, and term
         *resolution* (`self.extends`) stays load-time only — reopen to use it.
         An empty list removes the key rather than writing `extends: []`, which
@@ -1321,9 +1321,9 @@ class FsTreeStore:
                 f"{self._config_path()}: {self.COMPONENT} must be a mapping, "
                 f"found {type(section).__name__}")
         # `Remove` drops a section that is left holding nothing, so removing the
-        # last `extends` from a node that configured nothing else leaves the
+        # last `extends` from a project that configured nothing else leaves the
         # config as it was rather than growing an empty `taxonomy: {}`.
-        self._write_node_config([
+        self._write_project_config([
             config_edit.SetList(self.COMPONENT, "extends", tuple(extends)) if extends
             else config_edit.Remove(self.COMPONENT, "extends")])
         if extends:
@@ -1340,8 +1340,8 @@ class FsTreeStore:
         """
         return f"{self._config_path()}: {self.COMPONENT}.extends"
 
-    def _write_node_config(self, edits: list) -> None:
-        """Apply `edits` to the node sentinel and write it. Nothing is staged:
+    def _write_project_config(self, edits: list) -> None:
+        """Apply `edits` to the project sentinel and write it. Nothing is staged:
         TCW 3.0 writes files and leaves git to the user (TCW-73 Design 8.1).
 
         Only the lines of the keys being changed are touched — comments and
@@ -1388,7 +1388,7 @@ class FsTreeStore:
         self.changed += [("wrote", p) for p, _ in pairs]
 
     def _rm(self, path: Path) -> None:
-        """Delete a folder node from disk, whatever git knows of it, recording
+        """Delete a folder entry from disk, whatever git knows of it, recording
         one `removed` line per file it held."""
         if path.is_symlink():
             path.unlink()
@@ -1399,24 +1399,24 @@ class FsTreeStore:
         self.changed += [("removed", f) for f in files]
 
 
-    # -- shared folder-node anatomy (meta.yaml + description.md + attachments) --
+    # -- shared folder-entry anatomy (meta.yaml + description.md + attachments) --
     #
-    # A "node" is a folder holding a `meta.yaml` (named fields), a
+    # A "entry" is a folder holding a `meta.yaml` (named fields), a
     # `description.md` (the body), and zero or more named attachment files. Both
     # the taxonomy and capabilities adapters realize their items this way; the
     # read/write mechanics live here so they are defined once. (Abstract spine:
     # body + named fields + named attachments — bounded, never globbed open.)
 
-    def _node_texts(self, d: Path) -> list[str]:
-        """A folder node's [meta, description] texts; empty strings when absent."""
+    def _entry_texts(self, d: Path) -> list[str]:
+        """A folder entry's [meta, description] texts; empty strings when absent."""
         return [f.read_text(encoding="utf-8")
                 if f.is_file() and self._within_store(f) else ""
                 for f in (d / "meta.yaml", d / "description.md")]
 
-    def _node_reserved(self) -> set[str]:
-        """Filenames in a node folder that are not attachments.
+    def _entry_reserved(self) -> set[str]:
+        """Filenames in an entry folder that are not attachments.
 
-        **Kept per-store after `extends` moved to the node config.** Each store
+        **Kept per-store after `extends` moved to the project config.** Each store
         still reserves the file it used to write — taxonomy `config.yaml`,
         capabilities `.config.yaml` — so a folder holding a leftover copy lists
         the same attachments it listed before.
@@ -1440,7 +1440,7 @@ class FsTreeStore:
         root, relative to the project root when it is inside it."""
         path = self.root / path if isinstance(path, str) else path
         try:
-            return str(path.relative_to(self.node_root))
+            return str(path.relative_to(self.project_root))
         except ValueError:
             return str(path)
 
@@ -1459,8 +1459,8 @@ class FsTreeStore:
         is read. Existence only: the file is never opened, so a corrupt copy
         cannot make `check` raise, and it is never rewritten or deleted.
 
-        Only the root: a file of the same name inside a folder node is an
-        ordinary file of that node.
+        Only the root: a file of the same name inside a folder entry is an
+        ordinary file of that entry.
         """
         if not self.LEGACY_CONFIG_NAME:
             return []
@@ -1472,8 +1472,8 @@ class FsTreeStore:
                         f"extends into {self._extends_label()}, then delete the "
                         f"file; if already migrated, just delete it")]
 
-    def _load_node(self, d: Path) -> tuple[dict, str, list[str]]:
-        """Read a folder node → (meta mapping, description text, attachment names).
+    def _load_entry(self, d: Path) -> tuple[dict, str, list[str]]:
+        """Read a folder entry → (meta mapping, description text, attachment names).
 
         Attachments are the folder's non-reserved, non-dot files (bounded set).
         """
@@ -1481,33 +1481,33 @@ class FsTreeStore:
         # legitimately inside the store while a file in it is a symlink pointing
         # out, and the folder guards upstream cannot see that. A resource that
         # escapes reads as *absent* — the same fail-closed shape `get_local`
-        # already uses for the folder. An empty meta is what makes the node stop
+        # already uses for the folder. An empty meta is what makes the entry stop
         # resolving: `_is_capability` and the `overrides` test both read falsey,
-        # and a taxonomy node with no kind is not a term.
+        # and a taxonomy entry with no kind is not a term.
         meta_path = d / "meta.yaml"
         meta = load_yaml(meta_path) if self._within_store(meta_path) else {}
         desc = d / "description.md"
         description = (desc.read_text(encoding="utf-8")
                        if desc.exists() and self._within_store(desc) else "")
-        reserved = self._node_reserved()
+        reserved = self._entry_reserved()
         attachments = sorted(
             f.name for f in d.iterdir()
             if f.is_file() and f.name not in reserved and not f.name.startswith(".")
             and self._within_store(f))
         return meta, description, attachments
 
-    def _write_node(self, d: Path, meta: dict, description: str) -> None:
-        """Create/overwrite a folder node's meta + description, atomically, staged.
+    def _write_entry(self, d: Path, meta: dict, description: str) -> None:
+        """Create/overwrite a folder entry's meta + description, atomically, staged.
 
         Rollback is `_write_files`'s: a failed write undoes this call's work.
         What it removes depends on who made the directory — the whole folder
-        when this call did, only the files it created when the node already
+        when this call did, only the files it created when the entry already
         existed. Same applies to `_write_meta`.
         """
         # `_mkdir_owned` rather than `exist_ok=True` + a prior `d.exists()`:
         # exactly one process's `mkdir` succeeds, so this is an ownership proof
         # with no check-then-act window — retiring the TOCTOU the old `existed`
-        # probe carried, where a second writer creating the node between our
+        # probe carried, where a second writer creating the entry between our
         # check and our failure would have had its directory removed.
         owned = _mkdir_owned(d)
         self._write_files(
@@ -1545,17 +1545,17 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
-                 node_root: Path | None = None, store_git_root: Path | None = None):
-        super().__init__(root, node_root=node_root, store_git_root=store_git_root)
+                 project_root: Path | None = None, store_git_root: Path | None = None):
+        super().__init__(root, project_root=project_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsTaxonomyStore"] = {}
         # Reused, never rebuilt: the resolution below already constructed each
-        # store with the right node root and the right walk state. There is no
+        # store with the right project root and the right walk state. There is no
         # second filter on the results — the `_seen` set that used to be one was
         # dead once recursion moved into `_extended_component_stores`, since the
         # only case it could refuse is a self-extend the identity check there
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
-            self.node_root, self.config, self._extends_label(), "taxonomy",
+            self.project_root, self.config, self._extends_label(), "taxonomy",
             walk=_walk,
         )
 
@@ -1563,7 +1563,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
 
     def _term(self, slug: str, origin: str = "local") -> Term:
         d = self.root / slug
-        meta, description, attachments = self._load_node(d)
+        meta, description, attachments = self._load_entry(d)
         return Term(
             slug=slug,
             name=meta.get("name") or slug.rsplit("/", 1)[-1].replace("-", " ").title(),
@@ -1591,7 +1591,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         d = self.root / slug
         # Order matters: the cheap stat first, so a miss pays no `resolve()`;
         # containment second; the read (`_term`) only after both.
-        return self._term(slug) if d.is_dir() and self._node_readable(d) else None
+        return self._term(slug) if d.is_dir() and self._entry_readable(d) else None
 
     def _local_slugs(self) -> list[str]:
         # `list` must not advertise what `show`/`rm` refuse. Note `rglob` does
@@ -1599,7 +1599,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         # can be one — but that is the case this filter is for.
         return sorted(
             str(p.relative_to(self.root)) for p in self.root.rglob("*")
-            if p.is_dir() and self._node_readable(p))
+            if p.is_dir() and self._entry_readable(p))
 
     def _inherited_stores(self) -> dict[str, "FsTaxonomyStore"]:
         """Every inherited taxonomy keyed by its owning project ID.
@@ -1689,7 +1689,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         meta = {"name": name, "kind": kind, "relatesTo": []}
         if vocabulary:
             meta["vocabulary"] = [self._resolve_vocab_ref(r) for r in vocabulary]
-        self._write_node(d, meta, description)
+        self._write_entry(d, meta, description)
         return self._term(full)
 
     def remove(self, ref: str) -> None:
@@ -1725,12 +1725,12 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         reference resolves to the term folder `target` — what `tcw capabilities
         check` would report dangling once it is gone.
 
-        The node's capabilities store is found by the normal resolution. None
+        The project's capabilities store is found by the normal resolution. None
         here: nothing to ask. One that cannot be opened or read refuses the
         removal, because whether it names the term cannot then be known.
         """
         try:
-            caps = FsCapabilitiesStore.open(self.node_root)
+            caps = FsCapabilitiesStore.open(self.project_root)
             if not caps.root.is_dir():
                 return []
             local = caps.list_all(local_only=True)
@@ -1788,7 +1788,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")
-        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        registry = FsProjectRegistry.open(self.project_root).require_valid()
         project = registry.get(project_id)
         if project is None:
             note = unreachable_project_note(registry, project_id)
@@ -1938,7 +1938,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             else self._inherited_stores()[term.origin]
         )
         d = owner.root / term.slug
-        meta_text, desc_text = owner._node_texts(d)
+        meta_text, desc_text = owner._entry_texts(d)
         return TermDetail(term=term, core_revision=_revision_multi(meta_text, desc_text))
 
     def update_term(self, ref: str, *,
@@ -2006,7 +2006,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
                 self._require_ref(r, "vocabulary", expect_vocabulary=True)
 
         # Write atomically
-        self._write_node(d, meta, desc_text)
+        self._write_entry(d, meta, desc_text)
 
         # Return fresh detail
         return _require_detail(self.get_term_detail(ref), "term", ref)
@@ -2043,7 +2043,7 @@ def _as_list(v) -> list[str]:
 
 
 class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
-    """`CapabilitiesStore` over folder-per-capability nodes under
+    """`CapabilitiesStore` over folder-per-capability entries under
     `docs/capabilities/`, optionally federated via `extends`.
 
     A capability is a folder with `meta.yaml` (`id` + `name` + the locked
@@ -2056,17 +2056,17 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     def __init__(self, root: Path, *,
                  _walk: "_FederationWalk | None" = None,
-                 node_root: Path | None = None, store_git_root: Path | None = None):
-        super().__init__(root, node_root=node_root, store_git_root=store_git_root)
+                 project_root: Path | None = None, store_git_root: Path | None = None):
+        super().__init__(root, project_root=project_root, store_git_root=store_git_root)
         self.extends: dict[str, "FsCapabilitiesStore"] = {}
         # Reused, never rebuilt: the resolution below already constructed each
-        # store with the right node root and the right walk state. There is no
+        # store with the right project root and the right walk state. There is no
         # second filter on the results — the `_seen` set that used to be one was
         # dead once recursion moved into `_extended_component_stores`, since the
         # only case it could refuse is a self-extend the identity check there
         # already refuses by project id.
         self.extends, self.extends_cycles = _extended_component_stores(
-            self.node_root, self.config, self._extends_label(), "capabilities",
+            self.project_root, self.config, self._extends_label(), "capabilities",
             walk=_walk,
         )
 
@@ -2084,7 +2084,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             rel = p.relative_to(self.root)
             if any(part.startswith(".") for part in rel.parts):
                 continue
-            if not self._node_readable(p):
+            if not self._entry_readable(p):
                 continue                      # before the _is_capability stat
             if self._is_capability(p):
                 out.append(str(rel))
@@ -2132,7 +2132,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         """Effective body = prependedDocs + description + appendedDocs (bounded lists)."""
         parts = []
         # `_within_store` on each attachment: these are read by name from meta,
-        # so they never pass through `_load_node`'s filtered name list.
+        # so they never pass through `_load_entry`'s filtered name list.
         for fn in _as_list(meta.get("prependedDocs")):
             f = d / fn
             if f.is_file() and self._within_store(f):
@@ -2147,7 +2147,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     def _capability(self, path: str, origin: str = "local") -> Capability:
         d = self.root / path
-        meta, description, _attachments = self._load_node(d)
+        meta, description, _attachments = self._load_entry(d)
         fields = {k: v for k, v in meta.items() if k not in _CAP_STRUCTURAL}
         if "Subject" in fields:
             fields["Subject"] = _as_list(fields["Subject"])
@@ -2214,7 +2214,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # `load_yaml` inside the condition, so a containment test appended to
         # the end would parse a meta.yaml outside the store before rejecting it.
         # The stat stays first so a miss pays no `resolve()`.
-        if not (path and self._is_capability(d) and self._node_readable(d)):
+        if not (path and self._is_capability(d) and self._entry_readable(d)):
             return None
         return None if load_yaml(d / "meta.yaml").get("overrides") else self._capability(path)
 
@@ -2301,7 +2301,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if d.exists() or d.is_symlink():   # a dangling/looping link reads absent
             raise Refused(f"capability already exists: {path}")
         # After the cheap string and stat refusals, because this one may open a
-        # taxonomy store — and before `_write_node`, which is the point: a create
+        # taxonomy store — and before `_write_entry`, which is the point: a create
         # carrying a field the store would reject must leave nothing behind.
         norm = self._validate_fields(fields or {})
         display = name or path.rsplit("/", 1)[-1].replace("-", " ").title()
@@ -2309,14 +2309,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # Field values win over the `status` parameter — what create-then-set
         # did. A None clears, rather than being skipped: there *is* something to
         # clear, the Status seeded a line above, and `_merge_meta` pops the key
-        # on a local node. Skipping it would keep a Status the caller asked to
+        # on a local entry. Skipping it would keep a Status the caller asked to
         # remove, which create-then-set did not.
         for k, v in norm.items():
             if v is None:
                 meta.pop(k, None)
             else:
                 meta[k] = v
-        self._write_node(d, meta, body)
+        self._write_entry(d, meta, body)
         return self._capability(path)
 
     def remove(self, identifier: str) -> None:
@@ -2336,7 +2336,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         d = self.root / cap.path
         # Refused, never cascaded: `_rm` deletes the whole folder. Asked of the
         # folder itself rather than `_all_meta_dirs`, which skips dot-directories
-        # and unreadable nodes that `git rm -rf` would delete all the same.
+        # and unreadable entries that `git rm -rf` would delete all the same.
         nested = sorted(str(m.parent.relative_to(self.root))
                         for m in d.rglob("meta.yaml") if m.parent != d)
         if nested:
@@ -2425,12 +2425,12 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         # `Subject=a,b` is two refs. `v is not None`: None is the documented
         # clear sentinel, and passing it through would make `_check_globals`
         # stringify it into a bogus problem about a field just cleared. Only the
-        # refs this write *supplies*, never the merged node, or a capability with
+        # refs this write *supplies*, never the merged entry, or a capability with
         # one bad ref could not be repaired by the very command that repairs it.
         supplied = {k: v for k, v in out.items() if v is not None}
         # A taxonomy store is opened only when a field needing one was supplied:
         # the other four resolve against `self`, and a status-only repair should
-        # not start failing because the node's taxonomy config is malformed.
+        # not start failing because the project's taxonomy config is malformed.
         needs_taxonomy = bool(supplied.get("Subject")) or bool(supplied.get("Feature"))
         problems = self._ref_problems(
             supplied, self._taxonomy() if needs_taxonomy else None)
@@ -2444,7 +2444,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
 
     def _write_meta(self, d: Path, meta: dict, *,
                     removed: tuple[Path, ...] = ()) -> None:
-        """Write a node's meta, rolling back what this call created.
+        """Write an entry's meta, rolling back what this call created.
 
         Owns the `mkdir` so it can prove whether the directory is its own:
         `set` materializing a *fresh* override is the path where a refused write
@@ -2497,11 +2497,11 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         return d, {"overrides": f"{cap.origin}/{cap.id}"}, True
 
     def _merge_meta(self, meta: dict, norm: dict, is_override: bool) -> dict:
-        """Merge validated fields into a node's meta.
+        """Merge validated fields into an entry's meta.
 
         On an override a None writes an explicit YAML null — `_apply_override`
         reads that as *clear the inherited field*, where popping the key would
-        mean *re-inherit it*. On a local node None pops, as it always has.
+        mean *re-inherit it*. On a local entry None pops, as it always has.
         """
         for k, v in norm.items():
             if v is None and not is_override:
@@ -2526,7 +2526,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         extends = _extends_ids(self.config, self._extends_label())
         if project_id in extends:
             raise Refused(f"extends project already exists: {project_id}")
-        registry = FsProjectRegistry.open(self.node_root).require_valid()
+        registry = FsProjectRegistry.open(self.project_root).require_valid()
         project = registry.get(project_id)
         if project is None:
             note = unreachable_project_note(registry, project_id)
@@ -2548,7 +2548,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
     # -- validation --
 
     def _taxonomy(self) -> "FsTaxonomyStore | None":
-        """The sibling taxonomy store for this node, or None if it has none.
+        """The sibling taxonomy store for this project, or None if it has none.
 
         The FS adapter's answer to "where does this store's taxonomy live";
         another adapter answers it from its own connection, so nothing about
@@ -2557,9 +2557,9 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         `update_capability` and `check` all reach the same handle.
         """
         # A taxonomy that is present and cannot open raises: that is a broken
-        # configuration, not "this node has no taxonomy".
-        return (FsTaxonomyStore.open(self.node_root)
-                if tree_store_present(self.node_root, "taxonomy") else None)
+        # configuration, not "this project has no taxonomy".
+        return (FsTaxonomyStore.open(self.project_root)
+                if tree_store_present(self.project_root, "taxonomy") else None)
 
     def check(self, taxonomy=None, identifier: str | None = None) -> list[Finding]:
         # `is not None`, not `or`: an explicitly injected store must win even
@@ -2654,7 +2654,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             d = self.root / p
             # `is_dir` because an inherited capability's path is upstream's, and
             # a local folder of that name exists only when its override sits there.
-            if not d.is_dir() or not self._node_readable(d):
+            if not d.is_dir() or not self._entry_readable(d):
                 continue          # `selected` bypasses the _all_meta_dirs filter
             meta = load_yaml(d / "meta.yaml")
 
@@ -2691,7 +2691,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         except UsageError:
             return []
         local_folder = self.root / identifier
-        if (local_folder / "meta.yaml").is_file() and self._node_readable(local_folder):
+        if (local_folder / "meta.yaml").is_file() and self._entry_readable(local_folder):
             owner, folder = self, local_folder
         else:
             cap = self.get(identifier)
@@ -2821,14 +2821,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if cap is None:
             return None
         owner = self if cap.origin == "local" else self.extends[cap.origin]
-        texts = self._node_texts(owner.root / cap.path)
+        texts = self._entry_texts(owner.root / cap.path)
         if cap.origin != "local":
             # The local override's files are part of what the caller sees, so
             # they are part of the revision — else two edits to the same
             # override hash identically and a stale write sails through.
             ov_index = self._override_index()
             ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
-            texts += self._node_texts(ov[0]) if ov else ["", ""]
+            texts += self._entry_texts(ov[0]) if ov else ["", ""]
         return CapabilityDetail(capability=cap, core_revision=_revision_multi(*texts))
 
     def update_capability(self, identifier, *, body=_UNSET, fields=_UNSET,
@@ -2849,7 +2849,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         meta = self._merge_meta(meta, norm, is_override)
 
         # No mkdir and no outer guard here any more: `_write_meta` and
-        # `_write_node` each own their directory and roll back what they
+        # `_write_entry` each own their directory and roll back what they
         # created. Doing it here as well would double-delete — and, worse, the
         # old guard had to key on `meta.yaml` being absent precisely because it
         # wrapped a callee that stages internally.
@@ -2865,7 +2865,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         elif body is _UNSET and not desc.exists():
             self._write_meta(d, meta)          # pure delta — no empty body file
         else:
-            self._write_node(d, meta, desc_text)
+            self._write_entry(d, meta, desc_text)
         return _require_detail(self.get_capability_detail(identifier),
                                "capability", identifier)
 
@@ -2918,10 +2918,10 @@ def _normalize_remote(url: str) -> str:
     return cleaned[:-4] if cleaned.endswith(".git") else cleaned
 
 
-# What a *node* is, for the provisioner: a directory carrying a sentinel. Not a
+# What a *project* is, for the provisioner: a directory carrying a sentinel. Not a
 # component, and deliberately not spelled as one anywhere it could be mistaken
 # for a store — `PROVISION_COMPONENTS` never contains it.
-NODE_TARGET = "node"
+PROJECT_TARGET = "project"
 
 
 def _is_store_layout(root: Path, component: str) -> bool:
@@ -2936,7 +2936,7 @@ def _is_store_layout(root: Path, component: str) -> bool:
 
     A **tree** store — taxonomy, capabilities — names nothing. `init` scaffolds
     it as a bare directory (see `init`'s plan loop), it holds no config file of its
-    own at all now that `extends` lives in the node's `tcw-config.yaml`, and the
+    own at all now that `extends` lives in the project's `tcw-config.yaml`, and the
     only file reliably left behind is a `.gitkeep`, which is git's answer to
     empty directories and means nothing here. So "the directory is there" is the strongest honest answer, and it is
     shared by the work store: a declared tree store that clones
@@ -2946,19 +2946,19 @@ def _is_store_layout(root: Path, component: str) -> bool:
     nothing behind" true for every component.
 
     `component` is required rather than defaulted: a caller that forgets it
-    should not silently get a store's answer for a node.
+    should not silently get a store's answer for a project.
     """
     if not root.is_dir():
         return False
-    if component == NODE_TARGET:
-        # A node names one file and it is the same file everywhere, which is
-        # exactly how much a node can honestly claim.
+    if component == PROJECT_TARGET:
+        # A project names one file and it is the same file everywhere, which is
+        # exactly how much a project can honestly claim.
         return (root / SENTINEL).is_file()
     return True
 
 
 def _registry_checkout_root(
-    node_root: Path, declaration: "RepositoryDeclaration"
+    project_root: Path, declaration: "RepositoryDeclaration"
 ) -> Path | None:
     """Where the declared store sits inside a project this machine already has.
 
@@ -2974,7 +2974,7 @@ def _registry_checkout_root(
     already uses for the same reason — and anything raised is swallowed.
     """
     try:
-        found = FsProjectRegistry.open(node_root).checkout_of(declaration.url)
+        found = FsProjectRegistry.open(project_root).checkout_of(declaration.url)
     except Exception:
         return None
     if found is None:
@@ -2982,8 +2982,8 @@ def _registry_checkout_root(
     return (found / declaration.path) if declaration.path else found
 
 
-def resolve_store(store_cls, node_root: Path, _walk=None):
-    """This node's store for `store_cls`'s component, in one ordered ladder.
+def resolve_store(store_cls, project_root: Path, _walk=None):
+    """This project's store for `store_cls`'s component, in one ordered ladder.
 
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
        usable;
@@ -3016,8 +3016,8 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     what "usable" means and builds the store. `COMPONENT` names the config
     section.
     """
-    node_root = node_root.resolve()
-    config_path = node_root / SENTINEL
+    project_root = project_root.resolve()
+    config_path = project_root / SENTINEL
     config = load_config(config_path)
     component = store_cls.COMPONENT
     section = config.get(component) or {} if isinstance(config, dict) else {}
@@ -3027,7 +3027,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     if configured is not None and (not isinstance(configured, str) or not configured.strip()):
         raise ValueError(
             f"{config_path}: {component}.path must be a non-empty path string")
-    raw_root = store_cls._local_root(node_root, configured)
+    raw_root = store_cls._local_root(project_root, configured)
     declaration, declaration_problems = parse_repository_declaration(
         section.get("repository"), f"{component}.repository")
 
@@ -3042,7 +3042,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     # malformed declaration parses to `(None, problems)`, so the ladder sees no
     # declaration and takes rule 4 — and a tree store's rule 4 validates nothing
     # and therefore cannot fail, which dropped the problems on a path that never
-    # raised. The user got "no tcw taxonomy node here" for a typo in the block
+    # raised. The user got "no tcw taxonomy project here" for a typo in the block
     # right in front of them. A candidate allowed to mask a configuration error
     # has to be a real store, not a directory that might not exist.
     must_exist = (configured is not None or declaration is not None
@@ -3051,7 +3051,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
     if declaration is None:                                     # rule 4
         try:
             return store_cls._open_at(
-                raw_root, node_root, config_path,
+                raw_root, project_root, config_path,
                 external=configured is not None, must_exist=must_exist,
                 _walk=_walk)
         except ValueError:
@@ -3066,7 +3066,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
 
     try:                                                        # rule 1
         return store_cls._open_at(
-            raw_root, node_root, config_path,
+            raw_root, project_root, config_path,
             external=configured is not None, must_exist=must_exist,
             _walk=_walk)
     except StoreLocationUnusable as unusable:
@@ -3079,7 +3079,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
         # The reason is carried rather than discarded, but **only when the
         # configured path is actually there**. A path that does not exist,
         # beside a declaration, is the ordinary case the declaration exists for
-        # — reporting it would make every provisioned node noisy. A path that
+        # — reporting it would make every provisioned project noisy. A path that
         # exists and holds no store is a second configuration problem, and it
         # used to vanish behind rule 3's message entirely.
         #
@@ -3090,7 +3090,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
         prefix = f"{config_path}: "
         if local_failure and local_failure.startswith(prefix):
             local_failure = local_failure[len(prefix):]
-    local = _registry_checkout_root(node_root, declaration)
+    local = _registry_checkout_root(project_root, declaration)
     if local is not None:
         try:                                                    # rule 1.5
             # No `declaration=`, and that omission is the whole of "must not
@@ -3098,7 +3098,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
             # themselves — the same reasoning rule 1 relies on. `publishes`
             # consults nothing else.
             return store_cls._open_at(
-                local, node_root, config_path,
+                local, project_root, config_path,
                 external=True, must_exist=True, _walk=_walk)
         except StoreLocationUnusable:
             # The project is here but holds no store at the declared path.
@@ -3109,7 +3109,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
         # The declaration travels with the store *only* here. Rules 1 and 1.5
         # above resolved without it, so a store built there carries None.
         return store_cls._open_at(
-            provisioned_store_root(node_root, declaration), node_root, config_path,
+            provisioned_store_root(project_root, declaration), project_root, config_path,
             external=True, must_exist=True, declaration=declaration,
             _walk=_walk)
     except StoreLocationUnusable:
@@ -3122,7 +3122,7 @@ def resolve_store(store_cls, node_root: Path, _walk=None):
 
 
 def declared_repository(
-    node_root: Path, component: str
+    project_root: Path, component: str
 ) -> tuple["RepositoryDeclaration | None", list[str]]:
     """A component's declared home repository, read straight from the config.
 
@@ -3133,7 +3133,7 @@ def declared_repository(
     reader.
     """
     try:
-        config = load_config(node_root / SENTINEL)
+        config = load_config(project_root / SENTINEL)
     except ValueError:
         return None, []          # a config too broken to read declares nothing
     section = config.get(component) if isinstance(config, dict) else None
@@ -3144,9 +3144,9 @@ def declared_repository(
 
 
 def declared_connected_projects(
-    node_root: Path,
+    project_root: Path,
 ) -> tuple[list[tuple[str, RepositoryDeclaration, str]], list[str]]:
-    """This node's connected projects that declare a repository, with problems.
+    """This project's connected projects that declare a repository, with problems.
 
     Each entry is (project id, declaration, relation): the relation is how the
     caller tells an upstream — obtained, but not read past — from the family.
@@ -3160,7 +3160,7 @@ def declared_connected_projects(
     worth printing rather than a silence.
     """
     try:
-        config = load_config(node_root / SENTINEL)
+        config = load_config(project_root / SENTINEL)
     except ValueError:
         return [], []            # likewise: it declares no connected project
     connected = config.get("projects") if isinstance(config, dict) else None
@@ -3194,9 +3194,9 @@ class FsStoreProvisioner(StoreProvisioner):
     what makes "leaves nothing behind" true rather than aspirational.
     """
 
-    def __init__(self, node_root: Path, component: str,
+    def __init__(self, project_root: Path, component: str,
                  declaration: RepositoryDeclaration | None):
-        self.node_root = node_root.resolve()
+        self.project_root = project_root.resolve()
         self.component = component
         self.declaration = declaration
 
@@ -3207,16 +3207,16 @@ class FsStoreProvisioner(StoreProvisioner):
             return f"{self.component}: no home repository declared"
         d = self.declaration
         at = f" at {d.ref}" if d.ref else ""
-        thing = "node" if self.component == NODE_TARGET else "store"
+        thing = "project" if self.component == PROJECT_TARGET else "store"
         within = f", {thing} at {d.path}" if d.path else ""
         return (f"{self.component}: {d.url}{at}{within} → "
-                f"{provisioned_store_root(self.node_root, d)}")
+                f"{provisioned_store_root(self.project_root, d)}")
 
     def is_available(self) -> bool:
         if self.declaration is None:
             return False
-        target = provisioned_store_root(self.node_root, self.declaration)
-        checkout = checkout_root(self.node_root, self.declaration)
+        target = provisioned_store_root(self.project_root, self.declaration)
+        checkout = checkout_root(self.project_root, self.declaration)
         # A directory is not enough: the store needs a checkout of its own.
         # Check the filesystem marker rather than invoking Git: an
         # already-available second run is deliberately a zero-subprocess no-op.
@@ -3227,8 +3227,8 @@ class FsStoreProvisioner(StoreProvisioner):
         if self.declaration is None:
             return ProvisionResult(action="undeclared", available=False,
                                    detail=f"{self.component}: nothing declared")
-        target = provisioned_store_root(self.node_root, self.declaration)
-        checkout = checkout_root(self.node_root, self.declaration)
+        target = provisioned_store_root(self.project_root, self.declaration)
+        checkout = checkout_root(self.project_root, self.declaration)
 
         if self.is_available():
             return ProvisionResult(action="available", available=True,
@@ -3264,9 +3264,9 @@ class FsStoreProvisioner(StoreProvisioner):
         if _is_store_layout(root, self.component):
             return
         where = self.declaration.path or "."
-        if self.component == NODE_TARGET:
+        if self.component == PROJECT_TARGET:
             raise ValueError(
-                f"projects: {self.declaration.url} has no tcw node at "
+                f"projects: {self.declaration.url} has no TCW project at "
                 f"'{where}': no {SENTINEL} there")
         prefix = (f"{self.component}.repository: {self.declaration.url} has no "
                   f"{self.component} store at '{where}'")

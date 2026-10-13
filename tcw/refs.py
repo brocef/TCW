@@ -81,8 +81,8 @@ def parse_tcw_uri(uri: str) -> TcwRef | None:
     return TcwRef("/".join(segs[:axis_idx]), segs[axis_idx].upper(), ref)
 
 
-def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
-    """Resolve a ``tcw://`` uri against the node at ``node_root``, returning the
+def resolve_tcw_ref(project_root: Path | None, uri: str) -> ResolveResult:
+    """Resolve a ``tcw://`` uri against the project at ``project_root``, returning the
     SPA object key (namespace-qualified where present). Never propagates a store
     exception — a store failure becomes ``ok=False`` with a reason.
 
@@ -91,7 +91,7 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
     open it is a different question with a different answer per server, so it is
     not decided here — a foreign work ref reports its owning project in
     ``project`` and the viewer gates on that (see `tcw serve`'s ``/api/resolve``).
-    Conflating the two is what made a valid cross-node link report ``ok`` and then
+    Conflating the two is what made a valid cross-project link report ``ok`` and then
     dead-end in the SPA: the two spellings of a namespaced work ref took different
     paths, and the one people actually write never reached the gate at all.
 
@@ -103,27 +103,27 @@ def resolve_tcw_ref(node_root: Path | None, uri: str) -> ResolveResult:
     parsed = parse_tcw_uri(uri)
     if parsed is None:
         return ResolveResult(False, None, None, "malformed tcw:// uri")
-    if node_root is None:
-        return ResolveResult(False, parsed.axis, None, "no tcw node")
+    if project_root is None:
+        return ResolveResult(False, parsed.axis, None, "no TCW project")
     ns_ref = f"{parsed.namespace}/{parsed.ref}" if parsed.namespace else parsed.ref
     try:
         if parsed.axis == "T":
-            term = FsTaxonomyStore.open(node_root).get(ns_ref)
+            term = FsTaxonomyStore.open(project_root).get(ns_ref)
             if term is None:
                 return ResolveResult(False, "T", None, f"no taxonomy term: {ns_ref}")
             return ResolveResult(True, "T", term.qualified, "")
         if parsed.axis == "C":
-            cap = FsCapabilitiesStore.open(node_root).get(ns_ref)
+            cap = FsCapabilitiesStore.open(project_root).get(ns_ref)
             if cap is None:
                 return ResolveResult(False, "C", None, f"no capability: {ns_ref}")
             return ResolveResult(True, "C", cap.qualified, "")
         # axis == "W"
-        return _resolve_work(node_root, parsed.namespace, parsed.ref)
+        return _resolve_work(project_root, parsed.namespace, parsed.ref)
     except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False
         return ResolveResult(False, parsed.axis, None, str(e))
 
 
-def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveResult:
+def _resolve_work(project_root: Path, namespace: str | None, ref: str) -> ResolveResult:
     """A 3.0 work reference: the item read through its project's backend. Found
     at any stage is OK; `NotFound` is missing; a project declared but not on
     this machine is unresolved (TCW-70 Design 12.1)."""
@@ -136,10 +136,10 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
         namespace, ref = ref.split("/", 1)
     try:
         if namespace is None:
-            backend = open_backend(node_root)
+            backend = open_backend(project_root)
         else:
-            backend = open_project(namespace, node_root)
-            if backend.project == _current_project(node_root):
+            backend = open_project(namespace, project_root)
+            if backend.project == _current_project(project_root):
                 namespace = None
         if isinstance(backend, JiraBackend):
             # The folder scan `lookup` uses, never a read of the ticket, so
@@ -162,9 +162,9 @@ def _resolve_work(node_root: Path, namespace: str | None, ref: str) -> ResolveRe
     return ResolveResult(True, "W", f"{backend.project}/{folder}", "", namespace)
 
 
-def _current_project(node_root: Path) -> str | None:
+def _current_project(project_root: Path) -> str | None:
     from tcw.store.fs import FsProjectRegistry
     try:
-        return FsProjectRegistry.open(node_root).current.id
+        return FsProjectRegistry.open(project_root).current.id
     except ValueError:
         return None

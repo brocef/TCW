@@ -19,9 +19,9 @@ from pathlib import Path
 import yaml
 
 
-def set_component_key(node_root: Path, component: str, key: str, value) -> None:
+def set_component_key(project_root: Path, component: str, key: str, value) -> None:
     """Merge `<component>.<key> = value` into the node's config, keeping the rest."""
-    config_path = Path(node_root) / "tcw-config.yaml"
+    config_path = Path(project_root) / "tcw-config.yaml"
     raw = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
     if not isinstance(raw, dict):
         raw = {}
@@ -33,7 +33,7 @@ def set_component_key(node_root: Path, component: str, key: str, value) -> None:
     config_path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True))
 
 
-def declare_extends(node_root: Path, component: str, text: str) -> None:
+def declare_extends(project_root: Path, component: str, text: str) -> None:
     """Declare `extends` from the YAML a fixture used to write into the store file.
 
     Takes the same `extends:`-rooted text those fixtures already pass, so a
@@ -41,4 +41,4 @@ def declare_extends(node_root: Path, component: str, text: str) -> None:
     unregistered project — still reaches the code under test unchanged.
     """
     parsed = yaml.safe_load(text) or {}
-    set_component_key(node_root, component, "extends", parsed.get("extends"))
+    set_component_key(project_root, component, "extends", parsed.get("extends"))

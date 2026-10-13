@@ -45,8 +45,8 @@ def _repo(path: Path) -> Path:
     return path
 
 
-def _write_config(node_root: Path, **work: object) -> None:
-    path = node_root / "tcw-config.yaml"
+def _write_config(project_root: Path, **work: object) -> None:
+    path = project_root / "tcw-config.yaml"
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault("work", {}).update(work)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
@@ -155,12 +155,12 @@ def _remote_with_tree(tmp_path: Path, inner: str = "trees/taxonomy") -> Path:
     return remote
 
 
-def _provisioner(tmp_path, node_root: Path, remote: Path, **overrides):
+def _provisioner(tmp_path, project_root: Path, remote: Path, **overrides):
     """A provisioner whose cache lands inside `tmp_path`, never the real
     `~/.cache`."""
     declaration = RepositoryDeclaration(
         url=str(remote), path=overrides.pop("path", "docs/work/corelib"), **overrides)
-    return FsStoreProvisioner(node_root, "work", declaration)
+    return FsStoreProvisioner(project_root, "work", declaration)
 
 
 def _count_git(monkeypatch):
@@ -569,7 +569,7 @@ def test_a_malformed_declaration_never_misdirects_to_tcw_init(tmp_path, monkeypa
 
     `tcw validate` already reported the bad line; every work command flattened it
     to "no tcw work node here" because the message travelled as a plain
-    `ValueError` that `find_node` discards."""
+    `ValueError` that `find_component_project` discards."""
     monkeypatch.chdir(_declared_but_malformed(tmp_path))
 
     assert main(argv) == 1
@@ -1172,7 +1172,7 @@ def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
 
     A checkout that cloned only the code repository has no `docs/taxonomy/`,
     because the taxonomy lives in the other repository — that is the whole
-    premise. `find_node` decided "does this node have this component?" by looking
+    premise. `find_component_project` decided "does this node have this component?" by looking
     for that folder, so it answered None before the resolution ladder ever ran,
     and the declaration went unread."""
     component = _tree_component(argv)
@@ -1468,7 +1468,7 @@ def test_a_repository_with_no_node_at_the_declared_path_is_refused(tmp_path, mon
     )
     monkeypatch.chdir(here)
     assert main(["provision"]) == 1
-    assert "has no tcw node at" in capsys.readouterr().err
+    assert "has no TCW project at" in capsys.readouterr().err
     assert not (tmp_path / "cache" / "tcw" / "stores").exists() or not list(
         (tmp_path / "cache" / "tcw" / "stores").iterdir())
 

@@ -95,7 +95,7 @@ def _kill_group(proc: subprocess.Popen) -> None:
             pass
 
 
-def run_generate(command: str, node_root: Path, env: dict[str, str],
+def run_generate(command: str, project_root: Path, env: dict[str, str],
                  stdin_text: str, timeout: int, output_cap: int) -> GenerateResult:
     """Run one `generate` hook and return its text, or raise `GenerateError`.
 
@@ -105,7 +105,7 @@ def run_generate(command: str, node_root: Path, env: dict[str, str],
     """
     try:
         proc = subprocess.Popen(
-            command, shell=True, cwd=str(node_root), env=env,
+            command, shell=True, cwd=str(project_root), env=env,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True)     # its own process group, for the kill

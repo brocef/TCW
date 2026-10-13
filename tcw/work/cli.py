@@ -17,7 +17,7 @@ from tcw import exit as codes
 from tcw.errors import NO_PROJECT, BackendError, NotFound, Refused, UsageError
 from tcw.output import print_json, wrote
 from tcw.store.base import normalize_tag
-from tcw.store.fs import FsProjectRegistry, find_node_root
+from tcw.store.fs import FsProjectRegistry, find_project_root
 from tcw.stdin import read_piped_stdin
 from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
@@ -40,7 +40,7 @@ NAME = "work"
 
 
 def project_root(here: Path | None = None) -> Path:
-    root = find_node_root(here or Path.cwd())
+    root = find_project_root(here or Path.cwd())
     if root is None:
         raise BackendError(NO_PROJECT)
     return root
@@ -427,7 +427,7 @@ def _procedure(args) -> int:
     if args.procedure not in PROCEDURE_IDS:
         raise UsageError(f"unknown procedure '{args.procedure}'; expected one of "
                          f"{', '.join(PROCEDURE_IDS)}")
-    if args.slug is None and find_node_root(Path.cwd()) is None:
+    if args.slug is None and find_project_root(Path.cwd()) is None:
         # No project, so nothing to compose: TCW's own text. Skills that also
         # run outside TCW projects (documentation-sync) rely on this.
         print(packaged_text("procedures", args.procedure).rstrip())
