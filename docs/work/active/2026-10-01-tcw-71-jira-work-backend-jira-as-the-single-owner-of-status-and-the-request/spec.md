@@ -919,7 +919,10 @@ This runs every offline check, then the checks below for each Jira-mode project 
      the project: TCW Project, TCW Item, Summary, Labels, Assignee, Parent and the
      configured priority and estimate fields must each be editable. A type with no
      sample ticket gives one `warning` whose message starts `unchecked:` and names
-     the type. **[Decision]** The cost of finding field IDs through create metadata
+     the type. **[Live finding, 2026-10-13]** Parent is not required of the type
+     at the project's highest hierarchy level (an Epic): nothing can sit above
+     it, so Jira gives it no Parent field, and requiring one was a false error.
+     **[Decision]** The cost of finding field IDs through create metadata
      is that a team cannot keep TCW Item off the create screen. Finding them in
      the site-wide field list instead could not tell apart two team-managed fields
      of the same name (Design 12).
