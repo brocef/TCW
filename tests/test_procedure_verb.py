@@ -1,4 +1,4 @@
-"""`tcw work procedure prompt <id> [slug]` — spec criteria 1 and 3–7, end to end."""
+"""`tcw work procedure <id> [slug]` — spec criteria 1 and 3–7, end to end."""
 
 import subprocess
 from pathlib import Path
@@ -32,7 +32,7 @@ def _configure(root: Path, procedures) -> None:
 
 
 def _run(root: Path, *args: str):
-    return subprocess.run(["tcw", "work", "procedure", "prompt", *args],
+    return subprocess.run(["tcw", "work", "procedure", *args],
                           cwd=str(root), capture_output=True, text=True)
 
 
@@ -104,7 +104,7 @@ def test_a_deleted_file_binding_is_refused_by_name(tmp_path):
     _configure(root, {"search": [{"blob": "BEFORE"}, {"file": "gone.md"}]})
     r = _run(root, "search")
     assert r.returncode == 1 and r.stdout == ""
-    assert "gone.md" in r.stderr and r.stderr.startswith("tcw work procedure prompt:")
+    assert "gone.md" in r.stderr and r.stderr.startswith("tcw work procedure:")
 
 
 def test_no_exec_runs_nothing_and_prints_nothing(tmp_path):
@@ -140,5 +140,5 @@ def test_outside_a_work_node_a_work_item_still_refuses(tmp_path):
 def test_the_verb_is_listed(tmp_path, args):
     r = subprocess.run(["tcw", "work", "procedure", *args], cwd=tmp_path,
                        capture_output=True, text=True)
-    assert "prompt" in r.stdout + r.stderr
+    assert "procedure" in r.stdout + r.stderr
     assert ARGPARSE_REFUSAL not in r.stderr

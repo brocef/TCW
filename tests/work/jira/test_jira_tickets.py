@@ -84,7 +84,7 @@ def test_json_from_one_search(jira_project, tcw):
     jira_project.fake.tickets[described].description = text_document("Do\n\nthis")
     empty = raw(jira_project, "empty")
     jira_project.fake.log.clear()
-    tickets = json.loads(listed(tcw, jira_project, "--json").out)
+    tickets = json.loads(listed(tcw, jira_project, "--json").out)["tickets"]
     assert [t["key"] for t in tickets] == [described, empty]
     assert set(tickets[0]) == {"key", "summary", "status", "created", "reporter", "url",
                                "description"}

@@ -146,7 +146,7 @@ def test_show_with_another_item_unreadable(tcw, p):
     write_item(p, "2026-10-01-bad", "title: [x\n")
     r = tcw(["show", "2026-10-01-a", "--json"], p)
     assert r.code == 0
-    record = yaml.safe_load(r.out)
+    record = yaml.safe_load(r.out)["item"]
     assert record["children"] == ["p/2026-10-01-b"]
     assert record["blocks"] == ["p/2026-10-01-b"]
     [line] = r.err.strip().splitlines()
@@ -194,7 +194,7 @@ def test_the_tag_filter(tcw, p):
     r = tcw(["list", "--tag", "ui"], p)
     assert slugs(r) == ab and r.err == ""
     assert slugs(tcw(["list", "--tag", "ui", "--tag", "api"], p)) == ab + ["p/2026-10-01-c"]
-    assert slugs(tcw(["list", "--tag", "ui,api"], p)) == ab + ["p/2026-10-01-c"]
+    assert tcw(["list", "--tag", "ui,api"], p).code == 2
     assert slugs(tcw(["list", "--tag", "ui", "--all"], p)) == ab + ["p/2026-10-01-e"]
     r = tcw(["list", "--tag", "nosuch"], p)
     assert (r.code, r.out) == (0, "")
@@ -202,9 +202,9 @@ def test_the_tag_filter(tcw, p):
     assert line.startswith("warning:") and "nosuch" in line
 
 
-def test_list_json_is_an_array_of_records(tcw, p):
+def test_list_json_holds_the_records_under_items(tcw, p):
     write_item(p, "2026-10-01-a", {"title": "a", "stage": "spec"})
-    [record] = yaml.safe_load(tcw(["list", "--json"], p).out)
+    [record] = yaml.safe_load(tcw(["list", "--json"], p).out)["items"]
     assert record["slug"] == "p/2026-10-01-a" and record["untracked"] == []
 
 

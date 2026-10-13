@@ -188,9 +188,10 @@ def test_lifecycle_lists_the_enabled_stages_with_their_bindings(tcw, tmp_path):
     r = tcw(["lifecycle", "--json"], root)
     assert r.code == 0, r.err
     stages = {s["name"]: s for s in json.loads(r.out)["stages"]}
-    assert "plan" not in stages and "spec" in stages and "request" in stages
+    assert not stages["plan"]["enabled"]
+    assert stages["spec"]["enabled"] and stages["request"]["enabled"]
     assert stages["spec"]["bindings"]["pre"] == [{"command": "true"}]
     assert stages["spec"]["bindings"]["post"] == [{"skill": "tidy"}]
     assert stages["spec"]["bindings"]["prompt"] == [{"builtin": True}]
-    r = tcw(["lifecycle", "--stage", "spec", "--directive"], root)
-    assert "tidy" in r.out and "`true`" in r.out
+    r = tcw(["lifecycle", "--stage", "spec"], root)
+    assert "skill:tidy" in r.out and "command:true" in r.out

@@ -9,12 +9,13 @@ is a `TcwError` carrying its exit code, which `tcw.cli.main` turns into
 from __future__ import annotations
 
 import argparse
-import json
 import sys
+from datetime import timezone
 from pathlib import Path
 
 from tcw import exit as codes
 from tcw.errors import BackendError, NotFound, Refused, UsageError
+from tcw.output import print_json, wrote
 from tcw.store.base import normalize_tag
 from tcw.store.fs import FsProjectRegistry, find_node_root
 from tcw.stdin import read_piped_stdin
@@ -22,7 +23,7 @@ from tcw.work.advance import advance as advance_item, discard as discard_item
 from tcw.work.backend import Query, WorkBackend
 from tcw.work.fs_backend import FsWorkBackend, read_all
 from tcw.work.jira.backend import KEY, JiraBackend
-from tcw.work.jira.tickets import adopt, inbox
+from tcw.work.jira.tickets import adopt, inbox, user_name
 from tcw.work.gates import project_reader
 from tcw.work.model import (
     STAGES, UNSET, Changes, Slug, inbox_stage, stage as table_stage, start_stage,
@@ -32,10 +33,6 @@ from tcw.work.open import (delegate, open_backend, open_for_update, open_project
 from tcw.work.record import item_record
 
 NAME = "work"
-SUBCOMMANDS = {"new", "list", "show", "path", "edit", "advance", "discard",
-               "comment", "rename", "stage", "procedure", "lifecycle", "docs",
-               "tags", "nodes", "init", "tickets"}
-DEFAULT_SUBCOMMAND = None
 
 
 # -- finding the project and the item ---------------------------------------------
@@ -79,16 +76,18 @@ def _own(slug: Slug, backend: WorkBackend, root: Path) -> WorkBackend:
 # -- flag values ---------------------------------------------------------------------------
 
 
-def _tags(value: str) -> list[str]:
-    """One tag value is a comma-separated list, normalized as 2.8 normalizes it."""
+def _tag(value: str) -> str:
+    """One tag per use (TCW-73 Design 2, decision 6). A comma is refused rather
+    than split or normalized away: `--tag cli,docs` must not quietly become
+    the one tag `cli-docs`."""
+    if "," in value:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} holds a comma; give one tag per use and repeat the "
+            f"option for more")
     try:
-        tags = [normalize_tag(t) for t in (p.strip() for p in value.split(","))
-                if t]
+        return normalize_tag(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError(str(error))
-    if not tags:
-        raise argparse.ArgumentTypeError(f"invalid tag {value!r}: names no tag")
-    return tags
 
 
 def _nonempty(value: str) -> str:
@@ -150,6 +149,10 @@ def _new(args) -> int:
                        here=root, report=_say))
         return codes.OK
     backend = open_backend(root)
+    if stage == inbox_stage() and not backend.inbox_items:
+        raise UsageError(f"--stage {inbox_stage()} is for a filesystem-mode "
+                         f"project; in Jira mode a new ticket waits in Jira "
+                         f"until `tcw work tickets adopt` takes it")
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),
         complexity=_optional(args.complexity), assignee=_optional(args.assignee),
@@ -177,25 +180,63 @@ def _list(args) -> int:
     items = backend.list(query)
     if args.json:
         every = _readable(backend)
-        print(json.dumps([item_record(i, every, _layout(backend)) for i in items],
-                         indent=2))
+        print_json("items", [item_record(i, every, _layout(backend)) for i in items])
         return codes.OK
     for item in items:
         print(item.slug)
     return codes.OK
 
 
+def _stamp(at) -> str:
+    return at.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _person(backend: WorkBackend, account: str | None) -> str | None:
+    """A person as the text form shows them: a Jira account's display name,
+    falling back to the account ID (Design 1.9, R15)."""
+    if account is None or not isinstance(backend, JiraBackend):
+        return account
+    return user_name(backend, account) or account
+
+
+def _indented(text: str) -> list[str]:
+    return [f"  {line}" if line else "" for line in text.rstrip("\n").split("\n")]
+
+
 def _show(args) -> int:
+    """The item's properties, its request and its comments, newest first: the
+    whole item an agent needs to read (Design 1.9)."""
     slug, backend, _ = resolve_item(args.slug)
     item = backend.read(slug.folder)
     record = item_record(item, _readable(backend), _layout(backend))
+    request = backend.read_request(slug.folder)
+    comments = backend.read_comments(slug.folder)
     if args.json:
-        print(json.dumps(record, indent=2))
+        print_json(None, {"item": record, "request": request, "comments": [
+            {"at": _stamp(c.at), "author": c.author, "text": c.text}
+            for c in comments]})
         return codes.OK
+    lines = []
     for key, value in record.items():
+        if key == "untracked" and not value:
+            continue
+        if key == "assignee":
+            value = _person(backend, value)
         if isinstance(value, list):
             value = ", ".join(map(str, value))
-        print(f"{key}: {'' if value is None else value}")
+        lines.append(f"{key}: {'' if value is None else value}")
+    lines.append("")
+    if request is None:
+        lines.append("request: none")
+    else:
+        lines += ["request:", *_indented(request)]
+    if comments:
+        lines += ["", "comments:"]
+        for c in comments:
+            author = _person(backend, c.author)
+            lines.append(f"- {_stamp(c.at)}" + (f" {author}" if author else ""))
+            lines += _indented(c.text)
+    print("\n".join(lines))
     return codes.OK
 
 
@@ -296,7 +337,7 @@ def _rename(args) -> int:
 def _tickets_list(args) -> int:
     tickets, query = inbox(open_backend(project_root()))
     if args.json:
-        print(json.dumps(tickets, indent=2))
+        print_json("tickets", tickets)
     else:
         for ticket in tickets:
             print(ticket["key"])
@@ -380,7 +421,7 @@ def _stage_prompt(args) -> int:
     return _print_resolution(res, label, args.no_exec)
 
 
-def _procedure_prompt(args) -> int:
+def _procedure(args) -> int:
     from tcw.store.base import PROCEDURE_IDS
     from tcw.work.resolve import packaged_text, procedure_prompt
     if args.procedure not in PROCEDURE_IDS:
@@ -396,7 +437,7 @@ def _procedure_prompt(args) -> int:
         backend.config, args.procedure, item=item, record=record,
         request=request, layout=layout, project_root=root,
         execute=not args.no_exec))
-    return _print_resolution(res, f"tcw work procedure prompt {args.procedure}",
+    return _print_resolution(res, f"tcw work procedure {args.procedure}",
                              args.no_exec)
 
 
@@ -422,61 +463,30 @@ def _phases(config, name: str) -> dict:
             "post": settings.post or ()}
 
 
-def _directive(name: str, bindings) -> str:
-    """One instruction line for an agent, or "" when nothing is bound."""
-    parts: list[str] = []
-    text_named = False
-    for b in bindings:
-        if b.kind == "skill":
-            parts.append(f"invoke the {b.value} skill")
-        elif b.kind == "command":
-            parts.append(f"run `{b.value}`")
-        elif not text_named:
-            parts.append("read this project's configured instructions")
-            text_named = True
-    return f"For the {name} stage, {' and '.join(parts)}." if parts else ""
-
-
 def _lifecycle(args) -> int:
-    if args.slug is not None:
-        _, backend, _ = resolve_item(args.slug)
-    else:
-        backend = open_backend(project_root())
-    config = backend.config
-    if args.stage is not None:
-        table_stage(args.stage)
-        if args.stage not in config.enabled:
-            raise UsageError(f"'{args.stage}' is disabled in this project")
-        names = [args.stage]
-    else:
-        names = [s.name for s in STAGES if s.name in config.enabled]
-    if args.directive:
-        if args.stage is None:
-            raise UsageError("--directive needs --stage")
-        rows = _phases(config, args.stage)
-        bindings = [b for phase in ([args.phase] if args.phase else PHASES)
-                    for b in rows[phase]]
-        text = _directive(args.stage, bindings)
-        if text:
-            print(text)
-        return codes.OK
-    wanted = [args.phase] if args.phase else list(PHASES)
+    """The stage table: every stage with its kind, whether this project enables
+    it, and its bindings (Design 2, decision 4)."""
+    config = open_backend(project_root()).config
+    names = ([table_stage(args.stage).name] if args.stage is not None
+             else [s.name for s in STAGES])
     if args.json:
-        print(json.dumps({
+        print_json(None, {
             "hooks": {"timeout": config.hooks.timeout,
                       "output-cap": config.hooks.output_cap},
             "stages": [{"name": name, "kind": table_stage(name).kind,
+                        "enabled": name in config.enabled,
                         "bindings": {p: [_binding_json(b) for b in
                                          _phases(config, name)[p]]
-                                     for p in wanted}}
-                       for name in names]}, indent=2))
+                                     for p in PHASES}}
+                       for name in names]})
         return codes.OK
     for i, name in enumerate(names):
         if i:
             print()
-        print(f"{name}  [{table_stage(name).kind}]")
+        state = "" if name in config.enabled else ", disabled"
+        print(f"{name}  [{table_stage(name).kind}{state}]")
         rows = _phases(config, name)
-        for phase in wanted:
+        for phase in PHASES:
             if rows[phase]:
                 refs = ", ".join(f"{b.kind}:{b.value}" if b.kind != "builtin"
                                  else "builtin" for b in rows[phase])
@@ -487,11 +497,10 @@ def _lifecycle(args) -> int:
 def _docs(args) -> int:
     entries = open_backend(project_root()).config.documentation
     if args.json:
-        print(json.dumps({"schema": 1,
-                          "source": "config" if entries else "agent-guide",
+        print_json(None, {"source": "config" if entries else "agent-guide",
                           "entries": [{"path": e.path, "trigger": e.trigger,
                                        "description": e.description}
-                                      for e in entries]}, indent=2))
+                                      for e in entries]})
         return codes.OK
     if not entries:
         _say("tcw work docs: this project declares no `work.documentation`; "
@@ -517,8 +526,8 @@ def _tags_list(args) -> int:
 
 
 def _write_tags(change) -> int:
-    """Rewrite `work.tags` in `tcw-config.yaml`, changing only its lines. The
-    file is written and left unstaged, inside or outside a git repository."""
+    """Rewrite `work.tags` in `tcw-config.yaml`, changing only its lines, and
+    name the file on stderr when it changed. Prints nothing on stdout."""
     from tcw.store import config_edit
     from tcw.store.fs import SENTINEL, _atomic_write_all
     root = project_root()
@@ -534,18 +543,17 @@ def _write_tags(change) -> int:
             raise BackendError(str(error)) from None
         if text is not None:
             _atomic_write_all([(path, text)])
-    for tag in result:
-        print(tag)
+            wrote(path)
     return codes.OK
 
 
 def _tags_add(args) -> int:
-    given = {t for value in args.tag for t in value}
+    given = set(args.tag)
     return _write_tags(lambda tags: tags | given)
 
 
 def _tags_rm(args) -> int:
-    given = {t for value in args.tag for t in value}
+    given = set(args.tag)
     return _write_tags(lambda tags: tags - given)
 
 
@@ -624,11 +632,6 @@ def _no_store_note(child: Path) -> str:
     return "  (no work store)"
 
 
-def _init(args) -> int:
-    from tcw.cli import run_init  # function-local: tcw.cli imports this module
-    return run_init([NAME], args.id, args.path)
-
-
 # -- the parser ------------------------------------------------------------------------------
 
 
@@ -636,15 +639,15 @@ def _properties(p: argparse.ArgumentParser, *, editing: bool) -> None:
     p.add_argument("--priority")
     p.add_argument("--effort")
     p.add_argument("--complexity")
-    p.add_argument("--tag", "--tags", dest="tag", type=_tags, action="extend",
-                   help="a tag, or comma-separated tags; repeats")
+    p.add_argument("--tag", type=_tag, action="append",
+                   help="a registered tag; repeat the option for more")
     p.add_argument("--assignee")
     p.add_argument("--parent")
     p.add_argument("--blocked-by", dest="blocked_by", action="append")
     if editing:
         p.add_argument("--title", type=_nonempty)
-        p.add_argument("--untag", "--untags", dest="untag", type=_tags,
-                       action="extend")
+        p.add_argument("--untag", type=_tag, action="append",
+                       help="a tag to take off; repeat the option for more")
         p.add_argument("--unblocked-by", dest="unblocked_by", action="append")
         p.add_argument("--blocks", action="append",
                        help="add this item to another item's blocked-by")
@@ -663,7 +666,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     p = cmds.add_parser("list", help="list items, one slug per line")
     p.add_argument("--stage", action="append")
-    p.add_argument("--tag", "--tags", dest="tag", type=_tags, action="extend")
+    p.add_argument("--tag", type=_tag, action="append",
+                   help="list items carrying this tag; repeat for any of several")
     p.add_argument("--parent")
     p.add_argument("--assignee")
     p.add_argument("--all", action="store_true")
@@ -724,26 +728,18 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                    help="report what would resolve; prints nothing on stdout")
     p.set_defaults(func=_stage_prompt)
 
-    p = cmds.add_parser("procedure", help="read one of TCW's procedures, "
+    p = cmds.add_parser("procedure", help="print one of TCW's procedures, "
                                           "composed with this project's text")
-    verbs = p.add_subparsers(dest="procedure_verb", required=True)
-    p = verbs.add_parser("prompt", help="print a procedure's instructions")
     p.add_argument("procedure", help="one of TCW's procedure names")
     p.add_argument("slug", nargs="?",
                    help=f"optional; {SLUG_HELP}, so the text is composed for it")
     p.add_argument("--no-exec", dest="no_exec", action="store_true",
                    help="report what would resolve; prints nothing on stdout")
-    p.set_defaults(func=_procedure_prompt)
+    p.set_defaults(func=_procedure)
 
-    p = cmds.add_parser("lifecycle", help="the enabled stages and their bindings")
-    p.add_argument("slug", nargs="?",
-                   help=f"optional; {SLUG_HELP}, to read its project's stages")
+    p = cmds.add_parser("lifecycle", help="the stage table and its bindings")
+    p.add_argument("--stage", help="one stage only")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--stage")
-    p.add_argument("--phase", choices=PHASES)
-    p.add_argument("--directive", action="store_true",
-                   help="one instruction line for an agent, or nothing when "
-                        "unbound; needs --stage")
     p.set_defaults(func=_lifecycle)
 
     p = cmds.add_parser("docs", help="this project's documentation entries")
@@ -757,8 +753,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     for verb, func, what in (("add", _tags_add, "register"),
                              ("rm", _tags_rm, "unregister")):
         p = verbs.add_parser(verb, help=f"{what} one or more tags")
-        p.add_argument("tag", nargs="+", type=_tags,
-                       help="a tag, or comma-separated tags")
+        p.add_argument("tag", nargs="+", type=_tag, help="a tag; one per argument")
         p.set_defaults(func=func)
 
     p = cmds.add_parser("tickets", help="Jira tickets that are not items yet (Jira "
@@ -773,9 +768,3 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     p = cmds.add_parser("nodes", help="this project's parent and child projects")
     p.set_defaults(func=_nodes)
-
-    p = cmds.add_parser("init", help="create this project's work folder")
-    p.add_argument("--id", help="canonical project ID (required for a new project)")
-    p.add_argument("--path", help="where the work store lives")
-    p.set_defaults(func=_init)
-

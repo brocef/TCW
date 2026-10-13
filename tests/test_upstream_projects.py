@@ -417,7 +417,7 @@ def _assert_core_untouched(tmp_path: Path) -> None:
     ("work", "start", "{ref}"),
     ("work", "edit", "{ref}", "--title", "Renamed"),
     ("work", "stage", "gate", "spec", "{ref}"),
-    ("work", "procedure", "prompt", "create-work", "{ref}"),
+    ("work", "procedure", "create-work", "{ref}"),
     ("work", "drop", "{ref}", "--confirm"),
 ])
 def test_a_write_into_an_upstream_is_refused_as_read_only(tmp_path, where, command):

@@ -33,6 +33,9 @@ REMOVED_COMMANDS = (
     "tcw work scaffold",
     "tcw work stage gate",
     "tcw work stage validate",
+    # TCW-73 (its Design 9.4). `tcw work procedure prompt <id>` needs no
+    # entry: `prompt` parses as a procedure name, refused when the command runs.
+    "tcw work init",
 )
 
 # Flags TCW-70 removed from commands that survive, as (command, flag). A
@@ -47,6 +50,13 @@ REMOVED_FLAGS = (
     ("tcw work edit", "--type"),
     ("tcw work edit", "--initiative"),
     ("tcw work lifecycle", "--transition"),
+    # TCW-73 (its Design 2 and 9.4).
+    ("tcw work lifecycle", "--directive"),
+    ("tcw work lifecycle", "--phase"),
+    ("tcw work list", "--tags"),
+    ("tcw work new", "--tags"),
+    ("tcw work edit", "--tags"),
+    ("tcw work edit", "--untags"),
 )
 
 # Configuration keys TCW-69's parser refuses that documents still name.

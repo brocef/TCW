@@ -50,9 +50,11 @@ def test_tags_add_and_rm_refuse_while_the_registry_holds_a_non_tag(
 def test_a_clean_registry_still_adds_and_removes(tmp_path, monkeypatch, capsys):
     root = node(tmp_path, {"tags": ["cli"]})
     code, out, err = run(root, monkeypatch, capsys, "work", "tags", "add", "docs")
-    assert code == 0 and out.split() == ["cli", "docs"], err
+    assert (code, out) == (0, ""), err
+    assert run(root, monkeypatch, capsys, "work", "tags", "list")[1].split() == ["cli", "docs"]
     code, out, err = run(root, monkeypatch, capsys, "work", "tags", "rm", "docs")
-    assert code == 0 and out.split() == ["cli"], err
+    assert (code, out) == (0, ""), err
+    assert run(root, monkeypatch, capsys, "work", "tags", "list")[1].split() == ["cli"]
 
 
 # ── review fold-ins ──────────────────────────────────────────────────────────

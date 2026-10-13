@@ -684,7 +684,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
     # `work_path` kept as its own parameter rather than folded into `paths`:
     # it is the fourth positional argument every existing caller passes, and
     # this component's location has a name in the CLI (`--work-path`,
-    # `tcw work init --path`) that predates the mapping.
+    # `tcw init work --work-path`) that predates the mapping.
     paths = dict(paths or {})
     if work_path is not None:
         paths["work"] = work_path

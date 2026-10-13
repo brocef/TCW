@@ -2057,7 +2057,7 @@ def test_procedure_prompt_without_a_work_store_still_prints_the_builtin(tmp_path
     node = _repo(tmp_path / "node")
     init(["taxonomy"], node, "node")
     monkeypatch.chdir(node)
-    assert main(["work", "procedure", "prompt", "unattended-work"]) == 0
+    assert main(["work", "procedure", "unattended-work"]) == 0
     assert "## The advisors" in capsys.readouterr().out
 
 
@@ -2068,6 +2068,6 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
     init(["taxonomy"], node, "node")
     (node / "tcw-config.yaml").write_text("id: node\nwork:\n  path: ''\n")
     monkeypatch.chdir(node)
-    assert main(["work", "procedure", "prompt", "unattended-work"]) == 1
+    assert main(["work", "procedure", "unattended-work"]) == 1
     out = capsys.readouterr()
     assert "work.path" in out.err and "## The advisors" not in out.out

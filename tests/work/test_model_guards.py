@@ -62,9 +62,17 @@ def _parse(path):
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
+# The field names of `tcw work show`'s output, fixed by TCW-73 Design 1.9: the
+# item's request text, which `read_request` returns, not the stage of that
+# name. Exact strings in `cli.py` only, so a stage name used for behavior there
+# is still caught.
+OUTPUT_FIELDS = {"cli.py": {"request", "request:", "request: none"}}
+
+
 def _stage_literals(nodes, path):
+    allowed = OUTPUT_FIELDS.get(path.name, set())
     return [f"{path.name}:{n.lineno}: {n.value!r}" for n in nodes
-            if STAGE_NAME.search(n.value)]
+            if STAGE_NAME.search(n.value) and n.value not in allowed]
 
 
 @pytest.mark.parametrize("path", NEW_MODULES + TOP_MODULES + BACKEND_MODULES,
