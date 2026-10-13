@@ -247,6 +247,17 @@ Four terms used below:
      project graph. Each keeps its own rule for which of its problems it
      reports.
 
+   **[Implement finding, 2026-10-13]** "Every reader goes through
+   `load_config`" is met in two parts rather than by rewriting each reader.
+   Every command except `init`, `provision`, `validate` and `config show`
+   runs `load_config` once, in `tcw.cli._dispatch`, before it does anything,
+   and stops on any problem; the result is kept for the rest of the command
+   (`tcw.config.effective`). Everything a personal layer can change is read
+   only through `open_backend`, which uses that result. Readers of shared
+   keys (the store location, `extends`, the project registry, `validate`'s
+   store checks) keep reading `tcw-config.yaml` itself: no personal layer can
+   set a shared key, so they see exactly the effective value.
+
    The other readers in Problem 3 are either deleted with the 2.x code they
    serve (TCW-70 removes the 2.x work store, which owns most of them) or
    changed to call one of these two functions.
@@ -418,6 +429,12 @@ Four terms used below:
    path, is a problem: "`<file>`: `<key path>` is shared and cannot be set in a
    personal file". This covers unknown keys too. A refused value is not
    merged; it is recorded in `refused` with its file and key path.
+
+   **[Implement finding, 2026-10-13]** A refused mapping is reported once
+   for each value under it, by that value's whole key path
+   (`projects.x.path`, not `projects`), so the message points at the line
+   the person wrote. The message reads `<file>: <key path>: a shared key; a
+   personal file cannot set it`, in Design 5.1's form.
 5. **`user.*` is personal only.** `user` in `tcw-config.yaml` is a problem:
    "`user.*` is personal; set it in `<user-wide path>` or
    `tcw-config.local.yaml`". `user` takes only `name`, a string that is not
@@ -473,6 +490,13 @@ Four terms used below:
    `error: <file>: <key path>: <message>`, and exits 1. A project's
    continuous-integration run is not affected by a developer's personal files,
    because it has none (or sets `TCW_NO_PERSONAL_CONFIG=1`).
+
+   **[Implement finding, 2026-10-13]** These findings come first in the
+   library function `tcw.validate.validate()` (and in `tcw validate` when a
+   graph problem ends the run early), so every caller gets them. The work
+   checks no longer report a configuration problem themselves, so each
+   problem is one finding. A check of one object (`ValidationTarget`) leaves
+   them to the whole-project run.
 
 ### 6. Relative paths, and commands from personal layers
 
@@ -679,6 +703,13 @@ Four terms used below:
      written; keep tcw-config.local.yaml out of version control yourself`.
      Whether the folder is inside a repository is found by the read that
      finds the repository root, which review decision R4 allows.
+   - **[Implement finding, 2026-10-13]** TCW-73 forbids a success line on
+     stderr that looks like an error line (`tcw <words>: …`), so the notice
+     reads `note: not inside a repository, so no ignore rule was written;
+     keep tcw-config.local.yaml out of version control yourself`, in TCW-73's
+     form for every other note. It is printed on every `init` run outside a
+     repository, including one with nothing else to do, so TCW-73's
+     `test_init_prints_nothing_and_names_every_path` now expects it there.
    - **[Decision] Fixed wording, no git words.** Both this notice and the
      warning in 10.3 avoid every word on TCW-73's git word list (TCW-73
      Design 9.1) apart from the filename `.gitignore`, which that test
