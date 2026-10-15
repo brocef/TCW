@@ -283,17 +283,25 @@ test("searches references and surfaces targeted validation warnings", async ({
             (element) => getComputedStyle(element).backgroundColor
         )
     ).toBe(dropdownStyle.background)
+    // Enter alone commits what was typed; an arrow key picks a suggestion.
+    await featureInput.press("ArrowDown")
     await featureInput.press("Enter")
     await expect(featureInput).toHaveValue("use-feature")
     // A reference that names nothing is refused in the field: it is not
-    // kept, and the field says why.
+    // kept, the field says why, and the form will not save until it is
+    // fixed.
     const superseded = page.getByRole("combobox", { name: "Superseded by" })
     await superseded.fill("missing-capability")
     await superseded.blur()
-    await expect(page.getByRole("alert")).toContainText(
+    await expect(page.locator(".field-refusal")).toContainText(
         "missing-capability is not one of the suggestions"
     )
-    await expect(superseded).toHaveValue("")
+    await expect(superseded).toHaveValue("missing-capability")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByRole("alert").first()).toContainText(
+        "Superseded by: missing-capability"
+    )
+    await superseded.fill("")
     await page.getByRole("button", { name: "Save" }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
     await expect(page.locator(".toast")).toHaveText("Saved")
@@ -404,13 +412,13 @@ test("edits properties and adds a comment in filesystem mode", async ({
 }) => {
     await page.goto(`${baseUrl}/work`)
     await page.getByText("Plain item", { exact: true }).click()
-    await page.getByRole("button", { name: "Edit", exact: true }).click()
+    // The properties' Edit, not a stage file's in the open tab.
+    await page.locator(".detail-head .edit-btn").click()
     await page.getByLabel("Priority").click()
     await page.getByRole("option", { name: "high" }).click()
     // Another project's item is kept with a warning: this page cannot check it.
     const blockedBy = page.getByRole("combobox", { name: "Blocked by" })
     await blockedBy.fill("other-project/2026-01-01-x")
-    await blockedBy.press("Escape")
     await blockedBy.press("Enter")
     await expect(page.locator(".field-warning")).toContainText("other-project")
     await page.getByRole("button", { name: "Save" }).click()
@@ -439,7 +447,6 @@ test("edits the declaration as lists, and as text when it cannot be parsed", asy
     )
     const added = section.getByRole("combobox", { name: "Capabilities: new" })
     await added.fill("web/new-thing")
-    await added.press("Escape")
     await added.press("Enter")
     await section.getByRole("button", { name: "Save" }).click()
     await expect(section).toContainText("web/new-thing")

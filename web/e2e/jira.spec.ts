@@ -102,9 +102,8 @@ test("the record Jira keeps is read-only, each part opening Jira", async ({
     await expect(comments).toContainText("First comment.")
     await expect(comments).toContainText("Second comment.")
     await expect(comments.getByRole("textbox")).toHaveCount(0)
-    await expect(
-        page.getByRole("button", { name: "Edit", exact: true })
-    ).toHaveCount(0)
+    // No Edit on the properties; a stage file's own Edit stays.
+    await expect(page.locator(".detail-head .edit-btn")).toHaveCount(0)
     // The stage Jira keeps says so, and links there.
     await expect(
         page.getByText(/This project's backend keeps the/).first()
