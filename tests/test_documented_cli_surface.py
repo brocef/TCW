@@ -255,6 +255,19 @@ def test_a_shipped_verb_is_findable_in_the_docs(verb, doc):
         f"{doc} never mentions `{verb}`"
 
 
+# The verbs that move an item and make a Jira ticket an item, checked in the
+# work guide only: the other document above, the work skill's `commands.md`,
+# is TCW-74's (TCW-75 spec, Design 11).
+WORK_GUIDE_VERBS = ("tcw work advance", "tcw work discard", "tcw work tickets adopt")
+
+
+@pytest.mark.parametrize("verb", WORK_GUIDE_VERBS)
+def test_the_work_guide_names_each_verb_that_moves_an_item(verb):
+    doc = "docs/guide/work.md"
+    assert verb in (REPO / doc).read_text(encoding="utf-8"), \
+        f"{doc} never mentions `{verb}`"
+
+
 # ── configuration keys the 3.0 parser refuses ────────────────────────────────
 
 # The keys TCW-69's parser removed, spelled as documents write them. Read from

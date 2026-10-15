@@ -1,823 +1,419 @@
 # The Work component
 
-Work items are the change layer: edits to capabilities (product), to machinery
-(technical), or to the project itself (meta). Status is the folder an item lives
-in, and a transition is a `git mv`.
+A **work item** is one change to a project: to what its users can do, to its
+machinery, or to the project itself. This guide explains what an item is,
+the stages it moves through, the files it keeps, and the commands that create
+and move it. It covers both backends, the **filesystem** backend, where
+everything about an item is a file in your repository, and the **Jira**
+backend, where Jira keeps what people outside engineering read and change; the
+[Jira guide](jira.md) covers that side in depth.
 
-See also [Taxonomy and Capabilities](taxonomy-and-capabilities.md),
-[Configuration](configuration.md), and [Working across repositories](multi-repo.md).
+See also [the command line](cli.md) for what every command prints and the exit
+codes, [Configuration](configuration.md) for changing how stages behave, and
+[Working across repositories](multi-repo.md) for items in other projects.
 
-## The state machine
+## What a work item is
 
-Raw requests enter through a permissive inbox, then accepted requests become
-formal work in a **single-node state machine** where status is the folder a work
-item lives in and a transition is a move between folders:
+An item is a **folder in the work store** (the folder `tcw work path` prints,
+`docs/work/` unless the project says otherwise). The folder is created when the
+item is created and **never moves**: an item's stage is a property recorded
+about it, not where its folder sits. TCW never deletes an item's folder either;
+an item that is abandoned is moved to the `discarded` stage and kept.
 
-```mermaid
-flowchart LR
-    inbox("raw inbox entry"):::outside
-    backlog("backlog")
-    active("active")
-    review("review")
-    completed("completed"):::terminal
-    discarded("discarded"):::terminal
-    gone(["deleted"]):::outside
+The folder's name is made from the item's title:
 
-    inbox -->|accept| backlog
-    backlog -->|start| active
-    active -->|submit| review
-    review -.->|rework| active
+- filesystem backend: the creation date, then the title's words,
+  `2026-10-15-refund-a-payment`;
+- Jira backend: the ticket's key, then the title's words,
+  `TCW-42-refund-a-payment`.
 
-    active -->|done| completed
-    review -->|done| completed
-    backlog -.->|"done<br/>(completable epic only)"| completed
+An item's **slug** is its name everywhere: the project's ID and the folder
+name, `project/folder`, such as `demo/2026-10-15-refund-a-payment`. Inside the
+project, the folder name alone is enough; in Jira mode, so is the ticket key.
 
-    active -->|"wontfix · duplicate · superseded"| discarded
-    review -->|"wontfix · duplicate · superseded"| discarded
-    backlog -->|"wontfix · duplicate · superseded"| discarded
+Every item has the same **properties**, in either backend:
 
-    backlog -.->|drop| gone
+| Property | Values |
+| --- | --- |
+| title | any text |
+| stage | one of the stages below |
+| priority | `highest`, `high`, `medium` (the default), `low`, `lowest` |
+| effort, complexity | `low`, `medium`, `high`, `very-high`, or empty |
+| tags | tags registered for the project (`tcw work tags list`) |
+| assignee | who is working on it, or empty |
+| parent | the item it belongs under, or empty |
+| blocked-by | items that must finish first |
 
-    classDef outside stroke-dasharray: 4 3
-    classDef terminal stroke-width:3px
+`blocks` and `children` are not stored; `tcw work show` works them out from
+the other items' `blocked-by` and `parent`.
+
+Where the properties live depends on the backend:
+
+- **Filesystem:** in `item.yaml` in the item's folder, a short YAML file you
+  can read and edit like any other.
+- **Jira:** on the item's ticket: its summary, status, priority, labels,
+  assignee, parent and "blocks" links, and, when the project names them, custom
+  fields for effort and complexity. The folder's `item.yaml` holds only the
+  ticket's address.
+
+Two things happen only in Jira mode, because a backend reports honestly what it
+cannot map. An item's **priority can be empty** when the Jira project has no
+priority field. And a parent or blocking ticket that has **no item** of its
+own is not dropped: `tcw work show` lists its key as `untracked`.
+
+## The stages
+
+Every item moves through the same table of stages. `tcw work lifecycle`
+prints it for your project, with which stages are turned on and what each one
+runs.
+
+| Stage | Kind | Writes | Can be turned off |
+| --- | --- | --- | --- |
+| `inbox` | flow | nothing | no |
+| `request` | flow | one document, `request/request.md` | no |
+| `spec` | flow | one document, `spec/spec.md` | yes |
+| `plan` | flow | one document, `plan/plan.md` | yes |
+| `implement` | flow | numbered rounds, `implement/round-N.md` | no |
+| `review` | flow | numbered rounds, each with a verdict | yes |
+| `qa` | flow | numbered rounds, each with a verdict | yes |
+| `completed` | terminal | nothing | no |
+| `discarded` | terminal | nothing | no |
+| `postmortem` | side | one document, `postmortem/postmortem.md` | yes |
+
+The columns mean:
+
+- **Kind.** A **flow** stage is on the path an item takes from the inbox to the
+  end, in the order of the table. A **terminal** stage is where an item ends:
+  `completed` for finished work, `discarded` for abandoned work. The **side**
+  stage, `postmortem`, is worked on alongside a finished item but never moved
+  into; you write its document when a finished item is worth learning from.
+- **Writes.** A **document** stage keeps one document, revised in place. A
+  **rounds** stage keeps a new numbered file for each attempt, `round-1.md`,
+  `round-2.md` and so on, so earlier attempts stay readable. `review` and
+  `qa` rounds each carry a **verdict**, accepted or rejected (see below).
+- **Can be turned off.** A project turns optional stages off in
+  `tcw-config.yaml`
+  ([`work.stages.*.enabled`](../../skills/configure/references/work.md#workstagesenabled));
+  items then move straight past them. Every optional stage is on unless the
+  project turns it off.
+
+`completed` has a built-in check, the completion gate, and the stage after
+`implement` has another, the records gate; both are described under
+[Built-in gates](#built-in-gates). A rejected verdict in `review` or `qa`
+sends the item back to `implement`.
+
+## The item folder
+
+```
+docs/work/2026-10-15-refund-a-payment/
+├── item.yaml                 the item's properties (filesystem mode)
+├── capabilities.yaml         the product records this item changes
+├── comments/                 comments, one file each (filesystem mode)
+│   └── 20261015T190634Z.md
+├── request/request.md        what the item asks for (filesystem mode)
+├── spec/spec.md
+├── plan/plan.md
+├── implement/
+│   ├── round-1.md
+│   └── handoff-20261016T091500Z.md
+└── review/round-1.md
 ```
 
-Each of the four solid boxes is a status, and therefore a folder. The two dashed
-boxes are not: an inbox entry is a raw file that has not become an item yet, and
-a dropped item is gone. Every edge into `completed` or `discarded` is
-`tcw work complete --resolution <r>`, labelled here by the resolution; the dashed
-edges are the exceptions to the ordinary forward path.
+### Stage documents and rounds
 
-The **resolution picks the destination**, so `completed/` answers "what
-shipped?" on its own. A backlog item can be discarded directly — abandoning an
-idea never needed a throwaway `start`.
+A stage's files sit in a folder named after the stage. `tcw work path` prints
+where a file goes, so nobody has to assemble a path by hand:
 
-`review` means **implemented, acceptance pending**. It is not a finished state:
-an item sitting in review still blocks whatever depends on it and still holds
-its epic open, because verification can send it back. `rework` is the only
-reverse move in the machine — nothing ever leaves `completed/` or `discarded/`.
-
-Review is **optional**. A small change can still go straight from `active` to
-`completed`; `tcw work complete` just prints a note saying the verify step was
-skipped, and completes.
-
-Blocked-ness is a **derived overlay**: an item is blocked when it has at least
-one unresolved blocker recorded in its data — there is no separate "blocked"
-folder or status.
-
-## References to work that is finished
-
-Resolving an item takes its documents out of the tracked tree, so a
-`tcw://W/<slug>` link to it would have nothing to resolve against. Completing
-and discarding therefore **record the slug**, in `graveyard.yaml` beside the
-status folders, and the record rides the same commit as the status change. A
-reference to finished work then keeps resolving: `tcw validate` says nothing
-about it, and `tcw serve` shows it inert rather than broken. A reference to a
-slug the project never held is still an error, in the same words as before —
-that distinction is the whole point of the record.
-
-The record says the slug existed and how it was resolved, and for a child of
-an epic, which epic — so an epic whose children are all resolved can close in
-every clone, not only the one that resolved them. It deliberately does
-**not** say where the documents went: any such pointer stops working the moment
-history is squashed, rebased, or shallowly cloned, and a pointer that quietly
-breaks is worse than none. How long resolved documents are kept stays your
-call — `completed/` and `discarded/` are gitignored by default, and a project
-that wants them in the tracked tree simply does not ignore them.
-
-For work resolved **before** your project kept these records — including
-everything resolved before this feature existed — record a slug by hand:
-
-```bash
-tcw work tombstone add <slug> --resolution done --resolved 2026-09-01
+```sh
+tcw work path <slug>                      # the item's folder
+tcw work path <slug> spec                 # spec/spec.md
+tcw work path <slug> implement --next     # the next implement round to write
+tcw work path <slug> implement --handoff  # a new handoff file for implement
 ```
 
-Both flags are optional; omit them when nobody kept the detail, since the
-record's job is to say the slug existed.
+### Verdicts, `judges`, and when a verdict is stale
 
-Run it wherever you are — including on the machine that resolved the work, where
-the item's folder is usually still sitting on disk. It refuses only a slug that
-is _live_, and a slug already in the graveyard, so re-running it over a list is
-safe and will not quietly replace a good record with a blank one. It commits
-what it writes, and on a store with a configured remote it publishes too, since
-a record nobody else can see does not do its job.
+A `review` or `qa` round records its verdict in **front matter**, a short block
+of YAML between two `---` lines at the top of the file:
 
-## What happens to resolved work
+```markdown
+---
+verdict: accepted
+judges: 2
+---
+The refund path works; tests in tests/test_refund.py pass.
+```
 
-Three arrangements, and a project picks one per resolved status.
+- `verdict` is `accepted` or `rejected`.
+- `judges` is the number of the `implement` round the verdict is about.
 
-**Gitignored** is what scaffolding gives you and what every existing project
-has: `tcw work init` writes `.gitignore` rules for `docs/work/completed/` and
-`docs/work/discarded/`, keeping each folder's `.gitkeep` tracked. A resolved item
-is untracked and left on disk, so it stays with the person who resolved it —
-and, worth knowing, reaches nobody else. A fresh clone has no resolved items at
-all.
+The **current verdict** of a stage is read from its latest round. It is
+`stale` when that round judged an older implementation round than the latest
+one: the work changed after the verdict was written. Only an `accepted`
+verdict about the latest implementation lets an item go forward. A round with
+no usable front matter counts as `invalid`, and a stage with no rounds yet as
+`none`.
 
-**Retained** tracks them: delete the rules, and `git rm -r --cached
-docs/work/completed docs/work/discarded` to drop what git already has.
+### Who records the qa verdict
 
-**Auto-deleted** removes the folder and keeps the content in history:
+In filesystem mode, by default, the agent working the `qa` stage judges the
+result against the request and writes `qa/round-N.md` itself. A project that
+wants a person to decide says so in its own
+[`prompt` binding](../../skills/configure/references/work.md#workstagesprompt)
+for `qa`. The agent then runs the checks, shows the person the evidence, asks
+for accepted or rejected with a reason, and writes the round recording that
+decision, with `decided-by: <name>` in its front matter beside `verdict` and
+`judges`.
+
+In Jira mode, qa happens on the ticket: a person accepts or rejects by moving
+it, and no round file is written. The [Jira guide](jira.md) describes it.
+
+### Handoffs
+
+A **handoff** is a note for whoever works on the stage next: what was done,
+what is left, what to check first. It is a file named with the time it was
+written, `<stage>/handoff-<time>.md`, at the path
+`tcw work path <slug> <stage> --handoff` prints. The newest one is read when
+the work resumes. In Jira mode, the `request` and `qa` stages are kept in Jira
+and have no folder, so a handoff for them is a comment on the ticket whose
+first line is `Handoff`.
+
+### Comments
+
+A comment is a short dated note on the item: a question, a decision, the
+reason for a move. `tcw work comment <slug>` adds one, reading its text from
+standard input, and `tcw work show <slug>` prints them all, newest first.
+Filesystem mode keeps each in `comments/<time>.md`; Jira mode keeps them as
+the ticket's comments.
+
+### `capabilities.yaml`: the records an item changes
+
+An item that changes the product says so in `capabilities.yaml` at the root of
+its folder, naming the capabilities and taxonomy terms it adds, changes or
+removes:
 
 ```yaml
-work:
-    retain:
-        completed: false # default: true, for both resolved statuses
-        discarded: false
+new: [billing/refund-a-payment]
+changed: [billing/view-a-payment]
+removed: []
+taxonomy:
+    new: [refund]
 ```
 
-The resolving transition then writes **two commits** — the item lands in its
-resolved folder and is committed, then the folder is removed — and the
-graveyard entry records the first commit, so `tcw work show <slug>` on a
-resolved item reports where its documents can still be fetched from. Nothing is
-deleted unless you ask: the default retains everything, and a malformed
-`retain` reads as the default and is reported by `tcw validate` rather than
-quietly becoming a deletion.
+The records themselves are changed during `implement`, in the same change as
+the code. The records gate checks them when the item leaves `implement`. How
+the chain runs from a request to the records is in
+[Taxonomy and Capabilities](taxonomy-and-capabilities.md).
 
-**Auto-delete and the ignore rules cannot coexist**, and TCW refuses the
-combination before anything moves. Git untracks rather than moves a path into an
-ignored folder, so the first commit would record a removal and hold no item —
-leaving the record pointing at a commit that never contained anything, and no
-copy anywhere. Removing the rules is a precondition, not a companion change. Once
-a status is named in `retain`, `tcw work init` stops writing rules for it.
+## Moving an item
 
-**Hand the item to your own archive before it goes.** The removal is a bindable
-lifecycle step, `auto-delete`, with `pre` and `post`:
+Only one command changes an item's stage, `tcw work advance` (and
+`tcw work discard`, which is a shorthand for it). It decides the target,
+checks the rules, runs the target stage's checks, moves the item, and runs
+what the target stage runs afterwards. On success it prints the item's new
+stage.
 
-```yaml
-work:
-    retain:
-        completed: false
-    lifecycle:
-        transitions:
-            auto-delete:
-                pre:
-                    - command: tar -czf - -C "$TCW_ITEM_PATH" . |
-                          aws s3 cp - "s3://my-bucket/$TCW_RESOLUTION/$TCW_SLUG.tgz"
+### The next stage
+
+A bare `tcw work advance <slug>` moves the item to the next stage that is
+turned on. From `review` or `qa`, the next stage depends on the current
+verdict: accepted goes forward, rejected goes back to `implement`, and anything
+else (`none`, `invalid`, `stale`) is refused with a message saying which round
+to write.
+
+### `--to`: a stage of your choosing
+
+`tcw work advance <slug> --to <stage>` names the target. Going back to an
+earlier stage is always allowed. Going forward past a stage that is turned on
+is a **skip**, and needs `--force` with a `--reason`. Moving forward out of
+`review` or `qa` without an accepted verdict needs them too.
+
+### `--force` and `--reason`
+
+`--force` moves the item even when a check refuses; it requires `--reason`
+saying why. Every check still runs, and what failed is recorded. Whenever a
+move carries a reason, TCW records a **trace comment** on the item saying where
+it moved from and to, whether it was forced, the reason, and any check it was
+forced past:
+
+```
+Moved from implement to completed (forced).
+Reason: agreed in the planning meeting
+Gate failures overridden:
+- completion gate: qa: the current verdict is none; …
 ```
 
-`pre` runs after the item is committed where it landed and before it is removed,
-so your command sees a complete artifact that is already recorded. Two variables
-join the usual four: `TCW_ITEM_PATH`, the store's own answer for where the item
-is at the moment the hook runs, and `TCW_RESOLUTION`. Both are set on any
-transition that has them — `TCW_ITEM_PATH` on all of them — and omitted rather
-than blank when they do not, so a script can test for presence. **If your command fails, the item is not deleted** — it
-stays resolved, recorded and committed, and `tcw work delete <slug>` finishes the
-removal once you have fixed things. A command that moves the item away itself is
-fine; an already-absent folder counts as removed.
+### `--dry-run`
 
-Two things this does not promise. TCW cannot tell whether your command really
-archived anything, and a `skill:` binding is reported for your agent to invoke
-rather than run — so anything you need guaranteed belongs in a `command:`.
-`tcw serve` runs no hooks, so an item resolved through the web UI waits for a CLI
-`tcw work delete` rather than being removed without your archive.
+`--dry-run` answers whether the move would be allowed and prints the target,
+without moving anything. It runs TCW's own checks and the target's `pre`
+hooks, so those hooks must be safe to run twice. It answers only for TCW's
+checks: in Jira mode, it can say yes to a move that the Jira workflow then does
+not offer.
 
-Adopting auto-delete on an older board wants one more step first: the graveyard
-is what keeps a deleted slug from being reissued, and a board that predates it
-has none. `tcw work tombstone add <slug>` backfills the ones already resolved.
+### Discarding, and reopening a finished item
 
-A history that gets rewritten takes the content with it. A squash-merge or a
-shallow clone can leave a record whose commit no longer resolves — `tcw work
-show` says so rather than printing a dead pointer, but it cannot get the content
-back. That is the trade auto-delete makes, and it is why the default does not
-make it for you.
+`tcw work discard <slug> --reason "<why>"` moves an item to `discarded` from
+any stage. A reason is required, and is recorded in the trace comment.
 
-## Transitions and commits
+An item at `completed` or `discarded` is **finished**. Reopening it is a move
+like any other, with `--to` naming the stage to go back to and a `--reason`.
 
-**Every transition commits its own move.** `tcw work start`, `submit`, `rework`,
-and `complete` each leave a commit recording just that item's status change —
-scoped to the item's own folders, so unrelated edits in your working tree are
-never swept in. **Creation commits too**: `tcw work new` and `inbox accept`
-commit the item they created (with any tracker binding filing wrote, and the
-accepted entry's removal), as do `tracker import` and accepting a ticket, and
-`escalate` and `delegate` commit the request they wrote in the receiving
-project's repository, under that project's own setting. A request into a
-store that publishes to a remote is left staged there, for that project to
-commit. A store that publishes is brought up to date before a creation, as
-before a transition; offline, the creation is left staged and says so. A
-creation whose commit is refused — by a `pre-commit` hook, say — still
-succeeds and says so, leaving the files staged, because running it again would
-create a second item. Set `work.auto-commit-transitions: false` in
-`tcw-config.yaml` to turn all of this off and commit them yourself; the files are
-then left staged. `work.trunk-branch: main` adds a warning
-when you transition an item from some other branch; it is advisory only and
-never checks anything out.
+### Built-in gates
 
-**Several sessions can share one store.** Agents or terminals working in one
-checkout, or in worktrees of it, can transition, claim and create items at
-the same time; each command keeps its own changes and its own commit. TCW holds
-one lock per store from a command's check through its commit. The lock file is
-in the repository's git folder (`tcw-store-<key>.lock` beside `HEAD`), so it is
-shared whatever `TMPDIR` each session has, and it never shows in `git status`.
-A transition that waits more than 30 seconds changes nothing and names the
-process holding the lock; a creation kept waiting leaves the new item written
-but uncommitted and says so, since the item already exists. Fetching, pushing, hooks, tracker calls and a
-worktree's merge-back run outside the lock, so they hold nobody up — but a
-slow `pre-commit` hook runs inside the commit, and so inside the lock. When git
-run by something else holds `index.lock`, a command waits up to two seconds,
-then says the lock may have been left by a crashed git and must be deleted by
-hand. The lock uses `flock`, which some network filesystems do not honour;
-there, and between two machines, sessions meet only in a git merge.
+A **gate** is a check that must pass before an item moves into a stage. TCW
+has two of its own:
 
-## The Definition of Done
+- **The records gate** runs on the move out of `implement` (into `review`, or
+  whichever stage comes next in your project). It checks the item's
+  `capabilities.yaml` against the records: everything declared `new` or
+  `changed` exists, a `new` capability's status is not still `Missing`,
+  everything declared `removed` is gone, and the same for taxonomy terms. A
+  declaration that cannot be checked counts as a failure.
+- **The completion gate** runs on the move into `completed`. Every verdict
+  stage TCW can read must have an accepted verdict about the latest
+  implementation.
 
-**The completion checklist is yours to set.** `tcw work complete --resolution
-done` prints a Definition of Done and refuses until you re-run with `--confirm`.
-Write your own as a plain list in `docs/work/dod.yaml`:
+A project adds its own checks as `pre` hooks on the target stage. A failing
+gate or `pre` hook refuses the move with exit code 3 and changes nothing.
 
-```yaml
-- tests pass
-- docs synced
-- capabilities reconciled
-- reviewed
-```
+### After the move: `post` hooks, and exit code 6
 
-Two things to know. The file **replaces** the built-in list rather than adding to
-it — those four are the defaults, so a list that leaves one out drops that check
-from every completion, with no error. And it is printed only when the resolution
-is `done`: discarding an item (`wontfix`, `duplicate`, `superseded`) prints no
-checklist at all, so a line meant to cover those closures has nowhere to land.
+Once the item has moved, the target stage's `post` hooks run: commands a
+project attaches to a stage, such as notifying a channel or committing the
+item's files. A failing `post` hook does not undo the move. `advance` reports
+the failure, names the file that declared the hook, and exits with code 6:
+**the item moved, but something after the move failed**. A trace comment that
+could not be written is reported the same way.
 
-If the item came from a GitHub issue — the `extras-triage-issues` skill records it — closing
-the item out means answering that issue and usually closing it too. A checklist
-line is the natural place to be reminded.
+How hooks run, the variables they receive, and their limits are in
+[Configuration](configuration.md#how-hooks-run).
 
-## Command reference
+## Inbox items and tickets without an item
+
+**Filesystem mode** keeps raw requests as items at the `inbox` stage, created
+with `tcw work new "<title>" --stage inbox`. `tcw work stage prompt inbox`
+prints the instructions for sorting them: each one is taken on (moved to
+`request` with `tcw work advance`), merged into an item that already covers
+it, or discarded with a reason.
+
+**Jira mode** keeps no items at `inbox`. A raw request is a ticket in Jira,
+written by anyone, and it becomes an item when it is adopted:
+`tcw work tickets list` prints the tickets waiting, and
+`tcw work tickets adopt <KEY>` makes one an item at `request`. The
+[Jira guide](jira.md) describes both.
+
+## Creating and changing items
 
 ```sh
-tcw work init                          # docs/work/{inbox,backlog,active,review,completed,discarded}/
-
-tcw work inbox list                    # list each raw file or folder entry
-tcw work inbox show request.md         # inspect metadata, text, and resource manifest
-tcw work inbox accept request.md       # consume it into a new backlog item; print the slug
-tcw work inbox accept request            # …or the bare title `inbox list` printed, same entry
-tcw work inbox accept request.md --title "Clear title"
-# with work.tracker.inbox-query set, list also shows Jira tickets awaiting triage,
-# and show/accept take a ticket key (an entry of the same name wins; --ticket forces it)
-tcw work inbox accept EX-482 --part api  # claims the ticket, as `tracker import` does
-                                       # (with work.tracker.pre-backlog, first out of Triage)
-
-slug=$(tcw work new "Add PDF export")  # creates a backlog item, prints its slug
-tcw work new "Add PDF export" --blocked-by other-slug --blocked-by "external: JIRA-123"
-                                       # create with blockers pre-attached (flag is repeatable —
-                                       # one blocker per flag, so its text may contain commas)
-tcw work new "Urgent fix" --priority 5 # integer priority (higher = higher); default unspecified
-tcw work new "Big rework" --effort high --complexity very-high
-                                       # optional estimates (low|medium|high|very-high; L/M/H/VH shorthand ok)
-tcw work new "Sub-task" --parent "$slug"  # a child item, starting in backlog under the parent
-
-tcw work tags add bug cli tech-debt    # register a project's valid tags (in tcw-config.yaml)
-tcw work tags list                     # print the registered tags
-tcw work tags rm tech-debt             # unregister (warns about items still carrying it)
-tcw work new "Login crash" --tags bug,cli  # apply registered tags (repeatable or comma-separated)
-
-tcw work list                          # the board: priority first, then topologically ordered
-                                       # (hides completed and discarded)
-tcw work list --status active          # filter to one column (backlog|active|review|completed|discarded)
-tcw work list --tags bug,cli          # only items carrying a tag (repeatable = match any)
-tcw work list --all                    # include completed and discarded items too
-tcw work list --status discarded       # only the items closed without shipping
-tcw work list -i                       # descendant boards; --incl-desc and --include-descendants are aliases
-tcw work lifecycle                     # the stage/transition contract + this node's bindings
-tcw work docs [--json]                 # the documents this project keeps in sync with code
-tcw work lifecycle --json              # the same, machine-readable
-tcw work lifecycle --stage spec --directive
-                                       # one instruction line for an agent, or nothing if unbound
-
-tcw work show "$slug"                  # state + body (includes blocked_by/type/initiative/effort/complexity/tags if set)
-tcw work show "$slug" --json           # the item as a versioned JSON document
-
-tcw work stage prompt spec             # what this stage asks for: instructions, no checks
-tcw work stage gate spec "$slug"       # may it run? legality + pre checks, prints nothing
-tcw work stage gate spec "$slug" --no-exec
-                                       # which checks *would* run, running none of them
-tcw work stage prompt spec "$slug" --no-exec
-                                       # which bindings *would* resolve, resolving none
-
-tcw work scaffold spec "$slug"         # write spec.draft.md from its template — a starting
-                                       # point to type into, never the spec itself
-tcw work scaffold spec "$slug" --force # replace a draft you already have
-tcw work path                           # absolute, resolved work-store folder
-tcw work path "$slug"                  # current filesystem path of the slug
-tcw work inbox path                     # absolute, resolved inbox folder
-
-tcw work start "$slug"                 # backlog → active (refused if blocked/gated)
-tcw work start "$slug" --force         # override unresolved blockers or initiative gates
-
-tcw work submit "$slug"                # active → review (implemented, acceptance pending)
-tcw work rework "$slug"                # review → active (verification rejected the work;
-                                       # refused while refined-outcome.md still says it passed)
-
-tcw work edit "$slug" --blocked-by other-slug    # record a new blocker (repeatable); this and
-                                                 # --blocks are refused while an item on the
-                                                 # path they lead into cannot be read (a
-                                                 # damaged state.yaml, or a slug two folders
-                                                 # hold): whether they make a loop is unknown
-tcw work edit "$slug" --blocked-by other-node/its-slug  # an item in another registered
-                                                 # project; stops blocking once that item
-                                                 # is resolved there (other text always blocks);
-                                                 # a loop through other projects is refused
-                                                 # as one within this project is;
-                                                 # this node's own id, or a status path such as
-                                                 # backlog/<slug>, names the local item itself
-tcw work edit "$slug" --blocks downstream-slug   # this item now blocks another
-tcw work edit "$slug" --unblocked-by other-slug  # clear a resolved blocker (repeatable;
-                                                 # accepts the "external: …" form show/list print,
-                                                 # and fails if it matches no blocker)
-tcw work edit "$slug" --title "A better title"   # rename the item (the slug never changes)
-tcw work edit "$slug" --priority 9               # set/raise integer priority
-tcw work edit "$slug" --effort medium --complexity low   # set effort/complexity estimates
-tcw work edit "$slug" --tag bug --untags stale,old  # apply/remove tags (repeatable or comma-separated)
-                                       # flags combine in one edit; if any part is refused
-                                       # (unknown tag, blocking cycle, …) nothing is changed
-tcw work rename "$slug" add-remove-or-step-down   # a new slug for an open item (the date is kept);
-                                       # references on this board follow, and the old slug
-                                       # keeps resolving — see "Renaming an item"
-
-tcw work complete "$slug" --resolution done --confirm
-tcw work complete "$slug" --resolution done --confirm --force   # override blockers, gates, unreconciled capabilities,
-                                                                # or (from review) a missing refined-outcome.md
-tcw work complete "$slug" --resolution done --confirm --already-integrated
-                                       # the work branch was merged outside TCW (a merged PR):
-                                       # checks it reached this checkout's HEAD (a merge,
-                                       # fast-forward or squash), then skips the merge-back
-                                       # and keeps every other gate; refused if unmerged
-                                       # (a repository's own merge drivers get no say, so
-                                       # a squash touching a file one governs is refused)
-tcw work complete "$slug" --resolution done --confirm --already-integrated --branch feature/x
-                                       # the same for an item started without --worktree and
-                                       # worked on a branch of your own; that branch is kept
-tcw work complete "$slug" --resolution wontfix --confirm        # → discarded/ (no Definition of Done; legal from backlog)
-tcw work drop some-slug --confirm      # erase a mis-created item, leaving no record
+tcw work new "Refund a payment" --priority high --tag billing < request.md
+tcw work list --stage implement --tag billing
+tcw work show demo/2026-10-15-refund-a-payment
+tcw work edit demo/2026-10-15-refund-a-payment --assignee sam --effort medium
 ```
 
-`complete` **enforces capability reconciliation**: if the item's `capabilities.yaml`
-declares a `new:` capability that still reads `Missing`, a `new:` or `changed:` path
-that no longer resolves, or a `removed:` path where a local capability still exists,
-the completion is refused (flip it with `tcw capabilities set`,
-mark it `Omitted`, delete it with `tcw capabilities rm`, or `--force` past). For a `--worktree` item the check runs after
-the branch merges back, so a status flip made on the work branch counts.
-
-An item on a board whose node keeps **no capabilities ledger of its own** — a
-repository root that groups packages, say — declares the capabilities it changes
-in a child's ledger by starting each path with the child's project id, for
-example `proposit-shared/authoring/add-a-claim`. The child must be listed under the
-node's `connected-projects.children`. `complete` checks the rest of the path
-against that child's own ledger, read the way the child reads it (so it can name a
-capability the child inherits or overrides), and you reconcile it by running
-`tcw capabilities set` or `rm` inside the child's folder, with the path after the
-id. The ledger is read as it is on disk in this checkout, so a change made in a
-child that lives in another repository counts before it is committed there.
-
-A declared path the check cannot reach is refused, not passed: a child that is
-declared but not in this checkout, one that keeps no ledger, one whose ledger is
-declared but not provisioned (`tcw provision` fetches it), and a path with no
-child id on a node that keeps no ledger. On a node that does keep one, a first
-segment naming a project the ledger `extends` keeps its inherited meaning; one
-naming both a child and a namespace the ledger already shows is refused as
-ambiguous. An item that declares nothing passes whatever state the ledgers are in.
-
-A **discard is not a shipment**, so none of the shipping gates apply to one: no
-Definition-of-Done checklist, no capability enforcement (just a warning naming
-anything left `Missing`), no branch merge-back, and **no blocker check** — being
-blocked indefinitely is one of the best reasons to give up on something, so
-needing `--force` to act on it would be backwards. `--confirm` is still
-required, since closing is permanent. Discarding a `--worktree` item tears down
-the worktree but **keeps the unmerged branch**, naming it so you can delete it
-deliberately — deciding work isn't wanted is not the same as authorizing its
-destruction.
-
-An **epic** is the one exception: open initiative children block closing it by
-either route, because a child can't start until its epic is active, so closing
-the epic would strand them. It also refuses while an open item here or in a node
-below has a `state.yaml` that cannot be read, since that item may be one of its
-slices. `--force` overrides this for an item in a node below, as it does for a
-checkout missing a node, but not for one on the epic's own board.
-
-## Tags
-
-**Tags** classify items for filtering. Each project registers its valid tag set
-centrally in `tcw-config.yaml` (`tcw work tags add|rm|list`, which change only
-the `work.tags` lines and keep your comments; a hand-ordered list with comments
-in it is refused rather than re-sorted); an item then carries
-zero or more of those tags via `--tag` on `new`/`edit` (and `--untag` to remove).
-Every place a tag is named accepts a comma-separated list, and `--tags` / `--untags`
-are accepted wherever the singular spellings are — `tcw work tags add cli,docs`
-registers two tags. A comma is always a separator, never part of a tag.
-Applying an unregistered tag is refused, and `tcw validate` flags any item still
-carrying a tag that was later unregistered. A tag typed by hand into an item's
-`state.yaml` counts in its canonical spelling (`CLI` is `cli`). While
-`work.tags` holds an entry that is not a tag, such as a bare number or
-`"cli,docs"`, `tcw work tags add` and `rm` refuse and name it rather than
-dropping it. An item holding such a tag in its `state.yaml` keeps it through
-every edit until you remove it — `tcw validate` reports it, and
-`--untag 'cli,docs'` removes it exactly as written (a value matching a tag
-the item holds is not also split at its commas). Tags don't affect board ordering.
-
-## What the commands print
-
-After `tcw work new`, `tcw work inbox accept`, `tcw work start`, `tcw work submit`
-and `tcw work rework`, the CLI prints the **next step** on stderr, as the gate of
-the stage that comes next — e.g. "→ next: run `tcw work stage gate request …`"
-after `new` — so the lifecycle is hard to skip. After `start` it is the first stage
-the item still needs: `request` while it has neither a request nor a spec,
-then `spec`, `plan`, `implement`, or `verify` for an active item taken over with
-its outcome already written. After `submit` it is `verify`, whose
-two endings the hint names; after `rework`, `implement`. The slug still goes to
-stdout alone.
-`tcw work new` also prints an "→ edit: …" line (stderr) pointing at the new
-item's body file when it has one — piped stdin lands in `intake.md`, so that is
-what the hint points at. Created with nothing piped, an item has no body file
-yet and the line is simply omitted.
-Every command that moves an item also names where it now lives, as a path
-relative to the project root — `tcw work start`, `submit`, `rework` and `complete`
-on stdout ("started my-item → docs/work/active/my-item"), `tcw work new` and
-`tcw work inbox accept` on stderr beside their other hints, leaving their stdout
-the bare slug.
-
-## Inbox entries and an item's body
-
-Inbox entries are deliberately permissive. A direct child of `docs/work/inbox/`
-may be any standalone file, or a folder with exactly one `INDEX.md` or
-`INDEX.txt`; other folder files become bounded `attachments/` on acceptance.
-Hidden files and empty directories are ignored, symlinks are not followed, and
-binary contents are never printed. See the optional
-[`docs/work-inbox-template.md`](../work-inbox-template.md) for a useful request
-shape; the command does not require that template, but it does read the first
-`# ` heading of an entry's body as the accepted item's title — `--title`, then
-that heading, then the entry's own name with a leading `YYYY-MM-DD-` removed
-(unless removing it would leave nothing).
-Accepting an entry records what arrived as the item's `intake.md` — the entry body, a manifest
-naming every preserved resource and the entry it came from, and a note standing
-in for a primary resource that is not text — and leaves the item's `request`
-stage still to run.
-
-An item's **body surface** resolves to `initial-request.md` when it exists, and
-otherwise to `intake.md` — the raw, unprocessed input the item started from
-(piped stdin, or an accepted inbox entry with its manifest and attachments).
-An item created with neither has no body yet, which is a state rather than a
-defect: `initial-request.md` is the `request` stage's own artifact, so it exists
-once that stage has run and not before. Presence everywhere means _exists and is
-non-empty_.
-
-## Automation and piping
-
-**Piping is safe to automate.** `tcw work new "<title>"` reads intake from
-stdin when something is piped in, and a script, CI job, or hook that leaves its
-own input open no longer hangs waiting for an end-of-input nobody will send: the
-command creates the item without intake and says so on stderr. If text starts
-arriving and then stops, the command fails instead of storing the fragment —
-half a document kept as `intake.md` would be indistinguishable from one you meant
-to write. Set `TCW_STDIN_TIMEOUT` (seconds; `0` never waits) when a producer is
-genuinely slow. The same applies to `tcw work delegate`, `tcw work escalate`,
-`tcw taxonomy add`, and `tcw capabilities add`.
-
-## Editing a body, and how it promotes an intake
-
-Editing an item's body always writes `initial-request.md`, never the intake. On
-an item that has only intake, that edit **promotes** it — the request is created,
-the intake is left byte-for-byte as it arrived, and the tool says a promotion
-happened rather than letting it look like an ordinary save. Raw input that
-quietly changes is not raw input, so `intake.md` is editable only as a named
-artifact.
-
-## Amending a request after it is written
-
-An **amendment** is something that changes what an item asks for after it was
-written up — a decision made later, a clarification, a new constraint. It goes
-in the request, never the intake:
-
-- Append it to `initial-request.md` under a dated `## Added <YYYY-MM-DD>`
-  heading that says where it came from, without rewriting what is there.
-  Re-running the `request` stage keeps these sections. The web app's request
-  tab shows the whole file; `tcw work show` prints only the start of the body,
-  so read the file itself to see every amendment.
-- An item that has only `intake.md` has no request yet. In `backlog` or
-  `active`, write one with the `request` stage, with the amendment folded in
-  or under its own dated heading. In `review` that stage does not run, so
-  write `initial-request.md` directly — write the file yourself, or use the web
-  app's body editor; either promotes the item.
-  The intake is left as it arrived either way.
-- Once the item has a spec or plan, the amendment has to reach them, because
-  the `implement` and `verify` stages read those and not the request. While
-  the item is in `backlog` or `active`, revise `spec.md` (and `plan.md`), or say
-  in the appended section why neither needs to change. For an item in
-  `review`, delete `refined-outcome.md` if verification already wrote one, put
-  the amendment in `rework.md`, send the item back with `tcw work rework`, and
-  revise `spec.md` there too — verification checks the spec, not `rework.md`.
-- A linked tracker ticket is not updated: its description is written once,
-  when the ticket is created.
-
-## Splitting a plan into stage documents
-
-For large implementations, `plan.md` may optionally declare a bounded DAG of
-stage documents in YAML frontmatter. Each declaration has a lowercase kebab-case
-`id`, a title, and `depends_on`; optional effort, complexity, priority, and tags
-reuse the work item's controlled vocabularies. The corresponding document is
-stored as `plan/<id>.md`. This keeps `plan.md` concise so agents can read it
-first, then load only the relevant stage. Dependencies communicate ordering and
-parallelism but do not create stage statuses or block lifecycle transitions.
-Legacy single-file plans remain valid.
-
-## The board and the JSON projection
-
-The **board** (`tcw work list`) prints a `|`-delimited row per item —
-`slug | status | stages | priority | title` (priority is the integer, or `-`
-when unspecified). `stages` is a compact lifecycle artifact string: a lowercase `i` for
-`intake.md`, then `R` for `initial-request.md`, `S` for `spec.md`, `P` for
-`plan.md`, `O` for `outcome.md`, and `F` for `refined-outcome.md`; the letters
-read in lifecycle order. Missing or empty artifacts do not contribute letters,
-and `-` means no lifecycle artifacts are present — so `R` means the `request`
-stage has actually run. The
-board shows the live columns (backlog and active) and hides both closed
-columns by default — pass `--status completed` or `--status discarded` to list
-one, or `--all` for everything.
-It sorts by priority first (higher integer above lower, unspecified-priority
-items keeping creation order), then topologically — blockers appear before the
-items they block, since a priority preference can't jump a hard dependency —
-and annotates blocked items with their unresolved blockers.
-
-`tcw work show <slug> --json` prints the item as a machine-readable document
-instead of the human-readable summary: an explicit `schema` version, every field
-at a documented JSON type, and an `artifacts` map saying which lifecycle
-documents exist. It is the same document `tcw serve`'s API returns, so a script
-and the web app cannot disagree about what an item is. Errors go to stderr and
-leave stdout empty, so piping into `jq` fails cleanly rather than on a fragment.
-
-## Descendants and addressing work across projects
-
-Pass `-i`, `--incl-desc`, or `--include-descendants` to list every **registered
-descendant work node**. The output is grouped by project ID (`# .` for the
-current node), and the same `--status` / `--all` filters apply to every group.
-Initiative tasks are indented beneath their visible owning epic, including tasks
-from descendant nodes; each descendant row keeps its project-qualified slug and
-is printed only once.
-
-Descendant items are printed with a **project-qualified slug** —
-`<project-id>/<slug>` — so each printed slug is a usable address. You can pass that
-qualified slug to any work command from the enclosing node
-(`tcw work show project-a/<slug>`, `start`, `edit`, `complete`, `drop`, …).
-A **bare** slug still resolves against the current node only. (`blocked-by:`
-refs shown on a qualified row stay node-local — they are bare slugs within that
-descendant.)
-
-A qualified slug addresses **any node in the registered graph, in any direction** —
-descendant, ancestor, or sibling — not just nodes below you. A child project can
-therefore address (and link) an epic that lives in its parent, or an item in an
-`upstream` project it reads — which it can show and link to but not change (see
-[Working across repositories](multi-repo.md#reading-a-project-that-does-not-name-you-upstream)).
-Project IDs are canonical and parent/child connections must be reciprocal, so
-there is nothing ambiguous to resolve; an unregistered project, or a path-shaped qualifier such as
-`some/folder/<slug>`, still does not resolve. A qualifier that names no registered
-project reports `no such project in this graph: <id>` rather than a misleading
-"no such work item".
-
-Note that `tcw work list -i` and `tcw serve` remain **descendant-only** — they
-aggregate boards downward. Addressing and linking are graph-wide; aggregation is
-not.
-
-## Assistant-driven backlog chores
-
-Two backlog chores are **AI-driven reviews rather than CLI commands** — they need
-judgment the CLI cannot supply, so the assistant runs them:
-
-**Auditing the backlog** reviews items in board order and reports read-only
-cleanup recommendations: likely duplicates or already-finished work, broken file
-references, stale blockers, malformed capability deltas, vague items, and items
-that look like they belong in another TCW node. It reports evidence and suggested
-next actions and asks before changing anything. Ask the assistant to audit the
-backlog; the procedure lives in the `work` skill, so it works under either
-harness.
-
-**Consolidating external plans** finds Markdown planning documents outside
-`docs/work/` and migrates them into backlog items, writing `initial-request.md`
-with the source content and provenance and copying obvious spec/plan sections
-into `spec.md` and `plan.md`. It runs only when you ask for it, lists every
-source file it proposes to delete before deleting any, and deletes only files git
-has already committed — anything untracked or with uncommitted changes is
-reported and left alone. Ask the assistant to consolidate external plans; the
-procedure lives in the `work` skill, so it works under either harness.
-
-## Decomposing an item
-
-A large item can be **decomposed into child items** with `tcw work new
-"<title>" --parent <slug>`. The child records its parent (a `parent:` line in its
-`state.yaml`) and has its own status: it starts in `backlog` whatever state the
-parent is in, so it can be planned on its own even after the parent has been
-started, and it keeps its parent through every one of its own moves. `tcw work
-list` renders children indented under their parent.
-
-A parent cannot be completed or discarded — not even with `--force` — while
-anything beneath it is still open, and cannot be dropped while any child names
-it; the refusal names each one. A child cannot be created under a completed or
-discarded item. `tcw validate` reports a `parent:` that names no item in the
-store. While any open item on the board has a `state.yaml` that cannot be
-read, no other item can be completed, discarded or dropped, because that item
-may be a child of it; the refusal names each file to fix. The damaged item
-itself can still be dropped.
-
-**Where an item's files go.** An item's folder moves with its status, so a path
-noted before a transition stops pointing at it: `submit` moves `active/<slug>/`
-to `review/<slug>/`, and a later write through the old path makes a new folder
-that nothing reads. Ask `tcw work path <slug>` where the folder is now.
-`tcw validate` reports each such stray folder — one named like an item, with
-no `state.yaml`, holding a file — and each slug that two item folders both
-hold, naming every folder. Completing an item in review as `done` needs its
-`refined-outcome.md`, and says so, naming any stray folder, when it is missing
-(an epic is exempt; `--force` overrides).
-
-Children made by versions before this sit inside their parent's folder and still
-move with it; one that is moved on its own keeps its parent and has its own
-status from then on. (Decomposing keeps any one item small; for work spanning
-_separate repos_, use a cross-node epic instead — see below.)
-
-Items are referenced by a **stable slug**, resolved to "wherever it now lives,"
-so moves never break references. Only the legal transitions above are permitted
-— anything else is refused, not silently allowed.
-
-## The completion gate
-
-**Completion is gated.** `tcw work complete --resolution done` prints the
-Definition of Done and refuses without `--confirm` (and without `--force` if
-unresolved blockers exist). With `--confirm`, the list is printed only once the
-item has closed, ticked and headed "acknowledged with --confirm"; a confirmed
-completion refused for some other reason prints no list. A discard prints no checklist and is not
-blocker-gated, but still refuses without `--confirm`:
-
-```
-Definition of Done — acknowledge each item:
-  [ ] tests pass
-  [ ] docs synced
-  [ ] capabilities reconciled
-  [ ] reviewed
-```
-
-Resolutions are `done · wontfix · duplicate · superseded`. The
-"capabilities reconciled" item is the structural link back to the capabilities
-axis: a work item declares its capability delta at creation and reconciles it at
-completion, so the standing capability ledger stays current by construction.
-
-## Cross-node recursion (epics across repos)
-
-For cross-node discovery (`tcw work nodes` / epics / delegate / escalate), a
-**node** is a git repo with a usable work store — `docs/work/` by default, or
-wherever its `work.path` points; "orchestrator" and "project" are
-relative roles. (The _current node_ — where `tcw` operates day-to-day — is the
-nearest `tcw-config.yaml` ancestor, which may be a subfolder.) A node nested
-under another is a **child**, the enclosing one its **parent**. An **epic** is
-an ordinary work item that tasks in child nodes point at via an
-`initiative:` back-pointer.
-
-```sh
-tcw work nodes                              # show this node's parent + child nodes
-
-epic=$(tcw work new "Redesign checkout" --epic)
-tcw work new "Slice 1" --initiative "$epic" # in a child node: link a new task to the epic
-tcw work edit "$slug" --initiative "$epic"  # …or link an existing one
-tcw work edit "$item" --type epic           # make an existing item an epic (--type "" undoes it)
-
-tcw work reconcile "$epic"                  # follow registered descendants → rollup
-tcw work reconcile "$epic" --commit         # …and commit it
-tcw work reconcile "$epic" --complete-when-ready  # …and auto-close it if every child is resolved
-```
-
-An epic's slug is unique only within its own node, so `initiative` records the
-epic's node when the epic lives elsewhere: `--initiative <slug>` in a child
-node stores `<project-id>/<slug>`, naming the node that holds it (the same
-form cross-node blockers use). You may also pass that form yourself, naming
-this project or one above it: an epic counts only slices at or below its own
-project, so a value naming a project beside or below is refused. In the
-epic's own node the bare slug is stored. An older bare value still means the
-nearest epic of that name at or above the item, so a child node's own epic
-with the same slug keeps its own slices.
-
-Making an epic a plain item again is refused while any item names it as its
-initiative, whether that item is open or resolved, and while this checkout cannot
-reach every child project. Clear the children's `--initiative`, or complete the
-epic instead.
-
-```sh
-echo "needs an API change" | tcw work delegate child-repo "Expose X"  # request DOWN (child's project id, not a path)
-echo "cross-repo scope"    | tcw work escalate "Coordinate the redesign" # request UP to the parent inbox/
-```
-
-## Claiming an item, and recovering an interrupted claim
-
-Claiming an item is atomic, and concurrent commands read across it safely: an
-item mid-claim is never mistaken for a missing one, so a blocker being started
-elsewhere still blocks. If a process dies holding a claim, reads report an
-interrupted claim and point at `tcw work start <slug> --take-over --owner <id>`
-rather than pretending the item is gone. That command finishes the claim for
-the owner you name, running the `start` hooks against the item as it was. The
-web app lists interrupted starts above the work list with a **Recover** button,
-which finishes the claim for the identity `tcw serve` runs as (`TCW_WORK_OWNER`,
-else your Git email or name); it recovers only an interrupted start, never an
-item someone else has already started. Both first wait half a second for the
-claim to finish by itself: one that lands in that time belonged to a start that
-was still running, and recovery refuses it rather than taking it from its
-owner. Under strict tracker mode recovery claims
-the ticket first, exactly as `tcw work start` does, and the web app refuses it
-and names the `--take-over` command instead, since it cannot check a ticket.
-
-## Rolling up an epic, and delegating across nodes
-
-`reconcile` consolidates every child task for an initiative into the epic's
-`rollup.md` — a slice table, surfaced capability deltas, and the next ready
-actions — and is **read-only** on the capabilities ledger. The rollup is
-generated, so it lives in its own file rather than inside a document someone
-wrote; an epic that has only ever been reconciled still shows no `R` on the
-board. `delegate`/`escalate` only ever write a request into the target node's
-`inbox/`, never its tracked work, respecting the node write-boundary — into the
-target's _configured_ inbox, and they fail loudly rather than inventing a
-`docs/work/` folder when that store cannot be reached. `delegate` addresses its
-target by canonical project ID, the form `tcw work nodes` lists — never by
-filesystem path. A delegated request's `--initiative` is written as
-`<project-id>/<slug>`, naming the epic in the sending node or above it (a slug
-found in neither is refused), and it survives acceptance, so a slice accepted
-in the child stays linked to the epic that asked for it, even when the child
-has an epic of the same name.
-
-## When an epic and its tasks may change status
-
-Initiative transitions are relation-gated: a task with `initiative: <epic>` is
-refused at `start` until the epic is active, and an epic is refused at
-`complete` while related child tasks are still open. `--force` overrides these
-gates when the relationship cannot be resolved or the user intentionally
-deviates. Once **every** child is resolved, the epic is flagged `ready-to-close`
-in `tcw work list` and in its rollup, and it may be completed **directly from
-`backlog`** — a coordinator epic that never had its own spec/plan doesn't need a
-throwaway `start` just to close it (the Definition-of-Done and capability gates
-still apply).
-
-## Renaming an item
-
-An item's slug is its identity, so `tcw work edit --title` leaves it alone. When
-the scope has changed enough that the slug misleads, `tcw work rename <slug>
-<new-slug>` gives an open item a new one. Pass the whole slug or only the part
-after the date; the item keeps its original date either way.
-
-In one commit it moves the folder in place and rewrites everything on the board
-that names the item: other items' blockers, a child's `parent` and
-`initiative`, the `initiative` on resolved children's records, and a
-capability's `Planning doc:`. An epic's initiative children on other boards are
-repointed too, each committed in its own repository.
-
-The old slug is recorded in `docs/work/renames.yaml` and keeps working where
-nothing could rewrite it. `tcw work show` and `tcw work path` follow it and say
-so; a blocker naming it, from this project or another, reads the renamed item's
-real status; and no new item is ever given it. Commands that change an item
-refuse the old slug and name the new one, so you are never acting on a name you
-did not know was stale.
-
-A rename is refused, and nothing changes, for a completed or discarded item,
-an item with a worktree or branch (rename those by hand), an item someone else
-holds, a slug already taken, or a different date. It never rewrites prose, a
-tracker ticket's text, or commit messages; it lists the item's files that still
-mention the old slug. `tcw validate` checks `renames.yaml` for loops and for an
-old slug that an item holds again.
-
-## Running an item in an isolated checkout
-
-Run an item in an isolated checkout with `--worktree`:
-
-```sh
-tcw work start "$slug" --worktree           # active on trunk + a git worktree/branch for the code
-```
-
-Status transitions stay on the node's primary checkout (the board is always
-`ls active/`); in-flight edits live on the work branch. `complete` merges that
-branch back into the primary checkout, then tears the worktree down — and if the
-merge conflicts it stops with the branch and worktree left intact, so committed
-work is never silently dropped. Moving the item through its lifecycle while the
-branch is open is not a conflict: `submit` relocates the item's folder on the
-primary checkout, and the merge-back carries the branch's files into the folder's
-new home rather than stopping to ask. The same applies to any other directory
-renamed on the primary checkout while the branch was open, code included — files
-the branch added under the old path follow the rename. With a `work.path` in
-another repository the
-setup commits split by owner — item state in the store repository, `.gitignore`
-in the code one — and the work branch carries the code side only, because one
-Git branch cannot contain another repository's files.
-
-Run `complete` **from the primary checkout**, not from inside the item's own
-worktree: both the merge-back and the teardown act on the primary checkout, and
-`git worktree remove` would be deleting the directory you are standing in. From
-inside, TCW refuses and names where to re-run it. Every other command works from
-either place.
-
-If you made commits in the worktree while it was **not on a branch** (a
-"detached" checkout, for example after `git checkout <commit>`), neither the
-merge-back nor `--already-integrated` would carry them, and removing the worktree
-would lose them. `complete` stops before changing anything, names those commits,
-and tells you to save them with `git -C <worktree> branch <name>` — merging that
-into the work branch if they belong to the item — before completing again.
-`--force` does not skip this. Discarding the item still works; it leaves such a
-worktree in place for you, as it leaves the unmerged branch.
-
-## Working from an external tracker
-
-A project can name the Jira Cloud site its team works from, take tickets as work
-items with `tcw work tracker import`, make tickets for items that have none with
-`tcw work tracker create`, and keep a bound ticket's status in step as its item
-moves. The commands are `tcw work tracker list`, `show`, `import`, `create`,
-`link`, `unlink` and `sync`. How to configure it, what each command does to the
-ticket, and strict mode are in [Working from Jira](jira.md).
+- **`tcw work new "<title>"`** creates an item at `request` (or at `inbox` with
+  `--stage inbox`, filesystem mode only) and prints its slug. Text piped on
+  standard input becomes its request. Properties can be set as it is created.
+  `--project <id>` creates it in another project instead
+  ([Working across repositories](multi-repo.md)).
+- **`tcw work list`** prints the slugs of unfinished items, and of items with
+  no stage the model knows. `--all` adds finished items. `--stage` limits it to
+  the stages named, `--parent` to one item's children, `--assignee` or
+  `--mine` to one person's items. **`--tag` can be repeated**, and an item is
+  listed when it carries **any** of the tags given. In Jira mode, tags are the
+  ticket's labels.
+- **`tcw work show <slug>`** prints everything about one item: its properties,
+  its request and its comments, newest first. `--json` prints the same as one
+  JSON object.
+- **`tcw work edit <slug>`** changes properties. A flag left out leaves the
+  property alone, and an empty value clears it (`--assignee ''`). `--tag` and
+  `--untag` add and remove tags; `--assign-me` assigns the item to you (your
+  `user.name`, or your Jira account).
+- **Tags** must be registered before an item can carry them:
+  `tcw work tags add billing` registers one, `tcw work tags rm billing`
+  unregisters it.
+- **Blocking.** `--blocked-by <slug>` says an item must wait for another;
+  `--unblocked-by` takes one off. `tcw work edit <a> --blocks <b>` is the same
+  link written from the other side: it adds `a` to `b`'s `blocked-by`.
+- **Parents and epics.** `--parent <slug>` puts an item under another. An item
+  with children is an **epic**; `tcw work show` lists its children, and
+  `tcw work list --parent <slug>` prints them.
+- **`tcw work rename <slug> <words>`** renames the item's folder, keeping its
+  date (filesystem) or its ticket key (Jira), and rewrites the `parent` and
+  `blocked-by` of every other item in the project that names it. It prints
+  the new slug. Items in other projects that name the old slug are not
+  rewritten; `tcw validate` there reports them.
+- **`tcw work comment <slug>`** adds a comment, reading its text from
+  standard input.
+
+## References, and what `tcw validate` reports
+
+An item's `parent` and `blocked-by` are **references** to other items. They
+may point into other projects. `tcw validate` checks them, and the item's
+stage against its files:
+
+- a reference to an item that does not exist is a **warning**;
+- an item whose stage is ahead of its documents, such as an item at
+  `implement` with nothing from `spec`, is a **warning** (it happens when an
+  item was forced past a stage, and lasts until the item is finished);
+- a reference into a project that cannot be reached from here is reported as
+  **unresolved**, which is neither a warning nor an error: TCW cannot tell
+  whether it is right.
+
+A command that has to read a project that is declared but is not on this
+machine stops with exit code 5 and says that `tcw provision` obtains it. The
+exit codes are listed in [the command-line guide](cli.md#exit-codes).
+
+## Stage instructions and procedures
+
+TCW ships the instructions an agent follows at each stage, and a project adds
+its own:
+
+- **`tcw work stage prompt <stage> [<slug>]`** prints the instructions for one
+  stage, composed with this project's bindings, and for one item when a slug is
+  given. It runs no checks. An agent runs it before working a stage.
+- **`tcw work lifecycle`** prints the stage table for this project: each
+  stage's kind, whether it is turned on, and what it runs before, at and after
+  a move.
+- **`tcw work procedure <id> [<slug>]`** prints one of TCW's **procedures**:
+  instructions that are not a stage, such as `documentation-sync`, `search`
+  or `audit-backlog`, composed with this project's text.
+- **`tcw work docs`** prints the project's documentation entries: which
+  documents must change with which kinds of change.
+
+## TCW never changes git state
+
+TCW writes an item's files and leaves recording them to you: it never stages,
+commits, pulls, pushes, or switches a branch. It does **read** git where it
+needs to: to find the repository a project or a work store sits in, to check
+that a work store has no uncommitted changes before creating an item in another
+project, and to notice that it is running in a linked git worktree. And
+`tcw provision` clones a store or project that is declared and missing, because
+you asked it to. A project that wants each move committed adds it itself; the
+[configuration guide's example](configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds)
+shows one way, with a prompt and a `post` hook.
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `tcw work new "<title>"` | create an item; its request on standard input |
+| `tcw work list` | list items |
+| `tcw work show <slug>` | everything about one item |
+| `tcw work path [<slug> [<stage>]]` | where a file goes |
+| `tcw work edit <slug>` | change properties |
+| `tcw work advance <slug>` | move an item to its next stage, or `--to` one |
+| `tcw work discard <slug> --reason "<why>"` | abandon an item |
+| `tcw work comment <slug>` | add a comment from standard input |
+| `tcw work rename <slug> <words>` | rename the item's folder |
+| `tcw work stage prompt <stage> [<slug>]` | a stage's instructions |
+| `tcw work procedure <id> [<slug>]` | a procedure's instructions |
+| `tcw work lifecycle` | the stage table and its bindings |
+| `tcw work docs` | the documentation entries |
+| `tcw work tags list` / `add` / `rm` | the tag registry |
+| `tcw work tickets list` | Jira tickets waiting to become items |
+| `tcw work tickets adopt <KEY>` | make a Jira ticket an item |
+
+Every command's options are in its `--help`, and what each prints, with the
+exit codes, is in [the command-line guide](cli.md).
