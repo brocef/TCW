@@ -2,18 +2,18 @@
 
 This plan follows the spec as reviewed on 2026-10-02 and amended before
 planning on 2026-10-15 (spec, "Pre-plan amendments", 1 to 21; 21 is the
-owner's addition of step 12, revisiting agent instructions and memories). Where it names a
-file, line or function of 3.0, it was read on `epic/tcw-3.0` at `5b0dcf95`;
-where it names 2.x code, at the tag `v2.8.1`; where it names TCW-75's work, on
-TCW-75's spec, plan and work branch as they stood on 2026-10-15.
+owner's addition of step 12, revisiting agent instructions and memories), and
+after the plan review of 2026-10-15 (spec amendments 22 and 23). Where it names
+a file, line or function of 3.0, it was read on `epic/tcw-3.0` at `e301bef5`,
+which holds TCW-75 (nothing under `tcw/` changed between `5b0dcf95` and
+`e301bef5`); where it names 2.x code, at the tag `v2.8.1`.
 
 The work splits in two:
 
-- **Part A** can run now, while TCW-75 is still being implemented. It touches no
-  file TCW-75's plan changes (checked task by task below).
-- **Part B** needs TCW-75 complete and merged into the epic branch, and then
-  the code freeze. It holds every task that touches a file TCW-75 also
-  changes, the migration itself, and the end of the epic.
+- **Part A** runs now, on a work branch made from `e301bef5`. TCW-75 is
+  complete and already on that commit, so Part A waits for nothing.
+- **Part B** needs the code freeze (Task B3), which waits for the blockers
+  below. It holds the migration itself and the end of the epic.
 
 ## Rules for this item (the owner's, for the TCW 3.0 epic)
 
@@ -21,19 +21,25 @@ The work splits in two:
   - Part A, and Part B up to the freeze: a worktree
     `.worktrees/2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first`
     on branch `work/2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first`,
-    made by hand with `git worktree add` from `epic/tcw-3.0` (the 3.0 CLI has no
-    `--worktree`). Called "the work branch" below.
+    made by hand with `git worktree add` from `epic/tcw-3.0` at `e301bef5` (the
+    3.0 CLI has no `--worktree`). Called "the work branch" below.
+  - Every change to `epic/tcw-3.0` itself (B3's fast-forward and merge of
+    `main`, B21's merge of the migration branch, B21 to B23's moves): a
+    worktree `.worktrees/tcw-3-0-epic` with `epic/tcw-3.0` checked out, made
+    at B3 with `git worktree add .worktrees/tcw-3-0-epic epic/tcw-3.0` and
+    kept until B24. Called "the epic worktree" below. The primary checkout
+    stays on `main`.
   - The migration (Tasks B4 to B20): a worktree `.worktrees/tcw-3-0-migration-run-<N>`
     on branch `migrate/tcw-3.0-run-<N>`, made from the freeze commit (Task B3).
     It is deliberately not a `work/` branch (spec amendment 20). An abandoned
     run's branch is kept (spec Design 8.5.3).
-  - The board: `docs/work/` on `main`, driven with the released 2.8.1 `tcw`
-    installed outside the checkout, until Task B3 merges `main` into the epic
+  - The board: `docs/work/` on `main`, driven with the released 2.8.x `tcw`
+    (2.8.2 once published) installed outside the checkout, until Task B3 merges `main` into the epic
     branch and freezes `main`'s board (spec amendment 1). This item's
     `plan.md`, `outcome.md` (the migration log, spec Design 1.8) and
     `capabilities.yaml` are committed on `main` until then, and on the
     migration branch after.
-  - **Before Task A1** the item is started on `main` with 2.8.1
+  - **Before Task A1** the item is started on `main` with the released 2.8.x
     (`source ~/.bashrc >/dev/null 2>&1; tcw work start <slug>`), which moves
     the folder to `active/` and the ticket to `In Progress`. This plan is
     committed first.
@@ -44,7 +50,8 @@ The work splits in two:
     `<scratch>/tcw76/venv/bin/pip install --ignore-installed pytest`; pytest
     and `tcw` run with the worktree as the current folder and the venv's `bin`
     first on `PATH`. Re-pointed with `pip install -e <migration worktree>
-    --no-deps` at Task B3.
+    --no-deps` at Task B3, and with `pip install -e .worktrees/tcw-3-0-epic
+    --no-deps` at Task B21.
   - 2.8.1, for building the rehearsal project (Task A7) and reading `main`'s
     board: `python -m venv <scratch>/tcw76/venv-28`,
     `<scratch>/tcw76/venv-28/bin/pip install tcw-cli==2.8.1`.
@@ -92,15 +99,30 @@ The work splits in two:
 
 ## Blockers
 
-- `blocked_by`: TCW-75 (`state.yaml`). It blocks Part B only. Part A needs
-  nothing TCW-75 has not already settled in its plan: the git example's script
-  path (`docs/guide/examples/commit-item-after-move.sh`), the README index row
-  for the guide, and `PENDING_TARGETS`.
+- `blocked_by`: TCW-75 (`state.yaml`) is satisfied: TCW-75 completed on
+  2026-10-15 (`560e312f`, deleted by retention in `b5b7756f`), and its work is
+  on `e301bef5`, where the work branch starts.
+- **Blocker of Task B3 (the freeze): the code follow-ups the reviews left.**
+  These inbox entries on `main` name changes under `tcw/` (and, for two of
+  them, `web/` or `skills/`), which the freeze forbids until the epic merges:
+  - `docs/work/inbox/2026-10-13-tidy-what-tcw-71-s-reviews-left-for-the-jira-backend.md`
+  - `docs/work/inbox/2026-10-13-tidy-what-tcw-72-s-reviews-left-for-personal-configuration.md`
+  - `docs/work/inbox/2026-10-13-tidy-what-tcw-73-s-reviews-left-for-the-cli.md`
+  - `docs/work/inbox/2026-10-15-tidy-what-tcw-74-and-tcw-77-s-reviews-left-elsewhere.md`
+  - `docs/work/inbox/2026-10-15-tidy-what-tcw-75-s-reviews-left-in-code-text.md`
+
+  They are accepted on `main` as one small work item of their own, whose
+  changes under `tcw/`, `skills/`, `agents/` and `web/` are made on the epic
+  branch and completed before B3 begins. What in them touches only `tests/`
+  or documents may wait. Not in this list: `…-tidy-what-tcw-74-s-reviews-left-for-the-eval-harness.md`
+  (only `evals/`, which the freeze does not cover) and
+  `…-settle-the-jira-live-check-questions-that-need-a-second-account.md`
+  (only `tests/work/jira/`).
 - **No version may be cut** between now and Task B24.
-- **The owner's questions** (spec, Notes, items 7 to 9). The plan proceeds on
-  the recommended answers to 7 (the deleted children stay deleted) and 9 (this
-  item rewords the three capability descriptions). Item 8 (`v2.8.2` and the Pi
-  change) must be answered before Task B3.
+- **The owner's questions** (spec, Notes, items 7 to 9) were settled on
+  2026-10-15: the deleted children stay deleted; this item rewords the three
+  capability descriptions (Task A10); 2.8.2 (Pi) is merged into `main`
+  (`dc0aaa7a`, `74630308`) and published from the tag `v2.8.2`.
 
 ## Before the first task: what the branch already has
 
@@ -132,8 +154,12 @@ The work splits in two:
   (`tcw/work/advance.py:164-179`), and `TCW_CONFIG_DIR`
   (`tcw/work/hooks.py:74`); `generate` adds the four `TCW_HOOK_*` and reads
   `{"schema", "item", "request", "hook"}` on stdin (`tcw/work/resolve.py:295-316`).
-- `tests/doc_allowance.py` (five lists), its guard `tests/test_doc_allowance.py`,
-  and the three code tests that read `REMOVED_COMMANDS`
+- `tests/doc_allowance.py` (five lists; after TCW-75, `REMOVED_COMMANDS` holds
+  `tcw work stage gate`, `tcw work init`, `tcw taxonomy check` and
+  `tcw capabilities check`, `REFUSED_KEYS` the six removed `work.*` keys, the
+  other three are empty), its guard `tests/test_doc_allowance.py` (whose
+  `test_an_entry_is_still_named_by_some_live_document` fails for an entry no
+  live document names), and the three code tests that read `REMOVED_COMMANDS`
   (`tests/work/test_removed_commands.py`, `tests/work/test_no_2x_names.py`,
   `tests/work/test_cli_config.py`).
 - `tests/test_repo_lifecycle.py` and `tests/test_lifecycle_baseline.py` are
@@ -145,12 +171,23 @@ The work splits in two:
   them. Each is read with `git show <location>:docs/work/completed/<slug>/spec.md`,
   the `location` being its `graveyard.yaml` entry: TCW-69 `0e4d4061`, TCW-70
   `3207f310`, TCW-71 `6599dd20`, TCW-73 `e400dcfd`, TCW-72 `a066ae20`, TCW-74
-  `64a2eb94`, TCW-77 `0a23906f`.
+  `64a2eb94`, TCW-77 `0a23906f`, TCW-75 `560e312f`.
+- TCW-75's `tests/test_docs_describe_3_0.py` holds `PENDING_TARGETS` (line 44),
+  its use in the link check (line 227), and
+  `test_the_link_check_lets_the_pending_migration_guide_through` (lines
+  267-270), which asserts the guide does not exist. Its README index already
+  links the guide (`test_the_documentation_index_links_the_guides_it_must`).
 
 ## Choices this plan makes
 
 1. **The guide's own test**, `tests/test_migration_guide.py`, checks what can be
    checked mechanically, by section:
+   - the guide's first two `##` sections are `## Before you start` (the
+     prerequisites of spec Design 1.2: on 2.8.x, the 3.0 CLI installed, no
+     uncommitted changes, no `work/` item worktree, a branch or tag marking the
+     2.x state, every connected project present) and `## Rules` (in order,
+     check, stop), each prerequisite named in the first, and both come before
+     any mapping table (criterion 1);
    - steps are the headings `### Step 0: …` to `### Step 12: …`, in order;
      every step section holds one paragraph starting `**Check:**`; every check
      but step 2's holds a backticked or fenced shell command and the words
@@ -159,9 +196,23 @@ The work splits in two:
    - `**Stop and ask**` appears in steps 1, 2 and 12 only, and the rules
      section states the general "a check that fails after one retry" stop
      (criterion 3);
-   - step 12's section names each place criterion 32 lists, gives a fenced
-     `grep` command whose pattern contains `tcw` and every status-folder name,
-     and contains the words delete, rewrite and keep (criterion 32);
+   - step 12's section names each place criterion 32 lists, the worktree rule
+     (the primary checkout's untracked per-user files), and contains the words
+     delete, rewrite and keep (criterion 32);
+   - step 12's two searches (spec amendment 22): a fenced `grep -rlE`
+     files-to-read command whose pattern holds `\btcw\b`, `NAMES` and
+     `WORDS`, followed by the instruction to read each printed file in full;
+     and a fenced `grep -rE` check command with `NAMES` alone, compared by
+     `diff` with the log's expected block. The test reads `NAMES` and `WORDS`
+     from the guide's fenced definitions, splits them on `|`, and requires
+     every backticked span in a mapping table's first column to be covered:
+     the span itself, or its last dotted part (`work.tracker.create.issue-types`
+     by `issue-types`), is one of the alternatives. Spans that are kept
+     unchanged in 3.0 (`TCW_ITEM_PATH`, `work.tags`, …) or whose pattern form
+     differs (`{{tcw:body}}…{{/tcw:body}}` as `tcw:body`) are listed by hand in
+     a constant `STEP_12_EXCEPTIONS`, each with its reason. The test also
+     requires that `NAMES` holds no bare `tcw` and that every status-folder
+     form in it is written with its trailing `/` and no leading one;
    - a constant `TWO_X_NAMES`, written out by hand, holds every name criterion
      4 lists, each group with a comment citing its `v2.8.1` file and line
      (`TRACKER_KEYS` and the rest no longer exist on the epic branch, so they
@@ -181,13 +232,14 @@ The work splits in two:
      goes in a constant `TWO_X_SPANS` with its reason, the way TCW-74's
      allowance lists are written. This is criterion 10's automatic part; the
      `--help` run stays by hand (Task A7).
-   From Task B1, it also runs TCW-75's link check on the guide.
+   From Task A4, it also runs TCW-75's `link_problems` on the guide.
 2. **The code tests' own list.** `tests/work/removed_2x.py` holds
-   `REMOVED_2X_COMMANDS`, the 21 entries `REMOVED_COMMANDS` holds at
-   `5b0dcf95`, verbatim, with a comment saying it is permanent: it lists the
-   2.x commands that must stay gone, which is not what the allowance is for.
-   TCW-75's Task 14 may shrink `REMOVED_COMMANDS` meanwhile; that no longer
-   weakens these tests.
+   `REMOVED_2X_COMMANDS`, the 21 entries `REMOVED_COMMANDS` held at
+   `5b0dcf95`, verbatim (`git show 5b0dcf95:tests/doc_allowance.py`), with a
+   comment saying it is permanent: it lists the 2.x commands that must stay
+   gone, which is not what the allowance is for. TCW-75 has since shrunk
+   `REMOVED_COMMANDS` to four entries, so until A1 the three code tests check
+   only those four.
 3. **`require_artifact.py`** runs `tcw work path "$TCW_SLUG" <stage>`, reads
    the one path it prints, and fails unless the file exists and holds
    something other than white space. It keeps failing closed (exit 1) when
@@ -220,20 +272,13 @@ The work splits in two:
    after that merge, written into the log at step 0. Criterion 23 compares it
    with the commit that merges the migration branch back.
 
-## Part A — can run before TCW-75 completes
+## Part A — before the freeze
 
-Every Part A task runs on the work branch, except where it names `main`.
-TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
-(including `examples/`), `docs/lifecycle/{abstraction,implementation,harness}.md`,
-`docs/work-inbox-template.md`, `skills/configure/**`, `evals/coverage.py`,
-`docs/capabilities/skills/configure/description.md`,
-`docs/taxonomy/configure-skill/**`, `docs/{changelogs,release-notes}/upcoming/`
-(its READMEs and its own entries), and the tests
-`test_configuration_text_home.py`, `test_shipped_text.py`,
-`test_docs_describe_3_0.py`, `test_git_example.py`, `test_cli_guide.py`,
-`test_documented_cli_surface.py`, `test_doc_allowance.py`,
-`test_upcoming_entries.py`, `test_check_versions.py`, and
-`tests/doc_allowance.py`. Each task below says why it shares none of them.
+Every Part A task runs on the work branch, made from `e301bef5`, except where it
+names `main`. TCW-75 is on that commit, so no Part A task waits for it, and
+the tasks that used to wait (B1 and B2) are now A4 and A10. Task A1 comes
+first, because A10 and B14 remove allowance entries the three code tests still
+read; A2 to A10 may then run in the order given.
 
 ### Task A1: The code tests keep their own list of removed 2.x commands (Design 7; criterion 28, first part)
 
@@ -241,11 +286,12 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
 - **Modifies** `tests/work/test_removed_commands.py`,
   `tests/work/test_no_2x_names.py` and `tests/work/test_cli_config.py`: import
   `REMOVED_2X_COMMANDS` from it in place of `tests.doc_allowance.REMOVED_COMMANDS`.
-- **Shared with TCW-75?** No: TCW-75 changes `tests/doc_allowance.py` and
-  `tests/test_doc_allowance.py`, not these.
 - **Proves:** the three test files; `tests/test_doc_allowance.py`; standing
   files. **Mutation:** add `"tcw work list"` to the tuple, and
-  `test_removed_commands.py` fails for that entry.
+  `test_removed_commands.py` fails for that entry. That shows the new tuple is
+  read by that file, not that no file still reads the allowance: Task B18's
+  test (no file under `tests/` names `doc_allowance`, and the module is gone)
+  is what proves all three imports were switched.
 
 ### Task A2: `require_artifact.py` asks `tcw work path` (Design 7; criterion 20)
 
@@ -256,7 +302,6 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   with text → exit 0 and the item at `plan`, the hook having seen
   `TCW_SLUG=p/<folder>`; `TCW_SLUG` unset → exit 1; an unknown slug → exit 1;
   the script's text contains neither `--json` nor `TCW_NODE_ROOT`.
-- **Shared with TCW-75?** No.
 - **Proves:** `tests/test_require_artifact.py`; standing files.
   **Mutation:** drop the emptiness test from the script, and the empty-file
   case fails.
@@ -281,10 +326,6 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   mode" (in Jira mode step 1 creates nothing); an addition under step 3 in
   Jira mode goes in the comment that step posts, under the same dated first
   line. Step numbers 1, 3 and 4 are the procedure's own.
-- **Shared with TCW-75?** No: TCW-75 owns only
-  `docs/lifecycle/{abstraction,implementation,harness}.md`, and its spec gives
-  `docs/lifecycle/templates/` and `docs/procedures/` to this item (TCW-75 spec
-  Design 1.2).
 - **Proves:** standing files. **By hand, in a scratch fixture** binding these
   files as Design 6 does: `tcw work stage prompt spec <slug>` prints the
   built-in prompt, then `abstraction.md`, `harness.md` and the template whose
@@ -295,10 +336,13 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
 ### Task A4: The guide, part 1: who it is for, and every mapping (Design 1.1-1.2, 3, 4; criteria 4, 5, 6, 8)
 
 - **Creates** `docs/migration-guide-2.8-to-3.0.0.md` with:
-  - the opening: what changes, who the guide is for (an agent working with a
-    user, under Claude Code or Codex, with any Jira access), projects older
-    than 2.8 upgrading first with the earlier guides;
-  - the mapping tables of Design 3, in the order 3.1 to 3.9, each first column
+  - the opening, as paragraphs under the title with no `##` heading of its
+    own (so A5's prerequisites and rules are the first two `##` sections):
+    what changes, who the guide is for (an agent working with a user, under
+    Claude Code or Codex, with any Jira access), projects older than 2.8
+    upgrading first with the earlier guides;
+  - the mapping tables of Design 3, in the order 3.1 to 3.10 (3.10, the
+    deleted skills and agents, is spec amendment 22), each first column
     the 2.x name, each second column the 3.0 form, or "removed" and what
     replaces it, every name and key spelled as the epic's code spells it.
     Includes the amended rows: `renames.yaml`, list-form `capabilities.yaml`,
@@ -310,20 +354,33 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   - Design 4's Jira binding and reconciling rules.
   Steps are a heading with "written in Task A5" until then.
 - **Creates** `tests/test_migration_guide.py` with criteria 4, 5, 6 and 8's
-  parts of choice 1.
-- **Shared with TCW-75?** No: both files are new. The guide links to TCW-75's
-  documents (`docs/guide/configuration.md`'s git example section,
-  `docs/guide/jira.md`, `skills/configure/references/*.md`) by the headings on
-  TCW-75's branch; Task B1 checks they resolve.
-- **Proves:** `tests/test_migration_guide.py`; `tests/test_documented_cli_surface.py`
-  (the guide stays exempt); standing files. **Mutations:** delete the
-  `renames.yaml` row → criterion 4 fails naming it; swap `TCW_FROM_STAGE` and
-  `TCW_STAGE` in the `TCW_STATUS` rows → criterion 5 fails.
+  parts of choice 1, and a test running TCW-75's `link_problems` (from
+  `tests/test_docs_describe_3_0.py`) over the guide. The guide links to
+  TCW-75's documents (`docs/guide/configuration.md`'s git example section,
+  `docs/guide/jira.md`, `skills/configure/references/*.md`) by their headings
+  at `e301bef5`, and the guide is fixed for any link or anchor it reports.
+- **Modifies** `tests/test_docs_describe_3_0.py`, in this same commit:
+  `PENDING_TARGETS` (line 44), its use in the link check (line 227), and
+  `test_the_link_check_lets_the_pending_migration_guide_through` (lines
+  267-270) are deleted (spec amendments 18 and 23). The last asserts the guide
+  does not exist, so the commit that creates the guide would otherwise turn it
+  red; and without `PENDING_TARGETS`, README's index link to the guide is
+  checked like any other.
+- **Proves:** `tests/test_migration_guide.py`; `tests/test_docs_describe_3_0.py`;
+  `tests/test_documented_cli_surface.py` (the guide stays exempt); standing
+  files. **Mutations:** delete the `renames.yaml` row → criterion 4 fails
+  naming it; swap `TCW_FROM_STAGE` and `TCW_STAGE` in the `TCW_STATUS` rows →
+  criterion 5 fails; a link to `docs/guide/jira.md#no-such-heading` in the
+  guide → the link test fails; rename the guide file → README's index link
+  fails in `tests/test_docs_describe_3_0.py`.
 
 ### Task A5: The guide, part 2: rules, steps and REST forms (Design 1.2-1.8, 2; criteria 1, 2, 3, 7, 9, 10)
 
 - **Modifies** `docs/migration-guide-2.8-to-3.0.0.md`:
-  - prerequisites and rules (Design 1.2, as amended: no 2.x item worktree);
+  - prerequisites and rules (Design 1.2, as amended: no 2.x item worktree), as
+    `## Before you start` and `## Rules`, inserted straight after the opening
+    and before the first mapping table, so the guide opens with them
+    (criterion 1);
   - the section on 2.x behavior that had no key (Problem 2.3, 2.4);
   - steps 0 to 11 (Design 2), each with what to do, its **Check** (a
     read-only shell command and its expected output, paths relative to the
@@ -336,51 +393,75 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
     name, and the web UI as the equivalent.
 - **Modifies** `tests/test_migration_guide.py`: criteria 1, 2, 3, 7, 9 and 10's
   parts of choice 1.
-- **Shared with TCW-75?** No.
 - **Proves:** `tests/test_migration_guide.py`; standing files. **Mutations:**
   remove step 4's `**Check:**` → criterion 2 fails; add `**Stop and ask**` to
   step 5 → criterion 3 fails; add `` !`tcw validate` `` → criterion 9 fails;
-  add `tcw work start x` to a step → the parse check fails.
+  add `tcw work start x` to a step → the parse check fails; move `## Rules`
+  below the first mapping table → criterion 1 fails.
 
-### Task A6: The guide, part 3: revisit agent instructions and memories (Design 1.5, 2 step 12; criteria 2, 3, 32; spec amendment 21, the owner's addition)
+### Task A6: The guide, part 3: revisit agent instructions and memories (Design 1.5, 2 step 12; criteria 2, 3, 32; spec amendments 21 and 22)
 
 - **Modifies** `docs/migration-guide-2.8-to-3.0.0.md`: the fourth stop in the
   rules section, and `### Step 12: Revisit agent instructions and memories`
-  as Design 2 step 12 gives it:
-  - where to look, as a list: the project's `CLAUDE.md` and `AGENTS.md` and
-    every file they link to or import; the agent's saved memories for the
-    project (Claude Code: `~/.claude/projects/<project folder>/memory/`, where
-    the folder is the project's absolute path with each `/` replaced by `-`,
-    and its `MEMORY.md`); `~/.claude/CLAUDE.md` and Codex's
-    `~/.codex/AGENTS.md`; `.claude/skills/`, `.claude/commands/`,
-    `.claude/agents/`, `.codex/`, and the `hooks` and `permissions.allow`
-    entries of `.claude/settings.json` and `.claude/settings.local.json`; the
-    prompt and procedure files the 2.x configuration bound (the step-1
-    survey's list);
-  - what to look for: the first column of the mapping tables, the status
-    folders, `state.yaml`, `dod.yaml`, `--worktree`, and text relying on
-    automatic commits, publishing or retention;
-  - one search command, written out, that the agent runs over those places,
-    for example
-    `grep -rniE 'tcw|state\.yaml|dod\.yaml|refined-outcome|/(backlog|active|review|completed|discarded|blocked)/|--worktree' <the places>`,
-    with the guide saying the pattern is extended with the step-1 survey's
-    removed names that occur in the project;
+  as Design 2 step 12 gives it (spec amendment 22):
+  - where to look, as a list, in three groups:
+    - the project: `CLAUDE.md` and `AGENTS.md` and every file they link to or
+      import; `.claude/skills/`, `.claude/commands/`, `.claude/agents/`,
+      `.codex/`, `.agents/skills/`; the `hooks` and `permissions.allow`
+      entries of `.claude/settings.json` and `.claude/settings.local.json`;
+      the prompt and procedure files the 2.x configuration bound (the step-1
+      survey's list);
+    - the user's own files: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+      `~/.claude/skills/`, `~/.claude/commands/`, `~/.claude/agents/`,
+      `~/.codex/skills/`, `~/.agents/skills/`, `~/.codex/prompts/`
+      (whichever exist), `~/.claude/settings.json`, `~/.codex/rules/`;
+    - saved memories: `~/.codex/memories/`, and every Claude Code project
+      folder belonging to the project, found by content, not by a naming
+      rule: for each path `git worktree list --porcelain` prints,
+      `grep -lE '"cwd":"<path>("|/)' ~/.claude/projects/*/*.jsonl` names
+      transcripts, and each one's folder's `memory/` and `MEMORY.md` are
+      searched;
+  - the worktree rule: a run made in a worktree also searches the primary
+    checkout's untracked per-user files, by the primary checkout's absolute
+    path (`git -C <primary checkout> status --ignored --porcelain -- .claude
+    .codex` lists them), since a worktree holds only tracked files;
+  - what to look for: the first column of the mapping tables (3.1 to 3.10),
+    the status folders with `inbox/`, `state.yaml`, `dod.yaml`, `--worktree`,
+    the bare 2.x verbs and stage names, and text relying on automatic commits,
+    publishing or retention, which memory prose often describes without naming
+    a command;
+  - the two searches, each fenced and written out in full: `NAMES` and `WORDS`
+    defined as `grep -E` alternatives (each name word-bounded, status folders
+    as `backlog/` and the like, with no leading slash); the files-to-read
+    search `grep -rlE '\btcw\b|<NAMES>|<WORDS>' <places>`, case-sensitive,
+    and the instruction to read each printed file in full and judge every
+    passage, not only matched lines; the check's search
+    `grep -rE '<NAMES>' <places> | sort`;
   - the one question to the user: each finding with the proposed action
     (delete; rewrite, with the proposed text; keep, with the reason). Nothing
     is changed before the answer, and only what is approved is applied;
   - files outside the repository are the person running the migration's own,
     and each other contributor repeats the step for theirs;
-  - the log section `## Agent instructions`, one line per finding: file and
-    line, the decision, what was done;
-  - **Check:** `grep -c '^## Agent instructions' <log>` prints `1`; the search
-    run again prints only lines the log records as kept; if a bound file
+  - the log section `## Agent instructions`: one line per finding (file and
+    line as found, the decision, what was done), ending with a fenced block
+    of the lines expected to match `NAMES` afterwards, as `<file>:<text>`:
+    kept lines as they stand, and rewritten lines' approved text where it
+    still matches;
+  - **Check:** `grep -c '^## Agent instructions' <log>` prints `1`; the
+    check's search, sorted, compared by `diff` with the expected block,
+    prints nothing (no line numbers compared; a rewritten line that still says
+    `tcw` is not a failure, since `NAMES` has no `tcw`); if a bound file
     changed, `tcw validate` exits 0.
-- **Modifies** `tests/test_migration_guide.py`: criterion 32's part of choice
-  1, and the step and stop counts for criteria 2 and 3.
-- **Shared with TCW-75?** No.
+- **Modifies** `tests/test_migration_guide.py`: criterion 32's parts of choice
+  1 (the places, the worktree rule, the two searches and the coverage of every
+  first-column name by `NAMES` or `WORDS`), and the step and stop counts for
+  criteria 2 and 3.
 - **Proves:** `tests/test_migration_guide.py`; standing files. **Mutations:**
   remove `~/.codex/AGENTS.md` from step 12 → criterion 32 fails naming it;
-  remove step 12's **Stop and ask** → criterion 3 fails.
+  remove step 12's **Stop and ask** → criterion 3 fails; remove `verifier`
+  from `WORDS` and `NAMES` → the coverage test fails naming the Design 3.10
+  row; add `tcw` to `NAMES` → the test fails; remove "in full" from the
+  files-to-read instruction → the test fails.
 
 ### Task A7: The filesystem rehearsal (Design 5.2, 5.3; criteria 10, 25)
 
@@ -399,14 +480,27 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   comparing `TCW_STATUS` with `backlog` and testing `TCW_TRANSITION`; a
   `{{tcw:body}}…{{/tcw:body}}` pair in a prompt file; a `renames.yaml`; a
   list-form `capabilities.yaml`; an inbox entry; a `blocked/` folder holding
-  one item, placed by hand; and, for step 12, a project `CLAUDE.md` naming
-  `tcw work start --worktree`, a memory file under the scratch `HOME`'s
-  `.claude/projects/<folder>/memory/` naming `backlog/`, and a
-  `.claude/settings.local.json` allowing `Bash(tcw work submit:*)`.
+  one item, placed by hand; and, for step 12 (spec amendment 22):
+  - a project `CLAUDE.md` naming `tcw work start --worktree`;
+  - a memory file under the scratch `HOME`'s `.claude/projects/<folder>/memory/`
+    (with a transcript beside it whose `cwd` is the rehearsal project, so the
+    folder is found by content) holding a line that names `tcw` and, on
+    another line with no `tcw` and no name from `NAMES` or `WORDS`, a 2.x
+    instruction in plain prose ("write the user's acceptance into a file in
+    the item's folder before closing it");
+  - a second memory file with no `tcw` in it at all, naming `refined-outcome.md`;
+  - a skill under the scratch `HOME`'s `.claude/skills/` naming
+    `tcw work submit`;
+  - a `.claude/settings.local.json` allowing `Bash(tcw work submit:*)`,
+    ignored by the rehearsal project's `.gitignore`, and the step run from a
+    worktree of the rehearsal project, so the primary checkout's copy is the
+    only one.
 - **Follows** the guide, filesystem mode, step by step, with the 3.0 CLI from
-  `venv` only at step 11, and step 12 finding all three planted instructions
-  (the rehearsal answers its question itself, rewriting one, deleting one and
-  keeping one), ending with `tcw validate` exit 0.
+  `venv` only at step 11, and step 12 finding every planted instruction,
+  including the prose line, which only reading the file in full finds (the
+  rehearsal answers its question itself, rewriting, deleting and keeping at
+  least one each), its check's `diff` printing nothing, ending with
+  `tcw validate` exit 0.
 - **Modifies** the guide and its test wherever the rehearsal shows the guide
   wrong or unclear (one commit on the work branch).
 - **Runs** `tcw <command> --help` for every `tcw` command the guide names, on
@@ -416,7 +510,6 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   output, every guide amendment, and the final `tcw validate`; under
   `## Criterion 10`, each command and its exit code. Nothing of the rehearsal
   project is committed.
-- **Shared with TCW-75?** No: the guide, its test and this item's folder.
 
 ### Task A8: The Jira checklist for the owner (Design 6.2; criterion 24, first part)
 
@@ -436,9 +529,8 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   with the type TCW-71 defines (`git show 6599dd20:…/spec.md`) and added to
   the project's screens; the same changes in any other workflow an issue type
   now uses. It opens with: **do not apply any line until told the freeze has
-  begun** (migration step 2), because the released 2.8.1 CLI that still moves
+  begun** (migration step 2), because the released 2.8.x CLI that still moves
   `main`'s board names `Start` and finds routes by the old transitions.
-- **Shared with TCW-75?** No: this item's folder on `main`.
 
 ### Task A9: A bounded review of the guide before it touches Jira
 
@@ -446,25 +538,8 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   rehearsal record, given the spec and its amendments; bounded as in the
   rules. Accepted findings fixed in one commit on the work branch (the guide
   and its test); the result recorded in `outcome.md` on `main`.
-- **Shared with TCW-75?** No.
 
-## Part B — needs TCW-75 complete and the code freeze
-
-### Task B1: Take in TCW-75 (Design 7; criterion 28, link part)
-
-- After TCW-75 is completed and the epic branch fast-forwarded to it:
-  `git merge epic/tcw-3.0` into the work branch.
-- **Modifies** `tests/test_docs_describe_3_0.py`: `PENDING_TARGETS`, its use in
-  the link check, and `test_the_link_check_lets_the_pending_migration_guide_through`
-  are deleted (spec amendment 18).
-- **Modifies** `tests/test_migration_guide.py`: a test running TCW-75's
-  `link_problems` over the guide; and the guide, for any link or anchor it
-  reports.
-- **Proves:** `tests/test_docs_describe_3_0.py`, `tests/test_migration_guide.py`,
-  standing files. **Mutation:** a link to `docs/guide/jira.md#no-such-heading`
-  in the guide → the new test fails.
-
-### Task B2: The capability descriptions that still name removed things (Design 7; spec amendment 6)
+### Task A10: The capability descriptions that still name removed things (Design 7; spec amendment 6; formerly Task B2)
 
 - **Modifies** `docs/capabilities/work/configure-the-work-store-location/description.md`
   (`tcw work init` → `tcw init --work-path`),
@@ -475,29 +550,55 @@ TCW-75's plan and its branch change `AGENTS.md`, `README.md`, `docs/guide/**`
   removed `work.*` keys replaced by `work.stages` and `work.hooks`), each
   keeping what it promises; and `tests/doc_allowance.py`, removing every entry
   that only these records named, in the same commit, since TCW-75's
-  "still named somewhere" check fails otherwise.
+  "still named somewhere" check fails otherwise. After this, only
+  `tcw work stage gate` is left, named by `AGENTS.md:16`, and B14 removes it.
+  Runs after A1, which gives the three code tests their own list.
 - **Writes** this item's `capabilities.yaml` on `main` (separate commit):
   `changed:` the three paths.
 - **Proves:** `tests/test_doc_allowance.py`, `tests/test_ledger_3_0.py`,
   `tests/test_documented_cli_surface.py`, standing files; and the branch's
   `tcw validate` in a scratch fixture holding copies of the three records and
   the records they link to, recorded in the log.
+  **Mutation:** put `tcw work init` back into `REMOVED_COMMANDS` →
+  `test_an_entry_is_still_named_by_some_live_document` fails naming it.
 
-### Task B3: Merge and freeze (Design 8.5.1-8.5.2; spec amendment 13)
+## Part B — needs the code freeze
 
-- With the owner's answer to Notes item 8 applied (if `v2.8.2` was published,
-  `feat/pi-package-support` is merged into `main` first).
-- The Pi item on `main` is completed with 2.8.1, or the owner says it waits.
-- `epic/tcw-3.0` is fast-forwarded to the work branch; the work worktree and
-  branch are removed.
-- `git merge main` into `epic/tcw-3.0`. Conflicts are resolved by keeping the
-  epic's text and carrying the Pi facts into it: Pi installation in TCW-75's
-  README install section; the Pi lines of `docs/lifecycle/harness.md` into
-  TCW-75's version; `skills/README.md`, `skills/setup/SKILL.md` and
-  `references/install.md` on TCW-74's text; `skills/work/references/procedures/delegation.md`
-  stays deleted; `package.json` keeps its `pi` block; the two
-  `docs/capabilities/plugin/*/description.md` take the Pi sentence. The board
-  arrives unchanged.
+### Tasks B1 and B2: moved into Part A
+
+TCW-75 is on `e301bef5`, where the work branch starts, so there is nothing to
+merge. B1's removal of `PENDING_TARGETS` and its link test are in Task A4;
+B2's capability descriptions are Task A10. The numbers B1 and B2 are kept
+unused so that B3 to B24 keep theirs.
+
+### Task B3: Merge and freeze (Design 8.5.1-8.5.2; spec amendments 13 and 23)
+
+- **Waits for** the code follow-up item of the Blockers section, completed and
+  merged into `epic/tcw-3.0`. 2.8.2 (Pi) is already merged into `main`
+  (`dc0aaa7a`, `74630308`) and published from `v2.8.2`.
+- The Pi item on `main` (`review/2026-10-07-make-the-plugin-installable-in-pi`)
+  is completed with the released 2.8.2, or the owner says it waits.
+- In the epic worktree (`.worktrees/tcw-3-0-epic`, made here; see the rules):
+  `epic/tcw-3.0` is fast-forwarded to the work branch
+  (`git merge --ff-only <work branch>`); the work worktree and branch are
+  removed.
+- `git merge main` into `epic/tcw-3.0`, in the epic worktree. A trial with
+  `git merge-tree --write-tree main e301bef5` on 2026-10-15 conflicted in
+  `README.md`, `docs/lifecycle/harness.md`, `skills/setup/SKILL.md` and
+  `skills/work/references/procedures/delegation.md` (changed on `main`,
+  deleted on the epic). Conflicts are resolved by keeping the epic's text and
+  carrying the Pi facts into it: Pi installation in TCW-75's README install
+  section; the Pi lines of `docs/lifecycle/harness.md` into TCW-75's version
+  (its Agentskills link, which `74630308` restored on `main`, is already in
+  TCW-75's text at line 10); `skills/setup/SKILL.md` on TCW-74's text;
+  `delegation.md` stays deleted. The same trial merged these without conflict,
+  and each is read after the merge all the same: `package.json` (keeps
+  `main`'s `pi` block and the epic's removal of `fastify` and `esbuild`),
+  `.codex-plugin/plugin.json` (the epic's long description with `main`'s
+  2.8.2 version), `skills/README.md` and `skills/setup/references/install.md`
+  (TCW-74's text with the Pi facts). The two
+  `docs/capabilities/plugin/*/description.md` take the Pi sentence. All five
+  version files say 2.8.2 after the merge. The board arrives unchanged.
 - **The freeze begins**: the epic tip is the freeze commit; the owner is told
   that `main`'s board is frozen and that the Jira checklist may now be applied
   when step 2 asks.
@@ -517,14 +618,16 @@ as written. Each step's check output goes in the log. TCW's particulars:
   ignored discarded folders (33 on this machine on 2026-10-15); the log starts
   under `## Run 1` with the start date, the freeze commit, and each finished
   slice with its `graveyard.yaml` `location` and the `git cat-file -e` result
-  (criterion 27).
+  (criterion 27): TCW-69 to TCW-74 and TCW-77 as listed under "Before the
+  first task", and TCW-75 at `560e312f` (deleted in `b5b7756f`).
 - **B5, step 1 — Stop and ask.** The consolidated plan: Jira mode; every
   optional stage enabled; statuses (Design 6.2); each item's stage and
   converted fields; every disk–ticket difference, including TCW-9's
-  `sync: pending`; the ~20 tickets to create and their exact comments;
-  request placement per ticket; the prune list as amended (Design 2 step 1);
-  the ignored discarded folders (none kept unless named); the six inbox
-  entries; `<hook files>`; step 9's skipped folder (this item's); the config,
+  `sync: pending`; the tickets to create (up to 21 on 2026-10-15) and their
+  exact comments; request placement per ticket; the prune list as amended
+  (Design 2 step 1); the ignored discarded folders (none kept unless named);
+  the inbox entries (seven on `main` on 2026-10-15, fewer once the code
+  follow-up item of the Blockers section has taken five; recounted here); `<hook files>`; step 9's skipped folder (this item's); the config,
   hook, record and project-file rewrites. Approval recorded verbatim under
   `## Approved plan`.
 - **B6, step 2 — Stop and ask.** The workflow is read again and the checklist
@@ -542,19 +645,54 @@ as written. Each step's check output goes in the log. TCW's particulars:
   items 1 and 3: the eval and worktree sections untouched), `.gitignore`, the
   13 `Planning doc:` lines; `require_artifact.py`, the templates and
   `create-work.md` already done in Part A, so the step's checks find them
-  clean.
+  clean. **The same commit removes `tcw work stage gate` from
+  `REMOVED_COMMANDS`** in `tests/doc_allowance.py` (spec amendment 23):
+  `AGENTS.md:16` is the only live document naming it, so once that line is
+  rewritten `tests/test_doc_allowance.py`'s
+  `test_an_entry_is_still_named_by_some_live_document` fails for the entry.
+  This empties `REMOVED_COMMANDS`, which A1 made safe for the three code
+  tests. Proves: `tests/test_doc_allowance.py`,
+  `tests/test_documentation_sync_wiring.py`, `tests/test_docs_describe_3_0.py`,
+  standing files.
 - **B15, step 11.** `tcw validate` and `tcw validate --remote` from `venv`
   in the migration worktree, each finding fixed or listed (criterion 15);
   `tcw work list --all --json` against the approved stages (criterion 14).
-- **B16, step 12 — Stop and ask** (the owner's addition; criterion 32). Step 12
-  carried out on TCW itself, over: `AGENTS.md` (which `CLAUDE.md` links to)
-  and the files it links to; `.claude/settings.json`,
-  `.claude/settings.local.json` and anything else under `.claude/`; the
-  memory folder
-  `/Users/brian/.claude/projects/-Users-brian-Projects-TCW/memory/` with its
-  `MEMORY.md`; and the owner's `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`.
+- **B16, step 12 — Stop and ask** (the owner's addition; criterion 32; spec
+  amendment 22). Step 12 carried out on TCW itself, from the migration
+  worktree, over:
+  - in the repository: `AGENTS.md` (which `CLAUDE.md` links to) and the files
+    it links to; `.claude/settings.json` and anything else tracked under
+    `.claude/`; the prompt and procedure files the configuration binds
+    (`docs/lifecycle/*.md`, `docs/lifecycle/templates/*.md`,
+    `docs/procedures/create-work.md`, the step-1 survey's list);
+  - the primary checkout's untracked per-user files, by absolute path, since
+    the migration worktree does not have them:
+    `/Users/brian/Projects/TCW/.claude/settings.local.json` (ignored by the
+    owner's global git ignore file; 33 lines name `tcw` on 2026-10-15), and
+    whatever else `git -C /Users/brian/Projects/TCW status --ignored
+    --porcelain -- .claude .codex` lists then;
+  - the owner's own files: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+    `~/.claude/skills/` (on 2026-10-15
+    `~/.claude/skills/autonomous-work/SKILL.md` names
+    `tcw work list --status backlog` at line 14, the `tcw-verifier` agent,
+    `tcw work submit` and `tcw work complete` at lines 49-54),
+    `~/.claude/agents/`, `~/.claude/commands/` (absent on 2026-10-15),
+    `~/.codex/skills/`, `~/.agents/skills/`, `~/.codex/prompts/` (absent),
+    `~/.claude/settings.json` (the allow entry `Bash(tcw *)` at line 81 and
+    the auto-mode text describing `tcw` at about lines 339-374), and
+    `~/.codex/rules/default.rules` (15 lines name `tcw`);
+  - memories: `~/.codex/memories/` (its `MEMORY.md`, `memory_summary.md`,
+    `raw_memories.md` and several `rollout_summaries/` files name `tcw`), and
+    every `~/.claude/projects/*` folder the transcript search finds for the
+    paths `git worktree list --porcelain` prints at the time, each with its
+    `memory/` and `MEMORY.md`. On 2026-10-15 that search, run for
+    `/Users/brian/Projects/TCW`, found only
+    `/Users/brian/.claude/projects/-Users-brian-Projects-TCW/`; the
+    migration worktree adds its own path, and any folder found for it is
+    searched too.
   The skills under `skills/` are the product, already rewritten by TCW-74,
-  and are not in scope. Expected findings, for the proposal: `AGENTS.md`'s
+  and are not in scope. Every file the files-to-read search prints is read in
+  full. Expected findings, for the proposal: `AGENTS.md`'s
   rule against driving the lifecycle with the `tcw` CLI while TCW's own code
   changes, and its worktree section; memories that describe 2.x behavior
   (`tcw-can-be-driven-by-manual-edits`, `the-item-is-truth-always-applies`
@@ -570,11 +708,13 @@ as written. Each step's check output goes in the log. TCW's particulars:
   allows `tcw` commands by name (33 lines name `tcw` on 2026-10-15), and each
   allowed 2.x command is proposed for removal; `.claude/settings.json` enables
   the plugin and wires `scripts/remote_session_setup.sh`, and is expected to
-  be kept.
+  be kept; the owner's `Bash(tcw *)` allow entry is expected to be kept, and
+  the `autonomous-work` skill's 2.x commands and agent name rewritten.
   The owner decides each; the log's `## Agent instructions` records each
-  finding, decision and action. Changes inside the repository are this step's
-  commit; changes to the memory folder and the owner's personal files are not
-  in git, and the log says so for each.
+  finding, decision and action, and its expected block; the check's `diff`
+  prints nothing. Changes inside the repository are this step's commit;
+  changes to `settings.local.json`, the memory folders and the owner's
+  personal files are not in git, and the log says so for each.
 
 A step whose check fails after one retry stops the run and goes to the owner;
 a defect in 3.0 code abandons the run (Design 8.5.3) and the next run begins
@@ -628,25 +768,32 @@ again at B3's last bullet.
   `stop-offering-…` item and removed by a deleted child; criterion 22).
 - Criterion 30 checked by reading each pruned ticket once; criterion 24's
   workflow `GET`.
+- Criterion 10 again, over the final guide: `tcw <command> --help` for every
+  `tcw` command it names, on the 3.0 CLI from `venv`, each exit code in the
+  log (A7 ran it on the guide as it stood then; the run and A9 may have
+  changed it since).
 - The `documentation-sync` skill evaluated over the item's whole difference.
 - The log gets one line of evidence per criterion.
 
 ### Task B21: Merge the migration and enter review (Design 8.7.1; criteria 23, 26)
 
-- The migration branch merges into `epic/tcw-3.0`;
+- In the epic worktree, `.worktrees/tcw-3-0-epic`: the migration branch
+  merges into `epic/tcw-3.0`;
   `git diff --stat <freeze commit>..<that merge> -- tcw skills agents web`
   prints nothing (criterion 23).
-- From a checkout of the epic branch, with `venv`:
+- `venv` re-pointed to the epic worktree (`pip install -e
+  .worktrees/tcw-3-0-epic --no-deps`), and from that worktree:
   `tcw work advance tcw/TCW-76-<words>` to review exits 0 and its `post` hook
   commits or reports nothing to commit (criterion 26). This is TCW-76's first
-  3.0 move.
+  3.0 move. B22 and B23 run from the same worktree.
 
 ### Task B22: The review stage (spec Design 8.7.2, amendment 14)
 
-- Bounded adversarial review, split into the guide and its tests (A4, A5, A9,
-  B1), the migrated board and configuration (B4-B17), and the test changes
-  (A1, A2, B18), then one combined pass over the whole difference since
-  `5b0dcf95`. Accepted findings are fixed in the item (a rejection moves it
+- Bounded adversarial review, split into the guide and its tests (A4 to A7,
+  A9), the migrated board, configuration and records (A3, A10, B3 to B17), and
+  the test changes (A1, A2, B14's allowance entry, B18), then one combined pass
+  over the whole difference since the work branch's start,
+  `e301bef5..<B21's merge>`. Accepted findings are fixed in the item (a rejection moves it
   back to implement, with a new implement round).
 - `review/round-<n>.md` written with `verdict: accepted` and `judges:` the
   latest implement round; `tcw work advance` to qa.
@@ -666,9 +813,16 @@ again at B3's last bullet.
   `main`'s CI both green.
 - The memories step 12 marked "delete at the end of the epic" are deleted
   and removed from `MEMORY.md`, as the owner approved.
-- `python scripts/cut_version.py 3.0.0`; the tag pushed with `main`, which
-  publishes the release (no further confirmation, per the owner's standing
-  rule, once verification has passed).
+- `python scripts/cut_version.py 3.0.0`. **Before the tag is pushed**, on the
+  cut commit: `pytest tests/test_upcoming_entries.py tests/test_cut_version.py
+  tests/test_plugin_manifests.py` passes (the cut rewrote the version files
+  and folded the `upcoming/` entries, which the full run in B20 predates).
+- The tag pushed with `main`, which publishes the release (no further
+  confirmation, per the owner's standing rule, once verification has
+  passed). Then the `release` workflow run for the tag is watched to the end
+  (`gh run list --workflow release.yml`, `gh run watch <id>`), and
+  `https://pypi.org/pypi/tcw-cli/3.0.0/json` answers with version `3.0.0`; a
+  red run or a missing version goes to the owner.
 - Only then: any originating GitHub issue answered and closed, each with text
   the owner has approved.
 
@@ -679,7 +833,7 @@ answers each:
 
 | Entry | Trigger | Answered by |
 | --- | --- | --- |
-| `README.md` | Public-API | TCW-75 adds the guide's index row; this item only resolves the Pi merge in Task B3 and checks the row's link in B1 |
+| `README.md` | Public-API | TCW-75 added the guide's index row (on `e301bef5`); A4's removal of `PENDING_TARGETS` makes TCW-75's link check cover it; this item only resolves the Pi merge in Task B3 |
 | `docs/guide/jira.md` | Tracker-Change (becomes Jira-Change at B7) | Does not fire: no Jira behavior or key changes. TCW-75's |
 | `docs/guide/<topic>.md` | Guide-Topic-Change | Does not fire: the migration guide is not under `docs/guide/` |
 | `docs/release-notes/upcoming/<folder>.md` | Public-API | Task B19 |
@@ -698,7 +852,7 @@ What the suite cannot check, and how it is checked:
    the test): the rehearsal (A7), the review (A9), and the real run (B4-B16,
    including step 12 on TCW's own instructions and memories),
    where any wrong or unclear text is fixed before the step is redone.
-2. **Criterion 10:** every command's `--help` run by hand (A7).
+2. **Criterion 10:** every command's `--help` run by hand (A7), and again over the final guide (B20).
 3. **Jira:** criterion 24's checklist confirmation and the post-migration
    workflow `GET`; criterion 30 by reading each ticket; criterion 31 by the
    rerun and a JQL `updated >=` search. All recorded in the log.
@@ -707,30 +861,30 @@ What the suite cannot check, and how it is checked:
 6. **Harness:** the guide is plain Markdown using only shell, `curl` and
    `tcw`; the test forbids `` !` `` and slash commands.
 7. **Review:** Tasks A9 and B22, bounded as in the rules.
-8. **Board and ticket:** until B3 this item is moved on `main` with 2.8.1;
+8. **Board and ticket:** until B3 this item is moved on `main` with the released 2.8.x;
    after the migration commit, with the 3.0 CLI.
 
 ## Criterion-to-task table
 
 | Criterion | Tasks |
 | --- | --- |
-| 1 Opening | A5 (test), A9 |
-| 2 Steps and checks | A5 |
-| 3 Stops | A5 |
-| 4 Every 2.x name mapped | A4 |
+| 1 Opening | A4 (the opening, with no `##` of its own), A5 (puts `## Before you start` and `## Rules` first; the test checks they are the first two `##` sections and come before any mapping table), A9 |
+| 2 Steps and checks | A5, A6 (step 12) |
+| 3 Stops | A5, A6 (step 12's stop) |
+| 4 Every 2.x name mapped | A4 (including Design 3.10) |
 | 5 Hook variables by meaning | A4 |
 | 6 `artifacts` rule and status translation | A4 |
 | 7 Behavior with no key | A5 |
 | 8 Verdict rounds | A4, A7 |
 | 9 No harness-only mechanism | A5 |
-| 10 Every command exists | A5 (parse), A7 (`--help`) |
+| 10 Every command exists | A5 (parse), A7 and B20 (`--help`) |
 | 11-13 Folders, `item.yaml`, documents | B8-B12 |
 | 14 `list --all --json` stages | B15 |
 | 15 `validate`, `validate --remote` | B15, B20 |
 | 16 Configuration | B7, B17 |
 | 17 `Planning doc` | B14 |
 | 18 `.gitignore` | B14 |
-| 19 `AGENTS.md` and the link | B14 (and TCW-75 for the READMEs) |
+| 19 `AGENTS.md` and the link | B14 (TCW-75 already changed the READMEs on `e301bef5`) |
 | 20 `require_artifact.py` | A2 |
 | 21 Repo test and full suite | B17, B20 |
 | 22 Drift | B20 |
@@ -739,17 +893,17 @@ What the suite cannot check, and how it is checked:
 | 25 Rehearsal | A7 |
 | 26 First 3.0 move | B21 |
 | 27 Sibling specs readable (amended) | B4 |
-| 28 Allowance gone | A1, B1, B2, B18 |
+| 28 Allowance gone | A1, A4 (`PENDING_TARGETS`), A10, B14, B18 |
 | 29 Upcoming entries | B19 |
 | 30 Prune list | B5, B10, B20 |
 | 31 Step 6 rerun writes nothing | B10 |
 | 32 Step 12, instructions and memories (owner's addition) | A6, A7, B16 |
 
 Every task traces to a criterion: A1 to 28; A2 to 20; A3 to 16, 21 (bound
-files exist; Design 6.3); A4 to 4-6, 8; A5 to 1-3, 7, 9, 10; A6 to 2, 3, 32; A7 to 8, 10, 25, 32;
-A8 to 24; A9 to 1-10; B1 to 28; B2 to 28 (amendment 6); B3 to 23; B4-B16 to
-11-18, 24, 27, 30, 31, 32; B17 to 16, 21; B18 to 28; B19 to 29; B20 to 21, 22,
-24, 30; B21 to 23, 26; B22 and B23 to the end of Design 8.7; B24 to Design
+files exist; Design 6.3); A4 to 4-6, 8, 28; A5 to 1-3, 7, 9, 10; A6 to 2, 3, 32; A7 to 8, 10, 25, 32;
+A8 to 24; A9 to 1-10; A10 to 28 (amendment 6); B3 to 23; B4-B16 to
+11-18, 24, 27, 28 (B14), 30, 31, 32; B17 to 16, 21; B18 to 28; B19 to 29; B20 to 10, 21,
+22, 24, 30; B21 to 23, 26; B22 and B23 to the end of Design 8.7; B24 to Design
 8.7.3-8.7.6.
 
 ## Notes
@@ -758,12 +912,11 @@ A8 to 24; A9 to 1-10; B1 to 28; B2 to 28 (amendment 6); B3 to 23; B4-B16 to
   every step for both backends, with Jira's form of each fact Jira owns, and
   `require_artifact.py` keeps asking TCW where a document lives (`tcw work
   path`) instead of composing a path.
-- **For TCW-75, while it is still in progress** (sent to the orchestrator, not
-  changed here): its Task 14 shrinks `REMOVED_COMMANDS`, which three code tests
-  read as the list of commands that must stay gone, and an empty list would
-  break `tests/work/test_no_2x_names.py`; Task A1 gives them their own list.
-  Its `test_the_link_check_lets_the_pending_migration_guide_through` asserts
-  the guide does not exist, so it goes when the guide lands (B1). `main`'s Pi
-  change edits `README.md` and `docs/lifecycle/harness.md`, which TCW-75
-  rewrites; carrying the Pi facts into its rewrite now would leave Task B3 a
-  smaller merge.
+- **TCW-75, now complete** (`e301bef5`): it shrank `REMOVED_COMMANDS` to four
+  entries, which three code tests still read as the list of commands that must
+  stay gone, and an empty list would break `tests/work/test_no_2x_names.py`;
+  Task A1 gives them their own list before A10 and B14 empty it. Its
+  `test_the_link_check_lets_the_pending_migration_guide_through` asserts the
+  guide does not exist, so it goes in A4, the commit that creates the guide.
+  `main`'s Pi change edits `README.md` and `docs/lifecycle/harness.md`, which
+  TCW-75 rewrote; Task B3 carries the Pi facts into its text.

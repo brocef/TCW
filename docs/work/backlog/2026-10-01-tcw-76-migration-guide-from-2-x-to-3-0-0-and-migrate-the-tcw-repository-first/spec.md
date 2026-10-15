@@ -418,7 +418,7 @@ that configuration.
    `2026-09-30-follow-renamed-slugs-in-the-web-app-tracker-verbs-and-capability-drift-check`
    and `2026-09-30-run-ci-on-python-3-12-as-well`, migrated as ordinary items.
    Entries and items added to the board before the migration starts (on
-   2026-10-15: six inbox entries dated 2026-10-13 and 2026-10-15, and the
+   2026-10-15: seven inbox entries dated 2026-10-13 and 2026-10-15 (amendment 23), and the
    `review/` item `2026-10-07-make-the-plugin-installable-in-pi`) go through the
    survey like any other.
 2. **Jira mode: prepare Jira.** Add one status per enabled stage that has none,
@@ -507,37 +507,83 @@ that configuration.
     2.x behavior that is gone. Step 10 fixed the project's own files the approved
     plan named; this step looks wider, now that the configuration and board are
     in their 3.0 form and the agent can say what each instruction should become.
-    - **Where to look.** The project's `CLAUDE.md` and `AGENTS.md`, and every
-      file they link to or import; the agent's saved memories for the project
-      (for Claude Code, the project's folder under `~/.claude/projects/`, its
-      `memory/` folder and `MEMORY.md`); personal and global instruction files
-      (`~/.claude/CLAUDE.md`, Codex's `~/.codex/AGENTS.md`); skills, commands,
-      agent definitions and hooks the project wrote (`.claude/skills/`,
-      `.claude/commands/`, `.claude/agents/`, `.codex/`, and the `hooks` of
-      `.claude/settings*.json`); the permission allow-lists in
-      `.claude/settings.json` and `.claude/settings.local.json` that name `tcw`
-      commands; and the prompt and procedure files the 2.x configuration bound.
-      Files outside the repository belong to the person running the
-      migration, on this machine; the guide says each other contributor does the
-      same for their own.
+    - **Where to look.** **[Amended 2026-10-15, amendment 22]**
+      - in the project: `CLAUDE.md` and `AGENTS.md`, and every file they link
+        to or import; skills, commands, agent definitions and hooks the
+        project wrote (`.claude/skills/`, `.claude/commands/`,
+        `.claude/agents/`, `.codex/`, `.agents/skills/`, and the `hooks` of
+        `.claude/settings*.json`); the permission allow-lists in
+        `.claude/settings.json` and `.claude/settings.local.json`; and the
+        prompt and procedure files the 2.x configuration bound;
+      - the user's own instruction files: `~/.claude/CLAUDE.md` and Codex's
+        `~/.codex/AGENTS.md`;
+      - the user's own skills, commands and agents: `~/.claude/skills/`,
+        `~/.claude/commands/`, `~/.claude/agents/`, and Codex's user-level
+        skill and prompt folders (`~/.codex/skills/`, `~/.agents/skills/`,
+        `~/.codex/prompts/`, whichever exist);
+      - the user's own settings: `~/.claude/settings.json` (its allow-list and
+        any other text describing `tcw`) and Codex's command rules
+        (`~/.codex/rules/`);
+      - the agent's saved memories for the project: for Claude Code, every
+        folder under `~/.claude/projects/` that belongs to this project. There
+        is one per directory a session was started in, so the primary checkout
+        and each worktree can each have one. The guide does not say how
+        Claude Code names these folders; it finds them by content: for each
+        path that `git worktree list --porcelain` prints, a folder belongs to
+        the project when one of its session transcripts records that path as
+        its working directory (`grep -lE '"cwd":"<path>("|/)'
+        ~/.claude/projects/*/*.jsonl`). Each such folder's `memory/` folder and
+        `MEMORY.md` are searched. For Codex, `~/.codex/memories/`.
+      Files outside the repository belong to the person running the migration,
+      on this machine; the guide says each other contributor does the same for
+      their own. **A run made in a worktree** sees only tracked files there, so
+      it also searches the primary checkout's untracked per-user files (such as
+      `.claude/settings.local.json`), by the primary checkout's absolute path;
+      `git -C <primary checkout> status --ignored --porcelain -- .claude .codex`
+      lists them.
     - **What to look for.** Every 2.x name in the first column of the guide's
-      mapping tables (Design 3): removed or renamed commands, flags and keys,
-      2.x document names, status-folder names (`backlog/`, `active/`,
-      `review/`, `completed/`, `discarded/`, `blocked/`), `state.yaml`,
+      mapping tables (Design 3, including the skills and agents of 3.10):
+      removed or renamed commands, flags and keys, the 2.x verbs and stage names
+      on their own (`start`, `submit`, `rework`, `verify`, `sync`, …), 2.x
+      document names, status-folder names (`backlog/`, `active/`, `review/`,
+      `completed/`, `discarded/`, `blocked/`, `inbox/`), `state.yaml`,
       `dod.yaml`, `tcw work start --worktree`, and text describing 2.x behavior
       with no key (automatic commits, publishing, retention), which 3.0 no
-      longer has.
-    - **How to find them.** A `grep -rniE` over those places for `tcw` and for
-      the removed names, which the guide gives as one command with the pattern
-      written out; the agent lists each file and line it finds.
+      longer has. Memory prose often describes 2.x behavior without naming any
+      command, so a line-by-line search is not enough on its own.
+    - **How to find them. [Amended 2026-10-15, amendment 22]** Two searches,
+      each written out in the guide with its pattern:
+      - **Files to read:** `grep -rlE` over every place above, with a pattern
+        joining a case-sensitive, word-bounded `\btcw\b` (so that `tcW` inside
+        an OOXML schema file does not match) and every 2.x name, each
+        word-bounded. The pattern is built from the first column of the
+        guide's mapping tables, in two named parts: `NAMES`, the 2.x names that
+        do not occur in ordinary prose (keys, file names, variables,
+        status-folder forms such as `backlog/`, command forms such as
+        `tcw work submit`, skill and agent names), and `WORDS`, the 2.x verbs
+        and stage names that are also ordinary English. The agent reads
+        **every file this prints, in full**, and judges each passage, not only
+        the matched lines.
+      - **The check's search:** `grep -rE` with `NAMES` only (no `tcw`, no
+        `WORDS`), whose output after the step is compared with the log
+        (below).
     - **The decision is the user's.** The agent proposes, for each finding,
       delete, rewrite (with the proposed 3.0 text) or keep (with the reason),
       and asks once. It applies only what the user approves, and writes each
       finding, the decision and what was done into the migration log under
       `## Agent instructions`. Nothing is deleted automatically.
-    **Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and running
-    the step's search again prints only lines the log records as kept. If a
-    bound prompt or procedure file changed, `tcw validate` exits 0 again.
+    **Check: [Amended 2026-10-15, amendment 22]** `grep -c '^## Agent
+    instructions' <log>` prints `1`. Before the check runs, the log's section
+    ends with a fenced block of the lines expected to match `NAMES` after the
+    step, as `<file>:<text>` with no line numbers, built from the decisions:
+    each kept line's text as it stands, and each rewritten line's approved new
+    text where it still matches (a 3.0 round path such as `review/round-1.md`
+    matches the status-folder form). The check's search, run again over the
+    same places, sorted, and compared with that block by `diff`, prints
+    nothing. Line numbers are not compared, since a rewrite moves them, and a
+    correctly rewritten line that still says `tcw` is not a failure, since
+    `tcw` is not in `NAMES`. If a bound prompt or procedure file changed,
+    `tcw validate` exits 0 again.
 
 ### 3. The mappings
 
@@ -776,6 +822,17 @@ as Parent and Blocks links) and mentions of renamed folders in **open** items'
 documents, the project's config, and its live documents. Left alone: completed
 and discarded items' documents, changelogs and release notes. A `tcw://work/<old
 slug>` reference in live text is rewritten to the new slug.
+
+#### 3.10 Skills and agents **[Amended 2026-10-15, amendment 22]**
+
+Agent instructions name the plugin's skills and agents, so step 12 needs their
+2.x names in a mapping table's first column. Those the plugin had at `v2.8.1`
+and no longer has on the epic branch (`git ls-tree --name-only <rev> skills/
+agents/`): the skills `commands-verify-work`, `post-mortem` and `work-stage`,
+and the agents `verifier` and `post-mortem`. Each row gives what replaces it,
+taken from TCW-74's spec (the agent `reviewer` is new there). Renamed or
+retired command skills from before 2.8 (such as `tcw-drive-work-to-completion`)
+are not listed; the word-bounded `tcw` of step 12's search finds them.
 
 ### 4. Jira mode: binding and reconciling
 
@@ -1018,7 +1075,7 @@ real project addition, and it is the demonstration the ticket asks for.
   renamed; their meanings survive 3.0.
 - `docs/release-notes/upcoming/<slug>.md` and `docs/changelogs/upcoming/<slug>.md`
   become `…/upcoming/<folder>.md`: named by the item's folder name, never the full
-  slug, whose `/` would make a subfolder (TCW-75). `AGENTS.md:159` (the Versioning paragraph; `CLAUDE.md` is a symbolic link to `AGENTS.md`) changes to
+  slug, whose `/` would make a subfolder (TCW-75). `AGENTS.md:161` (the paragraph under Versioning, `:157` on `e301bef5`; `CLAUDE.md` is a symbolic link to `AGENTS.md`) changes to
   match; both `upcoming/README.md` files are TCW-75's, which makes the same change
   (TCW-75 Design 10.5). Entry files already written under 2.x names keep them;
   `scripts/cut_version.py` merges files whatever their names.
@@ -1038,7 +1095,7 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
   when there is nothing to commit, as is usual in Jira mode where a move changes no
   file;
 - **[Decision, owner 2026-10-01] No push hook.** The owner pushes, as today
-  (`AGENTS.md:159`: publishing stays a human step). TCW-75's optional push entry
+  (`AGENTS.md:161`: publishing stays a human step). TCW-75's optional push entry
   is left out; the owner can add it later without any other change.
 
 ### 7. TCW's own files
@@ -1050,13 +1107,13 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
 | `docs/lifecycle/templates/spec.md`, `spec-bug.md` | each gains a first line saying it is the outline for `spec/spec.md`, since it is now read as prompt text rather than copied in as a skeleton |
 | `docs/lifecycle/review.md` | new (Design 6.3) |
 | `tests/test_repo_lifecycle.py` | TCW-70 deleted the 2.x file with the parser it guarded (TCW-70 Design 15.1), and `tests/test_lifecycle_baseline.py` whole; this slice writes it again against the 3.0 parser: the config parses with no problems; every bound file exists and is not empty; plan binds no template; both templates carry the spec's seven required headings; the documentation entries and triggers are as in Design 6.4; the `work.jira` block parses with no problems through `tcw.work.jira.config` (TCW-69's parser passes it through unparsed). The check that the moved rules are reachable (today `:76-83`) is not rewritten here: TCW-75 moved its four phrases into `tests/test_docs_describe_3_0.py` (TCW-75 Design 11). The old test comparing the template with `tcw.work.templates._SPEC` is not restored: TCW-70 deletes that module (epic decision 13), and in 3.0 the template adds to the built-in text instead of replacing it |
-| `AGENTS.md` (`CLAUDE.md` is a symbolic link to it, so it is edited once; amendment 11) | "Work Planning and Implementation" (`AGENTS.md:11-56` on the epic branch) rewritten for 3.0: `advance --dry-run` instead of `stage gate`; the bindings table gains review and completed; the exception rewritten (Design 8.6); the GitHub-issue paragraph without `dod.yaml` and `refined-outcome.md`; it says when TCW's own process advances an item to implement, which TCW-75 removed from `implementation.md` (TCW-75 Design 7.2). Versioning (`AGENTS.md:159`): `upcoming/<work-item-folder>.md`. The worktree section (`### Working in a git worktree`, TCW-75) and the eval section ("Measuring the skill layer", rewritten by TCW-74, `notes-from-tcw-74.md` item 1) are left as they are |
+| `AGENTS.md` (`CLAUDE.md` is a symbolic link to it, so it is edited once; amendment 11) | "Work Planning and Implementation" (`AGENTS.md:11-57` on the epic branch at `e301bef5`) rewritten for 3.0: `advance --dry-run` instead of `stage gate`; the bindings table gains review and completed; the exception rewritten (Design 8.6); the GitHub-issue paragraph without `dod.yaml` and `refined-outcome.md`; it says when TCW's own process advances an item to implement, which TCW-75 removed from `implementation.md` (TCW-75 Design 7.2). Versioning (`AGENTS.md:157`; the sentence at `:161`): `upcoming/<work-item-folder>.md`. Its line 16 is the only live document naming `tcw work stage gate`, so the allowance entry for it is removed in the same commit (amendment 23). The worktree section (`### Working in a git worktree`, TCW-75) and the eval section ("Measuring the skill layer", rewritten by TCW-74, `notes-from-tcw-74.md` item 1) are left as they are |
 | `docs/procedures/create-work.md` | made consistent with TCW-74's rewritten `create-work` procedure (TCW-74 Design 5.1); step-number references fixed |
 | `.gitignore` | `docs/work/discarded/*` and its exception removed; `/tcw-config.local.yaml` added |
 | `docs/capabilities/**/meta.yaml` | `Planning doc:` lines removed (13 files on the epic branch on 2026-10-15; recounted at the survey) |
 | `docs/release-notes/upcoming/`, `docs/changelogs/upcoming/` | this item's entries, named by this item's folder name and linking the guide, with all their text under `##` headings: only TCW-75's entry carries the 3.0.0 introduction before its first `##` (epic decision 15). The README files are TCW-75's (Design 6.4) |
 | the documented-surface allowance, `tests/doc_allowance.py` (TCW-70 Design 14), with five lists (`REMOVED_COMMANDS`, `REMOVED_FLAGS`, `REMOVED_FORMS`, `REFUSED_VALUES`, `REFUSED_KEYS`) and its guard `tests/test_doc_allowance.py` (amendment 5) | every list is empty when this slice ends, so 3.0.0 is never cut with them (epic decision 6). TCW-75 removes every entry no live document names; the entries left then are named by `AGENTS.md` and three capability descriptions (TCW-75 plan, "Before the first task"). Their owners (TCW-70, TCW-71, TCW-73) are complete, so **[Amended 2026-10-15, amendment 6]** this slice fixes those documents itself rather than reporting them: `AGENTS.md` above, and the wording of `docs/capabilities/work/configure-the-work-store-location/description.md`, `docs/capabilities/cli/validate-a-project/description.md` and `docs/capabilities/work/configure-the-work-lifecycle/description.md`, declared `changed:`. **Before the lists are emptied**, three code tests that read `REMOVED_COMMANDS` as the list of 2.x commands that must stay gone (`tests/work/test_removed_commands.py`, `tests/work/test_no_2x_names.py`, `tests/work/test_cli_config.py`) get their own constant with the same entries, outside the allowance: an empty `REMOVED_COMMANDS` would turn `test_no_2x_names.py`'s pattern into `\b()\b`, which matches at every word boundary and fails every file. **[Decision]** Once every list is empty, the module and its guard test are deleted, and the imports and allowance branches in `tests/test_documented_cli_surface.py`, `tests/test_shipped_text.py` and `tests/test_docs_describe_3_0.py` go with them, so nothing can be added to it after 3.0.0 |
-| TCW-75's link-resolution test (`tests/test_docs_describe_3_0.py`) | the constant `PENDING_TARGETS`, which exempts `docs/migration-guide-2.8-to-3.0.0.md` from link resolution, is removed once the guide exists (TCW-75 Design 11 and its criterion 3), together with TCW-75's test `test_the_link_check_lets_the_pending_migration_guide_through`, which asserts the guide does not exist and so fails the moment it does |
+| TCW-75's link-resolution test (`tests/test_docs_describe_3_0.py`) | the constant `PENDING_TARGETS`, which exempts `docs/migration-guide-2.8-to-3.0.0.md` from link resolution, is removed in the same commit that creates the guide (TCW-75 Design 11 and its criterion 3; amendment 23), together with TCW-75's test `test_the_link_check_lets_the_pending_migration_guide_through`, which asserts the guide does not exist and so fails the moment it does |
 
 ### 8. Sequencing: how this epic's board is tracked until the migration
 
@@ -1079,7 +1136,7 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
    TCW-74 and TCW-77 were each deleted right after completing, with a
    `graveyard.yaml` entry whose `location` is the commit holding the folder
    (`0e4d4061`, `3207f310`, `6599dd20`, `e400dcfd`, `a066ae20`, `64a2eb94`,
-   `0a23906f`). TCW-75 will be deleted the same way when it completes. Under
+   `0a23906f`). TCW-75 was deleted the same way when it completed on 2026-10-15 (`560e312f`; amendment 23). Under
    `initial-request.md`'s out-of-scope rule ("recreating items that 2.x
    retention already deleted; they stay deleted") they are not restored. So 3.0
    drift cannot read these children's `capabilities.yaml`, TCW-68's only child
@@ -1112,7 +1169,16 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
       `docs/capabilities/plugin/*/description.md` and two `upcoming/` entries).
       TCW-74 and TCW-75 rewrote or deleted most of those files on the epic
       branch, so this merge has conflicts, resolved by keeping the epic's text
-      and carrying the Pi facts into it (`delegation.md` stays deleted). If `main`'s board must change in that window, it is
+      and carrying the Pi facts into it (`delegation.md` stays deleted).
+      **[Amended 2026-10-15, amendment 23]** 2.8.2 is now cut and merged into
+      `main` (`dc0aaa7a`, `74630308`), so the two `upcoming/` entries are
+      `v2.8.2.md` files and all five version files say 2.8.2. A trial merge
+      (`git merge-tree --write-tree main e301bef5`) conflicts in `README.md`,
+      `docs/lifecycle/harness.md`, `skills/setup/SKILL.md` and
+      `delegation.md` (changed on `main`, deleted on the epic), and merges
+      `package.json`, `.codex-plugin/plugin.json`, `skills/README.md` and
+      `skills/setup/references/install.md` without conflict; those four are
+      still read after the merge. If `main`'s board must change in that window, it is
       merged again and the guide's steps are run for the new items;
    3. runs on its own branch off the epic branch, one commit per step. If a step
       exposes a defect in 3.0 code, that branch is abandoned, the code is fixed on
@@ -1209,7 +1275,9 @@ run, the log after step 12.
    - every `WORK_ARTIFACTS` name (`base.py:3101-3102`) and `WORK_SIDECARS` file
      (`base.py:3113-3139`), `graveyard.yaml`, `dod.yaml`, `renames.yaml`
      (amendment 4), the status folders and `inbox/`;
-   - every variable set at `hooks.py:60-69` and `resolve.py:191-196`.
+   - every variable set at `hooks.py:60-69` and `resolve.py:191-196`;
+   - **[Amended 2026-10-15, amendment 22]** the skills and agents of Design
+     3.10.
 5. The hook-variable table maps `TCW_STATUS` to `TCW_FROM_STAGE` for `pre` hooks
    and `TCW_STAGE` for `post` hooks, and `TCW_TRANSITION` to `TCW_STAGE`, and
    says that `TCW_SLUG` keeps its name but becomes the full slug.
@@ -1290,13 +1358,17 @@ run, the log after step 12.
     TCW-69 to TCW-75 and TCW-77 with its `graveyard.yaml` `location` commit, and
     `git cat-file -e <location>:docs/work/completed/<slug>/spec.md` succeeds for
     each, so every sibling spec the guide was written from can still be read.
+    The eight locations, read from `main`'s `graveyard.yaml` on 2026-10-15:
+    TCW-69 `0e4d4061`, TCW-70 `3207f310`, TCW-71 `6599dd20`, TCW-73
+    `e400dcfd`, TCW-72 `a066ae20`, TCW-74 `64a2eb94`, TCW-77 `0a23906f`, and
+    TCW-75 `560e312f` (deleted by `b5b7756f`; amendment 23).
 
 **Release readiness**
 
 28. `tests/doc_allowance.py` and `tests/test_doc_allowance.py` no longer exist,
     no file under `tests/` imports `tests.doc_allowance`, the three code tests of
     Design 7 read their own list of removed 2.x commands (still holding every
-    entry `REMOVED_COMMANDS` had on 2026-10-15), `tests/test_documented_cli_surface.py`
+    entry `REMOVED_COMMANDS` had at `5b0dcf95`, 21 in all; amendment 23), `tests/test_documented_cli_surface.py`
     passes without the allowance, and TCW-75's link test no longer exempts
     `docs/migration-guide-2.8-to-3.0.0.md`; bare `pytest` still passes.
 29. This item's two `upcoming/` entry files are named by its folder name after
@@ -1328,17 +1400,23 @@ run, the log after step 12.
 **The owner's addition (amendment 21)**
 
 32. The guide's step 12 names every place Design 2 step 12 lists (project
-    `CLAUDE.md`/`AGENTS.md` and linked files, the per-project memory folder
-    under `~/.claude/projects/`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
-    project skills, commands, agents and hooks, the `.claude/settings*.json`
-    allow-lists, bound prompt files); gives a search command whose pattern
-    includes `tcw` and the status-folder names; says the user decides delete,
-    rewrite or keep for each finding and that nothing is removed
-    automatically; and has a **Check**. For TCW's own run, the log's
-    `## Agent instructions` section lists every hit of that search over this
-    repository's `AGENTS.md`, `.claude/`, the memory folder
-    `~/.claude/projects/-Users-brian-Projects-TCW/memory/` and
-    `~/.claude/CLAUDE.md`, each with the owner's decision and what was done.
+    `CLAUDE.md`/`AGENTS.md` and linked files, project skills, commands, agents
+    and hooks, the `.claude/settings*.json` allow-lists, bound prompt files,
+    `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, the user's own skill, command
+    and agent folders for both harnesses, `~/.claude/settings.json`,
+    `~/.codex/rules/`, every per-project memory folder under
+    `~/.claude/projects/` found by the transcript search, and
+    `~/.codex/memories/`); says a run in a worktree also searches the primary
+    checkout's untracked per-user files; gives the files-to-read search, whose
+    pattern holds a case-sensitive word-bounded `tcw`, `NAMES` and `WORDS`,
+    and says each file it prints is read in full; holds every 2.x name of the
+    mapping tables' first columns in `NAMES` or `WORDS`; says the user decides
+    delete, rewrite or keep for each finding and that nothing is removed
+    automatically; and has the **Check** of Design 2 step 12 (amendment 22).
+    For TCW's own run, the log's `## Agent instructions` section lists every
+    finding from the files that search printed over the places Design 2 step
+    12 lists, as they exist on this machine, each with the owner's decision and
+    what was done, and the check's `diff` printed nothing.
 
 ### Coverage
 
@@ -1395,7 +1473,7 @@ run, the log after step 12.
   slice may remove. Unless that slice declares the removal, drift reports it.
   Mitigation: criterion 22.
 - **A large one-off ticket creation.** **[Recounted 2026-10-15, amendment 3]**
-  TCW needs up to 20 new tickets: 14 unbound items and 6 inbox entries. The
+  TCW needs up to 21 new tickets: 14 unbound items and 7 inbox entries (recounted, amendment 23). The
   prune does not reduce that number, since pruned items are recorded as
   `Won't Do` tickets (Design 2, step 1). Of the 14 items, 6 go straight to
   `Won't Do` (the prune list), 2 straight to `Done` (the completed
@@ -1405,7 +1483,7 @@ run, the log after step 12.
   `make-the-test-suite-run-in-minutes-…`, `decide-whether-a-capability-path-…`,
   `follow-renamed-slugs-…`, `run-ci-on-python-3-12-as-well` less any finished
   by then) and the `review/` item `make-the-plugin-installable-in-pi`, unless
-  it completes first. The 6 inbox entries become tickets at `Triage` with no
+  it completes first. The inbox entries left at the survey become tickets at `Triage` with no
   item. The survey recounts.
 
 ## Notes
@@ -1603,6 +1681,11 @@ One new question, raised by the 2026-10-02 review (Jira administration):
 
 Raised by the pre-plan check of 2026-10-15, open until the owner answers:
 
+**Items 7 to 9 were settled by the owner on 2026-10-15 (amendment 23):** the
+deleted children stay deleted; this item rewords the three capability records;
+2.8.2 (Pi) is merged into `main` (`dc0aaa7a`, plus the `harness.md` fix
+`74630308`) and published from the tag `v2.8.2`.
+
 7. **The epic's deleted children.** 2.x retention deleted TCW-69 to TCW-74 and
    TCW-77 as each completed, and will delete TCW-75 (Design 8.3). The spec
    follows `initial-request.md` and leaves them deleted. Restoring them from
@@ -1788,8 +1871,9 @@ corrected by amendment 15.
     CLAUDE.md` shows mode `120000`; `notes-from-tcw-74.md` item 1). Design 7
     edits `AGENTS.md` once and leaves the eval section (TCW-74) and the worktree
     section (TCW-75) alone; criterion 19 checks the link instead of a `diff`.
-    Line citations moved: the work-planning section is `AGENTS.md:11-56`,
-    Versioning `:159` (epic branch).
+    Line citations moved: the work-planning section is `AGENTS.md:11-57`,
+    Versioning `:157`, its entry-file sentence `:161` (epic branch at
+    `e301bef5`; corrected by amendment 23).
 12. **A list-form `capabilities.yaml`** (written by 2.x `reconcile`, read by 2.x
     as declaring nothing) is rejected by 3.0 (`parse_declarations`,
     `tcw/work/gates.py:109`). A row is added to Design 3.3. TCW has none.
@@ -1876,3 +1960,70 @@ corrected by amendment 15.
     `AGENTS.md` (and so `CLAUDE.md`), `.claude/`, the memory folder
     `/Users/brian/.claude/projects/-Users-brian-Projects-TCW/memory/` and the
     owner's `~/.claude/CLAUDE.md`, each decision recorded in the migration log.
+
+### Amendments after the plan review (2026-10-15)
+
+An adversarial review of the plan returned NOT DONE; these two amendments
+answer the findings that reach the spec. Each was checked against the
+repository at `e301bef5` and, for user-level files, against this machine.
+
+22. **Step 12 could not find, and its check could not pass.**
+    - *Finding what to revisit.* The search was one `grep -rniE` printing
+      lines that contain `tcw` or a few names, so it missed 2.x wording on
+      lines without them: "verify" in the memory
+      `fold-small-follow-ups-into-the-current-item.md`, "sync" in
+      `the-item-is-truth-always-applies.md`, `initial-request.md` and
+      `intake.md` in `triage-writes-the-request-read-it-first.md`, and most
+      first-column names of the mapping tables. Its status-folder part needed a
+      slash on both sides (missing a bare `backlog/`) and matched 3.0 round
+      paths (`<folder>/review/round-1.md`). Step 12 now has a files-to-read
+      search, built from the mapping tables' first column in two parts
+      (`NAMES` and `WORDS`) plus a case-sensitive word-bounded `tcw`, and the
+      agent reads every file it prints in full, because memory prose often
+      describes 2.x behavior without naming a command. The skills and agents
+      the plugin deleted get their own table (Design 3.10) so they are in that
+      first column.
+    - *Where to look.* User-level places were missing. On this machine
+      `~/.claude/skills/autonomous-work/SKILL.md` names
+      `tcw work list --status backlog` (line 14), the `tcw-verifier` agent,
+      `tcw work submit` and `tcw work complete` (lines 49-54);
+      `~/.claude/settings.json` allows `Bash(tcw *)` (line 81) and describes
+      `tcw` in its auto-mode text (lines 339-374); `~/.codex/rules/default.rules`
+      names `tcw` on 15 lines; and `~/.codex/memories/` holds memories naming
+      it. Added: `~/.claude/skills/`, `~/.claude/agents/`,
+      `~/.claude/commands/`, `~/.claude/settings.json`, Codex's user-level
+      skill and prompt folders, `~/.codex/rules/`, `~/.codex/memories/`, and
+      every per-project memory folder, found by the working directory its
+      transcripts record rather than by a rule for folder names.
+    - *Worktrees.* `.claude/settings.local.json` is ignored (by the user's
+      global git ignore file) and exists only in the primary checkout, so a run
+      in a worktree cannot see it. Step 12 now says such a run also searches the
+      primary checkout's untracked per-user files.
+    - *The check.* "Running the step's search again prints only lines the log
+      records as kept" fails on a correct run: a correctly rewritten 3.0 line
+      still contains `tcw`, and line numbers move. The check now runs the
+      `NAMES` search alone and compares its output, without line numbers, with
+      a block of expected lines the log builds from the decisions.
+
+    Changed: Design 2 step 12, Design 3.10 (new), criteria 4 and 32.
+23. **TCW-75 has landed, and the owner settled Notes items 7 to 9.** The plan
+    now starts from `e301bef5`, which holds TCW-75 (completed on `main` in
+    `560e312f`, deleted by retention in `b5b7756f`).
+    - At `e301bef5`, `tests/test_docs_describe_3_0.py:267-270` asserts the
+      guide does not exist, so `PENDING_TARGETS` (lines 44, 227) and that test
+      go in the commit that creates the guide (Design 7).
+    - TCW-75 shrank `REMOVED_COMMANDS` to four entries; the three code tests'
+      own list keeps the 21 that it held at `5b0dcf95` (criterion 28 now cites
+      the commit rather than the date).
+    - `AGENTS.md:16` is the only live document naming `tcw work stage gate`
+      (`git grep` over the Markdown files `tests/test_documented_cli_surface.py`
+      treats as live), so rewriting it removes that allowance entry in the same
+      commit, or `test_an_entry_is_still_named_by_some_live_document` fails
+      (Design 7).
+    - Line numbers at `e301bef5`: the work-planning section is
+      `AGENTS.md:11-57`, Versioning `:157` (amendment 11 corrected).
+    - TCW-75's `location` `560e312f` joins criterion 27 and Design 8.3.
+    - `main`'s inbox holds seven entries, not six (Design 2 step 1; Risks).
+    - 2.8.2 is merged into `main`; the merge of Design 8.5.2 was tried with
+      `git merge-tree`, and its conflicts are listed there.
+    - The owner's answers to Notes items 7 to 9 are recorded above them.
