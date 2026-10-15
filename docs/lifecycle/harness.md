@@ -10,7 +10,9 @@ requirement a Codex or Pi user does not get._
 TCW ships shared skills to Claude Code, Codex, and Pi. Their packaging differs:
 Claude and Codex use their existing plugin manifests, while Pi uses the `pi`
 resource declaration in `package.json`. All three load the same `skills/` tree.
-Required lifecycle behavior must be accessible in each harness.
+Required lifecycle behavior must be accessible in each harness. Claude's plugin
+system is the richest of the three; Codex follows the
+[Agentskills specification](https://agentskills.io/specification.md).
 
 **Claude-only features are welcome as _enhancements_, never as the sole carrier
 of a requirement.** TCW's dynamic shell injection (`` !`cmd` ``) and Claude
