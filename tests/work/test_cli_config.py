@@ -11,7 +11,7 @@ import pytest
 
 from tcw.cli import main
 from tcw.work.resolve import BODY_CAP, packaged_text
-from tests.doc_allowance import REMOVED_COMMANDS
+from tests.work.removed_2x import REMOVED_2X_COMMANDS
 from tests.work.projects import make_project
 
 TODAY = date.today().isoformat()
@@ -137,7 +137,7 @@ def test_the_output_names_no_removed_command(tcw, tmp_path):
     tcw(["new", "X"], root)
     r = tcw(["stage", "prompt", "spec", f"{TODAY}-x"], root)
     assert r.code == 0
-    named = [c for c in REMOVED_COMMANDS if c in r.out]
+    named = [c for c in REMOVED_2X_COMMANDS if c in r.out]
     assert named == []
 
 

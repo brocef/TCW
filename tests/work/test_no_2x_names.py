@@ -13,14 +13,14 @@ from pathlib import Path
 import pytest
 
 import tcw
-from tests.doc_allowance import REMOVED_COMMANDS
+from tests.work.removed_2x import REMOVED_2X_COMMANDS
 
 PACKAGE = Path(tcw.__file__).resolve().parent
 
 NAMES = ("graveyard.yaml", "dod.yaml", "renames.yaml", "state.yaml",
          "tracker.yaml", "FsWorkStore", "WORK_STATUSES", "LIFECYCLE_STEPS")
 COMMAND = re.compile(
-    r"\b(" + "|".join(re.escape(c) for c in REMOVED_COMMANDS) + r")\b")
+    r"\b(" + "|".join(re.escape(c) for c in REMOVED_2X_COMMANDS) + r")\b")
 
 
 def sources():
