@@ -115,6 +115,14 @@ def test_the_tags_filter_is_the_clis_tag_query(tagged, tcw):
     assert board["items"] == listed
 
 
+@pytest.mark.parametrize("tag", ["!!", "-"])
+def test_a_name_that_is_not_a_tag_is_a_usage_error(tagged, jira, tag):
+    for served in (tagged[0], jira.served):
+        answer = served.get(f"/api/work?tag={tag}")
+        assert answer.status == 400, answer.body
+        assert answer.json["code"] == "usage" and repr(tag) in answer.json["error"]
+
+
 def test_finished_items_show_only_with_all(tagged, tcw):
     served, folders = tagged
     item = served.root / "docs" / "work" / folders["none"] / "item.yaml"

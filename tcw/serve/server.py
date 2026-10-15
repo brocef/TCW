@@ -95,6 +95,24 @@ def error_answer(error: BaseException) -> tuple[int, dict[str, Any]]:
                                               "code": "error"}
 
 
+def _check_encodable(value: Any) -> None:
+    """Refuse a body holding text that cannot be written as UTF-8: JSON can
+    carry a lone surrogate (`"\\ud800"`), and a store would fail on it only
+    when writing, as a 500."""
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise usage("the request body holds text that is not valid UTF-8") from None
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _check_encodable(key)
+            _check_encodable(item)
+    elif isinstance(value, list):
+        for item in value:
+            _check_encodable(item)
+
+
 # ---------------------------------------------------------------------------
 # Host and Origin
 
@@ -332,6 +350,7 @@ class TcwHandler(BaseHTTPRequestHandler):
             raise usage(f"the request body is not JSON: {error}") from None
         if not isinstance(body, dict):
             raise usage("the request body must be a JSON object")
+        _check_encodable(body)
         return body
 
     def _discard(self, length: int) -> None:

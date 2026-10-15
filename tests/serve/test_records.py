@@ -147,6 +147,15 @@ def test_an_invalid_capability_field_is_a_usage_error(records, fields):
 # -- validation notices ------------------------------------------------------------------------
 
 
+def test_text_that_is_not_valid_utf8_is_refused_and_writes_nothing(records):
+    before = detail(records, "capabilities", "web")
+    answer = records.patch("/api/capabilities/web", {
+        "revision": before["coreRevision"], "body": "broken \ud800 text"})
+    assert_error(answer, 400, "usage")
+    assert detail(records, "capabilities", "web") == before
+    assert_error(records.post("/api/taxonomy", {"name": "Bad \ud800"}), 400, "usage")
+
+
 def test_a_clean_save_has_no_warnings(records):
     FsCapabilitiesStore.open(records.root).add("unrelated", status="Partial")
     answer = records.post("/api/taxonomy", {"name": "Clean", "slug": "clean"})

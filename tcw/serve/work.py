@@ -23,7 +23,9 @@ from tcw.errors import BackendError, NotFound, TcwError, Unreachable
 from tcw.serve import files as item_files
 from tcw.serve.records import checked
 from tcw.serve.server import Request, not_found, read_only, route, usage
-from tcw.store.base import CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, StaleRevision
+from tcw.store.base import (
+    CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, StaleRevision, normalize_tag,
+)
 from tcw.validate import ValidationTarget
 from tcw.work.backend import Query
 from tcw.work.config import WorkConfig
@@ -184,8 +186,17 @@ def project(request: Request):
 # -- the board ---------------------------------------------------------------------------
 
 
+def _tag(value: str) -> str:
+    """A tag as the stores hold it. Normalized here, so a name that is not a
+    tag is the request's fault (400), not the backend's (500)."""
+    try:
+        return normalize_tag(value)
+    except ValueError:
+        raise usage(f"{value!r} is not a tag") from None
+
+
 def _tags(request: Request) -> frozenset[str] | None:
-    given = [t for t in request.query.get("tag", []) if t]
+    given = [_tag(t) for t in request.query.get("tag", []) if t]
     return frozenset(given) if given else None
 
 
@@ -345,6 +356,9 @@ def parse_changes(sent: Any) -> Changes:
                 raise usage(f"{name} takes add and remove lists")
             values[add] = _strings(pair.get("add"), f"{name}.add")
             values[remove] = _strings(pair.get("remove"), f"{name}.remove")
+            if name == "tags":
+                values[add] = tuple(_tag(t) for t in values[add])
+                values[remove] = tuple(_tag(t) for t in values[remove])
     return Changes(**values)
 
 

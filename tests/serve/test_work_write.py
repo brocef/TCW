@@ -445,6 +445,13 @@ def test_jira_create_checks_the_assignee_is_assignable(jira):
     assert ("is_assignable", "acc-ann") in jira.stubs.calls
 
 
+def test_jira_create_with_a_name_that_is_not_a_tag_is_a_usage_error(jira):
+    answer = jira.served.post("/api/work", {"title": "T", "properties": {
+        "tags": ["!!"]}})
+    assert_refused(answer, 400, "usage", "'!!'")
+    assert not jira.backend.named("create")
+
+
 @pytest.fixture
 def adopting(tmp_path, monkeypatch, personal_on, serve_project):
     """A Jira-mode project on TCW-71's real backend over its fake, served
