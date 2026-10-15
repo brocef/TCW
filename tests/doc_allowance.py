@@ -54,18 +54,14 @@ REMOVED_FLAGS = (
     ("tcw work new", "--epic"),
     ("tcw work edit", "--type"),
     ("tcw work edit", "--initiative"),
-    ("tcw work lifecycle", "--transition"),
     # TCW-73 (its Design 2 and 9.4).
     ("tcw work lifecycle", "--directive"),
-    ("tcw work lifecycle", "--phase"),
     ("tcw work list", "--tags"),
     ("tcw work new", "--tags"),
-    ("tcw work edit", "--tags"),
     ("tcw work edit", "--untags"),
     ("tcw taxonomy add", "-s"),
     ("tcw taxonomy add", "-p"),
     ("tcw capabilities list", "--local-only"),
-    ("tcw capabilities add", "-s"),
     ("tcw validate", "--no-recurse"),
     ("tcw provision", "--refresh"),
 )
@@ -76,6 +72,15 @@ REMOVED_FLAGS = (
 # is not checked; each must fail to parse.
 REMOVED_FORMS = (
     "tcw capabilities extends web-frontend",
+)
+
+# Positional values the parser accepts but the command refuses, as (command,
+# value): `tcw work procedure prompt <id>` parses, with `prompt` as the
+# procedure's name, and is refused when it runs (TCW-73). TCW-74's command
+# check reads the value, so the configure skill, which TCW-75 rewrites, needs
+# this entry until then.
+REFUSED_VALUES = (
+    ("tcw work procedure", "prompt"),
 )
 
 # Configuration keys TCW-69's parser refuses that documents still name.

@@ -47,7 +47,7 @@ tests cannot check.
 ## Exit badly
 
 - _Planning shows the spec is wrong._ Return to spec and fix it:
-  `tcw work advance <slug> --to spec`. Do not plan around a spec you no longer
-  believe.
+  `tcw work advance <slug> --to spec`. Do not plan around a spec you have
+  stopped believing.
 - _A step cannot be verified._ Say so in the step rather than inventing a test
   that would pass either way.

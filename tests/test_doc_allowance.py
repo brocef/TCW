@@ -11,8 +11,8 @@ import pytest
 
 from tcw.cli import build_parser
 from tcw.work.config import parse_work_config
-from tests.doc_allowance import (REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS,
-                                  REMOVED_FORMS)
+from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
+                                  REMOVED_FLAGS, REMOVED_FORMS)
 
 
 def _commands(parser: argparse.ArgumentParser, path=("tcw",)):
@@ -75,3 +75,17 @@ def test_a_removed_form_no_longer_parses(form):
     with pytest.raises(SystemExit) as stop:
         build_parser().parse_args(form.split()[1:])
     assert stop.value.code == 2, f"{form} parses; take it out of REMOVED_FORMS"
+
+
+@pytest.mark.parametrize("command, value", REFUSED_VALUES)
+def test_a_refused_value_is_refused(command, value, tmp_path):
+    """The value parses but the command refuses it, by name."""
+    import subprocess
+    import sys
+    argv = [*command.split()[1:], value]
+    script = ("import sys; from tcw.cli import main; "
+              f"sys.exit(main({argv!r}))")
+    r = subprocess.run([sys.executable, "-c", script], cwd=tmp_path,
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and value in r.stderr, \
+        f"{command} {value} is accepted; take it out of REFUSED_VALUES"
