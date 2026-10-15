@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from tcw.cli import main
-from tests.doc_allowance import REMOVED_COMMANDS
+from tests.work.removed_2x import REMOVED_2X_COMMANDS
 from tests.work.projects import commit_all, git, make_project, write_item
 
 
@@ -19,7 +19,7 @@ def project(tmp_path_factory):
     return root
 
 
-@pytest.mark.parametrize("command", REMOVED_COMMANDS)
+@pytest.mark.parametrize("command", REMOVED_2X_COMMANDS)
 def test_a_removed_command_is_unknown(command, project, monkeypatch, capsys):
     monkeypatch.chdir(project)
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
