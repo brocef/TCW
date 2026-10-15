@@ -1217,3 +1217,6 @@
   location: 0a23906fb743a41ebf6d1fb2227ebf122ad2d318
   resolution: done
   resolved: '2026-10-15'
+2026-10-07-make-the-plugin-installable-in-pi:
+  resolution: done
+  resolved: '2026-10-15'
