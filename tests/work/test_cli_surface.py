@@ -186,6 +186,19 @@ def test_new_at_the_inbox_is_filesystem_only(tcw, jira_project):
     assert jira_project.fake.writes() == []
 
 
+def test_new_at_the_inbox_is_refused_before_piped_input_is_read(tcw, jira_project,
+                                                              monkeypatch):
+    """Pre-freeze clean-up, P4: the usage error never waits on standard input."""
+    import tcw.work.cli as work_cli
+
+    def never(*args, **kwargs):
+        raise AssertionError("standard input was read before the usage error")
+    monkeypatch.setattr(work_cli, "read_piped_stdin", never)
+    r = tcw(["new", "x", "--stage", "inbox"], jira_project.root)
+    assert (r.code, r.out) == (2, ""), r.err
+    assert "--stage inbox is for a filesystem-mode project" in r.err
+
+
 def test_show_names_people_in_text_and_ids_in_json(tcw, jira_project):
     fake = jira_project.fake
     fake.account("ada@example.test", "acct-ada", "Ada")

@@ -1018,3 +1018,24 @@ def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(
         FsTaxonomyStore.open(cons).extends_add("shared")
     assert "taxonomy must be a mapping" in str(excinfo.value)
     assert cfg.read_text() == original       # nothing written
+
+
+@pytest.mark.parametrize("slug", ["A B", "a/b", "Memo", "a--b", "a-", "a_b"])
+def test_cli_add_refuses_a_slug_that_is_not_one(tmp_path, monkeypatch, capsys, slug):
+    """Pre-freeze clean-up, C2: `--slug` must be what `slugify` makes."""
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+    before = sorted(p.name for p in (root / "docs" / "taxonomy").iterdir())
+    assert main(["taxonomy", "add", "X", "--slug", slug]) == 2
+    err = capsys.readouterr().err
+    assert f"--slug {slug!r} is not a slug" in err, err
+    assert sorted(p.name for p in (root / "docs" / "taxonomy").iterdir()) == before
+
+
+def test_cli_add_takes_a_slug_that_is_one(tmp_path, monkeypatch, capsys):
+    from tcw.cli import main
+    root = node(tmp_path, "repo")
+    monkeypatch.chdir(root)
+    assert main(["taxonomy", "add", "Memo", "--slug", "memo-2"]) == 0
+    assert (root / "docs" / "taxonomy" / "memo-2" / "meta.yaml").is_file()

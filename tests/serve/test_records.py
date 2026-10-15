@@ -71,6 +71,17 @@ def test_a_duplicate_term_is_refused(records):
     assert_error(answer, 409, "refused")
 
 
+@pytest.mark.parametrize("slug", ["A B", "a/b"])
+def test_a_slug_that_is_not_one_is_400_without_naming_a_flag(records, slug):
+    """Pre-freeze clean-up, C2: the store's message, which names no
+    command-line flag."""
+    answer = records.post("/api/taxonomy", {"name": "X", "slug": slug})
+    assert_error(answer, 400, "usage")
+    assert "is not a slug" in answer.json["error"]
+    assert "--slug" not in answer.json["error"]
+    assert not (records.root / "docs" / "taxonomy" / "a").exists()
+
+
 def test_a_term_needs_a_name(records):
     assert_error(records.post("/api/taxonomy", {}), 400, "usage")
 
@@ -84,7 +95,7 @@ def test_a_feature_with_an_unknown_vocabulary_term_is_refused_and_writes_nothing
 
 
 def test_an_encoded_slash_names_a_nested_term(records):
-    FsTaxonomyStore.open(records.root).add("Adapter", slug="admin/adapter")
+    FsTaxonomyStore.open(records.root).add("Adapter", slug="adapter", parent="admin")
     assert detail(records, "taxonomy", "admin%2Fadapter")["term"]["slug"] == "admin/adapter"
     revision = detail(records, "taxonomy", "admin%2Fadapter")["coreRevision"]
     answer = records.patch("/api/taxonomy/admin%2Fadapter",

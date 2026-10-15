@@ -245,5 +245,11 @@ def test_uncommitted_changes(tmp_path):
 def test_a_store_outside_git_cannot_be_checked(tmp_path):
     outside = tmp_path / "plain"
     outside.mkdir()
-    with pytest.raises(Refused, match="not in a git repository"):
+    with pytest.raises(Refused) as refused:
         uncommitted_changes(outside, "q")
+    assert str(refused.value).startswith(
+        "the work store of project 'q' is not in a git repository")
+    with pytest.raises(Refused) as refused:
+        uncommitted_changes(outside)
+    assert str(refused.value).startswith(
+        "the project's work store is not in a git repository")

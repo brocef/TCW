@@ -11,10 +11,10 @@ import argparse
 
 from tcw import exit as codes
 from tcw.cli_help import command, group
-from tcw.errors import BackendError, NotFound
+from tcw.errors import BackendError, NotFound, UsageError
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
-from tcw.store.base import Term
+from tcw.store.base import NotASlug, Term
 from tcw.store.fs import FsTaxonomyStore, find_component_project
 
 NAME = "taxonomy"
@@ -99,9 +99,12 @@ def _path(args: argparse.Namespace) -> int:
 
 def _add(args: argparse.Namespace) -> int:
     st = _store()
-    term = st.add(args.name, slug=args.slug, parent=args.parent,
-                  description=read_piped_stdin(), kind=args.kind,
-                  vocabulary=args.vocab)
+    try:
+        term = st.add(args.name, slug=args.slug, parent=args.parent,
+                      description=read_piped_stdin(), kind=args.kind,
+                      vocabulary=args.vocab)
+    except NotASlug as error:
+        raise UsageError(f"--slug {error}") from None
     changed(st.changed)
     print(term.qualified)
     return codes.OK

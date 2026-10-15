@@ -62,7 +62,13 @@ def open_backend(project_root: Path, *,
     layered = _layered(root, personal)
     config = layered.work
     try:
-        project = FsProjectRegistry.open(root).current.id
+        registry = FsProjectRegistry.open(root)
+        if personal:
+            # The project the command acts on answers for its whole graph, as
+            # `taxonomy` and `validate` do; another project's broken child does
+            # not stop reading that project from here.
+            registry.require_valid()
+        project = registry.current.id
         path = work_path(root)
     except ValueError as error:
         raise BackendError(str(error)) from None
@@ -104,10 +110,11 @@ def uncommitted_changes(path: Path, project_id: str | None = None) -> list[str]:
     be checked. Runs `git --no-optional-locks status`, which neither refreshes
     the index nor takes `index.lock` in someone else's repository.
     """
-    who = f"'{project_id}'" if project_id else "the project"
+    who = (f"the work store of project '{project_id}'" if project_id
+           else "the project's work store")
     repository = git_root(Path(path))
     if repository is None:
-        raise Refused(f"{who}'s work store is not in a git repository, so TCW "
+        raise Refused(f"{who} is not in a git repository, so TCW "
                       f"cannot check it for uncommitted changes")
     result = subprocess.run(
         ["git", "--no-optional-locks", "-C", str(repository), "status",

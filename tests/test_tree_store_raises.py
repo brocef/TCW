@@ -8,7 +8,8 @@ failure no test provokes is exactly the one that would slip back to
 The region checked runs from `_revision` to the end of `FsCapabilitiesStore`:
 the shared tree-store code, both stores and the module functions between
 them. Besides the four exit classes it allows the reference errors (which are
-`NotFound` and `UsageError` themselves), `StaleRevision` (a conflict the web
+`NotFound` and `UsageError` themselves), `NotASlug` (a `UsageError` the
+taxonomy CLI catches to name `--slug`), `StaleRevision` (a conflict the web
 viewer answers with its own status, not a CLI exit) and
 `StoreLocationUnusable` (a store-opening error, raised before any operation).
 """
@@ -21,7 +22,7 @@ import tcw
 FS = Path(tcw.__file__).resolve().parent / "store" / "fs.py"
 
 ALLOWED = {"NotFound", "UsageError", "Refused", "BackendError", "RefError",
-           "AmbiguousRef", "StaleRevision", "StoreLocationUnusable"}
+           "AmbiguousRef", "NotASlug", "StaleRevision", "StoreLocationUnusable"}
 
 
 def _region(tree: ast.Module) -> list[ast.stmt]:
