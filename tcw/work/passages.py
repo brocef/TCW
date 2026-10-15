@@ -22,6 +22,10 @@ from tcw.errors import BackendError
 
 BACKEND_OPEN = re.compile(r"^<!-- backend: (?P<name>\S+) -->$")
 BACKEND_CLOSE = "<!-- /backend -->"
+# A line that opens a comment with the word `backend` (after an optional `/`)
+# but matches neither marker exactly is a misspelled marker. A comment that only
+# mentions a backend later in its prose is ordinary text and is kept.
+NEAR_MARKER = re.compile(r"<!--\s*/?\s*backend\b", re.IGNORECASE)
 
 
 def filter_backend(text: str, backend: str | None) -> str:
@@ -62,7 +66,7 @@ def filter_backend(text: str, backend: str | None) -> str:
                     f"passage")
             inside = None
             continue
-        if marker.startswith("<!--") and "backend" in marker.lower():
+        if NEAR_MARKER.match(marker):
             raise BackendError(
                 f"line {number}: `{marker}` looks like a backend passage marker "
                 f"but is neither `<!-- backend: <name> -->` nor "

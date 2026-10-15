@@ -58,6 +58,17 @@ def test_a_marker_inside_a_sentence_is_not_a_marker():
     assert filter_backend(text, "filesystem") == text
 
 
+@pytest.mark.parametrize("comment", [
+    "<!-- This prompt is shared by every backend. -->",
+    "  <!-- TODO backend-specific wording -->",
+    "<!-- Bound to the review stage; the jira backend posts findings instead.",
+])
+def test_a_comment_that_only_mentions_a_backend_is_kept(comment):
+    text = f"a\n{comment}\nb\n"
+    for backend in (*BACKENDS, None):
+        assert filter_backend(text, backend) == text
+
+
 @pytest.mark.parametrize("text, words", [
     ("<!-- backend: trello -->\nx\n<!-- /backend -->\n", "unknown backend 'trello'"),
     ("<!-- backend: jira -->\n<!-- backend: filesystem -->\nx\n<!-- /backend -->\n"
