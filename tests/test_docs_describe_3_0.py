@@ -12,7 +12,11 @@ headed `### Working in a git worktree` (`CLAUDE.md` is a symbolic link to
   that exists, and an `#anchor` into an owned document at a heading in it;
 - the allowance-name check (criterion 4): no owned document names an entry of
   the temporary allowance in `tests/doc_allowance.py`, read with the same
-  helpers TCW-74's scans use, so the two cannot read a document differently.
+  helpers TCW-74's scans use, so the two cannot read a document differently;
+- the command check: every `tcw …` invocation resolves in the 3.0 parser,
+  procedure and stage names included, with the same `command_problem` TCW-74's
+  scan of the skills uses. The argument parser alone accepts any word as a
+  procedure name, so `tcw work procedure prompt <id>` is caught only here.
 
 The scans read every owned document, found by glob (`OWNED`), and a test pins
 that set, so a guide added later is a decision to scan it rather than an
@@ -27,7 +31,8 @@ import pytest
 from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
                                   REMOVED_FLAGS, REMOVED_FORMS)
 from tests.doc_vocabulary import PATTERNS, scan
-from tests.test_shipped_text import _flag_named, _names
+from tests.test_documented_cli_surface import _invocations
+from tests.test_shipped_text import _flag_named, _names, command_problem
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -315,6 +320,32 @@ def test_the_allowance_check_sees_a_removed_flag_and_a_refused_key(monkeypatch):
     monkeypatch.setitem(globals(), "REMOVED_FLAGS", (("tcw work list", "--status"),))
     named = allowance_names("`tcw work list --status active` and `work.retain`")
     assert {"tcw work list --status", "work.retain"} <= set(named)
+
+
+# ── every command named exists ────────────────────────────────────────────────
+
+
+def command_problems(text: str) -> list[str]:
+    """Each `tcw …` invocation in `text` that does not resolve, with why."""
+    return [f"`{span}`: {problem}" for span in _invocations(text)
+            if (problem := command_problem(span)) is not None]
+
+
+@pytest.mark.parametrize("rel", OWNED)
+def test_every_command_in_an_owned_document_exists(rel):
+    problems = command_problems(owned_text(rel))
+    assert not problems, f"{rel} names commands that do not exist:\n  " + \
+        "\n  ".join(problems)
+
+
+@pytest.mark.parametrize("text", [
+    "Run `tcw work procedure prompt pause-work`.",
+    "```sh\ntcw work procedure prompt pause-work\n```\n",
+    "Run `tcw work stage gate plan <slug>`.",
+    "Run `tcw work list --status active`.",
+])
+def test_the_command_check_sees_a_command_that_does_not_exist(text):
+    assert command_problems(text)
 
 
 def test_the_agents_section_runs_to_the_next_level_two_heading():

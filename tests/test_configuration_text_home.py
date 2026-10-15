@@ -123,7 +123,7 @@ def test_each_key_has_one_heading_with_its_label(key):
     found = []
     for reference in sorted(REFERENCES.glob("*.md")):
         for level, heading, body in _sections(reference.read_text(encoding="utf-8")):
-            if level in (2, 3) and f"`{key}`" in heading:
+            if level >= 2 and f"`{key}`" in heading:
                 found.append((reference.name, heading, body))
     assert len(found) == 1, f"`{key}` has {len(found)} headings: " \
         f"{[(name, heading) for name, heading, _ in found]}"

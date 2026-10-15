@@ -4,7 +4,12 @@
 can copy to commit a work item's folder after TCW moves it. TCW itself never
 changes git state; this script is the project's own. Each case runs it the
 way the example binds it, `sh <script>`, with the three variables `advance`
-sets, in repositories built under `tmp_path`. The configuration guide shows
+sets and from the project root, which is where TCW runs a hook
+(`tcw/work/hooks.py`), so the script's own `cd "$TCW_ITEM_PATH"` is what puts
+it in the item folder. Every git call and the script run see no global or
+system git configuration and no inherited `GIT_*` variable, so no setting of
+the machine running the tests decides the outcome. The repositories are built
+under `tmp_path`. The configuration guide shows
 the script byte for byte, and its configuration loads and keeps TCW's own
 instructions after the pull instruction.
 """
@@ -22,16 +27,26 @@ REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "docs/guide/examples/commit-item-after-move.sh"
 
 
+def _environment(**extra: str) -> dict[str, str]:
+    """The environment with every inherited `GIT_*` variable removed and the
+    global and system git configuration switched off."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", **extra)
+    return env
+
+
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], check=True,
-                          capture_output=True, text=True).stdout
+                          capture_output=True, text=True,
+                          env=_environment()).stdout
 
 
 def _repository(path: Path) -> Path:
     """A repository with one commit and its own identity, so no setting of
     the machine running the tests decides the outcome."""
     path.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    subprocess.run(["git", "init", "-q", str(path)], check=True,
+                   env=_environment())
     _git(path, "config", "user.name", "Test")
     _git(path, "config", "user.email", "test@example.com")
     _git(path, "config", "commit.gpgsign", "false")
@@ -43,10 +58,11 @@ def _repository(path: Path) -> Path:
     return path
 
 
-def _run(item: Path) -> subprocess.CompletedProcess:
-    env = {**os.environ, "TCW_ITEM_PATH": str(item), "TCW_SLUG": "demo/x",
-           "TCW_STAGE": "plan"}
-    return subprocess.run(["sh", str(SCRIPT)], env=env, cwd=item.parent,
+def _run(project: Path, item: Path) -> subprocess.CompletedProcess:
+    """Run the script from `project`, the folder TCW runs a hook from."""
+    env = _environment(TCW_ITEM_PATH=str(item), TCW_SLUG="demo/x",
+                       TCW_STAGE="plan")
+    return subprocess.run(["sh", str(SCRIPT)], env=env, cwd=project,
                           capture_output=True, text=True)
 
 
@@ -74,7 +90,7 @@ def test_a_change_in_the_item_folder_makes_one_commit_of_the_item_only(tmp_path)
     (item / "plan/plan.md").write_text("the plan\n")
     (item / "item.yaml").write_text("title: x\nstage: plan\n")
     before = _commits(repo)
-    result = _run(item)
+    result = _run(repo, item)
     assert result.returncode == 0, result.stderr
     assert _commits(repo) == before + 1
     paths = _last_commit_paths(repo)
@@ -90,7 +106,7 @@ def test_other_changes_staged_or_not_are_left_as_they_were(tmp_path):
     (repo / "staged.txt").write_text("staged\n")
     _git(repo, "add", "staged.txt")
     (repo / "README.md").write_text("changed, not staged\n")
-    result = _run(item)
+    result = _run(repo, item)
     assert result.returncode == 0, result.stderr
     assert _last_commit_paths(repo) == ["docs/work/x/item.yaml"]
     status = _status(repo)
@@ -103,7 +119,7 @@ def test_no_change_makes_no_commit_and_succeeds(tmp_path):
     repo = _repository(tmp_path / "project")
     (repo / "README.md").write_text("changed elsewhere\n")
     before = _commits(repo)
-    result = _run(repo / "docs/work/x")
+    result = _run(repo, repo / "docs/work/x")
     assert result.returncode == 0, result.stderr
     assert _commits(repo) == before
     assert _status(repo) == [" M README.md"]
@@ -119,7 +135,7 @@ def test_an_item_in_a_nested_repository_is_committed_there(tmp_path):
     (item / "item.yaml").write_text("title: x\nstage: plan\n")
     (outer / "README.md").write_text("changed in the outer repository\n")
     outer_before, inner_before = _commits(outer), _commits(inner)
-    result = _run(item)
+    result = _run(outer, item)
     assert result.returncode == 0, result.stderr
     assert _commits(inner) == inner_before + 1
     assert _last_commit_paths(inner) == ["docs/work/x/item.yaml"]
@@ -154,7 +170,8 @@ def test_the_guide_shows_the_script_byte_for_byte():
 
 def _example_config(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True,
+                   env=_environment())
     (tmp_path / "tcw-config.yaml").write_text("id: x\n" + _first_block("yaml"),
                                               encoding="utf-8")
     return load_config(tmp_path)

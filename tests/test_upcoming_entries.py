@@ -6,8 +6,10 @@ the 3.0.0 introduction.
 `combine()` puts any text an entry has before its first `##` above every
 heading in the combined file. So exactly one entry may have such text: TCW-75's
 release-notes entry, whose opening is the 3.0.0 introduction (TCW-75 spec,
-Design 10.2; criterion 11). Checked over whatever entries exist, so the checks
-still pass once a cut has folded them away.
+Design 10.2; criterion 11). The heading check runs over whatever entries
+exist. The introduction checks read this item's entry until the 3.0.0 cut, and
+the shipped `v3.0.0.md` after it; before the cut, this item's two entry files
+must both exist, so deleting one fails instead of skipping.
 """
 
 import re
@@ -25,7 +27,11 @@ FOLDERS = ("release-notes", "changelogs")
 # decision 15), so this introduction is the only leading text and stays first.
 INTRODUCTION = (DOCS / "release-notes" / "upcoming" /
                 "2026-10-01-tcw-75-documentation-for-tcw-3-0-readme-guides-and-the-opt-in-git-example.md")
+CHANGELOG_ENTRY = (DOCS / "changelogs" / "upcoming" / INTRODUCTION.name)
 MIGRATION_GUIDE = "migration-guide-2.8-to-3.0.0.md"
+# Written by the 3.0.0 cut; until then the introduction is in its entry file.
+RELEASED = DOCS / "release-notes" / "v3.0.0.md"
+CUT = RELEASED.exists()
 
 
 def entries():
@@ -52,17 +58,33 @@ def test_both_folders_are_read():
     assert all((DOCS / folder / "upcoming").is_dir() for folder in FOLDERS)
 
 
-@pytest.mark.skipif(not INTRODUCTION.exists(), reason="folded away by the 3.0.0 cut")
+@pytest.mark.skipif(CUT, reason="folded into v3.0.0.md by the 3.0.0 cut")
+def test_this_items_entries_exist_until_the_cut():
+    missing = [p.relative_to(DOCS) for p in (INTRODUCTION, CHANGELOG_ENTRY)
+               if not p.exists()]
+    assert not missing, f"entry files missing before the 3.0.0 cut: {missing}"
+
+
+def _introduction() -> str:
+    """The introduction: the text before the first `##` of this item's
+    release-notes entry, or, after the cut, of `v3.0.0.md` below its title."""
+    if CUT:
+        title, _, body = RELEASED.read_text(encoding="utf-8").partition("\n")
+        assert title == "# v3.0.0", title
+        return _leading(body)
+    return _leading(INTRODUCTION.read_text(encoding="utf-8"))
+
+
 def test_the_introduction_links_the_migration_guide():
-    leading = _leading(INTRODUCTION.read_text(encoding="utf-8"))
-    assert leading, f"{INTRODUCTION.name} has no text before its first heading"
+    leading = _introduction()
+    assert leading, "the 3.0.0 introduction has no text before its first heading"
     assert f"](../{MIGRATION_GUIDE})" in leading, leading
 
 
-@pytest.mark.skipif(not INTRODUCTION.exists(), reason="folded away by the 3.0.0 cut")
+@pytest.mark.skipif(CUT, reason="folded into v3.0.0.md by the 3.0.0 cut")
 def test_the_cut_puts_the_introduction_first():
     notes = [p for p in entries() if p.parent.parent.name == "release-notes"]
     combined = combine([p.read_text(encoding="utf-8") for p in notes],
                        UPCOMING["docs/release-notes/upcoming"])
-    leading = _leading(INTRODUCTION.read_text(encoding="utf-8"))
+    leading = _introduction()
     assert combined.startswith(leading), combined[:200]
