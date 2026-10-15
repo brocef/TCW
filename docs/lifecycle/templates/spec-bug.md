@@ -1,3 +1,5 @@
+_The outline for this item's spec: the file `tcw work path <slug> spec` names (`spec/spec.md`)._
+
 # Spec — <Title>
 
 ## Capability changes
