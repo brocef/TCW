@@ -89,3 +89,36 @@ def test_a_refused_value_is_refused(command, value, tmp_path):
                        capture_output=True, text=True)
     assert r.returncode != 0 and value in r.stderr, \
         f"{command} {value} is accepted; take it out of REFUSED_VALUES"
+
+
+# Every entry must still be needed: some live document names it, read with the
+# same helpers the scans use (TCW-75 Design 1.5; TCW-74's note 2). An entry no
+# document names only hides a future mistake, so it is taken out.
+
+def _live_texts():
+    from tests.test_documented_cli_surface import DOC_FILES
+    return [d.read_text(encoding="utf-8") for d in DOC_FILES]
+
+
+@pytest.fixture(scope="module")
+def live_texts():
+    return _live_texts()
+
+
+def _named_entries():
+    from tests.test_shipped_text import _flag_named, _names
+    entries = [(e, lambda t, e=e: _names(t, e))
+               for e in (*REMOVED_COMMANDS, *REMOVED_FORMS, *REFUSED_KEYS)]
+    entries += [(f"{c} {v}", lambda t, c=c, v=v: _names(t, f"{c} {v}"))
+                for c, v in REFUSED_VALUES]
+    entries += [(f"{c} {f}", lambda t, c=c, f=f: _flag_named(t, c, f))
+                for c, f in REMOVED_FLAGS]
+    return entries
+
+
+@pytest.mark.parametrize("entry, named", _named_entries(),
+                         ids=[e for e, _ in _named_entries()])
+def test_an_entry_is_still_named_by_some_live_document(entry, named, live_texts):
+    assert any(named(text) for text in live_texts), \
+        f"no live document names {entry}; take it out of tests/doc_allowance.py"
+

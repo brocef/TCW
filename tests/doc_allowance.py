@@ -10,80 +10,40 @@ Each list is guarded (`tests/test_doc_allowance.py`): every command in it must
 really be gone from the CLI, and every key must really be refused, so an entry
 cannot hide a new mistake.
 
-TCW-71 and TCW-73 add their own removals. TCW-74 and TCW-75 shrink the lists
-as they rewrite the text. **TCW-76 requires both to be empty before 3.0.0 is
-cut.**
+TCW-71 and TCW-73 added their own removals; TCW-74 and TCW-75 shrank the
+lists as they rewrote the text. What is left is named only by files other items
+rewrite: `AGENTS.md` outside its worktree section, and capability records, both
+TCW-76's. A list emptied entirely stays as an empty tuple, so its importers keep
+working. **TCW-76 requires every list to be empty before 3.0.0 is cut.**
 """
 
-# `tcw work` commands TCW-70 removed. A documented invocation starting with one
-# of these is not checked.
+# `tcw work` commands TCW-70 and TCW-73 removed. A documented invocation
+# starting with one of these is not checked. Each is still named by a file
+# TCW-76 rewrites: `stage gate` by `AGENTS.md`, `init` by the capability record
+# `work/configure-the-work-store-location`, and the two `check` commands by
+# `cli/validate-a-project`.
 REMOVED_COMMANDS = (
-    "tcw work start",
-    "tcw work submit",
-    "tcw work rework",
-    "tcw work complete",
-    "tcw work drop",
-    "tcw work delete",
-    "tcw work inbox",
-    "tcw work tracker",
-    "tcw work tombstone",
-    "tcw work reconcile",
-    "tcw work delegate",
-    "tcw work escalate",
-    "tcw work scaffold",
     "tcw work stage gate",
-    "tcw work stage validate",
-    # TCW-73 (its Design 9.4). `tcw work procedure prompt <id>` needs no
-    # entry: `prompt` parses as a procedure name, refused when the command runs.
     "tcw work init",
-    "tcw work nodes",
-    "tcw taxonomy init",
     "tcw taxonomy check",
-    "tcw capabilities init",
     "tcw capabilities check",
 )
 
-# Flags TCW-70 removed from commands that survive, as (command, flag). A
-# documented invocation of that command is not checked for that flag. Not in
-# TCW-70's plan, which counted only whole commands; found when the surface test
-# ran.
-REMOVED_FLAGS = (
-    ("tcw work list", "--status"),
-    ("tcw work list", "--include-descendants"),
-    ("tcw work new", "--initiative"),
-    ("tcw work new", "--epic"),
-    ("tcw work edit", "--type"),
-    ("tcw work edit", "--initiative"),
-    # TCW-73 (its Design 2 and 9.4).
-    ("tcw work lifecycle", "--directive"),
-    ("tcw work list", "--tags"),
-    ("tcw work new", "--tags"),
-    ("tcw work edit", "--untags"),
-    ("tcw taxonomy add", "-s"),
-    ("tcw taxonomy add", "-p"),
-    ("tcw capabilities list", "--local-only"),
-    ("tcw validate", "--no-recurse"),
-    ("tcw provision", "--refresh"),
-)
+# Flags removed from commands that survive, as (command, flag). A documented
+# invocation of that command is not checked for that flag.
+REMOVED_FLAGS: tuple[tuple[str, str], ...] = ()
 
 # Whole invocations whose spelling TCW-73 removed while the command itself
-# survives under a new shape (its Design 2): `capabilities extends <id>` is
-# now `extends add <id>`. A documented invocation starting with one of these
-# is not checked; each must fail to parse.
-REMOVED_FORMS = (
-    "tcw capabilities extends web-frontend",
-)
+# survives under a new shape. Each must fail to parse.
+REMOVED_FORMS: tuple[str, ...] = ()
 
 # Positional values the parser accepts but the command refuses, as (command,
-# value): `tcw work procedure prompt <id>` parses, with `prompt` as the
-# procedure's name, and is refused when it runs (TCW-73). TCW-74's command
-# check reads the value, so the configure skill, which TCW-75 rewrites, needs
-# this entry until then.
-REFUSED_VALUES = (
-    ("tcw work procedure", "prompt"),
-)
+# value).
+REFUSED_VALUES: tuple[tuple[str, str], ...] = ()
 
-# Configuration keys TCW-69's parser refuses that documents still name.
+# Configuration keys TCW-69's parser refuses that documents still name: all in
+# the capability record `work/configure-the-work-lifecycle`, which TCW-76
+# rewrites.
 REFUSED_KEYS = (
     "work.lifecycle",
     "work.tracker",
@@ -91,6 +51,4 @@ REFUSED_KEYS = (
     "work.auto-commit-transitions",
     "work.publish-transitions",
     "work.trunk-branch",
-    # TCW-73 renamed the top-level key to `projects` (Design 9.3).
-    "connected-projects",
 )

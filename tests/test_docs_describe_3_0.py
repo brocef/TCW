@@ -288,7 +288,10 @@ def test_the_allowance_check_sees_a_removed_command():
     assert "tcw work stage gate" in allowance_names("Run `tcw work stage gate <slug>`.")
 
 
-def test_the_allowance_check_sees_a_removed_flag_and_a_refused_key():
+def test_the_allowance_check_sees_a_removed_flag_and_a_refused_key(monkeypatch):
+    # The flag list is empty once every document is rewritten, so the check is
+    # shown one to find.
+    monkeypatch.setitem(globals(), "REMOVED_FLAGS", (("tcw work list", "--status"),))
     named = allowance_names("`tcw work list --status active` and `work.retain`")
     assert {"tcw work list --status", "work.retain"} <= set(named)
 
