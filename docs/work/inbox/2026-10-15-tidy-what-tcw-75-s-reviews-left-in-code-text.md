@@ -36,3 +36,10 @@ nothing under `tcw/` changes until the epic merges.
    line wrap (`TCW no` / `longer`). No owned document has one today; scanning
    each paragraph joined onto one line, with hits mapped back to line numbers,
    closes it.
+7. **Offline Jira-mode validation reports `qa/` rounds it says are ignored.**
+   With `backend: jira`, a `qa/round-1.md` with a bad verdict gets both "Jira
+   keeps the qa record, so this folder is ignored" and "the latest qa round is
+   invalid … `tcw work advance` refuses past qa until it has them"; the second
+   is false, since advance does not read qa verdicts in Jira mode. Fix in
+   `tcw/validate.py` `round_findings`: skip stages the layout marks external.
+   (Found by TCW-75's confirming review.)

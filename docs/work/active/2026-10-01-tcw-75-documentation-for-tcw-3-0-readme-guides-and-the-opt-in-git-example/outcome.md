@@ -139,4 +139,51 @@ tests, not ported. No other test was deleted or skipped.
 
 ## Review
 
-Recorded below once the review rounds finish.
+Approved by bounded adversarial review, the epic's rule in place of the
+owner's verify decision (the owner reviews the epic as a whole at its end).
+
+- **Round 1**, three reviewers in parallel, split by area as the plan's
+  Verification 7 says: the configure skill and its tests, the guides and
+  README, the tests and release entries. All three: NOT DONE. Findings that
+  belonged to this change (all accepted after checking against the code, none
+  rejected), fixed in `f40a2de6`, `4a39d866`, `58e9f5a1`, `bedf416f`:
+  - tests: the git-example cases ran the script from the item's parent rather
+    than the project root, so the script's `cd` line was never exercised; the
+    repositories inherited the machine's git settings; the criterion-11 tests
+    skipped when the entry file was simply deleted; nothing checked owned
+    documents for `tcw work procedure prompt` once `REFUSED_VALUES` was
+    emptied; the heading count ignored `####` headings;
+  - documents: offline `tcw validate` in Jira mode does not run the item-folder
+    checks (they need `--remote`), which four documents said it did; the git
+    example's behavior after `tcw work rename` was not described; the README
+    taxonomy example failed (exit 2) for want of the parent term; `rename` was
+    said to change the title; and eleven smaller inaccuracies (the records
+    gate's trigger, `--reason` when going back, `tickets list --json` fields,
+    edit screens, the Jira project-key length, a stale pointer in
+    `docs-sync.md`, a missing refusal and a missing Jira condition in
+    delegation, `created` in a hook's stdin, a `status` in filesystem mode, a
+    failing `generate:` script, TCW's git reads, the usage-error form);
+  - release entries: `references/jira.md` missing from Added; `harness.md`
+    overstated as rewritten.
+- **Round 2**, one confirming reviewer over the whole change: **DONE**, every
+  fix confirmed by fixture runs and mutation, no interaction defects between
+  tasks. Its one in-scope finding (delegation to a Jira project also needs
+  Jira to offer a move to the request stage's status) is fixed in `e301bef5`.
+  1105 passed, 5 skipped over the 19 test files named in the review;
+  collection clean (4797).
+- **Separate changes**, filed as
+  `docs/work/inbox/2026-10-15-tidy-what-tcw-75-s-reviews-left-in-code-text.md`
+  (`ca2e0d34`): error messages naming removed keys, a doubled quote, stale
+  docstrings, the unreachable-site message, whether offline Jira validate
+  should check item folders, the one-line vocabulary scan, and Jira-mode
+  `round_findings` reading `qa/` rounds.
+- **For TCW-76:** `main`'s Pi documentation (README, `harness.md`) is not in
+  the rewritten files and will conflict at the merge; the documentation
+  entries' descriptions in `tcw-config.yaml` still name `tcw work tracker` and
+  `work.tracker`.
+
+## Documentation sync
+
+Every entry fires and is answered by this item's own work: README, every
+guide, `jira.md`, the configure router and references, and this item's
+release-note and changelog entries. No other skill's component changed.
