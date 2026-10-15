@@ -52,7 +52,8 @@ signatures. In plain words, a backend can:
   of the same move where the backend allows it. It runs no checks and no
   hooks; that is the job of the code that calls it.
 - **comment**: add a comment to an item.
-- **rename**: change an item's title and the words of its folder name.
+- **rename**: change the words of an item's folder name, keeping its date or
+  ticket key. The item's title does not change.
 - **lookup**: turn a name only this backend uses, such as a Jira key, into the
   item's folder name.
 - **read request**: return the item's request, the text saying what it asks

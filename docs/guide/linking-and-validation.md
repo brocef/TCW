@@ -42,8 +42,10 @@ tcw validate --remote   # also check a Jira-mode project against Jira
 ```
 
 **`tcw validate` never needs the network.** In Jira mode it checks the item
-folders and their files, and nothing Jira holds. `tcw validate --remote` also
-reads Jira, changing nothing there, as [the Jira guide](jira.md#checking-the-workflow)
+folders and their files, and nothing Jira holds, so the work-item checks that
+need an item's properties wait for `--remote` (see
+[Work items](#what-it-checks) below). `tcw validate --remote` also reads Jira,
+changing nothing there, as [the Jira guide](jira.md#checking-the-workflow)
 describes.
 
 ### What it prints
@@ -80,7 +82,13 @@ when Jira could not be reached. The other codes are in
   not fail themselves.
 - **Taxonomy and capabilities**: metadata, pointers between records, and
   inheritance (including inheritance cycles).
-- **Work items**:
+- **Work items.** With the filesystem backend, plain `tcw validate` runs every
+  check below. In a Jira-mode project the stage, parent and blocking items are
+  kept in Jira, so plain `tcw validate` checks only each item folder's name and
+  its `item.yaml`, a ticket key used by two folders, a record folder for a
+  stage Jira keeps, and the latest `review` round. The `parent` and
+  `blocked-by`, stage-ahead and `capabilities.yaml` checks run only under
+  `tcw validate --remote`, which reads each item's properties from Jira.
   - an `item.yaml` that cannot be read is an **error**;
   - a `parent` or `blocked-by` naming an item that does not exist is a
     **warning**;
@@ -97,7 +105,8 @@ when Jira could not be reached. The other codes are in
   point is reported: a file that cannot be read or is malformed, an unknown
   key, a path that cannot be checked, and the removal of a capability the
   project inherits, which `rm` could never delete. A change not made yet is not
-  reported; the records gate checks those when the item leaves `implement`.
+  reported; the records gate checks those when the item moves into the
+  stage after `implement`.
 
 ### A record of the wrong shape
 

@@ -116,7 +116,7 @@ work:
 
 - **Two custom fields** tie a ticket to an item: a text field holding the TCW
   project's ID (`TCW Project`) and one holding the item's slug (`TCW Item`).
-  They must be on the issue type's create screen.
+  They must be on both the issue type's create screen and its edit screen.
 
 Every key, its default and its rules are in the configure skill's
 [`jira.md`](../../skills/configure/references/jira.md). Each project states its
@@ -148,13 +148,23 @@ reason recorded. A ticket in a status that no stage maps to has **no stage**:
 
 ## Checking the workflow
 
-`tcw validate` checks the configuration's shape and never contacts Jira.
+`tcw validate` never contacts Jira. It checks the configuration's shape and
+what the item folders hold on their own: each folder's name and `item.yaml`, a
+ticket key used by two folders, a record folder for a stage Jira keeps, and
+the latest `review` round. The checks that need an item's properties, which
+Jira holds, wait for `--remote`.
+
 `tcw validate --remote` also reads Jira, and changes nothing there. It prints
 findings only, one per line: a status that does not exist, a move between two
 stages that no transition offers, a transition screen that asks for a field
-other than the comment, a configured field missing from a screen. A move it
-could not check, such as one with no ticket at that status to try, is a
-finding too. When Jira cannot be reached it exits with code 5.
+other than the comment, a configured field missing from a create or edit
+screen, and an item folder whose ticket is missing or names another item. It
+then runs the work-item checks plain `tcw validate` runs in a filesystem-mode
+project: a `parent` or `blocked-by` naming an item that does not exist, an
+item whose stage is ahead of its documents, and each unfinished item's
+`capabilities.yaml`. A move it could not check, such as one with no ticket at
+that status to try, is a finding too. When Jira cannot be reached it exits
+with code 5.
 
 Fixing the workflow is done in Jira, by someone allowed to change it. The
 `setup` skill walks through it with you; TCW changes nothing in a Jira
@@ -165,7 +175,8 @@ workflow itself.
 A ticket written in Jira becomes an item when it is **adopted**.
 
 `tcw work tickets list` prints the tickets waiting, one key per line, oldest
-first; `--json` adds each one's summary, status, reporter and description. By
+first; `--json` gives each one's key, summary, status, creation time,
+reporter, web address and description. By
 default these are the tickets of this Jira project at the inbox status with no
 `TCW Item` yet. A project can offer more with its own Jira query,
 [`work.jira.inbox-query`](../../skills/configure/references/jira.md#workjirainbox-query).

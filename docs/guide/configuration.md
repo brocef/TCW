@@ -293,12 +293,19 @@ carries it.
 
 ### What the example does not do
 
-- **It does not commit a new item.** Creating an item is not a move, so
-  `tcw work new`, in this project or another, runs no hooks, and a new item's
-  folder is not committed by this example: commit it as part of your work.
-  Adopting a Jira ticket is different: `tcw work tickets adopt` runs the
-  `request` stage's `post` hooks, so the example does commit an adopted item's
-  folder.
+- **It does not commit a new item when it is created.** Creating an item is
+  not a move, so `tcw work new`, in this project or another, runs no hooks,
+  and a new item's folder stays uncommitted until the item's first move, when
+  the example commits it along with that move's changes. Adopting a Jira
+  ticket is different: `tcw work tickets adopt` runs the `request` stage's
+  `post` hooks, so the example commits an adopted item's folder straight away.
+- **It does not commit a rename in full.** `tcw work rename` is not a move
+  either, so it runs no hooks. At the item's next move, the example commits
+  the files in the item's new folder only, since it commits nothing outside
+  that folder. The old folder's removal, and the `parent` and `blocked-by`
+  lines the rename rewrote in other items, are left uncommitted, and until you
+  commit them the repository's history holds both the old folder and the new
+  one. Commit the rest of a rename yourself.
 - **It does not get past your own git hooks.** A check your repository runs on
   every commit can fail the commit. That is a failed `post` hook: `advance`
   exits with code 6, and the move stands.

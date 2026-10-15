@@ -149,8 +149,8 @@ until the records themselves change:
    `taxonomy` lists term paths the same way.
 3. **Implement.** The records are changed with `tcw capabilities add`, `set`
    and `rm` (and `tcw taxonomy add` and `rm`), in the same change as the code.
-4. **The records gate**, on the move out of `implement`, checks that the
-   records match the declaration: everything `new` or `changed` exists, a `new`
+4. **The records gate**, on any move into the stage after `implement`, checks
+   that the records match the declaration: everything `new` or `changed` exists, a `new`
    capability's status is not still `Missing`, and everything `removed` is gone.
    A `removed` path naming an inherited capability is refused outright, since
    `rm` could never delete it.

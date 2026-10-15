@@ -201,8 +201,8 @@ taxonomy:
 ```
 
 The records themselves are changed during `implement`, in the same change as
-the code. The records gate checks them when the item leaves `implement`. How
-the chain runs from a request to the records is in
+the code. The records gate checks them when the item moves into the stage
+after `implement`. How the chain runs from a request to the records is in
 [Taxonomy and Capabilities](taxonomy-and-capabilities.md).
 
 ## Moving an item
@@ -224,9 +224,12 @@ to write.
 ### `--to`: a stage of your choosing
 
 `tcw work advance <slug> --to <stage>` names the target. Going back to an
-earlier stage is always allowed. Going forward past a stage that is turned on
-is a **skip**, and needs `--force` with a `--reason`. Moving forward out of
-`review` or `qa` without an accepted verdict needs them too.
+earlier stage needs no `--force`, though the target stage's checks still run.
+Going forward past a stage that is turned on is a **skip**, and needs
+`--force` with a `--reason`. Moving forward out of `review` or `qa` without an
+accepted verdict needs them too. Some moves need a `--reason` whatever their
+direction: reopening an item that is `completed` or `discarded`, and, in a
+Jira-mode project, leaving `qa`, whose verdict Jira keeps.
 
 ### `--force` and `--reason`
 
@@ -264,8 +267,9 @@ like any other, with `--to` naming the stage to go back to and a `--reason`.
 A **gate** is a check that must pass before an item moves into a stage. TCW
 has two of its own:
 
-- **The records gate** runs on the move out of `implement` (into `review`, or
-  whichever stage comes next in your project). It checks the item's
+- **The records gate** runs on any move into the stage after `implement`
+  (`review`, or whichever stage comes next in your project), whichever stage
+  the item comes from. It checks the item's
   `capabilities.yaml` against the records: everything declared `new` or
   `changed` exists, a `new` capability's status is not still `Missing`,
   everything declared `removed` is gone, and the same for taxonomy terms. A
@@ -351,7 +355,11 @@ tcw work edit demo/2026-10-15-refund-a-payment --assignee sam --effort medium
 
 An item's `parent` and `blocked-by` are **references** to other items. They
 may point into other projects. `tcw validate` checks them, and the item's
-stage against its files:
+stage against its files. With the filesystem backend plain `tcw validate`
+runs these checks; in a Jira-mode project the stage and references are kept
+in Jira, so they run only under `tcw validate --remote`, which reads them
+there ([the Jira guide](jira.md#checking-the-workflow) lists what plain
+`tcw validate` checks in that mode):
 
 - a reference to an item that does not exist is a **warning**;
 - an item whose stage is ahead of its documents, such as an item at
@@ -386,9 +394,13 @@ its own:
 
 TCW writes an item's files and leaves recording them to you: it never stages,
 commits, pulls, pushes, or switches a branch. It does **read** git where it
-needs to: to find the repository a project or a work store sits in, to check
-that a work store has no uncommitted changes before creating an item in another
-project, and to notice that it is running in a linked git worktree. And
+needs to: to find the repository a project or a work store sits in (which
+`tcw init` also does, to decide whether to add an ignore rule for your personal
+configuration file), to check that a work store has no uncommitted changes
+before creating an item in another project, to check whether git tracks
+`tcw-config.local.yaml` (`tcw validate` warns when it does), to notice that it
+is running in a linked git worktree, and, in `tcw provision`, to check that a
+folder already there is a clone of the declared repository. And
 `tcw provision` clones a store or project that is declared and missing, because
 you asked it to. A project that wants each move committed adds it itself; the
 [configuration guide's example](configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds)

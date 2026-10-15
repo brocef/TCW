@@ -61,8 +61,9 @@ through `--json`, on the commands that offer it.
 Every other command, such as `tcw work edit`, `tcw work comment`,
 `tcw init` and `tcw provision`, prints nothing on stdout.
 
-Two of these deserve a note. `tcw work tickets list` prints only keys; the
-summary, status and reporter of each ticket are in `--json`.
+Two of these deserve a note. `tcw work tickets list` prints only keys; each
+ticket's key, summary, status, creation time, reporter, web address and
+description are in `--json`.
 `tcw validate --remote` prints findings only, never a list of what passed, and
 a check it could not make, such as a move between two stages it had no ticket
 to try, is itself a finding.
@@ -83,7 +84,9 @@ script that wants the result reads stdout.
 
 A failure is reported as one line that starts with the command's name, such
 as `tcw work show: no work item demo/support-sso`, followed by the exit code
-below. When a command fails after it had already created something, such as
+below. A usage error found while reading the command line, such as a missing
+argument, prints the command's usage summary first, then the line
+`<command>: error: <message>`, and exits with code 2. When a command fails after it had already created something, such as
 a Jira ticket made before a later step failed, the name of what it created is
 still printed on stdout, exactly as success would print it, so the caller
 knows it exists.

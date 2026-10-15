@@ -240,7 +240,7 @@ the same folder from the first stage to the last. Each item is addressed by its
 | ------------------------- | ----------------------------------------------------------------------------- |
 | `tcw init`                | marks a folder as a TCW project and creates the folders for each axis         |
 | `tcw provision`           | obtains the stores and projects this project declares but this machine lacks |
-| `tcw validate [--remote]` | checks every file, reference and link in the project; `--remote` also checks a Jira project's workflow |
+| `tcw validate [--remote]` | checks every file, reference and link in the project; in a Jira-mode project the item references, stages and declared record changes are checked only with `--remote`, which also checks the Jira workflow |
 | `tcw projects list`       | lists this project and every project connected to it                          |
 | `tcw config show`         | prints the configuration commands run with; `--origin` says where each value came from |
 | `tcw serve`               | starts a local web app for reading and editing all three axes                 |
@@ -343,6 +343,7 @@ Creating the taxonomy's folder is `tcw init taxonomy`, and checking it is
 
 ```sh
 echo "A bill issued to a customer." | tcw taxonomy add Invoice   # vocabulary by default
+echo "Running the shop." | tcw taxonomy add Admin
 tcw taxonomy add Permission --parent admin                       # → admin/permission
 tcw taxonomy add "PDF Export" --kind feature --vocab invoice
 tcw taxonomy list
@@ -479,8 +480,8 @@ A change to the product is followed from the first request to the records:
 2. The item's **`capabilities.yaml`**, written at `spec`, declares them formally:
    the capability and taxonomy paths it adds, changes and removes.
 3. **`implement`** changes the records, in the same change as the code.
-4. The **records gate**, on the move out of `implement`, checks that the records
-   match the declaration.
+4. The **records gate**, on any move into the stage after `implement`, checks
+   that the records match the declaration.
 5. **`qa`** checks the product's behavior against the request.
 
 In filesystem mode, the agent working `qa` may record the verdict itself, unless
@@ -546,15 +547,18 @@ One command moves an item: **`tcw work advance <slug>`**, to the next stage that
 is turned on. From `review` or `qa`, the next stage follows the verdict: accepted
 goes forward, rejected goes back to `implement`.
 
-- `--to <stage>` names the target. Going back is always allowed; going forward
-  past a stage that is turned on is a skip, and needs `--force`.
+- `--to <stage>` names the target. Going back needs no `--force`; going
+  forward past a stage that is turned on is a skip, and needs `--force`.
+  Reopening a `completed` or `discarded` item needs a `--reason`, and so does
+  leaving `qa` in a Jira-mode project.
 - `--force --reason "<why>"` moves the item even when a check refuses, and
   records the reason, and what it was forced past, as a comment on the item.
 - `--dry-run` says where the item would go, and moves nothing.
 - `tcw work discard <slug> --reason "<why>"` abandons an item, from any stage.
-- **Gates** are checks that must pass first: TCW's own records gate (out of
-  `implement`) and completion gate (into `completed`), and a project's own `pre`
-  hooks. A failing gate refuses the move and changes nothing.
+- **Gates** are checks that must pass first: TCW's own records gate (into the
+  stage after `implement`) and completion gate (into `completed`), and a
+  project's own `pre` hooks. A failing gate refuses the move and changes
+  nothing.
 - After the move, the target stage's **`post` hooks** run. If one fails, the move
   stands and `advance` exits with code 6.
 
