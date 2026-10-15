@@ -40,6 +40,7 @@ REWRITTEN: tuple[str, ...] = (
     AGENTS,
     "docs/guide/cli.md",
     "docs/guide/configuration.md",
+    "docs/guide/jira.md",
     "docs/guide/work.md",
     "docs/lifecycle/abstraction.md",
     "docs/lifecycle/harness.md",
