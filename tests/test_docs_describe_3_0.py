@@ -39,11 +39,6 @@ REPO = Path(__file__).resolve().parent.parent
 AGENTS = "AGENTS.md"
 AGENTS_HEADING = "### Working in a git worktree"
 
-# Link targets that do not exist yet, each with the item that writes it.
-# TCW-76 writes the migration guide and removes this entry when it does.
-PENDING_TARGETS = ("docs/migration-guide-2.8-to-3.0.0.md",)
-
-
 
 def agents_worktree_section(text: str | None = None) -> str:
     """The owned part of `AGENTS.md`: from the line `### Working in a git
@@ -224,8 +219,6 @@ def link_problems(rel: str, text: str) -> list[str]:
                 target_rel = resolved.relative_to(REPO.resolve()).as_posix()
             except ValueError:
                 target_rel = None
-            if target_rel in PENDING_TARGETS:
-                continue
             if not resolved.exists():
                 problems.append(f"{rel}:{line}: {target}: no such file")
                 continue
@@ -262,12 +255,6 @@ def test_the_link_check_reports_a_missing_heading_in_the_same_document():
     text = "# Title\n\n## A part\n\nSee [a part](#a-part) and [b](#b-part).\n"
     assert link_problems("docs/guide/x.md", text) == \
         ["docs/guide/x.md:5: #b-part: no heading with that anchor"]
-
-
-def test_the_link_check_lets_the_pending_migration_guide_through():
-    text = "Follow [the guide](../migration-guide-2.8-to-3.0.0.md)."
-    assert link_problems("docs/guide/x.md", text) == []
-    assert (REPO / PENDING_TARGETS[0]).exists() is False
 
 
 def test_the_link_check_skips_web_links_and_fenced_code():
