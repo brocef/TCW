@@ -4,8 +4,8 @@
 Every occurrence of `node`, in code, strings, comments and docstrings alike and
 as part of any identifier, is reported unless it is one of the senses that are
 not TCW's to rename: "inode", PyYAML's node classes, the phrase "YAML node",
-or a line inside a function on `KEPT`. `tcw/serve/` is not read: TCW-77
-rewrites it.
+or a line inside a function on `KEPT`. `tcw/serve/` is read too: TCW-77
+rewrote it.
 """
 
 from __future__ import annotations
@@ -19,8 +19,7 @@ import pytest
 import tcw
 
 PACKAGE = Path(tcw.__file__).resolve().parent
-SOURCES = sorted(p for p in PACKAGE.rglob("*.py")
-                 if "serve" not in p.relative_to(PACKAGE).parts)
+SOURCES = sorted(PACKAGE.rglob("*.py"))
 
 ALLOWED = re.compile(r"inodes?|ScalarNode|MappingNode|SequenceNode|YAML node",
                      re.IGNORECASE)

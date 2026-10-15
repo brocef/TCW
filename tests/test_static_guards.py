@@ -9,7 +9,7 @@
   for a command the user can run.
 
 A string a user can see is approximated as any string constant holding a
-space, docstrings excluded. `tcw/serve/` is not read: TCW-77 rewrites it.
+space, docstrings excluded. `tcw/serve/` is read too: TCW-77 rewrote it.
 """
 
 from __future__ import annotations
@@ -23,8 +23,7 @@ import pytest
 import tcw
 
 PACKAGE = Path(tcw.__file__).resolve().parent
-SOURCES = sorted(p for p in PACKAGE.rglob("*.py") if "serve" not in
-                 p.relative_to(PACKAGE).parts)
+SOURCES = sorted(PACKAGE.rglob("*.py"))
 
 GIT_WORDS = re.compile(r"\b(git|commit(?:s|ted|ting)?|push(?:es|ed|ing)?|"
                        r"pull(?:s|ed|ing)?|worktrees?|trunks?|"
