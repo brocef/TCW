@@ -29,8 +29,7 @@ The declaration is a fallback and never an override: a store already present at
 `work.path` keeps being used untouched, so one configuration serves both a laptop
 that has the folder and a fresh checkout that does not.
 
-I can scaffold this layout with `tcw work init --path <path>` or `tcw init
---work-path <path> work`. TCW refuses a broken, invalid or non-Git location, and
+I can scaffold this layout with `tcw init --work-path <path> work`. TCW refuses a broken, invalid or non-Git location, and
 never moves a store that holds a work item: that move is mine to make. Those
 refusals leave nothing behind. TCW never commits what it writes there; the
 store's files are mine to commit.

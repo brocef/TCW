@@ -1,7 +1,6 @@
 As a user, I run `tcw validate` to check the current project: its
 `tcw-config.yaml`, its connections to other projects, the YAML and `tcw://` links
-in its stores, its taxonomy and capabilities ledger (what `tcw taxonomy check`
-and `tcw capabilities check` did before 3.0), and its work items. It checks this
+in its stores, its taxonomy and capabilities ledgers, and its work items. It checks this
 project only; a reference into another project is checked by resolving it. It
 takes no path, and nothing it does reaches the network.
 
