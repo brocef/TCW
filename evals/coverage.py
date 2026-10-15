@@ -37,18 +37,19 @@ EXCLUSIONS = {
         "advisor subagents and a `codex exec` call per checkpoint. A case would "
         "cost a full multi-item run to grade, and would mostly re-measure the "
         "skills it delegates to.",
-    **{name: "Composes `work` stage documents that axis A measures, and has "
-             "no case of its own yet."
+    **{name: "Runs stage prompts through `tcw work stage prompt`, which the "
+             "axis A cases measure through the `work` skill, and has no case of "
+             "its own yet."
        for name in ("commands-plan-work",
                     "commands-drive-work-to-completion",
-                    "commands-verify-work",
                     "commands-process-inbox")},
     "commands-pause-work":
         "Its observable outcome is an agent that stops and stays stopped, so a "
         "graded run has no produced artifact to read and would have to measure "
-        "an absence. The handoff document it does write is deleted by the "
-        "resume it would be graded against. Worth a case if the harness gains a "
-        "way to assert that a run ended deliberately rather than ran out.",
+        "an absence. The handoff it writes is a description of the work for a "
+        "later session, which a run cannot grade without that session. Worth a "
+        "case if the harness gains a way to assert that a run ended deliberately "
+        "rather than ran out.",
 }
 
 # Not exclusions. A skill a case names counts as covered, but a directory-level
@@ -56,11 +57,12 @@ EXCLUSIONS = {
 # unmeasured routes are recorded here rather than left to look like clean
 # coverage.
 PARTIAL = {
-    "work-stage":
-        "Axis A covers the spec, plan, implement and verify routes. The "
-        "`request` route is unmeasured: `request` is the one stage whose job is "
-        "asking the user questions, which a non-interactive harness cannot do. "
-        "There is no axis A request case to cover it.",
+    "work":
+        "Axis A covers the spec, plan, implement, review, qa and postmortem "
+        "stage prompts, and B2 the inbox. The `request` stage is unmeasured: "
+        "its job is asking the user questions, which a non-interactive harness "
+        "cannot answer. Searching the board, auditing unfinished work, child "
+        "items and filing into another project are unmeasured too.",
     "configure":
         "B11 measures the documentation-entries route only. `work.md`, "
         "`tracker.md`, `stores.md` and `projects.md` are unmeasured.",
@@ -71,7 +73,8 @@ PARTIAL = {
         "simulation. `taxonomy.md` and `capabilities.md` ask the user "
         "questions, which a non-interactive harness cannot answer, the same "
         "reason the `request` stage is unmeasured. Provisioning a project set "
-        "up elsewhere needs a remote repository.",
+        "up elsewhere needs a remote repository, and the Jira walkthrough "
+        "(`jira.md`) needs a Jira site.",
 }
 
 

@@ -1,66 +1,48 @@
 {
  "schema": {
-  "note": "The eval test set. Axis A measures whether lifecycle prompt injection reaches the artifact; axis B measures what a plugin skill adds over the shipped CLI prompts alone.",
+  "note": "The eval test set. Axis A measures whether the instructions a project binds to a stage reach the agent, through `tcw work stage prompt`, and are acted on; axis B measures what a plugin skill adds over the shipped CLI and its stage prompts alone.",
   "case_fields": {
-   "id": "case identifier, A1-A8 or B1-B13",
+   "id": "case identifier, A1-A7 or B1-B13",
    "axis": "A or B",
    "stage": "axis A only: the lifecycle stage the case works",
    "skill": "axis B only: the skill the case is about; 'cross-axis' where the scenario spans several",
    "invokes": "the skill directory the case invokes, or a list where the scenario genuinely spans several. This is what evals/coverage.py subtracts from the shipped skill set.",
-   "item": "which seeded fixture item the case acts on: 'backlog', 'active', 'completed', or absent where the case creates its own",
+   "item": "which seeded fixture item the case acts on, by role: 'inbox', 'spec', 'plan', 'implement', 'closeout', 'review', 'qa' or 'completed' (the keys of the manifest's 'items'); absent where the case creates its own",
    "prompt": "what the agent is given. '{item}' is substituted with the minted slug of the item named in 'item', since the CLI mints date-prefixed slugs and they cannot be hardcoded.",
-   "arms": "which arms the case runs. Axis A: 'customized' (the node carrying work.lifecycle.stages and the nonces) and 'control' (the same seeder with that block omitted). Axis B: 'with-skill' and 'no-skill'.",
-   "runner": "present only where the case is runner-specific; absent means the default runner",
+   "arms": "which arms the case runs. Axis A: 'customized' (the project carrying work.stages.<stage>.prompt bindings and their nonces) and 'control' (the same seeder with those bindings omitted). Axis B: 'with-skill' and 'no-skill'.",
    "fixture": "optional; a named fixture variant ('customized', 'control' or 'bare') used in every arm of the case, overriding the per-axis default. Only 'bare' is used today.",
    "assertions": "each entry either names a predicate from 'predicates' below, or carries an 'unmechanized' marker"
   },
   "assertion_fields": {
    "predicate": "a name from the 'predicates' vocabulary below",
-   "args": "the predicate's arguments",
+   "args": "the predicate's arguments. An 'item' argument is a seeded role as in the case's 'item' field, or 'new' for the one item the agent created.",
    "arm": "optional; the assertion is evaluated only in this arm. Absent means every arm the case runs.",
    "text": "the human-readable claim, copied into grading.json",
-   "unmechanized": "present instead of 'predicate' where the spec's assertion cannot be expressed in either grader family. The claim is recorded so it is not silently dropped, and is reported as unmechanized rather than as a pass or a fail.",
+   "unmechanized": "present instead of 'predicate' where the claim cannot be expressed in either grader family. The claim is recorded so it is not silently dropped, and is reported as unmechanized rather than as a pass or a fail.",
    "why": "required alongside 'unmechanized': why neither grader family can express it"
   }
  },
  "predicates": {
-  "transcript_blocks_present": {
-   "family": "transcript",
-   "args": [],
-   "reads": "both injected blocks appear in the resolved stage prompt and are non-empty, identified by their headings ('## Lifecycle stage contract', '## Stage instructions') rather than by content, which varies per node. A heading with nothing under it is a fail."
-  },
-  "transcript_gate_before_artifact": {
-   "family": "transcript",
-   "args": [],
-   "reads": "a `tcw work stage gate` invocation appears in the transcript before the stage artifact is written"
-  },
-  "transcript_fallback_commands_run": {
-   "family": "transcript",
-   "args": [],
-   "reads": "the composing skill's fenced fallback commands were run by hand. Codex only (I7)."
-  },
   "transcript_contains": {
    "family": "transcript",
    "args": [
     "text"
    ],
-   "reads": "the literal text appears in the transcript",
-   "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
+   "reads": "the literal text appears anywhere in the transcript: assistant text, user messages, tool calls or tool results"
   },
   "transcript_absent": {
    "family": "transcript",
    "args": [
     "text"
    ],
-   "reads": "the literal text appears nowhere in the transcript",
-   "confirmed": "Not among the three transcript reads task 6 enumerates. Confirmed as an expansion rather than inherited silently: it is the same machinery as the listed reads, and A4 cannot be stated without it now that the skill binding carries no nonce. A general ordering read would be the same kind of step and is deliberately still not taken, so B8 stays unmechanized."
+   "reads": "the literal text appears nowhere in the transcript"
   },
   "tool_input_contains": {
    "family": "transcript",
    "args": [
     "text"
    ],
-   "reads": "the literal text appears in the input of some tool call the agent made (a `Read` file path, a `Bash` command, and so on). Ignores assistant text, user messages and tool results, so a path a loaded skill merely mentions does not count as opened."
+   "reads": "the literal text appears in the input of some tool call the agent made (a `Read` file path, a `Bash` command, and so on). Ignores assistant text, user messages and tool results, so a path a loaded skill merely mentions does not count as opened, and a command a skill only shows does not count as run."
   },
   "tool_input_absent": {
    "family": "transcript",
@@ -73,53 +55,90 @@
    "family": "fixture",
    "args": [
     "kind",
-    "artifact"
+    "item",
+    "stage"
    ],
-   "reads": "the nonce recorded in the node root's manifest.json for that binding kind appears in that artifact. Reported with provenance: injected, fallback-sourced, or unknown. A nonce whose provenance cannot be established is never reported as a pass."
+   "reads": "the nonce recorded in the manifest for that binding kind appears in the stage's artifact for the item: the document `tcw work path <slug> <stage>` names, or the newest round in the folder it names. Says the bound text reached the agent and was acted on; whether it got there through `tcw work stage prompt` is the case's `tool_input_contains` assertion."
   },
   "nonce_absent_from_artifact": {
    "family": "fixture",
    "args": [
     "kinds",
-    "artifact"
+    "item",
+    "stage"
    ],
-   "reads": "none of the named kinds' nonces appear in that artifact"
+   "reads": "none of the named kinds' nonces appear in the stage's artifact for the item. Fails when the artifact was never written."
   },
   "stage_prompt_empty": {
    "family": "fixture",
    "args": [
     "stage"
    ],
-   "reads": "`tcw work stage prompt <stage> <item>` resolves to zero bytes on the node"
+   "reads": "`tcw work stage prompt <stage> <item>` prints zero bytes on the project at end state"
   },
-  "stage_prompt_bookended": {
+  "stage_prompt_framed": {
    "family": "fixture",
    "args": [
     "stage"
    ],
-   "reads": "`tcw work stage prompt <stage> <item>` resolves to non-empty text carrying the bookend"
+   "reads": "`tcw work stage prompt <stage> <item>` prints text carrying TCW's header line ('This text ran no checks.'), which it prints above every stage prompt that resolves to anything"
   },
   "artifact_exists": {
    "family": "fixture",
    "args": [
-    "artifact"
+    "item",
+    "stage"
    ],
-   "reads": "the named artifact exists on the item and is non-empty"
+   "reads": "the stage's artifact for the item exists and is not empty: the document `tcw work path <slug> <stage>` names, or, for a rounds stage, the newest `round-N.md` in the folder it names"
   },
-  "item_status": {
+  "round_front_matter": {
    "family": "fixture",
    "args": [
     "item",
-    "status"
+    "stage"
    ],
-   "reads": "the item's status via `tcw work show`"
+   "reads": "the newest round of a verdict stage (review or qa) opens with front matter TCW's own reader accepts — `verdict: accepted|rejected` and a whole-number `judges` — and `judges` equals the highest N among the item's implement rounds (0 when there are none)"
+  },
+  "round_verdict_is": {
+   "family": "fixture",
+   "args": [
+    "item",
+    "stage",
+    "verdict"
+   ],
+   "reads": "the newest round's front matter `verdict` is exactly this value"
+  },
+  "round_decided_by": {
+   "family": "fixture",
+   "args": [
+    "item",
+    "stage",
+    "name"
+   ],
+   "reads": "the newest round's front matter carries a non-empty `decided-by`, and, when 'name' is given, it contains that name (ignoring case)"
+  },
+  "round_lists_scenarios": {
+   "family": "fixture",
+   "args": [
+    "item",
+    "stage"
+   ],
+   "reads": "every QA plan scenario ID the seeder recorded in the manifest ('qa_scenarios') is named on at least one line of the newest round's body, below its front matter"
+  },
+  "item_stage": {
+   "family": "fixture",
+   "args": [
+    "item",
+    "stage"
+   ],
+   "reads": "the item's stage, via `tcw work show <slug> --json`"
   },
   "new_item_count": {
    "family": "fixture",
    "args": [
     "count"
    ],
-   "reads": "how many work items exist beyond the seeded set, via `tcw work list`"
+   "reads": "how many work items exist beyond the seeded set, ended ones included, via `tcw work list --all`"
   },
   "capability_status": {
    "family": "fixture",
@@ -127,14 +146,23 @@
     "ref",
     "status"
    ],
-   "reads": "the capability's status via `tcw capabilities show`"
+   "reads": "the capability record exists and its status is this value, via `tcw capabilities show`"
   },
-  "new_capability_count": {
+  "capability_records_added": {
    "family": "fixture",
    "args": [
     "count"
    ],
-   "reads": "how many capabilities exist beyond the seeded set"
+   "reads": "how many capability records exist beyond the one the seeder adds, via `tcw capabilities list`"
+  },
+  "capabilities_declared": {
+   "family": "fixture",
+   "args": [
+    "item",
+    "kind",
+    "count"
+   ],
+   "reads": "the item's `capabilities.yaml`, in the folder `tcw work path <slug>` prints, parses with TCW's own reader and declares exactly 'count' capability paths under 'kind' ('new', 'changed' or 'removed')"
   },
   "taxonomy_entry_kind": {
    "family": "fixture",
@@ -155,27 +183,14 @@
   "validate_exit_zero": {
    "family": "fixture",
    "args": [],
-   "reads": "`tcw validate` exits 0 on the node at end state"
-  },
-  "git_order": {
-   "family": "fixture",
-   "args": [
-    "before",
-    "after"
-   ],
-   "reads": "in `git log --oneline`, the first commit whose subject matches 'before' precedes the first matching 'after'. Ordering only: identical commits result from compliant and non-compliant histories, so the log cannot establish which tool wrote them."
-  },
-  "git_commit_per_artifact": {
-   "family": "fixture",
-   "args": [],
-   "reads": "each lifecycle artifact the run produced landed in its own commit"
+   "reads": "`tcw validate` exits 0 on the project at end state"
   },
   "files_changed_exactly": {
    "family": "fixture",
    "args": [
     "paths"
    ],
-   "reads": "the working tree (committed, uncommitted and untracked non-ignored files) differs from the seeded commit in exactly these paths. The seeded commit is `seeded_head` in timing.json; a run recorded without it fails. Says which files changed, not whether the change was any good."
+   "reads": "the working tree (committed, uncommitted and untracked non-ignored files) differs from the seeded commit in exactly these paths. '{item:<role>}' in a path stands for that item's folder, relative to the project root, since the folder name carries the date it was minted. The seeded commit is `seeded_head` in timing.json; a run recorded without it fails. Says which files changed, not whether the change was any good."
   }
  },
  "cases": [
@@ -183,8 +198,8 @@
    "id": "A1",
    "axis": "A",
    "stage": "spec",
-   "invokes": "work-stage",
-   "item": "backlog",
+   "invokes": "work",
+   "item": "spec",
    "arms": [
     "customized",
     "control"
@@ -192,35 +207,45 @@
    "prompt": "Work the spec stage for {item}.",
    "assertions": [
     {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt spec"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt spec`"
+    },
+    {
      "predicate": "nonce_in_artifact",
      "args": {
       "kind": "file",
-      "artifact": "spec.md"
+      "item": "spec",
+      "stage": "spec"
      },
      "arm": "customized",
-     "text": "the `file` binding's nonce reaches spec.md (I2, I3, I4)"
+     "text": "the `file` binding's nonce reaches the spec document."
     },
     {
      "predicate": "artifact_exists",
      "args": {
-      "artifact": "spec.md"
+      "item": "spec",
+      "stage": "spec"
      },
      "arm": "control",
-     "text": "the control produces a well-formed spec.md. A baseline artifact, not a discriminator: a 16-character random nonce cannot appear in the control, so this arm only tells 'the nonce is absent and the artifact is otherwise fine' apart from 'the run fell over'."
+     "text": "the control produces the spec document. A baseline artifact, not a discriminator: a 16-character random nonce cannot appear in the control, so this arm only tells 'the nonce is absent and the artifact is otherwise fine' apart from 'the run fell over'."
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     }
-   ]
+   ],
+   "note": "Axis A holds the plugin in both arms; the arms differ by the fixture. TCW 3.0 has no skill that injects a stage's text, so the question is not how the text arrived but whether the agent ran `tcw work stage prompt` and acted on what it printed."
   },
   {
    "id": "A2",
    "axis": "A",
    "stage": "plan",
-   "invokes": "work-stage",
-   "item": "backlog",
+   "invokes": "work",
+   "item": "plan",
    "arms": [
     "customized",
     "control"
@@ -228,35 +253,45 @@
    "prompt": "Work the plan stage for {item}.",
    "assertions": [
     {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt plan"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt plan`"
+    },
+    {
      "predicate": "nonce_in_artifact",
      "args": {
       "kind": "blob",
-      "artifact": "plan.md"
+      "item": "plan",
+      "stage": "plan"
      },
      "arm": "customized",
-     "text": "the `blob` binding's nonce reaches plan.md (I4)"
+     "text": "the `blob` binding's nonce reaches the plan document."
     },
     {
      "predicate": "artifact_exists",
      "args": {
-      "artifact": "plan.md"
+      "item": "plan",
+      "stage": "plan"
      },
      "arm": "control",
-     "text": "the control produces a well-formed plan.md. Baseline, not a discriminator."
+     "text": "the control produces the plan document. A baseline artifact, not a discriminator: a 16-character random nonce cannot appear in the control, so this arm only tells 'the nonce is absent and the artifact is otherwise fine' apart from 'the run fell over'."
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     }
-   ]
+   ],
+   "note": "Axis A holds the plugin in both arms; the arms differ by the fixture. TCW 3.0 has no skill that injects a stage's text, so the question is not how the text arrived but whether the agent ran `tcw work stage prompt` and acted on what it printed."
   },
   {
    "id": "A3",
    "axis": "A",
    "stage": "implement",
-   "invokes": "work-stage",
-   "item": "active",
+   "invokes": "work",
+   "item": "implement",
    "arms": [
     "customized",
     "control"
@@ -264,75 +299,99 @@
    "prompt": "Work the implement stage for {item}.",
    "assertions": [
     {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt implement"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt implement`"
+    },
+    {
      "predicate": "nonce_in_artifact",
      "args": {
       "kind": "generate",
-      "artifact": "outcome.md"
+      "item": "implement",
+      "stage": "implement"
      },
      "arm": "customized",
-     "text": "the `generate` binding's computed nonce reaches outcome.md (I4). It is in no committed TCW file, so it cannot come from repository knowledge or from training; the script itself is readable from inside the node, so this is not a claim that an agent could not have produced it another way."
+     "text": "the `generate` binding's nonce reaches the newest implement round. It is computed from the item's slug at run time and is in no committed TCW file, so it cannot come from repository knowledge or from training; the script itself is readable from inside the project, so this is not a claim that an agent could not have produced it another way."
     },
     {
      "predicate": "artifact_exists",
      "args": {
-      "artifact": "outcome.md"
+      "item": "implement",
+      "stage": "implement"
      },
      "arm": "control",
-     "text": "the control produces a well-formed outcome.md. Baseline, not a discriminator."
+     "text": "the control produces the newest implement round. A baseline artifact, not a discriminator: a 16-character random nonce cannot appear in the control, so this arm only tells 'the nonce is absent and the artifact is otherwise fine' apart from 'the run fell over'."
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     }
-   ]
+   ],
+   "note": "Axis A holds the plugin in both arms; the arms differ by the fixture. TCW 3.0 has no skill that injects a stage's text, so the question is not how the text arrived but whether the agent ran `tcw work stage prompt` and acted on what it printed."
   },
   {
    "id": "A4",
    "axis": "A",
-   "stage": "verify",
-   "invokes": "work-stage",
-   "item": "active",
+   "stage": "review",
+   "invokes": "work",
+   "item": "review",
    "arms": [
     "customized",
     "control"
    ],
-   "prompt": "Work the verify stage for {item}.",
+   "prompt": "Work the review stage for {item}.",
    "assertions": [
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt review"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt review`"
+    },
     {
      "predicate": "transcript_contains",
      "args": {
-      "text": "Invoke the "
+      "text": "Invoke the eval-review-marker skill."
      },
      "arm": "customized",
-     "text": "the resolved prompt carries the `skill` binding's pointer line and the transcript shows the agent read it. Not a nonce check: `_resolve_one` resolves a `skill` binding to the literal `Invoke the <name> skill.` and never reads the skill's body, so no nonce can travel this path."
+     "text": "the resolved prompt carries the `skill` binding's pointer line and the transcript shows it reached the agent. Not a nonce check: a `skill` binding resolves to the literal `Invoke the <name> skill.` and never reads the skill's body, so no nonce can travel this path."
     },
     {
      "predicate": "transcript_absent",
      "args": {
-      "text": "Invoke the "
+      "text": "Invoke the eval-review-marker skill."
      },
      "arm": "control",
-     "text": "the control carries no such pointer line — this is the one axis A case where the control is the discriminator"
+     "text": "the control carries no such pointer line; this is the axis A case where the control is the discriminator"
     },
     {
-     "predicate": "artifact_exists",
+     "predicate": "round_front_matter",
      "args": {
-      "artifact": "refined-outcome.md"
+      "item": "review",
+      "stage": "review"
      },
-     "text": "the verify stage produced its artifact"
+     "text": "the agent wrote a review round whose front matter TCW accepts, judging the newest implement round"
+    },
+    {
+     "predicate": "validate_exit_zero",
+     "args": {},
+     "text": "the project still validates"
     },
     {
      "unmechanized": "the agent acted on the pointer rather than merely echoing it",
-     "why": "a `SKILL.md` inside a throwaway fixture node is not a registered skill under any harness, so there is nothing for the agent to reach. This pass makes no claim beyond whether it tries."
+     "why": "a `SKILL.md` inside a throwaway fixture project is not a registered skill under any harness, so there is nothing for the agent to reach. This pass makes no claim beyond whether it tries."
     }
-   ]
+   ],
+   "note": "Replaces the 2.x verify case. The item is at review with one implement round written, so a correct round says `judges: 1`."
   },
   {
    "id": "A5",
    "axis": "A",
    "stage": "postmortem",
-   "invokes": "work-stage",
+   "invokes": "work",
    "item": "completed",
    "arms": [
     "customized",
@@ -340,6 +399,13 @@
    ],
    "prompt": "Work the postmortem stage for {item}.",
    "assertions": [
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt postmortem"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt postmortem`"
+    },
     {
      "predicate": "stage_prompt_empty",
      "args": {
@@ -349,12 +415,12 @@
      "text": "the silence opt-out resolves to zero bytes"
     },
     {
-     "predicate": "stage_prompt_bookended",
+     "predicate": "stage_prompt_framed",
      "args": {
       "stage": "postmortem"
      },
      "arm": "control",
-     "text": "the control resolves to the bookended builtin floor. Assert the shape, not a byte count: the floor moves whenever a builtin prompt is edited."
+     "text": "the control resolves to TCW's own postmortem text, framed by its header. Asserted by shape, not by byte count: TCW's text moves whenever it is edited."
     },
     {
      "predicate": "nonce_absent_from_artifact",
@@ -364,78 +430,111 @@
        "blob",
        "generate"
       ],
-      "artifact": "post-mortem.md"
+      "item": "completed",
+      "stage": "postmortem"
      },
      "arm": "customized",
-     "text": "silence invents nothing: none of the other stages' nonces appear in the post-mortem (I5)"
+     "text": "silence invents nothing: none of the other stages' nonces appear in the postmortem"
     }
    ],
-   "note": "Invokes the generic composer, not `post-mortem`. I5 asks what an agent does with a stage that asks nothing: proceed on the router alone, or invent instructions to fill the gap. The router is the composing skill's first block, so the composer is what has to be in play. `post-mortem` stays covered by B9. The two stage-prompt checks look like duplicates of the fixture guard and are not. The guard reads a freshly seeded node; these read the node after the agent has worked it, under acceptEdits, where the agent could have edited tcw-config.yaml. They confirm the stage was still silent for this run, which is the only form of the claim that grading can make. Both predicates therefore keep their only user."
+   "note": "Asks what an agent does with a stage that asks nothing: proceed on what it already knows, or invent instructions to fill the gap. The two stage-prompt checks look like duplicates of the fixture guard and are not. The guard reads a freshly seeded project; these read the project after the agent has worked it, under acceptEdits, where the agent could have edited tcw-config.yaml. They confirm the stage was still silent for this run, which is the only form of the claim that grading can make."
   },
   {
    "id": "A6",
    "axis": "A",
-   "stage": "spec",
-   "invokes": "work-stage",
-   "item": "backlog",
+   "stage": "qa",
+   "invokes": "work",
+   "item": "qa",
    "arms": [
-    "customized"
+    "control"
    ],
-   "prompt": "Work the spec stage for {item}.",
+   "prompt": "Work the qa stage for {item}.",
    "assertions": [
     {
-     "predicate": "transcript_blocks_present",
-     "args": {},
-     "text": "both injected blocks are present and non-empty (I1, I2)"
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt qa"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt qa`"
+    },
+    {
+     "predicate": "round_front_matter",
+     "args": {
+      "item": "qa",
+      "stage": "qa"
+     },
+     "text": "the agent wrote a qa round whose front matter TCW accepts, with `judges` equal to the newest implement round"
+    },
+    {
+     "predicate": "round_lists_scenarios",
+     "args": {
+      "item": "qa",
+      "stage": "qa"
+     },
+     "text": "the round has a line for each scenario in the item's QA plan comment"
+    },
+    {
+     "predicate": "round_verdict_is",
+     "args": {
+      "item": "qa",
+      "stage": "qa",
+      "verdict": "accepted"
+     },
+     "text": "every QA plan scenario passes against the seeded code, so the verdict the agent records itself is `accepted`. The contrast with A7, where a person's `rejected` must win."
+    },
+    {
+     "unmechanized": "each scenario's passed or failed is backed by output the agent actually produced",
+     "why": "whether a line's evidence came from running the scenario is a reading of the transcript against the round's prose; the predicates can say a line names the scenario, not that it was run."
     }
    ],
-   "note": "Single-arm by correction. `bookend` is applied whenever the resolved text is non-empty, so it wraps the builtin floor in the control exactly as it wraps bound text in the treatment: both blocks render in both arms and there is no cross-arm contrast to read. This is an absolute reading, not a delta. The stage is `spec`, not 'any' — under `postmortem` the second block is empty in the treatment by design and would read as failure mode I2 for a reason that is not a defect."
+   "note": "Single-arm by design: TCW's own qa text, with no project binding, has the agent record the verdict itself, and only the control fixture has no qa binding. The item carries a comment whose first line is `QA plan`, naming scenarios QA-1 to QA-3; the seeder records their IDs in the manifest."
   },
   {
    "id": "A7",
    "axis": "A",
-   "stage": "spec",
-   "invokes": "work-stage",
-   "item": "backlog",
+   "stage": "qa",
+   "invokes": "work",
+   "item": "qa",
    "arms": [
     "customized"
    ],
-   "prompt": "Work the spec stage for {item}.",
+   "prompt": "Work the qa stage for {item}. I am the person who decides qa verdicts on this project, and my name is Dana Reyes. You may run the scenarios, but my decision is already made: rejected. My reason: the TOTAL line does not say which currency the amounts are in, so an account billed in euros cannot tell what it is reading. Record my decision.",
    "assertions": [
     {
-     "predicate": "transcript_gate_before_artifact",
-     "args": {},
-     "text": "`tcw work stage gate` ran before the artifact was written (I6). Observed, not attributed: both arms carry the bookend, so the bookend is not the variable and this may not be reported as the bookend's doing."
-    }
-   ],
-   "note": "Single-arm for the same reason as A6: the gate reminder is present in both arms."
-  },
-  {
-   "id": "A8",
-   "axis": "A",
-   "stage": "spec",
-   "invokes": "work-stage",
-   "item": "backlog",
-   "runner": "codex",
-   "arms": [
-    "customized"
-   ],
-   "prompt": "Work the spec stage for {item}.",
-   "assertions": [
-    {
-     "predicate": "transcript_fallback_commands_run",
-     "args": {},
-     "text": "the manual fallback commands were run by hand (I7)"
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work stage prompt qa"
+     },
+     "text": "the agent read the stage's instructions by running `tcw work stage prompt qa`"
     },
     {
-     "predicate": "nonce_in_artifact",
+     "predicate": "round_front_matter",
      "args": {
-      "kind": "file",
-      "artifact": "spec.md"
+      "item": "qa",
+      "stage": "qa"
      },
-     "text": "the `file` nonce reached spec.md. Under Codex this is expected to be fallback-sourced rather than injected, which is exactly what the provenance field exists to say."
+     "text": "the agent wrote a qa round whose front matter TCW accepts, with `judges` equal to the newest implement round"
+    },
+    {
+     "predicate": "round_verdict_is",
+     "args": {
+      "item": "qa",
+      "stage": "qa",
+      "verdict": "rejected"
+     },
+     "text": "the round records the person's verdict, `rejected`. An agent that picks its own verdict writes `accepted`, because every scenario passes, and fails here; one that writes nothing fails too."
+    },
+    {
+     "predicate": "round_decided_by",
+     "args": {
+      "item": "qa",
+      "stage": "qa",
+      "name": "Dana"
+     },
+     "text": "the round's front matter says who decided, with `decided-by` naming the person"
     }
-   ]
+   ],
+   "note": "Single-arm by design: only the customized fixture binds a qa instruction saying a person decides. The person's answer is supplied in the prompt because the harness cannot answer a question mid-run; an agent that stops to ask anyway writes no round and fails every round check, which is the cost of a scripted person."
   },
   {
    "id": "B1",
@@ -458,27 +557,23 @@
     {
      "predicate": "artifact_exists",
      "args": {
-      "artifact": "plan.md"
+      "item": "new",
+      "stage": "plan"
      },
      "text": "the item was planned, not just filed"
     },
     {
-     "predicate": "git_order",
+     "predicate": "artifact_exists",
      "args": {
-      "before": "→ active",
-      "after": "src/reports.py"
+      "item": "new",
+      "stage": "implement"
      },
-     "text": "`tcw work start` preceded the first code commit The `before` pattern is the transition commit's actual subject shape, `tcw work: <slug> → active`. The literal word `start` never appears in it, so matching on that would fail every run regardless of what the agent did."
-    },
-    {
-     "predicate": "git_commit_per_artifact",
-     "args": {},
-     "text": "each lifecycle artifact landed in its own commit"
+     "text": "the implementation was recorded in an implement round"
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     }
    ]
   },
@@ -487,49 +582,51 @@
    "axis": "B",
    "skill": "work",
    "invokes": "work",
+   "item": "inbox",
    "arms": [
     "with-skill",
     "no-skill"
    ],
-   "prompt": "there's a thing sitting in docs/work/inbox/slow-login.md, deal with it",
+   "prompt": "There's an arrival sitting in the work inbox about slow logins. Deal with it.",
    "assertions": [
+    {
+     "predicate": "item_stage",
+     "args": {
+      "item": "inbox",
+      "stage": "request"
+     },
+     "text": "the arrival was accepted with `tcw work advance`, which moves it from inbox to request"
+    },
     {
      "predicate": "new_item_count",
      "args": {
-      "count": 1
+      "count": 0
      },
-     "text": "the inbox entry was accepted into one tracked item"
-    },
-    {
-     "predicate": "item_status",
-     "args": {
-      "item": "new",
-      "status": "backlog"
-     },
-     "text": "the accepted item landed in the backlog"
+     "text": "it was accepted in place, not copied into a second item"
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     },
     {
-     "unmechanized": "the minted title and tags are sensible for the request",
-     "why": "judging a title as sensible is a reading of prose against intent. The mechanical half is that tags come from the registered set, which `tcw validate` already enforces, so a separate predicate would add nothing."
+     "unmechanized": "accepting it, rather than turning it away or splitting it, was the right call for this arrival",
+     "why": "a judgment about the request against the project; the predicates read where the item ended up, not whether that was wise."
     }
-   ]
+   ],
+   "note": "The arrival is an item at the inbox stage, made by `tcw work new --stage inbox`. If the agent goes on to work the request stage and advances again, item_stage fails; read the transcript before calling that a defect, since the request stage asks the user questions the harness cannot answer."
   },
   {
    "id": "B3",
    "axis": "B",
    "skill": "capabilities",
    "invokes": "capabilities",
-   "item": "active",
+   "item": "closeout",
    "arms": [
     "with-skill",
     "no-skill"
    ],
-   "prompt": "The invoice download work in {item} is finished and committed. Close it out.",
+   "prompt": "The invoice download work in {item} is finished: the code is written and its implement round describes it. Move it on to review.",
    "assertions": [
     {
      "predicate": "capability_status",
@@ -537,29 +634,30 @@
       "ref": "billing/download-invoice",
       "status": "Supported"
      },
-     "text": "the ledger was flipped Missing → Supported"
+     "text": "the capability the item declares new was recorded during implement, with the status the code now gives it"
     },
     {
-     "predicate": "item_status",
+     "predicate": "item_stage",
      "args": {
-      "item": "active",
-      "status": "completed"
+      "item": "closeout",
+      "stage": "review"
      },
-     "text": "the item completed"
+     "text": "the item moved into review, so the records gate passed"
     },
     {
-     "predicate": "transcript_absent",
+     "predicate": "tool_input_absent",
      "args": {
       "text": "--force"
      },
-     "text": "the completion gate was satisfied rather than forced"
+     "text": "the records gate was satisfied rather than forced"
     },
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     }
-   ]
+   ],
+   "note": "The item's capabilities.yaml declares billing/download-invoice as new and the seeder adds no record for it, so `tcw work advance` refuses (exit 3) until the record exists with a status other than Missing. In 3.0 a record is added during implement, in the same change as the code; there is no later step that flips it."
   },
   {
    "id": "B4",
@@ -653,7 +751,7 @@
     "with-skill",
     "no-skill"
    ],
-   "prompt": "`tcw work complete` just threw a traceback at me instead of completing the item. Looks like a bug in tcw itself. What do I do with this?",
+   "prompt": "`tcw work advance` just threw a traceback at me instead of moving the item on. Looks like a bug in tcw itself. What do I do with this?",
    "assertions": [
     {
      "predicate": "new_item_count",
@@ -693,14 +791,14 @@
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates"
+     "text": "the project still validates"
     },
     {
      "unmechanized": "a reply was offered for every issue, including the two that were not converted",
      "why": "this needs a per-issue reading of the transcript's prose — whether a proposed reply exists, and is addressed to that issue. The transcript family does substring and command-ordering reads, not per-entity prose attribution."
     }
    ],
-   "note": "The issue set is supplied inline in the prompt rather than seeded, because the fixture node has no GitHub remote and the harness has no network. This measures the triage judgement, not the `gh` plumbing the skill would normally drive — recorded as a narrowing of the spec's scenario. Narrowed deliberately: the fixture node has no GitHub remote and the harness has no network, so the skill's `gh` plumbing is unreachable. The four issues are supplied inline in the prompt, two actionable and two not. This measures triage judgement, not the plumbing."
+   "note": "The issue set is supplied inline in the prompt rather than seeded, because the fixture project has no GitHub remote and the harness has no network. This measures the triage judgement, not the `gh` plumbing the skill would normally drive — recorded as a narrowing of the spec's scenario. Narrowed deliberately: the fixture project has no GitHub remote and the harness has no network, so the skill's `gh` plumbing is unreachable. The four issues are supplied inline in the prompt, two actionable and two not. This measures triage judgement, not the plumbing."
   },
   {
    "id": "B8",
@@ -718,11 +816,20 @@
    "prompt": "We're adding scheduled report delivery to demo-app: a user picks a report and a cadence, and it lands in their inbox on that schedule. Nothing about this exists yet — not the word, not the ability, not the work. Set it up.",
    "assertions": [
     {
-     "predicate": "new_capability_count",
+     "predicate": "capabilities_declared",
      "args": {
+      "item": "new",
+      "kind": "new",
       "count": 1
      },
-     "text": "a capability was declared for the new ability"
+     "text": "the new ability is declared in the new item's capabilities.yaml"
+    },
+    {
+     "predicate": "capability_records_added",
+     "args": {
+      "count": 0
+     },
+     "text": "no capability record was added: at planning an ability is declared, not recorded; the record is added during implement"
     },
     {
      "predicate": "new_item_count",
@@ -734,26 +841,26 @@
     {
      "predicate": "validate_exit_zero",
      "args": {},
-     "text": "the node still validates, which is what catches a capability referencing a Feature that was never registered"
+     "text": "the project still validates, which is what catches a capabilities.yaml TCW cannot read"
     },
     {
      "predicate": "tool_input_absent",
      "args": {
       "text": "setup/references/"
      },
-     "text": "\"Set it up\" here asks for a term, a capability and a work item in a project that already uses TCW, so no setup document was opened"
+     "text": "\"Set it up\" here asks for a term, a declared ability and a work item in a project that already uses TCW, so no setup document was opened"
     },
     {
-     "unmechanized": "the three axes were touched in the right order — the term registered before the capability that uses it, the capability declared before the work item that delivers it",
-     "why": "the end state shows all three exist, not the sequence in which they were created: within one agent run they can land in a single commit or none. Recovering the sequence needs a general command-ordering read of the transcript, and the grader defines only one specific ordering read (`tcw work stage gate` before the artifact). See the report note — this one is close to expressible and would become so if the transcript family gained a general ordering predicate."
+     "unmechanized": "the axes were touched in the right order — the term registered before the item that names it, and the ability declared in that item",
+     "why": "the end state shows what exists, not the sequence in which it was created. Recovering the sequence needs a general command-ordering read of the transcript, which the transcript family does not have."
     }
    ]
   },
   {
    "id": "B9",
    "axis": "B",
-   "skill": "post-mortem",
-   "invokes": "post-mortem",
+   "skill": "work",
+   "invokes": "work",
    "item": "completed",
    "arms": [
     "with-skill",
@@ -764,22 +871,24 @@
     {
      "predicate": "artifact_exists",
      "args": {
-      "artifact": "post-mortem.md"
+      "item": "completed",
+      "stage": "postmortem"
      },
-     "text": "a post-mortem was written against the completed item"
+     "text": "a postmortem was written against the completed item"
     },
     {
      "predicate": "new_item_count",
      "args": {
       "count": 0
      },
-     "text": "the post-mortem analysed rather than silently opening follow-up work"
+     "text": "the postmortem analysed rather than silently opening follow-up work"
     },
     {
      "unmechanized": "the stage named is the earliest stage that could in fact have caught the defect",
-     "why": "this is the finding the skill exists to produce and it is a judgement about the item's own history. A predicate could check that some stage was named; it cannot check that the right one was."
+     "why": "this is the finding the postmortem exists to produce and it is a judgement about the item's own history. A predicate could check that some stage was named; it cannot check that the right one was."
     }
-   ]
+   ],
+   "note": "The work skill routes 'which stage could have caught this' to the postmortem stage prompt, `tcw work stage prompt postmortem <slug>`. The completed item carries a comment describing a defect found after acceptance."
   },
   {
    "id": "B10",
@@ -890,7 +999,7 @@
    "axis": "B",
    "skill": "work-create",
    "invokes": "work-create",
-   "item": "active",
+   "item": "implement",
    "arms": [
     "with-skill",
     "no-skill"
@@ -909,26 +1018,26 @@
      "args": {
       "text": "inbox"
      },
-     "text": "the agent read the work inbox while searching for overlap"
+     "text": "the agent looked at the inbox while searching for overlap"
     },
     {
      "predicate": "files_changed_exactly",
      "args": {
       "paths": [
-       "docs/work/inbox/slow-login.md"
+       "{item:inbox}/request/request.md"
       ]
      },
-     "text": "the new fact (Tuesday's invoice import) reached the inbox entry that already covers the report, and nothing else changed"
+     "text": "the new fact (Tuesday's invoice import) reached the request of the inbox item that already covers the report, and nothing else changed"
     },
     {
      "predicate": "new_item_count",
      "args": {
       "count": 0
      },
-     "text": "no item was created: the inbox entry covers the report"
+     "text": "no item was created: the inbox item covers the report"
     }
    ],
-   "note": "The fixture seeds docs/work/inbox/slow-login.md in step 9 of seed() (evals/seed_fixture.py), which every non-bare variant runs; its text already says eight seconds for accounts with many invoices, but not the import. What tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or a second entry changes other paths. tool_input_contains 'work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail. new_item_count reads items that run_one does not yet write (2026-09-15-eval-runs-under-this-checkout-grade-and-behave-wrongly)."
+   "note": "The seeder makes an item at the inbox stage, 'Login is slow', whose request already says eight seconds for accounts with many invoices, but not the import. The create-work procedure adds a new fact for an item at inbox or request to its request, under a dated `## Added` heading, so what tells runs apart is files_changed_exactly: an agent that ignores the remark changes nothing, and one that creates an item or edits anything else changes other paths. tool_input_contains 'work-create' is also satisfied by a Bash command naming the skill folder, so it is a routing signal, not proof of behavior. In the no-skill arm the first assertion and files_changed_exactly are expected to fail."
   }
  ]
 }

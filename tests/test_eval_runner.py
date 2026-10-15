@@ -11,12 +11,8 @@ spending money — whether the isolation map really suppresses the plugins — w
 settled by probe and is recorded in the plan.
 """
 
-import pytest
-
-pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
-
-
 import json
+import subprocess
 
 import pytest
 
@@ -176,9 +172,10 @@ def test_an_unresolved_placeholder_never_reaches_a_real_invocation(cases):
     literally called `{item}`, and the case would fail for a reason that has
     nothing to do with what it measures."""
     manifest = {"items": {k: f"slug-{k}" for k in
-                          ("backlog", "active", "completed")},
+                          ("inbox", "spec", "plan", "implement", "closeout",
+                           "review", "qa", "completed")},
                 "stage_items": {s: f"slug-{s}" for s in
-                                ("spec", "plan", "implement", "verify",
+                                ("spec", "plan", "implement", "review", "qa",
                                  "postmortem")}}
     for case in cases:
         assert "{item}" not in run_evals.prompt_for(case, manifest), case["id"]
@@ -276,3 +273,75 @@ def test_selection_filters_by_axis_and_by_case(cases):
     assert {c["axis"] for c in run_evals.select(cases, "a", None)} == {"A"}
     assert [c["id"] for c in run_evals.select(cases, None, ["a1"])] == ["A1"]
     assert run_evals.select(cases, "a", ["B1"]) == []
+
+
+def test_every_item_a_case_names_is_one_the_seeder_makes(cases):
+    """A case naming an item role the seeder never makes would fail with a
+    `KeyError` after seeding, in the middle of a paid run. `new` is the one
+    argument value that names no seeded item: it is the item the agent made."""
+    roles = {"inbox", "spec", "plan", "implement", "closeout", "review", "qa",
+             "completed"}
+    for case in cases:
+        if "item" in case:
+            assert case["item"] in roles, case["id"]
+        for assertion in case["assertions"]:
+            item = assertion.get("args", {}).get("item")
+            if item is not None:
+                assert item in roles | {"new"}, (case["id"], item)
+
+
+# --- the dry run ----------------------------------------------------------
+
+def test_the_axis_a_dry_run_lists_both_qa_cases(tmp_path, capsys):
+    """Criterion 12: the default qa case, run on the control fixture, and the
+    case where a person decides, run on the customized one."""
+    code = run_evals.main(["--axis", "a", "--dry-run",
+                           "--out", str(tmp_path / "runs")])
+    out, _ = capsys.readouterr()
+    assert code == 0
+    qa = [line for line in out.splitlines() if "stage: qa" in line]
+    assert len(qa) == 2, qa
+    assert any("[control]" in line and "fixture: control" in line for line in qa)
+    assert any("[customized]" in line and "fixture: customized" in line
+               for line in qa)
+    for stage in ("spec", "plan", "implement", "review", "postmortem"):
+        assert f"stage: {stage}" in out, stage
+
+
+# --- what one run records -------------------------------------------------
+
+def test_a_run_records_what_grading_reads_and_hides_personal_config(
+        tmp_path, monkeypatch):
+    """`grade_run` reads the items, the QA scenarios and the seeded commit
+    from timing.json; a run that does not write them grades every item
+    predicate as failed. Nothing is seeded or spawned: both are replaced."""
+    manifest = {"items": {"qa": "demo-app/x-qa"},
+                "stage_items": {"qa": "demo-app/x-qa"},
+                "qa_scenarios": ["QA-1"], "nonces": {},
+                "seeded_head": "abc123"}
+
+    def fake_seed(dest, variant):
+        dest.mkdir(parents=True)
+        return manifest
+
+    spawned = {}
+
+    def fake_run(argv, **kwargs):
+        spawned["argv"], spawned["env"] = argv, kwargs.get("env") or {}
+        return subprocess.CompletedProcess(argv, 0, stderr="")
+
+    monkeypatch.setattr(run_evals, "seed", fake_seed)
+    monkeypatch.setattr(run_evals.subprocess, "run", fake_run)
+    case = {"id": "A6", "axis": "A", "stage": "qa", "item": "qa",
+            "prompt": "Work the qa stage for {item}.", "arms": ["control"],
+            "assertions": []}
+    entry = run_evals.run_one(case, "control", tmp_path / "run")
+
+    assert spawned["argv"][0] == "claude"
+    assert spawned["argv"][-1] == "Work the qa stage for demo-app/x-qa."
+    assert spawned["env"].get("TCW_NO_PERSONAL_CONFIG") == "1"
+    timing = json.loads((tmp_path / "run/timing.json").read_text())
+    assert timing == entry
+    assert timing["items"] == manifest["items"]
+    assert timing["qa_scenarios"] == ["QA-1"]
+    assert timing["seeded_head"] == "abc123"

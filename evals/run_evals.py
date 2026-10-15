@@ -38,7 +38,7 @@ import sys
 import time
 from pathlib import Path
 
-from evals.seed_fixture import refuse_bare_inside_a_project, seed
+from evals.seed_fixture import TCW_ENV, refuse_bare_inside_a_project, seed
 
 REPO = Path(__file__).resolve().parent.parent
 EVALS = Path(__file__).with_name("evals.json")
@@ -167,9 +167,11 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
     transcript = out / "transcript.jsonl"
     started = time.monotonic()
     with transcript.open("w") as stream:
+        # The agent's `tcw` reads no personal configuration either, so a person
+        # running the harness cannot change what a stage prompt says to it.
         proc = subprocess.run(argv, cwd=str(fixture), stdout=stream,
                               stderr=subprocess.PIPE, text=True,
-                              stdin=subprocess.DEVNULL)
+                              stdin=subprocess.DEVNULL, env=TCW_ENV)
     elapsed = time.monotonic() - started
 
     result = {}
@@ -198,7 +200,9 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
         "transcript": str(transcript),
         "prompt": prompt_for(case, manifest),
         "nonces": manifest["nonces"],
+        "items": manifest["items"],
         "stage_items": manifest["stage_items"],
+        "qa_scenarios": manifest.get("qa_scenarios", []),
         "plugin_version": (init.get("plugins") or [{}])[0].get("version"),
         "isolation_problems": check_isolation(case, arm, init),
     }
@@ -286,8 +290,9 @@ def main(argv: list[str] | None = None) -> int:
         for case in chosen:
             for arm in case["arms"]:
                 out = out_root / case["id"] / arm
+                stage = f"  stage: {case['stage']}" if case.get("stage") else ""
                 print(f"\n{case['id']} [{arm}]  axis {case['axis']}  "
-                      f"fixture: {variant_for(case, arm)}")
+                      f"fixture: {variant_for(case, arm)}{stage}")
                 print(f"  cwd:     {out / 'fixture'}")
                 print(f"  command: {' '.join(command(case, arm, settings))}")
         return 0

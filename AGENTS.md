@@ -108,7 +108,7 @@ cannot answer either question: it can prove a skill file still says the right
 words, never that an agent read them.
 
 ```sh
-python evals/seed_fixture.py --customized /tmp/probe   # build one fixture node
+python evals/seed_fixture.py --customized /tmp/probe   # build one fixture project
 python evals/seed_fixture.py --bare /tmp/probe         # ...or a repo with no TCW yet
 python -m evals.run_evals --axis a --dry-run           # see the arms, spawn nothing
 python -m evals.run_evals --axis a                     # spend money
@@ -123,9 +123,10 @@ spawned session's own `init` event and fails the run if anything else loaded.
 
 Two rules for anyone changing the harness. Every assertion is mutation-checked
 before it is trusted — break what it claims to observe, confirm it goes red, and
-read _why_ it went red. And a nonce alone never proves injection worked: each
-composing skill carries a manual fallback, so `grade.py` reports every nonce as
-`injected`, `fallback` or `unknown`.
+read _why_ it went red. And a nonce in an artifact is not enough on its own:
+each lifecycle case also checks that the agent ran `tcw work stage prompt
+<stage>`, because that command is the one source of stage text and no skill
+injects it any more.
 
 Run outputs are disposable and gitignored. The instrument is not.
 

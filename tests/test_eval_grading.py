@@ -1,137 +1,447 @@
-"""The grader returns the right verdict on each committed example run.
+"""The grader returns the right verdict for what an agent left behind.
 
-Four run directories under `tests/fixtures/eval_grading/`, one per verdict the
-axis A core can produce. Two of them — `injected` and `fallback` — have **byte
-identical artifacts**, carrying the same nonce in the same heading, and differ
-only in what the transcript shows. That pair is the whole point: without reading
-provenance the grader cannot tell them apart, and a run where injection failed
-and the manual fallback rescued it would grade as injection working.
+Each predicate is exercised against a real seeded fixture, copied per test,
+with the agent's work written by hand: once the way a correct run leaves it,
+and once broken the way a wrong run would, so every check is seen to go red
+for the reason it exists. The whole-case tests at the end grade run
+directories the way `grade.py` does after a live run, for the two qa cases,
+whose point is telling a recorded verdict apart from an invented one.
 """
 
-import pytest
-
-pytest.skip("TCW-74 rewrites the stage prompts, procedures and skills for the 3.0 lifecycle, and removes this skip when it rewrites this file", allow_module_level=True)
-
-
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from evals import grade
+from evals.seed_fixture import seed
 
-FIXTURES = ["injected", "fallback", "nonce_absent", "blocks_missing"]
+TCW_ENV = {**os.environ, "TCW_NO_PERSONAL_CONFIG": "1"}
+
+
+def _tcw(root, *args, stdin=""):
+    return subprocess.run([sys.executable, "-m", "tcw.cli", *args],
+                          cwd=str(root), capture_output=True, text=True,
+                          input=stdin, env=TCW_ENV)
 
 
 @pytest.fixture(scope="module")
-def graded(request):
-    root = request.config.rootpath / "tests/fixtures/eval_grading"
-    return {name: grade.grade_run(root / name) for name in FIXTURES}
+def seeded(tmp_path_factory):
+    out = {}
+    for variant in ("control", "customized"):
+        root = tmp_path_factory.mktemp(variant) / "p"
+        out[variant] = (root, seed(root, variant))
+    return out
 
 
-def _nonce_assertion(report):
-    return next(a for a in report["assertions"]
-                if a.get("predicate") == "nonce_in_artifact")
+def _copy(seeded, variant, tmp_path):
+    root, manifest = seeded[variant]
+    copy = tmp_path / variant
+    shutil.copytree(root, copy, symlinks=True)
+    return copy, manifest
 
 
-# --- the pair that only provenance separates ------------------------------
-
-def test_the_injected_and_fallback_runs_have_identical_artifacts(request):
-    """The premise the provenance read exists for. If these ever diverge, the
-    pair stops testing what it was built to test."""
-    root = request.config.rootpath / "tests/fixtures/eval_grading"
-    bodies = {
-        name: (root / name / "fixture/docs/work/backlog/item-one/spec.md").read_text()
-        for name in ("injected", "fallback")
-    }
-    assert bodies["injected"] == bodies["fallback"]
+@pytest.fixture
+def control(seeded, tmp_path):
+    return _copy(seeded, "control", tmp_path)
 
 
-def test_an_injected_nonce_passes(graded):
-    verdict = _nonce_assertion(graded["injected"])
-    assert verdict["provenance"] == grade.INJECTED
-    assert verdict["passed"] is True
-    assert verdict["evidence"], "a pass with no evidence is not a pass"
+@pytest.fixture
+def customized(seeded, tmp_path):
+    return _copy(seeded, "customized", tmp_path)
 
 
-def test_a_fallback_sourced_nonce_fails_despite_being_present(graded):
-    """The confound this module exists to close. The nonce is in the artifact,
-    and that is not enough: the agent ran the prompt command by hand before it
-    appeared, so the injection layer may have done nothing."""
-    verdict = _nonce_assertion(graded["fallback"])
-    assert verdict["provenance"] == grade.FALLBACK
-    assert verdict["passed"] is False
-    assert "a1b2c3d4e5f60718" in verdict["evidence"], (
-        "the evidence should still show the nonce was found")
+def _run(root, manifest, events=()):
+    """The `run` mapping `grade_run` builds, without a run directory."""
+    return {"fixture": root, "events": list(events),
+            "items": manifest["items"], "stage_items": manifest["stage_items"],
+            "nonces": manifest["nonces"],
+            "qa_scenarios": manifest.get("qa_scenarios", []),
+            "seeded_head": manifest["seeded_head"]}
 
 
-def test_running_the_gate_is_not_read_as_a_fallback(graded):
-    """`tcw work stage gate` appears before the nonce in the injected run, and
-    the fenced fallback names it. It prints a legality result and never the
-    instructions, so it cannot be where a nonce came from. Treating it as one
-    marked every well-behaved run fallback-sourced, because running the gate
-    first is the behaviour case A7 rewards."""
-    assert "tcw work stage gate" not in grade.FALLBACK_COMMANDS
-    assert _nonce_assertion(graded["injected"])["provenance"] == grade.INJECTED
+def _path(root, *args) -> Path:
+    proc = _tcw(root, "work", "path", *args)
+    assert proc.returncode == 0, proc.stderr
+    return Path(proc.stdout.strip())
 
 
-# --- the other two verdicts -----------------------------------------------
-
-def test_an_absent_nonce_fails_as_unknown_not_as_injected(graded):
-    """A nonce that never arrived has no provenance to report. `unknown` is
-    never a pass."""
-    verdict = _nonce_assertion(graded["nonce_absent"])
-    assert verdict["provenance"] == grade.UNKNOWN
-    assert verdict["passed"] is False
-    assert "absent" in verdict["evidence"]
+def _write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    return path
 
 
-def test_a_nonce_the_transcript_never_shows_is_unknown(graded):
-    """Reachable and distinct from the artifact being absent: the artifact can
-    carry the nonce while the transcript never does, if the transcript was
-    truncated or the capture failed. Nothing can then say how it arrived, and
-    a run whose transcript was not captured cannot be graded for provenance.
-
-    Tested directly because `p_nonce_in_artifact` returns early when the
-    artifact lacks the nonce, so that path never reaches this branch.
-    """
-    events = [{"type": "assistant",
-               "message": {"content": [{"text": "wrote the spec"}]}}]
-    assert grade.provenance(events, "deadbeefdeadbeef") == grade.UNKNOWN
-    assert grade.provenance([], "deadbeefdeadbeef") == grade.UNKNOWN
+def _qa_round(root, manifest, text):
+    return _write(_path(root, manifest["items"]["qa"], "qa", "--next"), text)
 
 
-def test_provenance_only_counts_a_manual_call_that_came_first(graded):
-    """An agent that writes the nonce and *then* runs the command by hand, to
-    check its work, was still supplied by injection. Ordering is the whole
-    discriminator, so a later call must not retroactively condemn the run."""
-    def ev(text):
-        return {"type": "assistant", "message": {"content": [{"text": text}]}}
+GOOD_QA = """---
+verdict: accepted
+judges: 1
+---
 
-    before = [ev("tcw work stage prompt spec x"), ev("marker abc123")]
-    after = [ev("marker abc123"), ev("tcw work stage prompt spec x")]
-    assert grade.provenance(before, "abc123") == grade.FALLBACK
-    assert grade.provenance(after, "abc123") == grade.INJECTED
+# QA round 1
+
+- QA-1: passed. The last line read `TOTAL 60`.
+- QA-2: passed. The last line read `TOTAL 0`.
+- QA-3: passed. The last line read `TOTAL 30`.
+"""
+
+PERSON_QA = """---
+verdict: rejected
+judges: 1
+decided-by: Dana Reyes
+---
+
+# QA round 1
+
+- QA-1: passed.
+- QA-2: passed.
+- QA-3: passed.
+
+Rejected by Dana Reyes: the TOTAL line does not say which currency it is in.
+"""
 
 
-def test_a_silent_empty_render_fails_the_blocks_read(graded):
-    """Failure mode I1, visible in the transcript and nowhere else."""
-    report = graded["blocks_missing"]
-    blocks = next(a for a in report["assertions"]
-                  if a.get("predicate") == "transcript_blocks_present")
-    assert blocks["passed"] is False
-    for heading in grade.BLOCK_HEADINGS:
-        assert heading in blocks["evidence"]
+def _check(predicate, run, **args):
+    return grade.PREDICATES[predicate](run, **args)
 
 
-def test_the_grader_looks_for_the_headings_the_stage_skill_renders():
-    """The blocks predicate matches headings by text. Renaming one in the skill
-    without the grader makes every live run fail I1 while the fixtures, which
-    carry whatever headings they were written with, stay green."""
-    skill = (Path(grade.__file__).resolve().parents[1]
-             / "skills" / "work-stage" / "SKILL.md").read_text(encoding="utf-8")
-    for heading in grade.BLOCK_HEADINGS:
-        assert f"\n{heading}\n" in skill, heading
+# --- the round front matter: valid, and judging the newest implement round --
+
+QA = {"item": "qa", "stage": "qa"}
+
+
+def test_a_valid_round_judging_the_newest_implement_round_passes(control):
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    verdict = _check("round_front_matter", _run(root, manifest), **QA)
+    assert verdict["passed"], verdict["evidence"]
+    assert "judges 1" in verdict["evidence"]
+
+
+@pytest.mark.parametrize("text, why", [
+    (GOOD_QA.replace("judges: 1", "judges: 0"), "judges 0"),
+    (GOOD_QA.replace("judges: 1", "judges: 2"), "judges 2"),
+    (GOOD_QA.replace("verdict: accepted", "verdict: passed"), "not a valid"),
+    (GOOD_QA.replace("judges: 1", "judges: one"), "not a valid"),
+    (GOOD_QA.replace("judges: 1\n", ""), "not a valid"),
+    (GOOD_QA.split("---\n", 2)[2], "not a valid"),
+])
+def test_a_round_tcw_would_not_accept_fails(control, text, why):
+    """Each mutation is a round `tcw work advance` would reject: a stale or
+    future `judges`, a verdict word TCW does not know, a `judges` that is not
+    a number, a missing `judges`, and no front matter at all."""
+    root, manifest = control
+    _qa_round(root, manifest, text)
+    verdict = _check("round_front_matter", _run(root, manifest), **QA)
+    assert not verdict["passed"]
+    assert why in verdict["evidence"]
+
+
+def test_a_new_implement_round_makes_an_old_verdict_stale(control):
+    """`judges` is counted from the implement rounds that exist, not read from
+    anything the round says about itself."""
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    _write(_path(root, manifest["items"]["qa"], "implement", "--next"),
+           "# Implement round 2\n")
+    verdict = _check("round_front_matter", _run(root, manifest), **QA)
+    assert not verdict["passed"]
+    assert "newest implement round is 2" in verdict["evidence"]
+
+
+def test_the_check_agrees_with_tcw_about_the_judges_value(control):
+    """The same round the grader passes is one `tcw work advance` accepts, and
+    the one it fails for a wrong `judges` is one TCW refuses."""
+    root, manifest = control
+    slug = manifest["items"]["qa"]
+    path = _qa_round(root, manifest, GOOD_QA)
+    assert _tcw(root, "work", "advance", slug, "--dry-run").returncode == 0
+    path.write_text(GOOD_QA.replace("judges: 1", "judges: 0"))
+    assert _tcw(root, "work", "advance", slug, "--dry-run").returncode == 3
+
+
+def test_no_round_written_fails(control):
+    root, manifest = control
+    verdict = _check("round_front_matter", _run(root, manifest), **QA)
+    assert not verdict["passed"]
+    assert "no qa round" in verdict["evidence"]
+
+
+def test_the_newest_round_is_the_one_read(control):
+    """A valid round 1 followed by a broken round 2 is a broken current
+    verdict, which is how TCW reads it too."""
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    _qa_round(root, manifest, "no front matter\n")
+    verdict = _check("round_front_matter", _run(root, manifest), **QA)
+    assert not verdict["passed"]
+    assert "round-2.md" in verdict["evidence"]
+
+
+# --- the verdict, and who decided it ---------------------------------------
+
+def test_the_person_s_verdict_passes_and_an_invented_one_fails(control):
+    root, manifest = control
+    path = _qa_round(root, manifest, PERSON_QA)
+    run = _run(root, manifest)
+    assert _check("round_verdict_is", run, verdict="rejected", **QA)["passed"]
+    path.write_text(PERSON_QA.replace("verdict: rejected", "verdict: accepted"))
+    failed = _check("round_verdict_is", run, verdict="rejected", **QA)
+    assert not failed["passed"]
+    assert "'accepted'" in failed["evidence"]
+
+
+@pytest.mark.parametrize("text, passes", [
+    (PERSON_QA, True),
+    (PERSON_QA.replace("decided-by: Dana Reyes\n", ""), False),
+    (PERSON_QA.replace("decided-by: Dana Reyes", "decided-by: ''"), False),
+    (PERSON_QA.replace("decided-by: Dana Reyes", "decided-by: the agent"), False),
+    # Named in the body only, not in the front matter TCW and people read.
+    (PERSON_QA.replace("decided-by: Dana Reyes\n", "") + "\ndecided-by: Dana\n",
+     False),
+])
+def test_decided_by_must_be_in_the_front_matter_and_name_the_person(
+        control, text, passes):
+    root, manifest = control
+    _qa_round(root, manifest, text)
+    verdict = _check("round_decided_by", _run(root, manifest), name="Dana", **QA)
+    assert verdict["passed"] is passes, verdict["evidence"]
+
+
+# --- one line per QA plan scenario -----------------------------------------
+
+@pytest.mark.parametrize("text, passes", [
+    (GOOD_QA, True),
+    (GOOD_QA.replace("- QA-3: passed. The last line read `TOTAL 30`.\n", ""),
+     False),
+    # QA-10 and XQA-1 are not QA-1.
+    (GOOD_QA.replace("- QA-1:", "- QA-10:"), False),
+    (GOOD_QA.replace("- QA-1:", "- XQA-1:"), False),
+    # Only in the front matter is not a line of the round.
+    ("---\nverdict: accepted\njudges: 1\nnote: QA-1 QA-2 QA-3\n---\n\nAll good.\n",
+     False),
+])
+def test_every_scenario_must_have_a_line(control, text, passes):
+    root, manifest = control
+    _qa_round(root, manifest, text)
+    verdict = _check("round_lists_scenarios", _run(root, manifest), **QA)
+    assert verdict["passed"] is passes, verdict["evidence"]
+
+
+def test_a_run_with_no_recorded_scenarios_cannot_pass(control):
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    run = {**_run(root, manifest), "qa_scenarios": []}
+    verdict = _check("round_lists_scenarios", run, **QA)
+    assert not verdict["passed"]
+
+
+# --- artifacts: documents and the newest round -----------------------------
+
+def _new_item(root, title="Export a report as CSV"):
+    proc = _tcw(root, "work", "new", title, stdin="Export as CSV.\n")
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout.strip()
+
+
+def test_artifact_exists_reads_a_round_stage_s_newest_round(control):
+    """B1 asks for an implement round on the item the agent made."""
+    root, manifest = control
+    run = _run(root, manifest)
+    args = {"item": "new", "stage": "implement"}
+    assert "expected exactly one new item" in _check(
+        "artifact_exists", run, **args)["evidence"]
+
+    slug = _new_item(root)
+    missing = _check("artifact_exists", run, **args)
+    assert not missing["passed"]
+    assert "no implement round" in missing["evidence"]
+
+    path = _write(_path(root, slug, "implement", "--next"), "   \n")
+    assert not _check("artifact_exists", run, **args)["passed"], "empty passed"
+    path.write_text("# Implement round 1\n\nWrote the exporter.\n")
+    verdict = _check("artifact_exists", run, **args)
+    assert verdict["passed"], verdict["evidence"]
+    assert "round-1.md" in verdict["evidence"]
+
+
+def test_artifact_exists_reads_a_document_stage_s_document(control):
+    root, manifest = control
+    run = _run(root, manifest)
+    slug = _new_item(root)
+    assert not _check("artifact_exists", run, item="new", stage="plan")["passed"]
+    _write(_path(root, slug, "plan"), "# Plan\n\nOne task.\n")
+    verdict = _check("artifact_exists", run, item="new", stage="plan")
+    assert verdict["passed"], verdict["evidence"]
+    assert verdict["evidence"].endswith("characters)")
+
+
+def test_new_resolves_to_no_item_when_the_agent_made_two(control):
+    root, manifest = control
+    _new_item(root, "One")
+    _new_item(root, "Two")
+    verdict = _check("artifact_exists", _run(root, manifest), item="new",
+                     stage="request")
+    assert not verdict["passed"]
+    assert "expected exactly one new item" in verdict["evidence"]
+
+
+def test_a_nonce_counts_only_in_the_newest_implement_round(customized):
+    root, manifest = customized
+    run = _run(root, manifest)
+    slug = manifest["items"]["implement"]
+    nonce = manifest["nonces"]["generate"]
+    args = {"kind": "generate", "item": "implement", "stage": "implement"}
+    assert not _check("nonce_in_artifact", run, **args)["passed"]
+    _write(_path(root, slug, "implement", "--next"),
+           f"# Round 1\n\nRound marker: {nonce}\n")
+    assert _check("nonce_in_artifact", run, **args)["passed"]
+    _write(_path(root, slug, "implement", "--next"), "# Round 2\n\nNo marker.\n")
+    verdict = _check("nonce_in_artifact", run, **args)
+    assert not verdict["passed"]
+    assert "round-2.md" in verdict["evidence"]
+
+
+def test_a_nonce_in_the_spec_document(customized):
+    root, manifest = customized
+    run = _run(root, manifest)
+    args = {"kind": "file", "item": "spec", "stage": "spec"}
+    path = _write(_path(root, manifest["items"]["spec"], "spec"), "# Spec\n")
+    assert "absent" in _check("nonce_in_artifact", run, **args)["evidence"]
+    path.write_text(f"# Spec\n\n## Blast radius ({manifest['nonces']['file']})\n")
+    assert _check("nonce_in_artifact", run, **args)["passed"]
+
+
+def test_silence_invents_nothing_reads_the_postmortem(customized):
+    root, manifest = customized
+    run = _run(root, manifest)
+    args = {"kinds": ["file", "blob", "generate"], "item": "completed",
+            "stage": "postmortem"}
+    assert "not written" in _check("nonce_absent_from_artifact", run,
+                                   **args)["evidence"]
+    path = _write(_path(root, manifest["items"]["completed"], "postmortem"),
+                  "# Postmortem\n\nSpec.\n")
+    assert _check("nonce_absent_from_artifact", run, **args)["passed"]
+    path.write_text(f"# Postmortem\n\n{manifest['nonces']['blob']}\n")
+    assert not _check("nonce_absent_from_artifact", run, **args)["passed"]
+
+
+# --- stage prompts at end state --------------------------------------------
+
+def test_the_postmortem_prompt_is_silent_only_when_customized(control,
+                                                              customized):
+    for (root, manifest), silent in ((customized, True), (control, False)):
+        run = _run(root, manifest)
+        assert _check("stage_prompt_empty", run,
+                      stage="postmortem")["passed"] is silent
+        assert _check("stage_prompt_framed", run,
+                      stage="postmortem")["passed"] is not silent
+
+
+# --- items, capabilities and their declarations ----------------------------
+
+def test_item_stage_reads_the_stage_tcw_reports(control):
+    root, manifest = control
+    run = _run(root, manifest)
+    assert _check("item_stage", run, item="closeout", stage="implement")["passed"]
+    failed = _check("item_stage", run, item="closeout", stage="review")
+    assert not failed["passed"]
+    assert "is at implement" in failed["evidence"]
+    # A stage name appearing elsewhere in `tcw work show`, such as the
+    # `request:` heading, must not count.
+    assert not _check("item_stage", run, item="closeout",
+                      stage="request")["passed"]
+
+
+def test_new_item_count_counts_items_that_have_ended(control):
+    root, manifest = control
+    run = _run(root, manifest)
+    assert _check("new_item_count", run, count=0)["passed"]
+    slug = _new_item(root)
+    assert _check("new_item_count", run, count=1)["passed"]
+    _tcw(root, "work", "discard", slug, "--reason", "duplicate")
+    assert _check("new_item_count", run, count=1)["passed"]
+    assert not _check("new_item_count", run, count=0)["passed"]
+
+
+def test_capability_status_reads_the_status_field(control):
+    root, manifest = control
+    run = _run(root, manifest)
+    args = {"ref": "billing/download-invoice", "status": "Supported"}
+    assert not _check("capability_status", run, **args)["passed"], "no record"
+    _tcw(root, "capabilities", "add", "billing/download-invoice",
+         stdin="Download.\n")
+    missing = _check("capability_status", run, **args)
+    assert not missing["passed"]
+    assert "'Missing'" in missing["evidence"]
+    _tcw(root, "capabilities", "set", "billing/download-invoice",
+         "--status", "Supported")
+    assert _check("capability_status", run, **args)["passed"]
+
+
+def test_capability_records_added_counts_beyond_the_seeded_record(control):
+    root, manifest = control
+    run = _run(root, manifest)
+    assert _check("capability_records_added", run, count=0)["passed"]
+    _tcw(root, "capabilities", "add", "reports/deliver", stdin="Deliver.\n")
+    assert not _check("capability_records_added", run, count=0)["passed"]
+    assert _check("capability_records_added", run, count=1)["passed"]
+
+
+@pytest.mark.parametrize("text, passes, why", [
+    ("new:\n  - reports/deliver\n", True, "['reports/deliver']"),
+    ("new:\n  - reports/deliver\n  - reports/schedule\n", False, "expected 1"),
+    ("changed:\n  - reports/view\n", False, "new: []"),
+    ("new: reports/deliver\n", False, "must be a list"),
+    ("planned:\n  - reports/deliver\n", False, "unknown key"),
+    (None, False, "no capabilities.yaml"),
+])
+def test_capabilities_declared_reads_the_new_item_s_file(control, text,
+                                                         passes, why):
+    """B8: the ability is declared on the item the agent made, in a file TCW
+    itself can read."""
+    root, manifest = control
+    slug = _new_item(root, "Deliver reports on a schedule")
+    if text is not None:
+        (_path(root, slug) / "capabilities.yaml").write_text(text)
+    verdict = _check("capabilities_declared", _run(root, manifest),
+                     item="new", kind="new", count=1)
+    assert verdict["passed"] is passes, verdict["evidence"]
+    assert why in verdict["evidence"]
+
+
+# --- which files changed, with an item folder in the path ------------------
+
+def test_an_item_folder_placeholder_expands_to_the_minted_folder(control):
+    """B13 expects the inbox item's request to change, and its folder name
+    carries the date the slug was minted."""
+    root, manifest = control
+    run = _run(root, manifest)
+    args = {"paths": ["{item:inbox}/request/request.md"]}
+    assert not _check("files_changed_exactly", run, **args)["passed"]
+    request = _path(root, manifest["items"]["inbox"], "request")
+    request.write_text(request.read_text() + "\n## Added\n\nTuesday's import.\n")
+    verdict = _check("files_changed_exactly", run, **args)
+    assert verdict["passed"], verdict["evidence"]
+    assert "docs/work/" in verdict["evidence"]
+    # Moving the item on as well is a change the case does not allow.
+    _tcw(root, "work", "advance", manifest["items"]["inbox"])
+    assert not _check("files_changed_exactly", run, **args)["passed"]
+
+
+def test_an_unknown_item_placeholder_fails_rather_than_matching_nothing(control):
+    root, manifest = control
+    verdict = _check("files_changed_exactly", _run(root, manifest),
+                     paths=["{item:nonesuch}/request/request.md"])
+    assert not verdict["passed"]
+    assert "cannot expand" in verdict["evidence"]
 
 
 # --- tool inputs: what the agent ran or opened ----------------------------
@@ -191,6 +501,25 @@ def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
     assert "no tool calls found" in verdict["evidence"]
 
 
+def _bash(command):
+    return {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "b", "name": "Bash",
+         "input": {"command": command}}]}}
+
+
+def test_reading_a_stage_prompt_counts_only_when_the_agent_ran_it():
+    """Axis A's first assertion. A skill that only shows the command, or the
+    agent saying it would run it, is not running it."""
+    assertion = {"text": "tcw work stage prompt spec"}
+    said = {"events": [{"type": "assistant", "message": {"content": [
+        {"type": "text", "text": "I will run tcw work stage prompt spec x"}]}}]}
+    assert not grade.p_tool_input_contains(said, **assertion)["passed"]
+    other = {"events": [_bash("tcw work stage prompt plan demo-app/x")]}
+    assert not grade.p_tool_input_contains(other, **assertion)["passed"]
+    ran = {"events": [_bash("tcw work stage prompt spec demo-app/x")]}
+    assert grade.p_tool_input_contains(ran, **assertion)["passed"]
+
+
 # --- the routing assertions the cases actually carry ----------------------
 #
 # Read from `evals/evals.json` rather than restated, so a case whose search text
@@ -248,14 +577,99 @@ def test_a_case_routing_assertion_fails_the_wrong_route(case_id, predicate,
     assert passed["passed"], passed["evidence"]
 
 
+# --- grading whole run directories ----------------------------------------
+
+def _run_dir(tmp_path, case, arm, root, manifest, events):
+    run_dir = tmp_path / f"run-{case}-{arm}"
+    run_dir.mkdir()
+    (run_dir / "timing.json").write_text(json.dumps({
+        "case": case, "axis": "A", "arm": arm, "fixture": str(root),
+        "nonces": manifest["nonces"], "items": manifest["items"],
+        "stage_items": manifest["stage_items"],
+        "qa_scenarios": manifest["qa_scenarios"],
+        "seeded_head": manifest["seeded_head"]}))
+    (run_dir / "transcript.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in events))
+    return grade.grade_run(run_dir)
+
+
+def _ran_qa_prompt(manifest):
+    return [_bash(f"tcw work stage prompt qa {manifest['items']['qa']}")]
+
+
+def test_a7_passes_a_round_recording_the_person_s_decision(customized, tmp_path):
+    root, manifest = customized
+    _qa_round(root, manifest, PERSON_QA)
+    report = _run_dir(tmp_path, "A7", "customized", root, manifest,
+                      _ran_qa_prompt(manifest))
+    assert report["graded"] == 4
+    assert report["passed"] == 4, [a["evidence"] for a in report["assertions"]]
+
+
+def test_a7_fails_an_agent_that_picks_its_own_verdict(customized, tmp_path):
+    """The wrong implementation the spec names: every scenario passes, so an
+    agent deciding for itself writes `accepted` and no `decided-by`."""
+    root, manifest = customized
+    _qa_round(root, manifest, GOOD_QA)
+    report = _run_dir(tmp_path, "A7", "customized", root, manifest,
+                      _ran_qa_prompt(manifest))
+    failed = {a["predicate"] for a in report["assertions"] if not a["passed"]}
+    assert failed == {"round_verdict_is", "round_decided_by"}
+
+
+def test_a7_fails_an_agent_that_writes_nothing(customized, tmp_path):
+    root, manifest = customized
+    report = _run_dir(tmp_path, "A7", "customized", root, manifest,
+                      _ran_qa_prompt(manifest))
+    failed = {a["predicate"] for a in report["assertions"] if not a["passed"]}
+    assert failed == {"round_front_matter", "round_verdict_is",
+                      "round_decided_by"}
+
+
+def test_a6_passes_the_agent_s_own_verdict_with_a_line_per_scenario(
+        control, tmp_path):
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    report = _run_dir(tmp_path, "A6", "control", root, manifest,
+                      _ran_qa_prompt(manifest))
+    assert report["passed"] == report["graded"] == 4, [
+        a["evidence"] for a in report["assertions"]]
+    assert report["unmechanized"] == 1
+
+
+def test_a6_fails_without_having_run_the_stage_prompt(control, tmp_path):
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    report = _run_dir(tmp_path, "A6", "control", root, manifest,
+                      [_bash("cat docs/work/x/qa/round-1.md")])
+    failed = [a["predicate"] for a in report["assertions"] if a["passed"] is False]
+    assert failed == ["tool_input_contains"]
+
+
+def test_an_arm_scoped_assertion_is_skipped_on_the_other_arm(control, tmp_path):
+    """An assertion written for the customized arm says nothing about the
+    control, and grading it there would manufacture a failure."""
+    root, manifest = control
+    report = _run_dir(tmp_path, "A1", "control", root, manifest, [])
+    predicates = [a.get("predicate") for a in report["assertions"]]
+    assert "nonce_in_artifact" not in predicates
+    assert "artifact_exists" in predicates
+
+
+def test_an_unmechanized_assertion_is_neither_passed_nor_failed(control,
+                                                               tmp_path):
+    """Recording the claim honestly is the point of the marker. Counting it as a
+    pass would inflate the rate; counting it as a fail would punish the harness
+    for being honest about its reach."""
+    root, manifest = control
+    report = _run_dir(tmp_path, "A4", "control", root, manifest, [])
+    marked = [a for a in report["assertions"] if "unmechanized" in a]
+    assert len(marked) == 1 and marked[0]["passed"] is None
+    assert report["graded"] == sum(
+        1 for a in report["assertions"] if a["passed"] is not None)
+
+
 # --- grading discipline ---------------------------------------------------
-
-def test_a_pass_always_carries_evidence(graded):
-    for name, report in graded.items():
-        for a in report["assertions"]:
-            if a["passed"]:
-                assert a["evidence"].strip(), f"{name}: {a['text']}"
-
 
 def test_a_verdict_with_no_evidence_cannot_pass():
     """A heading with nothing under it is a fail, enforced in one place rather
@@ -265,43 +679,35 @@ def test_a_verdict_with_no_evidence_cannot_pass():
     assert grade._verdict(True, "something")["passed"] is True
 
 
-def test_an_unmechanized_assertion_is_neither_passed_nor_failed(graded):
-    """Recording the claim honestly is the point of the marker. Counting it as a
-    pass would inflate the rate; counting it as a fail would punish the harness
-    for being honest about its reach."""
-    verify = {"case": "A4", "assertions": [
-        {"unmechanized": "x", "why": "y"}]}
-    report = graded["injected"]
-    for a in report["assertions"]:
-        if "unmechanized" in a:
-            assert a["passed"] is None
-    assert report["graded"] == sum(
-        1 for a in report["assertions"] if a["passed"] is not None)
-
-
-def test_an_arm_scoped_assertion_is_skipped_on_the_other_arm(graded):
-    """An assertion written for the customized arm says nothing about the
-    control, and grading it there would manufacture a failure."""
-    report = graded["injected"]
-    assert report["arm"] == "customized"
-    texts = [a["text"] for a in report["assertions"]]
-    assert not any("control" in t for t in texts)
-
-
-def test_every_declared_predicate_has_a_grader(request):
+def test_every_declared_predicate_has_a_grader():
     """The test set and the grader are written against each other. A predicate
     declared with nothing to implement it would fail at grading time, after the
     money was spent."""
-    evals = json.loads(
-        (request.config.rootpath / "evals/evals.json").read_text())
-    missing = set(evals["predicates"]) - set(grade.PREDICATES)
+    missing = set(EVALS["predicates"]) - set(grade.PREDICATES)
     assert not missing, f"declared but not implemented: {sorted(missing)}"
 
 
-def test_no_grader_exists_for_an_undeclared_predicate(request):
+def test_no_grader_exists_for_an_undeclared_predicate():
     """The other direction. A grader with no declared predicate is dead code
     that nothing will ever call."""
-    evals = json.loads(
-        (request.config.rootpath / "evals/evals.json").read_text())
-    orphan = set(grade.PREDICATES) - set(evals["predicates"])
+    orphan = set(grade.PREDICATES) - set(EVALS["predicates"])
     assert not orphan, f"implemented but not declared: {sorted(orphan)}"
+
+
+def test_every_assertion_s_arguments_are_ones_its_predicate_declares():
+    """A misspelt argument is swallowed by the predicate's `**_` and the check
+    then runs with its default, which can pass for the wrong reason."""
+    for case in EVALS["cases"]:
+        for a in case["assertions"]:
+            if "predicate" not in a:
+                continue
+            declared = set(EVALS["predicates"][a["predicate"]]["args"])
+            assert set(a.get("args", {})) <= declared, (case["id"], a)
+
+
+def test_the_provenance_machinery_is_gone():
+    """With no skill injecting a stage's text there is nothing for provenance
+    to tell apart, and its verdicts would only mislead."""
+    for name in ("provenance", "INJECTED", "FALLBACK", "FALLBACK_COMMANDS",
+                 "BLOCK_HEADINGS"):
+        assert not hasattr(grade, name), name
