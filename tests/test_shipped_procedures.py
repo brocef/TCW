@@ -6,6 +6,7 @@ Each procedure is one file and nothing else (TCW-74 Design 5.2): no second
 half under a skill's references, so there is no source map to keep in step.
 """
 
+import re
 from importlib.resources import files
 from pathlib import Path
 
@@ -39,6 +40,43 @@ def test_each_procedure_is_one_file_in_the_package():
 def test_no_procedure_has_a_second_half_under_a_skill():
     """Criterion 6: the split halves under the work skill are gone."""
     assert not (REPO / "skills" / "work" / "references" / "procedures").exists()
+
+
+def _paragraphs(text: str) -> set[str]:
+    """Blank-line-separated blocks, whitespace-normalized; headings and short
+    fragments are not evidence of a copy."""
+    blocks = (" ".join(b.split()) for b in re.split(r"\n\s*\n", text))
+    return {b for b in blocks if len(b) >= 40 and not b.startswith("#")}
+
+
+def test_the_backlog_auditor_reads_the_procedure():
+    """The agent is dispatched per item by the audit procedure. A copy of the
+    checks in it would audit against TCW's list after a project replaced it."""
+    text = (REPO / "agents/backlog-auditor.md").read_text(encoding="utf-8")
+    assert "tcw work procedure audit-backlog" in text
+    assert "procedure prompt" not in text
+    tools = next(line for line in text.splitlines() if line.startswith("tools:"))
+    assert "Bash" in tools, "the agent cannot run the command without Bash"
+    default = load_builtins().procedures["audit-backlog"]
+    copied = sorted(_paragraphs(default) & _paragraphs(text))
+    assert not copied, f"agents/backlog-auditor.md carries the default: {copied[:1]}"
+    named = [c for c in ("Already done", "Outdated", "Wrong project",
+                         "Unactionable", "Blocked with no next action",
+                         "Capability drift") if c.lower() in text.lower()]
+    assert not named, f"agents/backlog-auditor.md still names: {named}"
+
+
+def test_the_reviewer_reads_the_review_stage():
+    """TCW-74 choice 9: the reviewer carries no review steps of its own, so a
+    project's review prompt reaches it."""
+    text = (REPO / "agents/reviewer.md").read_text(encoding="utf-8")
+    assert "name: reviewer" in text
+    assert "tcw work stage prompt review <slug>" in text
+    default = load_builtins().stage_prompts["review"]
+    copied = sorted(_paragraphs(default) & _paragraphs(text))
+    assert not copied, f"agents/reviewer.md carries the review prompt: {copied[:1]}"
+    assert not (REPO / "agents/verifier.md").exists()
+    assert not (REPO / "agents/post-mortem.md").exists()
 
 
 def _fail_procedures(monkeypatch, error):

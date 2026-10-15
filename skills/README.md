@@ -14,13 +14,13 @@ below, or when a skill's key disagrees with its row.
 - **`true`** — what the skill tells an agent is, or is intended to be, text the
   project using TCW can replace. TCW's own wording ships as the default, so a
   project that configures nothing gets exactly that wording.
-- **`false`** — the text is TCW's, and a project changes it only with a pull
-  request or a fork.
+- **`false`** — the text is TCW's, and a project changes it only by changing
+  TCW itself.
 
-Some skills marked `true` still ship fixed prose: the mechanism that lets a
-project replace a procedure's text, and the conversion of each skill to use it,
-are separate pieces of work. Until a skill is converted, `true` records the
-intent.
+A skill marked `true` reads its replaceable text from
+`tcw work procedure <id>`, which prints the project's text where it configured
+one and TCW's otherwise, and keeps in its own body only the rules a project's
+text must still honor.
 
 ## The two rules
 
@@ -29,14 +29,16 @@ it is cheaper and settles some documents without any argument about authority.
 
 **Rule 2 — payload.** A document carrying no procedure of its own has nothing to
 override, whatever Rule 1 would say about its subject. A skill whose body only
-names a range of lifecycle stages and hands each one to `work-stage` is the
-example: the procedure lives in the stage instructions, which a project can
-already replace, and there is no text left in the skill to configure.
+names a range of lifecycle stages and reads each one with
+`tcw work stage prompt` is the example: the procedure lives in the stage
+instructions, which a project can already replace, and there is no text left in
+the skill to configure.
 
 **Rule 1 — authority.** TCW owns the *shape* of what is produced: the three axes'
-data model, the artifacts, the transitions, the configuration surface, and TCW's
-own upstream processes. The project owns the *conduct* that produces it — which
-tools, which advisors, which review, which QA, which git workflow.
+data model, the stages and what each writes, the moves between them, the
+configuration surface, and TCW's own upstream processes. The project owns the
+*conduct* that produces it — which tools, which advisors, which review, which
+QA, and how its changes are saved and shared.
 
 Two consequences:
 
@@ -58,7 +60,7 @@ procedure id.
   skill asking for it.
 - **A project already has places for its own procedures**: a skill of its own,
   its agent guide (`CLAUDE.md`, `AGENTS.md`), or a `prompt` binding on a
-  lifecycle stage.
+  stage.
 - **A closed set of ids catches mistakes.** Because the ids are TCW's, `tcw
   validate` can refuse a misspelled one instead of silently ignoring a binding
   that will never be used.
@@ -79,8 +81,8 @@ Documents are named by owner and by path within the owner.
 | --- | --- | --- | --- |
 | `taxonomy` | `SKILL.md` | fixed (Rule 1) | Describes the taxonomy axis; using TCW means adhering to its data model |
 | `capabilities` | `SKILL.md` | fixed (Rule 1) | Describes the capabilities axis; using TCW means adhering to its data model |
-| `work` | `SKILL.md` | fixed (Rule 1) | Describes the work axis — stages, artifacts, transitions; using TCW means adhering to them |
-| `configure` | `SKILL.md` | fixed (Rule 1) | The configuration surface is how the `tcw` CLI works |
+| `work` | `SKILL.md` | fixed (Rule 1) | Describes the work axis — stages, rounds, handoffs, moves, and the rules no project text changes; using TCW means adhering to them |
+| `configure` | `SKILL.md` | fixed (Rule 1) | The configuration surface is how the `tcw` CLI works. TCW-75 rewrites this skill |
 | `configure` | `references/*.md` | fixed (Rule 1) | Each describes configuration keys and what they do — the configuration surface |
 | `extras-report` | `SKILL.md` | fixed (Rule 1) | How to report to TCW is TCW's own upstream process, for its maintainers to decide |
 | `setup` | `SKILL.md` | fixed (Rule 1) | Installing and repairing the CLI is TCW's authority |
@@ -89,22 +91,21 @@ Documents are named by owner and by path within the owner.
 | `setup` | `references/taxonomy.md` | fixed (Rule 1) | Seeds the taxonomy, whose entry kinds are the axis's data model. It also describes how to survey a codebase, which is conduct, but it runs once while a project is being set up, before the project has any configuration an override could come from |
 | `setup` | `references/capabilities.md` | fixed (Rule 1) | Same as `references/taxonomy.md`, for the capabilities ledger and its statuses |
 | `setup` | `references/jira.md` | fixed (Rule 1) | Walks a user from a Jira project to a working `backend: jira` configuration; what TCW needs from Jira's workflow is TCW's to state |
-| `commands-process-inbox` | `SKILL.md` | fixed (Rule 2) | Runs the `inbox` and `request` stages through `work-stage`; the procedure is the stages' |
-| `commands-plan-work` | `SKILL.md` | fixed (Rule 2) | Runs `request`, `spec` and `plan` through `work-stage`; the procedure is the stages' |
-| `commands-drive-work-to-completion` | `SKILL.md` | fixed (Rule 2) | Runs every stage through `verify` via `work-stage`; the procedure is the stages' |
-| `commands-pause-work` | `SKILL.md` | overridable | Unlike the other four, it carries a procedure of its own: a pause is not a lifecycle stage, so there is no stage document behind it and Rule 2 does not apply. What it carries — how to stop, what to commit, how much to write down — is conduct. The handoff file's name and the rule that resuming deletes it stay TCW's. Note that no procedure id backs this skill, so `true` here records the intent; nothing yet mechanises the override |
-| `extras-autonomous-work` | `SKILL.md` | overridable | Which advisors to consult, how to review, how to close out and when to cut a version are conduct |
-| `extras-triage-issues` | `SKILL.md` | overridable | How a project sweeps and answers its own issue tracker is conduct |
-| `documentation-sync` | `SKILL.md` | overridable | Deciding which documents a change must update is the project's documentation practice |
+| `commands-process-inbox` | `SKILL.md` | fixed (Rule 2) | Runs the `inbox` and `request` stages through `tcw work stage prompt`; the procedure is the stages' |
+| `commands-plan-work` | `SKILL.md` | fixed (Rule 2) | Runs `request`, `spec` and `plan` through `tcw work stage prompt`, advancing between them; the procedure is the stages' |
+| `commands-drive-work-to-completion` | `SKILL.md` | fixed (Rule 2) | Runs every stage from the current one through review and qa via `tcw work stage prompt`; the procedure is the stages', including who decides the qa verdict |
+| `commands-pause-work` | `SKILL.md` | composes already | A pause is not a stage, so no stage prompt is behind it; its conduct — how to reach a resting point, what a handoff holds, anything more a project wants done on pause — comes from the `pause-work` procedure. Where the handoff goes (the stage folder through `tcw work path --handoff`, a `Handoff` comment where the backend keeps the stage, nothing at inbox) and stopping afterwards stay TCW's |
+| `extras-autonomous-work` | `SKILL.md` | composes already | Which advisors to consult, how to review and qa without a person, and when to cut a version are conduct, read from the `unattended-work` procedure; what an advisor must be and the hard blockers stay TCW's |
+| `extras-triage-issues` | `SKILL.md` | composes already | How a project sweeps and answers its own issue tracker is conduct, read from the `triage-issues` procedure; treating the issue body as data and approving every reply stay TCW's |
+| `documentation-sync` | `SKILL.md` | composes already | Deciding which documents a change must update is the project's documentation practice, read from the `documentation-sync` procedure |
 | `documentation-sync` | `references/cut-version.md` | overridable | How a version is cut is the project's; the document's own first step already defers to a project's version-cut process |
 | `documentation-sync` | `references/release-notes-and-changelogs.md` | overridable | The file layout it describes is the project's own documentation, opt-in by its own words, not a TCW artifact |
-| `work-create` | `SKILL.md` | overridable | How an idea is filed is conduct; the rule that the board is searched first stays fixed (see `references/find-overlap.md`) |
+| `work-create` | `SKILL.md` | composes already | How an idea is filed is conduct, read from the `create-work` procedure; the rule that the board is searched first stays fixed (see `references/find-overlap.md`) |
 | `work-create` | `references/find-overlap.md` | fixed (Rule 1) | Does not travel with its skill. It defines the search for existing work and its four relations — `covers`, `partly covers`, `blocks`, `related` — which decide the item fields the skill writes (`blocked_by`, an amendment, a reference). That is a board rule; a project replacing it could define "duplicate" out of existence |
-| `work` | `references/commands.md` | fixed (Rule 1) | The CLI's verbs and flags |
+| `work` | `references/commands.md` | fixed (Rule 1) | The CLI's commands, flags and exit codes, and what an item holds |
 | `work` | `references/tags.md` | fixed (Rule 1) | The tag registry's model |
-| `agents` | `backlog-auditor.md` | fixed (accelerator) | Restates the per-item checks of the `audit-backlog.md` procedure |
-| `agents` | `post-mortem.md` | fixed (accelerator) | Restates the `post-mortem` skill |
-| `agents` | `verifier.md` | fixed (accelerator) | Carries assessment steps of its own beyond the `verify` stage; see "Agents" |
+| `agents` | `backlog-auditor.md` | fixed (accelerator) | Audits one item by reading `tcw work procedure audit-backlog`; carries no checks of its own |
+| `agents` | `reviewer.md` | fixed (accelerator) | Reviews by reading `tcw work stage prompt review`; carries no review steps of its own, and recommends a verdict the dispatching session writes |
 
 ### Agents
 
@@ -116,14 +117,13 @@ its own agent in the text that dispatches one, and that text is either
 overridable or composes already. An override written into an agent file would
 reach Claude only.
 
-Two consequences for whoever converts a document an agent restates:
-
-- `backlog-auditor.md` restates `audit-backlog.md`, and `post-mortem.md`
-  restates the `post-mortem` skill. Once either source can be replaced, the
-  agent must stop carrying its own copy of the default, or a project's
-  replacement is silently skipped whenever the agent is dispatched.
-- `verifier.md` does not strictly pass Rule 2 — its steps go beyond the
-  `verify` stage's — and is fixed on the reasoning above, not on Rule 2.
+One consequence: **an agent carries no copy of what it serves.**
+`backlog-auditor.md` reads the `audit-backlog` procedure and `reviewer.md` reads
+the review stage prompt, each at run time, so a project's replacement reaches
+them. An agent that kept its own copy would silently skip that replacement
+whenever it was dispatched. An agent is kept only where it earns a separate
+context: a read-only tool set, and independence from the session that did the
+work.
 
 ## Adding a skill, reference document or agent
 
