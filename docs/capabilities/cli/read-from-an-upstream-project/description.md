@@ -10,12 +10,12 @@ The entry takes the same `path` / `repository` forms as a child, so a checkout
 holding only my repository obtains the upstream with `tcw provision`.
 
 Nothing writes into it from here. Every command that would change one of its
-items — `tcw work edit`, `advance`, `discard`, `comment`, `rename`, and every
-changing route of `tcw serve` — refuses (exit 3) with the reason and tells me to
-run it in the upstream's own checkout. The two commands that do write into
-another project, `tcw work new --project` and `tcw work edit --blocks`, refuse
-an upstream one, so a project is written from here only when it is reached
-through parent and child links alone.
+items — `tcw work edit`, `advance`, `discard`, `comment` and `rename` —
+refuses (exit 3) with the reason and tells me to run it in the upstream's own
+checkout. The two commands that do write into another project, `tcw work new
+--project` and `tcw work edit --blocks`, refuse an upstream one, and so do the
+web app's create form and `blocks` field, which run them; a project is written
+from here only when it is reached through parent and child links alone.
 
 Only the upstream's own config is read: its connections are not followed,
 checked or provisioned, so a problem there never blocks me. It stays off my

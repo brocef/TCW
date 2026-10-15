@@ -1,18 +1,25 @@
-Users can create and edit Taxonomy entries and Capabilities in the local web
-app. Work items are not shown or editable there for now: the web app is being
-rebuilt on TCW 3.0's work model. Structured reference
-fields provide accessible live search over the objects already loaded by the
-editor while preserving canonical identifiers and free-form entry. Every saved
-object is immediately checked with TCW's standard validation rules, with any
-findings shown as post-save warnings. A save the store refuses — editing a
-project that is not in a Git repository, say — comes back as that refusal in
-plain words, and nothing is written.
+As a user, I edit a project's TCW documents in the local web app, and create
+TCW objects there, without leaving the browser.
 
-A capability's reference-bearing fields are the exception to the post-save
-rule: one that does not resolve is refused **at** save rather than reported
-after it, in the same words `tcw capabilities check` uses. Creating a
-capability with such a field leaves no capability behind — the create and its
-fields are one write, so a rejected create is not half-made. Post-save warnings
-remain the rule for everything else.
+For a work item I write each stage's document, add rounds and handoffs (a
+round of a stage that judges carries its verdict, chosen from a fixed list),
+and edit the item's declared ledger changes, `capabilities.yaml`, as six
+lists. A declaration the parser cannot read opens as plain text with the
+parser's message, so it can be fixed. In filesystem mode I also change the
+item's properties, add `blocks` links one at a time, and add comments; a
+comment is never edited. I create items, in this project or, with only a
+title, request text and priority, in a connected one. In Jira mode I adopt
+inbox tickets as items.
 
-A write that Git refuses — a lock another process holds, a hook that says no — no longer leaves a half-made object behind: whatever that save *created* is removed. A save that *changed* something already there is a different case and is not undone — the edit stays on disk, and re-saving once Git is happy is the fix.
+I create and edit taxonomy entries and capabilities. An inherited entry has no
+edit control: it is changed in the project that keeps it.
+
+Every save carries the revision the page loaded, so a save over a change made
+elsewhere is refused and the page offers to load the current version. A value
+that names nothing is refused before anything is written, in the words the
+command line uses. A document saved with a link that does not resolve, or a
+round with no verdict, is saved and comes back with a warning.
+
+The web app never moves an item from one stage to another, and never changes
+git state. Each item page names the command that moves it,
+`tcw work advance <slug>`, and `tcw work discard` drops one.
