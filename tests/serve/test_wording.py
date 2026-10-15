@@ -1,9 +1,11 @@
 """The viewer's wording (TCW-77 criterion 18).
 
 3.0 calls a TCW project a project, never a node. No Python string literal
-under `tcw/serve/` matches the case-sensitive `\\bnodes?\\b`, so a message the
-server sends never says it; "Node.js" is still allowed where it names the
-JavaScript runtime.
+under `tcw/serve/`, and no line of the viewer's guide, matches the
+case-sensitive `\\bnodes?\\b`; "Node.js" is still allowed where it names the
+JavaScript runtime. The guide says TCW "never changes git state", not that it
+never runs git, which it does to read the repository. The two release entries
+start with a `##` heading.
 """
 
 from __future__ import annotations
@@ -38,3 +40,29 @@ def test_the_pattern_finds_node_and_passes_nodejs():
     assert NODE.search("nodes")
     assert not NODE.search("Node.js 20 builds the client")
     assert not NODE.search("an inode")
+
+
+# -- the guide and the release entries ------------------------------------------
+
+REPO = Path(tcw.__file__).resolve().parent.parent
+GUIDE = REPO / "docs" / "guide" / "web-viewer.md"
+ENTRY = "2026-10-01-tcw-77-web-viewer-a-single-process-document-reader-and-editor-with-autocomplete-everywhere.md"
+
+
+def test_no_guide_line_says_node():
+    hits = [f"{number}: {line}"
+            for number, line in enumerate(GUIDE.read_text().splitlines(), 1)
+            if NODE.search(line)]
+    assert not hits, "\n".join(hits)
+
+
+def test_the_guide_says_git_state_is_never_changed():
+    text = " ".join(GUIDE.read_text().split())
+    assert "never changes git state" in text
+    assert "never runs git" not in text
+
+
+@pytest.mark.parametrize("folder", ["changelogs", "release-notes"])
+def test_the_release_entries_start_with_a_heading(folder):
+    entry = REPO / "docs" / folder / "upcoming" / ENTRY
+    assert entry.read_text().startswith("## ")

@@ -1,115 +1,153 @@
 # The local web viewer
 
-`tcw serve` starts a local web app that browses and edits all three axes.
-
-`tcw serve` starts a local web app on `127.0.0.1` for the current TCW node:
+`tcw serve` starts a local web app for reading and editing the project it is
+run in: its work items and their documents, its taxonomy and its capabilities.
 
 ```sh
 tcw serve                    # http://127.0.0.1:8765/ and open a browser
-tcw serve --no-open           # start the server without opening a browser
-tcw serve --port 9000         # choose a different loopback port
+tcw serve --no-open          # start the server without opening a browser
+tcw serve --port 9000        # choose a different loopback port
 ```
 
-This command requires Node.js 22.12 or newer. TCW checks the version before
-starting and reports an actionable error when Node is missing or too old. The
-Python CLI launches a private authenticated API sidecar and a packaged Fastify
-server; Fastify is the only browser-facing listener. The React client and server
-bundle are included in the Python package and work fully offline. pnpm is needed
-only by contributors rebuilding the committed web assets.
+It is one Python process. The browser client is built ahead of time and
+shipped inside the installed package, so nothing else needs to be installed
+to run it and it works offline. The URL is the only thing printed on standard
+output, as soon as the server is listening; Ctrl-C stops it.
 
-Contributor formatting is repository-wide and deterministic:
+The app serves one project, the one it was started in. A link to another
+project's item is shown as a labelled name that says which project holds it;
+open that project's own viewer to follow it.
+
+## What you can read
+
+The app has a tab for each axis the project keeps (Work, Taxonomy,
+Capabilities), and its URL follows what is shown (`/work/<folder>`,
+`/taxonomy/<slug>`, `/capabilities/<path>`), so any view can be linked to and
+Back and Forward work. Each list is a tree, filtered by the text box above it.
+
+- **The work board** lists the project's items, each row coloured by the kind
+  of stage it is at. It filters by stage, tag and assignee; finished and
+  dropped items are hidden until their stage is ticked. It sorts by name,
+  creation date or priority, in either direction. Each row can copy its slug.
+- **An item's page** shows its stage, its properties, what it asks for, its
+  comments, and one tab per stage that keeps files: that stage's document, or
+  its rounds with their verdicts, and any handoffs.
+- **Taxonomy and capabilities** list inherited entries beside local ones, each
+  marked with the project it comes from.
+
+Any `tcw://` link in a document renders as a link inside the app. One that
+does not resolve stays plain text with the reason.
+
+The gear after the tabs chooses **Light**, **Dark** or **System** appearance;
+the choice is kept in the browser, not in the project.
+
+## What you can edit and create
+
+- **An item's files**: each stage's document, new rounds (a round of a stage
+  that judges has a verdict, chosen from a fixed list) and handoffs.
+- **The item's declared ledger changes**, `capabilities.yaml`, as six lists:
+  capabilities and taxonomy entries the work adds, changes and removes. The
+  form does not keep comments written in the file. A file it cannot read as
+  lists opens as plain text with the reason, to be fixed by hand.
+- **An item's properties** (title, priority, effort, complexity, tags,
+  assignee, parent, blocked-by), `blocks` links added one at a time, and
+  comments, which are added and never edited.
+- **New items**, in this project or in a connected one. An item made in
+  another project takes only a title, what it asks for, and a priority.
+- **Taxonomy entries and capabilities**, created and edited. An inherited
+  entry has no edit control: it is changed in the project that keeps it.
+
+Every save sends the version the page loaded. If the file or record changed
+since, the save is refused and the page offers to load the current version,
+keeping your draft until you choose. After a save TCW checks what was saved,
+offline, and shows anything wrong (a link that does not resolve, a round with
+no verdict, a declaration that names nothing) as a notice; the save stands.
+
+### No lifecycle moves
+
+The app never moves an item from one stage to another, and it never changes
+git state. Each item's page names the command that moves it:
 
 ```sh
-pnpm prettify          # format maintained source and documentation
-pnpm prettify:check    # verify formatting without rewriting files
+tcw work advance <slug>                    # move an item to its next stage
+tcw work discard --reason "<why>" <slug>   # drop an item
 ```
 
-Dependencies, generated bundles and caches, closed work items (completed and
-discarded), and versioned
-release archives are excluded; current source, configuration, taxonomy,
-capabilities, active/backlog work, this README, and upcoming notes remain in the
-formatting surface. `pnpm typecheck` also runs the formatting check.
+## When the work is kept in Jira
 
-The Settings gear immediately after the Work tab controls appearance. Choose
-**Light**, **Dark**, or **System**; System is the default and follows operating-
-system appearance changes as they happen. The choice is stored only in the
-current browser, not in the TCW project or an API.
+In a project whose work backend is Jira, Jira keeps each item's record. The
+request, comments, stage and properties are shown read-only, each with
+**Open in Jira** to edit it there. The item's files are on disk and stay
+editable. The board is read with one search. The new-item form shows the
+fields Jira's create screen has, and a **Tickets** view lists inbox tickets
+with **Adopt**, which makes one an item and opens it.
 
-When the served node has **descendant TCW nodes** (the orchestrator/subproject
-pattern), `tcw serve` aggregates every descendant node's board alongside the
-current one automatically — the same items as `tcw work list --include-descendants`.
-Descendant items carry `<project-id>/<slug>` addresses, resolvable across the web
-app, and their URLs use the same project-ID namespace.
+When Jira cannot be reached, or its credentials are not set, the server still
+starts. The board lists the item folders found on disk under a banner that
+gives the reason and offers **Retry**; files can still be read and saved.
 
-The app has tabs for the Taxonomy tree, Capabilities ledger, and Work board, and
-its **URL reflects the current view** (`/taxonomy`, `/work/<slug>`, …) so any state
-is deep-linkable and Back/Forward work. Any `tcw://` reference in an object's body
-(see [`tcw://` links](#tcw-links--reference-a-tcw-object)) renders as a **clickable
-in-app link** that navigates to the target object. A reference to a real object on
-a board this viewer isn't serving is marked as **off-board**, with the name of the
-project that owns it shown beside the link text; a reference that doesn't resolve
-at all is shown inert with the reason it failed. The list/detail divider and the
-editor/preview split are **drag-resizable**. The object list is a **collapsible
-tree** that mirrors each axis's hierarchy — nested paths for taxonomy terms and
-capabilities (a path segment with no item of its own is a plain folder label),
-parent/child relations for work items. Selecting or deep-linking a nested item
-expands its ancestors automatically, and the text filter prunes the tree to
-matches plus the ancestors needed to reach them. The list column scrolls
-independently, so a long tree stays navigable without moving the header or the
-detail pane. A clear control appears inside a non-empty filter, tree controls
-provide larger keyboard-accessible targets, and Work rows tint their full
-surface by backlog, active, completed, or discarded status. Each axis keeps its create
-control immediately above the object tree. Every Taxonomy, Capability, and Work
-entry shows its last-modified timestamp in both the tree row and detail header.
-Above that are **multi-select category filters**: on the Work board,
-`Status` and `Tags` dropdowns use a checkbox per value (select several to match
-**any**), and in the Taxonomy view a `Kind` dropdown covers `Feature` and
-`Vocabulary`. Backlog and active statuses are selected by default; completed and
-discarded are not. Work items can be sorted by name or last-modified time in
-either direction; the selected sort applies within the fixed active, backlog,
-completed, then discarded status groups. All of these compose with the text filter. Each work row has a
-button to copy its slug to the clipboard. Beyond browsing, you can **create and
-edit** any object directly from the browser:
+## Suggestions as you type
 
-- **Work items** — create new items with all fields (title, priority, effort,
-  complexity, tags, blockers, parent, initiative); view and edit Initial
-  Request, Spec, and Implementation Plan in first-class content tabs; edit
-  other lifecycle artifacts and the `capabilities.yaml` sidecar using a
-  Markdown editor with live preview; and run lifecycle actions (start,
-  complete, drop). Each content tab shows only its own document: on an item
-  whose request has not been written, the tab says so and the editor opens
-  empty rather than pre-filling it with the item's raw intake. Saving a body
-  that creates the request says that it did.
-  Completing as `done` requires resolving blockers and acknowledging every
-  Definition-of-Done item, plus a capabilities reconciliation reminder;
-  discarding drops all three for a single confirmation.
-- **Taxonomy entries** — create Vocabulary or Feature entries; edit name,
-  description, kind, and relations. Validation check failures are shown in the
-  UI after saving.
-- **Capabilities** — create path-addressed capability folders and edit metadata
-  and the Markdown body. Inherited (federated) capabilities show their origin.
-  Check failures are surfaced in the UI.
+Every field either suggests values as you type or is a fixed choice. Use Up,
+Down and Enter, or click, to pick a suggestion.
 
-Structured reference fields search the Work, Taxonomy, and Capability objects
-already loaded in the browser. Results show and highlight both the display name
-and canonical identifier; use Up/Down and Enter or point at a result to select
-it. Multi-value fields keep free-form entry for external or not-yet-registered
-references. After any object, lifecycle artifact, or sidecar is saved, TCW runs
-its standard validation rules against that saved object. Findings appear as a
-persistent **Saved with validation issues** notice and do not undo the save;
-fixing the object and saving again clears the notice.
+- **Fixed choices**: priority, effort and complexity; a taxonomy entry's kind;
+  a capability's status, priority and lifecycle. All come from the project's
+  own scales.
+- **Tags** are chips from the project's tag registry; an unregistered tag is
+  not kept.
+- **Parent, blocked-by and blocks** suggest this project's items (a parent
+  never offers the item itself or anything under it) and the items of
+  connected projects on this machine whose work is kept in files. Another
+  project's full slug, `<project>/<folder>`, is kept with a warning, because
+  this page cannot check it. In Jira mode only this project's items are
+  allowed.
+- **Assignee** suggests the names already on items and you; in Jira mode it
+  offers the people Jira lets the item be assigned to, and nothing else.
+- **Taxonomy and capability references** (a parent, related entries, a
+  feature's vocabulary, a capability's feature, subject, roles, conditions,
+  blocked-by and superseded-by) suggest the entries that fit, inherited ones
+  included, and keep nothing else. Roles and conditions keep a leading `!`,
+  which negates them.
+- **A new capability's path** is suggested one segment at a time; a new
+  segment is allowed.
+- **The declaration lists** suggest existing entries; an entry under "new"
+  may be a name not in the ledger yet, while "changed" and "removed" must name
+  one that exists.
+- **Typing `tcw://`** in any document offers the objects of all three axes and
+  inserts the link; a work item is inserted as `tcw://W/<folder>`.
 
-All Markdown editing uses a raw-Markdown textarea paired with a live-rendered
-preview pane. Its renderer is included in the locked, prebuilt package assets;
-no runtime download or user-side build is required.
+The server applies the same rules, so a value a form would not keep is refused
+when sent by hand too.
 
-**Local-first safety:** the server binds only to `127.0.0.1` (loopback). Mutating
-requests (create, edit, lifecycle actions) additionally require
-`Content-Type: application/json` and a loopback `Host`/`Origin` header, blocking
-cross-origin or DNS-rebinding attacks. Request bodies are capped at 1 MiB.
-Concurrent stale edits are rejected (HTTP 409) so two editors never silently
-overwrite each other.
+## Security
 
-If `tcw serve` fails before printing its URL, run `node --version` and confirm it
-is at least `v22.12.0`. Reinstall TCW if the error reports missing packaged web
-assets. Port-collision errors can be resolved with `--port <available-port>`.
+- The server listens on `127.0.0.1` only.
+- Every request must name a loopback host in `Host`, and in `Origin` when it
+  sends one. This blocks other web pages and DNS rebinding, where a hostile
+  name is pointed at your machine.
+- A request that changes something must be JSON and at most 1 MiB.
+- Every answer carries a content security policy that lets the page load only
+  its own files.
+- Errors carry the operation's message and never a Python traceback.
+
+If `tcw serve` reports that its packaged web assets are missing, reinstall TCW.
+If the port is taken, choose another with `--port`.
+
+## Building the client (contributors)
+
+The client's source is in `web/client/`; the built files are committed under
+`tcw/serve/dist/client/` and shipped in the package. Rebuilding needs Node.js
+22.12 or newer and pnpm; running `tcw serve` needs neither.
+
+```sh
+pnpm install
+pnpm build          # rebuild tcw/serve/dist/client from web/client
+pnpm check:build    # confirm the committed build matches the source
+pnpm test           # client unit tests
+pnpm lint
+pnpm prettify       # format source and documentation
+```
+
+Commit the rebuilt files with the source change that produced them;
+`check:build` fails otherwise.
