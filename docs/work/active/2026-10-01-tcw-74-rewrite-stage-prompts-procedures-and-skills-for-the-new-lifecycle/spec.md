@@ -467,6 +467,10 @@ sentence works in both backends.
 3. **Errors.**
    - An unknown name, a passage inside another passage, an unterminated passage
      and a stray closing marker are all errors.
+   - So is a misspelled marker: a whole line that opens a comment with the word
+     `backend` (`<!--backend:jira -->`, `<!-- Backend: jira -->`) but matches
+     neither marker exactly. A comment that only mentions a backend later in its
+     prose is ordinary text. (Added at review, 2026-10-15.)
    - In built-in text, a test finds them before release (criterion 4).
    - In a project's text, `stage prompt` and `procedure` exit 1 and name the
      binding. The error is raised as one of the exception classes in

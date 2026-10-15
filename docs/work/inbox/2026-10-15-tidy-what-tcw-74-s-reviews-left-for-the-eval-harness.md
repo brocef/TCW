@@ -20,3 +20,10 @@ the epic.
 4. **A7 cannot show that the qa binding mattered.** Its prompt itself says
    "rejected" and names the person, so `decided-by` could appear without the
    binding. A control arm for A7 would show that.
+5. **When the runner cannot tell which interpreter the spawned `tcw` uses**,
+   the isolation message says "imports from None" without saying why
+   (`spawned_tcw` in `evals/run_evals.py`). pip's `#!/bin/sh` shebang for long
+   paths would also be a false alarm.
+6. **`ran_stage_prompt`'s retry test would still pass if results were paired
+   by position.** Add a case where the stage-prompt call fails and an unrelated
+   later call's output carries the header; it must fail.

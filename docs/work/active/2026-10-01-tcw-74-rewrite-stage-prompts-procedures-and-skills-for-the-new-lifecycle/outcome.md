@@ -254,6 +254,12 @@ procedures, records) and `a55d9662` (eval harness).
   error and must carry `This text ran no checks.`, or, with `empty: true`,
   succeed with no output (A5 customized). A1-A7 use it; the old test now
   builds tool results.
+- **E4, "under both harnesses" was dropped with no follow-up named.** Not
+  fixed in this item, by the orchestrator's decision: a Codex launcher, a
+  reader for Codex's transcript and an isolation check for Codex's plugin
+  loading are a project of their own, and criterion 12 does not require them.
+  Filed as item 1 of
+  `docs/work/inbox/2026-10-15-tidy-what-tcw-74-s-reviews-left-for-the-eval-harness.md`.
 - **E5:** each QA scenario needs a line naming it and no other scenario.
 - **E6:** B3 asserts `tool_input_contains "tcw work advance"`.
 - **E7:** `tcw/work/layout.py` gains `split_front_matter` and a public
@@ -277,3 +283,30 @@ skill and plugin manifest tests, the procedure config and verb tests, the
 backend passage, compose, config, Jira bookend and layout tests, and every
 `tests/test_eval_*.py`: 1099 passed, 5 skipped, plus 177 eval tests passed.
 `pytest --collect-only -q` is clean.
+
+## Review round 2 (confirming)
+
+One confirming reviewer read the fixes (`5ef74446..a55d9662`) and found every
+round-1 finding fixed except that E4's disposition was not recorded (now
+above), and one new defect the N1 fix introduced. Its verdict was NOT DONE on
+those two points only.
+
+- **The N1 check rejected ordinary comments.** Any whole line starting `<!--`
+  that mentioned "backend" anywhere was an error, so a project prompt file
+  with a header comment such as `<!-- This prompt is shared by every backend. -->`
+  made `tcw work stage prompt` exit 1. Fixed by the orchestrator in `0e30fca5`:
+  only a comment that opens with the word `backend` (after an optional `/`) is
+  treated as a misspelled marker. Test added for three prose comments; with
+  the old check restored, all three go red. The four misspellings still fail.
+  Spec Design 3.3 now lists the rule.
+
+Both points were narrow enough that the orchestrator fixed them without a
+further review round. Approved under the epic's rule that passing
+adversarial review is approval; the owner reviews the epic as a whole at its
+end.
+
+Noted by the confirming reviewer and left for other work: README still says
+`tcw serve` needs Node.js (TCW-75's notes); a clearer reason when the eval
+runner cannot identify the spawned `tcw`'s interpreter, and a test pairing a
+failed stage-prompt call with an unrelated call whose output carries the
+header (both small, in the eval-harness inbox entry).
