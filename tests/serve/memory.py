@@ -38,9 +38,10 @@ class RecordingBackend(MemoryBackend):
     """Records every call, reads included, with its arguments. `fail[name]`
     is an exception the named read raises instead of answering."""
 
-    def __init__(self, work_root: Path, project: str):
-        super().__init__(work_root, project, external_stages=EXTERNAL,
-                         inbox_items=False, user=ME)
+    def __init__(self, work_root: Path, project: str, *,
+                 external: frozenset[str] = EXTERNAL, inbox_items: bool = False):
+        super().__init__(work_root, project, external_stages=external,
+                         inbox_items=inbox_items, user=ME)
         self.fail: dict[str, Exception] = {}
 
     def __getattribute__(self, name: str):

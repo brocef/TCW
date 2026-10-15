@@ -19,15 +19,17 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any, Callable
 
-from tcw.errors import BackendError, NotFound, Unreachable
+from tcw.errors import BackendError, NotFound, TcwError, Unreachable
 from tcw.serve import files as item_files
-from tcw.serve.server import Request, not_found, route
-from tcw.store.base import CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES
+from tcw.serve.records import checked
+from tcw.serve.server import Request, not_found, read_only, route, usage
+from tcw.store.base import CAP_LIFECYCLES, CAP_PRIORITIES, CAP_STATUSES, StaleRevision
+from tcw.validate import ValidationTarget
 from tcw.work.backend import Query
 from tcw.work.config import WorkConfig
 from tcw.work.layout import Layout
 from tcw.work.model import (
-    PRIORITIES, SIZES, STAGES, Item, Slug, inbox_stage, start_stage,
+    PRIORITIES, SIZES, STAGES, UNSET, Changes, Item, Slug, inbox_stage, start_stage,
 )
 from tcw.work.open import read_work_config, work_path
 from tcw.work.record import item_record, readable
@@ -276,9 +278,278 @@ def detail(request: Request):
     return HTTPStatus.OK, answer
 
 
+# -- writes --------------------------------------------------------------------------------
+#
+# Every write to the item record is refused before any backend call when the
+# backend owns the record: in that mode the viewer edits only the files.
+
+
+def writable(ctx: WorkContext) -> None:
+    if ctx.owner == BACKEND:
+        raise read_only("this project's backend keeps the item's request, comments, "
+                        "stage and properties; change them there")
+
+
+SCALES = {"priority": PRIORITIES, "effort": SIZES, "complexity": SIZES}
+SCALAR = ("title", "priority", "effort", "complexity", "assignee", "parent")
+LISTED = {"tags": ("add_tags", "remove_tags"),
+          "blocked-by": ("add_blocked_by", "remove_blocked_by")}
+
+
+def _strings(value: Any, name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise usage(f"{name} must be a list of names")
+    return tuple(value)
+
+
+def parse_changes(sent: Any) -> Changes:
+    """TCW-69's `Changes` from JSON: a scalar property present is set, and
+    null clears it; `tags` and `blocked-by` each take `add` and `remove`."""
+    if not isinstance(sent, dict):
+        raise usage("changes must be an object")
+    unknown = sorted(set(sent) - set(SCALAR) - set(LISTED))
+    if unknown:
+        raise usage(f"changes has unknown properties: {', '.join(unknown)}")
+    values: dict[str, Any] = {}
+    for name in SCALAR:
+        if name in sent:
+            value = sent[name]
+            if value is not None and not isinstance(value, str):
+                raise usage(f"{name} must be text or null")
+            values[name] = None if value == "" and name != "title" else value
+    if "title" in values and not (values["title"] or "").strip():
+        raise usage("a title must not be empty")
+    for name, scale in SCALES.items():
+        if values.get(name) is not None and values[name] not in scale:
+            raise usage(f"{name} must be one of {', '.join(scale)}; got {values[name]!r}")
+    for name, (add, remove) in LISTED.items():
+        if name in sent:
+            pair = sent[name]
+            if not isinstance(pair, dict) or set(pair) - {"add", "remove"}:
+                raise usage(f"{name} takes add and remove lists")
+            values[add] = _strings(pair.get("add"), f"{name}.add")
+            values[remove] = _strings(pair.get("remove"), f"{name}.remove")
+    return Changes(**values)
+
+
+def checked_reference(ctx: WorkContext, what: str, text: str) -> dict | None:
+    """A `parent` or `blocked-by` a write adds: an item of this project, or
+    a full slug naming another project's item, which is kept with a warning
+    because it is not checked here. Anything else is refused."""
+    slug = Slug.parse(text, ctx.backend.project)
+    if slug.project != ctx.backend.project:
+        return {"severity": "warning", "where": what,
+                "message": f"{slug} is in project '{slug.project}', which this "
+                           f"page does not check; make sure it exists"}
+    if slug.folder not in ctx.layout.item_folders():
+        raise usage(f"{what}: {text} is not an item of this project")
+    return None
+
+
+def references(ctx: WorkContext, changes: Changes) -> list[dict]:
+    notes = []
+    if changes.parent is not UNSET and changes.parent is not None:
+        notes.append(checked_reference(ctx, "parent", changes.parent))
+    for blocker in changes.add_blocked_by:
+        notes.append(checked_reference(ctx, "blocked-by", blocker))
+    return [n for n in notes if n]
+
+
+def _changed(changes: Changes) -> list[str]:
+    names = [n for n in SCALAR if getattr(changes, n) is not UNSET]
+    return names + [n for n, (add, remove) in LISTED.items()
+                    if getattr(changes, add) or getattr(changes, remove)]
+
+
+def _same(loaded: Any, now: Any) -> bool:
+    if isinstance(now, list):
+        return isinstance(loaded, list) and sorted(map(str, loaded)) == sorted(now)
+    return loaded == now
+
+
+def edit(request: Request):
+    """`backend.update`, after checking each property the form changes still
+    holds the value the form loaded (`expected`)."""
+    ctx = context(request)
+    writable(ctx)
+    folder = item_folder(ctx, request.param(1))
+    changes = parse_changes(request.field("changes", dict))
+    expected = request.field("expected", dict, required=False, default={})
+    changed = _changed(changes)
+    if not changed:
+        raise usage("nothing to change")
+    missing = [n for n in changed if n not in expected]
+    if missing:
+        raise usage(f"expected must hold the loaded value of {', '.join(missing)}")
+    notes = references(ctx, changes)
+    with request.lock:
+        record = item_record(ctx.backend.read(folder), [], ctx.layout)
+        stale = [n for n in changed if not _same(expected[n], record[n])]
+        if stale:
+            raise StaleRevision(f"{', '.join(stale)} changed since the page loaded it")
+        item = ctx.backend.update(folder, changes)
+    siblings, _ = readable(ctx.backend)
+    answer = checked({"item": item_record(item, siblings, ctx.layout)}, request,
+                     ValidationTarget("work", folder, item))
+    if notes:
+        answer["warnings"] = notes + answer.get("warnings", [])
+    return HTTPStatus.OK, answer
+
+
+def add_comment(request: Request):
+    ctx = context(request)
+    writable(ctx)
+    folder = item_folder(ctx, request.param(1))
+    text = request.field("text")
+    if not text.strip():
+        raise usage("a comment needs text")
+    with request.lock:
+        ctx.backend.comment(folder, text)
+    return HTTPStatus.CREATED, {"folder": folder}
+
+
+def add_blocks(request: Request):
+    """The item blocks `target`: this item is added to the target's
+    `blocked-by`, as `tcw work edit <item> --blocks <target>` does. One target
+    per request, so a refusal never leaves half a batch written."""
+    from tcw.work.cli import blocks_target
+    ctx = context(request)
+    writable(ctx)
+    folder = item_folder(ctx, request.param(1))
+    slug = ctx.slug(folder)
+    target = Slug.parse(request.field("target"), slug.project)
+    if request.body.get("expected") is not False:
+        raise usage("expected must be false: the target as loaded did not list "
+                    "this item")
+    if target.project == slug.project:
+        checked_reference(ctx, "blocks", str(target))
+    with request.lock:
+        other, found = blocks_target(slug, target, ctx.backend, ctx.root)
+        if slug in found.blocked_by:
+            raise StaleRevision(f"{target} already lists {slug} in blocked-by")
+        other.update(target.folder, Changes(add_blocked_by=(slug,)))
+    return HTTPStatus.OK, {"target": str(target)}
+
+
+CREATE_PROPERTIES = ("priority", "effort", "complexity", "tags", "assignee", "parent",
+                     "blocked-by")
+
+
+def create(request: Request):
+    """`new` in this project, or delegation into a connected one, which takes
+    only a title, request text and priority. Answers what the CLI prints: the
+    new item's slug, or the key of a ticket made in a project not here."""
+    from tcw.work.cli import new_item
+    ctx = context(request)
+    title = request.field("title")
+    if not title.strip():
+        raise usage("a title must not be empty")
+    text = request.field("requestText", required=False)
+    text = text if isinstance(text, str) and text.strip() else None
+    props = request.field("properties", dict, required=False, default={})
+    unknown = sorted(set(props) - set(CREATE_PROPERTIES))
+    if unknown:
+        raise usage(f"properties has unknown entries: {', '.join(unknown)}")
+    target = request.field("project", required=False)
+    if target and target != ctx.backend.project:
+        others = sorted(k for k, v in props.items() if k != "priority" and v)
+        if others:
+            raise usage(f"{others[0]} cannot be set on an item created in another "
+                        f"project; only priority can")
+        with request.lock:
+            made = request.services.delegate(target, title, text,
+                                             props.get("priority") or None, ctx.root)
+        key = "slug" if "/" in made else "ticket"
+        return HTTPStatus.CREATED, {key: made}
+    changes = parse_changes({
+        **{k: props[k] for k in ("priority", "effort", "complexity", "assignee",
+                                 "parent") if props.get(k)},
+        "tags": {"add": props.get("tags") or []},
+        "blocked-by": {"add": props.get("blocked-by") or []}})
+    notes = references(ctx, changes)
+    if ctx.owner == BACKEND and any(n for n in notes):
+        raise usage("blocked-by: in this project an item can be blocked only by "
+                    "another item of this project")
+    with request.lock:
+        item = new_item(ctx.backend, title, changes,
+                        stage=request.field("stage", required=False), request=text)
+    answer: dict[str, Any] = {"slug": str(item.slug)}
+    if notes:
+        answer["warnings"] = notes
+    return HTTPStatus.CREATED, answer
+
+
+# -- Jira inbox tickets ----------------------------------------------------------------------
+
+
+def tickets(request: Request):
+    ctx = context(request)
+    found, query = request.services.inbox(ctx.backend)
+    return HTTPStatus.OK, {"tickets": found, "query": query}
+
+
+def adopt(request: Request):
+    ctx = context(request)
+    with request.lock:
+        slug, code = request.services.adopt(ctx.backend, request.param(1), ctx.root)
+    return HTTPStatus.CREATED, {"slug": slug, "code": code}
+
+
+# -- suggestions the client cannot compute ------------------------------------------------
+
+SUGGESTIONS = 10
+
+
+def _other_items(request: Request, ctx: WorkContext, text: str) -> list[dict]:
+    """Items of connected filesystem-mode projects found on this machine.
+    A Jira-mode project is not asked: that would need its credentials and
+    the network for a suggestion. A project that cannot be read is skipped."""
+    from tcw.projects_cli import connected
+    from tcw.store.project import FsProjectRegistry
+    registry = FsProjectRegistry.open(ctx.root)
+    wanted = text.lower()
+    found: list[dict] = []
+    for row in connected(ctx.root):
+        if row["relation"] == "current" or not row["present"]:
+            continue
+        try:
+            locator = Path(registry.get(row["id"]).locator)
+            if read_work_config(locator, personal=False).backend != "filesystem":
+                continue
+            items = request.services.open_project(row["id"], ctx.root).list(Query(all=True))
+        except (TcwError, ValueError, OSError):
+            continue
+        for item in items:
+            if wanted in str(item.slug).lower() or wanted in item.title.lower():
+                found.append({"slug": str(item.slug), "title": item.title,
+                              "stage": item.stage, "project": row["id"]})
+    return found[:SUGGESTIONS]
+
+
+def options(request: Request):
+    ctx = context(request)
+    field = request.param(1)
+    text = request.query.get("q", [""])[-1]
+    if field == "assignee":
+        found = request.services.assignable_users(ctx.backend, text, SUGGESTIONS)
+        return HTTPStatus.OK, [{"id": i, "name": n} for i, n in found]
+    if field == "work":
+        return HTTPStatus.OK, _other_items(request, ctx, text)
+    raise not_found(f"no suggestions for {field}")
+
+
 ONE = r"/([^/]+)"
 ROUTES = [
     route("GET", r"/api/project", project),
     route("GET", r"/api/work", board),
+    route("POST", r"/api/work", create),
     route("GET", r"/api/work" + ONE, detail),
+    route("PATCH", r"/api/work" + ONE, edit),
+    route("POST", r"/api/work" + ONE + r"/comments", add_comment),
+    route("POST", r"/api/work" + ONE + r"/blocks", add_blocks),
+    route("GET", r"/api/tickets", tickets),
+    route("POST", r"/api/tickets" + ONE + r"/adopt", adopt),
+    route("GET", r"/api/options" + ONE, options),
 ]
