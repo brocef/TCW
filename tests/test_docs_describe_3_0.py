@@ -302,9 +302,10 @@ def test_the_allowance_check_sees_a_removed_command():
 
 
 def test_the_allowance_check_sees_a_removed_flag_and_a_refused_key(monkeypatch):
-    # The flag list is empty once every document is rewritten, so the check is
-    # shown one to find.
+    # The flag and key lists are empty once every document is rewritten, so the
+    # check is shown one of each to find.
     monkeypatch.setitem(globals(), "REMOVED_FLAGS", (("tcw work list", "--status"),))
+    monkeypatch.setitem(globals(), "REFUSED_KEYS", ("work.retain",))
     named = allowance_names("`tcw work list --status active` and `work.retain`")
     assert {"tcw work list --status", "work.retain"} <= set(named)
 

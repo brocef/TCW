@@ -12,21 +12,15 @@ cannot hide a new mistake.
 
 TCW-71 and TCW-73 added their own removals; TCW-74 and TCW-75 shrank the
 lists as they rewrote the text. What is left is named only by files other items
-rewrite: `AGENTS.md` outside its worktree section, and capability records, both
-TCW-76's. A list emptied entirely stays as an empty tuple, so its importers keep
+rewrite: `AGENTS.md` outside its worktree section, which is TCW-76's. A list emptied entirely stays as an empty tuple, so its importers keep
 working. **TCW-76 requires every list to be empty before 3.0.0 is cut.**
 """
 
 # `tcw work` commands TCW-70 and TCW-73 removed. A documented invocation
-# starting with one of these is not checked. Each is still named by a file
-# TCW-76 rewrites: `stage gate` by `AGENTS.md`, `init` by the capability record
-# `work/configure-the-work-store-location`, and the two `check` commands by
-# `cli/validate-a-project`.
+# starting with one of these is not checked. The one left is still named by a
+# file TCW-76 rewrites: `stage gate` by `AGENTS.md`.
 REMOVED_COMMANDS = (
     "tcw work stage gate",
-    "tcw work init",
-    "tcw taxonomy check",
-    "tcw capabilities check",
 )
 
 # Flags removed from commands that survive, as (command, flag). A documented
@@ -41,14 +35,6 @@ REMOVED_FORMS: tuple[str, ...] = ()
 # value).
 REFUSED_VALUES: tuple[tuple[str, str], ...] = ()
 
-# Configuration keys TCW-69's parser refuses that documents still name: all in
-# the capability record `work/configure-the-work-lifecycle`, which TCW-76
-# rewrites.
-REFUSED_KEYS = (
-    "work.lifecycle",
-    "work.tracker",
-    "work.retain",
-    "work.auto-commit-transitions",
-    "work.publish-transitions",
-    "work.trunk-branch",
-)
+# Configuration keys TCW-69's parser refuses that documents still name. TCW-76
+# rewrote the last capability record that named them.
+REFUSED_KEYS: tuple[str, ...] = ()
