@@ -35,12 +35,12 @@ project; it is not a channel to the TCW maintainers.)
 
 These are guidelines, not rules — what the report contains is your call.
 
-The tracker at https://github.com/brocef/TCW/issues is **public**, and the
+The issue list at https://github.com/brocef/TCW/issues is **public**, and the
 project you are reporting from may not be. So write the report from a **generic
 example that mirrors your setup** rather than from the real thing, and keep
 whatever real detail you do want in it.
 
-- **Swap** repository, branch and directory names; node ids; work-item slugs;
+- **Swap** repository, branch and directory names; project ids; work-item slugs;
   capability paths and wording; absolute paths; taxonomy terms and any other
   domain vocabulary.
 - **Keep** the command's shape and its flags, the config's shape, the error type
@@ -52,8 +52,8 @@ whatever real detail you do want in it.
 Written down, the swap is small:
 
 ```text
-# yours:    tcw work new --initiative q3-pci-audit "Rotate the payment keys"
-# mirrored: tcw work new --initiative example-epic "Rotate the service keys"
+# yours:    tcw work new "Rotate the payment keys" --parent 2026-07-01-q3-pci-audit
+# mirrored: tcw work new "Rotate the service keys" --parent 2026-01-01-example-epic
 #
 # yours:    work store root does not exist: ~/acme/payments-api/docs/work
 # mirrored: work store root does not exist: ~/example-project/docs/work

@@ -3,26 +3,28 @@
 ## What this answers
 
 Is one idea already tracked, partly tracked, blocked by something tracked, or
-only related to it? The answer covers open items **and** the work inbox, whose
-entries are not items and never appear in `tcw work list`.
+only related to it? The answer covers every unfinished item, arrivals waiting
+in the inbox included.
 
-**It is read-only.** No transition, no `tcw work edit`, no file written. The
+**It is read-only.** No move, no `tcw work edit`, no file written. The
 `work-create` skill decides what to do with the answer.
 
 ## Candidates
 
-1. `tcw work list`. Its rows are `backlog`, `active` and `review` items.
-2. `tcw work inbox list`, then `tcw work inbox show <entry>` for any entry whose
-   title could plausibly be the same work.
-3. `tcw work list --all`, but only to notice closed (`completed`, `discarded`)
-   items. A closed item can be named as a reference. It is never a match.
+1. `tcw work list --json`. Its rows are every unfinished item, at any stage
+   from inbox to qa. Where the project keeps its work in Jira, its inbox is
+   tickets that are not items yet: read them with `tcw work tickets list --json`
+   as well.
+2. `tcw work list --all --json`, but only to notice finished items (at
+   `completed` or `discarded`). A finished item can be named as a reference. It
+   is never a match.
 
-Most rows can be ruled out from the title alone. For the rest, grep before you
-read. `tcw work path` with no slug prints the store folder: search under it for
-the idea's distinguishing words, then open the likely items with
-`tcw work path <slug>`. Read the body (`initial-request.md`, or `intake.md` when
-there is no request), and `spec.md` only when the body does not settle it. Never
-build a store path yourself.
+Most rows can be ruled out from the title alone. For the rest, read what each
+asks for with `tcw work show <slug>`, which prints its request and comments, and
+its spec (`tcw work path <slug> spec`) only when the request does not settle
+it. Where the request is a file, you may search under the folder `tcw work path`
+prints for the idea's distinguishing words first, to choose which to open.
+Never build a store path yourself.
 
 Judge by what an item is **about**, not by shared words. An item that mentions
 the idea's terms in passing is not a match.
@@ -48,12 +50,12 @@ Give each plausible candidate exactly one relation:
 One line per candidate you judged:
 
 ```
-<ref> | <relation> | <status and stage letters> | <evidence>
+<ref> | <relation> | <stage> | <evidence>
 ```
 
-- `<ref>` is the item's slug, or the inbox entry's name.
-- Copy the status and stage letters from the `tcw work list` row; never work
-  them out yourself. For an inbox entry, write `inbox`.
+- `<ref>` is the item's slug, or a Jira ticket's key for an inbox ticket.
+- Copy the stage from `tcw work list --json`; never work it out yourself. For
+  an inbox ticket, write `inbox`.
 - `<evidence>` is the sentence or heading in the item that decided it.
 - Add `(rest can stand alone)` or `(rest cannot stand alone)` to a
   `partly covers` line.
@@ -61,9 +63,10 @@ One line per candidate you judged:
 Close with a line naming what you read:
 
 ```
-searched: tcw work list · tcw work inbox list · tcw work list --all
+searched: tcw work list · tcw work list --all
 ```
 
-When nothing matches, answer `no overlap` followed by that `searched:` line.
-Silence is not an answer, because "searched and found nothing" and "never
-searched" must not look the same.
+adding `tcw work tickets list` where you read it. When nothing matches, answer
+`no overlap` followed by that `searched:` line. Silence is not an answer,
+because "searched and found nothing" and "never searched" must not look the
+same.

@@ -37,4 +37,4 @@ advisor alone.
 | Hands-on checking           | Use the real thing yourself, however this project runs it. Agent reports and passing tests are what someone says, not evidence. |
 | Capability records          | The `capabilities` skill, unchanged. |
 | A release                   | Not yours to make. Nobody is present to ask for one, so let the upcoming changelog entries accumulate and move on. |
-| The audit trail             | Write each decision you made in a person's place, with the advisors' answers, into the newest implement round, so the person reading it later sees what was decided for them. |
+| The audit trail             | Write each decision you made in a person's place, with the advisors' answers, into the round you write next: the implement round for decisions up to implement, the review or qa round for decisions there. The person reading it later then sees what was decided for them. |

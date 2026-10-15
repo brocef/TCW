@@ -1,5 +1,5 @@
 """`extras-autonomous-work` mandates no advisor, review, closeout or version
-policy of its own: those come from `tcw work procedure prompt unattended-work`,
+policy of its own: those come from `tcw work procedure unattended-work`,
 whose shipped default is TCW's practice. The skill body keeps only what a
 project's replacement must still honor.
 """
@@ -8,7 +8,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SKILL = REPO / "skills" / "extras-autonomous-work" / "SKILL.md"
-COMMAND = "tcw work procedure prompt unattended-work"
+COMMAND = "tcw work procedure unattended-work"
 
 
 def _split():

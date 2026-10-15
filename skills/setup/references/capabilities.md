@@ -10,7 +10,7 @@ first with `taxonomy.md`.
 
 ## 1. Ensure the tree exists
 
-`tcw capabilities init` if `docs/capabilities/` is absent.
+`tcw init capabilities` in the project's folder if `tcw capabilities path` fails.
 
 ## 2. Deep-dive (draft)
 
@@ -29,4 +29,4 @@ the read is bounded, so a stalled producer is refused rather than stored half-wr
 and nothing piped simply means no body),
 and set status/fields with `tcw capabilities set` where needed. A new namespace's
 first capability is a fresh single-capability file; add later ones in that namespace
-as additional flat files (`<namespace>/<slug>`). Finish with `tcw capabilities check`.
+as additional flat files (`<namespace>/<slug>`). Finish with `tcw validate`.

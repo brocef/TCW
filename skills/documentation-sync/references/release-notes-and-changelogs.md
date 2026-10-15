@@ -13,12 +13,12 @@ docs/
   release-notes/
     upcoming/
       README.md              # How to write an entry; never combined
-      <work-item-slug>.md    # One file per change, for the next version
+      <item-folder>.md       # One file per change, for the next version
     v1.2.3.md                # Finalized release notes for v1.2.3
   changelogs/
     upcoming/
       README.md
-      <work-item-slug>.md
+      <item-folder>.md
     v1.2.3.md                # Finalized changelog for v1.2.3
 ```
 
@@ -28,8 +28,8 @@ Released files follow the pattern `v{version}.md`. The `upcoming/` folders hold 
 
 Every change adds **its own file** to each `upcoming/` folder whose entry fires, rather than editing a shared file. Two branches that each finish a change then write different files, so merging them cannot conflict over the notes.
 
-- **Name it after the work item:** `<work-item-slug>.md`. Work done outside any item uses `<YYYY-MM-DD>-<short-description>.md`, the same shape. Because slugs start with a date, file-name order is roughly the order the work happened.
-- **Edit only your own file.** A second pass on the same item (rework) edits that item's file. Never edit another change's file, even to fix a typo in passing.
+- **Name it after the work item:** `<item-folder>.md`, the item's folder name, which is the part of its slug after the project. Work done outside any item uses `<YYYY-MM-DD>-<short-description>.md`, the same shape. Because folder names start with a date, file-name order is roughly the order the work happened.
+- **Edit only your own file.** A later implement round on the same item edits that item's file. Never edit another change's file, even to fix a typo in passing.
 - **No `#` title.** Put entries under `##` headings. The changelog uses `## Added`, `## Changed`, `## Fixed`, `## Removed`, `## Internal`. Release notes use whatever headings the project uses; reuse one another entry already has when yours belongs with it. A `###` heading belongs to the `##` section above it. Never start a line with `## ` inside a code block: the cut reads every such line as a section heading.
 - **Keep `README.md`.** It carries the drafting guidance, it is never combined into a release, and it keeps the folder in git when no entries are waiting.
 
@@ -63,8 +63,8 @@ At a version cut, the files are combined into `v{version}.md` — see `cut-versi
 Projects using this structure should include these entries in their CLAUDE.md `## Documentation Sync` section:
 
 ```markdown
-- `docs/release-notes/upcoming/<slug>.md` [Public-API] — User-facing release notes; plain language, no jargon; one file per work item
-- `docs/changelogs/upcoming/<slug>.md` [Any-Code-Change] — Developer changelog; technical, grouped under `##` category headings; one file per work item
+- `docs/release-notes/upcoming/<name>.md` [Public-API] — User-facing release notes; plain language, no jargon; one file per work item, named by its folder name
+- `docs/changelogs/upcoming/<name>.md` [Any-Code-Change] — Developer changelog; technical, grouped under `##` category headings; one file per work item, named by its folder name
 ```
 
 The trigger system determines when these files get updated — release notes fire on public-facing changes, changelogs fire on any code change.
@@ -92,7 +92,7 @@ Then offer the folder layout — once in a session, not at every entry, and if t
 
 > "Every change here edits the same `upcoming.md`, so work finished on separate branches conflicts when it merges. Want me to switch to one file per change in `upcoming/` folders?"
 
-If the user agrees: create each `upcoming/` folder with a `README.md` (the guidance above); move the current `upcoming.md` content, minus its title and preamble, into `upcoming/<YYYY-MM-DD>-carried-over.md`; change the documentation entries' paths to `upcoming/<slug>.md`; and update the project's version-cut script or instructions to combine the folder.
+If the user agrees: create each `upcoming/` folder with a `README.md` (the guidance above); move the current `upcoming.md` content, minus its title and preamble, into `upcoming/<YYYY-MM-DD>-carried-over.md`; change the documentation entries' paths to `upcoming/<name>.md`; and update the project's version-cut script or instructions to combine the folder.
 
 ## Existing Project Migration
 
@@ -123,6 +123,6 @@ Only after the user agrees, follow the suggestion below. Always preserve the ori
 | Mistake                                                            | Fix                                                                               |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | Silently combining `upcoming/` entries during version cross-check  | Tell the user what you found and confirm before combining                         |
-| Editing another change's entry file in `upcoming/`                 | Touch only your own `<work-item-slug>.md`; that is what keeps branches apart      |
+| Editing another change's entry file in `upcoming/`                 | Touch only your own `<item-folder>.md`; that is what keeps branches apart         |
 | Acting on a migration without explicit user agreement              | The migration table lists _offers_ — never execute one unilaterally               |
 | Combining files by hand when the project has a version-cut process | Use the project's documented version-cut process; it combines as part of the bump |

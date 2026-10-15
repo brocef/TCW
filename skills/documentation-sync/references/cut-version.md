@@ -31,7 +31,7 @@ signal rather than the sole gate:
 | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `patch` | The default for routine work — bug fixes, internal refactors, small features, doc updates, dependency bumps, and anything that doesn't merit a higher bump.                                         |
 | `minor` | Medium-sized change sets — substantial feature work, notable refactors, or related groups of changes shipped together. May include _some_ reverse-incompatible changes when scoped and intentional. |
-| `major` | Extremely large change sets — sweeping rewrites, broad reverse-incompatible work, or dropping support for a previously-supported platform/version. **Only when explicitly instructed by the user.** |
+| `major` | Extremely large change sets — sweeping rewrites, broad reverse-incompatible work, or dropping support for a platform or version that was supported. **Only when explicitly instructed by the user.** |
 
 A single localized breaking change inside an otherwise medium-sized set of work
 is fine in a `minor`; a broad pattern of breaking changes across the codebase is

@@ -14,8 +14,8 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
 - **`tcw-config.yaml` exists, and a command says a store or project is declared
   but not here.** The project uses TCW and this machine lacks part of it. Go to
   "A project that is set up elsewhere".
-- **`tcw validate` prints `validate OK`.** TCW already works here. To change how
-  it behaves, use the `configure` skill instead.
+- **`tcw validate` exits 0 with no findings.** TCW already works here. To
+  change how it behaves, use the `configure` skill instead.
 
 ## A new project
 
@@ -23,8 +23,7 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
    connected repository: lowercase letters and digits, words joined by single
    hyphens (`billing-service`). It cannot be changed afterwards. When the user
    has named the project, use that name in this form and say so; otherwise ask.
-2. **Run `tcw init` from the folder the project lives in**, inside a Git
-   repository:
+2. **Run `tcw init` from the folder the project lives in:**
 
    ```sh
    tcw init --id <project-id>                  # all three components
@@ -32,17 +31,17 @@ Look for `tcw-config.yaml` in the current folder or any folder above it, and run
    ```
 
    It marks the current folder as a TCW project by writing `tcw-config.yaml`
-   with the ID, then creates each component's store under `docs/`. It refuses to
-   run outside a Git repository, because transitions commit. The folder does not
-   have to be the repository root, so one repository can hold several projects.
-3. **A component can be added later** with its own command: `tcw taxonomy init`,
-   `tcw capabilities init` or `tcw work init`.
+   with the ID, then creates each component's store under `docs/`. The folder
+   does not have to be the root of a repository, so one repository can hold
+   several projects.
+3. **A component can be added later** by naming it: `tcw init taxonomy`,
+   `tcw init capabilities` or `tcw init work`, run in the project's folder.
 4. **Stores somewhere other than `docs/<component>`**, including in another
-   repository: see the `configure` skill's `stores.md` before running
+   repository: read the configure skill's reference on stores before running
    `tcw init`, because it covers the path flags `tcw init` takes.
 
-Nothing `tcw init` writes is committed for you. Show the user the new files and
-commit them once they agree.
+`tcw init` only writes files. Show the user what it wrote; keeping those files,
+in version control or otherwise, is the project's own choice.
 
 ## A project that is set up elsewhere
 
@@ -55,7 +54,6 @@ remote, and says to run `tcw provision`.
 tcw provision --dry-run                 # print what would be fetched; contact nothing
 tcw provision                           # fetch every declared store and connected project
 tcw provision --component taxonomy      # only one component's store
-tcw provision --refresh                 # bring an existing copy up to the declared version
 ```
 
 `tcw provision` follows connected projects in turn, since a project it fetches
@@ -64,7 +62,7 @@ missing here.** That creates a second, empty store beside the real one.
 
 If `tcw provision` is about to fetch a copy of a project that is already on this
 machine under a different folder layout, stop: the fix is the `TCW_PROJECT_<ID>`
-variable, described in the `configure` skill's `projects.md`.
+variable, described in the configure skill's reference on projects.
 
 ## Finish
 
@@ -72,6 +70,7 @@ variable, described in the `configure` skill's `projects.md`.
    exits non-zero on any problem.
 2. To seed a taxonomy from the existing code, continue with `taxonomy.md`; for a
    capabilities ledger, `capabilities.md`, after the taxonomy.
-3. To change configuration from here — documentation entries, lifecycle
-   bindings, the Definition of Done, a tracker, store locations, or connected
-   and inherited projects — use the `configure` skill.
+3. To keep the work in Jira instead of in files, continue with `jira.md`.
+4. To change configuration from here — documentation entries, stage bindings,
+   store locations, or connected and inherited projects — use the `configure`
+   skill.

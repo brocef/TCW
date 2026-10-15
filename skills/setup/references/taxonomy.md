@@ -10,12 +10,13 @@ refine loop below. Bootstrap both taxonomy entry kinds:
 
 ## 1. Ensure the tree exists
 
-`tcw taxonomy init` if `docs/taxonomy/` is absent (no-op if present).
+`tcw init taxonomy` in the project's folder if `tcw taxonomy path` fails (it does nothing if the tree exists).
 
 ## 2. Inheritance
 
 Ask whether this project inherits taxonomy from another registered project.
-If it does, declare it with the `configure` skill's `projects.md`, then
+If it does, declare it with `tcw taxonomy extends add <project-id>` (the
+configure skill's reference on projects explains the declaration), then
 continue.
 
 ## 3. Deep-dive (draft)
@@ -53,4 +54,4 @@ writes nothing.
   `<alias>/<path>`, or a leaf slug unique across the local tree; a unique leaf
   slug is stored as its full path.
 
-Finish with `tcw taxonomy check` and show the resulting `tcw taxonomy list`.
+Finish with `tcw validate` and show the resulting `tcw taxonomy list`.

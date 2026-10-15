@@ -88,6 +88,7 @@ Documents are named by owner and by path within the owner.
 | `setup` | `references/project.md` | fixed (Rule 1) | `tcw init` and provisioning a project's stores |
 | `setup` | `references/taxonomy.md` | fixed (Rule 1) | Seeds the taxonomy, whose entry kinds are the axis's data model. It also describes how to survey a codebase, which is conduct, but it runs once while a project is being set up, before the project has any configuration an override could come from |
 | `setup` | `references/capabilities.md` | fixed (Rule 1) | Same as `references/taxonomy.md`, for the capabilities ledger and its statuses |
+| `setup` | `references/jira.md` | fixed (Rule 1) | Walks a user from a Jira project to a working `backend: jira` configuration; what TCW needs from Jira's workflow is TCW's to state |
 | `commands-process-inbox` | `SKILL.md` | fixed (Rule 2) | Runs the `inbox` and `request` stages through `work-stage`; the procedure is the stages' |
 | `commands-plan-work` | `SKILL.md` | fixed (Rule 2) | Runs `request`, `spec` and `plan` through `work-stage`; the procedure is the stages' |
 | `commands-drive-work-to-completion` | `SKILL.md` | fixed (Rule 2) | Runs every stage through `verify` via `work-stage`; the procedure is the stages' |
@@ -97,7 +98,6 @@ Documents are named by owner and by path within the owner.
 | `documentation-sync` | `SKILL.md` | overridable | Deciding which documents a change must update is the project's documentation practice |
 | `documentation-sync` | `references/cut-version.md` | overridable | How a version is cut is the project's; the document's own first step already defers to a project's version-cut process |
 | `documentation-sync` | `references/release-notes-and-changelogs.md` | overridable | The file layout it describes is the project's own documentation, opt-in by its own words, not a TCW artifact |
-| `post-mortem` | `SKILL.md` | overridable | How to investigate a miss is conduct; the stage ladder it reasons over stays TCW's |
 | `work-create` | `SKILL.md` | overridable | How an idea is filed is conduct; the rule that the board is searched first stays fixed (see `references/find-overlap.md`) |
 | `work-create` | `references/find-overlap.md` | fixed (Rule 1) | Does not travel with its skill. It defines the search for existing work and its four relations — `covers`, `partly covers`, `blocks`, `related` — which decide the item fields the skill writes (`blocked_by`, an amendment, a reference). That is a board rule; a project replacing it could define "duplicate" out of existence |
 | `work` | `references/commands.md` | fixed (Rule 1) | The CLI's verbs and flags |

@@ -26,15 +26,17 @@ strong **Feature**, and work references taxonomy entries. The pointers are
 one-directional — **taxonomy never points back** at capabilities or work.
 
 Drive `tcw taxonomy`; never hand-edit entry markdown when a command applies. Read
-with `list` / `show` / `search`; create with `add`; validate with `check`; remove a
-local term with `rm`. The capabilities axis is **REQUIRED SUB-SKILL: Use the `capabilities` skill**.
+with `list` / `show` / `search`; create with `add`; remove a local term with
+`rm`; `tcw validate` checks the tree with the rest of the project. The
+capabilities axis is **REQUIRED SUB-SKILL: Use the `capabilities` skill**.
+
 **The taxonomy tree is not necessarily `docs/taxonomy`.** `taxonomy.path` in
 `tcw-config.yaml` can put it anywhere, and a `taxonomy.repository` block can put
-it in another Git repository entirely, fetched here by `tcw provision`. So never
-compose a store path from the node root — ask `tcw taxonomy path`. A command that
-needs a declared-but-unprovisioned tree fails, names the declared remote, and
-tells you to run `tcw provision`; do not work around that by running `tcw init`,
-which would scaffold a second, empty tree beside the real one. A malformed
+it in another repository entirely, fetched here by `tcw provision`. So never
+compose a store path from the project root — ask `tcw taxonomy path`. A command
+that needs a declared but missing tree fails, names where it lives, and tells
+you to run `tcw provision`; do not work around that by running `tcw init`,
+which would create a second, empty tree beside the real one. A malformed
 `taxonomy.repository` fails the same way and names the offending config line.
 
 Use `tcw taxonomy path` when an agent needs the absolute, resolved filesystem
@@ -46,6 +48,15 @@ viewers; it is not an editable taxonomy field.
 
 > **Web editing:** Taxonomy entries can also be created and edited through the
 > local `tcw serve` web app; check failures are surfaced in the UI.
+
+## Terms change with the code
+
+A work item that adds, changes or removes terms or Features declares them in
+the spec, under `taxonomy:` in the item's `capabilities.yaml` (the `capabilities`
+skill shows the file). **Implement changes the taxonomy in the same change as
+the code**, with `tcw taxonomy add` and `rm`, so the records say what the code
+does by the time review reads them. The move out of implement checks every
+declared term: a `new` or `changed` one present, a `removed` one gone.
 
 ## Judgment
 
@@ -69,8 +80,8 @@ viewers; it is not an editable taxonomy field.
 - **Entries stay inside their own store.** A ref is joined onto the store root,
   so a symlink planted inside the store would otherwise carry it out. Every
   lookup, listing, write and validation resolves the path first and refuses one
-  that lands outside — and the same holds for the files *inside* an entry, so a
-  node whose `meta.yaml` or `description.md` is a symlink out is not read. Such
+  that lands outside — and the same holds for the files *inside* an entry, so an
+  entry whose `meta.yaml` or `description.md` is a symlink out is not read. Such
   an entry does not resolve, does not appear in `list`, and cannot be written
   to; a stored ref of that shape reports as **dangling**. Federation (`extends`)
   is the supported way to reference another project.
@@ -78,27 +89,26 @@ viewers; it is not an editable taxonomy field.
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
-  (`-s` to override the leaf slug; description inline or piped on stdin). Reading
-  stdin is bounded: an inline description skips it entirely, nothing piped adds
-  the term with no description and warns, and a stream that stalls part-way is
-  refused rather than stored truncated (`TCW_STDIN_TIMEOUT` sets the bound).
+  (`--slug` to override the leaf slug; the description piped on stdin). Reading
+  stdin is bounded: nothing piped adds the term with no description and warns,
+  and a stream that stalls part-way is refused rather than stored truncated
+  (`TCW_STDIN_TIMEOUT` sets the bound).
 - **Keep descriptions short** — one or two sentences of what the noun means here.
-- **Run `tcw taxonomy check` after edits** — it validates inherited project IDs,
+- **Run `tcw validate` after edits** — it checks inherited project IDs,
   taxonomy kinds, feature vocabulary refs, and every relatesTo / subject
-  reference (cycles, duplicate IDs, dangling/ambiguous refs). It also reports a
-  pre-2.5.0 `config.yaml` left at the taxonomy root, which is no longer read:
-  move any `extends` it lists into `taxonomy.extends` in `tcw-config.yaml`, then
-  delete the file.
+  reference (cycles, duplicate IDs, dangling/ambiguous refs).
 - **Cross-reference in prose with `tcw://` links** — a term description may link
   to another object with `[text](tcw://T/<slug>)` (or `C`/`W`, and an
   `<project-id>/`-prefixed namespace for inherited terms). `tcw validate` resolves
-  those links node-wide and the `tcw serve` viewer makes them clickable.
+  those links across the project and the `tcw serve` viewer makes them clickable.
 
 ## Inheritance (federation)
 
 A project may inherit another registered project's taxonomy — a parent, a
-child, or an `upstream` it reads without being named back. Declaring that is
-the `configure` skill's `projects.md`. The source project ID is the inherited
+child, or an `upstream` it reads without being named back.
+`tcw taxonomy extends add <project-id>` inherits one and
+`tcw taxonomy extends rm <project-id>` stops; the configure skill's reference
+on projects explains the declaration. The source project ID is the inherited
 namespace (`<project-id>/<slug>`). Inheritance is transitive: if A extends B and
 B extends C, A can resolve both `B/<slug>` and `C/<slug>` under the owning
 project IDs. A source reached through multiple paths appears once.
@@ -111,12 +121,12 @@ To seed a new taxonomy from an existing codebase, use the `setup` skill.
 
 | Goal                            | Command                                                                                                                                                          |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [-s <slug>]`                                                                                                        |
+| add vocabulary                  | `tcw taxonomy add "<Name>" [--parent <path>] [--slug <slug>]`                                                                                                        |
 | add a feature                   | `tcw taxonomy add "<Name>" --kind feature --vocab <ref> [--vocab <ref>...]` — a path, an `<alias>/<path>`, or a unique leaf slug; refused if it does not resolve |
 | nest under a parent             | `tcw taxonomy add "<Name>" --parent <path>`                                                                                                                      |
-| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `check`                                                                                                         |
+| link related terms              | edit `relatesTo` in the term's `meta.yaml`, then `tcw validate`                                                                                                         |
 | browse / read / find            | `tcw taxonomy list` · `tcw taxonomy show <path>` · `tcw taxonomy search <q>`                                                                                     |
 | locate the filesystem store     | `tcw taxonomy path` — prints only the absolute, resolved store folder                                                                                           |
-| inherit another project's terms | declared with the `configure` skill's `projects.md`                                                                                                          |
-| validate                        | `tcw taxonomy check` (this tree) · `tcw validate` (whole node: YAML + `tcw://` links + all component checks)                                                     |
-| remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, a local capability or a local override of an inherited one names it in `Subject` or `Feature` (or the capabilities cannot be read), or a file under it is not tracked by git (OS metadata such as `.DS_Store` excepted); fix those first |
+| inherit another project's terms | `tcw taxonomy extends add <project-id>` · `extends rm <project-id>`                                                                                                          |
+| validate                        | `tcw validate` (the whole project: YAML, `tcw://` links, every axis's checks)                                                     |
+| remove a local term             | `tcw taxonomy rm <path>` — refused while a term is nested under it, another local term names it in `relatesTo` or a feature's `vocabulary`, a local capability or a local override of an inherited one names it in `Subject` or `Feature` (or the capabilities cannot be read); fix those first. Every other file in its folder goes with it |

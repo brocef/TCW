@@ -25,6 +25,8 @@ project behaves is the `configure` skill.
 4. [`capabilities.md`](references/capabilities.md) — what users can do is recorded.
 
 Skip a step that is already done. Steps 3 and 4 are optional, and 4 needs 3.
+A project that keeps its work in Jira continues with
+[`jira.md`](references/jira.md) once step 2 is done.
 
 | The user wants to… | Open |
 | --- | --- |
@@ -33,12 +35,11 @@ Skip a step that is already done. Steps 3 and 4 are optional, and 4 needs 3.
 | get a TCW project cloned from elsewhere working on this machine | [`project.md`](references/project.md) |
 | write down the project's terms and features from its existing code | [`taxonomy.md`](references/taxonomy.md) |
 | write down what users can already do, from the existing code | [`capabilities.md`](references/capabilities.md) |
+| keep the project's work items in Jira, and check its workflow fits | [`jira.md`](references/jira.md) |
 | set up documentation entries (which documents a change must update) | the `configure` skill |
-| set up lifecycle bindings (skills or commands run at a stage) | the `configure` skill |
-| set up a Definition of Done | the `configure` skill |
-| set up an external tracker | the `configure` skill |
+| set up stage bindings (skills or commands run at a stage) | the `configure` skill |
 | set up store locations, or keep a store in another repository | the `configure` skill |
 | set up connected or inherited projects | the `configure` skill |
 
-A request that says "set up" but names one of the last six areas is a
+A request that says "set up" but names one of the last four areas is a
 configuration change to a project that already works, not first-time setup.
