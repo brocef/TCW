@@ -37,3 +37,16 @@ def test_tcw_validate_fails_on_a_bad_block(tmp_path):
     assert "work.procedures.serach" in r.stdout + r.stderr
 
 
+
+
+def test_a_removed_procedure_id_is_a_problem_naming_the_known_ids(tmp_path):
+    """TCW-74 criterion 6: `delegation` was a procedure in 2.x and is not one
+    now, so configuring it is refused by name, with the ids that exist."""
+    from tcw.store.base import PROCEDURE_IDS
+    root = _node(tmp_path)
+    _configure(root, {"delegation": [{"blob": "A"}]})
+    r = subprocess.run(["tcw", "validate"], cwd=root, capture_output=True, text=True)
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "work.procedures.delegation" in out
+    assert all(known in out for known in PROCEDURE_IDS)

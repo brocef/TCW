@@ -649,8 +649,7 @@ def normalize_tag(value: str) -> str:
 # configuration must not break when one is. A project replaces a procedure's
 # text; it cannot add a procedure.
 PROCEDURE_IDS = ("unattended-work", "triage-issues", "documentation-sync",
-                 "post-mortem", "create-work", "audit-backlog",
-                 "consolidate-plans", "decompose", "delegation", "search")
+                 "create-work", "audit-backlog", "search", "pause-work")
 
 
 # Bound on a `generate` hook's stdout, in **raw bytes before decoding**.

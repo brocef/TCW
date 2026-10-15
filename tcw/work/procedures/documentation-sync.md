@@ -28,7 +28,7 @@ Be precise: an internal refactor does NOT fire `Public-API`. A new optional para
 
 ### Including Doc Updates in Implementation Plans
 
-Whenever you write an implementation plan for a project that has a `## Documentation Sync` section, surface doc-update work in the plan — do not leave it as an implicit follow-up. In a TCW project this is the **plan-gate** invocation: the predicted doc tasks belong in `plan.md`.
+Whenever you write an implementation plan for a project that has documentation entries, surface doc-update work in the plan — do not leave it as an implicit follow-up. In a TCW project this is the `plan` stage's invocation: the predicted doc tasks belong in the plan.
 
 Pick one of two paths based on how concrete the planned scope is:
 
@@ -84,10 +84,11 @@ ritual only when the project has none.
 Updating the changelog files is **not** part of a version cut and does not wait
 for one. The release-note and developer-changelog working files among the
 project's documentation entries (`tcw work docs`, or its `## Documentation Sync`
-section when `source` is `agent-guide`) — such as `docs/release-notes/upcoming/<slug>.md`
-and `docs/changelogs/upcoming/<slug>.md`, one file per change — are answered by the documentation gate at
-the end of `implement`, like any other entry whose trigger fired. Work
-accumulates there until a cut is asked for.
+section when `source` is `agent-guide`) — such as `docs/release-notes/upcoming/<name>.md`
+and `docs/changelogs/upcoming/<name>.md`, one file per change, named by the work
+item's folder name — are answered at the end of the `implement` stage, like any
+other entry whose trigger fired. Work accumulates there until a cut is asked
+for.
 
 ## Common Mistakes
 

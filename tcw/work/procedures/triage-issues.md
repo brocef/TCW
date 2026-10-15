@@ -28,65 +28,68 @@ reported as a clean one is worse than no sweep.
 
 ## 3. Drop the ones already tracked
 
-An accepted issue writes its URL into the work item it created (§5), so the URL
-is the join key. Grep for it:
-
-```bash
-grep -rl "<issue-url>" docs/work/
-```
+An accepted issue writes its URL into the request of the work item it created
+(§5), so the URL is the join key. Look for it among the items, finished ones
+included (`tcw work list --all`):
+<!-- backend: filesystem -->
+search under the folder `tcw work path` prints for the URL.
+<!-- /backend -->
+<!-- backend: jira -->
+search Jira for the URL, since each item's request is its ticket's description.
+<!-- /backend -->
+Then confirm a hit with `tcw work show <slug>`, which prints the item's stage,
+its request and its comments.
 
 A hit means this issue has been triaged before. **It does not mean the issue is
-settled** — resolve the slug and ask what actually happened to it:
+settled** — ask what actually happened to the item:
 
-```bash
-tcw work show <slug>
-```
-
-| Item status                     | What it means                        | What to do                                           |
-| ------------------------------- | ------------------------------------ | ---------------------------------------------------- |
-| `backlog` / `active` / `review` | Genuinely tracked                    | Report it, name the item, move on                    |
-| `completed`                     | The change already shipped           | No new item. Offer a reply saying so, and close.     |
-| `discarded`                     | It was closed **without being done** | Depends entirely on _why_ — read `resolution` first. |
+| Item stage                                          | What it means                        | What to do                                       |
+| --------------------------------------------------- | ------------------------------------ | ------------------------------------------------ |
+| inbox, request, spec, plan, implement, review or qa | Genuinely tracked                    | Report it, name the item, move on                |
+| `completed`                                         | The change already shipped           | No new item. Offer a reply saying so, and close. |
+| `discarded`                                         | It ended **without being done**      | Depends entirely on _why_ — read the reason first. |
 
 The last two rows are the ones that bite. A discarded item means the project
 already decided something about this issue and the reporter was never told: the
 issue is still open, still unanswered, and re-triaging it from scratch would
 relitigate a decision that has already been made.
 
-**`discarded` is not a verdict — it is three verdicts.** Read the item's
-`state.yaml` `resolution` before drafting anything:
+**`discarded` is not a verdict — it is several.** The reason given when the item
+was discarded is in its comments (`tcw work show <slug>`). Read it before
+drafting anything:
 
-| `resolution` | What it actually means                | Reply                                                                                         |
-| ------------ | ------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `wontfix`    | Genuinely rejected                    | The "not worth doing" outcome, reason on record. Close.                                       |
-| `duplicate`  | Folded into another item              | Point at that item. Close.                                                                    |
-| `superseded` | **Still wanted, tracked differently** | Find what superseded it and read what that item did with the request — absorbed, or deferred? |
+| The reason says           | What it actually means                | Reply                                                                                         |
+| ------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| not worth doing           | Genuinely rejected                    | The "not worth doing" outcome, reason on record. Close.                                       |
+| a duplicate of an item    | Folded into another item              | Point at that item. Close.                                                                    |
+| replaced by another item  | **Still wanted, tracked differently** | Find the replacing item and read what it did with the request — absorbed, or deferred?        |
 
-`superseded` is the trap. It does not mean no. The superseding item may have
+Replacement is the trap. It does not mean no. The replacing item may have
 absorbed the request, or it may have _deferred_ it and written it down so it
 would not be lost — in which case the honest answer is that nothing tracks it
 today and it likely needs recreating as a follow-up item. Saying "we decided
 against this" to a reporter whose request was merely postponed is the worst reply
-this skill can produce, and it is the one the folder name alone would lead you to.
+this procedure can produce.
 
 ## 4. Triage what is left
 
 Read each issue in full (`gh issue view <n> --comments` when the thread matters).
 Then decide, before creating anything:
 
-| Outcome             | Meaning                                                      | Result                            |
-| ------------------- | ------------------------------------------------------------ | --------------------------------- |
-| **Worth doing**     | A real change this project should make                       | → §5, becomes a work item         |
-| **Duplicate**       | Of another open issue, or of an item already in `docs/work/` | No item. Close with a pointer.    |
-| **Not worth doing** | Out of scope, contrary to the design, or simply not wanted   | No item. Close with the reason.   |
-| **Ill-defined**     | May be real, but there is not enough here to act on          | No item. Ask for what is missing. |
+| Outcome             | Meaning                                                    | Result                            |
+| ------------------- | ---------------------------------------------------------- | --------------------------------- |
+| **Worth doing**     | A real change this project should make                     | → §5, becomes a work item         |
+| **Duplicate**       | Of another open issue, or of an existing work item         | No item. Close with a pointer.    |
+| **Not worth doing** | Out of scope, contrary to the design, or simply not wanted | No item. Close with the reason.   |
+| **Ill-defined**     | May be real, but there is not enough here to act on        | No item. Ask for what is missing. |
 
 Only the first creates a work item.
 
 To check for duplicates, search **both** queues — the other open issues from §2,
-and the existing work items (`tcw work list --all`, plus a grep of `docs/work/`
-for the distinguishing terms). An issue duplicating an item that already exists
-is the case most easily missed, because the two are worded differently.
+and the existing work items (`tcw work list --all --json` for titles and tags,
+then `tcw work show <slug>` on the likely ones). An issue duplicating an item
+that already exists is the case most easily missed, because the two are worded
+differently.
 
 **Recommend, then ask.** The rejection outcomes are the user's call, not yours.
 Say which outcome you think fits and why, and let them decide — especially for
@@ -94,28 +97,27 @@ Say which outcome you think fits and why, and let them decide — especially for
 
 ## 5. Accept: create the work item
 
-Per the `inbox` stage — retitle, pick tags, split if it is really several items.
-**An issue is raw arrival, so it is filed as the item's `intake.md`**, and what
-you pipe into `tcw work new` is stored as that intake verbatim.
+Per the inbox stage's instructions (`tcw work stage prompt inbox`) — retitle as
+a change, pick tags, split if it is really several items. What you pipe into
+`tcw work new` becomes the item's request, which the request stage shapes later.
 
-Compose the intake first — piping the bare issue body is not enough, because it
+Compose that text first — piping the bare issue body is not enough, because it
 carries none of the provenance the later steps read back. It opens with an
-**`## Origin`** section — the heading `docs/work/` items already use to say
-where a request came from — recording two things:
+**`## Origin`** section recording two things:
 
-1. **The issue's number, URL, and reporter.** The URL is what §3 reads on the
-   next sweep; without it the issue resurfaces forever.
+1. **The issue's number, URL, and reporter.** The URL is what §3 looks for on
+   the next sweep; without it the issue resurfaces forever.
 2. **The reporter's own words, attributed and quoted.** Do not rewrite them into
    first person. The maintainer did not ask for this — someone else did, and the
-   distinction is what `verify` needs later to check the work against what was
-   actually reported.
+   distinction is what the qa stage needs later to check the work against what
+   was actually reported.
 
 Read the issue with `gh issue view <n> --json number,url,author,body`, then pipe
 the composed document in — a quoted heredoc, so nothing in the reporter's text
 is expanded by the shell:
 
 ```bash
-tcw work new "<retitled as a change>" --tag <tag> [--priority N] [--effort M] <<'MD'
+tcw work new "<retitled as a change>" --tag <tag> [--priority <p>] [--effort <e>] <<'MD'
 # <retitled as a change>
 
 ## Origin
@@ -132,8 +134,6 @@ refuses.
 
 If the project already has its own convention for recording provenance, follow
 that one instead — a second heading that means the same thing is drift.
-
-Commit the item.
 
 ## 6. Reply to the reporter
 
@@ -165,47 +165,47 @@ Close out with what happened per issue — accepted (with slugs), rejected (with
 outcomes), already tracked, and anything the sweep did not reach. If the user
 declined replies, say which issues are still open and awaiting one.
 
-## 8. Closing the loop when the work item finishes
+## 8. Closing the loop when the work item ends
 
 An accepted issue was told it is being tracked. **That is a promise, and this
 section is where it is kept.** Everything above happens once, at intake; this
-happens later, when the item that came out of it closes.
+happens later, when the item that came out of it reaches `completed` or
+`discarded`. Nothing in TCW prompts you here: an item ending prints no
+reminder, so run this section whenever you see an item from an issue end, and
+on every sweep (§3 finds the ended ones).
 
-You get here from `tcw work complete`, whose Definition-of-Done checklist can
-carry a line naming the originating issue (see
-`work/references/transitions.md`). Find the issue:
+Find the issue in the item's request:
 
 ```bash
-tcw work show <slug>      # → the item's body, whichever artifact it is; read its ## Origin
+tcw work show <slug>      # the request, then the comments; read its ## Origin
 ```
 
 No `## Origin`, or no issue URL in it → the item did not come from an issue and
 there is nothing to do here.
 
-**What to say depends on how the item closed**, and the four resolutions do not
-mean the same thing to a reporter:
+**What to say depends on how the item ended**, and the endings do not mean the
+same thing to a reporter:
 
-| `--resolution` | Reply                                                               | Close the issue?     |
-| -------------- | ------------------------------------------------------------------- | -------------------- |
-| `done`         | It shipped — say in which version                                   | **Yes**              |
-| `duplicate`    | Name the item that absorbed it                                      | **Yes**              |
-| `wontfix`      | The actual reason it was not taken on                               | **Yes**              |
-| `superseded`   | What replaced it — **and whether the ask was absorbed or deferred** | **Only if absorbed** |
+| How it ended                        | Reply                                                               | Close the issue?     |
+| ----------------------------------- | ------------------------------------------------------------------- | -------------------- |
+| `completed`                         | It shipped — say in which version                                   | **Yes**, once a release carries it |
+| `discarded` as a duplicate          | Name the item that absorbed it                                      | **Yes**              |
+| `discarded` as not worth doing      | The actual reason it was not taken on                               | **Yes**              |
+| `discarded`, replaced by another    | What replaced it — **and whether the ask was absorbed or deferred** | **Only if absorbed** |
 
-**`superseded` is the one to slow down on.** It does not mean the request was
-refused. The superseding item may have absorbed it, or may have _deferred_ it and
+**A replaced item is the one to slow down on.** It does not mean the request was
+refused. The replacing item may have absorbed it, or may have _deferred_ it and
 written it down so it would not be lost. Closing the issue in the second case
 tells someone their request was declined when it was merely postponed — the same
 mistake §3 warns about, except here it is irreversible and public rather than
-just a mis-triage. Read what the superseding item actually did with the ask
+just a mis-triage. Read what the replacing item actually did with the ask
 before drafting anything, and leave the issue open when it was deferred.
 
-```bash
-gh issue close <n> --comment "<text>"    # done / duplicate / wontfix
-gh issue comment <n> --body "<text>"     # superseded-but-deferred: reply, leave open
-```
+A completed item is not yet something the reporter can install. Closing the
+issue before a release carries the change tells them it is fixed when they
+still cannot get it, so reply and close once it is released.
 
-**A discard prints no checklist**, so nothing prompts you on three of those four
-rows — `tcw work complete` computes the Definition of Done only when the
-resolution is `done`. On any other resolution, the prompt is this document and
-nothing else.
+```bash
+gh issue close <n> --comment "<text>"    # released, duplicate, not worth doing
+gh issue comment <n> --body "<text>"     # replaced but deferred: reply, leave open
+```

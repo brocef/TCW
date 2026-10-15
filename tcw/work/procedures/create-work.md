@@ -19,16 +19,6 @@ conversation; any answer the user has given, including on blockers ("none",
 slugs, or "determine automatically"); and the mode. It reports back step 5's
 single line.
 
-## 0. Use the primary checkout's board
-
-If `git rev-parse --git-dir` and `git rev-parse --git-common-dir` print different
-paths, you are in a linked worktree. The board there is only as current as the
-branch, and anything filed there stays on the branch. Run every `tcw` and `git`
-command in steps 1–4 with the working directory set to the primary checkout: the
-path on the first `worktree` line of `git worktree list --porcelain`. That
-includes step 1's inbox entry and the strict-mode fallback. This is the same
-rule as `tcw work complete`.
-
 ## 1. Is the idea understandable?
 
 It needs one sentence saying what should change and why. Nothing more. If you
@@ -36,50 +26,54 @@ cannot write that sentence:
 
 - **Interactive:** ask.
 - **Delegated:** return `needs decision: clarify`, with the question to ask.
-- **Unattended:** write a raw entry into the folder `tcw work inbox path` prints.
-  Give it a `# <title>` heading, the idea as you have it, and where it came
-  from. Commit it (step 4's commit), report `deferred to inbox <entry>`, and
-  stop.
+- **Unattended:** leave the decision to a person, and stop.
+<!-- backend: filesystem -->
+  File it as an arrival for someone to decide on later:
+  `tcw work new "<title>" --stage inbox`, with the idea as you have it and
+  where it came from on stdin. Report `deferred to inbox <slug>`.
+<!-- /backend -->
+<!-- backend: jira -->
+  In Jira the inbox is tickets that people file, so create nothing: report
+  `needs decision: clarify` with the idea as you have it.
+<!-- /backend -->
 
 ## 3. Act on the result
 
 **When several candidates match:** `covers` beats `partly covers`. Among
-`covers` matches, the one furthest along decides. The order is active or
-review, then backlog with a `spec.md` or `plan.md`, then backlog without one,
-then an inbox entry. Name every other `covers` match in your report, because two
-tracked things covering the same work is itself news.
+`covers` matches, the one furthest along decides, by its stage: implement,
+review or qa first, then spec or plan, then request, then inbox. Name every
+other `covers` match in your report, because two tracked things covering the
+same work is itself news.
 
 | The deciding match | Interactive | Delegated | Unattended | Outcome |
 | --- | --- | --- | --- | --- |
-| `covers` an `active` or `review` item | Tell the user the item, and any new information. Change nothing | Return the same | Report the same | `already in progress <ref>` |
-| `covers` anything else, and the idea adds nothing it does not already say | Tell the user | Return it | Report it | `already tracked <ref>` |
-| `covers` an inbox entry, or a `backlog` item with no `spec.md`, with new information | Append | Append | Append | `amended <ref>` |
-| `covers` a `backlog` item with `spec.md` or `plan.md`, with new information | Append, then ask: revise, or leave as is (saying why in the appended section) | Append, then return `needs decision: revise <slug>` unless the brief answers it | Append, then revise | `revised <slug>`, or `amended <slug>` if left |
+| `covers` an item at implement, review or qa | Tell the user the item, and any new information. Change nothing | Return the same | Report the same | `already in progress <slug>` |
+| `covers` anything else, and the idea adds nothing it does not already say | Tell the user | Return it | Report it | `already tracked <slug>` |
+| `covers` an item at inbox or request, with new information | Add it | Add it | Add it | `amended <slug>` |
+| `covers` an item at spec or plan, with new information | Add it, then ask: revise, or leave as is (saying why in what you added) | Add it, then return `needs decision: revise <slug>` unless the brief answers it | Add it, then revise | `revised <slug>`, or `amended <slug>` if left |
 | `partly covers`, and the rest can stand alone | Create an item for the rest (step 4), naming the match under References | Same | Same | `created <slug>` |
 | `partly covers`, and the rest cannot stand alone | Treat it as `covers` with new information | Same | Same | as that row |
 | No match | Create (step 4) | Create | Create | `created <slug>` |
 
-- **Append only what is new.** Add it under a dated `## Added <YYYY-MM-DD>`
-  heading that says where it came from, and never rewrite what is there. For an
-  item, follow the `work` skill's "Amending a request"
-  (`references/commands.md`): append to `initial-request.md`, and on an item
-  with only `intake.md` write the request first — the intake is raw input and
-  is never appended to. Delegated or unattended, write that request from the
-  evidence you have and say so in its `## Notes`. A bound tracker ticket is not
-  updated. For an inbox entry that is a folder, append to the
-  Markdown file that `tcw work inbox show <entry>` prints as its body; an entry
-  becomes an item's `intake.md` only when it is accepted. Commit as in step 4.
-- **Revise** means re-running `spec`, and `plan` if one exists, after the
-  append. Gate each one with `tcw work stage gate`, and commit each artifact
-  separately. Hand them to subagents under the `work` skill's
-  `delegation.md` if you can dispatch; otherwise run them yourself. Report
-  `revised` only once every artifact being revised is written: the spec alone
-  when the item has no plan. Inside a
-  `extras-autonomous-work` session, its advisors stand in for "ask", and
-  this default applies only where that skill has no rule.
-- **Closed items are never the deciding match.** Name a close one under
-  References. If it was discarded, put its resolution in the reason part of
-  your one outcome line.
+- **Add only what is new**, saying where it came from, and never rewrite what
+  is there.
+<!-- backend: filesystem -->
+  Add it to the request, `tcw work path <slug> request`, under a dated
+  `## Added <YYYY-MM-DD>` heading.
+<!-- /backend -->
+<!-- backend: jira -->
+  Post it as a comment with `tcw work comment <slug>`, first line
+  `Added <YYYY-MM-DD>`: the request is the ticket's description, which Jira
+  owns.
+<!-- /backend -->
+- **Revise** means running the spec stage again, and the plan stage if the
+  item has a plan, after adding the idea: `tcw work stage prompt spec <slug>`
+  and follow it, then the same for plan. Report `revised` only once every
+  document being revised is written. Inside an `extras-autonomous-work`
+  session, its advisors stand in for "ask".
+- **Finished items are never the deciding match.** Name a close one under
+  References. If it was discarded, put the reason it was discarded, which
+  `tcw work show <slug>` prints in its comments, in your report line.
 
 ## 4. Create
 
@@ -90,7 +84,7 @@ already answers the references and origin questions.
 | Question | Accepted answers | Delegated | Unattended default | Recorded as |
 | --- | --- | --- | --- | --- |
 | Known blockers? | Slugs · "no" · a description (search, then confirm with the user) · "determine automatically" (search, and do not confirm) | From the brief. If the brief is silent, or describes a blocker you would have to confirm, create nothing and return `needs decision: blockers` with step 2's `blocks` lines as candidates | determine automatically | `--blocked-by <ref>` per blocker, plus a line saying why |
-| Reference material? | Anything given. Material already in the conversation or brief counts | From the brief; if it has none, write "none given in the brief" (`request` asks again later) | Take it from context; if there is none, write "no user to ask; none in context" | `## References`, one line of why it matters each |
+| Reference material? | Anything given. Material already in the conversation or brief counts | From the brief; if it has none, write "none given in the brief" (the request stage asks again later) | Take it from context; if there is none, write "no user to ask; none in context" | `## References`, one line of why it matters each |
 | A bug, or a follow-up to another item? | Yes, naming the item or symptom · no | From the brief's origin; if it has none, write "none given in the brief" | The item being worked when the idea came up | `## Origin`, plus the `bug` tag for a bug |
 
 **Record a blocker only when the idea cannot proceed until that item lands.**
@@ -98,8 +92,8 @@ Sharing a topic, touching the same files, or a preferred order does not count;
 those go under References. Determining blockers automatically uses step 2's
 `blocks` lines. It is not a second search.
 
-Pick tags from `tcw work tags list`, and pipe the body in. `tcw work new` stores
-it as the item's `intake.md`, which the `request` stage reads later:
+Pick tags from `tcw work tags list`, and give the text on stdin. It becomes
+the item's request, which the request stage shapes later:
 
 ```bash
 tcw work new "<title, as a change>" --tag <tag> [--blocked-by <ref> ...] <<'MD'
@@ -119,39 +113,19 @@ tcw work new "<title, as a change>" --tag <tag> [--blocked-by <ref> ...] <<'MD'
 MD
 ```
 
-Then commit only what you changed, in the repository that holds the store. A
-store can live in a different Git repository from the code, and a narrow commit
-keeps a working agent's own staged changes out. Run `tcw work path` to get the
-store folder, then, with the absolute paths you created or changed (the item
-folder `tcw work path <slug>` prints, or the entry file under
-`tcw work inbox path`):
-
-```bash
-git -C <store folder> add -- <absolute paths>
-git -C <store folder> commit -m "<what was filed, and where it came from>" -- <absolute paths>
-```
-
-Stage first: a new file git has never seen, such as a raw inbox entry, cannot be
-committed by path alone.
-
-A batch of related leftovers, such as one review's findings, may be one item
-or one inbox entry. Treat the batch as one idea.
-
-**Strict tracker mode.** If `tcw work new` refuses and points you at
-`tcw work tracker import`, the project requires a ticket first. Interactive:
-relay that. Delegated: return it. Unattended: write the idea as a raw inbox
-entry instead (step 1's shape), and report `deferred to inbox`.
+A batch of related leftovers, such as one review's findings, may be one item.
+Treat the batch as one idea.
 
 ## 5. Report
 
 Exactly one of these lines, with its reference and a one-line reason:
 
 - `created <slug>`
-- `amended <ref>`
+- `amended <slug>`
 - `revised <slug>`
-- `already tracked <ref>`
-- `already in progress <ref>`
-- `deferred to inbox <entry>`
+- `already tracked <slug>`
+- `already in progress <slug>`
+- `deferred to inbox <slug>`
 - `needs decision: <clarify | revise <slug> | blockers>`, followed by step 2's
   lines, so whoever asks the user does not search again.
 

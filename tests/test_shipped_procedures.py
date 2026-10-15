@@ -2,9 +2,11 @@
 
 Mirrors `test_shipped_prompts.py` for `tcw/work/procedures/`. Everything goes
 through `load_builtins()`, so the assertions hold in an installed tree too.
+Each procedure is one file and nothing else (TCW-74 Design 5.2): no second
+half under a skill's references, so there is no source map to keep in step.
 """
 
-import re
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -14,109 +16,29 @@ from tcw.work.resolve import ResolveError, load_builtins
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Where each default was copied from. Written out, not derived. Until a source
-# is converted, this is what stops the shipped default and the source drifting
-# apart. A converted source keeps its row, wrapped in `Composes`, and is checked
-# instead for reading the procedure and for carrying no copy of its default.
+# TCW-74 Design 5.1, written out rather than derived, so a change to the set is
+# a deliberate edit here as well as in `PROCEDURE_IDS`.
+EXPECTED = {"documentation-sync", "create-work", "audit-backlog", "search",
+            "triage-issues", "unattended-work", "pause-work"}
 
 
-class Composes(str):
-    """A source that reads its default through `tcw work procedure prompt`
-    instead of carrying a copy of it. A skill must inject the command and name
-    it in its manual fallback; a reference document, where nothing is injected,
-    must name it. Either way no paragraph of the default may survive in it."""
+def test_the_procedure_set_is_exactly_the_design():
+    """Criterion 6: the loaded procedures are exactly these seven."""
+    assert set(PROCEDURE_IDS) == EXPECTED
+    assert set(load_builtins().procedures) == EXPECTED
 
 
-SOURCES = {
-    "unattended-work": Composes("skills/extras-autonomous-work/SKILL.md"),
-    "triage-issues": Composes("skills/extras-triage-issues/SKILL.md"),
-    "documentation-sync": Composes("skills/documentation-sync/SKILL.md"),
-    "post-mortem": Composes("skills/post-mortem/SKILL.md"),
-    "create-work": Composes("skills/work-create/SKILL.md"),
-    "audit-backlog": Composes("skills/work/references/procedures/audit-backlog.md"),
-    "consolidate-plans": Composes("skills/work/references/procedures/consolidate-plans.md"),
-    "decompose": Composes("skills/work/references/procedures/decompose.md"),
-    "delegation": Composes("skills/work/references/procedures/delegation.md"),
-    "search": Composes("skills/work/references/procedures/search.md"),
-}
-
-def _body(path: Path) -> str:
-    """A skill's text after its YAML frontmatter; a reference document whole."""
-    text = path.read_text(encoding="utf-8")
-    if text.startswith("---\n"):
-        text = text[text.index("\n---\n", 3) + len("\n---\n"):]
-    return text
+def test_each_procedure_is_one_file_in_the_package():
+    """Criterion 6: one file per id in the packaged folder, and nothing else."""
+    folder = files("tcw.work") / "procedures"
+    present = {entry.name for entry in folder.iterdir()
+               if entry.name.endswith(".md")}
+    assert present == {f"{pid}.md" for pid in EXPECTED}
 
 
-def test_every_procedure_ships_a_default():
-    assert set(load_builtins().procedures) == set(PROCEDURE_IDS)
-
-
-def test_the_source_map_covers_exactly_the_ids():
-    assert set(SOURCES) == set(PROCEDURE_IDS)
-
-
-def _paragraphs(text: str) -> set[str]:
-    """Blank-line-separated blocks, whitespace-normalized; headings and short
-    fragments are not evidence of a copy."""
-    blocks = (" ".join(b.split()) for b in re.split(r"\n\s*\n", text))
-    return {b for b in blocks if len(b) >= 40 and not b.startswith("#")}
-
-
-def _copied_paragraphs(default: str, text: str) -> list[str]:
-    """Paragraphs of `default` that also appear, reflowed or not, in `text`."""
-    return sorted(_paragraphs(default) & _paragraphs(text))
-
-
-@pytest.mark.parametrize("pid", PROCEDURE_IDS)
-def test_each_default_is_todays_text(pid):
-    """Criterion 2: a project that configures nothing gets today's words.
-
-    A converted source reads its default through `tcw work procedure prompt
-    <id>` instead of copying it, so the two are no longer equal by design.
-    There the drift to catch is a paragraph left in both places, which a
-    project's replacement would not remove."""
-    source = SOURCES[pid]
-    text = (REPO / source).read_text(encoding="utf-8")
-    default = load_builtins().procedures[pid]
-    if isinstance(source, Composes):
-        command = f"tcw work procedure prompt {pid}"
-        if source.endswith("SKILL.md"):
-            assert f"!`{command}" in text, f"{source} does not inject `{command}`"
-            _, _, summary = text.partition("## Document command summary")
-            assert command in summary, f"{source} has no manual fallback naming the command"
-        else:
-            assert command in text, f"{source} does not point the reader at `{command}`"
-        copied = _copied_paragraphs(default, text)
-        assert not copied, (f"{source} still carries text from "
-                            f"tcw/work/procedures/{pid}.md: {copied[0][:80]!r}")
-        return
-    expected = _body(REPO / source).strip()
-    assert expected, f"{source} has no body to compare"
-    assert default.strip() == expected, \
-        f"tcw/work/procedures/{pid}.md differs from {source}"
-
-
-def test_the_post_mortem_agent_reads_the_procedure():
-    """The agent restates the skill; once the skill's text can be replaced, a
-    copy in the agent would silently skip a project's replacement."""
-    text = (REPO / "agents/post-mortem.md").read_text(encoding="utf-8")
-    assert "tcw work procedure prompt post-mortem" in text
-    copied = _copied_paragraphs(load_builtins().procedures["post-mortem"], text)
-    assert not copied, f"agents/post-mortem.md carries the default: {copied[:1]}"
-
-
-def test_the_backlog_auditor_reads_the_procedure():
-    """The agent is dispatched per item by the audit procedure. A copy of the
-    checks in it would audit against TCW's list after a project replaced it."""
-    text = (REPO / "agents/backlog-auditor.md").read_text(encoding="utf-8")
-    assert "tcw work procedure prompt audit-backlog" in text
-    tools = next(line for line in text.splitlines() if line.startswith("tools:"))
-    assert "Bash" in tools, "the agent cannot run the command without Bash"
-    copied = [c for c in ("Already completed", "Outdated", "Wrong repository",
-                          "Unactionable", "Blocked without a next action",
-                          "Capability drift") if c.lower() in text.lower()]
-    assert not copied, f"agents/backlog-auditor.md still names: {copied}"
+def test_no_procedure_has_a_second_half_under_a_skill():
+    """Criterion 6: the split halves under the work skill are gone."""
+    assert not (REPO / "skills" / "work" / "references" / "procedures").exists()
 
 
 def _fail_procedures(monkeypatch, error):

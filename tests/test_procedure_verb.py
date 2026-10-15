@@ -36,9 +36,13 @@ def _run(root: Path, *args: str):
                           cwd=str(root), capture_output=True, text=True)
 
 
-def _default(pid: str) -> str:
-    return (REPO / "tcw" / "work" / "procedures" / f"{pid}.md").read_text(
-        encoding="utf-8").rstrip()
+def _default(pid: str, backend: str | None = "filesystem") -> str:
+    """The packaged text as a project with `backend` prints it: passages for
+    other backends removed (TCW-74 Design 3). `None` is outside any project."""
+    from tcw.work.passages import filter_backend
+    text = (REPO / "tcw" / "work" / "procedures" / f"{pid}.md").read_text(
+        encoding="utf-8")
+    return filter_backend(text, backend).rstrip()
 
 
 def test_an_unconfigured_node_prints_every_default(tmp_path):
@@ -55,11 +59,11 @@ def test_configured_bindings_compose_in_declaration_order(tmp_path):
     """Criterion 3."""
     root = _node(tmp_path)
     _configure(root, {"search": [{"blob": "A"}, {"inherit": True}, {"blob": "B"}],
-                      "delegation": [{"blob": "ONLY"}]})
+                      "pause-work": [{"blob": "ONLY"}]})
     r = _run(root, "search")
     assert r.returncode == 0, r.stderr
     assert r.stdout == "A\n\n" + _default("search") + "\n\nB\n"
-    r = _run(root, "delegation")
+    r = _run(root, "pause-work")
     assert r.stdout == "ONLY\n"
 
 
@@ -87,8 +91,20 @@ def test_an_unknown_id_is_refused_by_name(tmp_path):
     r = _run(root, "postmortem")
     assert r.returncode == 1 and r.stdout == ""
     assert "unknown procedure 'postmortem'" in r.stderr
-    assert "post-mortem" in r.stderr
+    assert "pause-work" in r.stderr
     assert ARGPARSE_REFUSAL not in r.stderr
+
+
+@pytest.mark.parametrize("pid", ["post-mortem", "consolidate-plans", "decompose",
+                                 "delegation"])
+def test_a_removed_procedure_is_refused_naming_the_known_ids(tmp_path, pid):
+    """TCW-74 Design 5.1: four procedures are deleted; asking for one names the
+    seven that remain."""
+    root = _node(tmp_path)
+    r = _run(root, pid)
+    assert r.returncode == 2 and r.stdout == ""
+    assert f"unknown procedure '{pid}'" in r.stderr
+    assert all(known in r.stderr for known in PROCEDURE_IDS)
 
 
 def test_an_unknown_slug_is_refused_by_name(tmp_path):
@@ -126,7 +142,7 @@ def test_outside_a_work_node_it_prints_tcws_default(tmp_path):
     TCW's own text — not a refusal a skill would have to paper over."""
     r = _run(tmp_path, "search")
     assert r.returncode == 0, r.stderr
-    assert r.stdout.rstrip() == _default("search")
+    assert r.stdout.rstrip() == _default("search", None)
     assert "no tcw work node here" not in r.stderr
 
 
