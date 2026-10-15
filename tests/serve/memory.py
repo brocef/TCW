@@ -15,17 +15,19 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from tcw.serve.services import Services
 from tcw.work.backend import Comment
 from tcw.work.jira.backend import EXTERNAL_STAGES
 from tcw.work.model import DEFAULT_PRIORITY, Item, Slug, start_stage
 from tcw.work.open import work_path
 from tests.work.jira.conftest import jira_config
+from tests.work.jira.fake import SITE
 from tests.work.memory_backend import MemoryBackend
 from tests.work.projects import commit_all, make_project
 
 ME = "acc-me"
-SITE = "https://example.atlassian.net"
 NAMES = {ME: "Me Myself", "acc-ann": "Ann Author", "acc-bob": "Bob Builder"}
 # The stages this backend keeps itself, as the Jira backend does.
 EXTERNAL = EXTERNAL_STAGES
@@ -57,6 +59,9 @@ class RecordingBackend(MemoryBackend):
              request: str | None = None, comments: tuple = (), **props) -> Item:
         """An item that already exists, made without recording a call."""
         (self.work_root / folder).mkdir(parents=True, exist_ok=True)
+        key = "-".join(folder.split("-")[:2])
+        (self.work_root / folder / "item.yaml").write_text(
+            yaml.safe_dump({"ticket": f"{SITE}/browse/{key}"}))
         values: dict[str, Any] = dict(
             slug=Slug(self.project, folder), title=title,
             stage=stage or start_stage(), created=date(2026, 10, 1),
@@ -86,8 +91,7 @@ class JiraStubs:
     create_fields_answer: tuple = ("priority",)
 
     def ticket_link(self, backend, folder: str):
-        key = "-".join(folder.split("-")[:2])
-        return "Jira", f"{SITE}/browse/{key}"
+        return "Jira", f"{SITE}/browse/{'-'.join(folder.split('-')[:2])}"
 
     def user_name(self, backend, account_id: str):
         self.calls.append(("user_name", account_id))

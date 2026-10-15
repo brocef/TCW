@@ -12,7 +12,7 @@ import yaml
 from tcw.errors import BackendError, NotFound, Unreachable
 from tcw.work.model import STAGES
 from tests.serve.conftest import fs_project
-from tests.serve.memory import ME, NAMES
+from tests.serve.memory import ME, NAMES, SITE
 from tests.work.projects import commit_all, connect, make_project, write_item
 
 STAGE_NAMES = {s.name for s in STAGES}
@@ -247,7 +247,7 @@ def test_jira_item(jira):
     assert [c["author"] for c in found["comments"]] == ["acc-ann", "acc-bob"]
     assert found["people"] == {"acc-ann": NAMES["acc-ann"], "acc-bob": NAMES["acc-bob"]}
     assert found["link"] == {"label": "Jira",
-                             "url": "https://example.atlassian.net/browse/TCW-1"}
+                             "url": f"{SITE}/browse/TCW-1"}
     assert jira.backend.named("read_comments") == [("read_comments", "TCW-1-first", 200)]
     stages = [f["stage"] for f in found["files"] if f["stage"]]
     assert not set(stages) & set(jira.backend.external_stages)
