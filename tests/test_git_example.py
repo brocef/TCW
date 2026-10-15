@@ -4,12 +4,19 @@
 can copy to commit a work item's folder after TCW moves it. TCW itself never
 changes git state; this script is the project's own. Each case runs it the
 way the example binds it, `sh <script>`, with the three variables `advance`
-sets, in repositories built under `tmp_path`.
+sets, in repositories built under `tmp_path`. The configuration guide shows
+the script byte for byte, and its configuration loads and keeps TCW's own
+instructions after the pull instruction.
 """
 
 import os
+import re
 import subprocess
 from pathlib import Path
+
+import yaml
+
+from tcw.config import load_config
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "docs/guide/examples/commit-item-after-move.sh"
@@ -118,3 +125,59 @@ def test_an_item_in_a_nested_repository_is_committed_there(tmp_path):
     assert _last_commit_paths(inner) == ["docs/work/x/item.yaml"]
     assert _commits(outer) == outer_before
     assert _status(outer) == [" M README.md"]
+
+
+# ── the guide shows the script and a configuration that works ────────────────
+
+GUIDE = REPO / "docs/guide/configuration.md"
+HEADING = ("## Example: keeping git in step with each stage change "
+           "(something your project adds)")
+
+
+def _example_section() -> str:
+    text = GUIDE.read_text(encoding="utf-8")
+    _, found, rest = text.partition("\n" + HEADING + "\n")
+    assert found, f"{GUIDE.name} has no heading {HEADING!r}"
+    return re.split(r"^## ", rest, maxsplit=1, flags=re.M)[0]
+
+
+def _first_block(language: str) -> str:
+    """The first fenced block of `language` in the example, as its text."""
+    m = re.search(rf"^```{language}\n(.*?)^```$", _example_section(), re.M | re.S)
+    assert m, f"no ```{language} block under the example heading"
+    return m.group(1)
+
+
+def test_the_guide_shows_the_script_byte_for_byte():
+    assert _first_block("sh") == SCRIPT.read_text(encoding="utf-8")
+
+
+def _example_config(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "tcw-config.yaml").write_text("id: x\n" + _first_block("yaml"),
+                                              encoding="utf-8")
+    return load_config(tmp_path)
+
+
+def test_the_example_configuration_loads_with_no_problems(tmp_path, monkeypatch):
+    config = _example_config(tmp_path, monkeypatch)
+    assert [str(p) for p in config.problems] == []
+
+
+def test_every_example_prompt_is_the_pull_text_then_tcws_own(tmp_path, monkeypatch):
+    """`- inherit: true` keeps TCW's own instructions after the pull text; a
+    writer who drops it fails here."""
+    raw = yaml.safe_load(_first_block("yaml"))["work"]["stages"]
+    work = _example_config(tmp_path, monkeypatch).work
+    prompted = [stage for stage, block in raw.items() if "prompt" in block]
+    assert prompted
+    for stage in prompted:
+        kinds = [b.kind for b in work.stage(stage).prompt]
+        assert kinds == ["blob", "builtin"], (stage, kinds)
+        assert "git -C" in work.stage(stage).prompt[0].value
+
+
+def test_the_example_binds_no_pre_hook():
+    raw = yaml.safe_load(_first_block("yaml"))["work"]["stages"]
+    assert not [stage for stage, block in raw.items() if "pre" in block]

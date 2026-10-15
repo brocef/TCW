@@ -88,7 +88,10 @@ The block, the same for all three stores:
 `tcw provision` makes the copy of every declared store and project that is
 missing, and never updates one that is already here. `tcw provision --dry-run`
 prints what it would contact first. Keeping a copy up to date is the
-project's own job: TCW never changes the copy once it exists.
+project's own job: TCW never changes the copy once it exists. The
+configuration guide's
+[example](../../../docs/guide/configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds)
+shows one way, with an instruction in each stage's prompt.
 
 ### `taxonomy.repository`
 

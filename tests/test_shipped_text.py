@@ -51,6 +51,9 @@ GIT_ALLOWED = {
         "opened from a linked worktree":
             "a fact: how a relative store path is read from a linked worktree "
             "(TCW-75 spec, Design 1.5)",
+        "#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds":
+            "the anchor of the configuration guide's opt-in example, which a "
+            "project adds itself (TCW-75 spec, Design 6 and 8.2)",
     },
 }
 

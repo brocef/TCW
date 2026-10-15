@@ -38,6 +38,7 @@ AGENTS_HEADING = "### Working in a git worktree"
 # `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
 REWRITTEN: tuple[str, ...] = (
     AGENTS,
+    "docs/guide/configuration.md",
     "docs/lifecycle/abstraction.md",
     "docs/lifecycle/harness.md",
     "docs/lifecycle/implementation.md",
