@@ -4,6 +4,7 @@ never broken by one. Spec criteria 8 and 11."""
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tcw.store.fs import init
@@ -50,3 +51,25 @@ def test_a_removed_procedure_id_is_a_problem_naming_the_known_ids(tmp_path):
     out = r.stdout + r.stderr
     assert "work.procedures.delegation" in out
     assert all(known in out for known in PROCEDURE_IDS)
+
+
+@pytest.mark.parametrize("pid, says", [
+    ("post-mortem", "work.stages.postmortem.prompt"),
+    ("decompose", "work.stages.plan.prompt"),
+    ("delegation", "tcw work new --project"),
+    ("consolidate-plans", "tcw work new"),
+])
+def test_a_removed_procedure_id_says_where_its_text_went(pid, says):
+    """A project upgrading from 2.x learns where to move the text, not only
+    that the id is unknown (TCW-74 Design 5.1)."""
+    from tcw.work.config import parse_work_config
+    _, problems = parse_work_config({"procedures": {pid: [{"blob": "A"}]}})
+    [problem] = [str(p) for p in problems]
+    assert problem.startswith(f"work.procedures.{pid}: unknown procedure")
+    assert "removed in TCW 3.0" in problem and says in problem
+
+
+def test_a_misspelled_procedure_id_gets_no_removal_hint():
+    from tcw.work.config import parse_work_config
+    _, problems = parse_work_config({"procedures": {"serach": [{"blob": "A"}]}})
+    assert "removed in TCW 3.0" not in str(problems[0])

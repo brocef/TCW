@@ -58,6 +58,20 @@ _REMOVED_WORK_KEYS = {
     "retain": "TCW no longer deletes finished items",
 }
 
+# Procedure ids TCW 3.0 deleted, each with where its text went (TCW-74
+# Design 5.1), so a project that still configures one learns where to move it
+# rather than only that the id is unknown.
+_REMOVED_PROCEDURES = {
+    "post-mortem": "it is now the postmortem stage prompt; bind replacement "
+                   "text under `work.stages.postmortem.prompt`",
+    "decompose": "it is now part of the plan stage prompt; bind replacement "
+                 "text under `work.stages.plan.prompt`",
+    "delegation": "its rule is now fixed text in the work skill, and "
+                  "delegating to another project is `tcw work new --project`",
+    "consolidate-plans": "it was deleted; move an outside plan into an item "
+                         "with `tcw work new`",
+}
+
 KeyPath = tuple  # of str keys and int list indexes
 
 
@@ -416,8 +430,10 @@ def _parse_procedures(raw: Any, origins: Mapping,
     for name, value in raw.items():
         path = (*where, str(name))
         if name not in PROCEDURE_IDS:
+            hint = (f"; removed in TCW 3.0: {_REMOVED_PROCEDURES[name]}"
+                    if name in _REMOVED_PROCEDURES else "")
             problems.add(path, f"unknown procedure; expected one of "
-                               f"{', '.join(PROCEDURE_IDS)}")
+                               f"{', '.join(PROCEDURE_IDS)}{hint}")
             continue
         out[name] = parse_bindings(value, path, "procedure", problems,
                                    origins.get(path), origins)

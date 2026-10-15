@@ -645,9 +645,12 @@ def normalize_tag(value: str) -> str:
 
 # Procedures: instruction text TCW ships that is not a lifecycle stage, which a
 # project may replace under `work.procedures`. Public API like `STAGE_IDS`, and
-# deliberately **not** skill names: skills get renamed, and a project's
-# configuration must not break when one is. A project replaces a procedure's
-# text; it cannot add a procedure.
+# deliberately **not** skill names, so renaming a skill never breaks a
+# project's configuration. Removing an id does break it: TCW 3.0 deleted
+# `post-mortem`, `decompose`, `delegation` and `consolidate-plans`, and a
+# project still configuring one gets a config error saying where its text went
+# (`_REMOVED_PROCEDURES` in `tcw/work/config.py`). A project replaces a
+# procedure's text; it cannot add a procedure.
 PROCEDURE_IDS = ("unattended-work", "triage-issues", "documentation-sync",
                  "create-work", "audit-backlog", "search", "pause-work")
 

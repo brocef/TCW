@@ -64,6 +64,9 @@ def test_a_marker_inside_a_sentence_is_not_a_marker():
      "<!-- /backend -->\n", "inside the one opened at line 1"),
     ("a\n<!-- backend: jira -->\nx\n", "never closed"),
     ("a\n<!-- /backend -->\n", "closes no open backend passage"),
+    ("<!-- backend:jira -->\nx\n<!--/backend -->\n", "looks like a backend passage"),
+    ("<!-- Backend: jira -->\nx\n", "looks like a backend passage"),
+    ("<!-- backend: jira-->\nx\n<!-- /backend -->\n", "looks like a backend passage"),
 ])
 def test_a_malformed_passage_is_an_error_naming_the_line(text, words):
     for backend in (*BACKENDS, None):
@@ -78,6 +81,18 @@ def test_every_built_in_text_filters_cleanly(backend):
     builtins = load_builtins()
     for text in (*builtins.stage_prompts.values(), *builtins.procedures.values()):
         filter_backend(text, backend)
+
+
+@pytest.mark.parametrize("backend", (*BACKENDS, None))
+def test_no_built_in_text_keeps_a_marker_after_filtering(backend):
+    """Every marker line is consumed, so none reaches the agent as a comment."""
+    builtins = load_builtins()
+    texts = {**{f"prompt {k}": v for k, v in builtins.stage_prompts.items()},
+             **{f"procedure {k}": v for k, v in builtins.procedures.items()}}
+    for name, text in texts.items():
+        left = [line for line in filter_backend(text, backend).splitlines()
+                if line.strip().startswith("<!--") and "backend" in line.lower()]
+        assert left == [], f"{name} under {backend}: {left}"
 
 
 def test_the_documentation_span_inside_a_passage_still_resolves(tmp_path):

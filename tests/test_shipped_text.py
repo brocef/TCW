@@ -17,6 +17,7 @@ import pytest
 
 from tcw.cli import build_parser
 from tcw.store.base import PROCEDURE_IDS
+from tcw.work.layout import _front_matter
 from tcw.work.model import STAGES
 from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
                                   REMOVED_FLAGS, REMOVED_FORMS)
@@ -180,11 +181,40 @@ def test_every_git_allowance_is_still_needed():
             assert phrase in text, f"{rel} no longer says {phrase!r}; drop the entry"
 
 
+AGENT_FILES = sorted(p for p in OWNED if _rel(p).startswith("agents/"))
+
+
+def _granted_tools(doc: Path, key: str) -> list[str]:
+    """Every tool a skill's `allowed-tools` or an agent's `tools` grants, read
+    from parsed front matter, so a YAML list spread over several lines counts
+    as much as a one-line comma-separated string."""
+    meta = _front_matter(doc.read_text(encoding="utf-8"))
+    assert isinstance(meta, dict), f"{_rel(doc)} has no front matter"
+    value = meta.get(key) or []
+    if isinstance(value, str):
+        value = value.split(",")
+    return [str(tool).strip() for tool in value]
+
+
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=_rel)
 def test_no_owned_skill_grants_git(skill):
-    front = skill.read_text(encoding="utf-8").split("\n---\n", 1)[0]
-    tools = next((l for l in front.splitlines() if l.startswith("allowed-tools:")), "")
-    assert "git" not in tools.lower(), f"{_rel(skill)} grants git: {tools}"
+    tools = _granted_tools(skill, "allowed-tools")
+    assert not [t for t in tools if "git" in t.lower()], \
+        f"{_rel(skill)} grants git: {tools}"
+
+
+@pytest.mark.parametrize("agent", AGENT_FILES, ids=_rel)
+def test_no_agent_grants_git(agent):
+    tools = _granted_tools(agent, "tools")
+    assert not [t for t in tools if "git" in t.lower()], \
+        f"{_rel(agent)} grants git: {tools}"
+
+
+def test_a_tool_list_over_several_lines_is_read_whole(tmp_path):
+    """The grant scan reads parsed front matter, not the first line."""
+    doc = tmp_path / "SKILL.md"
+    doc.write_text("---\nname: x\nallowed-tools:\n  - Read\n  - Bash(git *)\n---\nbody\n")
+    assert _granted_tools(doc, "allowed-tools") == ["Read", "Bash(git *)"]
 
 
 @pytest.mark.parametrize("doc", OWNED, ids=_rel)

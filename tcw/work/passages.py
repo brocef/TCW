@@ -31,7 +31,10 @@ def filter_backend(text: str, backend: str | None) -> str:
     inside another, a passage never closed, and a closing marker with no
     passage open, naming the line. A marker is recognised only as a whole
     line, after surrounding spaces are stripped, so a marker quoted inside a
-    sentence is left alone.
+    sentence is left alone. A whole line that starts with `<!--` and mentions
+    `backend` but is neither marker exactly is a misspelled marker, and an
+    error too: otherwise a misspelled pair would pass silently and reach every
+    backend as an HTML comment.
     """
     from tcw.work.config import BACKENDS
     kept: list[str] = []
@@ -59,6 +62,11 @@ def filter_backend(text: str, backend: str | None) -> str:
                     f"passage")
             inside = None
             continue
+        if marker.startswith("<!--") and "backend" in marker.lower():
+            raise BackendError(
+                f"line {number}: `{marker}` looks like a backend passage marker "
+                f"but is neither `<!-- backend: <name> -->` nor "
+                f"`{BACKEND_CLOSE}` exactly")
         if inside is None or inside == backend:
             kept.append(line)
     if inside is not None:
