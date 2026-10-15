@@ -316,12 +316,12 @@ def test_the_steps_are_0_to_12_in_order():
     assert numbers == list(range(13))
 
 
-@pytest.mark.parametrize("number", range(12))
+@pytest.mark.parametrize("number", range(13))
 def test_every_step_has_one_check(number):
     check(number)
 
 
-@pytest.mark.parametrize("number", [n for n in range(12) if n != 2])
+@pytest.mark.parametrize("number", [n for n in range(13) if n != 2])
 def test_every_check_but_step_2s_has_a_command_and_its_output(number):
     text = check(number)
     assert SPAN.search(text) or FENCE.search(text), f"step {number}'s check has no command"
@@ -360,8 +360,8 @@ STOP = "**Stop and ask**"
 
 def test_stop_and_ask_is_in_steps_1_2_and_12_only():
     where = [n for n in range(13) if STOP in step(n)]
-    assert where == [1, 2]
-    assert GUIDE.count(STOP) == 2
+    assert where == [1, 2, 12]
+    assert GUIDE.count(STOP) == 3
 
 
 def test_the_rules_state_the_stop_for_a_failing_check():
@@ -405,6 +405,152 @@ def test_jira_credentials_are_named_by_variable():
     text = section(GUIDE, 2, "Talking to Jira")
     assert 'AUTH="$TCW_JIRA_EMAIL:$TCW_JIRA_TOKEN"' in text
     assert "the two variables `credentials` names" in text
+
+
+# -- Criterion 32: step 12 revisits agent instructions and memories ---------------------
+
+def step_12() -> str:
+    return step(12)
+
+
+def fenced(text: str) -> list[str]:
+    return FENCE.findall(text)
+
+
+# Each place criterion 32 lists, as the prose names it (a folder with its
+# trailing `/`). The fenced list of places names each one without the `/`.
+PLACES = (
+    "CLAUDE.md", "AGENTS.md", ".claude/skills/", ".claude/commands/", ".claude/agents/",
+    ".codex/", ".agents/skills/", ".claude/settings.json", ".claude/settings.local.json",
+    "~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.claude/skills/", "~/.claude/commands/",
+    "~/.claude/agents/", "~/.codex/skills/", "~/.agents/skills/", "~/.codex/prompts/",
+    "~/.claude/settings.json", "~/.codex/rules/", "~/.codex/memories/",
+)
+
+
+def places_block() -> str:
+    [block] = [b for b in fenced(step_12()) if "PLACES=()" in b]
+    return block
+
+
+@pytest.mark.parametrize("place", PLACES)
+def test_step_12_names_each_place(place):
+    assert f"`{place}`" in step_12(), f"step 12's list does not name `{place}`"
+    assert re.search(rf"(?<![\w./~-]){re.escape(place.rstrip('/'))}(?![\w./-])",
+                     places_block()), f"step 12's places command leaves out {place}"
+
+
+def test_step_12_finds_memory_folders_by_what_their_records_say():
+    text = step_12()
+    assert "`git worktree list --porcelain`" in text and "`MEMORY.md`" in text
+    block = places_block()
+    assert "find ~/.claude/projects -mindepth 2 -maxdepth 2 -name '*.jsonl'" in block
+    assert '-e "\\"cwd\\":\\"$path\\"" -e "\\"cwd\\":\\"$path/"' in block
+
+
+def test_step_12_searches_the_primary_checkouts_own_files_from_a_worktree():
+    text = step_12()
+    assert "**A run made in a worktree** also searches the primary checkout's untracked\n" \
+           "per-user files" in text
+    assert "`git -C <primary checkout> status --ignored --porcelain -- .claude .codex`" in text
+    assert 'git -C "$PRIMARY" status --ignored --porcelain -- .claude .codex' in places_block()
+
+
+@pytest.mark.parametrize("action", ["**delete**", "**rewrite**", "**keep**"])
+def test_step_12_proposes_delete_rewrite_or_keep(action):
+    assert action in step_12()
+
+
+def test_step_12_reads_every_file_the_broad_search_prints_in_full():
+    text = step_12()
+    search = 'grep -rlsE "\\btcw\\b|\\b($NAMES)|\\b($WORDS)\\b" "${PLACES[@]}"'
+    assert any(search in b for b in fenced(text))
+    after = text[text.index(search):]
+    assert after.index("**Read each printed file in full**") < after.index("**Stop and ask**")
+
+
+def test_step_12s_check_compares_the_names_search_with_the_logs_expected_lines():
+    text = check(12)
+    assert "`grep -c '^## Agent instructions' <log>` prints `1`" in text
+    [block] = [b for b in fenced(text) if b.startswith("```sh\ndiff ")]
+    assert 'grep -rIsHE "\\b($NAMES)" "${PLACES[@]}" | LC_ALL=C sort' in block
+    assert "/^```expected-names$/" in block
+
+
+def alternatives(name: str) -> str:
+    [line] = [l for b in fenced(step_12()) for l in b.splitlines()
+              if l.startswith(f"{name}='")]
+    return line[len(name) + 2:-1]
+
+
+def coverage() -> re.Pattern:
+    return re.compile(rf"\b(?:{alternatives('NAMES')})|\b(?:{alternatives('WORDS')})\b")
+
+
+def test_names_holds_no_bare_tcw():
+    assert "tcw" not in re.split(r"[|()]", alternatives("NAMES"))
+
+
+STATUS_FOLDERS = ("inbox", "backlog", "active", "review", "blocked", "completed", "discarded")
+
+
+@pytest.mark.parametrize("folder", STATUS_FOLDERS)
+def test_names_holds_each_status_folder_with_its_trailing_slash_only(folder):
+    forms = [a for a in alternatives("NAMES").split("|") if folder in a and "/" in a]
+    assert forms == [f"{folder}/"], forms
+
+
+# First-column spans the searches deliberately do not match, each with its
+# reason. Three reasons cover them all.
+_KEPT = "kept in 3.0 with the same meaning, so a mention of it is not a finding"
+_GENERIC = ("a common word, found through the file's other names (`state.yaml`, "
+            "`tracker.yaml`, `tcw`), after which the whole file is read")
+_ARGUMENTS = ("a 3.0 command whose 2.x arguments or flags changed; every file naming "
+              "`tcw` is read in full, which is where an old argument form is found")
+STEP_12_EXCEPTIONS = {
+    **dict.fromkeys((
+        "title", "priority", "effort", "complexity", "tags", "parent", "ticket",
+        "capabilities.yaml", "skill", "pre", "post", "when:", "generate", "email-env",
+        "token-env", "discard", "work.tags", "work.documentation", "work.path",
+        "work.repository", "work.procedures.<id>", "TCW_ITEM_PATH", "TCW_HOOK_ROLE",
+        "TCW_HOOK_KIND", "TCW_HOOK_ID", "TCW_HOOK_PHASE", "AGENTS.md", "CLAUDE.md",
+        ".gitignore", "tcw --version", "tcw serve", "tcw init", "tcw taxonomy list",
+        "tcw taxonomy show", "tcw taxonomy search", "tcw taxonomy path", "tcw taxonomy rm",
+        "tcw taxonomy extends add", "tcw taxonomy extends rm", "tcw capabilities show",
+        "tcw capabilities search", "tcw capabilities path", "tcw capabilities set",
+        "tcw capabilities reset", "tcw capabilities rm", "tcw capabilities drift",
+        "tcw work show <slug> [--json]", "tcw work path [<slug>]", "tcw work docs",
+        "tcw work stage prompt <stage> [<slug>] [--no-exec]", "tcw work tags list|add|rm",
+    ), _KEPT),
+    **dict.fromkeys((
+        "slug", "created", "owner", "type", "started", "completed", "phase", "branch",
+        "schema", "provider", "project", "part", "bound", "comment", "owed", ".md",
+        ".gitkeep",
+    ), _GENERIC),
+    **dict.fromkeys((
+        "tcw validate <path>", "tcw taxonomy <path>", "tcw capabilities <path>",
+        "tcw taxonomy add <name> <description>", "-s", "-p",
+        "tcw capabilities add <path> <name> -s <status>", "tcw capabilities extends <id>",
+        "tcw capabilities extends <id> --rm", "tcw work stage <stage> <slug>",
+        "tcw work list -i", "tcw work edit <slug> --type", "--priority",
+        "tcw work rename <slug> <new-slug>",
+        "tcw work lifecycle <slug> --directive --phase --transition",
+    ), _ARGUMENTS),
+    "tcw://work/<old slug>": "found by step 9's search for the renamed folders' old names",
+}
+
+
+def test_every_first_column_name_is_found_by_step_12s_searches():
+    pattern = coverage()
+    missed = sorted({s for s in first_column_spans()
+                     if s not in STEP_12_EXCEPTIONS and not pattern.search(s)})
+    assert not missed, "step 12's NAMES and WORDS miss: " + ", ".join(missed)
+
+
+def test_every_exception_is_a_first_column_name_the_searches_miss():
+    spans, pattern = set(first_column_spans()), coverage()
+    stale = sorted(s for s in STEP_12_EXCEPTIONS if s not in spans or pattern.search(s))
+    assert not stale, stale
 
 
 # -- Criterion 10, its automatic part: every 3.0 command named parses --------------------
