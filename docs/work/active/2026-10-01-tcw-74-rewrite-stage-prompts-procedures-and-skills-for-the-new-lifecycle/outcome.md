@@ -172,3 +172,108 @@ file was restored from git (checked with `git status` afterwards).
   The stage prompts say to advance once the output is written.
 - **Scratch folders:** another agent shared this session's scratch folder and
   reused `$S/p1`; this item's scratch work moved to `$S/tcw74/`.
+
+## Review round 1
+
+Three adversarial reviewers read the change; the orchestrator accepted the
+findings below as this change's. Each was checked against the code before it
+was fixed. Fixed on the item branch in `ed5e2eb4` (code), `e411e681` (skills,
+procedures, records) and `a55d9662` (eval harness).
+
+**Code and prompts**
+
+- **N1, a misspelled passage marker pair passed silently.** Confirmed:
+  `<!-- backend:jira -->` matched neither marker and reached every backend as
+  an HTML comment. Fixed: in `tcw/work/passages.py` a whole line starting
+  `<!--` that mentions `backend` (any letter case) and is neither marker
+  exactly is a `BackendError` naming the line. Tests added for three
+  misspellings, and a test that no built-in prompt or procedure keeps a
+  marker-like line after filtering, for each backend and for none.
+- **N3, a removed procedure id got only "unknown procedure".** Confirmed.
+  Fixed: `_REMOVED_PROCEDURES` in `tcw/work/config.py` adds where each went,
+  from spec Design 5.1 (`post-mortem` → `work.stages.postmortem.prompt`,
+  `decompose` → `work.stages.plan.prompt`, `delegation` → the work skill and
+  `tcw work new --project`, `consolidate-plans` → `tcw work new`). The comment
+  above `PROCEDURE_IDS` no longer claims configuration never breaks. Tests for
+  all four, and that a misspelling gets no hint.
+- **N4, the git-grant test read only the first `allowed-tools:` line.**
+  Confirmed. Fixed: it reads parsed front matter (a list or a comma string),
+  and a new test checks agents' `tools:` the same way.
+
+**Skills, procedures and records**
+
+- **B1:** `create-work.md`'s Jira passage now says an unadopted inbox ticket
+  cannot take `tcw work comment`, so the addition goes in the report.
+- **B2:** the drive, process-inbox, triage-issues, setup, plan-work,
+  documentation-sync, run-a-lifecycle-stage and extras-autonomous-work records
+  corrected, with the release notes and changelog. The extras-autonomous-work
+  skill description now uses the procedure's wording ("a read-only subagent on
+  the strongest model the harness can start"). The changelog also gains lines
+  for N1 and N3.
+- **B3:** `skills/setup/references/jira.md` says file items are not seen once
+  the backend is Jira, so finish or discard them first.
+- **B4:** the "reviewer that did not write the code" rule moved into
+  `tcw/work/prompts/review.md` (a "Who reviews" paragraph), not the work
+  skill. Reason: the skills README's Rule 1 makes "which review" project
+  conduct, and the unattended-work procedure already said "run the review
+  stage as its prompt says: a read-only reviewer", which the prompt did not
+  say until now. The drive skill now points at the prompt, which keeps its
+  "fixed (Rule 2)" verdict true; its record says "with TCW's own review text".
+- **B5:** the work skill's "Finding your place" covers the inbox: no
+  handoff, `tcw work stage prompt inbox` with no slug.
+- **B6:** the work skill's qa row says a round is still written when a person
+  decides (with `decided-by`), and only a backend that keeps qa produces
+  findings without a round.
+- **Process-inbox and the request prompt's closing advance:** the skill says
+  not to run it.
+- **Unattended work with no round:** the procedure's audit-trail row and the
+  skill's audit-trail section say decisions go in the findings comment, or the
+  report if none is posted. Spec Design 7's extras-autonomous-work row is
+  updated to match.
+- **Node.js:** `skills/setup/SKILL.md` drops `Bash(node --version)` and the
+  Node requirement; `references/install.md` says TCW, `tcw serve` included,
+  needs no Node.js. The two vocabulary allowances for those phrases are gone,
+  so that list is empty, as the spec intended. On this branch alone
+  `tcw/serve/` still checks Node (TCW-77 removes it), so the text is right
+  only once both land.
+
+**Eval harness**
+
+- **E1:** confirmed: the spawned agent ran the first `tcw` on PATH. Fixed:
+  `agent_env()` puts `Path(sys.executable).parent` first on the agent's PATH;
+  `spawned_tcw()` finds that `tcw`, asks its interpreter where `tcw` imports
+  from, and `timing.json` records both, with an isolation problem when it is
+  not this checkout. `--dry-run` prints it too. `evals.grade` now prints
+  isolation problems and exits non-zero for any. AGENTS.md's eval section
+  says the runner pins both the plugin and the `tcw`, and no longer says
+  isolation problems fail the run on their own.
+- **E2:** B13's `tool_input_contains "inbox"` is now `"tcw work list"`, which
+  `find-overlap.md` tells the agent to run; the CASE_ROUTING comment updated
+  and a test added.
+- **E3:** new predicate `ran_stage_prompt`: the call's result must not be an
+  error and must carry `This text ran no checks.`, or, with `empty: true`,
+  succeed with no output (A5 customized). A1-A7 use it; the old test now
+  builds tool results.
+- **E5:** each QA scenario needs a line naming it and no other scenario.
+- **E6:** B3 asserts `tool_input_contains "tcw work advance"`.
+- **E7:** `tcw/work/layout.py` gains `split_front_matter` and a public
+  `front_matter`; the grader and the shipped-text test use them, and the
+  grader's copy is gone.
+- **E8:** "node" → "project" in both files.
+
+**Mutation checks this round:** disabling the misspelled-marker check (3
+cases red); keeping marker lines in the output (the no-marker test red for
+each backend); dropping the removed-procedure hint (4 red); a multi-line
+`allowed-tools` list with `Bash(git *)` in a skill and `Bash(git log *)` in
+an agent's `tools` (both red, naming the grant); dropping the PATH pin and the
+import check in the runner (5 red, including the real probe tracing the
+installed release); `ran_stage_prompt` ignoring the result (4 red: no result,
+failed call, silenced case, A6 with a failed call); the scenario check
+counting any line that names a scenario (the two new one-line cases red).
+Each restored and green afterwards.
+
+**Tests run:** the standing guard files, the shipped text, prompt, procedure,
+skill and plugin manifest tests, the procedure config and verb tests, the
+backend passage, compose, config, Jira bookend and layout tests, and every
+`tests/test_eval_*.py`: 1099 passed, 5 skipped, plus 177 eval tests passed.
+`pytest --collect-only -q` is clean.
