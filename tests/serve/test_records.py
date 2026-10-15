@@ -385,3 +385,70 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
     found = resolve(serve_project(root), [f"tcw://q/W/{folder}"])
     assert found[f"tcw://q/W/{folder}"] == {"ok": False, "reason": "other-project",
                                             "project": "q"}
+
+
+# -- references through an encoded slash (2.x's coverage, kept) ---------------------------------
+
+
+def test_an_inherited_term_reads_by_an_encoded_slash(inheriting):
+    found = detail(inheriting, "taxonomy", "base%2Fshared")
+    assert (found["term"]["slug"], found["term"]["origin"]) == ("shared", "base")
+
+
+def test_an_inherited_capability_reads_by_an_encoded_slash(inheriting):
+    found = detail(inheriting, "capabilities", "base%2Fshared-cap")
+    assert found["capability"]["origin"] == "base"
+
+
+def test_a_link_into_an_inherited_store_resolves(inheriting):
+    found = resolve(inheriting, ["tcw://base/C/shared-cap"])
+    assert found["tcw://base/C/shared-cap"] == {"ok": True, "axis": "capabilities",
+                                               "key": "base/shared-cap"}
+
+
+def test_a_nested_capability_is_edited_by_an_encoded_slash(records):
+    FsCapabilitiesStore.open(records.root).add("web/editing", "Editing", status="Missing")
+    answer = capability_patch(records, "web%2Fediting", {"Status": "Partial", "Gaps": "x"})
+    assert answer.status == 200, answer.body
+    assert answer.json["capability"]["path"] == "web/editing"
+    assert answer.json["capability"]["status"] == "Partial"
+
+
+# -- the commands a refusal names exist ----------------------------------------------------------
+
+
+def _named_commands(message: str) -> list[list[str]]:
+    import re
+    import shlex
+    return [shlex.split(found)[1:] for found in re.findall(r"`(tcw [^`]+)`", message)]
+
+
+def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
+        inheriting, tcw):
+    """The 403 names `tcw capabilities set`; the real parser takes it, and
+    run as named it makes a local override, leaving the inherited record."""
+    from tcw.cli import build_parser
+    answer = inheriting.patch("/api/capabilities/shared-cap", {"fields": {"Gaps": "x"}})
+    assert_error(answer, 403, "read-only")
+    named = _named_commands(answer.json["error"])
+    assert named and named[0][:2] == ["capabilities", "set"], answer.json["error"]
+    for argv in named:
+        build_parser().parse_args(argv)
+    base_meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
+        "meta.yaml"
+    before = base_meta.read_text()
+    argv = [part.replace("<name>=<value>", "Status=Partial") for part in named[0]]
+    ran = tcw(argv, inheriting.root)
+    assert ran.code == 0, ran.err
+    assert base_meta.read_text() == before
+    shown = FsCapabilitiesStore.open(inheriting.root).get("shared-cap")
+    assert shown.status == "Partial"
+
+
+def test_an_inherited_terms_refusal_names_no_command_the_cli_lacks(inheriting):
+    from tcw.cli import build_parser
+    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"}})
+    assert_error(answer, 403, "read-only")
+    assert "override" not in answer.json["error"]
+    for argv in _named_commands(answer.json["error"]):
+        build_parser().parse_args(argv)

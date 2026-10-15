@@ -295,3 +295,40 @@ def test_filesystem_mode_never_degrades(fs, monkeypatch, tcw):
     monkeypatch.setattr(FsWorkBackend, "read_comments", broken)
     answer = fs.get(f"/api/work/{folder}")
     assert answer.status == 503 and answer.json["code"] == "unreachable"
+
+
+def test_jira_item_shows_when_only_the_other_items_cannot_be_read(jira):
+    """`read` answers and `list` does not: the item still shows, `blocks`
+    and `children` are empty, and the page is told why (Design 5.2)."""
+    jira.backend.fail["list"] = Unreachable("could not reach the tracker")
+    found = ok(jira.served.get("/api/work/TCW-1-first"))
+    assert found["item"]["title"] == "First"
+    assert (found["item"]["blocks"], found["item"]["children"]) == ([], [])
+    assert any("could not reach the tracker" in w for w in found["warnings"]), found
+
+
+def test_an_unexpected_value_error_is_a_500_without_a_traceback(jira):
+    jira.backend.fail["read"] = ValueError("something TCW did not expect")
+    answer = jira.served.get("/api/work/TCW-1-first")
+    assert answer.status == 500 and answer.json["code"] == "error"
+    assert answer.json["error"] == "something TCW did not expect"
+    assert "Traceback" not in answer.text
+
+
+# -- folders that are not items ----------------------------------------------------------------
+
+
+def test_a_stray_folder_is_not_an_item(fs, tcw):
+    folder = new(tcw, fs.root, "Real")
+    (fs.root / "docs" / "work" / "notes").mkdir()
+    assert fs.get("/api/work/notes").status == 404
+    assert ok(fs.get(f"/api/work/{folder}"))["folder"] == folder
+
+
+def test_a_stray_folder_is_not_on_the_fallback_board(jira):
+    (jira.root / "docs" / "work" / "notes").mkdir()
+    jira.backend.fail["list"] = Unreachable("could not reach the tracker")
+    board = ok(jira.served.get("/api/work"))
+    assert board["fallback"] is True
+    assert sorted(r["slug"] for r in board["items"]) == \
+        ["tcw/TCW-1-first", "tcw/TCW-2-second"]

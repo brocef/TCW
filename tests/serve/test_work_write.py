@@ -335,6 +335,7 @@ def test_jira_tickets_and_adopt(jira):
     assert found["tickets"] == [{"key": "TCW-7", "summary": "Waiting"}]
     adopted = jira.served.post("/api/tickets/TCW-7/adopt", {})
     assert adopted.status == 201 and adopted.json["slug"] == "tcw/TCW-7-adopted"
+    assert (adopted.json["code"], adopted.json["problem"]) == (0, None)
 
 
 def test_tickets_are_a_usage_error_in_filesystem_mode(fs):
@@ -407,3 +408,79 @@ def test_no_answer_carries_the_jira_credentials(jira, monkeypatch):
 
 def test_the_current_user_is_offered(jira):
     assert ok(jira.served.get("/api/project"))["user"] == ME
+
+
+# -- review round 1 ---------------------------------------------------------------------------
+
+
+def test_a_reference_to_a_stray_folder_is_refused(fs, two):
+    a, _ = two
+    (fs.root / "docs" / "work" / "notes").mkdir()
+    before = item_yaml(fs.root, a)
+    assert_refused(patch(fs, a, {"parent": "notes"}, {"parent": None}), 400, "usage",
+                   "parent")
+    assert_refused(patch(fs, a, {"blocked-by": {"add": ["notes"]}},
+                         {"blocked-by": []}), 400, "usage", "blocked-by")
+    assert item_yaml(fs.root, a) == before
+
+
+def test_jira_create_keeps_another_projects_parent_with_a_warning(jira):
+    """Spec 9's parent row: the backend decides whether it can hold it."""
+    answer = jira.served.post("/api/work", {"title": "T", "properties": {
+        "parent": "other/2026-01-01-x"}})
+    assert answer.status == 201, answer.body
+    assert [w["where"] for w in answer.json["warnings"]] == ["parent"]
+    assert jira.backend.named("create")
+
+
+def test_jira_create_checks_the_assignee_is_assignable(jira):
+    for value in ("Ann Author", "acc-nobody"):
+        answer = jira.served.post("/api/work", {"title": "T", "properties": {
+            "assignee": value}})
+        assert_refused(answer, 400, "usage", "assignee", value)
+    assert not jira.backend.named("create")
+    answer = jira.served.post("/api/work", {"title": "T", "properties": {
+        "assignee": "acc-ann"}})
+    assert answer.status == 201, answer.body
+    assert ("is_assignable", "acc-ann") in jira.stubs.calls
+
+
+@pytest.fixture
+def adopting(tmp_path, monkeypatch, personal_on, serve_project):
+    """A Jira-mode project on TCW-71's real backend over its fake, served
+    with the real services; `make(command)` sets the request stage's post
+    hook and returns the served project and an inbox ticket's key."""
+    from tests.work.jira.conftest import ME as JIRA_ME, jira_config as config_of
+    from tests.work.jira.fake import FakeJira
+    monkeypatch.setenv(EMAIL_ENV, "dev@example.test")
+    monkeypatch.setenv(TOKEN_ENV, "token")
+    fake = FakeJira().install(monkeypatch)
+    fake.account("dev@example.test", JIRA_ME, "Dev Eloper")
+
+    def make(command: str):
+        config = config_of()
+        config["stages"]["request"]["post"] = [{"command": command}]
+        root = make_project(tmp_path, "tcw", config=config)
+        commit_all(root)
+        return serve_project(root), fake.ticket("Adopt me", status="To Do").key
+    return make
+
+
+def test_adopting_runs_the_request_stages_post_hook(adopting, tmp_path):
+    ran = tmp_path / "hook-ran"
+    served, key = adopting(f"echo $TCW_SLUG > {ran}")
+    answer = served.post(f"/api/tickets/{key}/adopt", {})
+    assert answer.status == 201, answer.body
+    slug = f"tcw/{key}-adopt-me"
+    assert answer.json == {"slug": slug, "code": 0, "problem": None}
+    assert ran.read_text().strip() == slug
+
+
+def test_a_failed_adopt_hook_keeps_the_item_and_says_what_failed(adopting):
+    served, key = adopting("echo the hook broke >&2; exit 7")
+    answer = served.post(f"/api/tickets/{key}/adopt", {})
+    assert answer.status == 201, answer.body
+    assert answer.json["code"] == 6
+    problem = answer.json["problem"]
+    assert problem.startswith(f"adopted {key} as tcw/{key}-adopt-me, but"), problem
+    assert (served.root / "docs" / "work" / f"{key}-adopt-me").is_dir()

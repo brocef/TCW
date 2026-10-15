@@ -480,6 +480,9 @@ class FsWorkBackend:
     def lookup(self, name: str) -> str | None:
         return None
 
+    def is_item_folder(self, folder: str) -> bool:
+        return "/" not in folder and is_item_folder(self.work_path / folder)
+
     def read_request(self, folder: str) -> str | None:
         self._folder(folder)
         path = self._request_path(Slug(self.project, folder))

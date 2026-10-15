@@ -104,3 +104,10 @@ class WorkBackend(Protocol):
 
     def current_user(self) -> str | None:
         """The user in the same form the backend uses for `Item.assignee`."""
+
+    def is_item_folder(self, folder: str) -> bool:
+        """Whether `folder`, a name directly under the work path, is one of
+        this backend's item folders, by its own rule for naming and keeping
+        them. Reads only the work path, never the network, so it answers
+        while the backend cannot; a folder anything else left there is not
+        an item."""

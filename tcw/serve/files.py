@@ -112,8 +112,8 @@ def file_path(context, slug: Slug, path: str) -> Path:
         row = table_stage(name)
         if row in file_stages(context):
             if (row.artifact == DOCUMENT and file == f"{name}.md") or \
-                    (row.artifact == ROUNDS and ROUND_NAME.match(file)) or \
-                    HANDOFF_NAME.match(file):
+                    (row.artifact == ROUNDS and ROUND_NAME.fullmatch(file)) or \
+                    HANDOFF_NAME.fullmatch(file):
                 return item_dir / name / file
     raise not_found(f"{path} is not one of this item's files")
 
@@ -154,13 +154,18 @@ def write_checked(request: Request, path: Path, content: str,
 
 
 def saved(request: Request, ctx, folder: str, response: dict) -> dict:
-    """`response` with the item's validation findings, checked offline
-    against the item as the backend gives it now, or with none when the
-    backend cannot answer (the checks that need it are then skipped)."""
-    try:
-        item = ctx.backend.read(folder)
-    except Exception:
-        item = None
+    """`response` with the item's validation findings, checked offline.
+    When the backend owns the record, no item is read: that read may need
+    the network, and a file save must answer while the backend cannot, so
+    the checks that need the item are skipped. Otherwise the checks use the
+    item as the backend gives it now, or skip when it cannot be read."""
+    from tcw.serve.work import BACKEND
+    item = None
+    if ctx.owner != BACKEND:
+        try:
+            item = ctx.backend.read(folder)
+        except Exception:
+            item = None
     return checked(response, request, ValidationTarget("work", folder, item))
 
 

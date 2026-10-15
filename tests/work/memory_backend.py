@@ -144,3 +144,6 @@ class MemoryBackend:
 
     def current_user(self) -> str | None:
         return self.user
+
+    def is_item_folder(self, folder: str) -> bool:
+        return folder in self.items

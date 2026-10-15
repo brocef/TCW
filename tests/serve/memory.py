@@ -102,6 +102,10 @@ class JiraStubs:
         self.calls.append(("assignable_users", query, limit))
         return [u for u in self.users if query.lower() in u[1].lower()][:limit]
 
+    def is_assignable(self, backend, account_id: str) -> bool:
+        self.calls.append(("is_assignable", account_id))
+        return account_id in {i for i, _ in self.users}
+
     def inbox(self, backend):
         self.calls.append(("inbox",))
         return list(self.tickets), "project = TCW"
@@ -110,7 +114,7 @@ class JiraStubs:
         self.calls.append(("adopt", key))
         folder = f"{key}-adopted"
         backend.seed(folder, f"Adopted {key}")
-        return f"{backend.project}/{folder}", 0
+        return f"{backend.project}/{folder}", 0, None
 
     def create_fields(self, backend):
         self.calls.append(("create_fields",))
@@ -128,7 +132,8 @@ class JiraMode:
         stubs = self.stubs
         return Services(open_backend=lambda root: self.backend,
                         ticket_link=stubs.ticket_link, user_name=stubs.user_name,
-                        assignable_users=stubs.assignable_users, inbox=stubs.inbox,
+                        assignable_users=stubs.assignable_users,
+                        is_assignable=stubs.is_assignable, inbox=stubs.inbox,
                         adopt=stubs.adopt, create_fields=stubs.create_fields)
 
 

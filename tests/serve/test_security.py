@@ -122,3 +122,27 @@ def test_the_api_has_no_delete(records):
     answer = records.request("DELETE", "/api/taxonomy/admin")
     assert answer.status == 404
     assert (records.root / "docs" / "taxonomy" / "admin").is_dir()
+
+
+def test_a_write_with_no_content_length_is_refused_and_writes_nothing(fs):
+    """Without a length the body cannot be checked against the cap before it
+    is read, so the write is a usage error, answered without waiting for a
+    body, and nothing is created."""
+    import http.client
+    import json
+    before = sorted(p.name for p in (fs.root / "docs" / "work").iterdir())
+    connection = http.client.HTTPConnection("127.0.0.1", fs.port, timeout=10)
+    try:
+        connection.putrequest("POST", "/api/work", skip_host=True,
+                              skip_accept_encoding=True)
+        connection.putheader("Host", fs.host)
+        connection.putheader("Content-Type", "application/json")
+        connection.endheaders()
+        connection.send(b'{"title": "No length"}')
+        answer = connection.getresponse()
+        status, body = answer.status, json.loads(answer.read())
+    finally:
+        connection.close()
+    assert (status, body["code"]) == (400, "usage"), body
+    assert "Content-Length" in body["error"]
+    assert sorted(p.name for p in (fs.root / "docs" / "work").iterdir()) == before

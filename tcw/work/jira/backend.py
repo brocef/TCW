@@ -297,6 +297,9 @@ class JiraBackend:
 
     # -- folders ---------------------------------------------------------------
 
+    def is_item_folder(self, folder: str) -> bool:
+        return link_exists(self.work_path, folder)
+
     def lookup(self, name: str) -> str | None:
         if not isinstance(name, str):
             return None

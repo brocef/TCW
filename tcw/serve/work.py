@@ -69,6 +69,13 @@ def context(request: Request) -> WorkContext:
     return WorkContext(root, config, backend, layout)
 
 
+def item_folders(ctx: WorkContext) -> list[str]:
+    """The item folders under the work path, by the backend's own rule for
+    recognizing one; a folder anything else left there is not an item. Reads
+    only the work path, so it answers while the backend cannot."""
+    return [f for f in ctx.layout.item_folders() if ctx.backend.is_item_folder(f)]
+
+
 def unavailable(error: Exception) -> dict[str, str]:
     return {"unavailable": str(error)}
 
@@ -204,7 +211,7 @@ def board(request: Request):
         return HTTPStatus.OK, {
             "items": [{"slug": str(ctx.slug(folder)),
                        "path": str(ctx.layout.item_dir(ctx.slug(folder)))}
-                      for folder in ctx.layout.item_folders()],
+                      for folder in item_folders(ctx)],
             "people": {}, "fallback": True, "unavailable": str(error)}
     return HTTPStatus.OK, {
         "items": [item_record(i, siblings, ctx.layout) for i in items],
@@ -219,7 +226,7 @@ def board(request: Request):
 def item_folder(ctx: WorkContext, name: str) -> str:
     """The item folder `name` names: one under the work path, or, for a name
     the backend knows another way (a Jira key), the folder it gives."""
-    folders = ctx.layout.item_folders()
+    folders = item_folders(ctx)
     if name in folders:
         return name
     found = ctx.backend.lookup(name)
@@ -243,13 +250,20 @@ def detail(request: Request):
     def read_item():
         nonlocal item
         item = ctx.backend.read(folder)
-        siblings, bad = readable(ctx.backend)
-        return item_record(item, siblings, ctx.layout), bad
+        return item
 
     record = degrading(ctx, read_item)
     warnings: list[str] = []
     if item is not None:
-        record, warnings = record
+        # `blocks` and `children` come from every other item; when those
+        # cannot be read, the item still shows, and the page says why the
+        # two lists may be short.
+        siblings = degrading(ctx, lambda: readable(ctx.backend))
+        if isinstance(siblings, dict):
+            siblings, warnings = ([], []), [f"every other item ({siblings['unavailable']})"]
+        else:
+            warnings = siblings[1]
+        record = item_record(item, siblings[0], ctx.layout)
         mentioned.append(item.assignee)
     answer: dict[str, Any] = {"folder": folder, "item": record}
     if start_stage() in ctx.backend.external_stages:
@@ -343,7 +357,7 @@ def checked_reference(ctx: WorkContext, what: str, text: str) -> dict | None:
         return {"severity": "warning", "where": what,
                 "message": f"{slug} is in project '{slug.project}', which this "
                            f"page does not check; make sure it exists"}
-    if slug.folder not in ctx.layout.item_folders():
+    if slug.folder not in item_folders(ctx):
         raise usage(f"{what}: {text} is not an item of this project")
     return None
 
@@ -469,9 +483,17 @@ def create(request: Request):
         "tags": {"add": props.get("tags") or []},
         "blocked-by": {"add": props.get("blocked-by") or []}})
     notes = references(ctx, changes)
-    if ctx.owner == BACKEND and any(n for n in notes):
-        raise usage("blocked-by: in this project an item can be blocked only by "
-                    "another item of this project")
+    if ctx.owner == BACKEND:
+        # A parent in another project is the backend's to accept or refuse (a
+        # ticket on the same site can be one); a blocker must be an item here.
+        if any(n["where"] == "blocked-by" for n in notes):
+            raise usage("blocked-by: in this project an item can be blocked only by "
+                        "another item of this project")
+        assignee = changes.assignee
+        if assignee not in (UNSET, None) and \
+                not request.services.is_assignable(ctx.backend, assignee):
+            raise usage(f"assignee: {assignee} is not the account id of anyone "
+                        f"assignable in this project; choose one from the suggestions")
     with request.lock:
         item = new_item(ctx.backend, title, changes,
                         stage=request.field("stage", required=False), request=text)
@@ -491,10 +513,14 @@ def tickets(request: Request):
 
 
 def adopt(request: Request):
+    """`tcw work tickets adopt`: the ticket becomes an item, and the request
+    stage's post hooks run, as they do under the CLI. A hook that fails does
+    not undo the item; what it reported is `problem`, for the page to show."""
     ctx = context(request)
     with request.lock:
-        slug, code = request.services.adopt(ctx.backend, request.param(1), ctx.root)
-    return HTTPStatus.CREATED, {"slug": slug, "code": code}
+        slug, code, problem = request.services.adopt(ctx.backend, request.param(1),
+                                                     ctx.root)
+    return HTTPStatus.CREATED, {"slug": slug, "code": code, "problem": problem}
 
 
 # -- suggestions the client cannot compute ------------------------------------------------

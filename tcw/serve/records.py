@@ -116,7 +116,7 @@ def update_term(request: Request):
     found = store.get(request.param(1))
     if found is not None and found.origin != "local":
         raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
-                        f"change it there, or override it with the CLI")
+                        f"change it there")
     with request.lock:
         detail = store.update_term(request.param(1), **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
@@ -192,7 +192,8 @@ def update_capability(request: Request):
     found = store.get(request.param(1))
     if found is not None and found.origin != "local":
         raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
-                        f"override it with `tcw capabilities override`")
+                        f"change it there, or override it in this project with "
+                        f"`tcw capabilities set {found.qualified} --field <name>=<value>`")
     if fields:
         _subjects_are_vocabulary(request, fields)
     with request.lock:

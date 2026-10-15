@@ -89,8 +89,8 @@ def error_answer(error: BaseException) -> tuple[int, dict[str, Any]]:
         return HTTPStatus.SERVICE_UNAVAILABLE, {"error": message, "code": "unreachable"}
     if isinstance(error, TcwError):
         return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": message, "code": "error"}
-    if isinstance(error, ValueError):
-        return HTTPStatus.BAD_REQUEST, {"error": message, "code": "usage"}
+    # Anything else, a bare ValueError included, is not an answer TCW gives
+    # on purpose: a 500 with the message alone.
     return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": message or type(error).__name__,
                                               "code": "error"}
 

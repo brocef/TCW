@@ -319,9 +319,14 @@ class FakeJira:
                 raise self._error(404, route)
             case ["user", "assignable", "search"], "GET":
                 text = query.get("query", "").lower()
-                found = [self._user(a) for a in self.accounts.values()
-                         if text in a.name.lower() or text in a.email.lower()
-                         or text == a.account_id.lower()]
+                exact = query.get("accountId")
+                if exact is not None:     # accountId matches the id exactly
+                    found = [self._user(a) for a in self.accounts.values()
+                             if a.account_id == exact]
+                else:
+                    found = [self._user(a) for a in self.accounts.values()
+                             if text in a.name.lower() or text in a.email.lower()
+                             or text == a.account_id.lower()]
                 return found[:int(query.get("maxResults", 50))]
             case ["project", key], "GET":
                 return self._project(self._project_of(key, route))

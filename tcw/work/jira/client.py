@@ -300,12 +300,16 @@ class JiraClient:
         return self._json("GET", "/rest/api/3/user?accountId="
                           + urllib.parse.quote(account_id, safe=""))
 
-    def assignable_users(self, project: str, query: str, limit: int) -> list[dict]:
-        """The project's assignable users matching `query`."""
+    def assignable_users(self, project: str, query: str, limit: int, *,
+                         account_id: str | None = None) -> list[dict]:
+        """The project's assignable users matching `query`, or, given
+        `account_id`, the one assignable user with exactly that account id."""
+        match = ("&accountId=" + urllib.parse.quote(account_id, safe="")
+                 if account_id is not None
+                 else "&query=" + urllib.parse.quote(query, safe=""))
         path = ("/rest/api/3/user/assignable/search?project="
                 + urllib.parse.quote(project, safe="")
-                + "&query=" + urllib.parse.quote(query, safe="")
-                + f"&maxResults={int(limit)}")
+                + match + f"&maxResults={int(limit)}")
         return _entries(self._payload("GET", path), path)
 
     def project(self, key: str) -> dict:

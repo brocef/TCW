@@ -299,3 +299,39 @@ def test_files_stay_editable_while_the_backend_cannot_answer(jira):
     assert "warnings" not in answer, answer
     found = ok(served.get("/api/work/TCW-1-first/files/spec/spec.md"))
     assert found["content"] == "# Spec\n"
+
+
+# -- review round 1 ---------------------------------------------------------------------------
+
+
+def test_a_write_into_a_stray_folder_is_refused(item):
+    served, _ = item
+    stray = served.root / "docs" / "work" / "notes"
+    stray.mkdir()
+    answer = put(served, "notes", "spec/spec.md", "# Spec\n", None)
+    assert answer.status == 404, answer.body
+    assert not (stray / "spec").exists()
+
+
+@pytest.mark.parametrize("name", ["round-1.md%0A", "round-1.md%0D%0A", "round-1.mdx"])
+def test_a_round_name_must_be_exactly_a_round(item, name):
+    served, folder = item
+    answer = put(served, folder, f"implement/{name}", "x", None)
+    assert answer.status == 404, answer.body
+    stage = folder_of(served, folder) / "implement"
+    assert not stage.exists() or list(stage.iterdir()) == []
+
+
+def test_a_handoff_name_must_be_exactly_a_handoff(item):
+    served, folder = item
+    answer = put(served, folder, "implement/handoff-20261015T120000Z.md%0A", "x", None)
+    assert answer.status == 404, answer.body
+
+
+def test_a_file_save_does_not_ask_a_backend_that_owns_the_record(jira):
+    """The backend's read may need the network; a save answers without it."""
+    served = jira.served
+    jira.backend.calls.clear()
+    ok(served.put("/api/work/TCW-1-first/files/spec/spec.md",
+                  {"content": "# Spec\n", "revision": None}))
+    assert jira.backend.named("read") == [] and jira.backend.named("list") == []

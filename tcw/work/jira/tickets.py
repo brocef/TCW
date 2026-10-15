@@ -105,9 +105,10 @@ def inbox(backend: JiraBackend) -> tuple[list[dict], str]:
 
 
 def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
-          project_root: Path) -> tuple[str, int]:
+          project_root: Path, report: Callable[[str], None] = _say) -> tuple[str, int]:
     """Make the ticket `key` an item at request. Returns the slug and the exit
-    code: 0, or 6 when the item arrived but a `post` hook failed."""
+    code: 0, or 6 when the item arrived but a `post` hook failed, which
+    `report` is told (stderr for the CLI; the web viewer shows it)."""
     backend = jira_backend(backend)
     if not isinstance(key, str) or not KEY.fullmatch(key):
         raise UsageError(f"{key!r} is not a Jira key")
@@ -172,7 +173,7 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
         if isinstance(chosen, Refusal):
             raise Refused(f"cannot adopt {key}: {chosen.message}")
     if resuming:
-        _say(f"resuming the adoption of {key} as {slug}")
+        report(f"resuming the adoption of {key} as {slug}")
     # 3. Set TCW Project and TCW Item in one edit.
     if not resuming or tcw_project != backend.project:
         with _jira():
@@ -224,7 +225,7 @@ def adopt(backend: JiraBackend, key: str, *, config: WorkConfig, layout: Layout,
     failure = run_post(config, layout, project_root, replace(item, stage=from_stage),
                        start_stage())
     if failure:
-        _say(f"adopted {key} as {slug}, but {failure}")
+        report(f"adopted {key} as {slug}, but {failure}")
         return str(slug), codes.MOVED_WITH_PROBLEM
     return str(slug), codes.OK
 
@@ -282,6 +283,16 @@ def assignable_users(backend: JiraBackend, query: str,
         found = backend.client.assignable_users(backend.jira.project, query, limit)
     return [(str(u["accountId"]), str(u.get("displayName") or u["accountId"]))
             for u in found if isinstance(u, dict) and u.get("accountId")]
+
+
+def is_assignable(backend: JiraBackend, account_id: str) -> bool:
+    """Whether `account_id` is exactly the account id of someone assignable
+    in the project: a name, or someone who cannot be assigned, is not."""
+    backend = jira_backend(backend)
+    with _jira():
+        found = backend.client.assignable_users(backend.jira.project, "", 1,
+                                                account_id=account_id)
+    return any(isinstance(u, dict) and u.get("accountId") == account_id for u in found)
 
 
 def create_fields(backend: JiraBackend) -> tuple[str, ...]:

@@ -230,3 +230,16 @@ def test_comments_newest_first(backend):
 @pytest.mark.parametrize("user", ["sam", None])
 def test_current_user(make, user):
     assert make(user)[0].current_user() == user
+
+
+def test_only_its_own_item_folders_are_items(backend, tmp_path):
+    """A folder someone else left under the work path is not an item, and
+    answering that reads only the folder (the web viewer asks it while the
+    backend cannot answer)."""
+    item = new(backend, "Kept")
+    (tmp_path / "work" / "notes").mkdir()
+    (tmp_path / "work" / "2026-10-02-no-item-file").mkdir()
+    assert backend.is_item_folder(item.slug.folder)
+    assert not backend.is_item_folder("notes")
+    assert not backend.is_item_folder("2026-10-02-no-item-file")
+    assert not backend.is_item_folder("no-such-folder")
