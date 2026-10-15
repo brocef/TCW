@@ -32,7 +32,9 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   `tests/test_static_guards.py`, `tests/test_cli_handler.py`,
   `tests/test_tree_store_raises.py`, `tests/test_no_node.py`,
   `tests/test_ledger_3_0.py`, `tests/test_documented_cli_surface.py`,
-  `tests/test_doc_allowance.py` and `tests/test_shipped_text.py`.
+  `tests/test_doc_allowance.py`, `tests/test_shipped_text.py` and
+  `tests/work/test_model_guards.py`. Because `tcw/` is shared code, all of
+  `tests/work` and `tests/serve` also run once after the last task.
   `pytest --collect-only -q` stays clean after every task.
 - **New 3.0 tests only.** Add tests to the 3.0 test files beside the code's
   existing tests, or to new files. A 2.x test that breaks because 2.x behavior
@@ -63,7 +65,11 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   completion, and therefore the freeze: Tasks 10 and 11 run after it. Task 9
   also needs Task 1 first, since J3's scrubbing must apply to its recordings.
 - TCW-76 Part A runs at the same time on its own branch. No file is changed
-  by both (spec, "Overlap with TCW-76 Part A"). Task 7 widens two scans that
+  by both (spec, "Overlap with TCW-76 Part A"). The user-visible 2.x-to-3.0
+  changes this item makes (C2, V1, C4, C9, T5) have already been sent to
+  TCW-76 for its migration guide, and TCW-76's Task A10 owns
+  `docs/capabilities/cli/validate-a-project/description.md`, so the T5
+  wording for that record goes to TCW-76 in this item's report. Task 7 widens two scans that
   read files Part A changes, so whichever item lands on `epic/tcw-3.0` second
   re-runs `tests/test_documented_cli_surface.py`,
   `tests/test_docs_describe_3_0.py` and `tests/test_shipped_text.py` over the
@@ -84,6 +90,11 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   `Etc/UTC` and every `locale` to `en_US` before scrubbing; the docstring says
   so. Rewrite the existing files in `tests/work/jira/recorded/` with the same
   values by a one-off script (no live run; values only, nothing else changes).
+  Six files hold `timeZone` (`get-issue-key-200.json`,
+  `get-issue-key-comment-200.json`, `get-myself-200.json`,
+  `get-user-200.json`, `post-issue-key-comment-201.json`,
+  `post-search-jql-200.json`); `get-myself-200.json` and `get-user-200.json`
+  hold `locale`.
   Task 9's new recordings go through the same `record`, so they get the same
   values.
 - **T4.** `tcw/work/jira/client.py`: `TrackerSiteMissing(TrackerError)`, and
@@ -114,7 +125,10 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
 - **P3.** `tcw/work/jira/config.py` `_credentials`: check both keys, add a
   problem for each bad one, then return `None` if any was bad.
 - **P5.** `tcw/config_cli.py` `_scalar`: `bytes` as `!!binary "<base64>"`;
-  `set` and `frozenset` as `!!set {<sorted members>: null, …}` through `_flow`.
+  `set` and `frozenset` as `!!set {<members>: null, …}` through `_flow`. The
+  members are sorted by a string key (`key=repr` or the written form), since
+  sorting a set that mixes types, such as `{1, "a"}`, raises `TypeError`; the
+  test includes such a set.
 - **Proves:** a new `tests/test_config_edges.py` (P1 for the project file and
   the local file, through the CLI, asserting exit 1, the file name, and no
   `Traceback`; P2 through `config show --origin`; P5 round trip through
@@ -129,33 +143,51 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   backend and call `creation_stage` before `read_piped_stdin`; drop the later
   duplicate call.
 - **C1.** `tcw/store/fs.py`: a helper `_nested_entries(d)` used by `remove`
-  and `reset`; `reset` refuses with exit 3 (Design 3).
+  and `reset`; `reset` refuses with exit 3 (Design 3), with a message that
+  names both `tcw capabilities rm` (for a nested local capability) and
+  `tcw capabilities reset` (for a nested override, which `rm` refuses).
 - **C2.** `tcw/store/base.py`: `is_slug(text)` beside `slugify`.
   `FsTaxonomyStore.add` raises `UsageError` (Design 4) when `slug` is given
-  and is not one. Also check the viewer's create route answers 400.
+  and is not one, after `_safe_store_id`, so `../evil` still gets
+  `invalid slug` (`tests/test_store_editor.py:730`, unchanged). The store's
+  message names no flag; the CLI's `taxonomy add` adds `--slug` when it
+  reports it, so the viewer's 400 answer does not mention a command-line flag.
+  `tests/serve/test_records.py:87` (`slug="admin/adapter"`) changes to
+  `add("Adapter", slug="adapter", parent="admin")` or the store's equivalent
+  `--parent` form, with its assertions unchanged. Also check the viewer's
+  create route answers 400.
 - **C4.** `tcw/store/fs.py` `FsStoreProvisioner._run`: the environment of
-  Design 5; the `core.sshCommand` read goes through `_git` with
-  `git config --get core.sshCommand` (a read).
-- **C7.** `tcw/store/fs.py`: `_local_slugs` and `get_local` require
-  `meta.yaml`; correct `remove`'s comment.
+  Design 5, built as `{**os.environ, "GIT_TERMINAL_PROMPT": "0",
+  "GCM_INTERACTIVE": "never", …}` with `GIT_ASKPASS` and `SSH_ASKPASS`
+  removed; the `core.sshCommand` read goes through `_git` with
+  `git config --get core.sshCommand` (a read). Any existing test that patches
+  `_git` with a fake that answers only the calls it expects must also answer
+  the new `git config --get core.sshCommand` call (with nothing, as an unset
+  key does).
+- **C7.** Rejected (spec, Design 7); no change.
 - **C8.** `tcw/store/fs.py` `refuse_retired_config`: name
   `os.path.relpath(root / SENTINEL)`.
 - **C9.** `tcw/work/open.py` `open_backend`: `require_valid()` when
-  `personal` is true.
+  `personal` is true. This covers the work commands that call
+  `open_backend`; `work new --project` goes through `delegate` and is not
+  covered, so no test claims it is.
 - **T2.** `tcw/work/open.py` `uncommitted_changes`: "the work store of
   project '<id>'" / "the project's work store".
 - **Proves:** the files holding each command's existing tests, found with
   `grep -rl` on the message or function (`--stage accepts only`, `reset`,
-  `taxonomy add`, `_run`/`provision`, `_local_slugs`/`taxonomy list`,
-  `was renamed to 'projects'`, `uncommitted_changes`), each with the new
+  `taxonomy add`, `_run`/`provision`, `was renamed to 'projects'`,
+  `uncommitted_changes`), each with the new
   case: P4 asserts `read_piped_stdin` is never called (patched to fail);
   C9 includes the declared-but-absent child that must still exit 0; C4
   patches `_git` to capture the environment, with and without a preset
-  `GIT_SSH_COMMAND`. Plus `tests/test_subprocess_stdin.py` and
-  `tests/test_upstream_projects.py`.
+  `GIT_SSH_COMMAND`. Plus `tests/test_subprocess_stdin.py`,
+  `tests/test_upstream_projects.py`, `tests/serve/test_records.py` (C2's
+  changed nested-term test and the 400 case),
+  `tests/test_store_editor.py` (`invalid slug` for `../evil`, unchanged) and
+  `tests/test_taxonomy_rm_gaps.py` (C7 rejected: still passes).
 - **Mutations:** move the stdin read back first; drop `reset`'s nested check;
-  drop the slug check; drop the `_run` environment; restore `_local_slugs`;
-  restore the bare `SENTINEL`; drop `require_valid()`.
+  drop the slug check; drop the `_run` environment; restore the bare
+  `SENTINEL`; drop `require_valid()`.
 
 ### Task 4: Validate (T5, T7; criteria 28, 30)
 
@@ -179,6 +211,11 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
 - **V1.** `tcw/serve/records.py:112` and `:188`: `request.field("revision")`,
   required. Update any viewer test that sends a `PATCH` without it.
 - **V2.** `tcw/serve/files.py` `file_path`: resolve and contain (Design 10).
+  The same check, through one helper, in `get_declaration` and
+  `put_declaration`, which call `layout.capabilities_file` directly and so
+  bypass `file_path`; a `capabilities.yaml` that is a link to a file outside
+  the item folder is 404 on both, and the outside file is not read or
+  written. A test for each route.
 - **V3.** `tcw/store/project.py:58-60`: the comment says the cache lives as
   long as the process, a whole server run under `tcw serve`, and that a
   directory added or removed as a linked worktree while a server runs is seen
@@ -193,9 +230,19 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   test rendering `Conflict` with `console.error` watched; `pnpm test`,
   `pnpm check:build`, `pnpm typecheck` if present; `tests/serve/test_static.py`.
 - **Mutations:** `required=False` again; drop the containment check (the file
-  appears outside); restore the nesting (the vitest test sees the warning).
+  appears outside); drop it from the declaration routes only (the declaration
+  test goes red); restore the nesting (the vitest test sees the warning).
 
-### Task 6: Text and docstrings (T1, T3, V7, V8; criteria 22, 23, 24, 26)
+### Task 6: Text and docstrings (T1, T3, V7, V8, and the stage-name guard; criteria 22, 23, 24, 26)
+
+- **The stage-name guard.** The epic already fails
+  `tests/work/test_model_guards.py::test_no_stage_name_is_spelled_outside_the_table[config.py]`:
+  `tcw/work/config.py` writes stage names as strings (line 65,
+  "postmortem stage prompt", and three more), introduced by `ed5e2eb4`.
+  Reword those texts so no stage name is spelled outside the stage table, or
+  build them from the table, as the guard asks; do not add an allowance
+  unless the guard already offers one for the case. The guard then passes,
+  and it joins the standing guard files.
 
 - **T1.** `tcw/work/generate.py:180`, `:184`: `work.hooks.output-cap`,
   `work.hooks.timeout`.
@@ -220,7 +267,8 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   nothing; `tests/test_shipped_text.py`, `tests/test_docs_describe_3_0.py`,
   `tests/test_procedure_verb.py`, `tests/test_prompt_fallback.py` and any
   test reading `unattended-work.md` (`grep -rl unattended tests`).
-- **Mutations:** none; no guard is added.
+- **Mutations:** none; no guard is added. (The stage-name guard is
+  existing; confirming it goes red on the unfixed `config.py` is its check.)
 
 ### Task 7: The scans (C3, C6, V4, V6, T6; criteria 10, 12, 19, 21, 29)
 
@@ -239,11 +287,15 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   stage name today is either fixed in the client (Task 5's rebuild then
   covers it; if Task 5 is committed, rebuild again here) or listed in a named
   allowance with its reason. Scanner tests for each.
-- **V6.** `tests/test_documented_cli_surface.py`: paragraph-wide code spans
-  (Design 11); update the comment at lines 74-82. Fix or reword any command
-  the wider scan newly finds invalid.
-- **T6.** `tests/doc_vocabulary.py` `scan`: paragraph-wide (Design 16). Fix or
-  reword any newly found phrase in the scanned documents.
+- **V6.** `tests/test_documented_cli_surface.py`: code spans over a block of
+  joined lines (Design 11); a block ends at a blank line and a fence, and
+  before a line that starts a table row (`|`), a list item (`-`, `*`, `+`,
+  `1.`, `1)`) or a heading (`#`), so an unpaired backtick cannot reach
+  across them. Update the comment at lines 74-82. Fix or reword any command
+  the wider scan newly finds invalid. A test that an unpaired backtick in one
+  table row, list item and heading does not pair with the next.
+- **T6.** `tests/doc_vocabulary.py` `scan`: the same blocks (Design 16). Fix
+  or reword any newly found phrase in the scanned documents.
 - **Proves:** each changed test file, plus `tests/test_shipped_text.py`,
   `tests/test_configuration_text_home.py`, `tests/test_docs_describe_3_0.py`
   (the users of `scan`), and the three files that compare an in-process
@@ -262,7 +314,9 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
 Invoke the `documentation-sync` skill against the branch's
 `tcw-config.yaml` `work.documentation` entries (read the file; do not run the
 3.0 `tcw work docs` against this repository). Expected updates, each read
-against the code after Tasks 1 to 7:
+against the code after Tasks 1 to 7. **Do not rename any heading in
+`docs/guide/jira.md` or `skills/configure/references/*`**: TCW-76 links to
+them by anchor. Add text under the existing headings only.
 
 - `docs/guide/jira.md`, "Checking the workflow" (lines 151-155): offline
   validation also reads each item folder's `capabilities.yaml` and reports one
@@ -275,8 +329,8 @@ against the code after Tasks 1 to 7:
 - `skills/configure/references/jira.md`, "Checking the configuration against
   Jira" (lines 187-188), if it lists what offline validation reads.
 - `docs/guide/taxonomy-and-capabilities.md`: `--slug`'s form (C2, near line
-  27); a term is a folder holding `meta.yaml` (C7, near line 74); `reset`
-  refuses when local capabilities sit under the override (C1, near line 235).
+  27); `reset` refuses when local capabilities sit under the override (C1,
+  near line 235). Nothing for C7, which is rejected.
 - The guide section that describes `tcw provision` (`grep -rln 'tcw provision'
   docs/guide skills/configure/references`): it never asks for a password; a
   private repository needs a credential helper or an ssh agent (C4).
@@ -284,8 +338,21 @@ against the code after Tasks 1 to 7:
 - README: likely nothing; confirm.
 - `docs/changelogs/upcoming/<slug>.md` and `docs/release-notes/upcoming/<slug>.md`
   (`<slug>` is this item's), each listing the user-facing changes: J1, P1,
-  P3, P4, P5, C1, C2, C4, C7, C8, C9, V1, V2, T2, T4, T5, T7. J2 adds a line
+  P3, P4, P5, C1, C2, C4, C8, C9, V1, V2, T2, T4, T5, T7. J2 adds a line
   in Task 9 only if it changes what a command does.
+- **Capabilities.** Edit the `description.md` of each record the spec's
+  "Capability changes" lists, on the work branch, to say the new behavior:
+  `capabilities/reset-an-override` (C1: refuses when a capability is nested
+  under the override, naming `rm` and `reset`), `taxonomy/add-a-term` (C2:
+  the form `--slug` must have, and that nesting is `--parent`'s),
+  `web/editing` (V1: a save that carries no revision is refused; V2: a file
+  path that leads outside the item's folder is refused) and
+  `cli/provision-declared-stores` (C4: it never asks for a password or a
+  host-key confirmation; a private remote needs a credential helper or an
+  ssh agent). Do not edit `docs/capabilities/cli/validate-a-project/description.md`,
+  which TCW-76's Task A10 owns; write its T5 and T7 wording into the report
+  for TCW-76 instead. Write the item's `capabilities.yaml` (the spec's
+  `changed:` list) into the item folder on `main`.
 - **Proves:** `tests/test_docs_describe_3_0.py`, `tests/test_shipped_text.py`,
   `tests/test_doc_allowance.py`, `tests/test_documented_cli_surface.py`,
   `tests/test_configuration_text_home.py`, and any test naming a changed
@@ -303,15 +370,26 @@ commit on the work branch after steps 2, 4 and 5 where they change files.
    `TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY`):
    `/rest/api/3/workflow/search?workflowName=<the workflow>&expand=transitions,statuses`
    shows `J2 probe: reopen` with type `directed`, from 10041 only, to 10012,
-   with the new screen; `/rest/api/3/screens?queryString=J2` finds the screen
-   and its tab lists only `labels`; the ten existing transitions and screen
+   with the new screen; `/rest/api/3/screens?queryString=J2` finds the screen,
+   and `/rest/api/3/screens/{id}/tabs` then
+   `/rest/api/3/screens/{id}/tabs/{tab}/fields` show `labels` as its only
+   field; the ten existing transitions and screen
    10049 are as the spec's Design 18 records them. Re-read
    `/rest/api/3/mypermissions?projectKey=TCWTEST&permissions=DELETE_ISSUES`
    for step 4. Anything different: stop and tell the owner; create nothing.
 2. **Capture.** `tests/work/jira/capture.py`: a way to record calls under a
    named file that never merges with the endpoint's shared file (Design 18).
    New `tests/work/jira/test_jira_live_shapes.py`: the gated test of Design
-   18, steps 1 to 5, its `skipif` copying `test_jira_scenario.py:51-55` and
+   18, steps 1 to 6 (the page recording a direct loop over
+   `/rest/api/3/search/jql` that follows `nextPageToken`, separate from
+   `JiraClient`; the client's page walk asserted afterwards as its own step;
+   the clean-up and the printed list of remaining keys in a `finally` block;
+   deletion only of a `TCWTEST` ticket whose summary exactly matches
+   `J2 paging probe NNN`; created keys kept in `j2-keys.json` in the capture
+   folder; probe 101 left as it is when already at `Won't Do`;
+   `fromStatusReference` mapped through the answer's `statuses`; the
+   `nextPageToken` sent in the next-page request asserted), its `skipif`
+   copying `test_jira_scenario.py:51-55` and
    adding `TCW_JIRA_J2_PROBE=1` and `TCW_JIRA_CAPTURE`; reuse the scenario's
    `LIVE` configuration rather than a copy of it. First run it without the
    variables and confirm it is skipped, also with `TCW_JIRA_LIVE=1` alone.
@@ -338,11 +416,12 @@ commit on the work branch after steps 2, 4 and 5 where they change files.
    this item's `upcoming/` changelog and release-notes entries, and update
    `docs/guide/jira.md` if it describes the behavior. If nothing differs,
    step 4 changes nothing and `outcome.md` says so.
-5. **Clean up.** The live test's step 5 deletes the probe tickets if the
+5. **Clean up.** The live test's step 6 deletes the probe tickets if the
    account may. If not, give the owner every remaining key and the search
    `project = TCWTEST AND summary ~ "\"J2 paging probe\""`, and list them in
-   `outcome.md`. The `J2 probe: reopen` transition and its screen stay
-   (Design 18).
+   `outcome.md`. If the owner did checklist step 4, remind them of step 6:
+   remove the delete permission again. The `J2 probe: reopen` transition and
+   its screen stay (Design 18).
 
 - **Proves:** `tests/work/jira/test_recorded_shapes.py` (all of it, including
   `test_no_person_or_real_site_is_recorded` over the new files), the J3 test
@@ -401,7 +480,7 @@ remaining probe tickets. Commit on `main`.
 | 10 | 7 | 25 | 3 |
 | 11 | 3 | 26 | 6 |
 | 12 | 7 | 27 | 1 |
-| 13, 14, 15 | 3 | 28 | 4 |
+| 13 (C7, rejected), 14, 15 | 3 | 28 | 4 |
 | 16 | 5 | 29 | 7 |
 | 30 | 4 | 31 | 8 |
 | 32 | 10 | 33 | 9 |

@@ -5,8 +5,25 @@ was read on `epic/tcw-3.0` at `e301bef5`.
 
 ## Capability changes
 
-None. Each fix corrects an existing behavior, message or test; no capability
-is added, changed or removed.
+No capability is added or removed. `docs/work/dod.yaml` requires the ledger to
+be reconciled, and several behavior changes make an existing record
+incomplete, so the item declares them as changed:
+
+```yaml
+changed:
+  - capabilities/reset-an-override       # C1: refuses a capability nested under the override
+  - taxonomy/add-a-term                  # C2: --slug must be a slug
+  - web/editing                          # V1: a save without a revision is refused; V2: a file path that leads outside the item folder is refused
+  - cli/provision-declared-stores        # C4: never asks for a password or a host-key confirmation
+  - cli/validate-a-project               # T5, T7: offline Jira-mode validation
+```
+
+Each record's `description.md` is edited on the work branch to say the new
+behavior (plan, Task 8), except `cli/validate-a-project`: TCW-76's Task A10
+owns that file, so this item hands its T5 and T7 wording to TCW-76 rather than
+editing it. The other records were read and need no change: J1, T4 and C9
+change messages and refusals no record describes, and P1 to P5 do not change
+what `tcw config show` is described as doing.
 
 ## Problem
 
@@ -14,8 +31,9 @@ The verify reviews of TCW-71, 72, 73, 74, 77 and 75 left 32 findings sorted as
 "needs a separate change". Most are in `tcw/`, which TCW-76's code freeze (its
 Task B3) closes until the epic merges. The owner decided on 2026-10-15 that
 every one goes in before the freeze, including those that change behavior.
-Twelve change what a command or the viewer does (J1, P4, C1, C2, C4, C7, C9,
-V1, V2, T4, T5, T7); the rest change messages, comments, documents or tests.
+Eleven change what a command or the viewer does (J1, P4, C1, C2, C4, C9, V1,
+V2, T4, T5, T7); one (C7) is rejected; the rest change messages, comments,
+documents or tests.
 
 ## Triage
 
@@ -28,7 +46,7 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | --- | --- | --- | --- |
 | J1 | A dropped connection while posting a note invites a duplicate | **fix** (Design 1) | `_post_note`, `tcw/work/jira/backend.py:946`, turns every `TrackerError` into `MovedWithoutNote`, including a drop after Jira received the comment; `advance.py:285-289` then says "add it with `tcw work comment`" |
 | J2 | Three shapes of Jira's answers were never recorded live | **fix** (Design 18) | `tests/work/jira/test_recorded_shapes.py:74-76` lists them as read but never seen: a second page of search results (`nextPageToken`, read by `search`, `tcw/work/jira/client.py:225-244`), a transition restricted to some statuses (`links.*.fromStatusReference`, read by `_definition`, `tcw/work/jira/remote.py:352`), and a transition screen that lists fields (`transitions.*.fields`, read by `transitions`, `client.py:260-269`). Owner's answer 1: record all three before the freeze |
-| J3 | Recorded user objects keep `timeZone` and `locale` | **fix** | `tests/work/jira/capture.py` replaces only `accountId`, `displayName`, `emailAddress` (`_PEOPLE`, line 33); five recorded files hold `"timeZone": "America/New_York"` and `get-user-200.json` holds `"locale"` |
+| J3 | Recorded user objects keep `timeZone` and `locale` | **fix** | `tests/work/jira/capture.py` replaces only `accountId`, `displayName`, `emailAddress` (`_PEOPLE`, line 33); six recorded files hold `"timeZone"` (`get-issue-key-200.json`, `get-issue-key-comment-200.json`, `get-myself-200.json`, `get-user-200.json`, `post-issue-key-comment-201.json`, `post-search-jql-200.json`), and `get-myself-200.json` and `get-user-200.json` hold `"locale"` |
 | P1 | A YAML key that is itself a list crashes every command | **fix** | `_no_dup_keys`, `tcw/store/yaml_source.py:34-41`: `key in mapping` raises `TypeError` for an unhashable key |
 | P2 | Two layers writing the same empty mapping blame the lower one | **fix** | `_merge`, `tcw/config.py:469-473`: with `value == {}` and `lower == {}` the origin is never restamped |
 | P3 | Only the first bad Jira credential key is reported | **fix** | `_credentials`, `tcw/work/jira/config.py:146-155`, returns at the first bad name (the entry calls it `parse_jira_credentials`; that name does not exist) |
@@ -40,9 +58,9 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | C4 | `tcw provision` can still ask for a password | **fix** (Design 5) | `FsStoreProvisioner._run`, `tcw/store/fs.py:3421`, closes stdin only; git and ssh prompt on the terminal |
 | C5 | The implement-stage instructions name code that no longer exists | **already fixed** | TCW-75 Task 4 (`36da5873`) rewrote `docs/lifecycle/implementation.md`: it no longer names `descendant_nodes` or `--include-descendants`, and the two names it keeps exist (`find_project_root`, `tcw/store/fs.py:259`; `descendant_projects`, line 488) |
 | C6 | `tests/test_upstream_projects.py` runs whatever `tcw` is first on the search path | **fix**, widened | The same `["tcw", …]` call is in eight more test files and `tests/fixtures/prompt_fallback/capture.py`; fixed once in `tests/conftest.py` (Design 6) |
-| C7 | `list` and `rm` disagree about a sub-folder with no `meta.yaml` | **fix** (Design 7) | `_local_slugs`, `tcw/store/fs.py:1672-1678`, lists any readable folder; `get_local` (line 1670) answers for one too |
+| C7 | `list` and `rm` disagree about a sub-folder with no `meta.yaml` | **rejected** (Design 7) | The premise is false: TCW itself makes such folders. `FsTaxonomyStore.add(..., slug='billing/bulk')` creates `billing/` with no `meta.yaml`, the viewer does the same (`tests/serve/test_records.py:87`), and TCW-73 deliberately treats such a folder as a term (`tests/test_taxonomy_rm_gaps.py:178-210`, its Design 8.2). The listing stays as it is |
 | C8 | The retired-key message names a bare `tcw-config.yaml` | **fix** | `refuse_retired_config`, `tcw/store/fs.py:291`, prints `SENTINEL` alone |
-| C9 | `tcw work list` does not notice a child project's retired key | **fix** (Design 8) | `open_backend`, `tcw/work/open.py:63`, opens the registry without `require_valid()`, which `taxonomy`, `projects`, `provision` and `validate` all call |
+| C9 | `tcw work list` does not notice a child project's retired key | **fix**, narrowed (Design 8) | `open_backend`, `tcw/work/open.py:63`, opens the registry without `require_valid()`, which `taxonomy`, `projects`, `provision` and `validate` all call |
 | V1 | Taxonomy and capability edits skip the stale check when no revision is sent | **fix** (Design 9) | `update_term` and the capability update, `tcw/serve/records.py:112` and `:188`, read `revision` with `required=False` |
 | V2 | A symbolic link inside the work path lets a file save write outside the project | **fix** (Design 10) | `file_path`, `tcw/serve/files.py:101-118`, builds the path and never resolves it; `write_checked` makes the parent and writes there |
 | V3 | `_ANCHOR_CACHE` lives for the whole server process; its comment says one command | **fix** (comment) | `tcw/store/project.py:58-61`. Scoping the cache would change behavior for no observed gain; the comment is corrected to say what is true |
@@ -59,7 +77,7 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | T6 | The shared vocabulary scan reads one line at a time | **fix** (Design 16) | `scan`, `tests/doc_vocabulary.py:61-68` |
 | T7 | Offline Jira validation reports `qa/` rounds it says are ignored | **fix** (Design 17) | `round_findings`, `tcw/validate.py:597-624`, reads every enabled verdict stage, including those in `layout.external` |
 
-**Counts: 31 fix, 1 already fixed (C5).** J2 is the only one that needs the
+**Counts: 30 fix, 1 already fixed (C5), 1 rejected (C7).** J2 is the only one that needs the
 owner's hands first (the "Owner's TCWTEST checklist" below), so it is done
 last and the freeze waits for it.
 
@@ -101,28 +119,44 @@ makes no request), so nothing else moves earlier. Litmus: no operation changes.
 ### 3. `reset` refuses a nested capability (C1)
 
 `reset` refuses, as `remove` does, when any folder below the override folder
-holds a `meta.yaml`: `cannot reset '<id>': nested under its override: <paths>
-(remove those first)`, exit 3. The check is factored into one helper both
-use. Litmus: "an entry with children cannot be deleted as a leaf" holds for
-any tree store.
+holds a `meta.yaml`, exit 3. A folder nested under an override may itself be
+an override of a nested inherited capability, which `rm` refuses and only
+`reset` drops, so the message names both ways out: `cannot reset '<id>':
+nested under its override: <paths> (delete a local capability with
+`tcw capabilities rm` and drop an override with `tcw capabilities reset`
+first)`. The search for nested folders is factored into one helper both use;
+`remove` keeps its own message. Litmus: "an entry with children cannot be
+deleted as a leaf" holds for any tree store.
 
 ### 4. `--slug` must be a slug (C2)
 
 A slug given to `taxonomy add` (`--slug`, and `slug` in the viewer's create
 request, which reaches the same `add`) must be lowercase letters and digits
 in words joined by single hyphens, the form `slugify` produces: it must equal
-`slugify(slug)`. Otherwise a usage error, exit 2: `--slug 'A B' is not a
-slug: use lowercase letters, digits and single hyphens`. A `/` is refused too;
+`slugify(slug)`. Otherwise a usage error, exit 2. A `/` is refused too;
 nesting is `--parent`'s job. The predicate lives beside `slugify` in
 `tcw/store/base.py`; the check is in `FsTaxonomyStore.add`, so the viewer
 answers 400. Existing terms are untouched. Litmus: a naming rule any store
 can enforce.
 
+The store's message names no command-line flag, because the viewer returns it
+in its 400 answer: `'A B' is not a slug: use lowercase letters, digits and
+single hyphens`. The CLI's `taxonomy add` prefixes `--slug ` when it reports
+it. The new check runs after `_safe_store_id`, so a slug that tries to leave
+the store (`../evil`) still gets `invalid slug`, as
+`tests/test_store_editor.py:730` expects. Two existing tests change:
+`tests/serve/test_records.py:87` adds a nested term with `slug="admin/adapter"`
+and becomes the `parent=` form.
+
 ### 5. `tcw provision` never prompts (C4)
 
-`FsStoreProvisioner._run` passes git an environment with
-`GIT_TERMINAL_PROMPT=0`, which stops git's own prompt for HTTPS credentials
-(a credential helper still answers). For ssh it also sets
+`FsStoreProvisioner._run` passes git an environment built as
+`{**os.environ, ...}` with `GIT_TERMINAL_PROMPT=0`, which stops git's own
+prompt for HTTPS credentials (a credential helper still answers), and
+`GCM_INTERACTIVE=never`, which stops Git Credential Manager opening its own
+prompt or window. It removes `GIT_ASKPASS` and `SSH_ASKPASS` from that
+environment, since either names a program that asks the user. For ssh it also
+sets
 `GIT_SSH_COMMAND="ssh -o BatchMode=yes"`, but only when the environment holds
 neither `GIT_SSH_COMMAND` nor `GIT_SSH` and `git config --get core.sshCommand`
 prints nothing, so a user's own ssh setting is never replaced. With
@@ -137,23 +171,26 @@ when that folder has a `tcw` script, so every `subprocess.run(["tcw", …])` in
 the suite runs the `tcw` of the interpreter under test. One change instead of
 nine files.
 
-### 7. A term is a folder with a `meta.yaml` (C7)
+### 7. A folder with no `meta.yaml` stays a term (C7, rejected)
 
-`_local_slugs` and `get_local` count a folder as a term only when it holds a
-`meta.yaml`, as TCW-73 Design 8.2 defines a nested term and as the
-capabilities store already does (`_all_meta_dirs`). So `taxonomy list` no
-longer shows `invoice/sub`, `show invoice/sub` is not found, and a reference
-to it is reported dangling by `check`, which matches `rm invoice` deleting it
-with its parent. `remove`'s comment that a sub-folder without a `meta.yaml`
-"still lists as a term" is corrected. Litmus: "an entry is what has
-metadata" holds for any store.
+Rejected, by the orchestrator's decision after the plan review, which
+offered this as its smaller option. The finding assumed only a hand-made
+folder can lack `meta.yaml`, but TCW makes them itself: `taxonomy add` with a
+nested `slug` creates each missing parent folder with no `meta.yaml`, the
+viewer's create route does the same (`tests/serve/test_records.py:87`), and
+TCW-73 deliberately lists such a folder as a term
+(`tests/test_taxonomy_rm_gaps.py:178-210`, its Design 8.2). Counting only
+folders with a `meta.yaml` would hide terms TCW made. `_local_slugs` and
+`get_local` keep their current behavior and nothing changes.
 
-### 8. Every work command checks the project graph (C9)
+### 8. Work commands that open the backend check the project graph (C9)
 
 `open_backend` calls `require_valid()` on the registry it already opens, for
 the project the command acts on (`personal=True`), so a child's retired key
-refuses `work list` and every other work command exactly as it refuses
-`taxonomy list`. Another project's backend (`personal=False`) is not checked,
+refuses `work list`, and every other work command that calls `open_backend`,
+exactly as it refuses `taxonomy list`. Not every work command does:
+`work new --project` hands the item to another project through `delegate`
+and is not covered. Another project's backend (`personal=False`) is not checked,
 so one project's broken child does not stop reading it from elsewhere.
 Litmus: registry validation is store-agnostic.
 
@@ -168,19 +205,27 @@ optimistic concurrency is store-agnostic.
 
 `file_path` resolves the path it builds and refuses, with the same 404
 ("is not one of this item's files"), one that resolves outside the item
-folder's resolved path. It covers reads and writes, and the declaration file.
-A work path that is itself a link is unaffected, because both sides resolve.
+folder's resolved path. It covers reads and writes. The declaration routes,
+`get_declaration` and `put_declaration` in `tcw/serve/files.py`, do not go
+through `file_path`: they call `layout.capabilities_file` directly, and a GET
+follows a `capabilities.yaml` that is a link. They get the same check, through
+one shared helper, and the same 404. A work path that is itself a link is
+unaffected, because both sides resolve.
 Editing outside the viewer is the user's own business and is not changed.
 Litmus: the viewer's file routes exist only where the layout keeps files.
 
 ### 11. Wrapped commands in backticks (V6)
 
-The scan finds code spans over a whole paragraph instead of a line: a span
-may cross a single line break but not a blank line, each line break inside it
-reads as a space, and spans are paired left to right as Markdown pairs them.
-The original reason for the one-line rule (an unpaired backtick reuniting
-`tcw` and a verb from different sentences) cannot recur, since a span never
-crosses a paragraph. Commands it newly finds must be valid or reworded.
+The scan finds code spans over a block of joined lines instead of one line:
+a span may cross a single line break, each line break inside it reads as a
+space, and spans are paired left to right as Markdown pairs them. A block is a
+run of lines joined together, and it ends at a blank line, a fenced code
+block's fence, and before any line that starts a table row (`|`), a list item
+(`-`, `*`, `+` or a number followed by `.` or `)`) or a heading (`#`). So an
+unpaired backtick in one table row, list item or heading can never pair with
+one in the next. The original reason for the one-line rule (an unpaired
+backtick reuniting `tcw` and a verb from different sentences) cannot recur
+across those boundaries. Commands it newly finds must be valid or reworded.
 
 ### 12. Leaving a stage without its document (V7)
 
@@ -227,10 +272,12 @@ of the item folder in both backends, read through the layout.
 
 ### 16. The vocabulary scan reads paragraphs (T6)
 
-`scan` matches each paragraph (consecutive non-blank lines) joined with
-single spaces, then maps each hit back to the line where it starts, with its
-start column in that line and its end clamped to that line, so `Hit` and
-every caller (`test_shipped_text.py`'s `_allowed_at`) keep working.
+`scan` matches each block of lines joined with single spaces, then maps each
+hit back to the line where it starts, with its start column in that line and
+its end clamped to that line, so `Hit` and every caller
+(`test_shipped_text.py`'s `_allowed_at`) keep working. A block ends where
+Design 11's does: at a blank line, a fence, and before a line that starts a
+table row, a list item or a heading.
 
 ### 17. External stages are not round-checked (T7)
 
@@ -305,27 +352,50 @@ including CI, the test is collected and skipped. It writes a scratch project
 with the live scenario's `LIVE` configuration, opens its backend, installs
 the `Recorder`, and then:
 
-1. **Creates only what is missing.** It searches for tickets whose summary is
-   exactly `J2 paging probe NNN`, and creates only the numbers not found, so a
-   re-run never exceeds the 101 the owner approved.
-2. **Records the paging.** It waits (at most 120 seconds, as the scenario
-   waits for search lag) until a search finds all 101, then runs one real
-   `JiraClient.search` with the JQL `project = TCWTEST AND summary ~ "\"J2
-   paging probe\""` and the fields `tcw work list` reads (`read_fields`), and
-   asserts it returns every one of the 101 keys exactly once. That assertion
-   is itself the live check of the page walk.
-3. **Records the workflow.** It calls `client.workflows` for `TCWTEST` and
-   `Task`, and asserts the answer holds a transition from 10041 to 10012.
-4. **Records the screen.** It moves `J2 paging probe 101` to `Won't Do`
-   through transition 91, reads its transitions with
-   `expand=transitions.fields`, and asserts `J2 probe: reopen` is offered
-   with `labels` among its fields.
-5. **Cleans up.** It tries to delete each probe ticket
+1. **Creates only what is missing.** It first reads `j2-keys.json` in the
+   capture folder, where every key it creates is written as soon as Jira
+   answers, and then searches for tickets whose summary is exactly
+   `J2 paging probe NNN`. It creates only the numbers found in neither, so a
+   re-run, even one soon enough that search has not yet caught up with the
+   last run's tickets, never exceeds the 101 the owner approved.
+2. **Records the pages as Jira sent them.** It waits (at most 120 seconds, as
+   the scenario waits for search lag) until a search finds all 101. Then,
+   separately from `JiraClient`, it walks the endpoint itself: a loop that
+   posts to `/rest/api/3/search/jql` with the JQL
+   `project = TCWTEST AND summary ~ "\"J2 paging probe\""` and the fields
+   `tcw work list` reads (`read_fields`), records each request and answer, and
+   follows `nextPageToken` until an answer has none. The first answer is
+   recorded under the first-page name and the second request and its answer
+   under the next-page name. The test asserts that the second request carried
+   the `nextPageToken` the first answer gave, and that the pages together hold
+   every one of the 101 keys exactly once. Recording the pages this way means
+   that a mistake in `JiraClient.search`'s page walk cannot change what is
+   recorded.
+3. **Checks the client's page walk.** As its own step, it runs one real
+   `JiraClient.search` with the same JQL and fields, and asserts it returns
+   every one of the 101 keys exactly once. That assertion is the live check
+   of the page walk.
+4. **Records the workflow.** It calls `client.workflows` for `TCWTEST` and
+   `Task`, and asserts the answer holds a transition whose
+   `links.*.fromStatusReference`, mapped through the answer's own `statuses`
+   list to a status id, is 10041 (`Won't Do`) and whose target, mapped the
+   same way, is 10012 (`To Do`). A status reference is not a status id, so
+   the comparison never reads one as the other.
+5. **Records the screen.** It moves `J2 paging probe 101` to `Won't Do`
+   through transition 91, unless it is there already (a re-run finds it
+   there), reads its transitions with `expand=transitions.fields`, and asserts
+   `J2 probe: reopen` is offered with `labels` among its fields.
+6. **Cleans up, whatever happened before.** Steps 2 to 5 run inside a `try`
+   whose `finally` block does the clean-up and prints the remaining keys, so a
+   failed assertion still cleans up. It deletes only a ticket whose project is
+   `TCWTEST` and whose summary exactly matches `J2 paging probe NNN` (three
+   digits), checked on the ticket itself just before the delete
    (`DELETE /rest/api/3/issue/<key>`). At the first refusal for lack of
    permission it stops trying and prints every remaining key and the JQL
    `project = TCWTEST AND summary ~ "\"J2 paging probe\""`, for the owner to
    bulk-delete. Today the account cannot delete, so this is the expected path
-   unless the owner does the optional checklist step 4.
+   unless the owner does the optional checklist step 4. `j2-keys.json` is
+   kept, so the owner's list and a re-run both have it.
 
 **Where the recordings go.** `Recorder` keeps one file per endpoint and
 status, the answer with the most key paths (`capture.py:118-128`). The probe
@@ -367,7 +437,7 @@ fake (`tests/work/jira/fake.py`) is changed to answer in that shape, and a
 test against the fake reproduces the recorded shape and fails before the fix.
 The one difference that matters most: `search` stops when `isLast` is
 absent (`client.py:243`), so if Jira leaves `isLast` off a page that is not
-the last, `tcw work list` silently loses tickets past the first page; step 2's
+the last, `tcw work list` silently loses tickets past the first page; step 3's
 assertion would catch it.
 
 ## Owner's TCWTEST checklist
@@ -390,7 +460,8 @@ of them.
    Add the field **Labels** to it, and nothing else. Do not add the screen to
    any screen scheme.
    *Confirm:* the Screens list shows the new screen, and opening it shows
-   Labels as its only field.
+   Labels as its only field. (The agent confirms this with
+   `/rest/api/3/screens/{id}/tabs/{tab}/fields`.)
 2. **Add the restricted transition.** Project settings for `TCWTEST` →
    **Workflows** → edit `TCWTEST: TCW lifecycle workflow (Task, Sub-task)`.
    Add a transition:
@@ -423,9 +494,14 @@ of them.
    *Confirm:* say whether you did it; the agent re-reads the permission with
    a GET request.
 5. **Tell the agent the list is done.**
+6. **After the clean-up, if you did step 4:** remove the **Delete work items**
+   permission you granted, so the account goes back to what it could do
+   before.
 
 The 101 tickets themselves are created by the agent's live test, not by hand
-(Design 18).
+(Design 18). **Creating 101 tickets may send notification emails** to anyone
+watching `TCWTEST` or subscribed to its notification scheme; if that matters,
+check the project's notification scheme before telling the agent to go.
 
 ## Acceptance criteria
 
@@ -451,20 +527,25 @@ Each is checked by a test, named in the plan, unless a command is given.
 7. **P5.** `config show` writes an unknown key's `!!binary` and `!!set` values
    on one line each, and each line reads back to the same value.
 8. **C1.** `capabilities reset auth/login` with `auth/login/nested` local
-   exits 3, names `auth/login/nested`, and leaves both folders.
-9. **C2.** `taxonomy add X --slug 'A B'` and `--slug a/b` exit 2 and create
-   nothing; `--slug memo` still works.
+   exits 3, names `auth/login/nested` and both `rm` and `reset`, and leaves
+   both folders.
+9. **C2.** `taxonomy add X --slug 'A B'` and `--slug a/b` exit 2, name
+   `--slug`, and create nothing; `--slug memo` still works; the viewer's create
+   route answers 400 with a message that names no flag; `--slug ../evil` still
+   says `invalid slug`.
 10. **C3.** The scan reads `["git", "-c", "a=b", "switch", "x"]` as `switch`,
     reports each of the eight added verbs, accepts `clone` and `checkout` only
     inside `FsStoreProvisioner._obtain`, and fails on a `status` call without
     `--no-optional-locks`.
-11. **C4.** `_run` passes `GIT_TERMINAL_PROMPT=0`; it sets `GIT_SSH_COMMAND`
-    with `BatchMode=yes` when nothing is configured, and leaves a set
-    `GIT_SSH_COMMAND` as it was.
+11. **C4.** `_run` passes the rest of the environment through, with
+    `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never` and without
+    `GIT_ASKPASS` or `SSH_ASKPASS`; it sets `GIT_SSH_COMMAND` with
+    `BatchMode=yes` when nothing is configured, and leaves a set
+    `GIT_SSH_COMMAND` (or a `core.sshCommand`) as it was.
 12. **C6.** Under pytest, `shutil.which("tcw")` is in the folder of
     `sys.executable` whenever that folder has a `tcw`.
-13. **C7.** With `invoice/sub/` holding no `meta.yaml`, `taxonomy list` does
-    not show `invoice/sub` and `taxonomy show invoice/sub` exits 4.
+13. **C7 (rejected).** Nothing changes: `tests/test_taxonomy_rm_gaps.py`,
+    which lists a folder with no `meta.yaml` as a term, still passes.
 14. **C8.** Run from `p/docs`, the retired-key refusal names
     `../tcw-config.yaml`.
 15. **C9.** `work list` exits 1 naming the child's file when a child project's
@@ -474,7 +555,9 @@ Each is checked by a test, named in the plan, unless a command is given.
     stale one.
 17. **V2.** With an item's `spec/` a link to a folder outside the project,
     `GET` and `PUT` of `spec/spec.md` answer 404 and nothing is written
-    outside.
+    outside; with the item's `capabilities.yaml` a link to a file outside, the
+    declaration's `GET` and `PUT` answer 404 and the outside file is
+    unchanged.
 18. **V3.** Read: the comment above `_ANCHOR_CACHE` describes a server
     process.
 19. **V4.** The scanner tests find a stage name inside `${…}`, as an unquoted
@@ -521,6 +604,9 @@ Each is checked by a test, named in the plan, unless a command is given.
       `get-issue-key-transitions-200-screen-fields.json` with a transition
       whose `fields` hold `labels` with `required`. No other recorded file
       changed in the J2 commits.
+    - The first page's answer as Jira sent it, recorded by the test's own
+      loop over the endpoint, holds `nextPageToken`, and the next-page request
+      carried that token.
     - In the live run, `JiraClient.search` returned all 101 probe keys, each
       once (the test's output, quoted in `outcome.md`).
     - `test_recorded_shapes.py` lists the Design 18 read paths for the four
@@ -537,14 +623,10 @@ Each is checked by a test, named in the plan, unless a command is given.
 
 ## Risks
 
-- **C9 refuses more.** Every work command (and the viewer) now fails on any
-  problem `require_valid` finds in the project graph, not only the retired
-  key. That is what the other three axes already do; the test of a declared
+- **C9 refuses more.** Every work command that calls `open_backend` (and the
+  viewer) now fails on any problem `require_valid` finds in the project
+  graph, not only the retired key. That is what the other three axes already do; the test of a declared
   but absent child guards the case that must still work.
-- **C7 hides folders that listed before.** A hand-made term folder with no
-  `meta.yaml` disappears from `list` and references to it turn dangling.
-  `taxonomy add` always writes `meta.yaml`, so only hand-made folders are hit,
-  and `check` names each reference.
 - **V6 and T6 widen two scans.** Text that passes today may fail. Both scan
   files TCW-76 Part A is editing (`docs/migration-guide-2.8-to-3.0.0.md`,
   `docs/procedures/create-work.md`), and `scan` is used by
@@ -560,7 +642,8 @@ Each is checked by a test, named in the plan, unless a command is given.
   owner's TCWTEST checklist is done, and the item cannot complete without it.
   Every other fix goes first, so only J2 is left waiting.
 - **J2 writes to a real Jira project.** It creates 101 tickets with approved
-  summaries and moves one; nothing else. If the account still cannot delete,
+  summaries and moves one; nothing else. Creating them may send notification
+  emails (the owner's checklist warns of it). If the account still cannot delete,
   the tickets stay until the owner bulk-deletes them, and they show in
   `tcw work tickets list` for a `TCWTEST` project meanwhile, since they sit at
   `To Do`, the inbox status. The live scenario does not read that list.
@@ -569,6 +652,12 @@ Each is checked by a test, named in the plan, unless a command is given.
   its own review round (plan, Task 11) before the item lands.
 
 ## Overlap with TCW-76 Part A
+
+The 2.x-to-3.0 user-visible changes this item makes (C2, V1, C4, C9, T5) have
+already been sent to TCW-76 for its migration guide, so this item does not
+edit `docs/migration-guide-2.8-to-3.0.0.md`. TCW-76's Task A10 owns
+`docs/capabilities/cli/validate-a-project/description.md`; this item hands it
+the T5 wording instead of editing it.
 
 No file is changed by both. Two are read by both: `tests/doc_vocabulary.py`
 (changed here) is imported by `tests/test_docs_describe_3_0.py` (changed
