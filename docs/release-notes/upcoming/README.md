@@ -3,7 +3,8 @@
 User-facing release notes for the next version. Plain language — no jargon or
 internal module names.
 
-Add one file per change, named after its work item: `<work-item-slug>.md`. Work
+Add one file per change, named after its work item's folder name, never the
+full slug, whose `/` would make a path: `<folder>.md`. Work
 done outside any item uses `<YYYY-MM-DD>-<short-description>.md`. Edit only your
 own file, never another change's; that is what keeps branches from colliding.
 
