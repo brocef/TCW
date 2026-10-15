@@ -562,3 +562,55 @@ Every task traces to a criterion: Task 1 to 2-4; 2 to 6, 7, 10; 3 to 6
   being changed here: `skills/README.md:85` still says "TCW-75 rewrites this
   skill" (TCW-74's file), and `tcw/store/base.py:5-6`'s docstring still says
   remote adapters are "possible but unbuilt" (Python text is TCW-73's).
+
+## Amendments after the plan review (2026-10-15)
+
+An adversarial review of this plan (one round, `adversarial-spec-reviewer`)
+returned NOT DONE with two must-fix findings and eight to handle during
+implementation. Each was checked against the branch; all are accepted, and
+they override the task text above where the two differ.
+
+1. **Links to text a later task writes (must-fix).** Task 2's `stores.md`
+   does not link to the git example; Task 7 adds that link when the heading
+   exists. In general, a task that adds or renames headings in a guide also
+   fixes every anchor into that guide from a document already in
+   `REWRITTEN`, in the same commit, so the link check stays green.
+2. **The `AGENTS.md` section is scanned as text, not as a file (must-fix).**
+   Task 3 changes `_names(doc, entry)` and `_flag_named(doc, command, flag)`
+   in `tests/test_shipped_text.py` to take the document's text (callers pass
+   `path.read_text(...)`), so criterion 4's check can pass the owned span of
+   `AGENTS.md` alone. Until Task 3, the allowance-name check in Task 1 reads
+   text through a local adapter; Task 5 relies on the text form.
+3. **Mutation 17.3** inserts `tcw work init` (still in `REMOVED_COMMANDS`
+   after Task 14), not `tcw work list --status x`.
+4. **Criteria 6 and 7's key paths are spelled in full**, with `*` for a
+   name chosen by the project (`work.stages.*.post`, `projects.parent.*.jira.site`),
+   never `<stage>`: 57 paths, each its own heading and its own row. Headings
+   live in exactly one reference: `work.md` holds every `work.*` path but
+   `work.jira.*` and `work.documentation`; `jira.md` holds `work.jira.*`;
+   `docs-sync.md` holds `work.documentation`; `stores.md` holds
+   `taxonomy.path`, `taxonomy.repository`, `capabilities.path`,
+   `capabilities.repository` (and describes `work.path` and
+   `work.repository` by linking to `work.md`'s headings);
+   `projects.md` holds `id`, `taxonomy.extends`, `capabilities.extends` and
+   every `projects.*` path; `personal.md` holds `user.name`.
+5. **Criterion 2's built-in mutation is a pytest case** (Task 1, extended
+   in Task 9): it copies a real owned document to `tmp_path`, inserts
+   `tcw work start`, and asserts the scan reports that line. 17.1 stays as
+   the hand check.
+6. **Task 3's `GIT_ALLOWED`:** about thirteen git-scan hits exist in
+   `stores.md` and `projects.md` today. Each is reworded where the word is
+   an instruction; where it is a fact (a linked git worktree, a `.git` URL
+   in an example, a `ref`, an anchor such as `#example-keeping-git-in-step-…`)
+   it is allowed with its reason, as spec Design 1.5 permits.
+7. **Anchors keep underscores** (`TCW_PROJECT_<ID>` → `tcw_project_id`), as
+   GitHub does; choice 3's punctuation rule removes everything except
+   letters, digits, `-`, `_` and spaces.
+8. **Task 2's record edits** (`docs/capabilities/skills/configure`,
+   `docs/taxonomy/configure-skill`) are checked by running the branch's
+   `tcw validate` in a scratch fixture holding copies of the edited records
+   and the records they link to; the result goes in `outcome.md`.
+9. **Note 3 in the guide:** Task 7 ends with
+   `grep -nE 'consolidate-plans|decompose|delegation|post-mortem' docs/guide/configuration.md`
+   printing no procedure-id use, recorded in `outcome.md`.
+10. `SHIPPED` starts at `tests/test_shipped_text.py:68`.
