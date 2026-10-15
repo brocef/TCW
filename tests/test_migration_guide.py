@@ -254,3 +254,180 @@ def test_judges_is_1_with_an_outcome_and_0_without():
 def test_every_link_in_the_guide_resolves():
     problems = link_problems(GUIDE_REL, GUIDE)
     assert not problems, "broken links:\n  " + "\n  ".join(problems)
+
+
+# -- Criterion 1: the guide opens with its prerequisites and rules ------------------------
+
+def top_headings() -> list[str]:
+    return [heading for heading, _ in sections(GUIDE, 2)]
+
+
+def test_the_first_two_sections_are_the_prerequisites_and_the_rules():
+    assert top_headings()[:2] == ["Before you start", "Rules"]
+
+
+def test_the_prerequisites_and_rules_come_before_any_mapping_table():
+    first_table = GUIDE.index("\n| 2.")
+    assert GUIDE.index("\n## Rules\n") < first_table
+    assert GUIDE.index("\n## Before you start\n") < first_table
+
+
+@pytest.mark.parametrize("prerequisite", [
+    "**The project is on 2.8.x.**",
+    "**The 3.0 CLI is installed, beside 2.8.**",
+    "**The working tree has no uncommitted changes**",
+    "**No 2.x item worktree is open.**",
+    "`git worktree list | grep -E '\\[work/'`",
+    "**A branch or tag marks the 2.x state**",
+    "**Every connected project is on this machine.**",
+])
+def test_each_prerequisite_is_named(prerequisite):
+    assert prerequisite in section(GUIDE, 2, "Before you start")
+
+
+def test_the_rules_say_order_then_check_then_stop():
+    rules = section(GUIDE, 2, "Rules")
+    order = rules.index("1. **Do the steps in order**")
+    check = rules.index("2. **After each step, run its check")
+    stop = rules.index("3. Stop and ask the user")
+    assert order < check < stop
+
+
+# -- Criterion 2: steps 0 to 12, each with a check ----------------------------------------
+
+def steps() -> list[tuple[str, str]]:
+    return sections(section(GUIDE, 2, "The steps"), 3)
+
+
+def step(number: int) -> str:
+    [body] = [b for h, b in steps() if h.startswith(f"Step {number}: ")]
+    return body
+
+
+def check(number: int) -> str:
+    """A step's check: from its `**Check:**` paragraph to the end of the step."""
+    body = step(number)
+    assert body.count("\n**Check:**") == 1, f"step {number} has no single check"
+    return body[body.index("\n**Check:**"):]
+
+
+def test_the_steps_are_0_to_12_in_order():
+    numbers = [int(re.match(r"Step (\d+): ", h).group(1)) for h, _ in steps()]
+    assert numbers == list(range(13))
+
+
+@pytest.mark.parametrize("number", range(12))
+def test_every_step_has_one_check(number):
+    check(number)
+
+
+@pytest.mark.parametrize("number", [n for n in range(12) if n != 2])
+def test_every_check_but_step_2s_has_a_command_and_its_output(number):
+    text = check(number)
+    assert SPAN.search(text) or FENCE.search(text), f"step {number}'s check has no command"
+    assert re.search(r"\b(prints|exits|ends with)\b", text), \
+        f"step {number}'s check gives no expected output"
+
+
+def test_step_2s_check_is_the_reading_at_the_end_of_step_3():
+    assert "is the Jira-workflow reading at the end of step 3" in check(2)
+
+
+def test_step_1s_check_counts_the_approved_plan():
+    assert "`grep -c '^## Approved plan' <log>` prints `1`" in check(1)
+
+
+@pytest.mark.parametrize("number", [4, 5, 6, 7])
+def test_no_check_before_step_8_needs_the_inbox_gone(number):
+    text = check(number)
+    assert "grep -x inbox" not in text and "-name inbox" not in text
+
+
+def test_step_8s_check_is_that_the_inbox_is_gone():
+    assert "`ls docs/work | grep -x inbox` prints nothing" in check(8)
+
+
+def test_steps_9_and_10_check_only_their_scope():
+    assert "without what it\nskips" in check(9)
+    assert "<hook files>" in check(10)
+    assert "`<hook files>`" in step(1)
+
+
+# -- Criterion 3: the four stops, and no question per item --------------------------------
+
+STOP = "**Stop and ask**"
+
+
+def test_stop_and_ask_is_in_steps_1_2_and_12_only():
+    where = [n for n in range(13) if STOP in step(n)]
+    assert where == [1, 2]
+    assert GUIDE.count(STOP) == 2
+
+
+def test_the_rules_state_the_stop_for_a_failing_check():
+    rules = section(GUIDE, 2, "Rules")
+    assert "**a check that fails after one retry**" in rules
+    assert "ask nothing item by\n   item" in rules
+
+
+# -- Criterion 7: behavior that had no key -------------------------------------------------
+
+@pytest.mark.parametrize("topic", ["**Automatic commits.**", "**Publishing.**",
+                                   "**Retention.**", "**Ignored discarded folders.**"])
+def test_behavior_with_no_key_is_named(topic):
+    assert topic in section(GUIDE, 2, "2.x behavior that had no key")
+
+
+# -- Criterion 9: no harness-only syntax, and a REST form for every Jira write ------------
+
+def test_no_shell_escape_and_no_slash_command():
+    assert "!`" not in GUIDE
+    slash = [s for s in SPAN.findall(GUIDE) if re.match(r"^/[a-z][a-z0-9-]*(:[a-z0-9-]+)?$", s)]
+    assert not slash, slash
+
+
+@pytest.mark.parametrize("action, form", [
+    ("Search", "/rest/api/3/search/jql"),
+    ("Create a ticket", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/2/issue\""),
+    ("List a ticket's transitions", "/transitions\""),
+    ("Move a ticket", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/3/issue/$KEY-42/transitions\""),
+    ("Set fields", "-X PUT"),
+    ("List a ticket's comments", "/comment?maxResults=100"),
+    ("Post a comment", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/2/issue/$KEY-42/comment\""),
+    ("Link a blocker", "/rest/api/3/issueLink"),
+])
+def test_every_jira_read_and_write_has_a_rest_form_and_a_web_equivalent(action, form):
+    [row] = [r for r in tables(section(GUIDE, 2, "Talking to Jira")) [0][1:] if r[0] == action]
+    assert form in row[1] and row[2], row
+
+
+def test_jira_credentials_are_named_by_variable():
+    text = section(GUIDE, 2, "Talking to Jira")
+    assert 'AUTH="$TCW_JIRA_EMAIL:$TCW_JIRA_TOKEN"' in text
+    assert "the two variables `credentials` names" in text
+
+
+# -- Criterion 10, its automatic part: every 3.0 command named parses --------------------
+
+from tests.test_documented_cli_surface import _check, _invocations, tree  # noqa: E402,F401
+
+# 2.x commands this guide names outside a mapping table's first column, each
+# with the reason it is named there.
+TWO_X_SPANS: dict[str, str] = {}
+
+
+def _without_first_cells(text: str) -> str:
+    """The guide with each table row's first cell emptied: that column names 2.x
+    commands on purpose."""
+    return "\n".join(re.sub(r"^\|(\\\||[^|])*\|", "| |", line) if line.startswith("|") else line
+                     for line in text.splitlines())
+
+
+def test_every_command_outside_a_first_column_parses_on_3_0(tree):
+    problems = []
+    for span in _invocations(_without_first_cells(GUIDE)):
+        if span in TWO_X_SPANS:
+            continue
+        if (problem := _check(span, tree)) is not None:
+            problems.append(f"`{span}`: {problem}")
+    assert not problems, "\n  ".join(["the guide names commands 3.0 lacks:", *problems])
