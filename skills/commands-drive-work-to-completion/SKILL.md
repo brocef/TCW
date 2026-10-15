@@ -28,10 +28,8 @@ go to a subagent, moves never do.
 3. A rejected review or qa round sends the item back to implement; the
    implement prompt says how to read the rejection. Keep going.
 
-**Review** is done by a reviewer that did not write the code: a subagent
-where you can start one (the `reviewer` agent where your harness has it),
-otherwise a fresh read of the change against the spec, in this session, said
-plainly in the round.
+**Review** follows the review prompt, which says who reviews. Where it asks
+for a separate reviewer and your harness has the `reviewer` agent, use that.
 
 **Qa** depends on who decides its verdict:
 

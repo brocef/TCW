@@ -64,7 +64,10 @@ same work is itself news.
 <!-- backend: jira -->
   Post it as a comment with `tcw work comment <slug>`, first line
   `Added <YYYY-MM-DD>`: the request is the ticket's description, which Jira
-  owns.
+  owns. A ticket still waiting in the inbox is not an item yet, so
+  `tcw work comment` cannot reach it: put the addition, with the ticket's
+  key, in your report for a person to add in Jira, and do not adopt the
+  ticket to make room for it.
 <!-- /backend -->
 - **Revise** means running the spec stage again, and the plan stage if the
   item has a plan, after adding the idea: `tcw work stage prompt spec <slug>`

@@ -29,4 +29,6 @@ Use the `work` skill. This skill covers the stage range **`inbox` →
    existing item (naming it).
 
 Do not move an item past request: running spec is the `commands-plan-work`
-skill. Leave each accepted item at request with its request written.
+skill. The request prompt ends by telling you to run `tcw work advance
+<slug>` once the request is written; in this skill, do not run it. Leave each
+accepted item at request with its request written.

@@ -61,16 +61,7 @@ EXTRA_PATTERNS = (
 )
 
 # Exact phrases the vocabulary scan accepts, each with its reason.
-VOCABULARY_ALLOWED = {
-    "skills/setup/SKILL.md": {
-        "Bash(node --version)":
-            "the Node.js runtime's command, which `tcw serve` needs; not a TCW project",
-    },
-    "skills/setup/references/install.md": {
-        "Node 22.12":
-            "the Node.js runtime's version, which `tcw serve` needs; not a TCW project",
-    },
-}
+VOCABULARY_ALLOWED: dict[str, dict[str, str]] = {}
 
 # What TCW-74's disposition table keeps, rewrites or adds (Design 7), outside
 # `skills/configure/`.

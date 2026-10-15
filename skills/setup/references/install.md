@@ -68,7 +68,7 @@ acceptable only because the container is disposable and has no user environment
 to damage. The hook exits 0 on every path, so a failed install never stops a
 session from starting, and prints one line when the install failed.
 
-Node.js is not a general TCW prerequisite. Check for Node 22.12 or newer only
-when the user intends to run or diagnose `tcw serve`. Installed TCW already
-contains the prebuilt Fastify/React assets; pnpm and `node_modules` are
-contributor-only requirements and must not be added to install steps.
+TCW does not need Node.js, `tcw serve` included: the viewer runs inside the
+CLI's own Python process, and installed TCW already contains its prebuilt
+browser assets. Node.js and pnpm are needed only by contributors rebuilding
+those assets, and must not be added to install steps.

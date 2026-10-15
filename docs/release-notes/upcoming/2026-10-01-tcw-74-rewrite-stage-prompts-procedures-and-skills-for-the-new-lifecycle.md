@@ -5,8 +5,10 @@ lives in one place.
 
 - **Every stage has built-in instructions,** including the new `review` and
   `qa`: `tcw work stage prompt <stage> <slug>` prints what the stage is for,
-  what it reads, what it writes and where, and how to finish, ending with the
-  `tcw work advance` command to run. Review and qa write a round whose
+  what it reads, what it writes and where, and how to finish. A stage that
+  moves the item on ends with the `tcw work advance` command to run; inbox,
+  postmortem, and the stages Jira keeps (request and qa there) end without
+  one, because a person or the backend moves the item. Review and qa write a round whose
   `verdict` and `judges` decide where the item goes. Where your project keeps
   its work in Jira, the request and qa instructions describe the ticket rather
   than files.
@@ -30,10 +32,12 @@ lives in one place.
   `delegation` are gone: the postmortem stage has its own instructions, and
   splitting and filing into another project are described in the `work`
   skill. A configuration that still names a removed id is refused by
-  `tcw validate`.
+  `tcw validate`, which says where that procedure's text went.
 - **Skills removed:** `work-stage` (read `tcw work stage prompt` instead),
   `commands-verify-work` (review and qa replace verify) and `post-mortem` (use
   the postmortem stage). The `verifier` and `post-mortem` agents are replaced
   by a `reviewer` agent that reads the review stage's instructions.
-- **The `setup` skill** can now walk you through moving a project's work into
-  Jira, checking the workflow with `tcw validate --remote`.
+- **The `setup` skill** can now walk you through configuring a project to
+  keep its work in Jira (`backend: jira`), checking the workflow with
+  `tcw validate --remote`. It configures the backend; it does not move
+  existing items, so finish or discard the items kept as files first.

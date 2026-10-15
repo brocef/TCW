@@ -1,6 +1,6 @@
 ---
 name: extras-autonomous-work
-description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via the commands-drive-work-to-completion skill, consulting read-only advisors in place of every human checkpoint (by default Codex and an Opus subagent; a project can name its own).
+description: Use when asked to work TCW items autonomously, unattended, or "without asking me" — drives one or more items to completion via the commands-drive-work-to-completion skill, consulting read-only advisors in place of every human checkpoint (by default Codex and a read-only subagent on the strongest model the harness can start; a project can name its own).
 allowed-tools: Bash(tcw *), Bash(codex *), Agent, SendMessage
 compatibility: Declares what TCW's shipped procedure needs — the Codex CLI (`codex`) on PATH and a harness with subagents (Agent, SendMessage). A project that replaces it under `work.procedures.unattended-work` may need other tools. Requires a `tcw` with `tcw work procedure`.
 dynamic_skill: true # which skills a project may override, and why: ../README.md
@@ -75,7 +75,10 @@ rule, or any disagreement you can settle by reading the code.
 Give the round you write an `## Autonomous decisions` section: one line per
 consult — the question, what each advisor said, what you chose, why. Decisions
 made up to and during implement go in the implement round; decisions at review
-or qa go in that stage's round, which is written after them. This is what makes
+or qa go in that stage's round, which is written after them. Where qa writes no
+round, because a person decides its verdict or the backend keeps it, put the
+section in the findings comment you post on the item, or in your closing
+report if you post none. This is what makes
 an unattended run reviewable afterwards. The run is not finished without it.
 
 Close with one block per item: slug, the stage it ended at, decisions taken,

@@ -1,6 +1,6 @@
 As a user or agent, I sweep my project's open GitHub issues and turn the ones worth acting on into `tcw work` items, so that the issues my users file and the work my agents do stay in step.
 
-Triage decides the outcome before anything is created: an issue may be worth doing, a duplicate, not worth doing, or too ill-defined to act on — and only the first becomes a work item. An accepted issue is filed as an inbox arrival recording the issue number and link and preserving the reporter's own words exactly, which is also how a later sweep recognizes it as already tracked; writing the request is the request stage's job, later.
+Triage decides the outcome before anything is created: an issue may be worth doing, a duplicate, not worth doing, or too ill-defined to act on — and only the first becomes a work item. An accepted issue is filed with `tcw work new` as an item at the request stage, recording the issue number and link and preserving the reporter's own words exactly, which is also how a later sweep recognizes it as already tracked; shaping that text into a full request is the request stage's job, later.
 
 Each triaged issue gets an offered reply — a duplicate closed with a pointer, a closure with its reason, a request for the missing information, or an acknowledgement carrying the new item's slug — and nothing is posted to GitHub without approving the exact text. The loop closes when the work item ends: a completed item's issue is answered and closed once the fix is released, and a discarded item's issue is answered with the reason.
 

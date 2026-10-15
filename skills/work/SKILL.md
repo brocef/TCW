@@ -36,7 +36,7 @@ working a stage, and follow it; this skill does not repeat it.
 | `plan`       | the plan                                                         |
 | `implement`  | the code, the records, and one round (`--next`) with no verdict  |
 | `review`     | one round with `verdict` and `judges` front matter               |
-| `qa`         | one round with `verdict` and `judges`, or findings when people decide |
+| `qa`         | one round with `verdict` and `judges` (with `decided-by` when a person decides); where the backend keeps qa, findings in a comment and no round |
 | `postmortem` | a side stage on any item that was not discarded; never moves it  |
 
 `completed` and `discarded` end an item. **`tcw work advance <slug>`** moves an
@@ -62,6 +62,10 @@ prompt says so. The configure skill's Jira reference covers that setup.
    the work when it was written; check for anything newer before trusting it.
    Handoffs are never deleted; the newest wins.
 3. `tcw work stage prompt <stage> <slug>`, and work the stage.
+
+The inbox is different: it is about arrivals, not one item, so it has no
+handoff to read. Run `tcw work stage prompt inbox`, with no slug, and work
+every arrival it names.
 
 ## Rules no project text changes
 

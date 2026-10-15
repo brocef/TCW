@@ -32,6 +32,11 @@ makes the verdict stale, and a stale verdict lets nothing through. Under the
 front matter, list each acceptance criterion as met, not met, or not
 checkable, with the evidence for each.
 
+**Who reviews.** A reviewer that did not write the code: a separate agent
+where you can start one, given this stage's instructions and able only to read.
+Where you cannot, read the change afresh against the spec in this session, and
+say plainly in the round that the author reviewed it.
+
 ## Steps
 
 1. Run the project's checks. **No claim without output from a command you ran

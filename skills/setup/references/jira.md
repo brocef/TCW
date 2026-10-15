@@ -10,6 +10,13 @@ Every configuration key named here is documented in the configure skill's Jira
 reference; this page does not repeat them. Run `tcw validate` first: the
 project must already work on files (see `project.md`).
 
+**Switching moves no items.** Once the project says `backend: jira`, TCW reads
+its items from Jira only, and items kept as files are not seen by any
+`tcw work` command. Before step 2, run `tcw work list` with the user and settle
+every unfinished item first: take it to completed, or discard it with
+`tcw work discard <slug> --reason "<why>"`. Anything still wanted is filed as a
+Jira ticket once the switch is made.
+
 ## 1. Choose the stages and their statuses
 
 Ask which stages the project will use. Request and qa happen on the ticket in
