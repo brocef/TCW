@@ -90,10 +90,14 @@ can show.
   plan lists any other worktrees.
 - **A branch or tag marks the 2.x state**, so the project can return to it,
   for example `git tag tcw-2.x-final`.
-- **Every connected project is on this machine.** 3.0 stops with exit code 5
-  when a project the configuration declares (under `connected-projects`) is
-  missing, which would hide the migration's own findings. 2.8's
-  `tcw validate` reports a missing one, and `tcw provision` fetches it.
+- **Every connected project is on this machine, and is migrated with this
+  one.** 3.0 reads the configuration of every project the configuration
+  declares (under `connected-projects`): one that is missing is reported as
+  unresolved and cannot be checked, and one still on 2.x makes
+  `tcw validate` fail on its `connected-projects` key. 2.8's `tcw validate`
+  reports a missing one, and `tcw provision` fetches it. Plan to run this
+  guide in each connected project; at the least, each must have finished its
+  own step 3 before this project's step 11.
 - **In Jira mode, the Jira credentials are set**: the two environment
   variables the configuration names under `credentials` hold an email address
   and an API token for an account that can read and edit the project's tickets.
@@ -176,11 +180,13 @@ make you look for it. 3.0 drops all of it:
   `graveyard.yaml`, under `work.retain` (by default it kept everything). 3.0
   never deletes an item. A project that wants old items gone removes their
   folders itself. Items 2.x already deleted stay deleted.
-- **Ignored discarded folders.** A project whose `.gitignore` ignored
-  `docs/work/discarded/*` has discarded items only on the machine that
-  discarded them. 3.0 never moves a folder, so that rule stops matching
-  anything, and those folders would be invisible to the migration unless step
-  0 looks for them.
+- **Ignored completed and discarded folders.** 2.x's `tcw init` wrote
+  `.gitignore` rules for `docs/work/completed/*` and `docs/work/discarded/*`
+  (each with a `!…/.gitkeep` exception and a comment line above them), so in
+  a project that kept those rules, finished items exist only on the machine
+  that finished them. 3.0 never moves a folder, so the rules stop matching
+  anything, and those folders would be invisible to the migration unless
+  step 0 looks for them.
 - **Folders that moved.** A 2.x move moved the item's folder between status
   folders, so a path into an item changed with every move. A 3.0 folder stays
   where it was made; only `tcw work rename` changes its name.
@@ -250,9 +256,9 @@ Then write one plan and present it to the user as one message. It covers:
   them would carry forward work that no longer applies. A pruned item keeps
   its folder at stage `discarded`; in Jira mode its ticket, created if it has
   none, is moved to the discarded status with the reason as its comment.
-- **The ignored discarded folders** step 0 found: which to keep as tracked
-  `discarded` items. The rest are moved out of the work path at step 4, to a
-  folder outside the repository that the plan names.
+- **The ignored completed and discarded folders** step 0 found: which to
+  keep as tracked items. The rest are moved out of the work path at step 4, to
+  a folder outside the repository that the plan names.
 - **The inbox entries**, and what each becomes (step 8).
 - **The rewrites**: the configuration, key by key
   ([Configuration](#configuration)); each hook, with its variables and status
@@ -346,9 +352,12 @@ git -C "$SCRATCH" init -q
 ```
 
 A connected project's path is relative to the project, so from the scratch
-folder it points nowhere, and 3.0 would stop with exit code 5. For each one,
-set `TCW_PROJECT_<ID>` (its ID in capitals, with `-` written `_`) to the
+folder it points nowhere, and 3.0 reports it as unresolved. For each one, set
+`TCW_PROJECT_<ID>` (its ID in capitals, with `-` written `_`) to the
 project's real folder, for example `export TCW_PROJECT_SHOP_API=/work/shop-api`.
+Set this project's own variable to the scratch folder as well
+(`export TCW_PROJECT_SHOP=$SCRATCH` for a project whose ID is `shop`), so that
+each connected project's path back to this one leads to the scratch copy.
 
 Then, in the scratch folder, run `tcw validate` (filesystem mode) or
 `tcw validate --remote` (Jira mode), which prints one finding per line. Read
@@ -360,6 +369,9 @@ every line:
   transitions, a missing status, or a screen that asks for more than a comment
   is fixed in Jira before going on (back to step 2's checklist); a move it
   could not check, a `warning` starting `unchecked:`, is listed for step 11;
+- **a finding naming another project's file** belongs to that project's own
+  migration (for example `the key 'connected-projects' was renamed`, while it
+  is still on 2.x);
 - **any other finding** is noted in the log and left to step 11, which
   validates the real project.
 
@@ -389,12 +401,21 @@ Then:
 
 3. **Copy every pair in `renames.yaml`** into the log, as `<old slug> -> <new
    slug>`, one per line, for step 9.
-4. **Move the ignored discarded folders the plan does not keep** out of the
-   work path, to the folder the plan names outside the repository. The kept
-   ones were moved like any other item above.
+4. **Move the ignored folders the plan does not keep** out of the work path,
+   to the folder the plan names outside the repository. The kept ones are
+   moved like any other item. Use a plain `mv` for them: `git mv` refuses a
+   folder git does not track, and `git mv -k` skips it without a word. **In a
+   run made in a worktree**, the ignored folders exist only in the primary
+   checkout: copy each kept one from there into the worktree's work path, and
+   move each one not kept out of the primary checkout's work path, or 3.0 will
+   find it there once the primary checkout is on the migrated branch.
 5. **Delete** the status folders (`backlog/`, `active/`, `review/`,
    `blocked/`, `completed/`, `discarded/`) with their `.gitkeep` files,
    `graveyard.yaml`, `dod.yaml` and `renames.yaml`. Leave `inbox/` for step 8.
+   Delete a status folder only once it holds nothing but its `.gitkeep`:
+   `find docs/work/backlog docs/work/active docs/work/review docs/work/blocked docs/work/completed docs/work/discarded -mindepth 1 ! -name .gitkeep 2>/dev/null`
+   must print nothing first. This step's check cannot see an item that was
+   deleted with its folder.
 
 A step rerun skips a folder already at the top of the work path.
 
@@ -406,8 +427,9 @@ prints nothing.
 
 ### Step 5: Convert item fields
 
-For every item, convert the rest of `state.yaml` into `item.yaml`, row by row
-of [Item fields](#item-fields): `priority` as a name, `effort`,
+For every item, convert the rest of `state.yaml` into `item.yaml`, one key per
+line as the example in [Item fields](#item-fields) shows (this step's check
+reads it that way), row by row of that table: `priority` as a name, `effort`,
 `complexity` and `tags` as they are, `parent` and `blocked-by` as full slugs
 using each folder's name after step 4, `initiative` as `parent` where the plan
 says, and in filesystem mode `owner` as `assignee`. Then delete `state.yaml`.
@@ -503,7 +525,8 @@ prints nothing.
 
 - **Filesystem mode:** each `inbox/<name>.md` becomes an item at stage
   `inbox`: a folder `docs/work/<name>/` (renamed as in step 4 when `<name>` is
-  not a date and lower-case words) holding `item.yaml` with `title` (the
+  not a date and lower-case words, using the date the entry was added,
+  `git log --diff-filter=A -1 --format=%cs -- <entry>`) holding `item.yaml` with `title` (the
   entry's first `# ` heading, or its name's words), `stage: inbox` and
   `priority: medium`, and `request/request.md` holding the entry's text.
 - **Jira mode:** each entry's ticket was created at step 6, or the plan
@@ -520,12 +543,17 @@ Collect every old name in one file, one per line: the folders renamed at steps
 documents of open items (those not at `completed` or `discarded`), the
 configuration, and the project's live documents, rewrite each old name to its
 new one, and each `tcw://work/<old slug>` to the new slug
-([Live references](#live-references)). Leave alone what step 9's plan entry
-skips, and the documents of finished items, changelogs and release notes.
+([Live references](#live-references)). In open items, also rewrite each
+relative link between one item's documents, which step 7 moved into stage
+folders: a link to `spec.md` in the plan becomes a link to
+`../spec/spec.md`. Leave alone what step 9's plan entry skips,
+and the documents of finished items, changelogs and release notes.
 
 **Check:** `grep -rnF -f <the file of old names> <open item folders> <live documents>`,
 with the folders and documents the approved plan lists and without what it
-skips, prints nothing.
+skips, prints nothing; and
+`grep -rnE '\]\((\./)?(intake|initial-request|spec|plan|outcome|refined-outcome|rework|post-mortem)\.md' <open item folders>`
+prints nothing.
 
 ### Step 10: Review the project's own files
 
@@ -538,7 +566,7 @@ text. Point out to the user any other text that relies on removed behavior.
 **Check:** `grep -nE 'TCW_(STATUS|TRANSITION|NODE_ROOT|RESOLUTION)\b' <hook files>`
 over the plan's `<hook files>` prints nothing;
 `grep -rlnE '^(Planning doc|Tracker):' docs/capabilities`, with the project's
-capabilities path, prints nothing; `grep -n 'docs/work/discarded' .gitignore`
+capabilities path, prints nothing; `grep -nE 'docs/work/(completed|discarded)' .gitignore`
 prints nothing; and `grep -cx '/tcw-config.local.yaml' .gitignore` prints `1`.
 
 ### Step 11: Validate
@@ -746,18 +774,21 @@ instructions for every name in a first column.
 | `active/` | `implement` |
 | `review/` | `qa`: 2.x review was the requester accepting the finished work, which is what 3.0's qa stage is for (see [Acceptance history goes to qa](#acceptance-history-goes-to-qa)) |
 | `blocked/` | not a 2.8 status, but a leftover from earlier versions. Deleted with the other status folders. An item found in one is listed in the plan and staged by the `backlog/` rule, or at `implement` when it has `outcome.md` |
-| `completed/` | `completed` |
+| `completed/` (tracked, or ignored by `.gitignore`) | `completed` |
 | `discarded/` (tracked, or ignored by `.gitignore`) | `discarded`; the 2.x resolution (`wontfix`, `duplicate` or `superseded`) and any reason become a comment |
 
-- **The rule picks a stage whose documents are already written.** A later
-  stage would make `tcw validate` warn that the item is ahead of its documents.
-  When the stage the rule picks is turned off in the new configuration, the
-  item takes the next flow stage that is on.
-- **Discarded folders ignored by `.gitignore`** exist only on the machine
-  that discarded them. Step 0 finds them and the plan lists them. The user
-  chooses which to keep; a kept one becomes a tracked `discarded` item, since
-  3.0 has no folder left to ignore, and the `.gitignore` rule is removed at
-  step 10. The rest stay untracked on that machine and are not migrated.
+- **For `backlog/`, the rule picks a stage whose documents are already
+  written**, so the item is not ahead of its documents. Items from `active/`
+  and `review/` usually are: 2.x never required a spec or plan, and
+  `tcw validate` warns once for each earlier stage with nothing written
+  (`stage is at implement but has nothing from spec`). Those warnings are true
+  and expected; step 11 lists them. When the stage the rule picks is turned
+  off in the new configuration, the item takes the next flow stage that is on.
+- **Completed and discarded folders ignored by `.gitignore`** exist only on
+  the machine that finished them. Step 0 finds them and the plan lists them.
+  The user chooses which to keep; a kept one becomes a tracked item, since 3.0
+  has no folder left to ignore, and the `.gitignore` rules are removed at step
+  10. The rest are moved out of the work path and are not migrated.
 - **A child nested inside its parent's folder**, with no `parent` field, was
   made by a version before 2.x recorded `parent`. Step 4 moves it out to the
   top of the work path, and its `parent` becomes the folder it was nested in.
@@ -792,7 +823,7 @@ ticket and then reduces it to that line.
 | `effort`, `complexity` | unchanged: `low`, `medium`, `high` or `very-high` (Jira: the custom fields `work.jira.fields` names) |
 | `tags` | `tags` (Jira: the ticket's labels) |
 | `owner` | filesystem: `assignee`. Jira: dropped, because it is a git identity rather than a Jira account; listed in the plan |
-| `blocked_by` | `blocked-by`, a list of full slugs using the folders' final names. A blocker written as free text is dropped and listed, since a 3.0 blocker is an item. Jira: a `Blocks` link; a link to a ticket that has no item shows as `untracked` in `tcw work show` |
+| `blocked_by` | `blocked-by`, a list of full slugs using the folders' final names: each 2.x entry `slug: <folder>` becomes `<project>/<folder>`. An entry `external: <text>` is dropped and listed, since a 3.0 blocker is an item. Jira: a `Blocks` link; a link to a ticket that has no item shows as `untracked` in `tcw work show` |
 | `parent` | `parent`, as a full slug. A child nested inside its parent's folder takes that folder. Jira: the ticket's parent |
 | `initiative` | `parent`, as a full slug in the project it names, when the item has no `parent`; when it has both, `parent` stays and the `initiative` is listed in the plan |
 | `type` | dropped: in 3.0 an item with children is an epic |
@@ -871,7 +902,7 @@ judges: 1
 | 2.x file | 3.0 |
 | --- | --- |
 | the status folders and their `.gitkeep` files | deleted at step 4 |
-| `graveyard.yaml` | deleted at step 4; git history keeps it. Items it records stay deleted, and their old slugs stop resolving |
+| `graveyard.yaml` | deleted at step 4; git history keeps it. 2.x recorded every item it resolved there, with its resolution, so that a link to an item whose folder was ignored or deleted still resolved. An item it records whose folder is not migrated (ignored and not kept, or deleted by retention) stops resolving |
 | `dod.yaml` | deleted at step 4; each entry goes where 3.0 can enforce or state it (the table below) |
 | `renames.yaml` | deleted at step 4, after its pairs of old and new slugs are copied into the migration log, so step 9 can rewrite live mentions of an old slug |
 | `inbox/` | deleted after step 8 |
@@ -941,10 +972,14 @@ So each later entry must stay silent wherever an earlier one matched. 2.x
 `tags` means "has any of these" and `not_tags` "has none of these", and 3.0
 keeps both meanings. **When every earlier entry's condition is `tags` alone**,
 add those tags to each later entry's `not_tags`; the same single template then
-applies as before. **Any other shape** (an earlier entry with `not_tags`, or
-with both keys) needs an "or" to negate, which one `when:` cannot say: list it
-in the plan with a proposed rewrite (for example, adding a tag to the affected
-items), and the user chooses. A `builtin` fallback entry is dropped, since
+applies as before. One more shape converts: when exactly one earlier entry has
+`not_tags` alone, and the later entry has no `tags` of its own, that earlier
+entry is silenced by giving the later one `tags` with the same list ("has
+none of these" is negated by "has one of these"). **Any other shape** (an
+earlier entry with both keys, or two that each need `tags`) needs an "or" to
+negate, which one `when:` cannot say: list it in the plan with a proposed
+rewrite (for example, adding a tag to the affected items), and the user
+chooses. A `builtin` fallback entry is dropped, since
 `inherit: true` already supplies TCW's text.
 
 TCW's own `spec` templates are the example. In 2.x:
@@ -1001,7 +1036,7 @@ that means the same, even where its name looks like another's.
 | (none) | new: `TCW_CONFIG_DIR`, the folder of the configuration file that declared the binding, which a relative `file:` path is read from |
 | `TCW_HOOK_ROLE`, `TCW_HOOK_KIND`, `TCW_HOOK_ID`, `TCW_HOOK_PHASE` (`generate` bindings) | unchanged. A `generate` script also gets the hook variables above, with `TCW_STAGE` set to the stage whose prompt is being composed and no `TCW_FROM_STAGE` |
 | the JSON a `generate` script reads on standard input | one object, `{"schema": 1, "item": <the item>, "request": <its text, or null>, "hook": {"role", "kind", "id", "phase", "body_truncated"}}`. A script that read 2.x fields such as the status or the map of documents reads `item` and `request` instead |
-| `{{tcw:body}}…{{/tcw:body}}` in prompt text | `{{tcw:request}}…{{/tcw:request}}`. 3.0 leaves `{{tcw:body}}` as written, so an unconverted pair is printed as it stands rather than refused |
+| `{{tcw:body}}…{{/tcw:body}}` in prompt text | `{{tcw:request}}…{{/tcw:request}}`, **with a change of meaning**: 2.x replaced the span with the request document's name (`` `initial-request.md` ``), 3.0 replaces it with the request's text. The text between the markers is still what is shown when there is no request. Reread each sentence around a converted span: "Read {{tcw:body}}the request{{/tcw:body}} first" would now paste the whole request into the middle of a sentence, so put the span where the text belongs, such as on a line of its own after "The request:". 3.0 leaves `{{tcw:body}}` as written, so an unconverted pair is printed as it stands rather than refused |
 
 #### Status values inside comparisons
 
@@ -1045,7 +1080,7 @@ records gate checks.
 | --- | --- |
 | hook scripts and commands bound in the configuration | the variables of [Hook variables](#hook-variables), including every use of `TCW_SLUG`; 2.x status names in comparisons; calls to removed or renamed commands ([Commands](#commands)) |
 | text in `AGENTS.md`, `CLAUDE.md` and the prompt and procedure files the configuration binds that relies on removed behavior: status folders, `state.yaml`, the Definition of Done, `refined-outcome.md`, claims, retention, automatic commits | rewritten as the approved plan says, at step 10; step 12 looks wider |
-| a `.gitignore` rule naming a status folder, such as `docs/work/discarded/*` | removed. Add the line `/tcw-config.local.yaml`, as `tcw init` writes for a new project, so personal configuration is never committed |
+| a `.gitignore` rule naming a status folder, such as `docs/work/completed/*` or `docs/work/discarded/*`, with its `.gitkeep` exception line and the comment 2.x's `tcw init` wrote above them | removed. Add the line `/tcw-config.local.yaml`, as `tcw init` writes for a new project, so personal configuration is never committed |
 | `TCW_WORK_OWNER`, and the git identity used when it is unset | removed. In filesystem mode, set `user.name` in personal configuration (`~/.config/tcw/config.yaml`, or `tcw-config.local.yaml` beside `tcw-config.yaml`) |
 | item worktrees made by `tcw work start --worktree` | removed: TCW makes no worktrees. A contributor who wants one runs `git worktree add` |
 
