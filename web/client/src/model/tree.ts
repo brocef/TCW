@@ -1,18 +1,7 @@
 import type { TreeNode, WorkItem } from "./types"
 
-export type TWorkSortKey = "name" | "modified"
+export type TWorkSortKey = "name" | "created" | "priority"
 export type TSortDirection = "ascending" | "descending"
-
-// Display precedence, deliberately not the canonical WORK_STATUSES order: live
-// work first, closed work last. Every WORK_STATUSES value must appear here
-// (guarded in tree.test.ts).
-export const WORK_STATUS_ORDER = new Map([
-    ["active", 0],
-    ["review", 1],
-    ["backlog", 2],
-    ["completed", 3],
-    ["discarded", 4],
-])
 
 export function buildPathTree<T>(
     items: T[],
@@ -46,39 +35,26 @@ export function buildPathTree<T>(
     return roots
 }
 
-function resolveParentKey(
-    childKey: string,
-    parentRef: string,
-    keys: Set<string>
-): string {
-    const slash = childKey.lastIndexOf("/")
-    if (slash !== -1) {
-        const namespaced = `${childKey.slice(0, slash + 1)}${parentRef}`
-        if (keys.has(namespaced)) return namespaced
-    }
-    return parentRef
-}
-
+/** The work tree by `parent`. Keys are full slugs, which is what `parent`
+ * holds; an item whose parent is not on the board (another project's item,
+ * or one the filters left out of the load) is a root. A cycle is broken by
+ * making its first unreachable member a root. */
 export function buildWorkTree(items: WorkItem[]): Array<TreeNode<WorkItem>> {
     const index = new Map<string, TreeNode<WorkItem>>()
     for (const item of items) {
         if (!index.has(item.slug)) {
             index.set(item.slug, {
-                name: item.title ?? item.slug,
+                name: item.title || item.slug,
                 path: item.slug,
                 item,
                 children: [],
             })
         }
     }
-    const keys = new Set(index.keys())
     const roots: Array<TreeNode<WorkItem>> = []
     const parentOf = new Map<string, string>()
     for (const [key, node] of index) {
-        const parentRef = node.item?.parent?.trim()
-        const parentKey = parentRef
-            ? resolveParentKey(key, parentRef, keys)
-            : ""
+        const parentKey = node.item?.parent ?? ""
         if (parentKey && parentKey !== key && index.has(parentKey)) {
             index.get(parentKey)!.children.push(node)
             parentOf.set(key, parentKey)
@@ -102,19 +78,39 @@ export function buildWorkTree(items: WorkItem[]): Array<TreeNode<WorkItem>> {
     return roots
 }
 
+/** Sort a work tree: by stage, in the table's order (an item with no stage
+ * after every stage), then by the chosen key. A missing priority sorts after
+ * the lowest one, whichever the direction. */
 export function sortWorkTree(
     nodes: Array<TreeNode<WorkItem>>,
     key: TWorkSortKey,
-    direction: TSortDirection
+    direction: TSortDirection,
+    stageOrder: string[],
+    priorityOrder: string[]
 ): Array<TreeNode<WorkItem>> {
+    const stageRank = (item: WorkItem | null) => {
+        const index = stageOrder.indexOf(item?.stage ?? "")
+        return index === -1 ? stageOrder.length : index
+    }
     const compareValue = (left: WorkItem, right: WorkItem) => {
+        if (key === "priority") {
+            const rank = (item: WorkItem) => {
+                const index = priorityOrder.indexOf(item.priority ?? "")
+                return index === -1 ? priorityOrder.length : index
+            }
+            const leftRank = rank(left)
+            const rightRank = rank(right)
+            if (leftRank === rightRank) return 0
+            if (leftRank === priorityOrder.length) return 1
+            if (rightRank === priorityOrder.length) return -1
+            const result = leftRank - rightRank
+            return direction === "ascending" ? result : -result
+        }
         const leftValue =
-            key === "name" ? (left.title ?? left.slug) : (left.modified ?? "")
+            key === "name" ? left.title || left.slug : left.created
         const rightValue =
-            key === "name"
-                ? (right.title ?? right.slug)
-                : (right.modified ?? "")
-        if (key === "modified" && (!leftValue || !rightValue)) {
+            key === "name" ? right.title || right.slug : right.created
+        if (key === "created" && (!leftValue || !rightValue)) {
             if (!leftValue && !rightValue) return 0
             return leftValue ? -1 : 1
         }
@@ -128,19 +124,21 @@ export function sortWorkTree(
         left: TreeNode<WorkItem>,
         right: TreeNode<WorkItem>
     ) => {
-        const unknown = WORK_STATUS_ORDER.size // sorts after every known status
-        const leftStatus =
-            WORK_STATUS_ORDER.get(left.item?.status ?? "") ?? unknown
-        const rightStatus =
-            WORK_STATUS_ORDER.get(right.item?.status ?? "") ?? unknown
-        if (leftStatus !== rightStatus) return leftStatus - rightStatus
+        const byStage = stageRank(left.item) - stageRank(right.item)
+        if (byStage) return byStage
         if (!left.item || !right.item)
             return left.name.localeCompare(right.name)
         return compareValue(left.item, right.item)
     }
     return [...nodes].sort(compareNodes).map((node) => ({
         ...node,
-        children: sortWorkTree(node.children, key, direction),
+        children: sortWorkTree(
+            node.children,
+            key,
+            direction,
+            stageOrder,
+            priorityOrder
+        ),
     }))
 }
 
@@ -174,17 +172,15 @@ export function pathAncestors(key: string): string[] {
         .map((_part, index) => parts.slice(0, index + 1).join("/"))
 }
 
-export function workAncestors(key: string, items: WorkItem[]): string[] {
-    const byKey = new Map(items.map((item) => [item.slug, item]))
-    const keys = new Set(byKey.keys())
+/** The slugs of an item's ancestors on the board, outermost first. */
+export function workAncestors(slug: string, items: WorkItem[]): string[] {
+    const bySlug = new Map(items.map((item) => [item.slug, item]))
     const chain: string[] = []
-    const visited = new Set([key])
-    let cursor = key
+    const visited = new Set([slug])
+    let cursor = slug
     while (cursor) {
-        const parentRef = byKey.get(cursor)?.parent?.trim()
-        if (!parentRef) break
-        const parent = resolveParentKey(cursor, parentRef, keys)
-        if (visited.has(parent)) break
+        const parent = bySlug.get(cursor)?.parent
+        if (!parent || visited.has(parent) || !bySlug.has(parent)) break
         chain.unshift(parent)
         visited.add(parent)
         cursor = parent

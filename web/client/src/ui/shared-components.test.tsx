@@ -1,37 +1,23 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import type { CapabilityItem, TaxonomyItem, WorkItem } from "../model/types"
-import {
-    InterruptedClaims,
-    ItemMeta,
-    Markdown,
-    Tree,
-} from "./shared-components"
+import type { CapabilityItem, TaxonomyItem } from "../model/types"
+import { workItem } from "../test-fixtures"
+import { ItemMeta, Markdown, Tree } from "./shared-components"
 
 const modified = "2026-07-22T18:30:00Z"
 
-test("uses the same child grid and standardized status surface at every depth", () => {
+test("uses the same child grid and the row class at every depth", () => {
     const child = {
         name: "child",
-        path: "parent/child",
-        item: {
-            slug: "child",
-            title: "Child",
-            status: "active",
-            modified,
-        } as WorkItem,
+        path: "p/child",
+        item: workItem("child", { title: "Child", stage: "build" }),
         children: [],
     }
     const nodes = [
         {
             name: "parent",
-            path: "parent",
-            item: {
-                slug: "parent",
-                title: "Parent",
-                status: "backlog",
-                modified,
-            } as WorkItem,
+            path: "p/parent",
+            item: workItem("parent", { title: "Parent", stage: "ask" }),
             children: [child],
         },
     ]
@@ -41,8 +27,11 @@ test("uses the same child grid and standardized status surface at every depth", 
                 nodes={nodes}
                 axis="work"
                 selected="child"
-                expanded={new Set(["parent"])}
+                expanded={new Set(["p/parent"])}
                 visible={() => true}
+                rowClass={(item) =>
+                    `st-${item.stage === "ask" ? "flow" : "side"}`
+                }
                 onToggle={() => undefined}
                 onSelect={() => undefined}
             />
@@ -52,25 +41,61 @@ test("uses the same child grid and standardized status surface at every depth", 
     expect(container.querySelectorAll(".tree-children")).toHaveLength(2)
     expect(screen.getByRole("treeitem", { name: /Parent/ })).toHaveClass(
         "item-work",
-        "st-backlog"
+        "st-flow"
     )
     expect(screen.getByRole("treeitem", { name: /Child/ })).toHaveClass(
         "item-work",
-        "st-active",
+        "st-side",
         "active"
     )
-    expect(screen.getAllByText(/backlog|active/)).toHaveLength(2)
+    expect(screen.getByText("ask")).toBeInTheDocument()
+    expect(screen.getByText("build")).toBeInTheDocument()
     const toggle = screen.getByRole("button", { name: "Collapse parent" })
     expect(toggle).toHaveAttribute("aria-expanded", "true")
     fireEvent.click(toggle)
 })
 
-test("renders modified subtext for every tree axis", () => {
+test("copies a work row's full slug", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(
+        <ThemeProvider>
+            <Tree
+                nodes={[
+                    {
+                        name: "x",
+                        path: "p/x",
+                        item: workItem("x"),
+                        children: [],
+                    },
+                ]}
+                axis="work"
+                selected={null}
+                expanded={new Set()}
+                visible={() => true}
+                onToggle={() => undefined}
+                onSelect={() => undefined}
+            />
+        </ThemeProvider>
+    )
+    fireEvent.click(
+        screen.getByRole("button", { name: "Copy slug to clipboard" })
+    )
+    expect(writeText).toHaveBeenCalledWith("p/x")
+})
+
+test("a work row shows its stage and creation date; records their modified time", () => {
+    const created = "2026-10-01T09:00:00+00:00"
     const { container } = render(
         <ThemeProvider>
             <ItemMeta
                 axis="work"
-                item={{ slug: "work", status: "active", modified } as WorkItem}
+                item={workItem("x", {
+                    created,
+                    assignee: "acc-1",
+                    priority: "high",
+                })}
+                people={{ "acc-1": "Ann" }}
             />
             <ItemMeta
                 axis="taxonomy"
@@ -91,13 +116,23 @@ test("renders modified subtext for every tree axis", () => {
         </ThemeProvider>
     )
 
-    expect(screen.getAllByText(/^Modified at /)).toHaveLength(3)
-    for (const timestamp of container.querySelectorAll("time.modified-at"))
-        expect(timestamp).toHaveAttribute("datetime", modified)
+    expect(screen.getAllByText(/^Created /)).toHaveLength(1)
+    expect(screen.getAllByText(/^Modified at /)).toHaveLength(2)
+    expect(container.querySelector("time")).toHaveAttribute("datetime", created)
+    expect(screen.getByText(/priority high · Ann/)).toBeInTheDocument()
 })
 
-const URI = "tcw://W/orchestrator/2026-01-01-x"
-const OFF_BOARD = "Project orchestrator is not included in this board"
+test("a row the backend could not read says its stage is unavailable", () => {
+    render(
+        <ThemeProvider>
+            <ItemMeta axis="work" item={workItem("x", { unread: true })} />
+        </ThemeProvider>
+    )
+    expect(screen.getByText("stage unavailable")).toBeInTheDocument()
+})
+
+const URI = "tcw://orchestrator/W/2026-01-01-x"
+const OFF_BOARD = "In project orchestrator; open it there"
 
 function renderResolved(resolved: unknown, source?: string) {
     globalThis.fetch = vi.fn().mockImplementation(async () => ({
@@ -109,14 +144,14 @@ function renderResolved(resolved: unknown, source?: string) {
     )
 }
 
-test("marks an unhosted reference as off-board and names its project", async () => {
+test("labels another project's reference and names its project", async () => {
     const { container } = renderResolved({
         ok: false,
-        reason: "unhosted-project",
+        reason: "other-project",
         project: "orchestrator",
     })
     const anchor = await screen.findByText("the epic")
-    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    await waitFor(() => expect(anchor).toHaveClass("tcw-other-project"))
     expect(anchor).not.toHaveClass("tcw-inert")
     expect(anchor).not.toHaveAttribute("data-nav-key")
     const badge = container.querySelector(".tcw-project-badge")
@@ -124,10 +159,10 @@ test("marks an unhosted reference as off-board and names its project", async () 
     expect(badge).toHaveTextContent(/^orchestrator$/)
 })
 
-test("states why an unhosted reference is not a link, beyond the tooltip", async () => {
+test("states why another project's reference is not a link, beyond the tooltip", async () => {
     const { container } = renderResolved({
         ok: false,
-        reason: "unhosted-project",
+        reason: "other-project",
         project: "orchestrator",
     })
     const anchor = await screen.findByText("the epic")
@@ -145,28 +180,28 @@ test("states why an unhosted reference is not a link, beyond the tooltip", async
 test("leaves an unopenable reference unclickable, address still readable", async () => {
     renderResolved({
         ok: false,
-        reason: "unhosted-project",
+        reason: "other-project",
         project: "orchestrator",
     })
     const anchor = await screen.findByText("the epic")
-    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    await waitFor(() => expect(anchor).toHaveClass("tcw-other-project"))
     // The click handler navigates only on data-nav-key; a surviving tcw:// href
     // would hand the click to the browser instead of doing nothing.
     expect(anchor).not.toHaveAttribute("href")
     expect(anchor).toHaveAttribute("data-tcw-ref", URI)
 })
 
-test("authored markup cannot suppress the off-board note", async () => {
+test("authored markup cannot suppress the other-project note", async () => {
     // `marked` passes authored HTML through, so a document can already contain
     // an element carrying the badge class, or an id we would otherwise mint.
     // Neither may cost the reference its accessible description.
     const { container } = renderResolved(
         {
             ok: false,
-            reason: "unhosted-project",
+            reason: "other-project",
             project: "orchestrator",
         },
-        `<span id="tcw-off-board-0">x</span>\n\nSee [the epic](${URI})<span class="tcw-project-badge">not ours</span>.`
+        `<span id="tcw-other-project-0">x</span>\n\nSee [the epic](${URI})<span class="tcw-project-badge">not ours</span>.`
     )
     const anchor = await screen.findByText("the epic")
     await waitFor(() => expect(anchor).toHaveAttribute("aria-describedby"))
@@ -176,10 +211,10 @@ test("authored markup cannot suppress the off-board note", async () => {
     // exact value is what makes this test fail if collision-avoidance is dropped
     // — asserting only "the note has the right text" would not, since a stale
     // module counter could hand out a free id by luck.
-    expect(noteId).toBe("tcw-off-board-1")
+    expect(noteId).toBe("tcw-other-project-1")
     const note = container.querySelector(`#${noteId}`)
     expect(note).toHaveTextContent(OFF_BOARD)
-    expect(screen.getByText("x")).toHaveAttribute("id", "tcw-off-board-0")
+    expect(screen.getByText("x")).toHaveAttribute("id", "tcw-other-project-0")
     expect(anchor.nextElementSibling).toHaveTextContent(/^orchestrator$/)
 })
 
@@ -189,13 +224,13 @@ test("authored markup adjacent to a reference is never removed", async () => {
     const { container } = renderResolved(
         {
             ok: false,
-            reason: "unhosted-project",
+            reason: "other-project",
             project: "orchestrator",
         },
         `See [the epic](${URI})<span data-tcw-badge></span><em>keep me</em>.`
     )
     const anchor = await screen.findByText("the epic")
-    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    await waitFor(() => expect(anchor).toHaveClass("tcw-other-project"))
     expect(screen.getByText("keep me")).toBeInTheDocument()
     expect(container.querySelector("[data-tcw-badge]")).not.toBeNull()
 })
@@ -208,7 +243,7 @@ test("shows an unresolved reference inert, with the reason it failed", async () 
     })
     const anchor = await screen.findByText("the epic")
     await waitFor(() => expect(anchor).toHaveClass("tcw-inert"))
-    expect(anchor).not.toHaveClass("tcw-unhosted")
+    expect(anchor).not.toHaveClass("tcw-other-project")
     expect(anchor).toHaveAttribute("title", "no such work item: x")
     expect(container.querySelector(".tcw-project-badge")).toBeNull()
 })
@@ -221,7 +256,7 @@ test("rewrites a resolvable reference into in-app navigation", async () => {
     )
     expect(anchor).toHaveAttribute("data-nav-axis", "work")
     expect(anchor).not.toHaveClass("tcw-inert")
-    expect(anchor).not.toHaveClass("tcw-unhosted")
+    expect(anchor).not.toHaveClass("tcw-other-project")
 })
 
 test("a superseded response never touches the document that replaced it", async () => {
@@ -254,7 +289,7 @@ test("a superseded response never touches the document that replaced it", async 
                     : {
                           [URI]: {
                               ok: false,
-                              reason: "unhosted-project",
+                              reason: "other-project",
                               project: "orchestrator",
                           },
                       },
@@ -272,32 +307,6 @@ test("a superseded response never touches the document that replaced it", async 
     expect(anchor).toHaveAttribute("href", URI)
 
     gate.b() // the current answer still applies
-    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+    await waitFor(() => expect(anchor).toHaveClass("tcw-other-project"))
     expect(anchor).toHaveAttribute("data-tcw-ref", URI)
-})
-
-describe("InterruptedClaims", () => {
-    test("lists each interrupted start with a Recover control", () => {
-        const onRecover = vi.fn()
-        render(
-            <ThemeProvider>
-                <InterruptedClaims
-                    claims={[{ slug: "2026-01-01-x", title: "X" }]}
-                    onRecover={onRecover}
-                />
-            </ThemeProvider>
-        )
-        expect(screen.getByText(/Interrupted start/)).toBeInTheDocument()
-        fireEvent.click(screen.getByRole("button", { name: "Recover" }))
-        expect(onRecover).toHaveBeenCalledWith("2026-01-01-x")
-    })
-
-    test("renders nothing when there are none", () => {
-        render(
-            <ThemeProvider>
-                <InterruptedClaims claims={[]} onRecover={() => {}} />
-            </ThemeProvider>
-        )
-        expect(screen.queryByText(/Interrupted start/)).toBeNull()
-    })
 })

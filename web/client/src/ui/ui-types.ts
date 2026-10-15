@@ -4,7 +4,6 @@ import type {
     CapabilityItem,
     TaxonomyDetail,
     TaxonomyItem,
-    WorkDetail,
     WorkItem,
 } from "../model/types"
 
@@ -14,39 +13,20 @@ export type TClientData = {
     capabilities: CapabilityItem[]
 }
 
-export type TDetail = WorkDetail | TaxonomyDetail | CapabilityDetail
+/** A taxonomy entry's or capability's detail. A work item's page is drawn by
+ * `work-views.tsx` from its own answer. */
+export type TDetail = TaxonomyDetail | CapabilityDetail
 
 export type TDraft = Record<string, unknown> & { body?: string }
 
+/** The taxonomy and capability editor. */
 export type TEditorSession =
-    | { mode: "create"; axis: Axis; draft: TDraft }
+    | { mode: "create"; axis: Exclude<Axis, "work">; draft: TDraft }
     | {
           mode: "core"
-          axis: Axis
+          axis: Exclude<Axis, "work">
           ref: string
           revision: string
           draft: TDraft
           original: TDraft
       }
-    | {
-          mode: "resource"
-          axis: "work"
-          kind: "artifacts" | "sidecars" | "plan-stages"
-          slug: string
-          name: string
-          revision: string
-          mediaType: string
-          draft: string
-          original: string
-      }
-
-export type TListPaneState = {
-    axis: Axis
-    selected: string | null
-    filter: string
-    expanded: Record<Axis, Set<string>>
-}
-
-// UI button intents. `discard` is not a distinct API action — it opens the
-// complete modal pre-set to a non-`done` resolution, and posts `complete`.
-export type TLifecycleAction = "start" | "complete" | "drop" | "discard"

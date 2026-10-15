@@ -1,9 +1,7 @@
-import { useState } from "react"
 import {
     Badge,
     Button,
     Callout,
-    Card,
     Checkbox,
     Flex,
     Heading,
@@ -18,13 +16,7 @@ import {
     referenceOptions,
     type TReferenceField,
 } from "../model/reference-search"
-import type {
-    Axis,
-    CapabilityDetail,
-    JsonRecord,
-    TaxonomyDetail,
-    WorkDetail,
-} from "../model/types"
+import type { Axis, CapabilityDetail, TaxonomyDetail } from "../model/types"
 import { ReferenceInput } from "./reference-input"
 import { LABELS } from "./route-utils"
 import {
@@ -33,21 +25,15 @@ import {
     Fields,
     Markdown,
     MarkdownEditor,
-    Modal,
     SelectInput,
     TextInput,
-    TrackerField,
 } from "./shared-components"
 import type {
     TClientData as Data,
     TDetail as Detail,
     TDraft as Draft,
     TEditorSession as Editor,
-    TLifecycleAction,
 } from "./ui-types"
-import { WORK_STATUSES } from "../model/types"
-import type { ResourceDetail } from "../model/types"
-import { WorkDocumentTabs } from "./work-document-tabs"
 const CAPABILITY_FIELDS = [
     ["Status", ["", "Supported", "Partial", "Missing", "Blocked", "Omitted"]],
     ["Priority", ["", "P0", "P1", "P2", "P3"]],
@@ -58,94 +44,10 @@ const CAPABILITY_FIELDS = [
     ["When", null],
     ["Gaps", null],
     ["Blocked by", null],
-    ["Tracker", null],
-    ["Planning doc", null],
     ["Superseded by", null],
 ] as const
 
-export function FilterControls({
-    axis,
-    registeredTags,
-    statusFilter,
-    setStatusFilter,
-    kindFilter,
-    setKindFilter,
-    tagFilter,
-    setTagFilter,
-    workSortKey,
-    setWorkSortKey,
-    workSortDirection,
-    setWorkSortDirection,
-}: {
-    axis: Axis
-    registeredTags: string[]
-    statusFilter: Record<string, boolean>
-    setStatusFilter: React.Dispatch<
-        React.SetStateAction<Record<string, boolean>>
-    >
-    kindFilter: string[]
-    setKindFilter: (value: string[]) => void
-    tagFilter: string[]
-    setTagFilter: (value: string[]) => void
-    workSortKey: TWorkSortKey
-    setWorkSortKey: (value: TWorkSortKey) => void
-    workSortDirection: TSortDirection
-    setWorkSortDirection: (value: TSortDirection) => void
-}) {
-    if (axis === "capabilities") return null
-    const selectedStatuses = WORK_STATUSES.filter(
-        (status) => statusFilter[status]
-    )
-    return (
-        <Flex
-            className="status-filters"
-            role="group"
-            aria-label="Filters"
-            align="center"
-            gap="2"
-            wrap="wrap"
-        >
-            {axis === "work" && (
-                <>
-                    <FacetPopover
-                        label="Status"
-                        options={WORK_STATUSES}
-                        value={selectedStatuses}
-                        capitalize
-                        onChange={(statuses) =>
-                            setStatusFilter(
-                                Object.fromEntries(
-                                    WORK_STATUSES.map((status) => [
-                                        status,
-                                        statuses.includes(status),
-                                    ])
-                                )
-                            )
-                        }
-                    />
-                    <SortControl
-                        sortKey={workSortKey}
-                        direction={workSortDirection}
-                        onSortKeyChange={setWorkSortKey}
-                        onDirectionChange={setWorkSortDirection}
-                    />
-                </>
-            )}
-            <FacetPopover
-                label={axis === "taxonomy" ? "Kind" : "Tags"}
-                options={
-                    axis === "taxonomy"
-                        ? ["Feature", "Vocabulary"]
-                        : registeredTags
-                }
-                value={axis === "taxonomy" ? kindFilter : tagFilter}
-                onChange={axis === "taxonomy" ? setKindFilter : setTagFilter}
-            />
-        </Flex>
-    )
-}
-
-function SortControl({
+export function SortControl({
     sortKey,
     direction,
     onSortKeyChange,
@@ -162,14 +64,19 @@ function SortControl({
             <Select.Root
                 value={sortKey}
                 onValueChange={(value) => {
-                    if (value === "name" || value === "modified")
+                    if (
+                        value === "name" ||
+                        value === "created" ||
+                        value === "priority"
+                    )
                         onSortKeyChange(value)
                 }}
             >
                 <Select.Trigger aria-label="Sort work items" />
                 <Select.Content>
                     <Select.Item value="name">Name</Select.Item>
-                    <Select.Item value="modified">Modified</Select.Item>
+                    <Select.Item value="created">Created</Select.Item>
+                    <Select.Item value="priority">Priority</Select.Item>
                 </Select.Content>
             </Select.Root>
             <IconButton
@@ -186,18 +93,19 @@ function SortControl({
     )
 }
 
-function FacetPopover({
+export function FacetPopover({
     label,
     options,
     value,
     onChange,
-    capitalize = false,
+    display = (option: string) => option,
 }: {
     label: string
     options: readonly string[]
     value: string[]
     onChange: (value: string[]) => void
-    capitalize?: boolean
+    /** How an option reads: a stage as written, a person by name. */
+    display?: (option: string) => string
 }) {
     return (
         <Popover.Root>
@@ -236,10 +144,7 @@ function FacetPopover({
                                             )
                                         }
                                     />{" "}
-                                    {capitalize
-                                        ? option[0].toUpperCase() +
-                                          option.slice(1)
-                                        : option}
+                                    {display(option)}
                                 </Flex>
                             </Text>
                         ))
@@ -258,349 +163,11 @@ export function DetailView({
     axis,
     detail,
     onEdit,
-    onResource,
-    onOpen,
-    onReadArtifact,
-    onDeletePlanStage,
-    onAction,
 }: {
-    axis: Axis
+    axis: Exclude<Axis, "work">
     detail: Detail
     onEdit: () => void
-    onResource: (
-        kind: "artifacts" | "sidecars" | "plan-stages",
-        slug: string,
-        name: string
-    ) => void
-    onOpen: (
-        slug: string,
-        name: string,
-        kind?: "artifacts" | "plan-stages"
-    ) => void
-    onReadArtifact: (
-        slug: string,
-        name: "spec" | "plan"
-    ) => Promise<ResourceDetail>
-    onDeletePlanStage: (slug: string, name: string, revision?: string) => void
-    onAction: (action: TLifecycleAction) => void
 }) {
-    if (axis === "work") {
-        const payload = detail as WorkDetail
-        const item = payload.item
-        return (
-            <>
-                <div className="detail-head">
-                    <div>
-                        <Heading as="h2" size="5">
-                            {item.title ?? item.slug}
-                        </Heading>
-                        <Text className="item-meta" color="gray" size="2">
-                            {item.slug}
-                        </Text>
-                        <ModifiedAt value={item.modified} />
-                    </div>
-                    <Flex className="detail-actions" align="center" gap="2">
-                        <Badge>{item.status}</Badge>
-                        <Button
-                            className="edit-btn"
-                            variant="soft"
-                            type="button"
-                            onClick={onEdit}
-                        >
-                            Edit
-                        </Button>
-                    </Flex>
-                </div>
-                <Flex className="action-buttons" gap="2" wrap="wrap">
-                    {item.status === "backlog" && (
-                        <>
-                            <Button
-                                className="action-btn start"
-                                color="green"
-                                variant="soft"
-                                type="button"
-                                onClick={() => onAction("start")}
-                            >
-                                Start
-                            </Button>
-                            <Button
-                                className="action-btn discard"
-                                color="amber"
-                                variant="soft"
-                                type="button"
-                                onClick={() => onAction("discard")}
-                            >
-                                Discard
-                            </Button>
-                            <Button
-                                className="action-btn drop"
-                                color="red"
-                                variant="soft"
-                                type="button"
-                                onClick={() => onAction("drop")}
-                            >
-                                Drop
-                            </Button>
-                        </>
-                    )}
-                    {item.status === "active" && (
-                        <Button
-                            className="action-btn complete"
-                            color="green"
-                            variant="soft"
-                            type="button"
-                            onClick={() => onAction("complete")}
-                        >
-                            Complete
-                        </Button>
-                    )}
-                </Flex>
-                <Fields>
-                    <Field name="Priority" value={item.priority} />
-                    <Field name="Effort" value={item.effort} />
-                    <Field name="Complexity" value={item.complexity} />
-                    <Field name="Tags" value={item.tags?.join(", ") || "-"} />
-                    <Field name="Resolution" value={item.resolution} />
-                    <Field
-                        name="Blocked by"
-                        value={
-                            item.blocked_by
-                                ?.map((b) => b.slug ?? b.external)
-                                .join(", ") || "-"
-                        }
-                    />
-                    {item.parent && <Field name="Parent" value={item.parent} />}
-                    {item.initiative && (
-                        <Field name="Initiative" value={item.initiative} />
-                    )}
-                    {item.tracker && <TrackerField binding={item.tracker} />}
-                </Fields>
-                <WorkDocumentTabs
-                    key={`${item.slug}:${payload.coreRevision}:${payload.artifacts
-                        .filter((artifact) =>
-                            ["initial-request", "spec", "plan"].includes(
-                                artifact.name
-                            )
-                        )
-                        .map((artifact) => artifact.revision ?? "missing")
-                        .join(":")}`}
-                    item={item}
-                    artifacts={payload.artifacts}
-                    onEditInitialRequest={onEdit}
-                    onEditArtifact={(slug, name) =>
-                        onResource("artifacts", slug, name)
-                    }
-                    onReadArtifact={onReadArtifact}
-                />
-                <div className="artifacts">
-                    {payload.artifacts
-                        .filter(
-                            (resource) =>
-                                resource.present &&
-                                !["initial-request", "spec", "plan"].includes(
-                                    resource.name
-                                )
-                        )
-                        .map((resource) => (
-                            <Flex
-                                className="artifact-group"
-                                key={resource.name}
-                            >
-                                <Button
-                                    className="artifact"
-                                    variant="soft"
-                                    type="button"
-                                    onClick={() =>
-                                        onOpen(item.slug, resource.name)
-                                    }
-                                >
-                                    {resource.name}
-                                </Button>
-                                <IconButton
-                                    className="artifact-edit"
-                                    variant="ghost"
-                                    type="button"
-                                    aria-label={`Edit ${resource.name}`}
-                                    onClick={() =>
-                                        onResource(
-                                            "artifacts",
-                                            item.slug,
-                                            resource.name
-                                        )
-                                    }
-                                >
-                                    ✎
-                                </IconButton>
-                            </Flex>
-                        ))}
-                </div>
-                {payload.planStages?.length > 0 && (
-                    <div className="plan-stages">
-                        <Heading as="h3" size="3">
-                            Plan stages
-                        </Heading>
-                        {payload.planStages.map((stage) => (
-                            <Card className="plan-stage" key={stage.id}>
-                                <div>
-                                    <strong>{stage.title}</strong>
-                                    <span className="item-meta">
-                                        {" "}
-                                        {stage.id}
-                                    </span>
-                                </div>
-                                <div className="item-meta">
-                                    Depends on:{" "}
-                                    {stage.depends_on.length
-                                        ? stage.depends_on.join(", ")
-                                        : "none"}
-                                    {stage.effort &&
-                                        ` · effort ${stage.effort}`}
-                                    {stage.complexity &&
-                                        ` · complexity ${stage.complexity}`}
-                                    {stage.priority != null &&
-                                        ` · priority ${stage.priority}`}
-                                    {stage.tags.length > 0 &&
-                                        ` · ${stage.tags.join(", ")}`}
-                                </div>
-                                {payload.planStages.filter(
-                                    (candidate) =>
-                                        candidate.id !== stage.id &&
-                                        JSON.stringify(candidate.depends_on) ===
-                                            JSON.stringify(stage.depends_on)
-                                ).length > 0 && (
-                                    <div className="item-meta">
-                                        Parallel with:{" "}
-                                        {payload.planStages
-                                            .filter(
-                                                (candidate) =>
-                                                    candidate.id !== stage.id &&
-                                                    JSON.stringify(
-                                                        candidate.depends_on
-                                                    ) ===
-                                                        JSON.stringify(
-                                                            stage.depends_on
-                                                        )
-                                            )
-                                            .map((candidate) => candidate.id)
-                                            .join(", ")}
-                                    </div>
-                                )}
-                                <Flex
-                                    className="artifact-group"
-                                    align="center"
-                                    gap="2"
-                                >
-                                    <Text size="2">
-                                        {stage.present
-                                            ? "Document present"
-                                            : "Document missing"}
-                                    </Text>
-                                    {stage.present && (
-                                        <Button
-                                            size="1"
-                                            variant="soft"
-                                            type="button"
-                                            onClick={() =>
-                                                onOpen(
-                                                    item.slug,
-                                                    stage.id,
-                                                    "plan-stages"
-                                                )
-                                            }
-                                        >
-                                            Open
-                                        </Button>
-                                    )}
-                                    <Button
-                                        size="1"
-                                        variant="soft"
-                                        type="button"
-                                        onClick={() =>
-                                            onResource(
-                                                "plan-stages",
-                                                item.slug,
-                                                stage.id
-                                            )
-                                        }
-                                    >
-                                        {stage.present ? "Edit" : "Create"}
-                                    </Button>
-                                    {stage.present && (
-                                        <Button
-                                            size="1"
-                                            color="red"
-                                            variant="soft"
-                                            type="button"
-                                            onClick={() =>
-                                                onDeletePlanStage(
-                                                    item.slug,
-                                                    stage.id,
-                                                    stage.revision
-                                                )
-                                            }
-                                        >
-                                            Delete
-                                        </Button>
-                                    )}
-                                </Flex>
-                            </Card>
-                        ))}
-                    </div>
-                )}
-                {payload.sidecars?.some((resource) => resource.present) && (
-                    <div className="sidecars-section">
-                        <Heading as="h3" size="3">
-                            Sidecars
-                        </Heading>
-                        {payload.sidecars
-                            .filter((resource) => resource.present)
-                            .map((resource) => (
-                                <Flex
-                                    className="sidecar-item"
-                                    key={resource.name}
-                                    align="center"
-                                    gap="2"
-                                >
-                                    <Text
-                                        className="sidecar-name"
-                                        color="gray"
-                                        size="2"
-                                    >
-                                        {resource.name}
-                                    </Text>
-                                    {/* A generated sidecar is written by a
-                                        command, so an edit here would be
-                                        discarded the next time that command
-                                        runs. Offer no button rather than a
-                                        button whose result disappears. */}
-                                    {resource.generated ? (
-                                        <Text color="gray" size="1">
-                                            generated
-                                        </Text>
-                                    ) : (
-                                        <Button
-                                            className="sidecar-edit-btn"
-                                            size="1"
-                                            variant="soft"
-                                            type="button"
-                                            onClick={() =>
-                                                onResource(
-                                                    "sidecars",
-                                                    item.slug,
-                                                    resource.name
-                                                )
-                                            }
-                                        >
-                                            Edit
-                                        </Button>
-                                    )}
-                                </Flex>
-                            ))}
-                    </div>
-                )}
-            </>
-        )
-    }
     if (axis === "taxonomy") {
         const term = (detail as TaxonomyDetail).term
         return (
@@ -693,7 +260,6 @@ export function EditorView({
     saving,
     errors,
     conflict,
-    registeredTags,
     data,
     onSave,
     onCancel,
@@ -704,34 +270,11 @@ export function EditorView({
     saving: boolean
     errors: string[]
     conflict: unknown
-    registeredTags: string[]
     data: Data
     onSave: () => void
     onCancel: () => void
     onRefreshConflict: () => void
 }) {
-    if (editor.mode === "resource")
-        return (
-            <div className={`editor-container${saving ? " saving" : ""}`}>
-                <EditorHeader
-                    title={`Edit ${editor.kind === "artifacts" ? "Artifact" : editor.kind === "sidecars" ? "Sidecar" : "Plan stage"}: ${editor.name}`}
-                    saving={saving}
-                    onSave={onSave}
-                    onCancel={onCancel}
-                />
-                <Errors errors={errors} />
-                {Boolean(conflict) && (
-                    <Conflict
-                        onRefresh={onRefreshConflict}
-                        onDiscard={onCancel}
-                    />
-                )}
-                <MarkdownEditor
-                    value={editor.draft}
-                    onChange={(value) => setDraft("draft", value)}
-                />
-            </div>
-        )
     const draft = editor.draft
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
@@ -747,17 +290,6 @@ export function EditorView({
             )}
             <div className="editor-section">Fields</div>
             <div className="editor-fields">
-                {editor.axis === "work" && (
-                    <WorkFields
-                        draft={draft}
-                        setDraft={setDraft}
-                        registeredTags={registeredTags}
-                        data={data}
-                        current={
-                            editor.mode === "core" ? editor.ref : undefined
-                        }
-                    />
-                )}
                 {editor.axis === "taxonomy" && (
                     <TaxonomyFields
                         draft={draft}
@@ -790,7 +322,7 @@ export function EditorView({
     )
 }
 
-function EditorHeader({
+export function EditorHeader({
     title,
     saving,
     onSave,
@@ -823,7 +355,7 @@ function EditorHeader({
     )
 }
 
-function Conflict({
+export function Conflict({
     onRefresh,
     onDiscard,
 }: {
@@ -866,108 +398,6 @@ function optionsFor(
         currentIdentifier: current,
         selected,
     })
-}
-
-function WorkFields({
-    draft,
-    setDraft,
-    registeredTags,
-    data,
-    current,
-}: {
-    draft: Draft
-    setDraft: (key: string, value: unknown) => void
-    registeredTags: string[]
-    data: Data
-    current?: string
-}) {
-    const tags = (draft.tags as string[] | undefined) ?? []
-    return (
-        <>
-            <TextInput
-                label="Title"
-                value={String(draft.title ?? "")}
-                onChange={(value) => setDraft("title", value)}
-            />
-            <TextInput
-                label="Priority"
-                type="number"
-                value={String(draft.priority ?? "")}
-                onChange={(value) => setDraft("priority", value)}
-            />
-            <SelectInput
-                label="Effort"
-                value={String(draft.effort ?? "")}
-                options={["", "low", "medium", "high", "very-high"]}
-                onChange={(value) => setDraft("effort", value)}
-            />
-            <SelectInput
-                label="Complexity"
-                value={String(draft.complexity ?? "")}
-                options={["", "low", "medium", "high", "very-high"]}
-                onChange={(value) => setDraft("complexity", value)}
-            />
-            <ReferenceInput
-                label="Parent"
-                value={String(draft.parent ?? "")}
-                options={optionsFor("work-parent", data, current)}
-                onChange={(value) => setDraft("parent", value)}
-            />
-            <ReferenceInput
-                label="Initiative"
-                value={String(draft.initiative ?? "")}
-                options={optionsFor("work-initiative", data, current)}
-                onChange={(value) => setDraft("initiative", value)}
-            />
-            <ReferenceInput
-                label="Blockers"
-                multiple
-                value={(draft.blockers as string[] | undefined) ?? []}
-                options={optionsFor(
-                    "work-blockers",
-                    data,
-                    current,
-                    (draft.blockers as string[] | undefined) ?? []
-                )}
-                onChange={(value) => setDraft("blockers", value)}
-            />
-            <div className="field-group">
-                <Text color="gray" size="1" weight="bold">
-                    Tags
-                </Text>
-                <Flex className="tag-checkboxes" gap="3" wrap="wrap">
-                    {[...new Set([...registeredTags, ...tags])].map((tag) => (
-                        <Text
-                            as="label"
-                            className={`tag-checkbox${registeredTags.includes(tag) ? "" : " tag-stale"}`}
-                            key={tag}
-                            size="2"
-                        >
-                            <Flex align="center" gap="1">
-                                <Checkbox
-                                    checked={tags.includes(tag)}
-                                    onCheckedChange={(checked) =>
-                                        setDraft(
-                                            "tags",
-                                            checked
-                                                ? [...tags, tag]
-                                                : tags.filter(
-                                                      (item) => item !== tag
-                                                  )
-                                        )
-                                    }
-                                />{" "}
-                                {tag}
-                                {registeredTags.includes(tag)
-                                    ? ""
-                                    : " (unregistered)"}
-                            </Flex>
-                        </Text>
-                    ))}
-                </Flex>
-            </div>
-        </>
-    )
 }
 
 function TaxonomyFields({
@@ -1093,7 +523,6 @@ function CapabilityFields({
         Roles: { field: "capability-roles", multiple: true },
         When: { field: "capability-when", multiple: true, negated: true },
         "Blocked by": { field: "capability-blocked-by" },
-        "Planning doc": { field: "capability-planning-doc" },
         "Superseded by": { field: "capability-superseded-by" },
     }
     return (
@@ -1149,217 +578,5 @@ function CapabilityFields({
                 )
             })}
         </>
-    )
-}
-
-export function StartModal({
-    onClose,
-    onStart,
-    errors,
-}: {
-    onClose: () => void
-    onStart: (force: boolean) => Promise<boolean>
-    errors: string[]
-}) {
-    const [failed, setFailed] = useState(false)
-    return (
-        <Modal title="Start Work Item" onClose={onClose}>
-            <Errors errors={errors} />
-            {failed && (
-                <Callout.Root color="amber">
-                    <Callout.Text>
-                        This item may have unresolved blockers. You can
-                        force-start it.
-                    </Callout.Text>
-                </Callout.Root>
-            )}
-            <Flex className="modal-actions" gap="2" justify="end">
-                <Button
-                    variant="soft"
-                    color="gray"
-                    type="button"
-                    onClick={onClose}
-                >
-                    Cancel
-                </Button>
-                <Button
-                    type="button"
-                    onClick={() =>
-                        void onStart(failed).then((ok) => {
-                            if (!ok) setFailed(true)
-                        })
-                    }
-                >
-                    {failed ? "Start (force)" : "Start"}
-                </Button>
-            </Flex>
-        </Modal>
-    )
-}
-
-export function CompleteModal({
-    detail,
-    onClose,
-    onComplete,
-    errors,
-    discardOnly = false,
-}: {
-    detail: WorkDetail
-    onClose: () => void
-    onComplete: (options: JsonRecord) => Promise<boolean>
-    errors: string[]
-    // Opened from a backlog item, where `done` is not a legal destination —
-    // only the abandonment resolutions are offered.
-    discardOnly?: boolean
-}) {
-    const checklist = detail.dodChecklist?.length
-        ? detail.dodChecklist
-        : ["tests pass", "docs synced", "capabilities reconciled", "reviewed"]
-    const [checked, setChecked] = useState<string[]>([])
-    const [resolution, setResolution] = useState(discardOnly ? "wontfix" : "")
-    const [force, setForce] = useState(false)
-    // A discard is not a shipment: no Definition of Done, no reconciliation
-    // gate — just a warning. Mirrors `tcw work complete` exactly.
-    //
-    // An unset resolution counts as shipping so the dialog opens in its
-    // completion form. Treating "" as a discard would title the dialog "Close
-    // Work Item" and label its button "Discard" before the user has chosen
-    // anything — pre-framing the destructive route as the default.
-    const shipping = resolution === "" || resolution === "done"
-    return (
-        <Modal
-            title={shipping ? "Complete Work Item" : "Close Work Item"}
-            onClose={onClose}
-        >
-            <Errors errors={errors} />
-            {/* The CLI runs configured `pre`/`post` hooks around a transition;
-                the web app deliberately does not — running arbitrary configured
-                shell from an HTTP handler on a button click is a meaningfully
-                worse posture than a CLI the user invoked. That is a real
-                behavioral difference between the two surfaces, so it is stated
-                rather than left to be inferred: a `pre` hook that would block
-                this transition will not block it here. */}
-            <Callout.Root className="hooks-not-run" color="gray">
-                <Callout.Text>
-                    <strong>Configured hooks do not run here</strong>
-                    <br />
-                    The web app performs and commits the transition, but does
-                    not run any commands bound to it in{" "}
-                    <code>tcw-config.yaml</code>. Use{" "}
-                    <code>tcw work complete</code> if you need them. If the
-                    commit itself is refused, the item still moves and the
-                    reason is printed by <code>tcw serve</code> in your
-                    terminal.
-                </Callout.Text>
-            </Callout.Root>
-            {shipping ? (
-                <Callout.Root className="reconciliation-reminder" color="blue">
-                    <Callout.Text>
-                        <strong>Reconciliation reminder</strong>
-                        <br />
-                        Reconcile the capabilities ledger before completing.
-                    </Callout.Text>
-                </Callout.Root>
-            ) : (
-                resolution && (
-                    <Callout.Root className="discard-warning" color="amber">
-                        <Callout.Text>
-                            <strong>This item will be discarded</strong>
-                            <br />
-                            It lands in <code>discarded/</code>, not{" "}
-                            <code>completed/</code>, and this is permanent. Mark
-                            any capability it declared as <code>Omitted</code>{" "}
-                            if it will never be built.
-                        </Callout.Text>
-                    </Callout.Root>
-                )
-            )}
-            <SelectInput
-                label="Resolution"
-                value={resolution}
-                options={
-                    discardOnly
-                        ? ["wontfix", "duplicate", "superseded"]
-                        : ["", "done", "wontfix", "duplicate", "superseded"]
-                }
-                onChange={setResolution}
-            />
-            {shipping && (
-                <>
-                    <Heading as="h3" size="3">
-                        Definition of Done
-                    </Heading>
-                    <Flex className="dod-list" direction="column">
-                        {checklist.map((item) => (
-                            <Text
-                                as="label"
-                                className="dod-item"
-                                key={item}
-                                size="2"
-                            >
-                                <Flex align="center" gap="2">
-                                    <Checkbox
-                                        checked={checked.includes(item)}
-                                        onCheckedChange={(next) =>
-                                            setChecked(
-                                                next
-                                                    ? [...checked, item]
-                                                    : checked.filter(
-                                                          (value) =>
-                                                              value !== item
-                                                      )
-                                            )
-                                        }
-                                    />{" "}
-                                    {item}
-                                </Flex>
-                            </Text>
-                        ))}
-                    </Flex>
-                </>
-            )}
-            {force && (
-                <Callout.Root className="modal-error" color="red">
-                    <Callout.Text>
-                        Completion was blocked. You can retry while ignoring
-                        blockers.
-                    </Callout.Text>
-                </Callout.Root>
-            )}
-            <Flex className="modal-actions" gap="2" justify="end">
-                <Button
-                    variant="soft"
-                    color="gray"
-                    type="button"
-                    onClick={onClose}
-                >
-                    Cancel
-                </Button>
-                <Button
-                    type="button"
-                    disabled={
-                        !resolution ||
-                        (shipping && checked.length !== checklist.length)
-                    }
-                    onClick={() =>
-                        void onComplete({
-                            resolution,
-                            dod_ack: shipping ? checked : [],
-                            force,
-                        }).then((ok) => {
-                            if (!ok) setForce(true)
-                        })
-                    }
-                >
-                    {force
-                        ? shipping
-                            ? "Complete (ignore blockers)"
-                            : "Discard (ignore blockers)"
-                        : shipping
-                          ? "Complete"
-                          : "Discard"}
-                </Button>
-            </Flex>
-        </Modal>
     )
 }

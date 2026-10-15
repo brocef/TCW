@@ -2,7 +2,6 @@ import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
 
 export type TReferenceField =
     | "work-parent"
-    | "work-initiative"
     | "work-blockers"
     | "taxonomy-parent"
     | "taxonomy-relates"
@@ -12,7 +11,6 @@ export type TReferenceField =
     | "capability-roles"
     | "capability-when"
     | "capability-blocked-by"
-    | "capability-planning-doc"
     | "capability-superseded-by"
 
 export interface TReferenceOption {
@@ -85,10 +83,6 @@ export function referenceOptions(
         if (current) excluded.add(current)
         return work.filter((item) => !excluded.has(item.identifier))
     }
-    if (field === "work-initiative")
-        return context.work
-            .filter((item) => item.type === "epic")
-            .map((item) => option(item.slug, item.title))
     if (field === "work-blockers")
         return work.filter(
             (item) =>
@@ -122,7 +116,6 @@ export function referenceOptions(
                 item.identifier.startsWith("conditions/") &&
                 !selected.has(item.identifier)
         )
-    if (field === "capability-planning-doc") return work
     return capabilities.filter(
         (item) => item.identifier !== current && !selected.has(item.identifier)
     )

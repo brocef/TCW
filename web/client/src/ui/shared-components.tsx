@@ -31,10 +31,10 @@ import type {
     CapabilityItem,
     TaxonomyItem,
     TreeNode,
-    TTrackerBinding,
     WorkItem,
 } from "../model/types"
-import { ModifiedAt } from "./modified-at"
+import { personName } from "../model/work"
+import { CreatedAt, ModifiedAt } from "./modified-at"
 import { useThemePreference } from "../theme-context"
 import { parseThemePreference } from "../theme-preference"
 import { itemKey, itemTitle, pathFor } from "./route-utils"
@@ -57,8 +57,8 @@ type Resolution = {
  * exactly which id a given document forces. */
 function freeNoteId() {
     let n = 0
-    while (document.getElementById(`tcw-off-board-${n}`)) n += 1
-    return `tcw-off-board-${n}`
+    while (document.getElementById(`tcw-other-project-${n}`)) n += 1
+    return `tcw-other-project-${n}`
 }
 
 /** Stop an unopenable reference from behaving like a link. The anchor keeps its
@@ -71,22 +71,18 @@ function neutralize(anchor: HTMLAnchorElement, uri: string) {
     anchor.removeAttribute("href")
 }
 
-/** A reference that resolves in the graph but is not on the board being served:
- * a warning treatment rather than the broken-link one, the owning project named
- * beside the link text, and the sentence carried as an accessible description
- * (a `title` alone is announced inconsistently). Inserted DOM, matching how the
- * inert class is applied to this same `marked` output.
+/** A sound reference to another project's object. This page serves one
+ * project, so the link cannot open here: it keeps its text, is labelled with
+ * the project it belongs to, and carries that sentence as an accessible
+ * description (a `title` alone is announced inconsistently). Inserted DOM,
+ * matching how the inert class is applied to this same `marked` output.
  *
  * No guard against inserting twice, because the caller cannot reach the same
  * anchor twice: it selects `a[href^="tcw://"]` from the live DOM, and every
- * anchor treated here has had its href removed. An earlier version guarded on a
- * marker attribute and removed the marked sibling *and the element after it*,
- * which authored markup could forge into deleting content that was never ours.
- * A condition that cannot arise does not need defending, and defending it cost
- * more than it bought. */
-function markOffBoard(anchor: HTMLAnchorElement, project: string) {
-    anchor.classList.add("tcw-unhosted")
-    anchor.title = `Project ${project} is not included in this board`
+ * anchor treated here has had its href removed. */
+function markOtherProject(anchor: HTMLAnchorElement, project: string) {
+    anchor.classList.add("tcw-other-project")
+    anchor.title = `In project ${project}; open it there`
     const badge = document.createElement("span")
     badge.className = "tcw-project-badge"
     badge.textContent = project
@@ -148,11 +144,11 @@ export function Markdown({
                     anchor.dataset.navAxis = resolved.axis
                     anchor.dataset.navKey = resolved.key
                 } else if (
-                    resolved?.reason === "unhosted-project" &&
+                    resolved?.reason === "other-project" &&
                     resolved.project
                 ) {
                     neutralize(anchor, uri)
-                    markOffBoard(anchor, resolved.project)
+                    markOtherProject(anchor, resolved.project)
                 } else {
                     // The diagnosis is the part the reader could not get; `||`
                     // rather than `??` because a store exception can carry an
@@ -191,49 +187,6 @@ export function Field({ name, value }: { name: string; value: unknown }) {
         </Card>
     )
 }
-/** The item's ticket: a link when the binding records a URL, plain text when not. */
-export function TrackerField({ binding }: { binding: TTrackerBinding }) {
-    // Narrowed on the presence of `ticket`, not on the absence of the shapes
-    // this knew about when it was written. `WorkItem.tracker` gained a fourth
-    // shape, `owed`, and the old `"problem" in binding ? … : …` sent it down
-    // the bound branch, where `binding.ticket.url` threw — and with no error
-    // boundary in this app, that blanked the whole page rather than one field.
-    return (
-        <Card className="field" size="1">
-            <Text as="div" color="gray" size="1">
-                Ticket
-            </Text>
-            <Text as="div" size="2">
-                {"ticket" in binding ? (
-                    <>
-                        {binding.ticket.url ? (
-                            <a
-                                href={binding.ticket.url}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                {binding.ticket.key}
-                            </a>
-                        ) : (
-                            binding.ticket.key
-                        )}
-                        {` · ${binding.provider} · part ${binding.part}`}
-                        {binding.sync &&
-                            ("problem" in binding.sync
-                                ? ` · sync record cannot be read: ${binding.sync.problem}`
-                                : ` · ${binding.sync.state}: ${binding.sync.reason}`)}
-                    </>
-                ) : "created" in binding ? (
-                    `none yet — ${binding.created.key} was created for it and the binding did not follow; \`tcw work tracker create\` binds it`
-                ) : "owed" in binding ? (
-                    `none yet — one was to be created on filing and was not (${binding.owed.reason}), owed since ${binding.owed.since}`
-                ) : (
-                    `tracker.yaml cannot be read: ${binding.problem}`
-                )}
-            </Text>
-        </Card>
-    )
-}
 export function Errors({ errors }: { errors: string[] }) {
     return errors.length ? (
         <Callout.Root color="red" role="alert">
@@ -245,46 +198,6 @@ export function Errors({ errors }: { errors: string[] }) {
                     ))}
                 </ul>
             </Callout.Text>
-        </Callout.Root>
-    ) : null
-}
-
-/** Starts whose claimant stopped mid-move. They are on no board, so this is the
- * only place the web app can show them — and offer the recovery the command
- * line offers as `tcw work start <slug> --take-over`. */
-export function InterruptedClaims({
-    claims,
-    onRecover,
-}: {
-    claims: { slug: string; title: string }[]
-    onRecover: (slug: string) => void
-}) {
-    return claims.length ? (
-        <Callout.Root
-            className="interrupted-claims"
-            color="amber"
-            role="status"
-        >
-            <Callout.Text>
-                <strong>Interrupted start</strong> — these items were being
-                started when the process stopped, and are on no board until
-                recovered:
-            </Callout.Text>
-            <ul>
-                {claims.map((claim) => (
-                    <li key={claim.slug}>
-                        {claim.title || claim.slug}{" "}
-                        <Button
-                            size="1"
-                            variant="soft"
-                            type="button"
-                            onClick={() => onRecover(claim.slug)}
-                        >
-                            Recover
-                        </Button>
-                    </li>
-                ))}
-            </ul>
         </Callout.Root>
     ) : null
 }
@@ -333,6 +246,8 @@ export function Tree<T extends AxisItem>({
     onToggle,
     onSelect,
     visible,
+    rowClass = () => "",
+    people = {},
 }: {
     nodes: Array<TreeNode<T>>
     axis: Axis
@@ -341,6 +256,9 @@ export function Tree<T extends AxisItem>({
     onToggle: (path: string) => void
     onSelect: (key: string) => void
     visible: (item: T) => boolean
+    /** An extra class for a row, such as a work row's stage kind. */
+    rowClass?: (item: T) => string
+    people?: Record<string, string>
 }) {
     const renderNodes = (
         current: Array<TreeNode<T>>,
@@ -388,7 +306,7 @@ export function Tree<T extends AxisItem>({
                                             hasChildren ? isExpanded : undefined
                                         }
                                         aria-selected={selected === key}
-                                        className={`item item-${axis}${axis === "work" ? ` st-${(node.item as WorkItem).status}` : ""}${selected === key ? " active" : ""}${visible(node.item) ? "" : " ancestor-dim"}`}
+                                        className={`item item-${axis} ${rowClass(node.item)}${selected === key ? " active" : ""}${visible(node.item) ? "" : " ancestor-dim"}`}
                                         onClick={() => onSelect(key)}
                                     >
                                         <div className="item-title">
@@ -398,6 +316,7 @@ export function Tree<T extends AxisItem>({
                                             <ItemMeta
                                                 axis={axis}
                                                 item={node.item}
+                                                people={people}
                                             />
                                         </div>
                                     </Button>
@@ -416,7 +335,8 @@ export function Tree<T extends AxisItem>({
                                                 aria-label="Copy slug to clipboard"
                                                 onClick={() =>
                                                     void navigator.clipboard.writeText(
-                                                        key
+                                                        (node.item as WorkItem)
+                                                            .slug
                                                     )
                                                 }
                                             >
@@ -451,21 +371,35 @@ export function Tree<T extends AxisItem>({
     return renderNodes(nodes, 0)
 }
 
-export function ItemMeta({ axis, item }: { axis: Axis; item: AxisItem }) {
+export function ItemMeta({
+    axis,
+    item,
+    people = {},
+}: {
+    axis: Axis
+    item: AxisItem
+    people?: Record<string, string>
+}) {
     if (axis === "work") {
         const work = item as WorkItem
+        if (work.unread)
+            return (
+                <div>
+                    <span className="work-status">stage unavailable</span>
+                </div>
+            )
         return (
             <div>
-                <span className="work-status">{work.status}</span>
-                {" · "}
+                <span className="work-status">{work.stage ?? "no stage"}</span>
                 {[
-                    work.effort && `effort ${work.effort}`,
-                    work.complexity && `complexity ${work.complexity}`,
-                    work.tags?.length && `tags ${work.tags.join(", ")}`,
+                    work.priority && `priority ${work.priority}`,
+                    work.assignee && personName(work.assignee, people),
+                    work.tags.length > 0 && `tags ${work.tags.join(", ")}`,
                 ]
                     .filter(Boolean)
-                    .join(" · ")}
-                <ModifiedAt value={work.modified} />
+                    .map((part) => ` · ${part}`)
+                    .join("")}
+                <CreatedAt value={work.created} />
             </div>
         )
     }

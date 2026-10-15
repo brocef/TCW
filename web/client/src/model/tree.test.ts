@@ -6,17 +6,11 @@ import {
     pruneTree,
     sortWorkTree,
     workAncestors,
-    WORK_STATUS_ORDER,
 } from "./tree"
-import { WORK_STATUSES } from "./types"
-import type { WorkItem } from "./types"
+import { STAGES, workItem } from "../test-fixtures"
 
-test("every canonical work status has a display order", () => {
-    // Adding a status to WORK_STATUSES without teaching the sorter about it
-    // would silently lump it in with unknown statuses at the end of the board.
-    for (const status of WORK_STATUSES)
-        expect(WORK_STATUS_ORDER.has(status)).toBe(true)
-})
+const ORDER = STAGES.map((row) => row.name)
+const PRIORITIES = ["highest", "high", "medium", "low", "lowest"]
 
 describe("path tree", () => {
     test("creates folders and selectable leaves", () => {
@@ -36,94 +30,91 @@ describe("path tree", () => {
 })
 
 describe("work tree", () => {
-    test("nests children under their parent", () => {
-        const items: WorkItem[] = [
-            { slug: "parent" },
-            { slug: "child", parent: "parent" },
+    test("nests children under their parent's full slug", () => {
+        const items = [
+            workItem("parent"),
+            workItem("child", { parent: "p/parent" }),
         ]
         const tree = buildWorkTree(items)
-        expect(tree.map((node) => node.path)).toEqual(["parent"])
-        expect(tree[0].children[0].path).toBe("child")
+        expect(tree.map((node) => node.path)).toEqual(["p/parent"])
+        expect(tree[0].children[0].path).toBe("p/child")
+        expect(workAncestors("p/child", items)).toEqual(["p/parent"])
     })
 
-    test("nests a child whose status differs from its parent's", () => {
-        // A child has its own status: an active parent can hold a backlog child.
-        const items: WorkItem[] = [
-            { slug: "parent", status: "active" },
-            { slug: "child", status: "backlog", parent: "parent" },
+    test("an item whose parent is in another project is a root", () => {
+        const items = [
+            workItem("parent"),
+            workItem("child", { parent: "q/parent" }),
         ]
-        const tree = sortWorkTree(buildWorkTree(items), "name", "ascending")
-        expect(tree.map((node) => node.path)).toEqual(["parent"])
-        expect(tree[0].children[0].path).toBe("child")
-        expect(tree[0].children[0].item?.status).toBe("backlog")
-    })
-
-    test("resolves qualified parent in the child namespace", () => {
-        const items: WorkItem[] = [
-            { slug: "sub/parent" },
-            { slug: "sub/child", parent: "parent" },
-        ]
-        expect(buildWorkTree(items)[0].children[0].path).toBe("sub/child")
-        expect(workAncestors("sub/child", items)).toEqual(["sub/parent"])
+        expect(buildWorkTree(items).map((node) => node.path)).toEqual([
+            "p/parent",
+            "p/child",
+        ])
+        expect(workAncestors("p/child", items)).toEqual([])
     })
 
     test("keeps malformed cycles reachable", () => {
-        const items: WorkItem[] = [
-            { slug: "a", parent: "b" },
-            { slug: "b", parent: "a" },
+        const items = [
+            workItem("a", { parent: "p/b" }),
+            workItem("b", { parent: "p/a" }),
         ]
         const tree = buildWorkTree(items)
         expect(tree).toHaveLength(1)
         expect(new Set([tree[0].path, tree[0].children[0].path])).toEqual(
-            new Set(["a", "b"])
+            new Set(["p/a", "p/b"])
         )
     })
 
-    test("groups statuses before applying one selected sort", () => {
+    test("groups by the table's stage order before the chosen sort", () => {
         const tree = buildWorkTree([
-            {
-                slug: "z-active",
-                title: "Zulu",
-                status: "active",
-                modified: "2026-01-01T00:00:00Z",
-            },
-            {
-                slug: "a-active",
-                title: "Alpha",
-                status: "active",
-                modified: "2026-03-01T00:00:00Z",
-            },
-            {
-                slug: "backlog",
-                title: "Backlog",
-                status: "backlog",
-                modified: "2026-04-01T00:00:00Z",
-            },
-            {
-                slug: "completed",
-                title: "Completed",
-                status: "completed",
-                modified: "2026-05-01T00:00:00Z",
-            },
-            {
-                slug: "discarded",
-                title: "Discarded",
-                status: "discarded",
-                modified: "2026-06-01T00:00:00Z",
-            },
+            workItem("z", { title: "Zulu", stage: "ask" }),
+            workItem("a", { title: "Alpha", stage: "ask" }),
+            workItem("later", { title: "Aardvark", stage: "lessons" }),
+            workItem("first", { title: "Yak", stage: "intake" }),
+            workItem("none", { title: "A", stage: null }),
         ])
-
-        // discarded sorts last: closed-without-shipping is the least
-        // interesting column on the board.
         expect(
-            sortWorkTree(tree, "name", "ascending").map((node) => node.path)
-        ).toEqual(["a-active", "z-active", "backlog", "completed", "discarded"])
-        expect(
-            sortWorkTree(tree, "modified", "descending").map(
+            sortWorkTree(tree, "name", "ascending", ORDER, PRIORITIES).map(
                 (node) => node.path
             )
-        ).toEqual(["a-active", "z-active", "backlog", "completed", "discarded"])
+        ).toEqual(["p/first", "p/a", "p/z", "p/later", "p/none"])
     })
+
+    test("sorts by creation date", () => {
+        const tree = buildWorkTree([
+            workItem("old", { created: "2026-01-01T00:00:00+00:00" }),
+            workItem("new", { created: "2026-06-01T00:00:00+00:00" }),
+        ])
+        expect(
+            sortWorkTree(tree, "created", "descending", ORDER, PRIORITIES).map(
+                (node) => node.path
+            )
+        ).toEqual(["p/new", "p/old"])
+    })
+
+    test.each(["ascending", "descending"] as const)(
+        "a missing priority sorts after the lowest, %s",
+        (direction) => {
+            const tree = buildWorkTree([
+                workItem("none", { priority: null }),
+                workItem("low", { priority: "lowest" }),
+                workItem("top", { priority: "highest" }),
+            ])
+            const sorted = sortWorkTree(
+                tree,
+                "priority",
+                direction,
+                ORDER,
+                PRIORITIES
+            ).map((node) => node.path)
+            expect(sorted[2]).toBe("p/none")
+            expect(sorted.slice(0, 2)).toEqual(
+                direction === "ascending"
+                    ? ["p/top", "p/low"]
+                    : ["p/low", "p/top"]
+            )
+        }
+    )
 })
 
 test("prune keeps matching branches and reports expansion", () => {

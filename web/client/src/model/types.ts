@@ -1,82 +1,180 @@
 export type Axis = "work" | "taxonomy" | "capabilities"
 
-// Canonical work statuses, mirroring WORK_STATUSES in tcw/store/base.py.
-// Display precedence is a separate concern — see WORK_STATUS_ORDER in ./tree.
-export const WORK_STATUSES = [
-    "backlog",
-    "active",
-    "review",
-    "completed",
-    "discarded",
-]
-
 export type JsonRecord = Record<string, unknown>
 
-/**
- * An item's tracker binding, as `tcw work show --json` carries it: what the
- * binding file records, never what the tracker says now. `null` when unbound
- * and nothing is owed.
- *
- * Four shapes, and only the first has a `ticket`. Narrow on the presence of
- * `ticket` rather than on the absence of the others: a reader that excluded the
- * shapes it knew about was what crashed the whole page when `owed` was added.
- */
-export type TTrackerBinding =
-    | {
-          provider: string
-          project: string
-          part: string
-          ticket: { id: string; key: string; url: string }
-          bound: string
-          /** What did not reach the tracker, while it has not. */
-          sync:
-              | null
-              | {
-                    state: "pending" | "conflicting"
-                    move: string
-                    since: string
-                    reason: string
-                    at: string
-                }
-              | { problem: string }
-          /** A progress comment that did not post, while it has not. */
-          comment:
-              | null
-              | {
-                    move: string
-                    event: string
-                    state: "pending" | "conflicting"
-                    reason: string
-                    at: string
-                }
-              | { problem: string }
-      }
-    | { problem: string }
-    /** A ticket that filing was to create and could not. Not a binding. */
-    | { owed: { since: string; reason: string } }
-    /** A ticket that was created and never bound. Also not a binding. */
-    | { created: { key: string; id: string } }
-
-export interface WorkItem extends JsonRecord {
-    slug: string
-    title?: string
-    status?: string
-    modified?: string
-    priority?: number | null
-    effort?: string
-    complexity?: string
-    tags?: string[]
-    parent?: string
-    initiative?: string
-    type?: string
-    resolution?: string
-    blocked_by?: Array<{ slug?: string; external?: string }>
-    body?: string
-    tracker?: TTrackerBinding | null
+/** What a part of an answer holds when the backend could not give it: the
+ * exception's message. Only the part fails; the rest of the answer stands. */
+export interface TUnavailable {
+    unavailable: string
 }
 
-export interface TMutationResponse extends JsonRecord {
-    warnings?: string[]
+/** One row of the stage table, for an enabled stage, in table order. The
+ * client holds no stage names: every stage it shows comes from these rows. */
+export interface TStageRow {
+    name: string
+    kind: "flow" | "terminal" | "side"
+    artifact: "document" | "rounds" | "none"
+    verdict: boolean
+    onReject: string | null
+    /** Kept by the backend rather than in the item folder. */
+    external: boolean
+    completion: boolean
+    discard: boolean
+}
+
+export interface TConnectedProject {
+    id: string
+    relation: string
+    /** Declared, and found on this machine. */
+    present: boolean
+    /** An upstream project: creating into it is refused. */
+    upstream: boolean
+}
+
+export interface TProject {
+    id: string
+    /** Who owns an item's request, comments, stage and properties: the files
+     * on disk ("local"), or the backend, when they are read-only here. */
+    recordOwner: "local" | "backend"
+    stages: TStageRow[]
+    inboxStage: string
+    startStage: string
+    inboxItems: boolean
+    tags: string[]
+    scales: { priority: string[]; size: string[] }
+    capabilityScales: {
+        status: string[]
+        priority: string[]
+        lifecycle: string[]
+    }
+    /** Which of priority, effort and complexity a new item may set. */
+    createFields: string[] | TUnavailable
+    user: string | null
+    people: Record<string, string>
+    projects: TConnectedProject[]
+    axes: Record<Axis, boolean>
+}
+
+/** An item record: what `tcw work list --json` and `show --json` carry. */
+export interface WorkItem {
+    slug: string
+    title: string
+    stage: string | null
+    created: string
+    priority: string | null
+    effort: string | null
+    complexity: string | null
+    tags: string[]
+    assignee: string | null
+    parent: string | null
+    "blocked-by": string[]
+    blocks: string[]
+    children: string[]
+    path: string
+    /** Linked tickets that have no item. */
+    untracked: string[]
+    /** A board row the backend could not read: only its folder is known. */
+    unread?: boolean
+}
+
+/** A board row when the backend cannot answer: the folder alone. */
+export interface TFallbackRow {
+    slug: string
+    path: string
+}
+
+export interface TBoard {
+    items: Array<WorkItem | TFallbackRow>
+    people: Record<string, string>
+    fallback: boolean
+    unavailable?: string
+}
+
+export interface TComment {
+    at: string
+    author: string
+    text: string
+}
+
+export interface TFileRef {
+    path: string
+    revision: string | null
+}
+
+export interface TDocumentRef extends TFileRef {
+    present: boolean
+}
+
+export interface TRoundRef extends TFileRef {
+    number: number
+    verdict?: string
+}
+
+/** One stage's files, or the declaration file (`stage` null). */
+export interface TStageFiles {
+    stage: string | null
+    artifact: "document" | "rounds" | "declaration"
+    verdict?: boolean
+    document?: TDocumentRef
+    rounds?: TRoundRef[]
+    handoffs?: TFileRef[]
+}
+
+export interface TVerdict {
+    stage: string
+    verdict: string
+}
+
+export interface TFinding {
+    severity: string
+    where: string
+    message: string
+}
+
+export interface WorkDetail {
+    folder: string
+    item: WorkItem | TUnavailable
+    /** Present only when the backend keeps the request. */
+    requestText?: string | null | TUnavailable
+    comments: TComment[] | TUnavailable
+    commentsLimited: boolean
+    people: Record<string, string>
+    link: { label: string; url: string } | null
+    files: TStageFiles[]
+    verdicts: TVerdict[]
+    /** Items skipped as unreadable while computing blocks and children. */
+    warnings: string[]
+}
+
+export interface TFileContent {
+    content: string
+    revision: string
+}
+
+export interface TDeclarationLists {
+    new: string[]
+    changed: string[]
+    removed: string[]
+}
+
+export interface TDeclaration {
+    revision: string | null
+    present: boolean
+    /** The parser's message, when the file cannot be read as lists. */
+    problem: string | null
+    content?: string
+    capabilities?: TDeclarationLists
+    taxonomy?: TDeclarationLists
+}
+
+export interface TTicket {
+    key: string
+    summary: string | null
+    status: string | null
+    created: string | null
+    reporter: string | null
+    url: string
+    description: string | null
 }
 
 export interface TaxonomyItem extends JsonRecord {
@@ -105,34 +203,6 @@ export interface CapabilityItem extends JsonRecord {
 
 export type AxisItem = WorkItem | TaxonomyItem | CapabilityItem
 
-export interface ResourceSummary {
-    name: string
-    present: boolean
-    revision?: string
-    mediaType?: string
-    /** Written by a command, not a person — readable, never editable here. */
-    generated?: boolean
-}
-
-export interface TPlanStage extends ResourceSummary {
-    id: string
-    title: string
-    depends_on: string[]
-    effort?: string
-    complexity?: string
-    priority?: number | null
-    tags: string[]
-}
-
-export interface WorkDetail {
-    item: WorkItem
-    coreRevision: string
-    artifacts: ResourceSummary[]
-    planStages: TPlanStage[]
-    sidecars: ResourceSummary[]
-    dodChecklist?: string[]
-}
-
 export interface TaxonomyDetail {
     term: TaxonomyItem
     coreRevision: string
@@ -143,18 +213,12 @@ export interface CapabilityDetail {
     coreRevision: string
 }
 
-export interface ResourceDetail {
-    name: string
-    content: string
-    revision: string
-    mediaType?: string
-}
-
 export interface ApiResult<T = JsonRecord> {
     ok: boolean
     status: number
     data: T | null
     error: string
+    code?: string
 }
 
 export interface TreeNode<T> {

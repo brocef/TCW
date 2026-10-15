@@ -1,194 +1,169 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import type { ComponentProps } from "react"
-import { vi, type Mock } from "vitest"
 import { ThemeProvider } from "../theme"
+import { project, STAGES, workDetail } from "../test-fixtures"
+import type { WorkDetail } from "../model/types"
 import { WorkDocumentTabs } from "./work-document-tabs"
 
-const artifacts = [
-    { name: "initial-request", present: true },
-    { name: "spec", present: true },
-    { name: "plan", present: true },
-]
-
 function renderTabs(
+    detail: WorkDetail,
     options: {
-        slug?: string
-        body?: string
-        present?: string[]
-        onReadArtifact?: Mock<
-            ComponentProps<typeof WorkDocumentTabs>["onReadArtifact"]
-        >
+        current?: string | null
+        read?: (path: string) => Promise<{ content: string; revision: string }>
+        onNewFile?: (stage: string, kind: string) => void
+        onEditFile?: (stage: string, path: string) => void
+        stages?: typeof STAGES
     } = {}
 ) {
-    const present = options.present ?? ["initial-request", "spec", "plan"]
-    const onReadArtifact =
-        options.onReadArtifact ??
-        vi.fn(async (_slug: string, name: string) => ({
-            name,
-            content: `# Loaded ${name}`,
-            revision: `${name}-revision`,
-        }))
-    const onEditInitialRequest = vi.fn()
-    const onEditArtifact = vi.fn()
-    const view = render(
+    const read =
+        options.read ??
+        (async (path: string) => ({ content: `# ${path}`, revision: "r" }))
+    return render(
         <ThemeProvider>
             <WorkDocumentTabs
-                item={{
-                    slug: options.slug ?? "first-item",
-                    body: options.body ?? "# Initial body",
-                }}
-                artifacts={artifacts.map((artifact) => ({
-                    ...artifact,
-                    present: present.includes(artifact.name),
-                }))}
-                onEditInitialRequest={onEditInitialRequest}
-                onEditArtifact={onEditArtifact}
-                onReadArtifact={onReadArtifact}
+                project={project({ stages: options.stages ?? STAGES })}
+                detail={detail}
+                current={options.current ?? null}
+                readFile={read}
+                onNewFile={options.onNewFile}
+                onEditFile={options.onEditFile}
             />
         </ThemeProvider>
     )
-    return { ...view, onEditArtifact, onEditInitialRequest, onReadArtifact }
 }
 
-function selectTab(name: string) {
-    fireEvent.mouseDown(screen.getByRole("tab", { name }), {
-        button: 0,
-        ctrlKey: false,
-    })
-}
-
-test("shows the planning documents in order with Initial Request selected", () => {
-    renderTabs()
-
-    const tabs = screen.getAllByRole("tab")
-    expect(tabs.map((tab) => tab.getAttribute("aria-label"))).toEqual([
-        "Initial Request",
-        "Spec",
-        "Implementation Plan",
-    ])
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("heading", { name: "Initial body" })).toBeVisible()
+test("one tab per stage that keeps an artifact, in the table's order", () => {
+    renderTabs(workDetail("x"))
+    expect(
+        screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))
+    ).toEqual(["Ask", "Build", "Judge", "Lessons"])
 })
 
-test("loads present documents and routes their edit actions", async () => {
-    const { onEditArtifact, onReadArtifact } = renderTabs()
-
-    selectTab("Spec")
-    expect(
-        await screen.findByRole("heading", { name: "Loaded spec" })
-    ).toBeVisible()
-    expect(onReadArtifact).toHaveBeenCalledWith("first-item", "spec")
-    fireEvent.click(screen.getByRole("button", { name: "Edit Spec" }))
-    expect(onEditArtifact).toHaveBeenCalledWith("first-item", "spec")
-
-    selectTab("Implementation Plan")
-    expect(
-        await screen.findByRole("heading", { name: "Loaded plan" })
-    ).toBeVisible()
-})
-
-test("routes Initial Request editing without loading an artifact", () => {
-    const { onEditInitialRequest, onReadArtifact } = renderTabs()
-
-    fireEvent.click(
-        screen.getByRole("button", { name: "Edit Initial Request" })
+test("opens on the item's own stage", () => {
+    renderTabs(workDetail("x"), { current: "judge" })
+    expect(screen.getByRole("tab", { name: "Judge" })).toHaveAttribute(
+        "aria-selected",
+        "true"
     )
-    expect(onEditInitialRequest).toHaveBeenCalledOnce()
-    expect(onReadArtifact).not.toHaveBeenCalled()
+    expect(screen.getByText(/Current verdict/)).toHaveTextContent(
+        "Current verdict: none"
+    )
 })
 
-test("keeps missing documents visible without an edit action", () => {
-    renderTabs({ present: ["initial-request"] })
-
-    selectTab("Spec")
-    expect(screen.getByText("Spec is not yet present.")).toBeVisible()
-    expect(screen.queryByRole("button", { name: "Edit Spec" })).toBeNull()
+test("a document not written offers Create only where editing is offered", () => {
+    const onNewFile = vi.fn()
+    const { unmount } = renderTabs(workDetail("x"))
+    expect(screen.getByText("Not written.")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Create" })).toBeNull()
+    unmount()
+    renderTabs(workDetail("x"), { onNewFile })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(onNewFile).toHaveBeenCalledWith("ask", "document")
 })
 
-test("offers a retry after a document load failure", async () => {
-    const onReadArtifact = vi
-        .fn()
-        .mockRejectedValueOnce(new Error("offline"))
-        .mockResolvedValueOnce({
-            name: "spec",
-            content: "# Recovered",
-            revision: "new-revision",
-        })
-    renderTabs({ onReadArtifact })
-
-    selectTab("Spec")
+test("a written document is read and shown, with Edit", async () => {
+    const detail = workDetail("x")
+    detail.files[0].document = {
+        path: "ask/ask.md",
+        revision: "r",
+        present: true,
+    }
+    const onEditFile = vi.fn()
+    renderTabs(detail, { onEditFile })
     expect(
-        await screen.findByText(/Could not load this document: offline/)
-    ).toBeVisible()
+        await screen.findByRole("heading", { name: "ask/ask.md" })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+    expect(onEditFile).toHaveBeenCalledWith("ask", "ask/ask.md")
+})
+
+test("a read that fails says why and offers Retry", async () => {
+    const detail = workDetail("x")
+    detail.files[0].document = {
+        path: "ask/ask.md",
+        revision: "r",
+        present: true,
+    }
+    let fail = true
+    renderTabs(detail, {
+        read: async () => {
+            if (fail) throw new Error("disk trouble")
+            return { content: "# Fine", revision: "r" }
+        },
+    })
+    expect(await screen.findByText(/disk trouble/)).toBeInTheDocument()
+    fail = false
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(
-        await screen.findByRole("heading", { name: "Recovered" })
-    ).toBeVisible()
-    expect(onReadArtifact).toHaveBeenCalledTimes(2)
+        await screen.findByRole("heading", { name: "Fine" })
+    ).toBeInTheDocument()
 })
 
-test("resets to Initial Request when the work item changes", async () => {
-    const { rerender } = renderTabs()
-    selectTab("Spec")
+test("rounds list newest first with their verdicts, the newest shown", async () => {
+    const detail = workDetail("x", {
+        verdicts: [{ stage: "judge", verdict: "rejected" }],
+    })
+    detail.files[2].rounds = [
+        {
+            path: "judge/round-2.md",
+            revision: "b",
+            number: 2,
+            verdict: "rejected",
+        },
+        {
+            path: "judge/round-1.md",
+            revision: "a",
+            number: 1,
+            verdict: "invalid",
+        },
+    ]
+    detail.files[2].handoffs = [
+        { path: "judge/handoff-20261001T090000Z.md", revision: "h" },
+    ]
+    const onNewFile = vi.fn()
+    renderTabs(detail, { current: "judge", onNewFile })
+    expect(screen.getByText(/Current verdict/)).toHaveTextContent("rejected")
+    const rounds = screen.getAllByRole("button", { name: /^Round/ })
+    expect(rounds.map((button) => button.textContent)).toEqual([
+        "Round 2",
+        "Round 1",
+    ])
+    expect(screen.getByText("invalid")).toBeInTheDocument()
     expect(
-        await screen.findByRole("heading", { name: "Loaded spec" })
-    ).toBeVisible()
+        await screen.findByRole("heading", { name: "judge/round-2.md" })
+    ).toBeInTheDocument()
+    expect(
+        screen.getByRole("button", { name: "handoff-20261001T090000Z.md" })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "New round" }))
+    fireEvent.click(screen.getByRole("button", { name: "New handoff" }))
+    expect(onNewFile.mock.calls).toEqual([
+        ["judge", "round"],
+        ["judge", "handoff"],
+    ])
+})
 
-    rerender(
-        <ThemeProvider>
-            <WorkDocumentTabs
-                item={{ slug: "second-item", body: "# Second request" }}
-                artifacts={artifacts}
-                onEditInitialRequest={() => undefined}
-                onEditArtifact={() => undefined}
-                onReadArtifact={async (_slug, name) => ({
-                    name,
-                    content: "# Should not load",
-                    revision: "revision",
-                })}
-            />
-        </ThemeProvider>
+test("a stage the backend keeps says so, with the ticket's link", () => {
+    const stages = STAGES.map((row) =>
+        row.name === "ask" ? { ...row, external: true } : row
     )
-
-    await waitFor(() =>
-        expect(
-            screen.getByRole("tab", { name: "Initial Request" })
-        ).toHaveAttribute("aria-selected", "true")
-    )
-    expect(
-        screen.getByRole("heading", { name: "Second request" })
-    ).toBeVisible()
-})
-
-test("does not render the intake fallback under the request's name", () => {
-    // `item.body` falls back to the intake, so an absent request would otherwise
-    // show raw intake labelled "Initial Request".
-    renderTabs({ present: ["spec", "plan"] })
-
-    expect(screen.queryByRole("heading", { name: "Initial body" })).toBeNull()
-    expect(
-        screen.getByText("Initial Request is not yet present.")
-    ).toBeVisible()
-    expect(
-        screen.getByRole("button", { name: "Edit Initial Request" })
-    ).toBeVisible()
-})
-
-test("resolves tcw:// links in the body shown on the Initial Request tab", async () => {
-    // The Markdown unit tests render the component directly, so they pass while
-    // this surface is dead. This drives it through the tab the way a reader does.
-    const uri = "tcw://W/orchestrator/2026-01-01-x"
-    globalThis.fetch = vi.fn().mockImplementation(async () => ({
-        ok: true,
-        json: async () => ({
-            [uri]: {
-                ok: false,
-                reason: "unhosted-project",
-                project: "orchestrator",
-            },
+    renderTabs(
+        workDetail("x", {
+            link: { label: "Tracker", url: "https://tracker.example/X-1" },
         }),
-    }))
-    renderTabs({ body: `See [the epic](${uri}).` })
-    const anchor = await screen.findByText("the epic")
-    await waitFor(() => expect(anchor).toHaveClass("tcw-unhosted"))
+        { stages }
+    )
+    expect(
+        screen.getByText("This project's backend keeps the ask record.")
+    ).toBeInTheDocument()
+    expect(
+        screen.getByRole("link", { name: "Open in Tracker" })
+    ).toHaveAttribute("href", "https://tracker.example/X-1")
+})
+
+test("switching tabs shows that stage's files", async () => {
+    renderTabs(workDetail("x"))
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Build" }))
+    await waitFor(() =>
+        expect(screen.getByText("No rounds yet.")).toBeInTheDocument()
+    )
 })

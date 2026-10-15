@@ -5,6 +5,7 @@ import {
     referenceOptions,
     type TReferenceOption,
 } from "./reference-search"
+import { workItem } from "../test-fixtures"
 
 const choices: TReferenceOption[] = [
     { displayName: "Useful editor", identifier: "web/use" },
@@ -52,10 +53,10 @@ describe("reference search", () => {
             currentIdentifier: "parent",
             selected: ["duplicate"],
             work: [
-                { slug: "parent", title: "Parent" },
-                { slug: "child", title: "Child", parent: "parent" },
-                { slug: "epic", title: "Epic", type: "epic" },
-                { slug: "duplicate", title: "Duplicate" },
+                workItem("parent", { slug: "parent" }),
+                workItem("child", { slug: "child", parent: "parent" }),
+                workItem("epic", { slug: "epic" }),
+                workItem("duplicate", { slug: "duplicate" }),
             ],
             taxonomy: [
                 { slug: "term", name: "Term", kind: "Vocabulary" },
@@ -72,11 +73,6 @@ describe("reference search", () => {
                 (item) => item.identifier
             )
         ).toEqual(["epic", "duplicate"])
-        expect(
-            referenceOptions("work-initiative", context).map(
-                (item) => item.identifier
-            )
-        ).toEqual(["epic"])
         expect(
             referenceOptions("work-blockers", context).map(
                 (item) => item.identifier
