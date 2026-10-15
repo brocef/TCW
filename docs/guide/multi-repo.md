@@ -161,7 +161,8 @@ What happens depends on where the target is:
    - with the **Jira** backend, TCW creates the ticket in the target's Jira
      inbox, using the target's own `work.jira` settings, never this project's.
      When the target's work store is present, inside a git repository and has
-     no uncommitted changes, TCW then moves the ticket to the `request` stage
+     no uncommitted changes, and Jira offers a move to the status set for
+     the `request` stage, TCW then moves the ticket to the `request` stage
      and writes its item folder, left uncommitted; standard output is the new
      item's slug. Otherwise the ticket stays in the Jira inbox, TCW says why on
      standard error, prints the ticket's key, and exits 0.
