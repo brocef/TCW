@@ -149,7 +149,7 @@ the codes fit together. When the target is declared, is not on this machine,
 and this project's entry for it has a `jira` block, TCW creates the ticket in
 that project's Jira inbox, prints its key and exits 0. Every other case where
 the target cannot be written to is refused with exit code 3, as the table
-says. [Working across repositories](multi-repo.md)
+says. [Working across repositories](multi-repo.md#creating-an-item-in-another-project)
 walks through all five cases.
 
 ## Using the rules from a script

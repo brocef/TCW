@@ -41,6 +41,7 @@ REWRITTEN: tuple[str, ...] = (
     "docs/guide/cli.md",
     "docs/guide/configuration.md",
     "docs/guide/jira.md",
+    "docs/guide/multi-repo.md",
     "docs/guide/work.md",
     "docs/lifecycle/abstraction.md",
     "docs/lifecycle/harness.md",
