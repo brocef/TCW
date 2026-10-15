@@ -591,14 +591,22 @@ export function NewItemForm({
     }
     const context = { ...references, currentIdentifier: undefined }
     // In filesystem mode another project's item may be named, with a
-    // warning; in Jira mode only this project's items with an item here.
+    // warning; in Jira mode a blocker must be one of this project's items,
+    // while a parent in another project is kept with the warning too, since
+    // the backend decides whether that ticket can be a parent. Connected
+    // projects are suggested only in filesystem mode.
+    const otherProjectNote = (text: string) =>
+        otherProjectWarning(text, project.id)
     const crossProject = backend
         ? { mode: "refuse" as const }
         : {
               mode: "warn" as const,
-              warning: (text: string) => otherProjectWarning(text, project.id),
+              warning: otherProjectNote,
               source: suggestOtherItems,
           }
+    const crossParent = backend
+        ? { mode: "warn" as const, warning: otherProjectNote }
+        : crossProject
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
             <EditorHeader
@@ -695,7 +703,7 @@ export function NewItemForm({
                             />
                             <ReferenceInput
                                 label="Parent"
-                                {...crossProject}
+                                {...crossParent}
                                 value={String(props.parent ?? "")}
                                 options={referenceOptions(
                                     "work-parent",

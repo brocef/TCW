@@ -336,6 +336,39 @@ describe("the new item form", () => {
         expect(screen.queryByRole("checkbox")).toBeNull()
     })
 
+    test("in Jira mode another project's parent is kept with a warning, a blocker is not", async () => {
+        const fetch = fakeFetch([[/^POST /, 201, { slug: "p/TCW-9-new" }]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onCreated = renderForm({
+            recordOwner: "backend",
+            inboxItems: false,
+            createFields: [],
+        })
+        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+            target: { value: "New" },
+        })
+        const parent = screen.getByRole("combobox", { name: "Parent" })
+        fireEvent.change(parent, { target: { value: "other/TCW-1-x" } })
+        fireEvent.keyDown(parent, { key: "Enter" })
+        expect(
+            await screen.findByText(/other\/TCW-1-x is in project other/)
+        ).toBeInTheDocument()
+        const blockers = screen.getByRole("combobox", { name: "Blocked by" })
+        fireEvent.change(blockers, { target: { value: "other/TCW-1-x" } })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        expect(
+            await screen.findByText(/^Blocked by: other\/TCW-1-x is not one/)
+        ).toBeInTheDocument()
+        expect(fetch.calls).toHaveLength(0)
+        fireEvent.change(blockers, { target: { value: "" } })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        await waitFor(() => expect(onCreated).toHaveBeenCalled())
+        expect(fetch.calls[0].body).toMatchObject({
+            title: "New",
+            properties: { parent: "other/TCW-1-x" },
+        })
+    })
+
     test("a ticket made without an item is named, so it can be adopted", async () => {
         globalThis.fetch = fakeFetch([
             [
