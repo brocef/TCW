@@ -327,6 +327,7 @@ export function App() {
                 navigate(pathFor(axis, selected), { replace: true })
                 return
             }
+            setProblem("")
             setEditor(null)
             setWorkMode(null)
             setDirty(false)
@@ -432,8 +433,9 @@ export function App() {
         [selected]
     )
 
-    const navigateTo = (nextAxis: Axis, key: string | null) => {
-        if (!confirmLeave()) return
+    // False when the user chose to stay on a page with unsaved changes.
+    const navigateTo = (nextAxis: Axis, key: string | null): boolean => {
+        if (!confirmLeave()) return false
         setProblem("")
         setEditor(null)
         setWorkMode(null)
@@ -460,14 +462,13 @@ export function App() {
                 [nextAxis]: new Set([...old[nextAxis], ...ancestors]),
             }))
         }
+        return true
     }
 
+    // Leaving the page is asked about once, by navigateTo; staying keeps
+    // both the unsaved work and the filter as they were.
     const updateFilter = (value: string) => {
-        if (editor && !confirmLeave()) return
-        setEditor(null)
-        setDirty(false)
-        setFilter(value)
-        navigateTo(axis, null)
+        if (navigateTo(axis, null)) setFilter(value)
     }
 
     const visible = useCallback(

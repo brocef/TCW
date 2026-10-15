@@ -6,14 +6,22 @@ import {
     within,
 } from "@testing-library/react"
 import { vi } from "vitest"
-import { MemoryRouter, useLocation } from "react-router"
+import { MemoryRouter, useLocation, useNavigate } from "react-router"
 import { ThemeProvider } from "../theme"
 import { fakeFetch, project, workDetail, workItem } from "../test-fixtures"
 import type { TProject } from "../model/types"
 import { App } from "./app"
 
 function Where() {
-    return <output data-testid="where">{useLocation().pathname}</output>
+    const navigate = useNavigate()
+    return (
+        <>
+            <output data-testid="where">{useLocation().pathname}</output>
+            <button type="button" onClick={() => void navigate(-1)}>
+                Browser back
+            </button>
+        </>
+    )
 }
 
 function renderApp(path = "/work") {
@@ -324,6 +332,84 @@ test("unsaved comment text is asked about before a form replaces the page", asyn
     } finally {
         confirm.mockRestore()
     }
+})
+
+test("staying put when the filter asks keeps the filter and the unsaved work", async () => {
+    serve({}, [["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")]])
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
+    try {
+        renderApp("/work/2026-10-01-a")
+        fireEvent.change(
+            await screen.findByRole("textbox", { name: "New comment" }),
+            { target: { value: "Half a thought" } }
+        )
+        const filter = screen.getByPlaceholderText("Filter")
+        fireEvent.change(filter, { target: { value: "z" } })
+        expect(confirm).toHaveBeenCalledTimes(1)
+        expect(filter).toHaveValue("")
+        expect(screen.getByTestId("where")).toHaveTextContent(
+            "/work/2026-10-01-a"
+        )
+        // The comment is still unsaved work: the next way off the page asks.
+        fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+        expect(confirm).toHaveBeenCalledTimes(2)
+        expect(
+            screen.getByRole("textbox", { name: "New comment" })
+        ).toHaveValue("Half a thought")
+    } finally {
+        confirm.mockRestore()
+    }
+})
+
+test("what an adopt hook failed with does not follow the browser back", async () => {
+    serve({ recordOwner: "backend" }, [
+        [
+            "/api/tickets$",
+            200,
+            {
+                tickets: [
+                    {
+                        key: "X-1",
+                        summary: "Please",
+                        status: "Inbox",
+                        created: "2026-10-01",
+                        reporter: "Ann",
+                        url: "https://tracker.example/browse/X-1",
+                        description: null,
+                    },
+                ],
+                query: "q",
+            },
+        ],
+        [
+            /^POST \/api\/tickets/,
+            201,
+            {
+                slug: "p/X-1-please",
+                code: 6,
+                problem: "request post hook failed",
+            },
+        ],
+        ["/api/work/X-1-please$", 200, workDetail("X-1-please")],
+    ])
+    renderApp("/work")
+    fireEvent.click(await screen.findByRole("button", { name: "Tickets" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Adopt" }))
+    expect(
+        await screen.findByText("request post hook failed")
+    ).toBeInTheDocument()
+    await waitFor(() =>
+        expect(screen.getByTestId("where")).toHaveTextContent(
+            "/work/X-1-please"
+        )
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Browser back" }))
+    await waitFor(() =>
+        expect(screen.getByTestId("where")).toHaveTextContent(/^\/work$/)
+    )
+    expect(
+        screen.queryByText("request post hook failed")
+    ).not.toBeInTheDocument()
 })
 
 test("an unsaved declaration draft is asked about before a stage file opens", async () => {
