@@ -1,0 +1,4 @@
+changed:
+    - work/configure-the-work-store-location
+    - cli/validate-a-project
+    - work/configure-the-work-lifecycle
