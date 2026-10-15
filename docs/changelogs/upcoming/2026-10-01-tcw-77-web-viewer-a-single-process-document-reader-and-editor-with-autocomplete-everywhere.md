@@ -6,7 +6,11 @@
   `work.py` (the work routes), `files.py` (an item's files and its
   declaration), `records.py` (taxonomy and capabilities) and `services.py`
   (the operations the routes call, replaceable in tests). The only processes
-  it starts are `git rev-parse` and `git --no-optional-locks status` reads.
+  it starts while answering are `git rev-parse` and
+  `git --no-optional-locks status` reads, and the request stage's `post`
+  hooks when a Jira ticket is adopted (as `tcw work tickets adopt` runs them);
+  at startup `webbrowser.open` starts the system's browser opener unless
+  `--no-open` is given.
 - Every request, reads included, must name a loopback address in `Host` and,
   when sent, in `Origin`; writes must be JSON of at most 1 MiB. Every answer
   carries `Content-Security-Policy: default-src 'self'`. Errors are
@@ -26,8 +30,11 @@
   a changed property no longer holds the expected value. `POST …/comments`,
   `POST …/blocks` (one target per request), `POST /api/work` (in this project,
   at the inbox stage, or delegated to a connected one), `GET /api/tickets` and
-  `POST /api/tickets/<key>/adopt` call the same operations as the CLI. In Jira
-  mode the item record, request and comments are read-only (403).
+  `POST /api/tickets/<key>/adopt` call the same operations as the CLI; adopt
+  answers `{slug, code, problem}`, with `problem` naming a failed `post` hook.
+  In Jira mode the item record, request and comments are read-only (403), a
+  new item's assignee must be an assignable account ID (400 otherwise), and a
+  blocker must be an item of this project.
 - `GET /api/options/assignee` and `GET /api/options/work` give suggestions the
   client cannot compute: Jira's assignable users, and items of connected
   filesystem-mode projects found on this machine.
@@ -38,8 +45,15 @@
   comments, the new-item form, the Tickets view, and reference fields that
   refuse, warn on or allow a value that is not a suggestion. The Markdown
   editor completes `tcw://` links.
-- `layout.item_folders()` lists the item folders under the work path without
-  reading them.
+- `layout.item_folders()` lists the folders under the work path without
+  reading them, and every work backend gains `is_item_folder(folder)`, its
+  own offline rule for which of them are items (filesystem: a dated name
+  holding `item.yaml`; Jira: a name starting with a ticket key), so a stray
+  folder is never treated as an item.
+- `tickets.adopt` takes a `report` callable for what it tells the user
+  (stderr by default), and `tickets.is_assignable(backend, account_id)` checks
+  one account through the assignable-users search's `accountId` parameter.
+- An unexpected `ValueError` in a route is now a 500, not a 400.
 
 ## Removed
 

@@ -9,15 +9,17 @@ parser's message, so it can be fixed. In filesystem mode I also change the
 item's properties, add `blocks` links one at a time, and add comments; a
 comment is never edited. I create items, in this project or, with only a
 title, request text and priority, in a connected one. In Jira mode I adopt
-inbox tickets as items.
+inbox tickets as items, which runs the request stage's `post` hooks as
+`tcw work tickets adopt` does.
 
 I create and edit taxonomy entries and capabilities. An inherited entry has no
 edit control: it is changed in the project that keeps it.
 
 Every save carries the revision the page loaded, so a save over a change made
 elsewhere is refused and the page offers to load the current version. A value
-that names nothing is refused before anything is written, in the words the
-command line uses. A document saved with a link that does not resolve, or a
+that names nothing is refused before anything is written: with the command
+line's own message where the operation refuses it, and with the viewer's
+message, naming the field, where only the viewer does. A document saved with a link that does not resolve, or a
 round with no verdict, is saved and comes back with a warning.
 
 The web app never moves an item from one stage to another, and never changes

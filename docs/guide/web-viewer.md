@@ -78,9 +78,13 @@ tcw work discard --reason "<why>" <slug>   # drop an item
 In a project whose work backend is Jira, Jira keeps each item's record. The
 request, comments, stage and properties are shown read-only, each with
 **Open in Jira** to edit it there. The item's files are on disk and stay
-editable. The board is read with one search. The new-item form shows the
+editable. The board is read with one search, or two while a tag filter is
+ticked: one for the tagged items and one for every item, which an item's
+`blocks` and `children` are worked out from. The new-item form shows the
 fields Jira's create screen has, and a **Tickets** view lists inbox tickets
-with **Adopt**, which makes one an item and opens it.
+with **Adopt**, which makes one an item and opens it. Adopting runs the
+request stage's `post` hooks, as `tcw work tickets adopt` does; if one fails,
+the item is still made, and the page shows what failed.
 
 When Jira cannot be reached, or its credentials are not set, the server still
 starts. The board lists the item folders found on disk under a banner that
@@ -88,8 +92,11 @@ gives the reason and offers **Retry**; files can still be read and saved.
 
 ## Suggestions as you type
 
-Every field either suggests values as you type or is a fixed choice. Use Up,
-Down and Enter, or click, to pick a suggestion.
+Every field either suggests values as you type or is a fixed choice. Use Up
+or Down and then Enter, or click, to pick a suggestion; Enter on its own keeps
+exactly what you typed, when the field allows it. Text a field will not keep
+stays in the field with the reason, and the form will not save until it is
+changed or cleared.
 
 - **Fixed choices**: priority, effort and complexity; a taxonomy entry's kind;
   a capability's status, priority and lifecycle. All come from the project's
@@ -100,10 +107,13 @@ Down and Enter, or click, to pick a suggestion.
   never offers the item itself or anything under it) and the items of
   connected projects on this machine whose work is kept in files. Another
   project's full slug, `<project>/<folder>`, is kept with a warning, because
-  this page cannot check it. In Jira mode only this project's items are
-  allowed.
-- **Assignee** suggests the names already on items and you; in Jira mode it
-  offers the people Jira lets the item be assigned to, and nothing else.
+  this page cannot check it. In Jira mode a blocker must be one of this
+  project's items; a parent in another project is kept with the same warning,
+  and Jira accepts it only if it is a ticket on the same site.
+- **Assignee** suggests the names already on items and you. In Jira mode it
+  offers the people Jira lets the item be assigned to, shown by name, and
+  keeps nothing else: the server checks the account against Jira's assignable
+  users before creating the item.
 - **Taxonomy and capability references** (a parent, related entries, a
   feature's vocabulary, a capability's feature, subject, roles, conditions,
   blocked-by and superseded-by) suggest the entries that fit, inherited ones

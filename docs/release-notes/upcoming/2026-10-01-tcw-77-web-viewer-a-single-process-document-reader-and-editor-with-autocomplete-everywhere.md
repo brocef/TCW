@@ -33,3 +33,13 @@ one. It never changes git state.
 It no longer shows child projects' items on the same board; open each
 project's own viewer instead. Every request is now checked to come from your
 own machine, reads included.
+
+Two more things that worked in 2.x no longer do:
+
+- **Inherited taxonomy entries and capabilities cannot be edited in the
+  viewer.** In 2.x, saving an inherited capability made a local override. Now
+  run `tcw capabilities set <path> --field <name>=<value>`, which makes the
+  same override; an inherited taxonomy entry is changed in the project that
+  keeps it.
+- **2.x links to a work item, `/<project>/work/<slug>`, no longer open it**;
+  they open the board. An item's link is now `/work/<folder>`.

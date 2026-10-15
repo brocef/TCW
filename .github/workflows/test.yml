@@ -69,9 +69,9 @@ jobs:
             - uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
-            # No Node in *this* job: pytest never shells out to it (`tcw serve`'s
-            # runtime tests monkeypatch `shutil.which`). The Node-dependent
-            # check has its own job below.
+            # No Node in *this* job: pytest never shells out to it, and
+            # `tcw serve` no longer needs it. The Node-dependent check has its
+            # own job below.
             - run: pip install -e '.[dev]'
             - run: pytest
 

@@ -4,8 +4,9 @@
 under `tcw/serve/`, and no line of the viewer's guide, matches the
 case-sensitive `\\bnodes?\\b`; "Node.js" is still allowed where it names the
 JavaScript runtime. The guide says TCW "never changes git state", not that it
-never runs git, which it does to read the repository. The two release entries
-start with a `##` heading.
+never runs git, which it does to read the repository. That the release
+entries start with a `##` heading is `tests/test_upcoming_entries.py`'s check,
+over every entry, since a version cut deletes them.
 """
 
 from __future__ import annotations
@@ -42,11 +43,10 @@ def test_the_pattern_finds_node_and_passes_nodejs():
     assert not NODE.search("an inode")
 
 
-# -- the guide and the release entries ------------------------------------------
+# -- the guide ------------------------------------------------------------------
 
 REPO = Path(tcw.__file__).resolve().parent.parent
 GUIDE = REPO / "docs" / "guide" / "web-viewer.md"
-ENTRY = "2026-10-01-tcw-77-web-viewer-a-single-process-document-reader-and-editor-with-autocomplete-everywhere.md"
 
 
 def test_no_guide_line_says_node():
@@ -61,8 +61,3 @@ def test_the_guide_says_git_state_is_never_changed():
     assert "never changes git state" in text
     assert "never runs git" not in text
 
-
-@pytest.mark.parametrize("folder", ["changelogs", "release-notes"])
-def test_the_release_entries_start_with_a_heading(folder):
-    entry = REPO / "docs" / folder / "upcoming" / ENTRY
-    assert entry.read_text().startswith("## ")

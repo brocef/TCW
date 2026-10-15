@@ -14,4 +14,4 @@ Every `tcw work` command reads this through one parser, and a problem — an unk
 
 A `generate:` script receives one JSON object on stdin — the item's record, its request text (capped, with a flag saying when it was cut) and what the hook is — plus `TCW_HOOK_ROLE`, `TCW_HOOK_KIND`, `TCW_HOOK_ID` and `TCW_HOOK_PHASE`, so a one-line script needs no JSON parser. Its output is capped by `work.hooks.output-cap`, and **a script that exits non-zero contributes nothing at all** rather than half a prompt. Because composing can re-run, a generator has to be side-effect-free.
 
-`tcw serve` runs no hooks.
+`tcw serve` runs no hooks of its own, since it makes no lifecycle moves. The one exception is adopting a Jira inbox ticket there, which runs the request stage's `post` hooks exactly as `tcw work tickets adopt` does.
