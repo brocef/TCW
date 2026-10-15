@@ -1,8 +1,8 @@
 ---
 name: commands-process-inbox
-description: Triage raw entries in the TCW work inbox into tracked work items.
-when_to_use: Use when a user asks to process, triage, or clear the TCW work inbox — turning every raw entry into an accepted work item and running the request stage on its intake.
-allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+description: Decide on every arrival in a TCW project's work inbox, then write the request for each one accepted.
+when_to_use: Use when a user asks to process, triage, or clear a TCW project's work inbox — deciding whether each arrival becomes work, accepting, splitting or turning it away, and running the request stage on each item accepted.
+allowed-tools: Bash(tcw *), Read, Edit, Write
 metadata:
     author: Brian Cefali
 license: Apache-2.0
@@ -13,23 +13,20 @@ dynamic_skill: false # which skills a project may override, and why: ../README.m
 Use the `work` skill. This skill covers the stage range **`inbox` →
 `request`**.
 
-Invoke the `work-stage` skill with `inbox`, and work through every entry
-`tcw work inbox list` reports. For each one, decide whether it is one item or
-several, choose its tags from the node's registered vocabulary, and accept it
-with `tcw work inbox accept <entry> --title "<clear title>"`.
+1. Run `tcw work stage prompt inbox` and follow it over every arrival it
+   names. Where arrivals are items at the inbox stage, `tcw work list --stage
+   inbox` lists them; where the backend is Jira, they are the tickets
+   `tcw work tickets list --json` lists. The prompt says how to accept, split
+   or turn one away in this project's backend, and when to leave one for a
+   person.
+2. For each item accepted, run `tcw work stage prompt request <slug>` and
+   write its request, asking the user whatever is unclear, since that is what
+   the stage exists for. Where the backend keeps the request (in Jira, the
+   ticket's description), the prompt has you propose changes in a comment
+   rather than write it; a person moves the ticket on.
+3. Report each arrival: accepted (with its slug), split (with every slug),
+   turned away or left for a person (with the reason), and recorded on an
+   existing item (naming it).
 
-When the project declares `work.tracker.inbox-query`, `inbox list` has a second
-section, `tracker tickets:`. Work those too: read one with `tcw work inbox show
-<key>`, and accept it with `tcw work inbox accept <key>`, which **claims the ticket
-in the tracker** (assigns it to the user) — and, where `work.tracker.pre-backlog`
-names the ticket's status, first moves it out of triage to the backlog — so confirm
-with the user before accepting a ticket, saying which of those will happen. A raw entry named like a ticket key hides it; add `--ticket`.
-
-Accepting an entry writes it as the item's `intake.md`. Then invoke
-the `work-stage` skill with `request` and the new item's slug, and run the `request` stage over that intake to
-produce `initial-request.md` — asking the user whatever is unclear, since that
-is what the stage exists for.
-
-TCW commits each item as it is accepted (unless `work.auto-commit-transitions`
-is off; then commit each one yourself). Do not carry an entry into `spec`; that is
-the `commands-plan-work` skill.
+Do not move an item past request: running spec is the `commands-plan-work`
+skill. Leave each accepted item at request with its request written.

@@ -91,7 +91,6 @@ Documents are named by owner and by path within the owner.
 | `commands-process-inbox` | `SKILL.md` | fixed (Rule 2) | Runs the `inbox` and `request` stages through `work-stage`; the procedure is the stages' |
 | `commands-plan-work` | `SKILL.md` | fixed (Rule 2) | Runs `request`, `spec` and `plan` through `work-stage`; the procedure is the stages' |
 | `commands-drive-work-to-completion` | `SKILL.md` | fixed (Rule 2) | Runs every stage through `verify` via `work-stage`; the procedure is the stages' |
-| `commands-verify-work` | `SKILL.md` | fixed (Rule 2) | Runs `verify` through `work-stage`; the procedure is the stage's |
 | `commands-pause-work` | `SKILL.md` | overridable | Unlike the other four, it carries a procedure of its own: a pause is not a lifecycle stage, so there is no stage document behind it and Rule 2 does not apply. What it carries — how to stop, what to commit, how much to write down — is conduct. The handoff file's name and the rule that resuming deletes it stay TCW's. Note that no procedure id backs this skill, so `true` here records the intent; nothing yet mechanises the override |
 | `extras-autonomous-work` | `SKILL.md` | overridable | Which advisors to consult, how to review, how to close out and when to cut a version are conduct |
 | `extras-triage-issues` | `SKILL.md` | overridable | How a project sweeps and answers its own issue tracker is conduct |
