@@ -1,6 +1,7 @@
 """A store name is a name: never a pattern to git, never a path to `glob`
 (spec: 2026-09-15-refuse-glob-and-path-characters-in-store-names)."""
 
+import json
 import subprocess
 import threading
 from pathlib import Path
@@ -42,6 +43,7 @@ def test_the_web_answers_404_for_an_encoded_slash(root):
         with pytest.raises(HTTPError) as got:
             urlopen(f"http://127.0.0.1:{httpd.server_port}/api/work/%2Fetc%2Fpasswd")
         assert got.value.code == 404
+        assert json.loads(got.value.read())["code"] == "not-found"
     finally:
         httpd.shutdown()
         httpd.server_close()

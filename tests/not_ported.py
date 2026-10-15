@@ -77,8 +77,6 @@ NOT_PORTED = frozenset({
     'tests/test_refs.py::test_resolve_dangling_work_slug',
     'tests/test_refs.py::test_resolve_dangling_work_slug_in_a_registered_project',
     'tests/test_refs.py::test_resolve_unregistered_project_names_the_cause',
-    # tests/test_serve_resolve.py
-    'tests/test_serve_resolve.py::test_resolve_foreign_and_malformed',
     # tests/test_smoke.py
     'tests/test_smoke.py::test_init_ignores_resolved_work_folders',
     # tests/test_stage_verb.py
@@ -130,15 +128,6 @@ NOT_PORTED = frozenset({
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[.]',
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[a]',
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[b]',
-    'tests/test_upstream_projects.py::test_serve_reads_an_upstream_item',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[DELETE--None]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[DELETE-/plan-stages/one-None]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[PATCH--body1]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[POST-/actions/start-body0]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[POST-/plan-stages/one/open-body7]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[PUT-/artifacts/spec-body2]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[PUT-/plan-stages/one-body3]',
-    'tests/test_upstream_projects.py::test_serve_refuses_a_write_into_an_upstream[PUT-/sidecars/capabilities.yaml-body4]',
     'tests/test_upstream_projects.py::test_the_proposit_migration_passes_through_no_blocked_state',
     'tests/test_upstream_projects.py::test_the_upstream_stays_off_the_familys_lists',
     # tests/test_validate.py

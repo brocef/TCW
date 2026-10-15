@@ -13,14 +13,14 @@ import pytest
 def _no_desktop_opener(monkeypatch):
     """No test opens a browser.
 
-    `tcw/serve/runtime.py` opens the browser from a daemon thread, and
+    `tcw/serve/server.py` opens the browser from a daemon thread, and
     `pytest.fail` raised off the main thread surfaces as
     `PytestUnhandledThreadExceptionWarning` rather than a failure. Preventing
     the window is the point; treat a warning in the log as the signal.
     `monkeypatch.setattr` raises on a missing attribute, so renaming the
     browser call site fails here loudly instead of leaving an inert guard.
     """
-    monkeypatch.setattr("tcw.serve.runtime.webbrowser.open",
+    monkeypatch.setattr("tcw.serve.server.webbrowser.open",
                         lambda url, **kw: pytest.fail(
                             f"test opened a browser: {url}"))
 

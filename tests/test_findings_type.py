@@ -2,22 +2,33 @@
 
 The registry's, the taxonomy's and the capabilities' `check()` and
 `validate()` each return only `Finding`s, over one fixture holding a problem
-for each; and the web viewer, which shows them as text, renders each as
+for each; and the web viewer sends each as its three parts, `severity`,
+`where` and `message`, which its client prints as
 `<severity>: <where>: <message>`.
 """
 
 import re
+import subprocess
 from http import HTTPStatus
+from pathlib import Path
 
 import yaml
 
 from tcw.findings import Finding
-from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
-from tests.test_serve_write import _node, _req, _seed, _start_server
+from tests.serve.conftest import Served, start
 
 RENDERED = re.compile(r"(error|warning|unresolved): \S.*: \S.*")
+
+
+def _node(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    init(["taxonomy", "capabilities"], root)
+    return root
 
 
 def broken(tmp_path):
@@ -67,15 +78,17 @@ def test_validate(tmp_path):
     assert all(RENDERED.fullmatch(str(f)) for f in findings), findings
 
 
-def test_a_viewer_save_reports_its_findings_as_text(tmp_path):
+def test_a_viewer_save_reports_its_findings_in_parts(tmp_path):
     root = _node(tmp_path)
-    _seed(root)
-    httpd, base = _start_server(root)
+    httpd, thread = start(root)
     try:
-        status, body = _req(base, "POST", "/api/capabilities", {
+        answer = Served(root, httpd, httpd.server_port).post("/api/capabilities", {
             "path": "half", "name": "Half done", "status": "Partial"})
     finally:
         httpd.shutdown()
         httpd.server_close()
-    assert status == HTTPStatus.CREATED
-    assert body["warnings"] == ["error: docs/capabilities/half: Partial requires Gaps"]
+        thread.join(timeout=10)
+    assert answer.status == HTTPStatus.CREATED
+    assert answer.json["warnings"] == [{"severity": "error",
+                                        "where": "docs/capabilities/half",
+                                        "message": "Partial requires Gaps"}]

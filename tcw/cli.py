@@ -521,8 +521,6 @@ def _validate_remote(root: Path):
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
-    # Descendant project boards are aggregated by default (like
-    # `tcw work list --include-descendants`).
     project_root = find_project_root()
     if project_root is None:
         from tcw.errors import NO_PROJECT, BackendError
@@ -533,8 +531,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     # here (TCW-72 Design 2.3).
     from tcw import config as layered
     layered.end_command()
-    return serve(port=args.port, open_browser=not args.no_open,
-                 include_descendants=True)
+    return serve(project_root, port=args.port, open_browser=not args.no_open)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -586,7 +583,8 @@ def build_parser() -> argparse.ArgumentParser:
                       prints="the URL", writes="what the viewer saves",
                       examples=["serve", "serve --port 8123 --no-open"])
     p_serve.add_argument("--port", type=int, default=DEFAULT_PORT,
-                         help=f"loopback port to bind (default: {DEFAULT_PORT})")
+                         help=f"loopback port to listen on; 0 picks a free one "
+                         f"(default: {DEFAULT_PORT})")
     p_serve.add_argument("--no-open", action="store_true",
                          help="do not open a browser")
     p_serve.set_defaults(func=_cmd_serve)

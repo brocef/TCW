@@ -447,67 +447,6 @@ def test_a_link_into_an_upstream_item_resolves(tmp_path):
     assert out.returncode == 0, out.stderr
 
 
-# ── tcw serve ────────────────────────────────────────────────────────────────
-
-import json  # noqa: E402
-import threading  # noqa: E402
-from urllib.error import HTTPError  # noqa: E402
-from urllib.parse import quote  # noqa: E402
-from urllib.request import Request, urlopen  # noqa: E402
-
-from tcw.serve import HOST, TcwServer  # noqa: E402
-
-
-def _http(base: str, method: str, path: str, body: dict | None = None):
-    data = json.dumps(body).encode("utf-8") if body is not None else None
-    headers = {"Content-Type": "application/json"} if method != "GET" else {}
-    req = Request(f"{base}{path}", data=data, headers=headers, method=method)
-    try:
-        with urlopen(req) as res:
-            return res.status, res.read().decode("utf-8")
-    except HTTPError as e:
-        return e.code, e.read().decode("utf-8")
-
-
-@pytest.fixture
-def served_family(tmp_path):
-    """The `_cli_family` graph served from `a` with --include-descendants."""
-    root, slug = _cli_family(tmp_path)
-    httpd = TcwServer((HOST, 0), root / "a", True)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    try:
-        yield f"http://{HOST}:{httpd.server_port}", quote(f"core/{slug}", safe="")
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-
-
-@pytest.mark.parametrize("method,suffix,body", [
-    ("POST", "/actions/start", {}),
-    ("PATCH", "", {"title": "Renamed"}),
-    ("PUT", "/artifacts/spec", {"content": "# Spec\n"}),
-    ("PUT", "/plan-stages/one", {"content": "x"}),
-    ("PUT", "/sidecars/capabilities.yaml", {"content": "a: 1\n"}),
-    ("DELETE", "/plan-stages/one", None),
-    ("DELETE", "", None),
-    ("POST", "/plan-stages/one/open", {}),
-])
-def test_serve_refuses_a_write_into_an_upstream(
-        tmp_path, served_family, method, suffix, body):
-    base, ref = served_family
-    status, text = _http(base, method, f"/api/work/{ref}{suffix}", body)
-    assert status == 403, (status, text)
-    assert "read-only" in text and "core" in text, text
-    _assert_core_untouched(tmp_path)
-
-
-def test_serve_reads_an_upstream_item(tmp_path, served_family):
-    base, ref = served_family
-    status, text = _http(base, "GET", f"/api/work/{ref}")
-    assert status == 200, (status, text)
-    _assert_core_untouched(tmp_path)
-
-
 # ── delegate, nodes, and staying off the family's lists ──────────────────────
 
 def _with_package(root: Path) -> Path:
@@ -575,14 +514,6 @@ def test_the_upstream_stays_off_the_familys_lists(tmp_path):
     assert "core" not in out.stdout, out.stdout
     rollups = list(root.glob(f"docs/work/*/{epic}/rollup.md"))
     assert rollups and "core" not in rollups[0].read_text()
-    httpd = TcwServer((HOST, 0), root, True)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    try:
-        status, text = _http(f"http://{HOST}:{httpd.server_port}", "GET", "/api/work")
-    finally:
-        httpd.shutdown()
-        httpd.server_close()
-    assert status == 200 and slug not in text, text
     _assert_core_untouched(tmp_path)
 
 
