@@ -42,7 +42,7 @@ Ask the user: "Would you like to set up documentation entries?" and which form t
 If they agree, help them fill it out by asking:
 
 1. **Which files** should be kept in sync with code changes? (e.g., README.md, CHANGELOG.md, guides)
-2. **What trigger** applies to each file? Offer the base triggers from the "Trigger Reference" table in the `documentation-sync` skill's `SKILL.md` (`Public-API`, `Public-{Name}-API`, `Any-Code-Change`, `Only-Breaking`), and note that a project may define its own named trigger where none of those fit.
+2. **What trigger** applies to each file? Offer the base triggers from the "Trigger Reference" table of the documentation-sync procedure, which `tcw work procedure documentation-sync` prints (`Public-API`, `Public-{Name}-API`, `Any-Code-Change`, `Only-Breaking`), and note that a project may define its own named trigger where none of those fit.
 3. **What description** should guide how updates are written for each file?
 
 Then write the entries in the chosen form. For the config form, add the `work.documentation` block and run `tcw validate` to confirm it parses. For the Markdown form, add the section to their CLAUDE.md in the format shown under "The Documentation Sync Section" in the `documentation-sync` skill's `SKILL.md`, and **always include the opening directive line** that tells the agent to invoke the `documentation-sync` skill — without it, future sessions may see the file list but skip the trigger-evaluation logic. (The config form needs no such directive: `tcw work stage` puts the entries in front of the agent itself.)
@@ -66,4 +66,4 @@ This keeps deferred work in the same board the rest of the project's work lives 
 | --------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Not creating the changelog file if it doesn't exist | If the file is listed in Documentation Sync, create it if missing            |
 | Omitting the opening directive line                 | The skill must be reloaded each session; the directive is what triggers that |
-| Adding a `docs/FOLLOWUPS.md` log in a TCW project   | Track deferred code work as `tcw work` backlog items instead                 |
+| Adding a `docs/FOLLOWUPS.md` log in a TCW project   | Track deferred code work as work items instead                 |

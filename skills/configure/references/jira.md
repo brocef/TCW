@@ -60,8 +60,9 @@ path or trailing `/`.
 
 Shared: personal configuration cannot set it.
 
-The key of the Jira project that holds this project's tickets: capital
-letters, digits and `_`, starting with a letter, such as `TCW`.
+The key of the Jira project that holds this project's tickets: at least two
+characters, capital letters, digits and `_`, starting with a letter, such as
+`TCW`.
 
 ### `work.jira.issue-type`
 
@@ -132,8 +133,10 @@ configuration, as for `email-env`.
 
 TCW finds its custom fields by their names on the create screen of the
 configured issue type. Each name must match exactly one field there, or every
-command refuses and names the field. Two are required: they are how a ticket
-is known to be a TCW item.
+command refuses and names the field. The fields must be on the issue type's
+edit screen too, since TCW fills them in on tickets that already exist, and
+`tcw validate --remote` reports one missing from either screen. Two are
+required: they are how a ticket is known to be a TCW item.
 
 ### `work.jira.fields.project`
 

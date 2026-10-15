@@ -175,11 +175,18 @@ inbox. What happens depends on where that project is:
    projects are read-only from here.
 3. **It is on this machine:** with the filesystem backend, the item is created
    in its inbox when its work store is present and has no uncommitted changes
-   (TCW reads the repository's status to check, and changes nothing). The
-   files it writes are left uncommitted, and named on standard error. With the
-   Jira backend, TCW creates the ticket in that project's Jira inbox, using
-   that project's own `work.jira` block, never this one's. Standard output is
-   the new item's slug.
+   (TCW reads the repository's status to check, and changes nothing). Creating
+   it is refused, exit code 3, when the work store is missing, has uncommitted
+   changes, or is not inside a repository whose status TCW can read. The files
+   it writes are left uncommitted, and named on standard error, and standard
+   output is the new item's slug. With the Jira backend, TCW creates the
+   ticket in that project's Jira inbox, using that project's own `work.jira`
+   block, never this one's. When that project's work store is present, inside
+   a repository whose status TCW can read, and has no uncommitted changes, TCW
+   then moves the ticket to the `request` stage and writes its item folder
+   there, left uncommitted, and standard output is the new item's slug.
+   Otherwise the ticket stays in the Jira inbox, TCW says why on standard
+   error, prints the ticket's key, and exits 0.
 4. **It is declared but not on this machine, and its entry here has a `jira`
    block:** TCW creates a ticket in the inbox status the block names, prints
    the ticket's key, and exits 0.

@@ -128,7 +128,7 @@ Shared: personal configuration cannot set it.
 
 The Jira status a stage maps to. It is read only with `backend: jira`, where
 every enabled stage except the side stage needs one, and each stage needs its
-own. `jira.md` describes how statuses are chosen.
+own. With the filesystem backend a `status` is reported as a problem. `jira.md` describes how statuses are chosen.
 
 ### `work.stages.*.prompt`
 
@@ -220,9 +220,9 @@ The same entry written twice in one list is reported.
 A **hook** is a `command` binding in a `pre` or `post` list. `tcw work advance`
 runs them when it moves an item:
 
-1. TCW's own checks for the target stage run first: the records check on the
-   move out of `implement`, and the completion check on the move into
-   `completed`.
+1. TCW's own checks for the target stage run first: the records check on any
+   move into the stage after `implement` (`review`, or the next stage turned
+   on), and the completion check on the move into `completed`.
 2. Then the target stage's `pre` hooks run, in order. Only the target's run,
    never those of a stage the move skips. The first one that fails (exits
    with any code but 0) refuses the move, with exit code 3. A forced move
@@ -279,14 +279,18 @@ becomes the text. It gets:
   {"schema": 1, "item": {"slug": "my-app/2026-10-01-add-login", "title": "Add login", "...": "..."}, "request": "the item's request text", "hook": {"role": "prompt", "kind": "generate", "id": "spec", "phase": "prompt", "body_truncated": false}}
   ```
 
-  `item` is the item's properties (`slug`, `title`, `stage`, `priority`,
-  `effort`, `complexity`, `tags`, `assignee`, `parent`, `blocked-by`,
-  `blocks`, `children`, `path`, `untracked`), or `null` with no item.
+  `item` is the item's properties (`slug`, `title`, `stage`, `created`,
+  `priority`, `effort`, `complexity`, `tags`, `assignee`, `parent`,
+  `blocked-by`, `blocks`, `children`, `path`, `untracked`), or `null` with no
+  item.
   `request` is the item's request, cut to 64 KiB, in which case
   `body_truncated` is `true`, or `null`.
 
 A script that runs longer than `work.hooks.timeout`, or prints more than
-`work.hooks.output-cap` bytes, is stopped, and nothing it printed is used.
+`work.hooks.output-cap` bytes, is stopped, and nothing it printed is used. A
+script that exits with any code but 0 has its output thrown away too. In each
+case the whole prompt or procedure fails with a message naming the script,
+rather than being printed without that part.
 
 ## The request in a prompt: `{{tcw:request}}…{{/tcw:request}}`
 
