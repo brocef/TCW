@@ -161,3 +161,42 @@ def records_root(tmp_path) -> Path:
 @pytest.fixture
 def records(records_root, serve_project) -> Served:
     return serve_project(records_root)
+
+
+@dataclass
+class Result:
+    code: int
+    out: str
+    err: str
+
+    @property
+    def json(self) -> Any:
+        return json.loads(self.out)
+
+
+@pytest.fixture
+def tcw(monkeypatch, capsys):
+    """The branch's own CLI, in-process, in a folder, with piped input."""
+    import io
+    import sys
+    from tcw.cli import main
+
+    def run(argv, cwd: Path, stdin: str = "") -> Result:
+        monkeypatch.chdir(cwd)
+        monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+        try:
+            code = main(list(argv))
+        except SystemExit as stop:
+            code = stop.code if isinstance(stop.code, int) else 1
+        captured = capsys.readouterr()
+        return Result(code, captured.out, captured.err)
+    return run
+
+
+@pytest.fixture
+def jira(tmp_path, serve_project):
+    """The Jira-mode fixture served; `.backend` and `.stubs` record calls."""
+    from tests.serve.memory import jira_mode
+    mode = jira_mode(tmp_path)
+    mode.served = serve_project(mode.root, mode.services())
+    return mode
