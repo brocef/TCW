@@ -286,7 +286,8 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
         reported = target
         code = codes.MOVED_WITH_PROBLEM
         messages.append(f"moved to {target}, but the trace was not recorded "
-                        f"({error}); add it with `tcw work comment`")
+                        f"({error}); if it is missing, add it with "
+                        f"`tcw work comment`")
     if reported != target:
         return Outcome(codes.ERROR, reported,
                        (f"asked the backend to move {item.slug} to {target}, but "

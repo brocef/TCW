@@ -38,6 +38,11 @@ from dataclasses import dataclass
 #: Jira's largest page for searches and comment reads.
 PAGE = 100
 
+#: Endpoints every Jira Cloud site answers, so a 404 from one means the site
+#: itself is wrong, never that a ticket is missing.
+SITE_ENDPOINTS = ("/rest/api/3/search/jql", "/rest/api/3/myself",
+                  "/rest/api/3/issueLinkType")
+
 
 # ── errors ───────────────────────────────────────────────────────────────────
 
@@ -56,6 +61,11 @@ class TrackerPermissionError(TrackerError):
 
 class TrackerNotFound(TrackerError):
     """No such issue, project or resource (404)."""
+
+
+class TrackerSiteMissing(TrackerError):
+    """A 404 from an endpoint every Jira Cloud site has (`SITE_ENDPOINTS`), so
+    the configured site is not a Jira site, rather than a ticket being missing."""
 
 
 class TrackerRequestInvalid(TrackerError):
@@ -166,7 +176,8 @@ class JiraClient:
                 detail = error.read().decode("utf-8", "replace")[:500]
             except Exception:                      # noqa: BLE001 - detail is a bonus
                 pass
-            raise _for_status(error.code, dict(error.headers or {}), detail, path) from error
+            raise _for_status(error.code, dict(error.headers or {}), detail, path,
+                              site=self.config.site) from error
         except urllib.error.URLError as error:
             # Covers a refused connection, DNS failure and a timeout: `URLError`
             # wraps `socket.timeout` rather than letting it through.
@@ -469,7 +480,8 @@ def _check_issue(issue, path: str) -> dict:
     return issue
 
 
-def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerError:
+def _for_status(status: int, headers: dict, detail: str, path: str,
+                site: str = "") -> TrackerError:
     """Map an HTTP status onto a cause.
 
     `detail` is carried into the message as opaque text and **never parsed**. The
@@ -484,6 +496,10 @@ def _for_status(status: int, headers: dict, detail: str, path: str) -> TrackerEr
     if status == 403:
         return TrackerPermissionError(
             f"the account is not permitted to see this{where}. {detail}".strip())
+    if status == 404 and path.split("?")[0] in SITE_ENDPOINTS:
+        at = f" at {site}" if site else ""
+        return TrackerSiteMissing(f"Jira{at} has no {path.split('?')[0]}; check that "
+                                  f"work.jira.site names your Jira site")
     if status == 404:
         return TrackerNotFound(f"the tracker has no such resource{where}. {detail}".strip())
     if status == 429:

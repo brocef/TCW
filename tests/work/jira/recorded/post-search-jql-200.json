@@ -38,7 +38,7 @@
             },
             "displayName": "Person 1",
             "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-1",
-            "timeZone": "America/New_York"
+            "timeZone": "Etc/UTC"
           },
           "created": "2026-10-13T11:47:12.614-0400",
           "customfield_10042": "tcw-test-live/TCWTEST-65-scenario-child-114639",

@@ -73,6 +73,54 @@ def test_a_screenless_move_dropped_after_landing_still_posts_the_note(item):
     assert comment_texts(project, key) == [NOTE]
 
 
+# -- the separate note's own connection drops (J1) ---------------------------------------
+
+
+def force_to_implement(project, folder, tcw):
+    """A forced move into In Progress, whose transition has no screen, so its
+    note is posted on its own after the move."""
+    return tcw(["advance", folder, "--to", "implement", "--force", "--reason", NOTE],
+               project.root)
+
+
+def comment_posts(project, key):
+    return [p for m, p, _ in project.fake.log
+            if (m, p) == ("POST", f"/rest/api/3/issue/{key}/comment")]
+
+
+def test_a_dropped_note_that_landed_is_not_posted_again(item, tcw):
+    project, key, folder = item
+    project.fake.drop_after_next_comment()
+    result = force_to_implement(project, folder, tcw)
+    assert result.code == 0, result.err
+    assert project.fake.tickets[key].status == "In Progress"
+    assert len(project.fake.tickets[key].comments) == 1
+    assert len(comment_posts(project, key)) == 1
+
+
+def test_a_dropped_note_that_did_not_land_is_reported_as_failed(item, tcw):
+    project, key, folder = item
+    project.fake.drop_before_next_comment()
+    result = force_to_implement(project, folder, tcw)
+    assert result.code == 6, result.err
+    assert "posting the note failed" in result.err
+    assert "if it is missing, add it with `tcw work comment`" in result.err
+    assert project.fake.tickets[key].comments == []
+    assert len(comment_posts(project, key)) == 1
+
+
+def test_a_dropped_note_whose_comments_cannot_be_read_may_have_been_posted(item, tcw):
+    project, key, folder = item
+    project.fake.drop_after_next_comment(then_unreachable=True)
+    result = force_to_implement(project, folder, tcw)
+    assert result.code == 6, result.err
+    assert "may have been posted" in result.err
+    assert f"`tcw work show {project.id}/{folder}`" in result.err \
+        or f"`tcw work show {folder}`" in result.err
+    assert len(project.fake.tickets[key].comments) == 1
+    assert len(comment_posts(project, key)) == 1
+
+
 def test_a_screenless_lost_race_posts_the_note_despite_a_matching_comment(
         item, monkeypatch):
     """The note was never sent, so an older comment with the same words is

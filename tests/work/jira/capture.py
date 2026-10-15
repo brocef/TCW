@@ -9,7 +9,9 @@ produced it.
 
 Before writing, it replaces every account id, email address, display name and
 the site's host with fixed values, so that `test_recorded_shapes.py` can fail
-on any `@` or the real host left in a file.
+on any `@` or the real host left in a file. Every `timeZone` becomes `Etc/UTC`
+and every `locale` `en_US` (`PROFILE`): neither names a person on its own, but
+together they say where one lives.
 """
 
 from __future__ import annotations
@@ -60,6 +62,22 @@ def without_avatars(value):
                 for k, v in value.items()}
     if isinstance(value, list):
         return [without_avatars(v) for v in value]
+    return value
+
+
+#: Fixed values for the parts of a user object that describe where its person
+#: is, whatever the real ones were.
+PROFILE = {"timeZone": "Etc/UTC", "locale": "en_US"}
+
+
+def without_profile(value):
+    """`value` with every `PROFILE` key's text replaced by its fixed value."""
+    if isinstance(value, dict):
+        return {k: (PROFILE[k] if k in PROFILE and isinstance(v, str)
+                    else without_profile(v))
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [without_profile(v) for v in value]
     return value
 
 
@@ -141,7 +159,7 @@ class Recorder:
             "status": status,
             "richness": richness,
             "request": json.loads(sent) if sent else None,
-            "response": without_avatars(response),
+            "response": without_profile(without_avatars(response)),
         }
         self.directory.mkdir(parents=True, exist_ok=True)
         target.write_text(self.scrub(json.dumps(entry, indent=2, sort_keys=True)) + "\n",

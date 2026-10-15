@@ -419,7 +419,28 @@ def _raise_http(monkeypatch, status, headers=None, body=b"{}"):
 def test_each_status_raises_its_own_cause(monkeypatch, status, expected):
     _raise_http(monkeypatch, status)
     with pytest.raises(expected):
-        jira.JiraClient(CONFIG).myself()
+        jira.JiraClient(CONFIG).issue("P-1")
+
+
+@pytest.mark.parametrize("call", [
+    lambda c: c.myself(),
+    lambda c: c.search("project = P", ("summary",)),
+    lambda c: c.link_types(),
+], ids=["myself", "search", "link types"])
+def test_a_404_from_an_endpoint_every_site_has_names_the_site(monkeypatch, call):
+    """Every Jira Cloud site answers these, so a 404 means the configured site
+    is not a Jira site, not that a ticket is missing."""
+    _raise_http(monkeypatch, 404, body=b"<html>Not Found</html>")
+    with pytest.raises(jira.TrackerSiteMissing,
+                       match=f"Jira at {CONFIG.site} has no /rest/api/3/.*"
+                             f"check that work.jira.site names your Jira site"):
+        call(jira.JiraClient(CONFIG))
+
+
+def test_a_404_for_a_ticket_is_still_not_found(monkeypatch):
+    _raise_http(monkeypatch, 404)
+    with pytest.raises(jira.TrackerNotFound):
+        jira.JiraClient(CONFIG).issue("P-1")
 
 
 def test_every_cause_is_a_tracker_error(monkeypatch):

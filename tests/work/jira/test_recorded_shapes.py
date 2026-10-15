@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from tcw.work.jira.mapping import text_document
+from tests.work.jira.capture import PROFILE, Recorder
 from tests.work.jira.fake import FIELDS, SITE
 
 RECORDED = Path(__file__).parent / "recorded"
@@ -202,6 +203,35 @@ def test_the_fake_answers_in_jiras_shape(world, name):
     missing = [p for p in READS[name]
                if has(recorded, resolve(p, ids)) and not has(answer, resolve(p, fake_ids))]
     assert not missing, f"{name}: Jira sends {missing}, which the fake's answer lacks"
+
+
+def _profile_values(value, key: str) -> list:
+    if isinstance(value, dict):
+        return [v for k, v in value.items() if k == key] + \
+            [x for v in value.values() for x in _profile_values(v, key)]
+    if isinstance(value, list):
+        return [x for v in value for x in _profile_values(v, key)]
+    return []
+
+
+@pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)
+def test_no_real_time_zone_or_locale_is_recorded(path):
+    """A user object's `timeZone` and `locale` say where its person is, so the
+    recordings hold only the fixed values `capture.PROFILE` writes."""
+    entry = json.loads(path.read_text(encoding="utf-8"))
+    for key, fixed in PROFILE.items():
+        assert set(_profile_values(entry, key)) <= {fixed}, (path.name, key)
+
+
+def test_the_recorder_replaces_time_zone_and_locale(tmp_path):
+    recorder = Recorder(tmp_path, SITE)
+    body = {"accountId": "abc", "timeZone": "Europe/Oslo", "locale": "nb_NO",
+            "author": {"timeZone": "Asia/Tokyo", "locale": "ja_JP"}}
+    recorder.record("GET", f"{SITE}/rest/api/3/myself", None, 200,
+                    json.dumps(body).encode())
+    written = json.loads((tmp_path / "get-myself-200.json").read_text())["response"]
+    for user in (written, written["author"]):
+        assert (user["timeZone"], user["locale"]) == ("Etc/UTC", "en_US")
 
 
 def test_the_fake_site_stands_in_for_the_real_one():

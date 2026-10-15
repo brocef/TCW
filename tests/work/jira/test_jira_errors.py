@@ -5,7 +5,8 @@ import pytest
 
 from tcw.errors import BackendError, NotFound, Unreachable
 from tcw.work.jira import client as jira
-from tests.work.jira.conftest import TOKEN_ENV
+from tests.work.jira.conftest import TOKEN_ENV, jira_config
+from tests.work.projects import make_project
 
 
 def status(code, headers=None):
@@ -59,3 +60,29 @@ def test_an_answer_of_the_wrong_shape(jira_project, monkeypatch, tcw):
     with pytest.raises(BackendError, match="unexpected shape"):
         jira_project.backend().read(folder)
     assert tcw(["show", folder], jira_project.root).code == 1
+
+
+def test_a_missing_site_is_named_as_the_site(jira_project, tcw):
+    """A host with no Jira answers 404 to every request; the first one is to an
+    endpoint every site has, so the message names `work.jira.site` and the
+    exit is 1, not "not found" (4)."""
+    jira_project.fake.site_missing = True
+    result = tcw(["list"], jira_project.root)
+    assert result.code == 1, result.err
+    assert "check that work.jira.site" in result.err
+    assert "no such resource" not in result.err
+
+
+def test_a_missing_ticket_is_still_not_found(jira_project, tcw):
+    _, folder = jira_project.item("A", "a")
+    jira_project.fake.tickets.clear()
+    result = tcw(["show", folder], jira_project.root)
+    assert result.code == 4, result.err
+
+
+def test_a_missing_project_on_a_real_site_is_still_not_found(tmp_path, fake, tcw):
+    """`/myself` answers, so the project's own 404 stands."""
+    root = make_project(tmp_path, "tcw", config=jira_config(jira_project="NOPE"))
+    result = tcw(["list"], root)
+    assert result.code == 4, result.err
+    assert "work.jira.site" not in result.err

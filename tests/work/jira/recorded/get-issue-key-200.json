@@ -24,7 +24,7 @@
         },
         "displayName": "Person 1",
         "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-1",
-        "timeZone": "America/New_York"
+        "timeZone": "Etc/UTC"
       },
       "attachment": [],
       "comment": {
@@ -49,7 +49,7 @@
         "displayName": "Person 1",
         "emailAddress": "person-1",
         "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
-        "timeZone": "America/New_York"
+        "timeZone": "Etc/UTC"
       },
       "customfield_10001": null,
       "customfield_10002": [],
@@ -239,7 +239,7 @@
         "displayName": "Person 1",
         "emailAddress": "person-1",
         "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
-        "timeZone": "America/New_York"
+        "timeZone": "Etc/UTC"
       },
       "resolution": null,
       "resolutiondate": null,

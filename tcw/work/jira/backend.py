@@ -35,7 +35,8 @@ from tcw.work.fs_backend import ITEM_FILE, WORDS, report_mentions
 from tcw.work.jira import jql
 from tcw.work.jira.client import (
     JiraClient, Transition, TrackerAuthError, TrackerError, TrackerNotFound,
-    TrackerPermissionError, TrackerRateLimited, TrackerRequestInvalid, TrackerUnavailable,
+    TrackerPermissionError, TrackerRateLimited, TrackerRequestInvalid, TrackerSiteMissing,
+    TrackerUnavailable,
 )
 from tcw.work.jira.config import JiraConfig
 from tcw.work.jira.mapping import (
@@ -83,6 +84,8 @@ def _jira() -> Iterator[None]:
     except TrackerAuthError as error:
         raise BackendError(str(error)) from None
     except TrackerPermissionError as error:
+        raise BackendError(str(error)) from None
+    except TrackerSiteMissing as error:
         raise BackendError(str(error)) from None
     except TrackerNotFound as error:
         raise NotFound(str(error)) from None
@@ -249,7 +252,15 @@ class JiraBackend:
 
     def _read_metadata(self) -> Metadata:
         with _jira():
-            project = self.client.project(self.jira.project)
+            try:
+                project = self.client.project(self.jira.project)
+            except TrackerNotFound:
+                # A missing project and a host with no Jira both answer 404
+                # here. `/myself` exists on every site, so asking it tells
+                # them apart: it raises `TrackerSiteMissing` for the second,
+                # and the project's own 404 stands for the first (Design 14).
+                self.client.myself()
+                raise
         types = tuple(
             IssueType(str(t.get("id")), str(t.get("name")),
                       int(t.get("hierarchyLevel") or 0), bool(t.get("subtask")))
@@ -946,6 +957,20 @@ class JiraBackend:
     def _post_note(self, key: str, slug: Slug, stage: str, note: str) -> None:
         try:
             self.client.add_comment(key, text_document(note))
+        except TrackerUnavailable as error:
+            # The connection failed, so Jira may have the comment already:
+            # look before suggesting it be added again (Design 1).
+            try:
+                found = self._note_found(key, note)
+            except TrackerError:
+                raise MovedWithoutNote(
+                    f"{slug} moved to {stage}, but the connection failed while "
+                    f"posting the note ({error}) and its comments cannot be read "
+                    f"now; the note may have been posted: read the comments with "
+                    f"`tcw work show {slug}` before adding it") from None
+            if not found:
+                raise MovedWithoutNote(f"{slug} moved to {stage}, but posting the "
+                                       f"note failed: {error}") from None
         except TrackerError as error:
             raise MovedWithoutNote(f"{slug} moved to {stage}, but posting the note "
                                    f"failed: {error}") from None

@@ -25,7 +25,7 @@
     },
     "locale": "en_US",
     "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
-    "timeZone": "America/New_York"
+    "timeZone": "Etc/UTC"
   },
   "richness": 21,
   "status": 200,

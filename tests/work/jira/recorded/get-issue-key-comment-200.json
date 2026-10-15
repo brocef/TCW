@@ -18,7 +18,7 @@
           "displayName": "Person 1",
           "emailAddress": "person-1",
           "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
-          "timeZone": "America/New_York"
+          "timeZone": "Etc/UTC"
         },
         "body": {
           "content": [
@@ -59,7 +59,7 @@
           "displayName": "Person 1",
           "emailAddress": "person-1",
           "self": "https://acme.atlassian.net/rest/api/3/user?accountId=acct-2",
-          "timeZone": "America/New_York"
+          "timeZone": "Etc/UTC"
         },
         "updated": "2026-10-13T11:46:51.977-0400"
       }

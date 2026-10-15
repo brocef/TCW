@@ -13,11 +13,13 @@ accounts.
 **Switches** (each a method or attribute; `test_fake.py` checks each one does
 something): workflow definitions answer 403; a transition carrying a comment
 is refused; a transition's screen requires a field; the connection drops after
-the next write is applied; a whole `key IN` search naming a missing key is
+the next write is applied; the connection drops before or after the next
+comment posted on its own; a whole `key IN` search naming a missing key is
 refused with 400; tickets written in the last N requests are left out of
 searches; a field is left off an issue type's edit screen; every request is
-unreachable, 401, or 429 with `Retry-After`; Priority is left off the create
-screen.
+unreachable, 401, or 429 with `Retry-After`; every request answers 404 with
+an HTML page, as a host with no Jira site does; Priority is left off the
+create screen.
 
 Searches go through `fake_jql`, which parses exactly the shapes TCW builds.
 """
@@ -174,6 +176,9 @@ class FakeJira:
         self._drop_after_write = False
         self._down_after_drop = False
         self._drop_before_write = False
+        self._drop_comment: str | None = None      # "before" or "after"
+        self._down_after_comment = False
+        self.site_missing = False
         self.add_project("TCW")
 
     # -- setup -------------------------------------------------------------------
@@ -222,6 +227,18 @@ class FakeJira:
         """The next write's connection drops before Jira applies it."""
         self._drop_before_write = True
 
+    def drop_after_next_comment(self, *, then_unreachable: bool = False) -> None:
+        """The next comment posted on its own is added, then its connection
+        drops; with `then_unreachable`, every request after it is unreachable
+        too. `drop_after_next_write` cannot reach it, since the move before it
+        is the next write."""
+        self._drop_comment = "after"
+        self._down_after_comment = then_unreachable
+
+    def drop_before_next_comment(self) -> None:
+        """The next comment posted on its own drops before Jira adds it."""
+        self._drop_comment = "before"
+
     def unreachable(self) -> None:
         self.down = jira.TrackerUnavailable(f"could not reach the tracker at {self.site}")
 
@@ -252,16 +269,31 @@ class FakeJira:
         self.log.append((method, path, body))
         if self.down is not None:
             raise self.down
+        if self.site_missing:
+            # A host that answers but serves no Jira here: 404 with an HTML page.
+            raise jira._for_status(404, {}, "<html><body>Not Found</body></html>", path)
         email = os.environ.get(client.config.email_env, "")
         if email not in self.accounts:
             self.account(email, f"acct-{len(self.accounts) + 1}", email or "anonymous")
         me = self.accounts[email]
         route, query = _split(path)
+        comment = method == "POST" and route.endswith("/comment")
+        if comment and self._drop_comment == "before":
+            self._drop_comment = None
+            raise jira.TrackerUnavailable(
+                f"could not reach the tracker at {self.site} (connection reset)")
         if _is_write(method, path) and self._drop_before_write:
             self._drop_before_write = False
             raise jira.TrackerUnavailable(
                 f"could not reach the tracker at {self.site} (connection reset)")
         payload = self._route(me, method, route, query, body)
+        if comment and self._drop_comment == "after":
+            self._drop_comment = None
+            if self._down_after_comment:
+                self.unreachable()
+            raise jira.TrackerUnavailable(
+                f"the connection to the tracker at {self.site} was lost before "
+                f"it answered (RemoteDisconnected)")
         if _is_write(method, path):
             if self._drop_after_write:
                 self._drop_after_write = False

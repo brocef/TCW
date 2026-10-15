@@ -183,6 +183,46 @@ def test_drop_before_the_next_write_does_not_apply_it(client, fake):
     assert fake.tickets[key].summary == "again"
 
 
+def test_drop_after_the_next_comment_adds_it(client, fake):
+    key = create(client)
+    fake.drop_after_next_comment()
+    client.edit_issue(key, {"summary": "a write that is not a comment"})
+    with pytest.raises(jira.TrackerUnavailable, match="lost"):
+        client.add_comment(key, text_document("landed"))
+    assert len(fake.tickets[key].comments) == 1
+    client.add_comment(key, text_document("again"))             # only the next one
+    assert len(fake.tickets[key].comments) == 2
+
+
+def test_drop_after_a_comment_and_stay_down(client, fake):
+    key = create(client)
+    fake.drop_after_next_comment(then_unreachable=True)
+    with pytest.raises(jira.TrackerUnavailable):
+        client.add_comment(key, text_document("landed"))
+    with pytest.raises(jira.TrackerUnavailable):
+        client.comments(key, 10)
+    assert len(fake.tickets[key].comments) == 1
+
+
+def test_drop_before_the_next_comment_does_not_add_it(client, fake):
+    key = create(client)
+    fake.drop_before_next_comment()
+    with pytest.raises(jira.TrackerUnavailable):
+        client.add_comment(key, text_document("lost"))
+    assert fake.tickets[key].comments == []
+    client.add_comment(key, text_document("again"))
+    assert len(fake.tickets[key].comments) == 1
+
+
+def test_a_missing_site_answers_404_to_everything(client, fake):
+    key = create(client)
+    fake.site_missing = True
+    with pytest.raises(jira.TrackerSiteMissing):
+        client.myself()
+    with pytest.raises(jira.TrackerNotFound):
+        client.issue(key)
+
+
 def test_a_missing_key_search(client, fake):
     key = create(client)
     assert client.search(jql.keys_query([key, "TCW-99"]), []) != []
