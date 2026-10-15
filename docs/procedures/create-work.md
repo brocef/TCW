@@ -3,9 +3,10 @@
 
 ## This project: say why the work is worth doing
 
-Every item or inbox entry you create, whether in step 4 or as step 1's raw
-inbox entry, carries a `## Why` section. Place it right after the idea and
-before `## Origin`.
+Every item you create in step 4, and step 1's inbox item in filesystem mode,
+carries a `## Why` section in the text you give on stdin. Place it right after
+the idea and before `## Origin`. (In Jira mode step 1 creates nothing, so
+there is no inbox item to add it to.)
 
 The section makes the case for the work. Whoever picks the item up later, or
 decides whether it is worth picking up at all, can then weigh it without
@@ -31,10 +32,12 @@ If you cannot answer **Without it** at all, the case for the work is unclear:
 - **Delegated:** write "unknown — not in the brief".
 - **Unattended:** write "unknown", and say what would settle it.
 
-When you append to an existing item (step 3), add to its `## Why` only if
-the new information changes the case for doing the work, and do so under the
-same dated `## Added <YYYY-MM-DD>` heading as the rest of the append. The
-body template in step 4 therefore becomes:
+When you add to an existing item (step 3), add to its `## Why` only if the
+new information changes the case for doing the work, and do so in the same
+place as the rest of the addition: in filesystem mode under the same dated
+`## Added <YYYY-MM-DD>` heading in the request, and in Jira mode in the comment
+that step posts, under the same `Added <YYYY-MM-DD>` first line. The text
+step 4 gives on stdin therefore becomes:
 
 ```markdown
 # <title, as a change>
