@@ -1,0 +1,11 @@
+new:
+  - web/pick-references-and-known-values-from-suggestions
+  - web/see-jira-owned-work-read-only
+changed:
+  - web
+  - web/editing
+  - cli/reference-a-tcw-object
+  - cli/read-from-an-upstream-project
+taxonomy:
+  changed:
+    - local-web-app
