@@ -77,28 +77,30 @@ published one is `scripts/session_bootstrap.sh`, which installs the released
 `tcw-cli` from PyPI with pipx for a _user_; leave it alone when changing this
 one.
 
-### Working in a `--worktree` branch
+### Working in a git worktree
 
-`tcw work start <slug> --worktree` puts implementation edits in
-`.worktrees/<slug>/` on a `work/<slug>` branch while the primary checkout stays
-on `main` — but the editable install (`pip install -e`) registers an import hook
-pinned to the primary checkout path, so **the worktree's source is not what runs**.
-`PYTHONPATH=<worktree>` does not override it, because import hooks take priority
-over the module search path. `import tcw` only resolves to the worktree when the
-shell's current directory is the worktree root, which puts its own `tcw/` first
-on the search path.
+TCW does not create worktrees. A contributor who makes one with
+`git worktree add`, to work on a branch while the primary checkout stays on
+`main`, finds that **the worktree's source is not what runs**: the editable
+install (`pip install -e`) registers an import hook pinned to the primary
+checkout's path. `PYTHONPATH=<worktree>` does not override it, because import
+hooks take priority over the module search path. `import tcw` resolves to the
+worktree only when the shell's current directory is the worktree's root, which
+puts its own `tcw/` first on the search path.
 
-To actually exercise worktree source, re-point the install once —
-`pip install -e <worktree> --no-deps`, preceded by `pip uninstall tcw -y` if a
-stale `tcw-0.0.1` hook lingers, since a version-mismatched hook shadows the
-right one — and run pytest and the CLI with the current directory set to the
-worktree.
+To exercise the worktree's source, give the worktree its own virtual
+environment, a private Python installation inside the worktree, and leave the
+shared install alone:
 
-**Restore it before finishing.** `tcw work complete` tears the worktree down as
-part of completing (and refuses to run from inside the worktree it is about to
-remove, so run it from the primary checkout). Re-point the install first —
-`pip install -e /Users/brian/Projects/TCW` — or it is left pointing at a deleted
-path.
+```sh
+python -m venv .venv
+.venv/bin/pip install -e '.[dev]'
+```
+
+Run both from the worktree's root, then run pytest and `tcw` from that
+environment (`.venv/bin/pytest`, `.venv/bin/tcw`), with the current directory
+set to the worktree. `.venv/` is ignored, so nothing needs undoing when the
+worktree is removed.
 
 ## Measuring the skill layer
 

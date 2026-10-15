@@ -845,7 +845,7 @@ which installs the released `tcw-cli`).
 `tcw work start --worktree` puts an item's edits in a separate git worktree, but
 the editable install still runs the main checkout's code. How to point it at the
 worktree, and back again, is in
-[`AGENTS.md`](AGENTS.md#working-in-a---worktree-branch).
+[`AGENTS.md`](AGENTS.md#working-in-a-git-worktree).
 
 ### Running the tests
 

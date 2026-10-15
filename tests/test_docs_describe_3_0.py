@@ -31,9 +31,13 @@ from tests.test_shipped_text import _flag_named, _names
 
 REPO = Path(__file__).resolve().parent.parent
 
+AGENTS = "AGENTS.md"
+AGENTS_HEADING = "### Working in a git worktree"
+
 # The owned documents rewritten so far, by path from the repository root.
 # `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
 REWRITTEN: tuple[str, ...] = (
+    AGENTS,
     "docs/lifecycle/abstraction.md",
     "docs/lifecycle/harness.md",
     "docs/lifecycle/implementation.md",
@@ -50,8 +54,6 @@ REWRITTEN: tuple[str, ...] = (
 # TCW-76 writes the migration guide and removes this entry when it does.
 PENDING_TARGETS = ("docs/migration-guide-2.8-to-3.0.0.md",)
 
-AGENTS = "AGENTS.md"
-AGENTS_HEADING = "### Working in a git worktree"
 
 
 def agents_worktree_section(text: str | None = None) -> str:
