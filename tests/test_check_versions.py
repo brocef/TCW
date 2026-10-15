@@ -296,8 +296,10 @@ SKILL_FILES = sorted((REPO / "skills").glob("*/SKILL.md"))
 
 
 def test_every_shipped_skill_is_covered():
-    """A new skill is caught here rather than silently joining the list below."""
-    assert len(SKILL_FILES) == 17, [p.parent.name for p in SKILL_FILES]
+    """A new skill is caught here rather than silently joining the list below.
+    Fourteen since TCW-74 deleted `post-mortem`, `commands-verify-work` and
+    `work-stage`."""
+    assert len(SKILL_FILES) == 14, [p.parent.name for p in SKILL_FILES]
 
 
 @pytest.mark.parametrize("skill", SKILL_FILES, ids=lambda p: p.parent.name)
