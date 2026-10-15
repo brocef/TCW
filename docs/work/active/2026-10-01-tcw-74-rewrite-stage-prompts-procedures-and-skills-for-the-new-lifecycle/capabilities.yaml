@@ -1,0 +1,24 @@
+removed:
+  - skills/commands-verify-work
+  - skills/work-stage
+  - skills/post-mortem
+changed:
+  - skills/work
+  - skills/capabilities
+  - skills/setup
+  - skills/commands-process-inbox
+  - skills/commands-plan-work
+  - skills/commands-drive-work-to-completion
+  - skills/commands-pause-work
+  - skills/work-create
+  - skills/extras-autonomous-work
+  - skills/extras-triage-issues
+  - skills/documentation-sync
+  - work/run-a-lifecycle-stage
+  - work/run-a-procedure
+  - work/configure-procedures
+taxonomy:
+  removed:
+    - commands-verify-work-skill
+    - work-stage-skill
+    - post-mortem-skill
