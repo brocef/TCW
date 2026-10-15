@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { mkdtemp } from "node:fs/promises"
+import { appendFile, mkdtemp, readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -8,7 +8,7 @@ const PUBLIC_PORT = 8891
 const baseUrl = `http://127.0.0.1:${PUBLIC_PORT}`
 let server: ChildProcess
 let serverError = ""
-let nodeRoot = ""
+let projectRoot = ""
 
 test.describe.configure({ mode: "serial" })
 
@@ -30,18 +30,24 @@ async function stableScreenshot(page: Page, name: string) {
 }
 
 test.beforeAll(async () => {
-    nodeRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
-    spawnSync("git", ["init", "-q"], { cwd: nodeRoot, stdio: "inherit" })
-    const initialized = spawnSync("tcw", ["init", "--id", "playwright-node"], {
-        cwd: nodeRoot,
-        encoding: "utf8",
-    })
+    projectRoot = await mkdtemp(join(tmpdir(), "tcw-playwright-"))
+    spawnSync("git", ["init", "-q"], { cwd: projectRoot, stdio: "inherit" })
+    const initialized = spawnSync(
+        "tcw",
+        ["init", "--id", "playwright-project"],
+        { cwd: projectRoot, encoding: "utf8" }
+    )
     if (initialized.status !== 0) throw new Error(initialized.stderr)
+    // The tag registry the tag chips and the board's tag filter offer.
+    await appendFile(
+        join(projectRoot, "tcw-config.yaml"),
+        "work:\n  tags: [ui, api]\n"
+    )
     server = spawn(
         "tcw",
         ["serve", "--no-open", "--port", String(PUBLIC_PORT)],
         {
-            cwd: nodeRoot,
+            cwd: projectRoot,
             stdio: ["ignore", "pipe", "pipe"],
         }
     )
@@ -81,8 +87,9 @@ test("loads the React shell and navigates every axis", async ({ page }) => {
             .getByRole("tree", { name: "Objects" })
             .evaluate((element) => getComputedStyle(element).overflowY)
     ).toBe("auto")
-    // The work board is empty until TCW-77 rebuilds the work routes.
+    // No item yet: the board is empty, and offers to make one.
     await expect(page.getByRole("treeitem")).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "+ New item" })).toBeVisible()
 
     await page.getByRole("button", { name: "Taxonomy" }).click()
     await expect(page).toHaveURL(`${baseUrl}/taxonomy`)
@@ -278,15 +285,15 @@ test("searches references and surfaces targeted validation warnings", async ({
     ).toBe(dropdownStyle.background)
     await featureInput.press("Enter")
     await expect(featureInput).toHaveValue("use-feature")
-    await page
-        .getByRole("combobox", { name: "Superseded by" })
-        .fill("missing-capability")
-    // A reference that resolves to nothing is refused at write time, and the
-    // form keeps the draft so it can be corrected.
-    await page.getByRole("button", { name: "Save" }).click()
-    await expect(page.getByRole("alert")).toContainText("Validation errors")
-    await expect(page.getByRole("alert")).toContainText("missing-capability")
-    await page.getByRole("combobox", { name: "Superseded by" }).fill("")
+    // A reference that names nothing is refused in the field: it is not
+    // kept, and the field says why.
+    const superseded = page.getByRole("combobox", { name: "Superseded by" })
+    await superseded.fill("missing-capability")
+    await superseded.blur()
+    await expect(page.getByRole("alert")).toContainText(
+        "missing-capability is not one of the suggestions"
+    )
+    await expect(superseded).toHaveValue("")
     await page.getByRole("button", { name: "Save" }).click()
     await expect(page.getByRole("alert")).toHaveCount(0)
     await expect(page.locator(".toast")).toHaveText("Saved")
@@ -299,7 +306,6 @@ test("searches references and surfaces targeted validation warnings", async ({
 test("applies axis-specific facets and browser history navigation", async ({
     page,
 }) => {
-    // The Work facets are gone with the work routes until TCW-77.
     await page.goto(`${baseUrl}/work`)
     await page.getByRole("button", { name: "Taxonomy" }).click()
     await page.getByRole("button", { name: "Kind" }).click()
@@ -312,4 +318,175 @@ test("applies axis-specific facets and browser history navigation", async ({
     await expect(page).toHaveURL(`${baseUrl}/taxonomy`)
     await page.goForward()
     await expect(page).toHaveURL(`${baseUrl}/capabilities`)
+})
+
+// -- work ---------------------------------------------------------------------
+
+async function createItem(page: Page, title: string, tags: string[] = []) {
+    await page.goto(`${baseUrl}/work`)
+    await page.getByRole("button", { name: "+ New item" }).click()
+    await page.getByRole("textbox", { name: "Title" }).fill(title)
+    const tagInput = page.getByRole("combobox", { name: "Tags" })
+    for (const tag of tags) {
+        await tagInput.fill(tag)
+        await tagInput.press("Enter")
+    }
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.getByRole("heading", { name: title })).toBeVisible()
+}
+
+test("creates a work item, lists it, and filters the board by tag and stage", async ({
+    page,
+}) => {
+    await createItem(page, "Tagged item", ["ui"])
+    await createItem(page, "Plain item")
+    await page.goto(`${baseUrl}/work`)
+    await expect(page.getByRole("treeitem")).toHaveCount(2)
+
+    // A tag outside the registry is not kept as a chip.
+    await page.getByRole("button", { name: "+ New item" }).click()
+    const tagInput = page.getByRole("combobox", { name: "Tags" })
+    await tagInput.fill("not-registered")
+    await tagInput.press("Enter")
+    await expect(page.getByRole("alert")).toContainText("not-registered")
+    await page.getByRole("button", { name: "Cancel" }).click()
+
+    const boardRequest = page.waitForRequest(
+        (request) =>
+            request.url().includes("/api/work?") &&
+            request.url().includes("tag=ui")
+    )
+    await page.getByRole("button", { name: /^Tags/ }).click()
+    await page.getByRole("checkbox", { name: "ui" }).click()
+    await boardRequest
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("treeitem")).toHaveCount(1)
+    await expect(page.getByText("Tagged item", { exact: true })).toBeVisible()
+    await page.getByRole("checkbox", { name: "ui" }).click({ force: true })
+
+    await page.getByRole("button", { name: /^Stage/ }).click()
+    const stages = await page.getByRole("checkbox").allTextContents()
+    expect(stages.length).toBeGreaterThan(0)
+    await page.keyboard.press("Escape")
+})
+
+test("an item's page shows its stage, files by stage, and no lifecycle control", async ({
+    page,
+    request,
+}) => {
+    const board = await (await request.get(`${baseUrl}/api/work`)).json()
+    const item = board.items.find(
+        (row: { title: string }) => row.title === "Plain item"
+    )
+    const folder = item.path.split("/").pop()
+    await page.goto(`${baseUrl}/work/${folder}`)
+    await expect(page.locator(".stage-line")).toContainText(
+        `tcw work advance ${item.slug}`
+    )
+    for (const name of ["Advance", "Complete", "Start", "Drop", "Discard"])
+        await expect(page.getByRole("button", { name })).toHaveCount(0)
+
+    const tabs = page.getByRole("tablist", { name: "Stage files" })
+    await expect(tabs).toBeVisible()
+    await tabs.getByRole("tab").first().click()
+    const panel = page.getByRole("tabpanel")
+    await panel.getByRole("button", { name: "Create" }).click()
+    await page
+        .getByLabel("Markdown", { exact: true })
+        .fill("# A document\n\nWritten in the browser.")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.locator(".toast")).toBeVisible()
+    await expect(panel).toContainText("Written in the browser.")
+})
+
+test("edits properties and adds a comment in filesystem mode", async ({
+    page,
+}) => {
+    await page.goto(`${baseUrl}/work`)
+    await page.getByText("Plain item", { exact: true }).click()
+    await page.getByRole("button", { name: "Edit", exact: true }).click()
+    await page.getByLabel("Priority").click()
+    await page.getByRole("option", { name: "high" }).click()
+    // Another project's item is kept with a warning: this page cannot check it.
+    const blockedBy = page.getByRole("combobox", { name: "Blocked by" })
+    await blockedBy.fill("other-project/2026-01-01-x")
+    await blockedBy.press("Escape")
+    await blockedBy.press("Enter")
+    await expect(page.locator(".field-warning")).toContainText("other-project")
+    await page.getByRole("button", { name: "Save" }).click()
+    await expect(page.locator(".fields")).toContainText("high")
+
+    await page.getByRole("textbox", { name: "New comment" }).fill("Looks good.")
+    await page.getByRole("button", { name: "Add comment" }).click()
+    await expect(page.locator(".comment")).toContainText("Looks good.")
+})
+
+test("edits the declaration as lists, and as text when it cannot be parsed", async ({
+    page,
+    request,
+}) => {
+    const board = await (await request.get(`${baseUrl}/api/work`)).json()
+    const folder = board.items
+        .find((row: { title: string }) => row.title === "Plain item")
+        .path.split("/")
+        .pop()
+    await page.goto(`${baseUrl}/work/${folder}`)
+    const section = page.getByRole("region", { name: "Declaration" })
+    await expect(section).toContainText("Nothing declared.")
+    await section.getByRole("button", { name: "Create" }).click()
+    await expect(section).toContainText(
+        "Comments in this file are not kept when the form saves it."
+    )
+    const added = section.getByRole("combobox", { name: "Capabilities: new" })
+    await added.fill("web/new-thing")
+    await added.press("Escape")
+    await added.press("Enter")
+    await section.getByRole("button", { name: "Save" }).click()
+    await expect(section).toContainText("web/new-thing")
+
+    const path = join(projectRoot, "docs", "work", folder, "capabilities.yaml")
+    const saved = await readFile(path, "utf8")
+    expect(saved).toContain("web/new-thing")
+    const current = await (
+        await request.get(`${baseUrl}/api/work/${folder}/declaration`)
+    ).json()
+    const broken = await request.put(
+        `${baseUrl}/api/work/${folder}/files/capabilities.yaml`,
+        { data: { content: "capabilities: [", revision: current.revision } }
+    )
+    expect(broken.ok()).toBeTruthy()
+    await page.reload()
+    await expect(section).toContainText("This file cannot be read as lists")
+    await section.getByRole("button", { name: "Edit" }).click()
+    await expect(page.getByLabel("Markdown", { exact: true })).toHaveValue(
+        "capabilities: ["
+    )
+})
+
+test("typing tcw:// in a document offers objects from every axis", async ({
+    page,
+    request,
+}) => {
+    const board = await (await request.get(`${baseUrl}/api/work`)).json()
+    const folder = board.items
+        .find((row: { title: string }) => row.title === "Tagged item")
+        .path.split("/")
+        .pop()
+    await page.goto(`${baseUrl}/work/${folder}`)
+    const tabs = page.getByRole("tablist", { name: "Stage files" })
+    await tabs.getByRole("tab").first().click()
+    await page
+        .getByRole("tabpanel")
+        .getByRole("button", { name: "Create" })
+        .click()
+    const editor = page.getByLabel("Markdown", { exact: true })
+    await editor.fill("")
+    await editor.pressSequentially("See tcw://plain")
+    const links = page.getByRole("listbox", { name: "Links" })
+    await expect(links).toContainText("Plain item")
+    await editor.press("Enter")
+    await expect(editor).toHaveValue(/See tcw:\/\/W\/\d{4}-\d{2}-\d{2}-/)
+    await editor.pressSequentially(" and tcw://react")
+    await expect(links).toContainText("tcw://T/react-vocabulary")
+    await expect(links).toContainText("tcw://C/react/native-client")
 })
