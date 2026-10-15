@@ -1,8 +1,8 @@
 ---
 name: configure
-description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change lifecycle bindings (skills or commands run at a stage or transition), hook limits, the Definition of Done, documentation entries that track which documents a change must update, an external tracker, where a store lives, connected projects, or inherited taxonomy or capabilities. Getting TCW working in the first place is the `setup` skill.
-when_to_use: Use when a working TCW project should behave differently — setting up or changing work.lifecycle bindings, docs/work/dod.yaml, work.documentation entries, work.tracker, work.retain, work.auto-commit-transitions, work.trunk-branch, work.publish-transitions, a store's path or repository, connected-projects, TCW_PROJECT_<ID>, or taxonomy and capabilities extends. Also when a request says "set up" but names one of those areas.
-allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write, Grep, Glob
+description: Changes how a project that already uses TCW is configured. Use when a user wants to set up or change the stages a project uses, the text or commands bound to a stage, hook limits, procedures, the Jira backend, documentation entries that track which documents a change must update, where a store lives, connected projects, inherited taxonomy or capabilities, or their own personal configuration. Getting TCW working in the first place is the `setup` skill.
+when_to_use: Use when a working TCW project should behave differently — setting up or changing work.stages (enabled, status, prompt, pre, post), work.hooks, work.procedures, work.backend and work.jira, work.tags, work.documentation entries, a store's path or repository, projects, TCW_PROJECT_<ID>, taxonomy and capabilities extends, user.name, or a personal tcw-config.local.yaml. Also when a request says "set up" but names one of those areas.
+allowed-tools: Bash(tcw *), Read, Edit, Write, Grep, Glob
 metadata:
     author: Brian Cefali
 license: Apache-2.0
@@ -12,31 +12,31 @@ dynamic_skill: false # which skills a project may override, and why: ../README.m
 
 # Configuring TCW
 
-This skill changes the configuration of a project where TCW already works: what
-`tcw-config.yaml`, a component's own config file, `dod.yaml` and a per-machine
+This skill changes the configuration of a project where TCW already works:
+what `tcw-config.yaml`, a person's own configuration files and a per-machine
 environment variable say. Getting TCW working where it does not work yet — a
-new repository, a new machine, a missing or broken `tcw` — is
-the `setup` skill.
+new repository, a new machine, a missing or broken `tcw` — is the `setup`
+skill.
 
-Find the user's request in the table and open that document. Each one says what
-the setting does, shows its shape, and names the check to run.
+Find the user's request in the table and open that document. Each key has its
+own heading there, which says what the key does, shows its shape, and says
+whether one person may set it for themselves.
 
 | The user wants to… | Open |
 | --- | --- |
-| run a skill or command at a stage or transition, or change the prompt a stage prints | [`work.md`](references/work.md) |
-| change the template `tcw work scaffold` writes for a lifecycle document | [`work.md`](references/work.md) |
-| change how long a hook may run or how much a `generate:` script may print | [`work.md`](references/work.md) |
-| set the Definition of Done, the checklist `tcw work complete` prints | [`work.md`](references/work.md) |
-| stop transitions committing themselves, set a trunk branch, keep transitions local, or delete resolved items | [`work.md`](references/work.md) |
+| turn stages on or off, bind text or commands to a stage, change hook limits, register tags, or change a procedure's text | [`work.md`](references/work.md) |
+| keep the project's work items in Jira, or change how stages map to Jira statuses | [`jira.md`](references/jira.md) |
 | set up documentation tracking: which documents must be updated when which kind of change lands | [`docs-sync.md`](references/docs-sync.md) |
-| connect an external tracker such as Jira, or share tracker settings from a parent project | [`tracker.md`](references/tracker.md) |
 | keep a component's store in another folder or another repository | [`stores.md`](references/stores.md) |
-| connect a parent or child project, or say where a project is on this machine | [`projects.md`](references/projects.md) |
-| inherit another project's taxonomy or capabilities | [`projects.md`](references/projects.md) |
+| connect a parent, child or upstream project, say where a project is on this machine, create items in another project, or inherit another project's taxonomy or capabilities | [`projects.md`](references/projects.md) |
+| set their own name, credentials or additions for themselves only, or see which file a setting came from | [`personal.md`](references/personal.md) |
 
-Two settings are not here. The project `id` is written once by `tcw init` and is
-not changed afterwards. Tags are registered with `tcw work tags add` while
-filing work, which the `work` skill covers.
+`personal.md` also holds one table of every configuration key, with who may
+set it.
+
+Two settings are not changed here by hand. The project `id` is written once by
+`tcw init` and is not changed afterwards. Tags are registered with
+`tcw work tags add` while filing work, which the `work` skill covers.
 
 After any change, run `tcw validate`. The document you opened says which
 mistakes it reports and which it cannot see.

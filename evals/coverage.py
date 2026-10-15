@@ -65,7 +65,8 @@ PARTIAL = {
         "items and filing into another project are unmeasured too.",
     "configure":
         "B11 measures the documentation-entries route only. `work.md`, "
-        "`tracker.md`, `stores.md` and `projects.md` are unmeasured.",
+        "`jira.md`, `stores.md`, `projects.md` and `personal.md` are "
+        "unmeasured.",
     "setup":
         "B12 measures the new-repository route (`project.md`) only. "
         "Install and repair stay unmeasured: faking a broken `tcw` install "

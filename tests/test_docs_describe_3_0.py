@@ -33,7 +33,15 @@ REPO = Path(__file__).resolve().parent.parent
 
 # The owned documents rewritten so far, by path from the repository root.
 # `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
-REWRITTEN: tuple[str, ...] = ()
+REWRITTEN: tuple[str, ...] = (
+    "skills/configure/SKILL.md",
+    "skills/configure/references/docs-sync.md",
+    "skills/configure/references/jira.md",
+    "skills/configure/references/personal.md",
+    "skills/configure/references/projects.md",
+    "skills/configure/references/stores.md",
+    "skills/configure/references/work.md",
+)
 
 # Link targets that do not exist yet, each with the item that writes it.
 # TCW-76 writes the migration guide and removes this entry when it does.

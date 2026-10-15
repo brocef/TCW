@@ -4,7 +4,7 @@ Read this when a project declares no documentation entries and the user wants to
 
 ## Two forms — prefer config in a TCW project
 
-**Recommended, in a TCW node:** declare the entries in `tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `tcw work stage prompt implement` include them inline — so the gate does not depend on an agent remembering to open a file and parse prose.
+**Recommended, in a TCW project:** declare the entries in `tcw-config.yaml` under `work.documentation`. `tcw validate` checks their shape, `tcw work docs` prints them, and `tcw work stage prompt plan` / `tcw work stage prompt implement` include them inline — so the check does not depend on an agent remembering to open a file and parse prose.
 
 ```yaml
 # tcw-config.yaml
@@ -15,18 +15,27 @@ work:
           description: >-
               Public-facing overview and CLI usage. Update when the public
               surface or user-facing behavior changes.
-        - path: docs/changelogs/upcoming/<slug>.md
+        - path: docs/changelogs/upcoming/<folder>.md
           trigger: Any-Code-Change
           description: >-
               Developer changelog; technical, grouped by category. One file
-              per work item, named by its slug.
+              per work item, named after the item's folder name, never the
+              full slug, whose `/` would make a path.
 ```
 
-Three required keys per entry, all non-empty strings. `path` need not exist yet — an entry naming a file the project intends to create is correct, and a placeholder like `skills/<component>/SKILL.md` is legal. `trigger` may be any project-defined name; only whitespace in it is rejected.
+### `work.documentation`
+
+Shared: personal configuration cannot set it.
+
+A list of entries. Three required keys per entry, all non-empty strings. `path` need not exist yet — an entry naming a file the project intends to create is correct, and a placeholder like `skills/<component>/SKILL.md` is legal. `trigger` may be any project-defined name; only whitespace in it is rejected.
 
 The same `path` may appear in **several entries with different triggers** — an entry is identified by the `(path, trigger)` pair, not by the file alone. That is how a file large enough for its sections to answer to different changes is declared: one `README.md` entry under `Public-CLI-API`, another under `Validation-Rules`. Only two entries agreeing on *both* path and trigger are rejected as duplicates.
 
-**Fallback, and the only option outside a TCW node:** a `## Documentation Sync` section in the project's `CLAUDE.md`. Nothing validates it, and the entries are found by matching the heading — rename it and the gate silently stops working.
+### The fallback: a section in `CLAUDE.md`
+
+**Fallback, and the only option outside a TCW project:** a `## Documentation Sync` section in the project's `CLAUDE.md`. Nothing validates it, and the entries are found by matching the heading — rename it and the gate silently stops working.
+
+### Setting the entries up with the user
 
 Ask the user: "Would you like to set up documentation entries?" and which form they want.
 
@@ -42,7 +51,7 @@ Then write the entries in the chosen form. For the config form, add the `work.do
 
 After adding the section, create any tracked files — **and their parent directories** — that don't already exist so the agent has somewhere to write on the first trigger fire. Use the conventional initial content for each:
 
-- **`docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` folders**, each holding a `README.md` — create them if they don't exist. The `README.md` says who the document is for and how to add an entry: one file per change named `<work-item-slug>.md`, `##` headings, no `#` title, never edit another change's file (the `documentation-sync` skill's `release-notes-and-changelogs.md` has the full convention). Entry files are added later, one per change; the version cut combines them into `v{version}.md`. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
+- **`docs/release-notes/upcoming/` and `docs/changelogs/upcoming/` folders**, each holding a `README.md` — create them if they don't exist. The `README.md` says who the document is for and how to add an entry: one file per change named after the work item's folder name, never the full slug, whose `/` would make a path (`<folder>.md`), `##` headings, no `#` title, never edit another change's file (the `documentation-sync` skill's `release-notes-and-changelogs.md` has the full convention). Entry files are added later, one per change; the version cut combines them into `v{version}.md`. Apply this only when the project's entries list the per-version structure (some projects use only GitHub Releases or a single root `CHANGELOG.md` — don't impose this layout if it isn't listed).
 - **Other listed files** (e.g., guides, CLI docs) — only create stubs if the user explicitly asks; otherwise leave them for the user to author.
 
 ## Deferred follow-up work → track it as work items, not a doc

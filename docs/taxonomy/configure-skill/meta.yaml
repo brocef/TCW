@@ -5,6 +5,7 @@ relatesTo:
 - configurable-component-store-location
 - project-registry
 - jira-work-backend
+- personal-configuration
 vocabulary:
 - skill
 - project

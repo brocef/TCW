@@ -1,1 +1,1 @@
-The TCW plugin skill for changing how a project that already uses TCW is configured.
+The TCW plugin skill for changing how a project that already uses TCW is configured: its stages and the text and hooks bound to each, hook limits, procedures, the Jira backend, documentation entries, where its stores live, its connected projects and what it inherits from them, and a person's own personal configuration.

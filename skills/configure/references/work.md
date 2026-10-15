@@ -1,186 +1,357 @@
-# Lifecycle bindings
+# Configure the work axis
 
-A node may bind its own agent skills or shell commands to any stage or transition
-id, in `tcw-config.yaml`:
+Everything under `work:` in `tcw-config.yaml` is described here, except two
+keys that have their own documents: the Jira connection, `work.jira`, is in
+`jira.md`, and documentation entries, `work.documentation`, are in
+`docs-sync.md`.
 
-```yaml
-work:
-    lifecycle:
-        stages:
-            spec: [{ skill: superpowers:brainstorming }]
-        transitions:
-            complete:
-                pre: [{ command: "pytest -q" }]
-```
+Each key below has its own heading, and the first line under the heading says
+who may set it:
 
-A binding declares one **kind** explicitly — a bare string is rejected, never
-guessed at. Declaration order is significant. `tcw validate` rejects unknown ids,
-malformed shapes, blank or duplicated references, a kind used in a position that
-does not allow it, and a malformed `when:`. Tags in `when:` are read the way an
-item's tags are (`CLI` means `cli`); one that is not a registered tag, or that
-packs several into one string (`"cli,docs"`), is reported because it could never
-match. A `skill:` value is checked only for its shape — no spaces or path
-separators; `plugin:skill` is fine — never for whether the skill is installed,
-which depends on the harness reading it.
+- **Shared** keys are the team's, set in `tcw-config.yaml` only.
+- **Overridable** keys may also be set by one person in their personal
+  configuration, a file that is never shared (see `personal.md`).
 
-Which kinds each position allows, how several bindings combine, and what `when:`
-can test are in the table under "Roles, kinds, and conditions" in the `work`
-skill's `hooks.md`. That document also says how bindings run. Run
-`tcw work lifecycle` to see what a node has bound once you have changed it.
+`tcw-config.yaml` is a file in the user's own repository, and TCW trusts it
+exactly as much as any other file there: the commands it names run with the
+user's permissions. This is not a sandbox.
 
-A bare list under a stage id still means `prompt:`. It is the one place
-`command:` is accepted in a prompt position — the explicit `prompt:` key rejects
-it and points at `generate:` — because the legacy shape predates the distinction
-and cannot be renamed.
+After any change here, run `tcw validate`. It reports every key it does not
+know, every value of the wrong shape, and which file each problem came from.
+`tcw work lifecycle` then prints the stages and what is bound to each, and
+`tcw config show --origin` prints the configuration every command actually
+uses, with the layer each value came from.
 
-`tcw-config.yaml` is a file in the user's own repository and is trusted exactly
-as much as any other file there. This is not a sandbox.
+## Where the work store lives
 
-## Document templates: `artifacts`
+### `work.path`
 
-`work.lifecycle.artifacts` sets the template `tcw work scaffold <artifact> <slug>`
-writes for one lifecycle document, keyed by the artifact's name:
+Shared: personal configuration cannot set it.
+
+The folder holding the work items, by default `docs/work` inside the project.
+A relative path is read from the project's own folder; an absolute path and a
+symbolic link are both accepted. The folder may be inside another repository.
+Changing the path moves nothing: items already in the old folder stay there
+and TCW does not read them. `stores.md` has the rules shared by all three stores.
 
 ```yaml
 work:
-    lifecycle:
-        artifacts:
-            spec:
-                - file: docs/lifecycle/templates/spec-bug.md
-                  when: { tags: [bug] }
-                - builtin: true
+    path: ../planning/docs/work/my-project
 ```
 
-The first matching entry wins, so `builtin: true`, TCW's own template, goes
-last as the fallback. Which kinds an `artifacts` entry may use is in the same
-table in the `work` skill's `hooks.md`.
+### `work.repository`
 
-## Hook limits: `timeout` and `output-cap`
+Shared: personal configuration cannot set it.
 
-Two more keys sit beside `stages`, `transitions` and `artifacts` under
-`work.lifecycle`:
+Where the work store comes from when it is not on this machine: a repository
+`url`, and optionally `ref`, the `path` of the store inside the repository,
+and a local `checkout` folder. `tcw provision` makes the copy. A store that is
+already here always wins. The block is the same for all three stores and is
+described in `stores.md`.
+
+## The backend
+
+### `work.backend`
+
+Shared: personal configuration cannot set it.
+
+Where an item's properties, stage, request and comments are kept: `filesystem`
+(the default) keeps them in files in the item's folder, and `jira` keeps them
+on a Jira ticket. In both, the item's documents (stage documents, rounds,
+handoffs and declared record changes) are files in the item's folder.
 
 ```yaml
 work:
-    lifecycle:
-        timeout: 300       # seconds
-        output-cap: 65536  # bytes
+    backend: jira
 ```
 
-- **`work.lifecycle.timeout`** is how many seconds a `command:` check or a
-  `generate:` script may run before it is stopped. It must be a positive whole
-  number; the default is 300.
-- **`work.lifecycle.output-cap`** is the most a `generate:` script may print, in
-  bytes. Past it the script is stopped and nothing it printed is used. It must
-  be a positive whole number; the default is 65536 (64 KiB). It is a separate
-  limit from the 64 KiB cap on the item body the script receives on its standard
-  input.
+With `jira`, `work.jira` is required and every enabled stage needs a `status`;
+both are described in `jira.md`. Changing the backend moves no items: a
+command reads only the backend that is configured.
 
-`tcw validate` reports either key when its value is not a positive whole number
-(`true` and `false` do not count), and the default is used in the meantime. A
-key under `work.lifecycle` other than `stages`, `transitions`, `artifacts`,
-`timeout` and `output-cap` is reported as unknown.
+## Tags
 
-## Procedures: `work.procedures`
+### `work.tags`
 
-Some of TCW's instructions are not lifecycle stages. A project can replace or
-add to their text under `work.procedures`, a key beside `work.lifecycle` (not
-inside it):
+Shared: personal configuration cannot set it.
+
+The tags this project has registered, as a list. An item may carry only
+registered tags. Tags are compared in lower case, so `CLI` and `cli` are the
+same tag. Add and remove them with `tcw work tags add <tag>` and
+`tcw work tags rm <tag>`, which change only this list in `tcw-config.yaml`.
+
+```yaml
+work:
+    tags: [auth, billing, docs]
+```
+
+## Stages
+
+An item moves through a fixed table of stages: `inbox`, `request`, `spec`,
+`plan`, `implement`, `review`, `qa`, then `completed` or `discarded`. One more
+stage, `postmortem`, is a side stage: it is worked on beside a finished item,
+and nothing ever moves into it. `tcw work lifecycle` prints the table. A
+project cannot add a stage or rename one; it can turn some off, map them to
+Jira statuses, and bind text and commands to each, under
+`work.stages.<stage>`.
+
+```yaml
+work:
+    stages:
+        spec:
+            enabled: false
+        implement:
+            prompt:
+                - inherit: true
+                - blob: Run the full test suite before you stop.
+            pre:
+                - command: test -f docs/plan-approved
+        completed:
+            post:
+                - command: sh scripts/notify-team.sh
+```
+
+A side stage takes only `enabled` and `prompt`.
+
+### `work.stages.*.enabled`
+
+Shared: personal configuration cannot set it.
+
+`true` or `false`, `true` by default. Only `spec`, `plan`, `review`, `qa` and
+`postmortem` can be turned off; turning off any other stage is reported. A
+turned-off stage is skipped when an item moves on, and an item cannot be moved
+into it.
+
+### `work.stages.*.status`
+
+Shared: personal configuration cannot set it.
+
+The Jira status a stage maps to. It is read only with `backend: jira`, where
+every enabled stage except the side stage needs one, and each stage needs its
+own. `jira.md` describes how statuses are chosen.
+
+### `work.stages.*.prompt`
+
+Overridable: personal configuration may set it.
+
+The text `tcw work stage prompt <stage>` prints: the instructions an agent
+reads before it works the stage. It is a list of text bindings (see "Binding
+kinds" below), composed in order and joined by a blank line.
+
+TCW's own text for the stage is the list's starting value. A list written in
+`tcw-config.yaml` **replaces** it, unless the list holds an `inherit: true`
+entry, which stands for TCW's own text at that position. Most projects want
+`inherit: true`:
+
+```yaml
+work:
+    stages:
+        plan:
+            prompt:
+                - file: docs/lifecycle/planning-rules.md
+                - inherit: true
+```
+
+`completed` and `discarded` have no text of their own.
+
+### `work.stages.*.pre`
+
+Shared: personal configuration cannot set it.
+
+Checks that must pass before an item moves into this stage, as a list of
+`command` bindings. They are part of the team's rules, so a person cannot
+change them for themselves. How they run is under "How hooks run" below.
+
+### `work.stages.*.post`
+
+Overridable: personal configuration may set it.
+
+What runs after an item has moved into this stage, as a list of `command`
+bindings (run by TCW) or `skill` bindings (reported for the agent to run).
+How they run is under "How hooks run" below. A person's own `post` list for a
+stage replaces the team's for that stage unless it holds `inherit: true`.
+
+## Binding kinds
+
+Every entry of a `prompt`, `pre`, `post` or procedure list is a **binding**: a
+mapping that names exactly one kind, plus an optional `when:`. A bare string
+is refused, never guessed at.
+
+| Kind | Its value | `prompt` and procedures | `pre` | `post` |
+| --- | --- | --- | --- | --- |
+| `blob` | text, used as written; an empty `blob` says nothing | yes | no | no |
+| `file` | a path to a text file, read from the folder of the file that declares it, and never outside that folder | yes | no | no |
+| `generate` | a shell command whose output is the text | yes | no | no |
+| `skill` | a skill name (`plugin:skill` is allowed); prints "Invoke the … skill." | yes | no | yes: reported, never run |
+| `command` | a shell command | no: use `generate` | yes | yes |
+
+A `skill` is refused in a `pre` list: TCW cannot run a skill, so a check that
+is only reported would always pass. A `skill:` value is checked for its shape
+(no spaces or path separators), never for whether the skill is installed.
+
+TCW's own text is written by TCW itself, and `tcw config show` displays it as
+a built-in entry. A file never writes that entry; it writes `inherit: true`.
+
+### Conditions: `when:`
+
+A binding with `when:` applies only to some items:
+
+```yaml
+- file: docs/lifecycle/spec-bug.md
+  when: { tags: [bug], not_tags: [docs] }
+```
+
+It applies to an item that carries any of the `tags` and none of the
+`not_tags`. Both are lists, and tags are read in lower case. One string
+holding several tags (`"cli,docs"`) is reported, since it could never match.
+When no item is named, a `when:` that lists `tags` never matches.
+
+### Keeping the layer below: `inherit: true`
+
+A `prompt`, `pre` or `post` list, and a procedure's list, starts from what
+the layer below set: TCW's own text, for `tcw-config.yaml`, and the team's
+list, for a personal file. A list that is written replaces it. The entry
+`- inherit: true` keeps it, at that position. A list holds at most one such
+entry, the entry has no other key, and it is accepted only in those lists.
+The same entry written twice in one list is reported.
+
+## How hooks run
+
+A **hook** is a `command` binding in a `pre` or `post` list. `tcw work advance`
+runs them when it moves an item:
+
+1. TCW's own checks for the target stage run first: the records check on the
+   move out of `implement`, and the completion check on the move into
+   `completed`.
+2. Then the target stage's `pre` hooks run, in order. Only the target's run,
+   never those of a stage the move skips. The first one that fails (exits
+   with any code but 0) refuses the move, with exit code 3. A forced move
+   (`--force` with `--reason`) runs every check and moves anyway, recording
+   what failed in the trace comment.
+3. The item moves.
+4. The target stage's `post` hooks run, in order. A `skill` binding is
+   printed for the agent to act on. The first `command` that fails stops the
+   rest; the move stands, the failure names the file that declared the hook,
+   and `advance` exits with code 6.
+
+**`pre` hooks must be safe to run again for the same move.**
+`tcw work advance --dry-run` runs them, and in Jira mode the Jira workflow can
+still refuse a move after they have run, so the next attempt runs them again.
+
+Adopting a Jira ticket with `tcw work tickets adopt` runs the `request`
+stage's `post` hooks, and no `pre` hooks. Creating an item with
+`tcw work new`, in this project or in another, runs no hooks.
+
+Each hook runs through the shell, from the project's root folder, with no
+input, and anything it prints goes to TCW's standard error. It gets these
+environment variables:
+
+| Variable | Value |
+| --- | --- |
+| `TCW_SLUG` | the item's full slug, `project/folder` |
+| `TCW_STAGE` | the stage the item is moving into |
+| `TCW_FROM_STAGE` | the stage it is moving from (empty when it had none) |
+| `TCW_ITEM_PATH` | the item's folder |
+| `TCW_PROJECT_ROOT` | the project's root folder |
+| `TCW_CONFIG_DIR` | the folder of the file that declared the hook, so a personal hook can reach its own script |
+| `TCW_FORCED` | `1`, on a forced move only |
+| `TCW_REASON` | the `--reason` text, on a forced move only |
+
+A hook that runs longer than `work.hooks.timeout` is stopped and counts as
+failed.
+
+## What a `generate:` binding gets
+
+A `generate:` binding runs its command through the shell, from the project's
+root folder, when the text is composed. What it prints on standard output
+becomes the text. It gets:
+
+- `TCW_STAGE` (the stage whose prompt is being composed; absent for a
+  procedure), and, when an item is named, `TCW_SLUG`, `TCW_ITEM_PATH`;
+  always `TCW_PROJECT_ROOT` and `TCW_CONFIG_DIR`. `TCW_FROM_STAGE`,
+  `TCW_FORCED` and `TCW_REASON` are absent: nothing is moving.
+- Four more variables, so a short script needs no JSON reader:
+  `TCW_HOOK_ROLE` (`prompt` or `procedure`), `TCW_HOOK_KIND` (`generate`),
+  `TCW_HOOK_ID` (the stage or procedure name) and `TCW_HOOK_PHASE` (`prompt`).
+- On standard input, one JSON object:
+
+  ```json
+  {"schema": 1, "item": {"slug": "my-app/2026-10-01-add-login", "title": "Add login", "...": "..."}, "request": "the item's request text", "hook": {"role": "prompt", "kind": "generate", "id": "spec", "phase": "prompt", "body_truncated": false}}
+  ```
+
+  `item` is the item's properties (`slug`, `title`, `stage`, `priority`,
+  `effort`, `complexity`, `tags`, `assignee`, `parent`, `blocked-by`,
+  `blocks`, `children`, `path`, `untracked`), or `null` with no item.
+  `request` is the item's request, cut to 64 KiB, in which case
+  `body_truncated` is `true`, or `null`.
+
+A script that runs longer than `work.hooks.timeout`, or prints more than
+`work.hooks.output-cap` bytes, is stopped, and nothing it printed is used.
+
+## The request in a prompt: `{{tcw:request}}…{{/tcw:request}}`
+
+Text from any binding may hold the pair `{{tcw:request}}…{{/tcw:request}}`.
+When the text is composed for an item, the whole span is replaced by the
+item's request. When the item has no request, or no item is named, the span
+is replaced by the text between the two markers, so that text is the
+fallback:
+
+```yaml
+- blob: "The request: {{tcw:request}}(none was given){{/tcw:request}}"
+```
+
+An opening marker with no closing one is left as written.
+
+## Hook limits
+
+### `work.hooks.timeout`
+
+Shared: personal configuration cannot set it.
+
+How many seconds a hook or a `generate:` script may run before it is stopped:
+a positive number, 300 by default.
+
+### `work.hooks.output-cap`
+
+Shared: personal configuration cannot set it.
+
+The most a `generate:` script may print, in bytes: a positive whole number,
+65536 (64 KiB) by default. It is separate from the 64 KiB limit on the
+request the script receives.
+
+```yaml
+work:
+    hooks:
+        timeout: 120
+        output-cap: 32768
+```
+
+## Procedures
+
+### `work.procedures.*`
+
+Overridable: personal configuration may set it.
+
+Some of TCW's instructions are not stages: they are **procedures**, printed
+by `tcw work procedure <id>`. Their ids are `unattended-work`,
+`triage-issues`, `documentation-sync`, `create-work`, `audit-backlog`,
+`search` and `pause-work`. A project cannot add its own.
+
+Each id holds a list of text bindings, composed exactly as a stage's
+`prompt` is: TCW's own text is the starting value, a written list replaces
+it, and `inherit: true` keeps it.
 
 ```yaml
 work:
     procedures:
-        unattended-work:
-            - file: docs/procedures/unattended-work.md
         documentation-sync:
-            - builtin: true
-            - blob: "Also update docs/guide/ when a CLI flag changes."
+            - inherit: true
+            - blob: Also update docs/guide/ when a command's options change.
+        search:
+            - file: docs/procedures/search.md
 ```
 
-- The ids are `unattended-work`, `triage-issues`, `documentation-sync`,
-  `post-mortem`, `create-work`, `audit-backlog`, `consolidate-plans`,
-  `decompose`, `delegation` and `search`. A project cannot add ids of its own.
-- Each id holds a plain list of bindings — no `prompt:` key — using `blob:`,
-  `file:`, `generate:`, `builtin: true` or `skill:`, each with an optional
-  `when:`. Every binding that applies is used, in order. An id left out gets
-  TCW's own text; once an id is listed, `builtin: true` is how TCW's text comes
-  back.
-- An empty list is refused. To make a procedure say nothing, write
-  `[{blob: ""}]`.
-- `when:` never matches without a work item. If every binding is conditional
-  and the procedure is read with no item, nothing prints and a note on stderr
-  says why — put an unconditional binding last to cover that case.
-- A `generate:` script runs under `work.lifecycle.timeout` and
-  `work.lifecycle.output-cap`, and gets `TCW_HOOK_ROLE=procedure`.
-
-`tcw validate` reports the same mistakes it reports for stage bindings, plus an
-unknown procedure id. Check the result with `tcw work procedure prompt <id>`.
-
-## The Definition of Done: `dod.yaml`
-
-`tcw work complete --resolution done` prints a checklist and refuses until it is
-re-run with `--confirm`; the confirmed run prints the same list ticked, after the
-item has closed. The built-in checklist has four lines: `tests pass`,
-`docs synced`, `capabilities reconciled`, `reviewed`.
-
-To set a project's own checklist, write `dod.yaml` at the root of the work store
-(`docs/work/dod.yaml` unless `work.path` puts the store elsewhere):
-
-```yaml
-- tests pass
-- docs synced
-- originating GitHub issue answered and closed, if the item came from one
-```
-
-- A plain list of strings, or a mapping with a `checklist:` key holding that
-  list.
-- The file **replaces** the built-in list; it does not add to it. A line left out
-  is dropped from every completion, with no warning.
-- The checklist is printed, never enforced, and is not stored on the completed
-  item. A discard (`wontfix`, `duplicate`, `superseded`) prints no checklist.
-- A file that is missing, or holds some other shape, means the built-in five
-  apply. `tcw validate` reports a `dod.yaml` that is not valid YAML.
-
-## How transitions commit and where they land
-
-All four keys below live under `work` in `tcw-config.yaml`. What each one does
-while items move is described in the `work` skill's `transitions.md` and
-`commands.md`; this is how to set them.
-
-```yaml
-work:
-    auto-commit-transitions: true
-    trunk-branch: main
-    publish-transitions: true
-    retain:
-        completed: true
-        discarded: false
-```
-
-- **`work.auto-commit-transitions`** — `true` or `false`, default `true`. When
-  `true`, every transition commits its own status move, and `new`,
-  `inbox accept`, `escalate` and `delegate` commit what they create. Set it to
-  `false` to commit them yourself; creations are then left staged. A value that is not `true` or `false` is read as the
-  default, and `tcw validate` does not report it.
-- **`work.trunk-branch`** — a branch name, unset by default. When set, a
-  transition made on some other branch prints a warning and still commits where
-  it is. It never checks anything out. A value that is not text, or is blank, is
-  read as unset.
-- **`work.publish-transitions`** — `true` or `false`, default `true`. It matters
-  only for a work store that `tcw provision` fetched from a declared repository:
-  there a transition refreshes before moving and pushes after committing. Set it
-  to `false` to keep transitions local. A value that is not `true` or `false` is
-  read as the default.
-- **`work.retain`** — a mapping from `completed` and `discarded` to `true` or
-  `false`, both `true` by default. A status set to `false` removes an item from
-  the tree after it lands there, leaving a graveyard entry that names the commit
-  holding it. Setting `false` is refused at transition time while that status's
-  folder is gitignored, and the refusal names the ignore rules to drop. Before
-  turning it on for a board that already has resolved items, backfill the
-  graveyard with `tcw work tombstone add`, or a deleted slug can be reissued.
-  `tcw validate` reports an unknown status or a value that is not `true` or
-  `false`, and the default (keep the item) is used in the meantime. It also
-  reports a status set explicitly to `true` whose folder is gitignored, because
-  items landing there would not be tracked.
-
-Run `tcw validate` after changing any of these.
+An empty list makes the procedure print nothing. An unknown id is reported,
+and so is an id TCW has removed, with where its text went. Check the result
+with `tcw work procedure <id>`, or `tcw work procedure <id> --no-exec` to see
+which bindings would be used without running any.

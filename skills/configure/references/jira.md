@@ -1,0 +1,191 @@
+# Configure the Jira backend
+
+With `work.backend: jira`, each work item's properties, stage, request and
+comments live on a Jira ticket, and its documents stay as files in the item's
+folder. This document describes the keys that connect a project to Jira: the
+`work.jira` block, and the `status` each stage maps to. Walking a user through
+a first Jira setup, and fixing their Jira workflow with them, is the `setup`
+skill's Jira reference. What each key does once items move is in the Jira
+guide, `docs/guide/jira.md`, in the TCW repository.
+
+Each project states its own `work.jira` block. Nothing is inherited from a
+parent or any other connected project. The one place this project reads
+another project's Jira settings is the `jira` block of a connected project's
+entry, used only to create a ticket in that project; it is described in
+`projects.md`.
+
+```yaml
+work:
+    backend: jira
+    jira:
+        site: https://example.atlassian.net
+        project: TCW
+        credentials:
+            email-env: TCW_JIRA_EMAIL
+            token-env: TCW_JIRA_TOKEN
+        fields:
+            project: TCW Project
+            item: TCW Item
+            effort: Effort
+            complexity: Complexity
+        issue-type: Task
+        timeout: 15
+    stages:
+        inbox: { status: Inbox }
+        request: { status: Request }
+        spec: { status: Specifying }
+        plan: { status: Planning }
+        implement: { status: In Progress }
+        review: { status: In Review }
+        qa: { status: In QA }
+        completed: { status: Done }
+        discarded: { status: Discarded }
+```
+
+`site`, `project`, `credentials` and `fields` (with its `project` and `item`)
+are required; every other key has a default. An unknown key is reported. With
+any problem in the block, every `tcw work` command refuses until it is fixed,
+and `tcw validate` names each problem by its key.
+
+## The connection
+
+### `work.jira.site`
+
+Shared: personal configuration cannot set it.
+
+The Jira Cloud site, written `https://<host>`, with an optional port and no
+path or trailing `/`.
+
+### `work.jira.project`
+
+Shared: personal configuration cannot set it.
+
+The key of the Jira project that holds this project's tickets: capital
+letters, digits and `_`, starting with a letter, such as `TCW`.
+
+### `work.jira.issue-type`
+
+Shared: personal configuration cannot set it.
+
+The issue type of the tickets TCW creates, `Task` by default. It must be an
+issue type of the Jira project.
+
+### `work.jira.inbox-query`
+
+Shared: personal configuration cannot set it.
+
+Optional. A Jira query (JQL) for more tickets to offer for adoption. By
+default, `tcw work tickets list` offers the tickets of this Jira project that
+are at the inbox stage's status and have no TCW Item yet. With
+`inbox-query`, it offers those and the tickets the query matches.
+
+### `work.jira.timeout`
+
+Shared: personal configuration cannot set it.
+
+How many seconds one request to Jira may take before it counts as failed: a
+positive number, 15 by default.
+
+### `work.jira.priorities`
+
+Shared: personal configuration cannot set it.
+
+The Jira priority name for each of TCW's five priorities, `highest`, `high`,
+`medium`, `low` and `lowest`. By default they are `Highest`, `High`,
+`Medium`, `Low` and `Lowest`, Jira's own names; map only the ones this Jira
+project names differently:
+
+```yaml
+work:
+    jira:
+        priorities:
+            highest: Blocker
+```
+
+A Jira project with no priority field leaves every item's priority empty.
+
+## Credentials
+
+The configuration never holds a credential. It names two environment
+variables, and TCW reads their values only when it sends a request. Set them
+in the shell that runs `tcw`. A value that does not look like a variable's
+name is reported without being shown, since it may be a token pasted into the
+wrong place.
+
+### `work.jira.credentials.email-env`
+
+Overridable: personal configuration may set it.
+
+The name of the environment variable that holds the Jira account's email
+address. One person may name a different variable in their personal
+configuration; outside a Jira-mode project, a personal value is ignored.
+
+### `work.jira.credentials.token-env`
+
+Overridable: personal configuration may set it.
+
+The name of the environment variable that holds that account's Jira API
+token. One person may name a different variable in their personal
+configuration, as for `email-env`.
+
+## Custom fields
+
+TCW finds its custom fields by their names on the create screen of the
+configured issue type. Each name must match exactly one field there, or every
+command refuses and names the field. Two are required: they are how a ticket
+is known to be a TCW item.
+
+### `work.jira.fields.project`
+
+Shared: personal configuration cannot set it.
+
+The name of a text field (for example `TCW Project`) that holds the TCW
+project ID a ticket belongs to. Required.
+
+### `work.jira.fields.item`
+
+Shared: personal configuration cannot set it.
+
+The name of a text field (for example `TCW Item`) that holds the item's slug.
+A ticket with this field empty is not an item yet; adopting it fills the
+field. Required.
+
+### `work.jira.fields.effort`
+
+Shared: personal configuration cannot set it.
+
+Optional. The name of a single-choice field whose options are `Low`,
+`Medium`, `High` and `Very High`, holding an item's effort. Without it, items
+have no effort.
+
+### `work.jira.fields.complexity`
+
+Shared: personal configuration cannot set it.
+
+Optional. The name of a single-choice field with the same four options,
+holding an item's complexity.
+
+## Stages and statuses
+
+Each enabled stage maps to its own Jira status, through its
+[`work.stages.*.status`](work.md#workstagesstatus) key: two stages mapped to
+one status are refused, because TCW could not tell from a ticket which stage
+it is at. The side stage, `postmortem`, has no status. A ticket's status is
+the item's stage.
+
+To move an item, TCW applies a Jira transition into the target stage's
+status. When the ticket offers exactly one, TCW uses it. When it offers
+several, TCW uses the one whose screen asks for nothing but a comment. When
+that still leaves none, or more than one, the move is refused with exit code
+3, and the message names the transitions it found. TCW never fills in a
+transition screen's fields other than the comment.
+
+## Checking the configuration against Jira
+
+`tcw validate` checks the shape of everything above and never contacts Jira.
+`tcw validate --remote` also reads Jira, and changes nothing there. It prints
+one finding per line: a status that does not exist, a move between two
+stages that no transition offers, a transition screen that asks for a field
+other than the comment, and a configured field missing from the create or
+edit screen. A check it could not make, such as a move with no ticket to
+sample, is a finding too, not a pass.
