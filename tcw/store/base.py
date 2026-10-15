@@ -781,6 +781,17 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
+def is_slug(text: str) -> bool:
+    """Whether `text` is already in the form `slugify` produces: lowercase
+    letters and digits in words joined by single hyphens, with no `/`."""
+    return bool(text) and slugify(text) == text
+
+
+class NotASlug(UsageError):
+    """A slug given by the caller that `is_slug` refuses. The message names no
+    flag, since the viewer returns it too; the CLI adds `--slug`."""
+
+
 def parse_repository_declaration(
     raw: Any, where: str
 ) -> tuple["RepositoryDeclaration | None", list[str]]:

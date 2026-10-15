@@ -2003,3 +2003,54 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
     assert main(["work", "procedure", "unattended-work"]) == 1
     out = capsys.readouterr()
     assert "work.path" in out.err and "## The advisors" not in out.out
+
+
+# ── provisioning never asks (pre-freeze clean-up, C4) ────────────────────────
+
+
+def _git_envs(monkeypatch, ssh_command: str = ""):
+    """Run `_run` with `_git` replaced, recording each call's argv and
+    environment; `git config --get core.sshCommand` answers `ssh_command`."""
+    calls = []
+
+    def fake_git(argv, **kwargs):
+        calls.append((list(argv), kwargs.get("env")))
+        out = ssh_command if argv[1:4] == ["config", "--get", "core.sshCommand"] else ""
+        return subprocess.CompletedProcess(argv, 0, out, "")
+    monkeypatch.setattr(fs, "_git", fake_git)
+    for name in ("GIT_SSH_COMMAND", "GIT_SSH"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GIT_ASKPASS", "/usr/bin/some-askpass")
+    monkeypatch.setenv("SSH_ASKPASS", "/usr/bin/ssh-askpass")
+    monkeypatch.setenv("TCW_PROBE_KEPT", "yes")
+    FsStoreProvisioner(Path("."), "work", None)._run(["git", "clone", "u", "d"])
+    [(argv, env)] = [c for c in calls if c[0][1] == "clone"]
+    return env
+
+
+def test_git_is_told_never_to_prompt(monkeypatch):
+    env = _git_envs(monkeypatch)
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    assert env["GCM_INTERACTIVE"] == "never"
+    assert env["GIT_ASKPASS"] == "false"
+    assert "SSH_ASKPASS" not in env
+    assert env["TCW_PROBE_KEPT"] == "yes"              # the rest passes through
+    assert env["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
+
+
+def test_a_users_own_ssh_command_is_kept(monkeypatch):
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i ~/.ssh/mine")
+    calls = []
+
+    def fake_git(argv, **kwargs):
+        calls.append((list(argv), kwargs.get("env")))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(fs, "_git", fake_git)
+    FsStoreProvisioner(Path("."), "work", None)._run(["git", "clone", "u", "d"])
+    [(argv, env)] = calls                       # no `core.sshCommand` read either
+    assert env["GIT_SSH_COMMAND"] == "ssh -i ~/.ssh/mine"
+
+
+def test_a_configured_core_ssh_command_is_not_replaced(monkeypatch):
+    env = _git_envs(monkeypatch, ssh_command="ssh -i ~/.ssh/other\n")
+    assert "GIT_SSH_COMMAND" not in env

@@ -131,3 +131,47 @@ def test_a_record_carrying_a_retired_field_is_a_check_error(thing):
     ["capabilities", "extends", "base", "--rm"]])
 def test_removed_spellings(thing, run, argv):
     assert run(thing, *argv)[0] == 2
+
+
+# -- reset refuses what is nested under the override (pre-freeze clean-up, C1) -------------
+
+
+@pytest.fixture
+def overridden(tmp_path, project, run):
+    """`auth/login` inherited from `up`, overridden here, with a local
+    capability added under the override's folder."""
+    import yaml
+    up = make_project(tmp_path, "up")
+    init(["taxonomy", "capabilities"], up, "up")
+    assert run(up, "capabilities", "add", "auth/login")[0] == 0
+    path = project / "tcw-config.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["projects"] = {"upstream": {"up": "../up"}}
+    path.write_text(yaml.safe_dump(document))
+    assert run(project, "capabilities", "extends", "add", "up")[0] == 0
+    assert run(project, "capabilities", "set", "auth/login", "--status", "Missing")[0] == 0
+    store = FsCapabilitiesStore.open(project)
+    [(folder, _)] = store._override_index().values()
+    nested = folder.relative_to(store.root).as_posix() + "/nested"
+    assert run(project, "capabilities", "add", nested)[0] == 0
+    return project, folder, store.root / nested
+
+
+def test_reset_refuses_a_capability_nested_under_the_override(overridden, run):
+    project, folder, nested = overridden
+    code, out, err = run(project, "capabilities", "reset", "auth/login")
+    assert (code, out) == (3, ""), err
+    store_root = FsCapabilitiesStore.open(project).root
+    assert f"nested under its override: {nested.relative_to(store_root).as_posix()}" in err
+    assert "`tcw capabilities rm`" in err and "`tcw capabilities reset`" in err
+    assert (folder / "meta.yaml").is_file() and (nested / "meta.yaml").is_file()
+
+
+def test_reset_goes_ahead_once_the_nested_capability_is_gone(overridden, run):
+    project, folder, nested = overridden
+    store_root = FsCapabilitiesStore.open(project).root
+    assert run(project, "capabilities", "rm",
+               nested.relative_to(store_root).as_posix())[0] == 0
+    code, _, err = run(project, "capabilities", "reset", "auth/login")
+    assert code == 0, err
+    assert not folder.exists()

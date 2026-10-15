@@ -202,14 +202,18 @@ def _new(args) -> int:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
+    backend = None
+    if not args.project:
+        # Before the read of piped input too, so `--stage` refused in this
+        # project never waits on it. Opening the backend makes no request.
+        backend = open_backend(root)
+        creation_stage(backend, args.stage)   # before `--assign-me` asks who
     request = read_piped_stdin()
     request = request if request.strip() else None
     if args.project:
         print(delegate(args.project, args.title, request, args.priority,
                        here=root, report=_say))
         return codes.OK
-    backend = open_backend(root)
-    creation_stage(backend, args.stage)   # its usage error before `--assign-me` asks who
     assignee = _me(backend) if args.assign_me else _optional(args.assignee)
     changes = Changes(
         priority=_optional(args.priority), effort=_optional(args.effort),

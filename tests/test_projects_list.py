@@ -138,6 +138,33 @@ def test_provision_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
     assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
 
 
+def test_work_list_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
+    """Pre-freeze clean-up, C9: `open_backend` checks the project graph, as
+    `taxonomy list` does."""
+    child = graph.parent / "c1"
+    _rename_key(child, "projects", "connected-projects")
+    code, out, err = run(monkeypatch, capsys, graph, "work", "list")
+    assert (code, out) == (1, ""), err
+    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+
+
+def test_work_list_runs_with_a_declared_child_that_is_not_here(graph, monkeypatch,
+                                                              capsys):
+    """`gone` is declared but absent: not a problem with the graph."""
+    code, _, err = run(monkeypatch, capsys, graph, "work", "list")
+    assert code == 0, err
+
+
+def test_the_2x_key_refusal_names_the_file_from_a_sub_folder(graph, monkeypatch,
+                                                             capsys):
+    """Pre-freeze clean-up, C8: run from `fx/docs`, the file is
+    `../tcw-config.yaml`."""
+    _rename_key(graph, "projects", "connected-projects")
+    code, out, err = run(monkeypatch, capsys, graph / "docs", "taxonomy", "list")
+    assert (code, out) == (1, ""), err
+    assert ": ../tcw-config.yaml: the key 'connected-projects'" in err, err
+
+
 def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
     up = graph.parent / "up"
     path = up / "tcw-config.yaml"

@@ -34,7 +34,8 @@ from tcw.store.base import (
     CAP_FIELDS, CAP_LIFECYCLES, MIGRATION_GUIDE, CAP_PRIORITIES, CAP_STATUSES,
     RETIRED_CAP_FIELDS, retired_key_problem,
     TAXONOMY_EDITABLE_FIELDS, _UNSET, AmbiguousRef, Capability, CapabilitiesStore,
-    CapabilityDetail, RefError, slugify, StaleRevision, parse_connected_entry,
+    CapabilityDetail, NotASlug, RefError, is_slug, slugify, StaleRevision,
+    parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
     StoreProvisioner, UnreachableProject, TaxonomyStore, Term, TermDetail,
@@ -155,6 +156,30 @@ def _git(*args, **kwargs):
     """
     stdin = kwargs.pop("stdin", subprocess.DEVNULL)
     return subprocess.run(*args, stdin=stdin, **kwargs)
+
+
+def _no_prompt_env() -> dict[str, str]:
+    """This process's environment, changed so that git and ssh never ask.
+
+    `GIT_TERMINAL_PROMPT=0` stops git's own prompt for HTTPS credentials and
+    `GCM_INTERACTIVE=never` Git Credential Manager's; a credential helper that
+    answers without asking still answers. `GIT_ASKPASS` names a program that
+    always fails, which also overrides a configured `core.askPass`, and
+    `SSH_ASKPASS` is removed: each would otherwise ask the user. For ssh,
+    `BatchMode=yes` makes it fail instead of asking for a passphrase or to
+    trust a new host, but only when the user has set no ssh command of their
+    own (`GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand`), which is never
+    replaced.
+    """
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+           "GIT_ASKPASS": "false"}
+    env.pop("SSH_ASKPASS", None)
+    if not env.get("GIT_SSH_COMMAND") and not env.get("GIT_SSH"):
+        configured = _git(["git", "config", "--get", "core.sshCommand"],
+                          capture_output=True, text=True, env=env)
+        if not (configured.stdout or "").strip():
+            env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
+    return env
 
 
 #: The personal file beside `tcw-config.yaml` (TCW-72 Design 1). Named here
@@ -288,7 +313,8 @@ def refuse_retired_config(start: Path | None = None) -> None:
         return
     retired = retired_key_problem(config)
     if retired:
-        raise BackendError(f"{SENTINEL}: {retired}")
+        # Named from where the command runs, which may be a sub-folder.
+        raise BackendError(f"{os.path.relpath(root / SENTINEL)}: {retired}")
 
 
 def find_component_project(component: str, start: Path | None = None) -> Path | None:
@@ -1740,6 +1766,11 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             description: str = "", kind: str = "Vocabulary",
             vocabulary: list[str] | None = None) -> Term:
         leaf = _safe_store_id(slug or slugify(name), "slug")
+        # After `_safe_store_id`, so a slug that would leave the store is still
+        # "invalid slug"; nesting is `parent`'s job, so a `/` is refused here.
+        if slug and not is_slug(leaf):
+            raise NotASlug(f"{slug!r} is not a slug: use lowercase letters, "
+                           f"digits and single hyphens")
         if parent:
             parent = _safe_store_id(parent, "parent")
         full = f"{parent.strip('/')}/{leaf}" if parent else leaf
@@ -2418,11 +2449,8 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
                              f"(edit it at its source; to drop a local override use "
                              f"`tcw capabilities reset`)")
         d = self.root / cap.path
-        # Refused, never cascaded: `_rm` deletes the whole folder. Asked of the
-        # folder itself rather than `_all_meta_dirs`, which skips dot-directories
-        # and unreadable entries that `git rm -rf` would delete all the same.
-        nested = sorted(str(m.parent.relative_to(self.root))
-                        for m in d.rglob("meta.yaml") if m.parent != d)
+        # Refused, never cascaded: `_rm` deletes the whole folder.
+        nested = self._nested_entries(d)
         if nested:
             raise Refused(f"cannot remove '{cap.path}': nested under it: "
                              f"{', '.join(nested)} (remove those first)")
@@ -2431,6 +2459,14 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             raise Refused(f"cannot remove '{cap.path}': still referenced by "
                              f"{', '.join(referrers)} (repoint or clear those fields first)")
         self._rm(d)
+
+    def _nested_entries(self, d: Path) -> list[str]:
+        """Every folder below `d` holding a `meta.yaml`, relative to the store.
+        Asked of the folder itself rather than `_all_meta_dirs`, which skips
+        dot-directories and unreadable entries that `git rm -rf` would delete
+        all the same."""
+        return sorted(str(m.parent.relative_to(self.root))
+                      for m in d.rglob("meta.yaml") if m.parent != d)
 
     def _referrers(self, target: Path) -> list[str]:
         """`<folder> (<field>)` for every other local capability or override whose
@@ -2487,6 +2523,15 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if ov is None:
             raise Refused(f"no local override at '{identifier}' to reset "
                              f"(it inherits '{cap.qualified}' verbatim)")
+        # Refused, as `remove` refuses, when anything is nested under the
+        # override: `_rm` would delete it with the folder. A nested folder may
+        # itself be an override, which only `reset` drops.
+        nested = self._nested_entries(ov[0])
+        if nested:
+            raise Refused(f"cannot reset '{identifier}': nested under its override: "
+                          f"{', '.join(nested)} (delete a local capability with "
+                          f"`tcw capabilities rm` and drop an override with "
+                          f"`tcw capabilities reset` first)")
         self._rm(ov[0])                                # remove only the local override folder
 
     def _validate_fields(self, fields: dict) -> dict:
@@ -3419,10 +3464,11 @@ class FsStoreProvisioner(StoreProvisioner):
                 f"checkout's origin does")
 
     def _run(self, argv: list[str]) -> None:
-        """Every git call goes through `_git`, so stdin stays closed and a remote
-        demanding credentials fails instead of hanging on a terminal nobody is
-        watching."""
-        done = _git(argv, capture_output=True, text=True)
+        """Every git call goes through `_git`, so stdin stays closed, and with
+        `_no_prompt_env`, so a remote demanding credentials, a passphrase or a
+        host-key confirmation fails instead of asking on the terminal, which
+        git and ssh open themselves whatever stdin is."""
+        done = _git(argv, capture_output=True, text=True, env=_no_prompt_env())
         if done.returncode != 0:
             raise ValueError(
                 f"{self.component}.repository: git {_git_subcommand(argv)} failed: "
