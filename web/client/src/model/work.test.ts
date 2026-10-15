@@ -10,6 +10,8 @@ import {
     needsAll,
     personName,
     projectOf,
+    propertyChanges,
+    propertiesDraft,
     stageLabel,
     stageShown,
     verdictLine,
@@ -127,5 +129,38 @@ describe("a round's verdict line", () => {
         expect(withVerdict("Body\n", "accepted")).toBe(
             "---\nverdict: accepted\n---\nBody\n"
         )
+    })
+})
+
+describe("a properties save", () => {
+    const item = workItem("x", {
+        priority: "medium",
+        tags: ["ui"],
+        "blocked-by": ["p/a"],
+        assignee: "ann",
+    })
+
+    test("sends only what changed, each with the value loaded", () => {
+        const draft = {
+            ...propertiesDraft(item),
+            priority: "high",
+            assignee: "",
+            tags: ["api"],
+        }
+        expect(propertyChanges(item, draft)).toEqual({
+            changes: {
+                priority: "high",
+                assignee: null,
+                tags: { add: ["api"], remove: ["ui"] },
+            },
+            expected: { priority: "medium", assignee: "ann", tags: ["ui"] },
+        })
+    })
+
+    test("an unchanged form sends nothing", () => {
+        expect(propertyChanges(item, propertiesDraft(item))).toEqual({
+            changes: {},
+            expected: {},
+        })
     })
 })

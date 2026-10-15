@@ -24,6 +24,7 @@ import {
     fetchJson,
     findingLines,
     isStaleWrite,
+    isUnavailable,
     requestJson,
 } from "../model/api"
 import {
@@ -77,6 +78,25 @@ import type {
     WorkItem,
 } from "../model/types"
 import { WorkPage } from "./work-views"
+import {
+    BlocksForm,
+    CommentBox,
+    FileEditor,
+    NewItemForm,
+    PropertiesForm,
+    TicketsView,
+    type TFileSession,
+} from "./work-forms"
+import { DeclarationSection } from "./declaration-form"
+import type { TNewFileKind } from "./work-document-tabs"
+
+/** What the work detail pane shows in place of the item page. */
+type TWorkMode =
+    | null
+    | { mode: "file"; session: TFileSession }
+    | { mode: "properties" }
+    | { mode: "new" }
+    | { mode: "tickets" }
 
 type TBoardState = {
     people: Record<string, string>
@@ -137,6 +157,7 @@ export function App() {
     const [conflict, setConflict] = useState<unknown>(null)
     const [warnings, setWarnings] = useState<string[]>([])
     const [toast, setToast] = useState("")
+    const [workMode, setWorkMode] = useState<TWorkMode>(null)
     const [loadError, setLoadError] = useState("")
 
     const showToast = useCallback((message: string) => {
@@ -261,6 +282,7 @@ export function App() {
                 return
             }
             setEditor(null)
+            setWorkMode(null)
             setDirty(false)
             setDetail(null)
             setWorkDetail(null)
@@ -333,6 +355,7 @@ export function App() {
     const navigateTo = (nextAxis: Axis, key: string | null) => {
         if (!confirmLeave()) return
         setEditor(null)
+        setWorkMode(null)
         setDirty(false)
         setErrors([])
         setConflict(null)
@@ -668,6 +691,82 @@ export function App() {
     const kept = project ? project.axes[axis] : true
     const assignees = knownAssignees(data.work, project?.user ?? null)
     const people = { ...(project?.people ?? {}), ...board.people }
+    const references = {
+        ...data,
+        people,
+        user: project?.user ?? null,
+    }
+    // In filesystem mode the item record is the files' own and editable;
+    // when the backend owns it, only the stage files are edited here.
+    const ownsRecord = project?.recordOwner === "local"
+
+    const leaveWorkMode = () => {
+        if (!confirmLeave()) return
+        setWorkMode(null)
+        setDirty(false)
+    }
+    const workSaved = (message: string, response: unknown) => {
+        showSaveResult(message, response)
+        setWorkMode(null)
+        setDirty(false)
+        retryDetail()
+        void reloadBoard()
+    }
+    const openFile = async (stage: string, path: string) => {
+        if (!selected) return
+        try {
+            const found = await readFile(path)
+            const row = stages.find((candidate) => candidate.name === stage)
+            setWorkMode({
+                mode: "file",
+                session: {
+                    folder: selected,
+                    stage,
+                    path,
+                    revision: found.revision,
+                    content: found.content,
+                    verdict:
+                        Boolean(row?.verdict) && /\/round-\d+\.md$/.test(path),
+                },
+            })
+            setWarnings([])
+        } catch (error) {
+            showToast(
+                `Could not open ${path}: ${error instanceof Error ? error.message : String(error)}`
+            )
+        }
+    }
+    const newFile = async (stage: string, kind: TNewFileKind) => {
+        if (!selected) return
+        const result = await requestJson<{ path: string; template: string }>(
+            `/api/work/${encodeRef(selected)}/files`,
+            "POST",
+            { stage, kind }
+        )
+        if (!result.ok || !result.data) {
+            showToast(result.error || `Could not start a new ${kind}`)
+            return
+        }
+        const row = stages.find((candidate) => candidate.name === stage)
+        setWorkMode({
+            mode: "file",
+            session: {
+                folder: selected,
+                stage,
+                path: result.data.path,
+                revision: null,
+                content: result.data.template,
+                verdict: kind === "round" && Boolean(row?.verdict),
+            },
+        })
+        setWarnings([])
+    }
+    const openNewItem = () => {
+        if (!confirmLeave()) return
+        setWorkMode({ mode: "new" })
+        setDirty(false)
+        setWarnings([])
+    }
 
     return (
         <>
@@ -831,6 +930,31 @@ export function App() {
                             </Callout.Text>
                         </Callout.Root>
                     )}
+                    {axis === "work" && kept && project && (
+                        <Flex className="create-row" gap="2">
+                            <Button
+                                className="create-btn"
+                                variant="outline"
+                                type="button"
+                                onClick={openNewItem}
+                            >
+                                + New item
+                            </Button>
+                            {project.recordOwner === "backend" && (
+                                <Button
+                                    variant="outline"
+                                    type="button"
+                                    onClick={() => {
+                                        if (!confirmLeave()) return
+                                        setWorkMode({ mode: "tickets" })
+                                        setDirty(false)
+                                    }}
+                                >
+                                    Tickets
+                                </Button>
+                            )}
+                        </Flex>
+                    )}
                     {axis !== "work" && kept && (
                         <div className="create-row">
                             <Button
@@ -961,12 +1085,100 @@ export function App() {
                         <Text className="empty" color="gray">
                             Loading...
                         </Text>
+                    ) : axis === "work" &&
+                      project &&
+                      workMode?.mode === "new" ? (
+                        <NewItemForm
+                            project={project}
+                            references={references}
+                            onCreated={(folder, message) => {
+                                showToast(message)
+                                setWorkMode(null)
+                                setDirty(false)
+                                void reloadBoard()
+                                if (folder) navigateTo("work", folder)
+                            }}
+                            onCancel={leaveWorkMode}
+                            onDirty={setDirty}
+                        />
+                    ) : axis === "work" && workMode?.mode === "tickets" ? (
+                        <TicketsView
+                            onAdopted={(folder, message) => {
+                                showToast(message)
+                                setWorkMode(null)
+                                void reloadBoard()
+                                navigateTo("work", folder)
+                            }}
+                        />
+                    ) : axis === "work" && workMode?.mode === "file" ? (
+                        <FileEditor
+                            session={workMode.session}
+                            onSaved={workSaved}
+                            onCancel={leaveWorkMode}
+                            onDirty={setDirty}
+                        />
+                    ) : axis === "work" &&
+                      project &&
+                      workDetail &&
+                      workMode?.mode === "properties" &&
+                      !isUnavailable(workDetail.item) ? (
+                        <PropertiesForm
+                            project={project}
+                            item={workDetail.item}
+                            folder={workDetail.folder}
+                            references={references}
+                            onSaved={workSaved}
+                            onCancel={leaveWorkMode}
+                            onDirty={setDirty}
+                            onReload={() => {
+                                setWorkMode(null)
+                                setDirty(false)
+                                retryDetail()
+                            }}
+                        />
                     ) : axis === "work" && workDetail && project ? (
                         <WorkPage
                             project={project}
                             detail={workDetail}
                             readFile={readFile}
                             onRetry={retryDetail}
+                            editing={{
+                                onEditFile: (stage, path) =>
+                                    void openFile(stage, path),
+                                onNewFile: (stage, kind) =>
+                                    void newFile(stage, kind),
+                                onEditProperties: ownsRecord
+                                    ? () => {
+                                          setWorkMode({ mode: "properties" })
+                                          setWarnings([])
+                                      }
+                                    : undefined,
+                                blocksForm:
+                                    ownsRecord &&
+                                    !isUnavailable(workDetail.item) ? (
+                                        <BlocksForm
+                                            item={workDetail.item}
+                                            folder={workDetail.folder}
+                                            references={references}
+                                            onSaved={workSaved}
+                                        />
+                                    ) : undefined,
+                                commentBox: ownsRecord ? (
+                                    <CommentBox
+                                        folder={workDetail.folder}
+                                        onSaved={workSaved}
+                                    />
+                                ) : undefined,
+                                declaration: (
+                                    <DeclarationSection
+                                        folder={workDetail.folder}
+                                        references={references}
+                                        editable
+                                        onSaved={workSaved}
+                                        onDirty={setDirty}
+                                    />
+                                ),
+                            }}
                         />
                     ) : axis === "work" && detailError ? (
                         <Text className="empty" color="gray">

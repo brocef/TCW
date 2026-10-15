@@ -3,7 +3,12 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
 import type { TSortDirection, TWorkSortKey } from "../model/tree"
-import { DetailView, FacetPopover, SortControl } from "./content-views"
+import {
+    DetailView,
+    EditorView,
+    FacetPopover,
+    SortControl,
+} from "./content-views"
 import type { TDetail } from "./ui-types"
 
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -94,4 +99,77 @@ test("renders modified subtext in the taxonomy and capability detail views", () 
         </ThemeProvider>
     )
     expect(screen.getAllByText(/^Modified at /)).toHaveLength(2)
+})
+
+test("an inherited entry has no edit control and names its project", () => {
+    const onEdit = vi.fn()
+    render(
+        <ThemeProvider>
+            <DetailView
+                axis="capabilities"
+                detail={{
+                    capability: {
+                        path: "base/shared",
+                        name: "Shared",
+                        origin: "base",
+                    },
+                    coreRevision: "",
+                }}
+                onEdit={onEdit}
+            />
+            <DetailView
+                axis="taxonomy"
+                detail={{
+                    term: { slug: "local", name: "Local", origin: "local" },
+                    coreRevision: "",
+                }}
+                onEdit={onEdit}
+            />
+        </ThemeProvider>
+    )
+    expect(screen.getByText("inherited from base")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(1)
+})
+
+test("a retired capability field is shown read-only and offered by no form", () => {
+    render(
+        <ThemeProvider>
+            <DetailView
+                axis="capabilities"
+                detail={{
+                    capability: {
+                        path: "web",
+                        name: "Web",
+                        origin: "local",
+                        fields: { Status: "Supported", "Planning doc": "old" },
+                    },
+                    coreRevision: "r",
+                }}
+                onEdit={() => undefined}
+            />
+            <EditorView
+                editor={{
+                    mode: "core",
+                    axis: "capabilities",
+                    ref: "web",
+                    revision: "r",
+                    draft: { Status: "Supported", "Planning doc": "old" },
+                    original: { Status: "Supported", "Planning doc": "old" },
+                }}
+                setDraft={() => undefined}
+                saving={false}
+                errors={[]}
+                conflict={null}
+                data={{ work: [], taxonomy: [], capabilities: [] }}
+                onSave={() => undefined}
+                onCancel={() => undefined}
+                onRefreshConflict={() => undefined}
+            />
+        </ThemeProvider>
+    )
+    expect(screen.getByText("Planning doc")).toBeInTheDocument()
+    expect(screen.getByText("old")).toBeInTheDocument()
+    expect(screen.queryByRole("textbox", { name: "Planning doc" })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Planning doc" })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Tracker" })).toBeNull()
 })

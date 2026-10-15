@@ -507,11 +507,14 @@ export function SelectInput({
     value,
     options,
     onChange,
+    display = (option: string) => option,
 }: {
     label: string
     value: string
     options: readonly string[]
     onChange: (value: string) => void
+    /** How an option reads, when not as stored. */
+    display?: (option: string) => string
 }) {
     return (
         <label className="field-group">
@@ -531,7 +534,7 @@ export function SelectInput({
                             value={option || "__unset__"}
                             key={option || "__unset__"}
                         >
-                            {option || "(unset)"}
+                            {option ? display(option) : "(unset)"}
                         </Select.Item>
                     ))}
                 </Select.Content>

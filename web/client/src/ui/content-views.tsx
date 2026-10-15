@@ -159,6 +159,33 @@ export function FacetPopover({
     )
 }
 
+/** An entry inherited from another project is read-only here: overriding
+ * it is a deliberate act the command line offers. */
+function EditOrInherited({
+    origin,
+    onEdit,
+}: {
+    origin?: string
+    onEdit: () => void
+}) {
+    if (origin && origin !== "local")
+        return (
+            <Badge color="amber" title={`Edit it in project ${origin}`}>
+                inherited from {origin}
+            </Badge>
+        )
+    return (
+        <Button
+            className="edit-btn"
+            variant="soft"
+            type="button"
+            onClick={onEdit}
+        >
+            Edit
+        </Button>
+    )
+}
+
 export function DetailView({
     axis,
     detail,
@@ -184,14 +211,7 @@ export function DetailView({
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{term.kind}</Badge>
-                        <Button
-                            className="edit-btn"
-                            variant="soft"
-                            type="button"
-                            onClick={onEdit}
-                        >
-                            Edit
-                        </Button>
+                        <EditOrInherited origin={term.origin} onEdit={onEdit} />
                     </Flex>
                 </div>
                 <Fields>
@@ -226,14 +246,10 @@ export function DetailView({
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
                     <Badge>{capability.status}</Badge>
-                    <Button
-                        className="edit-btn"
-                        variant="soft"
-                        type="button"
-                        onClick={onEdit}
-                    >
-                        Edit
-                    </Button>
+                    <EditOrInherited
+                        origin={capability.origin}
+                        onEdit={onEdit}
+                    />
                 </Flex>
             </div>
             <Fields>

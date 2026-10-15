@@ -1,4 +1,4 @@
-import type { TBoard, TProject, TStageRow, WorkItem } from "./types"
+import type { JsonRecord, TBoard, TProject, TStageRow, WorkItem } from "./types"
 
 /** The stage filter's value for an item with no stage: a Jira ticket in a
  * status no stage maps to. Not a stage name, so it cannot collide with one. */
@@ -144,4 +144,68 @@ export function withVerdict(text: string, verdict: string): string {
 /** A stage's name as a tab label: the table's own word, capitalized. */
 export function stageLabel(name: string): string {
     return name ? name[0].toUpperCase() + name.slice(1) : name
+}
+
+function sameList(left: string[], right: string[]) {
+    return [...left].sort().join("\n") === [...right].sort().join("\n")
+}
+
+export type TPropertiesDraft = {
+    title: string
+    priority: string
+    effort: string
+    complexity: string
+    assignee: string
+    parent: string
+    tags: string[]
+    "blocked-by": string[]
+}
+
+/** A properties form's starting values: the record as loaded. */
+export function propertiesDraft(item: WorkItem): TPropertiesDraft {
+    return {
+        title: item.title,
+        priority: item.priority ?? "",
+        effort: item.effort ?? "",
+        complexity: item.complexity ?? "",
+        assignee: item.assignee ?? "",
+        parent: item.parent ?? "",
+        tags: [...item.tags],
+        "blocked-by": [...item["blocked-by"]],
+    }
+}
+
+/** The changes a properties form sends, and the loaded values it expects:
+ * only the properties it changed, so nothing else is ever overwritten. */
+export function propertyChanges(
+    item: WorkItem,
+    draft: TPropertiesDraft
+): { changes: JsonRecord; expected: JsonRecord } {
+    const loaded = propertiesDraft(item)
+    const changes: JsonRecord = {}
+    const expected: JsonRecord = {}
+    for (const name of [
+        "title",
+        "priority",
+        "effort",
+        "complexity",
+        "assignee",
+        "parent",
+    ] as const) {
+        if (draft[name].trim() === loaded[name]) continue
+        changes[name] =
+            name === "title" ? draft[name].trim() : draft[name].trim() || null
+        expected[name] = item[name]
+    }
+    for (const name of ["tags", "blocked-by"] as const) {
+        if (sameList(draft[name], loaded[name])) continue
+        changes[name] = {
+            add: draft[name].filter((value) => !loaded[name].includes(value)),
+            remove: loaded[name].filter(
+                (value) => !draft[name].includes(value)
+            ),
+        }
+        expected[name] = item[name]
+    }
+    return { changes, expected }
 }

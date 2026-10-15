@@ -2,6 +2,7 @@ import type { CapabilityItem, TaxonomyItem, WorkItem } from "./types"
 
 export type TReferenceField =
     | "work-parent"
+    | "work-assignee"
     | "work-blockers"
     | "taxonomy-parent"
     | "taxonomy-relates"
@@ -12,6 +13,10 @@ export type TReferenceField =
     | "capability-when"
     | "capability-blocked-by"
     | "capability-superseded-by"
+    | "declaration-capabilities-new"
+    | "declaration-capabilities-existing"
+    | "declaration-taxonomy-new"
+    | "declaration-taxonomy-existing"
 
 export interface TReferenceOption {
     identifier: string
@@ -33,6 +38,10 @@ export interface TReferenceContext {
     capabilities: CapabilityItem[]
     currentIdentifier?: string
     selected?: string[]
+    /** Display names for people, when the backend gave them. */
+    people?: Record<string, string>
+    /** The current user, offered as an assignee. */
+    user?: string | null
 }
 
 const RESULT_LIMIT = 10
@@ -63,6 +72,15 @@ function descendantsOf(identifier: string, items: WorkItem[]): Set<string> {
     return descendants
 }
 
+/** Which suggestions a declaration list offers: a `new` entry may be a name
+ * not yet in the ledger, `changed` and `removed` must name one that exists. */
+export function declarationField(
+    axis: "capabilities" | "taxonomy",
+    list: "new" | "changed" | "removed"
+): TReferenceField {
+    return `declaration-${axis}-${list === "new" ? "new" : "existing"}`
+}
+
 export function referenceOptions(
     field: TReferenceField,
     context: TReferenceContext
@@ -82,6 +100,23 @@ export function referenceOptions(
             : new Set<string>()
         if (current) excluded.add(current)
         return work.filter((item) => !excluded.has(item.identifier))
+    }
+    if (field.startsWith("declaration-"))
+        return (
+            field.startsWith("declaration-taxonomy") ? taxonomy : capabilities
+        ).filter((item) => !selected.has(item.identifier))
+    if (field === "work-assignee") {
+        const people = context.people ?? {}
+        const known = new Set<string>()
+        for (const item of context.work)
+            if (item.assignee) known.add(item.assignee)
+        if (context.user) known.add(context.user)
+        return [...known].map((id) =>
+            option(
+                id,
+                `${people[id] ?? id}${id === context.user ? " (me)" : ""}`
+            )
+        )
     }
     if (field === "work-blockers")
         return work.filter(

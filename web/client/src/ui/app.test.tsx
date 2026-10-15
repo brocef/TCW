@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import {
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+    within,
+} from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router"
 import { ThemeProvider } from "../theme"
 import { fakeFetch, project, workDetail, workItem } from "../test-fixtures"
@@ -20,11 +26,24 @@ function renderApp(path = "/work") {
     )
 }
 
+const NO_DECLARATION = [
+    /declaration$/,
+    200,
+    {
+        revision: null,
+        present: false,
+        problem: null,
+        capabilities: { new: [], changed: [], removed: [] },
+        taxonomy: { new: [], changed: [], removed: [] },
+    },
+] as [RegExp, number, unknown]
+
 function serve(
     overrides: Partial<TProject> = {},
     extra: Array<[string | RegExp, number, unknown]> = []
 ) {
     const fetch = fakeFetch([
+        NO_DECLARATION,
         ...extra,
         ["/api/project$", 200, project(overrides)],
         [
@@ -201,4 +220,63 @@ test("an item is read by its folder and shown read-only", async () => {
     fireEvent.click(await screen.findByRole("treeitem", { name: /Alpha/ }))
     expect(await screen.findByText(/^Stage:/)).toBeInTheDocument()
     expect(screen.getByTestId("where")).toHaveTextContent("/work/2026-10-01-a")
+})
+
+test("in filesystem mode the item's properties, blocks and comments are editable", async () => {
+    serve({}, [["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")]])
+    renderApp("/work/2026-10-01-a")
+    expect(
+        await screen.findByRole("button", { name: "Edit" })
+    ).toBeInTheDocument()
+    expect(
+        screen.getByRole("textbox", { name: "New comment" })
+    ).toBeInTheDocument()
+    expect(
+        screen.getByRole("combobox", { name: "Blocks (add)" })
+    ).toBeInTheDocument()
+    expect(
+        screen.getByRole("button", { name: "+ New item" })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Tickets" })).toBeNull()
+})
+
+test("when the backend owns the record only the files are editable", async () => {
+    serve({ recordOwner: "backend" }, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+    ])
+    renderApp("/work/2026-10-01-a")
+    expect(await screen.findByText(/^Stage:/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "New comment" })).toBeNull()
+    expect(screen.queryByRole("combobox", { name: "Blocks (add)" })).toBeNull()
+    expect(
+        within(screen.getByRole("tabpanel")).getByRole("button", {
+            name: "Create",
+        })
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Tickets" })).toBeInTheDocument()
+})
+
+test("Create asks where the new document goes, then edits it", async () => {
+    const fetch = serve({}, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        [
+            /^POST \/api\/work\/2026-10-01-a\/files$/,
+            200,
+            { path: "ask/ask.md", template: "" },
+        ],
+    ])
+    renderApp("/work/2026-10-01-a")
+    fireEvent.click(
+        within(await screen.findByRole("tabpanel")).getByRole("button", {
+            name: "Create",
+        })
+    )
+    expect(
+        await screen.findByRole("heading", { name: "Create ask/ask.md" })
+    ).toBeInTheDocument()
+    expect(fetch.calls.find((call) => call.method === "POST")?.body).toEqual({
+        stage: "ask",
+        kind: "document",
+    })
 })
