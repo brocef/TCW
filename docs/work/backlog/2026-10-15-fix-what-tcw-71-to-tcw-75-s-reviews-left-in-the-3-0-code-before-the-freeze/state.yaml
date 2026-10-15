@@ -1,0 +1,7 @@
+slug: 2026-10-15-fix-what-tcw-71-to-tcw-75-s-reviews-left-in-the-3-0-code-before-the-freeze
+title: Fix what TCW-71 to TCW-75's reviews left in the 3.0 code, before the freeze
+created: '2026-10-15'
+resolution: null
+effort: medium
+complexity: medium
+parent: 2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend
