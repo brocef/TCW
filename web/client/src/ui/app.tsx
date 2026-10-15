@@ -54,6 +54,7 @@ import {
     SortControl,
 } from "./content-views"
 import { SettingsControl, Tree } from "./shared-components"
+import { RefusalContext, useRefusals } from "./refusals"
 import { beginResize, loadExpanded } from "./ui-state"
 import { AXES, LABELS, itemKey, parsePath, pathFor } from "./route-utils"
 import type {
@@ -153,12 +154,52 @@ export function App() {
     const [detailVersion, setDetailVersion] = useState(0)
     const [loadingDetail, setLoadingDetail] = useState(false)
     const [editor, setEditor] = useState<Editor | null>(null)
-    const [dirty, setDirty] = useState(false)
+    // What holds unsaved work: "form" for the open editor or form, and a
+    // part of the item page each (the declaration, blocks, a comment), so
+    // one part saving does not forget another.
+    const [dirtyParts, setDirtyParts] = useState<ReadonlySet<string>>(
+        () => new Set()
+    )
+    const dirty = dirtyParts.size > 0
+    const markDirty = useCallback((part: string, value: boolean) => {
+        setDirtyParts((old) => {
+            if (old.has(part) === value) return old
+            const next = new Set(old)
+            if (value) next.add(part)
+            else next.delete(part)
+            return next
+        })
+    }, [])
+    /** true: the open editor or form has unsaved work; false: nothing on
+     * the page has any (it was saved, discarded, or left). */
+    const setDirty = useCallback(
+        (value: boolean) => {
+            if (value) markDirty("form", true)
+            else setDirtyParts((old) => (old.size ? new Set() : old))
+        },
+        [markDirty]
+    )
+    const declarationDirty = useCallback(
+        (value: boolean) => markDirty("declaration", value),
+        [markDirty]
+    )
+    const blocksDirty = useCallback(
+        (value: boolean) => markDirty("blocks", value),
+        [markDirty]
+    )
+    const commentDirty = useCallback(
+        (value: boolean) => markDirty("comment", value),
+        [markDirty]
+    )
+    const editorRefusals = useRefusals()
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const [conflict, setConflict] = useState<unknown>(null)
     const [warnings, setWarnings] = useState<string[]>([])
     const [toast, setToast] = useState("")
+    // A problem after an action that otherwise succeeded, shown until the
+    // page moves on: a ticket adopted whose post hook failed.
+    const [problem, setProblem] = useState("")
     const [workMode, setWorkMode] = useState<TWorkMode>(null)
     // Every item, whatever the board's filters, for the fields that suggest
     // items and for `tcw://` links. Read only while something offers them.
@@ -214,7 +255,6 @@ export function App() {
     }, [])
 
     const loadBoard = useCallback(async (search: string) => {
-        setAllWork(null)
         const found = await fetchJson<TBoard>(`/api/work${search}`)
         setData((old) => ({ ...old, work: boardRows(found) }))
         setBoard({
@@ -350,11 +390,15 @@ export function App() {
             .finally(() => setLoadingDetail(false))
     }, [axis, selected, data])
 
+    // Only views that offer items to choose read every item: the forms
+    // and editors, and an item page whose record is edited here. The
+    // tickets view offers none.
     const wantsAll = Boolean(
         axis === "work" &&
         project?.axes.work &&
-        (workMode !== null ||
-            (workDetail !== null && project.recordOwner === "local"))
+        (workMode !== null
+            ? workMode.mode !== "tickets"
+            : workDetail !== null && project.recordOwner === "local")
     )
     useEffect(() => {
         if (!wantsAll || allWork !== null) return
@@ -390,6 +434,7 @@ export function App() {
 
     const navigateTo = (nextAxis: Axis, key: string | null) => {
         if (!confirmLeave()) return
+        setProblem("")
         setEditor(null)
         setWorkMode(null)
         setDirty(false)
@@ -618,6 +663,10 @@ export function App() {
 
     const save = async () => {
         if (!editor || saving) return
+        if (editorRefusals.pending.length) {
+            setErrors(editorRefusals.pending)
+            return
+        }
         setSaving(true)
         setErrors([])
         setConflict(null)
@@ -637,7 +686,11 @@ export function App() {
                         kind: draft.kind,
                         slug: draft.slug,
                         parent: draft.parent,
-                        vocabulary: draft.vocabulary,
+                        // Only a Feature has a vocabulary.
+                        vocabulary:
+                            draft.kind === "Feature"
+                                ? draft.vocabulary
+                                : undefined,
                         description: draft.body,
                     })
                 } else {
@@ -744,29 +797,48 @@ export function App() {
     }
     const workSaved = (message: string, response: unknown) => {
         showSaveResult(message, response)
+        // A form that replaced the page is done; a part of the page (the
+        // declaration, blocks, a comment) clears its own unsaved state, and
+        // the other parts keep theirs.
+        if (workMode !== null) setDirty(false)
         setWorkMode(null)
-        setDirty(false)
+        // Something was saved, so the full list may have changed.
+        setAllWork(null)
         retryDetail()
         void reloadBoard()
     }
+    /** Replace the item page with a form, after asking when anything on
+     * the page is unsaved, since the page's drafts go with it. */
+    const enterWorkMode = (mode: TWorkMode, asked = false) => {
+        if (!asked && !confirmLeave()) return false
+        setWorkMode(mode)
+        setDirty(false)
+        setWarnings([])
+        setProblem("")
+        return true
+    }
     const openFile = async (stage: string, path: string) => {
-        if (!selected) return
+        if (!selected || !confirmLeave()) return
         try {
             const found = await readFile(path)
             const row = stages.find((candidate) => candidate.name === stage)
-            setWorkMode({
-                mode: "file",
-                session: {
-                    folder: selected,
-                    stage,
-                    path,
-                    revision: found.revision,
-                    content: found.content,
-                    verdict:
-                        Boolean(row?.verdict) && /\/round-\d+\.md$/.test(path),
+            // Asked above, before the read.
+            enterWorkMode(
+                {
+                    mode: "file",
+                    session: {
+                        folder: selected,
+                        stage,
+                        path,
+                        revision: found.revision,
+                        content: found.content,
+                        verdict:
+                            Boolean(row?.verdict) &&
+                            /\/round-\d+\.md$/.test(path),
+                    },
                 },
-            })
-            setWarnings([])
+                true
+            )
         } catch (error) {
             showToast(
                 `Could not open ${path}: ${error instanceof Error ? error.message : String(error)}`
@@ -774,7 +846,7 @@ export function App() {
         }
     }
     const newFile = async (stage: string, kind: TNewFileKind) => {
-        if (!selected) return
+        if (!selected || !confirmLeave()) return
         const result = await requestJson<{ path: string; template: string }>(
             `/api/work/${encodeRef(selected)}/files`,
             "POST",
@@ -785,24 +857,24 @@ export function App() {
             return
         }
         const row = stages.find((candidate) => candidate.name === stage)
-        setWorkMode({
-            mode: "file",
-            session: {
-                folder: selected,
-                stage,
-                path: result.data.path,
-                revision: null,
-                content: result.data.template,
-                verdict: kind === "round" && Boolean(row?.verdict),
+        // Asked above, before the request.
+        enterWorkMode(
+            {
+                mode: "file",
+                session: {
+                    folder: selected,
+                    stage,
+                    path: result.data.path,
+                    revision: null,
+                    content: result.data.template,
+                    verdict: kind === "round" && Boolean(row?.verdict),
+                },
             },
-        })
-        setWarnings([])
+            true
+        )
     }
     const openNewItem = () => {
-        if (!confirmLeave()) return
-        setWorkMode({ mode: "new" })
-        setDirty(false)
-        setWarnings([])
+        enterWorkMode({ mode: "new" })
     }
 
     return (
@@ -981,11 +1053,9 @@ export function App() {
                                 <Button
                                     variant="outline"
                                     type="button"
-                                    onClick={() => {
-                                        if (!confirmLeave()) return
-                                        setWorkMode({ mode: "tickets" })
-                                        setDirty(false)
-                                    }}
+                                    onClick={() =>
+                                        enterWorkMode({ mode: "tickets" })
+                                    }
                                 >
                                     Tickets
                                 </Button>
@@ -1078,6 +1148,11 @@ export function App() {
                         }
                     }}
                 >
+                    {problem && (
+                        <Callout.Root color="red" role="alert">
+                            <Callout.Text>{problem}</Callout.Text>
+                        </Callout.Root>
+                    )}
                     {warnings.length > 0 && (
                         <Callout.Root color="amber" role="alert">
                             <Callout.Text>
@@ -1107,24 +1182,26 @@ export function App() {
                             </Button>
                         </>
                     ) : editor ? (
-                        <EditorView
-                            editor={editor}
-                            scales={
-                                project?.capabilityScales ?? {
-                                    status: [],
-                                    priority: [],
-                                    lifecycle: [],
+                        <RefusalContext.Provider value={editorRefusals.report}>
+                            <EditorView
+                                editor={editor}
+                                scales={
+                                    project?.capabilityScales ?? {
+                                        status: [],
+                                        priority: [],
+                                        lifecycle: [],
+                                    }
                                 }
-                            }
-                            setDraft={setDraft}
-                            saving={saving}
-                            errors={errors}
-                            conflict={conflict}
-                            data={data}
-                            onSave={() => void save()}
-                            onCancel={cancelEditor}
-                            onRefreshConflict={() => void refreshConflict()}
-                        />
+                                setDraft={setDraft}
+                                saving={saving}
+                                errors={errors}
+                                conflict={conflict}
+                                data={data}
+                                onSave={() => void save()}
+                                onCancel={cancelEditor}
+                                onRefreshConflict={() => void refreshConflict()}
+                            />
+                        </RefusalContext.Provider>
                     ) : loadingDetail && !workDetail && !detail ? (
                         <Text className="empty" color="gray">
                             Loading...
@@ -1139,6 +1216,7 @@ export function App() {
                                 showToast(message)
                                 setWorkMode(null)
                                 setDirty(false)
+                                setAllWork(null)
                                 void reloadBoard()
                                 if (folder) navigateTo("work", folder)
                             }}
@@ -1147,11 +1225,15 @@ export function App() {
                         />
                     ) : axis === "work" && workMode?.mode === "tickets" ? (
                         <TicketsView
-                            onAdopted={(folder, message) => {
+                            onAdopted={(folder, message, failed) => {
                                 showToast(message)
                                 setWorkMode(null)
+                                setAllWork(null)
                                 void reloadBoard()
                                 navigateTo("work", folder)
+                                // After navigating, which clears it: the
+                                // item is made, but say what failed.
+                                if (failed) setProblem(failed)
                             }}
                         />
                     ) : axis === "work" && workMode?.mode === "file" ? (
@@ -1193,8 +1275,7 @@ export function App() {
                                     void newFile(stage, kind),
                                 onEditProperties: ownsRecord
                                     ? () => {
-                                          setWorkMode({ mode: "properties" })
-                                          setWarnings([])
+                                          enterWorkMode({ mode: "properties" })
                                       }
                                     : undefined,
                                 blocksForm:
@@ -1206,12 +1287,14 @@ export function App() {
                                             folder={workDetail.folder}
                                             references={references}
                                             onSaved={workSaved}
+                                            onDirty={blocksDirty}
                                         />
                                     ) : undefined,
                                 commentBox: ownsRecord ? (
                                     <CommentBox
                                         folder={workDetail.folder}
                                         onSaved={workSaved}
+                                        onDirty={commentDirty}
                                     />
                                 ) : undefined,
                                 declaration: (
@@ -1220,7 +1303,7 @@ export function App() {
                                         references={references}
                                         editable
                                         onSaved={workSaved}
-                                        onDirty={setDirty}
+                                        onDirty={declarationDirty}
                                     />
                                 ),
                             }}

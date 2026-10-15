@@ -458,10 +458,32 @@ export function MarkdownEditor({
                 : [],
         [links, typing]
     )
-    const track = (text: string, caret: number) => {
-        const found = typedLink(text.slice(0, caret))
-        setTyping(found ? { text: found, end: caret } : null)
+    /** Offer links while the caret sits at the end of a `tcw://` link
+     * being typed, and close the list as soon as it does not: after a
+     * selection, an arrow key, Home or End, or a click elsewhere. Text
+     * after the caret that continues the link means the caret is inside
+     * it, where inserting would leave the rest behind. */
+    const track = (text: string, caret: number, selectionEnd = caret) => {
+        const found =
+            caret === selectionEnd && !/[^\s()[\]<>"']/.test(text[caret] ?? " ")
+                ? typedLink(text.slice(0, caret))
+                : null
+        if (!found) {
+            setTyping(null)
+            return
+        }
+        if (typing && typing.text === found && typing.end === caret) return
+        setTyping({ text: found, end: caret })
         setActive(0)
+    }
+    const retrack = () => {
+        const element = area.current
+        if (!element) return
+        track(
+            element.value,
+            element.selectionStart ?? element.value.length,
+            element.selectionEnd ?? element.value.length
+        )
     }
     const insert = (uri: string) => {
         if (!typing) return
@@ -494,6 +516,8 @@ export function MarkdownEditor({
                         track(
                             event.target.value,
                             event.target.selectionStart ??
+                                event.target.value.length,
+                            event.target.selectionEnd ??
                                 event.target.value.length
                         )
                     }}
@@ -510,6 +534,15 @@ export function MarkdownEditor({
                                     offered.length
                             )
                         } else if (
+                            event.key === "Enter" &&
+                            offered.some(
+                                (link) => link.identifier === typing?.text
+                            )
+                        ) {
+                            // The link is typed in full: Enter ends the
+                            // line, as it would with no list open.
+                            setTyping(null)
+                        } else if (
                             event.key === "Enter" ||
                             event.key === "Tab"
                         ) {
@@ -517,6 +550,19 @@ export function MarkdownEditor({
                             insert(offered[active].identifier)
                         } else if (event.key === "Escape") setTyping(null)
                     }}
+                    onKeyUp={(event) => {
+                        // The caret may have moved without a change.
+                        if (
+                            event.key !== "ArrowDown" &&
+                            event.key !== "ArrowUp" &&
+                            event.key !== "Enter" &&
+                            event.key !== "Tab" &&
+                            event.key !== "Escape"
+                        )
+                            retrack()
+                    }}
+                    onSelect={retrack}
+                    onClick={retrack}
                     onBlur={() => setTyping(null)}
                 />
                 {offered.length > 0 && (

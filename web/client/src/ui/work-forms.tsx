@@ -12,6 +12,7 @@ import {
     encodePath,
     encodeRef,
     fetchJson,
+    HttpError,
     isStaleWrite,
     isUnavailable,
     requestJson,
@@ -34,6 +35,7 @@ import type {
 } from "../model/types"
 import { Conflict, EditorHeader } from "./content-views"
 import { ReferenceInput } from "./reference-input"
+import { RefusalContext, useRefusals } from "./refusals"
 import {
     Errors,
     MarkdownEditor,
@@ -116,12 +118,22 @@ export function FileEditor({
             const found = await fetchJson<TFileContent>(url)
             setDraft(found.content)
             setRevision(found.revision)
-        } catch {
-            // The file is gone again: start it afresh.
+            onDirty(false)
+        } catch (failure) {
+            if (!(failure instanceof HttpError && failure.status === 404)) {
+                // Not read: keep the draft and the conflict, and say why.
+                setErrors([
+                    failure instanceof Error
+                        ? failure.message
+                        : String(failure),
+                ])
+                return
+            }
+            // The file is gone: saving the draft creates it afresh.
             setRevision(null)
         }
+        setErrors([])
         setStale(false)
-        onDirty(false)
     }
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
@@ -175,11 +187,16 @@ export function PropertiesForm({
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const [stale, setStale] = useState("")
+    const refusals = useRefusals()
     const set = (name: keyof TPropertiesDraft, value: unknown) => {
         setDraftState((old) => ({ ...old, [name]: value }))
         onDirty(true)
     }
     const save = async () => {
+        if (refusals.pending.length) {
+            setErrors(refusals.pending)
+            return
+        }
         const { changes, expected } = propertyChanges(item, draft)
         if (!Object.keys(changes).length) {
             setErrors(["Nothing has changed."])
@@ -237,70 +254,72 @@ export function PropertiesForm({
                     </Callout.Text>
                 </Callout.Root>
             )}
-            <div className="editor-fields">
-                <TextInput
-                    label="Title"
-                    value={draft.title}
-                    onChange={(value) => set("title", value)}
-                />
-                <SelectInput
-                    label="Priority"
-                    value={draft.priority}
-                    options={["", ...project.scales.priority]}
-                    onChange={(value) => set("priority", value)}
-                />
-                <SelectInput
-                    label="Effort"
-                    value={draft.effort}
-                    options={["", ...project.scales.size]}
-                    onChange={(value) => set("effort", value)}
-                />
-                <SelectInput
-                    label="Complexity"
-                    value={draft.complexity}
-                    options={["", ...project.scales.size]}
-                    onChange={(value) => set("complexity", value)}
-                />
-                <ReferenceInput
-                    label="Tags"
-                    multiple
-                    mode="refuse"
-                    value={draft.tags}
-                    options={project.tags.map((tag) => ({
-                        identifier: tag,
-                        displayName: tag,
-                    }))}
-                    onChange={(value) => set("tags", value)}
-                />
-                <ReferenceInput
-                    label="Assignee"
-                    value={draft.assignee}
-                    options={referenceOptions("work-assignee", context)}
-                    onChange={(value) => set("assignee", value)}
-                />
-                <ReferenceInput
-                    label="Parent"
-                    value={draft.parent}
-                    mode="warn"
-                    warning={otherProject}
-                    source={suggestOtherItems}
-                    options={referenceOptions("work-parent", context)}
-                    onChange={(value) => set("parent", value)}
-                />
-                <ReferenceInput
-                    label="Blocked by"
-                    multiple
-                    mode="warn"
-                    warning={otherProject}
-                    source={suggestOtherItems}
-                    value={draft["blocked-by"]}
-                    options={referenceOptions("work-blockers", {
-                        ...context,
-                        selected: draft["blocked-by"],
-                    })}
-                    onChange={(value) => set("blocked-by", value)}
-                />
-            </div>
+            <RefusalContext.Provider value={refusals.report}>
+                <div className="editor-fields">
+                    <TextInput
+                        label="Title"
+                        value={draft.title}
+                        onChange={(value) => set("title", value)}
+                    />
+                    <SelectInput
+                        label="Priority"
+                        value={draft.priority}
+                        options={["", ...project.scales.priority]}
+                        onChange={(value) => set("priority", value)}
+                    />
+                    <SelectInput
+                        label="Effort"
+                        value={draft.effort}
+                        options={["", ...project.scales.size]}
+                        onChange={(value) => set("effort", value)}
+                    />
+                    <SelectInput
+                        label="Complexity"
+                        value={draft.complexity}
+                        options={["", ...project.scales.size]}
+                        onChange={(value) => set("complexity", value)}
+                    />
+                    <ReferenceInput
+                        label="Tags"
+                        multiple
+                        mode="refuse"
+                        value={draft.tags}
+                        options={project.tags.map((tag) => ({
+                            identifier: tag,
+                            displayName: tag,
+                        }))}
+                        onChange={(value) => set("tags", value)}
+                    />
+                    <ReferenceInput
+                        label="Assignee"
+                        value={draft.assignee}
+                        options={referenceOptions("work-assignee", context)}
+                        onChange={(value) => set("assignee", value)}
+                    />
+                    <ReferenceInput
+                        label="Parent"
+                        value={draft.parent}
+                        mode="warn"
+                        warning={otherProject}
+                        source={suggestOtherItems}
+                        options={referenceOptions("work-parent", context)}
+                        onChange={(value) => set("parent", value)}
+                    />
+                    <ReferenceInput
+                        label="Blocked by"
+                        multiple
+                        mode="warn"
+                        warning={otherProject}
+                        source={suggestOtherItems}
+                        value={draft["blocked-by"]}
+                        options={referenceOptions("work-blockers", {
+                            ...context,
+                            selected: draft["blocked-by"],
+                        })}
+                        onChange={(value) => set("blocked-by", value)}
+                    />
+                </div>
+            </RefusalContext.Provider>
         </div>
     )
 }
@@ -314,17 +333,29 @@ export function BlocksForm({
     folder,
     references,
     onSaved,
+    onDirty,
 }: {
     project: TProject
     item: WorkItem
     folder: string
     references: TReferenceContext
     onSaved: TSaved
+    /** Whether links are chosen and not yet added. */
+    onDirty: (dirty: boolean) => void
 }) {
-    const [targets, setTargets] = useState<string[]>([])
+    const [targets, setTargetsState] = useState<string[]>([])
     const [busy, setBusy] = useState(false)
     const [report, setReport] = useState("")
+    const refusals = useRefusals()
+    const setTargets = (next: string[]) => {
+        setTargetsState(next)
+        onDirty(next.length > 0)
+    }
     const add = async () => {
+        if (refusals.pending.length) {
+            setReport(refusals.pending.join(" "))
+            return
+        }
         setBusy(true)
         setReport("")
         const added: string[] = []
@@ -337,7 +368,7 @@ export function BlocksForm({
                 )
                 if (!result.ok) {
                     setReport(
-                        `${added.length ? `Added ${added.join(", ")}. ` : ""}${target} was refused: ${result.error}`
+                        `${added.length ? `Added ${added.join(", ")}. ` : ""}${target} was not added: ${result.error}`
                     )
                     setTargets(targets.slice(added.length))
                     if (added.length) onSaved(`Added ${added.join(", ")}`, null)
@@ -353,20 +384,22 @@ export function BlocksForm({
     }
     return (
         <section className="item-section" aria-label="Add blocks">
-            <ReferenceInput
-                label="Blocks (add)"
-                multiple
-                mode="warn"
-                warning={(text) => otherProjectWarning(text, project.id)}
-                source={suggestOtherItems}
-                value={targets}
-                options={referenceOptions("work-blockers", {
-                    ...references,
-                    currentIdentifier: item.slug,
-                    selected: [...item.blocks, ...targets],
-                })}
-                onChange={(value) => setTargets(value as string[])}
-            />
+            <RefusalContext.Provider value={refusals.report}>
+                <ReferenceInput
+                    label="Blocks (add)"
+                    multiple
+                    mode="warn"
+                    warning={(text) => otherProjectWarning(text, project.id)}
+                    source={suggestOtherItems}
+                    value={targets}
+                    options={referenceOptions("work-blockers", {
+                        ...references,
+                        currentIdentifier: item.slug,
+                        selected: [...item.blocks, ...targets],
+                    })}
+                    onChange={(value) => setTargets(value as string[])}
+                />
+            </RefusalContext.Provider>
             {report && (
                 <Callout.Root color="red" role="alert">
                     <Callout.Text>{report}</Callout.Text>
@@ -389,11 +422,18 @@ export function BlocksForm({
 export function CommentBox({
     folder,
     onSaved,
+    onDirty,
 }: {
     folder: string
     onSaved: TSaved
+    /** Whether comment text is typed and not yet added. */
+    onDirty: (dirty: boolean) => void
 }) {
-    const [text, setText] = useState("")
+    const [text, setTextState] = useState("")
+    const setText = (next: string) => {
+        setTextState(next)
+        onDirty(next.trim().length > 0)
+    }
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState("")
     const add = async () => {
@@ -470,6 +510,7 @@ export function NewItemForm({
     const [atStart, setAtStart] = useState(true)
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
+    const refusals = useRefusals()
     const here = target === project.id
     const backend = project.recordOwner === "backend"
     const set = (name: string, value: unknown) => {
@@ -481,16 +522,28 @@ export function NewItemForm({
             setErrors(["A title is required."])
             return
         }
+        // Fields hidden for another project send nothing, so only what is
+        // shown can hold back a save.
+        if (here && refusals.pending.length) {
+            setErrors(refusals.pending)
+            return
+        }
         setSaving(true)
         setErrors([])
         try {
+            // Single values are sent trimmed, as the properties form does.
             const properties = Object.fromEntries(
-                Object.entries(props).filter(
-                    ([name, value]) =>
-                        (here || name === "priority") &&
-                        value !== "" &&
-                        !(Array.isArray(value) && !value.length)
-                )
+                Object.entries(props)
+                    .map(([name, value]): [string, unknown] => [
+                        name,
+                        typeof value === "string" ? value.trim() : value,
+                    ])
+                    .filter(
+                        ([name, value]) =>
+                            (here || name === "priority") &&
+                            value !== "" &&
+                            !(Array.isArray(value) && !value.length)
+                    )
             )
             const body: JsonRecord = { title: title.trim(), properties }
             if (requestText.trim()) body.requestText = requestText
@@ -555,121 +608,132 @@ export function NewItemForm({
                 onCancel={onCancel}
             />
             <Errors errors={errors} />
-            <div className="editor-fields">
-                <SelectInput
-                    label="Project"
-                    value={target}
-                    options={targets}
-                    display={describe}
-                    onChange={(value) => {
-                        setTarget(value || project.id)
-                        onDirty(true)
-                    }}
-                />
-                <TextInput
-                    label="Title"
-                    value={title}
-                    onChange={(value) => {
-                        setTitle(value)
-                        onDirty(true)
-                    }}
-                />
-                {(!here || !backend || creatable(project, "priority")) && (
+            <RefusalContext.Provider value={refusals.report}>
+                <div className="editor-fields">
                     <SelectInput
-                        label="Priority"
-                        value={String(props.priority ?? "")}
-                        options={["", ...project.scales.priority]}
-                        onChange={(value) => set("priority", value)}
+                        label="Project"
+                        value={target}
+                        options={targets}
+                        display={describe}
+                        onChange={(value) => {
+                            setTarget(value || project.id)
+                            onDirty(true)
+                        }}
                     />
-                )}
-                {here && (
-                    <>
-                        {(!backend || creatable(project, "effort")) && (
-                            <SelectInput
-                                label="Effort"
-                                value={String(props.effort ?? "")}
-                                options={["", ...project.scales.size]}
-                                onChange={(value) => set("effort", value)}
+                    <TextInput
+                        label="Title"
+                        value={title}
+                        onChange={(value) => {
+                            setTitle(value)
+                            onDirty(true)
+                        }}
+                    />
+                    {(!here || !backend || creatable(project, "priority")) && (
+                        <SelectInput
+                            label="Priority"
+                            value={String(props.priority ?? "")}
+                            options={["", ...project.scales.priority]}
+                            onChange={(value) => set("priority", value)}
+                        />
+                    )}
+                    {here && (
+                        <>
+                            {(!backend || creatable(project, "effort")) && (
+                                <SelectInput
+                                    label="Effort"
+                                    value={String(props.effort ?? "")}
+                                    options={["", ...project.scales.size]}
+                                    onChange={(value) => set("effort", value)}
+                                />
+                            )}
+                            {(!backend || creatable(project, "complexity")) && (
+                                <SelectInput
+                                    label="Complexity"
+                                    value={String(props.complexity ?? "")}
+                                    options={["", ...project.scales.size]}
+                                    onChange={(value) =>
+                                        set("complexity", value)
+                                    }
+                                />
+                            )}
+                            {backend && isUnavailable(project.createFields) && (
+                                <Text color="gray" size="2">
+                                    Priority, effort and complexity cannot be
+                                    offered: {project.createFields.unavailable}
+                                </Text>
+                            )}
+                            <ReferenceInput
+                                label="Tags"
+                                multiple
+                                mode="refuse"
+                                value={(props.tags as string[]) ?? []}
+                                options={project.tags.map((tag) => ({
+                                    identifier: tag,
+                                    displayName: tag,
+                                }))}
+                                onChange={(value) => set("tags", value)}
                             />
-                        )}
-                        {(!backend || creatable(project, "complexity")) && (
-                            <SelectInput
-                                label="Complexity"
-                                value={String(props.complexity ?? "")}
-                                options={["", ...project.scales.size]}
-                                onChange={(value) => set("complexity", value)}
+                            <ReferenceInput
+                                label="Assignee"
+                                value={String(props.assignee ?? "")}
+                                {...(backend
+                                    ? {
+                                          mode: "refuse" as const,
+                                          source: suggestAssignees,
+                                          showName: true,
+                                      }
+                                    : { mode: "allow" as const })}
+                                options={
+                                    backend
+                                        ? []
+                                        : referenceOptions(
+                                              "work-assignee",
+                                              context
+                                          )
+                                }
+                                onChange={(value) => set("assignee", value)}
                             />
-                        )}
-                        {backend && isUnavailable(project.createFields) && (
-                            <Text color="gray" size="2">
-                                Priority, effort and complexity cannot be
-                                offered: {project.createFields.unavailable}
-                            </Text>
-                        )}
-                        <ReferenceInput
-                            label="Tags"
-                            multiple
-                            mode="refuse"
-                            value={(props.tags as string[]) ?? []}
-                            options={project.tags.map((tag) => ({
-                                identifier: tag,
-                                displayName: tag,
-                            }))}
-                            onChange={(value) => set("tags", value)}
-                        />
-                        <ReferenceInput
-                            label="Assignee"
-                            value={String(props.assignee ?? "")}
-                            {...(backend
-                                ? {
-                                      mode: "refuse" as const,
-                                      source: suggestAssignees,
-                                  }
-                                : { mode: "allow" as const })}
-                            options={
-                                backend
-                                    ? []
-                                    : referenceOptions("work-assignee", context)
-                            }
-                            onChange={(value) => set("assignee", value)}
-                        />
-                        <ReferenceInput
-                            label="Parent"
-                            {...crossProject}
-                            value={String(props.parent ?? "")}
-                            options={referenceOptions("work-parent", context)}
-                            onChange={(value) => set("parent", value)}
-                        />
-                        <ReferenceInput
-                            label="Blocked by"
-                            multiple
-                            {...crossProject}
-                            value={(props["blocked-by"] as string[]) ?? []}
-                            options={referenceOptions("work-blockers", {
-                                ...context,
-                                selected:
-                                    (props["blocked-by"] as string[]) ?? [],
-                            })}
-                            onChange={(value) => set("blocked-by", value)}
-                        />
-                        {project.inboxItems && (
-                            <Text as="label" size="2">
-                                <Flex align="center" gap="2">
-                                    <Checkbox
-                                        checked={atStart}
-                                        onCheckedChange={(checked) =>
-                                            setAtStart(checked === true)
-                                        }
-                                    />
-                                    Start at the first stage (
-                                    {project.startStage}); unticked, it waits in{" "}
-                                    {project.inboxStage}
-                                </Flex>
-                            </Text>
-                        )}
-                    </>
-                )}
-            </div>
+                            <ReferenceInput
+                                label="Parent"
+                                {...crossProject}
+                                value={String(props.parent ?? "")}
+                                options={referenceOptions(
+                                    "work-parent",
+                                    context
+                                )}
+                                onChange={(value) => set("parent", value)}
+                            />
+                            <ReferenceInput
+                                label="Blocked by"
+                                multiple
+                                {...crossProject}
+                                value={(props["blocked-by"] as string[]) ?? []}
+                                options={referenceOptions("work-blockers", {
+                                    ...context,
+                                    selected:
+                                        (props["blocked-by"] as string[]) ?? [],
+                                })}
+                                onChange={(value) => set("blocked-by", value)}
+                            />
+                            {project.inboxItems && (
+                                <Text as="label" size="2">
+                                    <Flex align="center" gap="2">
+                                        <Checkbox
+                                            checked={atStart}
+                                            onCheckedChange={(checked) =>
+                                                setAtStart(checked === true)
+                                            }
+                                        />
+                                        Start at the first stage (
+                                        {project.startStage}); unticked, it
+                                        waits in {project.inboxStage}
+                                    </Flex>
+                                </Text>
+                            )}
+                        </>
+                    )}
+                </div>
+            </RefusalContext.Provider>
             <div className="editor-section">Request</div>
             <MarkdownEditor
                 value={requestText}
@@ -688,7 +752,9 @@ export function NewItemForm({
 export function TicketsView({
     onAdopted,
 }: {
-    onAdopted: (folder: string, message: string) => void
+    /** The new item's folder, the line to show, and, when the item was
+     * made but the request stage's post hook failed, what failed. */
+    onAdopted: (folder: string, message: string, problem: string | null) => void
 }) {
     const [tickets, setTickets] = useState<TTicket[] | null>(null)
     const [error, setError] = useState("")
@@ -708,17 +774,20 @@ export function TicketsView({
     const adopt = async (key: string) => {
         setBusy(key)
         try {
-            const result = await requestJson<{ slug: string }>(
-                `/api/tickets/${encodeRef(key)}/adopt`,
-                "POST",
-                {}
-            )
+            const result = await requestJson<{
+                slug: string
+                problem?: string | null
+            }>(`/api/tickets/${encodeRef(key)}/adopt`, "POST", {})
             if (!result.ok || !result.data?.slug) {
                 setRefusals((old) => ({ ...old, [key]: result.error }))
                 return
             }
             const slug = result.data.slug
-            onAdopted(slug.slice(slug.indexOf("/") + 1), `Adopted ${key}`)
+            onAdopted(
+                slug.slice(slug.indexOf("/") + 1),
+                `Adopted ${key}`,
+                result.data.problem ?? null
+            )
         } finally {
             setBusy("")
         }

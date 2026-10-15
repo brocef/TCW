@@ -1,4 +1,5 @@
 import {
+    useContext,
     useEffect,
     useId,
     useMemo,
@@ -12,6 +13,7 @@ import {
     rankReferenceOptions,
     type TReferenceOption,
 } from "../model/reference-search"
+import { RefusalContext } from "./refusals"
 
 /** What happens to text that matches no suggestion: `refuse` will not
  * commit it and says why; `warn` commits it when `warning` gives a reason
@@ -31,6 +33,10 @@ interface TReferenceInputProps {
     warning?: (text: string) => string | null
     /** Suggestions the server computes from the typed text. */
     source?: (text: string) => Promise<TReferenceOption[]>
+    /** A single field whose values are opaque (an account ID) shows the
+     * chosen suggestion's name, while the value it commits stays the
+     * identifier. */
+    showName?: boolean
     onChange: (value: string | string[]) => void
 }
 
@@ -57,22 +63,36 @@ export function ReferenceInput({
     mode = "allow",
     warning,
     source,
+    showName = false,
     onChange,
 }: TReferenceInputProps) {
     const id = useId()
     const values = useMemo(() => (Array.isArray(value) ? value : []), [value])
-    const [query, setQuery] = useState(multiple ? "" : String(value))
+    const [query, setQuery] = useState(() => {
+        if (multiple) return ""
+        const held = String(value)
+        if (!showName) return held
+        return (
+            options.find((option) => option.identifier === held)?.displayName ??
+            held
+        )
+    })
+    // The suggestion a `showName` field committed, whose name it shows.
+    const [chosen, setChosen] = useState<TReferenceOption | null>(null)
     const [open, setOpen] = useState(false)
     const [active, setActive] = useState(-1)
     const [remote, setRemote] = useState<TReferenceOption[]>([])
     const [refusal, setRefusal] = useState("")
     const input = useRef<HTMLInputElement>(null)
+    const report = useContext(RefusalContext)
     const bare = (text: string) =>
         negated && text.startsWith("!") ? text.slice(1) : text
     const searchQuery = bare(query)
+    // The name of a committed choice is not a new search.
+    const showingChoice = chosen !== null && query === chosen.displayName
 
     useEffect(() => {
-        if (!source || !searchQuery.trim()) {
+        if (!source || !searchQuery.trim() || showingChoice) {
             setRemote([])
             return
         }
@@ -90,7 +110,7 @@ export function ReferenceInput({
             stale = true
             window.clearTimeout(timer)
         }
-    }, [source, searchQuery])
+    }, [source, searchQuery, showingChoice])
 
     const candidates = useMemo(() => {
         const seen = new Set<string>()
@@ -113,39 +133,73 @@ export function ReferenceInput({
             ),
         [candidates, searchQuery, values] // eslint-disable-line react-hooks/exhaustive-deps
     )
-    const known = (text: string) =>
-        candidates.some((candidate) => candidate.identifier === bare(text))
+    const known = (text: string, choice = chosen) =>
+        candidates.some((candidate) => candidate.identifier === bare(text)) ||
+        (choice !== null &&
+            (text === choice.displayName || bare(text) === choice.identifier))
     /** Why `text` cannot be committed, or "" when it can. */
-    const refused = (text: string) => {
-        if (!text || mode === "allow" || known(text)) return ""
+    const refused = (text: string, choice = chosen) => {
+        if (!text || mode === "allow" || known(text, choice)) return ""
         if (mode === "warn" && warning?.(bare(text))) return ""
         return `${text} is not one of the suggestions, so it is not kept.`
     }
     const warnings = (multiple ? values : value ? [String(value)] : [])
-        .filter((chosen) => mode === "warn" && !known(chosen))
-        .map((chosen) => warning?.(bare(chosen)))
+        .filter((held) => mode === "warn" && !known(held))
+        .map((held) => warning?.(bare(held)))
         .filter((note): note is string => Boolean(note))
+    // Text the field shows but has not committed and will not: the form
+    // must not save as if it were empty, or as the value held before.
+    const typed = query.trim()
+    const pending = multiple
+        ? typed
+            ? refused(typed)
+            : ""
+        : typed !== String(value).trim() && !showingChoice
+          ? refused(typed)
+          : ""
+    useEffect(() => {
+        report?.(id, pending ? `${label}: ${pending}` : "")
+    }, [report, id, label, pending])
+    useEffect(() => () => report?.(id, ""), [report, id])
 
-    const choose = (identifier: string) => {
+    const choose = (option: TReferenceOption) => {
         const selected =
-            negated && query.startsWith("!") ? `!${identifier}` : identifier
+            negated && query.startsWith("!")
+                ? `!${option.identifier}`
+                : option.identifier
         if (multiple) {
             onChange([...values, selected])
             setQuery("")
         } else {
             onChange(selected)
-            setQuery(selected)
+            if (showName) {
+                setChosen(option)
+                setQuery(option.displayName)
+            } else setQuery(selected)
         }
         setRefusal("")
         setOpen(false)
         setActive(-1)
         input.current?.focus()
     }
+    /** Commit exactly what was typed, when it can be kept; else say why. */
     const commitTyped = () => {
         const raw = query.trim()
         if (!raw) return
+        if (showingChoice) {
+            setOpen(false)
+            return
+        }
         const why = refused(raw)
         if (why) {
+            // A name typed in full is that suggestion.
+            const named = candidates.filter(
+                (candidate) => candidate.displayName === bare(raw)
+            )
+            if (named.length === 1) {
+                choose(named[0])
+                return
+            }
             setRefusal(why)
             return
         }
@@ -155,6 +209,7 @@ export function ReferenceInput({
             setQuery("")
         } else onChange(raw)
         setOpen(false)
+        setActive(-1)
     }
     const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === "ArrowDown" && results.length) {
@@ -173,9 +228,11 @@ export function ReferenceInput({
             setOpen(false)
             setActive(-1)
         } else if (event.key === "Enter") {
+            // Only a suggestion picked with the arrow keys replaces what
+            // was typed; otherwise Enter commits the text itself.
             if (open && active >= 0 && results[active]) {
                 event.preventDefault()
-                choose(results[active].identifier)
+                choose(results[active])
             } else if (query.trim()) {
                 event.preventDefault()
                 commitTyped()
@@ -227,30 +284,28 @@ export function ReferenceInput({
                 onFocus={() => setOpen(true)}
                 onBlur={() => {
                     setOpen(false)
-                    // A single value that would be refused is not kept: the
-                    // field goes back to the value it holds, and says why.
-                    if (
-                        !multiple &&
-                        mode !== "allow" &&
-                        refused(query.trim())
-                    ) {
-                        setRefusal(refused(query.trim()))
-                        setQuery(String(value))
-                    }
+                    setActive(-1)
+                    if (!typed) return
+                    // Text that would be refused stays in the field, with
+                    // the reason, and the form will not save until it is
+                    // fixed. In a list, text that can be kept is added.
+                    if (pending) setRefusal(pending)
+                    else if (multiple) commitTyped()
                 }}
                 onChange={(event) => {
                     const next = event.target.value
+                    const choice =
+                        chosen !== null && next === chosen.displayName
+                            ? chosen
+                            : null
+                    setChosen(choice)
                     setQuery(next)
                     setOpen(true)
                     setRefusal("")
-                    setActive(
-                        rankReferenceOptions(candidates, bare(next)).length
-                            ? 0
-                            : -1
-                    )
+                    setActive(-1)
                     // A single value is committed as typed only when it
                     // would be kept: empty, a suggestion, or allowed.
-                    if (!multiple && !refused(next.trim()))
+                    if (!multiple && !choice && !refused(next.trim(), null))
                         onChange(next.trim() ? next : "")
                 }}
                 onKeyDown={onKeyDown}
@@ -291,7 +346,7 @@ export function ReferenceInput({
                             key={result.identifier}
                             onPointerDown={(event) => {
                                 event.preventDefault()
-                                choose(result.identifier)
+                                choose(result)
                             }}
                         >
                             <Text size="2">

@@ -355,3 +355,81 @@ test("typing tcw:// in the editor offers objects and inserts a work item's folde
     expect(text).toBe("See tcw://W/2026-10-01-x")
     expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
 })
+
+function LinkEditor({ onText }: { onText: (text: string) => void }) {
+    const [value, setValue] = useState("")
+    return (
+        <LinkContext.Provider
+            value={[
+                {
+                    identifier: "tcw://W/2026-10-01-x",
+                    displayName: "The X item",
+                },
+                { identifier: "tcw://C/web", displayName: "Web" },
+            ]}
+        >
+            <MarkdownEditor
+                value={value}
+                onChange={(next) => {
+                    onText(next)
+                    setValue(next)
+                }}
+            />
+        </LinkContext.Provider>
+    )
+}
+
+test("the link list closes when the caret leaves the link, and Enter is not taken", () => {
+    let text = ""
+    globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({}) })
+    render(
+        <ThemeProvider>
+            <LinkEditor onText={(next) => (text = next)} />
+        </ThemeProvider>
+    )
+    const area = screen.getByRole("textbox", {
+        name: "Markdown",
+    }) as HTMLTextAreaElement
+    fireEvent.change(area, {
+        target: { value: "See tcw://x", selectionStart: 11 },
+    })
+    expect(screen.getByRole("listbox", { name: "Links" })).toBeInTheDocument()
+    // Home, an arrow key or a click puts the caret before the link.
+    area.setSelectionRange(3, 3)
+    fireEvent.keyUp(area, { key: "Home" })
+    expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
+    // Enter there is the editor's own: nothing replaces any text.
+    expect(fireEvent.keyDown(area, { key: "Enter" })).toBe(true)
+    expect(text).toBe("See tcw://x")
+    // Back at the end of the link, the list returns.
+    area.setSelectionRange(11, 11)
+    fireEvent.click(area)
+    expect(screen.getByRole("listbox", { name: "Links" })).toBeInTheDocument()
+    // A caret inside the link, with more of it after, offers nothing.
+    area.setSelectionRange(9, 9)
+    fireEvent.select(area)
+    expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
+})
+
+test("a link typed in full ends the line on the first Enter", () => {
+    let text = ""
+    globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({}) })
+    render(
+        <ThemeProvider>
+            <LinkEditor onText={(next) => (text = next)} />
+        </ThemeProvider>
+    )
+    const area = screen.getByRole("textbox", { name: "Markdown" })
+    fireEvent.change(area, {
+        target: { value: "See tcw://C/web", selectionStart: 15 },
+    })
+    expect(screen.getByRole("listbox", { name: "Links" })).toBeInTheDocument()
+    // Not prevented: the browser inserts the line break.
+    expect(fireEvent.keyDown(area, { key: "Enter" })).toBe(true)
+    expect(text).toBe("See tcw://C/web")
+    expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
+})

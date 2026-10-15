@@ -13,6 +13,7 @@ import type {
 } from "../model/types"
 import { Conflict } from "./content-views"
 import { ReferenceInput } from "./reference-input"
+import { RefusalContext, useRefusals } from "./refusals"
 import { Errors, MarkdownEditor } from "./shared-components"
 import type { TSaved } from "./work-forms"
 
@@ -61,6 +62,16 @@ export function DeclarationSection({
             )
     }, [url, attempt])
     const reload = () => setAttempt((count) => count + 1)
+    /** The conflict banner's "Refresh from server": the file is read again,
+     * and the form, keyed on the revision, starts over from it, so the
+     * draft and the stale flag go and the next save carries the new
+     * revision rather than overwriting the other writer's change. */
+    const refresh = () => {
+        if (!window.confirm("Replace your draft with the file as it is now?"))
+            return
+        onDirty(false)
+        reload()
+    }
     const saved: TSaved = (message, response) => {
         setEditing(false)
         onDirty(false)
@@ -95,6 +106,7 @@ export function DeclarationSection({
                 <Text color="gray">Loading...</Text>
             ) : found.problem !== null ? (
                 <PlainDeclaration
+                    key={found.revision ?? ""}
                     folder={folder}
                     found={found}
                     editing={editing}
@@ -104,10 +116,11 @@ export function DeclarationSection({
                         onDirty(false)
                     }}
                     onDirty={onDirty}
-                    onReload={reload}
+                    onReload={refresh}
                 />
             ) : editing ? (
                 <DeclarationForm
+                    key={found.revision ?? ""}
                     url={url}
                     found={found}
                     references={references}
@@ -117,7 +130,7 @@ export function DeclarationSection({
                         onDirty(false)
                     }}
                     onDirty={onDirty}
-                    onReload={reload}
+                    onReload={refresh}
                 />
             ) : (
                 <DeclarationLists found={found} />
@@ -171,7 +184,12 @@ export function DeclarationForm({
     const [saving, setSaving] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
     const [stale, setStale] = useState(false)
+    const refusals = useRefusals()
     const save = async () => {
+        if (refusals.pending.length) {
+            setErrors(refusals.pending)
+            return
+        }
         setSaving(true)
         setErrors([])
         try {
@@ -199,31 +217,33 @@ export function DeclarationForm({
             </Text>
             <Errors errors={errors} />
             {stale && <Conflict onRefresh={onReload} onDiscard={onCancel} />}
-            {AXES.map(({ axis, label }) =>
-                LISTS.map((list) => (
-                    <ReferenceInput
-                        key={`${axis}-${list}`}
-                        label={`${label}: ${list}`}
-                        multiple
-                        mode={list === "new" ? "allow" : "refuse"}
-                        value={draft[axis][list]}
-                        options={referenceOptions(
-                            declarationField(axis, list),
-                            { ...references, selected: draft[axis][list] }
-                        )}
-                        onChange={(value) => {
-                            setDraft((old) => ({
-                                ...old,
-                                [axis]: {
-                                    ...old[axis],
-                                    [list]: value as string[],
-                                },
-                            }))
-                            onDirty(true)
-                        }}
-                    />
-                ))
-            )}
+            <RefusalContext.Provider value={refusals.report}>
+                {AXES.map(({ axis, label }) =>
+                    LISTS.map((list) => (
+                        <ReferenceInput
+                            key={`${axis}-${list}`}
+                            label={`${label}: ${list}`}
+                            multiple
+                            mode={list === "new" ? "allow" : "refuse"}
+                            value={draft[axis][list]}
+                            options={referenceOptions(
+                                declarationField(axis, list),
+                                { ...references, selected: draft[axis][list] }
+                            )}
+                            onChange={(value) => {
+                                setDraft((old) => ({
+                                    ...old,
+                                    [axis]: {
+                                        ...old[axis],
+                                        [list]: value as string[],
+                                    },
+                                }))
+                                onDirty(true)
+                            }}
+                        />
+                    ))
+                )}
+            </RefusalContext.Provider>
             <Flex gap="2" justify="end" mt="3">
                 <Button
                     variant="soft"

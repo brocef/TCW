@@ -214,6 +214,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
             folder="x"
             references={references}
             onSaved={onSaved}
+            onDirty={() => undefined}
         />
     )
     const input = screen.getByRole("combobox", { name: "Blocks (add)" })
@@ -225,7 +226,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
     fireEvent.click(screen.getByRole("button", { name: "Add" }))
     expect(
         await screen.findByText(
-            "Added p/a. q/2026-01-01-z was refused: q is upstream"
+            "Added p/a. q/2026-01-01-z was not added: q is upstream"
         )
     ).toBeInTheDocument()
     expect(sent).toEqual(["p/a", "q/2026-01-01-z"])
@@ -236,12 +237,16 @@ test("a comment is added through the comments route", async () => {
     const fetch = fakeFetch([[/^POST .*comments/, 201, { folder: "x" }]])
     globalThis.fetch = fetch as unknown as typeof globalThis.fetch
     const onSaved = vi.fn()
-    wrap(<CommentBox folder="x" onSaved={onSaved} />)
+    const onDirty = vi.fn()
+    wrap(<CommentBox folder="x" onSaved={onSaved} onDirty={onDirty} />)
     fireEvent.change(screen.getByRole("textbox", { name: "New comment" }), {
         target: { value: "Looks good" },
     })
+    // Typed and not added is unsaved work the page must ask about.
+    expect(onDirty).toHaveBeenLastCalledWith(true)
     fireEvent.click(screen.getByRole("button", { name: "Add comment" }))
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    expect(onDirty).toHaveBeenLastCalledWith(false)
     expect(fetch.calls[0]).toMatchObject({
         path: "/api/work/x/comments",
         method: "POST",
@@ -376,7 +381,37 @@ describe("the tickets view", () => {
         wrap(<TicketsView onAdopted={onAdopted} />)
         fireEvent.click(await screen.findByRole("button", { name: "Adopt" }))
         await waitFor(() =>
-            expect(onAdopted).toHaveBeenCalledWith("X-1-please", "Adopted X-1")
+            expect(onAdopted).toHaveBeenCalledWith(
+                "X-1-please",
+                "Adopted X-1",
+                null
+            )
+        )
+    })
+
+    test("an item adopted whose post hook failed opens, carrying what failed", async () => {
+        globalThis.fetch = fakeFetch([
+            ["/api/tickets$", 200, { tickets: [ticket], query: "q" }],
+            [
+                /^POST /,
+                201,
+                {
+                    slug: "p/X-1-please",
+                    code: 6,
+                    problem:
+                        "adopted X-1 as p/X-1-please, but request post hook failed",
+                },
+            ],
+        ]) as unknown as typeof globalThis.fetch
+        const onAdopted = vi.fn()
+        wrap(<TicketsView onAdopted={onAdopted} />)
+        fireEvent.click(await screen.findByRole("button", { name: "Adopt" }))
+        await waitFor(() =>
+            expect(onAdopted).toHaveBeenCalledWith(
+                "X-1-please",
+                "Adopted X-1",
+                "adopted X-1 as p/X-1-please, but request post hook failed"
+            )
         )
     })
 
@@ -395,5 +430,197 @@ describe("the tickets view", () => {
             await screen.findByText("transitions offered: Start, Close")
         ).toBeInTheDocument()
         expect(screen.getByRole("link", { name: "X-1" })).toBeInTheDocument()
+    })
+})
+
+describe("text a field will not keep holds back a save", () => {
+    test("the properties form keeps the refused text and sends nothing", async () => {
+        const fetch = fakeFetch([[/^PATCH /, 200, { item: {} }]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onSaved = vi.fn()
+        wrap(
+            <PropertiesForm
+                project={project()}
+                item={workItem("x", { priority: "medium" })}
+                folder="x"
+                references={references}
+                onSaved={onSaved}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+                onReload={() => undefined}
+            />
+        )
+        await choose("Priority", "high")
+        const parent = screen.getByRole("combobox", { name: "Parent" })
+        fireEvent.change(parent, { target: { value: "no such item" } })
+        fireEvent.blur(parent)
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        expect(
+            await screen.findAllByText(
+                /no such item is not one of the suggestions/
+            )
+        ).not.toHaveLength(0)
+        expect(screen.getByText(/^Parent: no such item/)).toBeInTheDocument()
+        expect(parent).toHaveValue("no such item")
+        expect(fetch.calls).toHaveLength(0)
+        expect(onSaved).not.toHaveBeenCalled()
+    })
+
+    test("the new item form keeps a refused tag and creates nothing", async () => {
+        const fetch = fakeFetch([[/^POST /, 201, { slug: "p/2026-10-15-new" }]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        const onCreated = vi.fn()
+        wrap(
+            <NewItemForm
+                project={project()}
+                references={references}
+                onCreated={onCreated}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+            />
+        )
+        fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+            target: { value: "New" },
+        })
+        fireEvent.change(screen.getByRole("combobox", { name: "Tags" }), {
+            target: { value: "unregistered" },
+        })
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        expect(
+            await screen.findByText(/^Tags: unregistered is not one/)
+        ).toBeInTheDocument()
+        expect(fetch.calls).toHaveLength(0)
+        expect(onCreated).not.toHaveBeenCalled()
+    })
+
+    test("the blocks form keeps refused text and adds nothing", async () => {
+        const fetch = fakeFetch([[/^POST /, 200, {}]])
+        globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+        wrap(
+            <BlocksForm
+                project={project()}
+                item={workItem("x")}
+                folder="x"
+                references={references}
+                onSaved={() => undefined}
+                onDirty={() => undefined}
+            />
+        )
+        const input = screen.getByRole("combobox", { name: "Blocks (add)" })
+        fireEvent.change(input, { target: { value: "p/a" } })
+        fireEvent.keyDown(input, { key: "Enter" })
+        fireEvent.change(input, { target: { value: "not a slug" } })
+        fireEvent.click(screen.getByRole("button", { name: "Add" }))
+        expect(
+            await screen.findByText(/Blocks \(add\): not a slug is not one/)
+        ).toBeInTheDocument()
+        expect(fetch.calls).toHaveLength(0)
+    })
+})
+
+test("a save that gets no answer says the server could not be reached", async () => {
+    globalThis.fetch = vi.fn(async () => {
+        throw new TypeError("Failed to fetch")
+    }) as unknown as typeof globalThis.fetch
+    const onSaved = vi.fn()
+    wrap(
+        <FileEditor
+            session={{
+                folder: "x",
+                stage: "spec",
+                path: "spec/spec.md",
+                revision: "r1",
+                content: "old",
+                verdict: false,
+            }}
+            onSaved={onSaved}
+            onCancel={() => undefined}
+            onDirty={() => undefined}
+        />
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    expect(
+        await screen.findByText(/Could not reach the tcw serve process/)
+    ).toBeInTheDocument()
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
+})
+
+test("loading the file again after a conflict keeps the draft when the read fails", async () => {
+    let gets = 0
+    globalThis.fetch = vi.fn(async (_input: unknown, init?: RequestInit) => {
+        if (init?.method === "PUT")
+            return {
+                ok: false,
+                status: 409,
+                statusText: "409",
+                json: async () => ({ error: "x", code: "stale-revision" }),
+            }
+        gets += 1
+        return {
+            ok: false,
+            status: 500,
+            statusText: "500",
+            json: async () => ({ error: "disk trouble", code: "error" }),
+        }
+    }) as unknown as typeof globalThis.fetch
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true)
+    try {
+        wrap(
+            <FileEditor
+                session={{
+                    folder: "x",
+                    stage: "spec",
+                    path: "spec/spec.md",
+                    revision: "r1",
+                    content: "mine",
+                    verdict: false,
+                }}
+                onSaved={() => undefined}
+                onCancel={() => undefined}
+                onDirty={() => undefined}
+            />
+        )
+        fireEvent.click(screen.getByRole("button", { name: "Save" }))
+        fireEvent.click(
+            await screen.findByRole("button", { name: "Refresh from server" })
+        )
+        expect(await screen.findByText("disk trouble")).toBeInTheDocument()
+        expect(gets).toBe(1)
+        // Not "the file is gone": the editor still edits, not creates.
+        expect(
+            screen.getByRole("heading", { name: "Edit spec/spec.md" })
+        ).toBeInTheDocument()
+        expect(screen.getByText("Stale write detected")).toBeInTheDocument()
+        expect(screen.getByRole("textbox", { name: "Markdown" })).toHaveValue(
+            "mine"
+        )
+    } finally {
+        confirm.mockRestore()
+    }
+})
+
+test("the new item form sends single values trimmed", async () => {
+    const fetch = fakeFetch([[/^POST /, 201, { slug: "p/2026-10-15-new" }]])
+    globalThis.fetch = fetch as unknown as typeof globalThis.fetch
+    wrap(
+        <NewItemForm
+            project={project()}
+            references={references}
+            onCreated={() => undefined}
+            onCancel={() => undefined}
+            onDirty={() => undefined}
+        />
+    )
+    fireEvent.change(screen.getByRole("textbox", { name: "Title" }), {
+        target: { value: "New" },
+    })
+    fireEvent.change(screen.getByRole("combobox", { name: "Assignee" }), {
+        target: { value: "  bob  " },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(fetch.calls).toHaveLength(1))
+    expect(fetch.calls[0].body).toMatchObject({
+        properties: { assignee: "bob" },
     })
 })

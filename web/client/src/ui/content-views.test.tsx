@@ -174,3 +174,35 @@ test("a retired capability field is shown read-only and offered by no form", () 
     expect(screen.queryByRole("combobox", { name: "Planning doc" })).toBeNull()
     expect(screen.queryByRole("combobox", { name: "Tracker" })).toBeNull()
 })
+
+test.each([
+    ["Vocabulary", false],
+    ["Feature", true],
+])("a %s term's editor offers a vocabulary: %s", (kind, offered) => {
+    render(
+        <ThemeProvider>
+            <EditorView
+                editor={{
+                    mode: "core",
+                    axis: "taxonomy",
+                    ref: "term",
+                    revision: "r",
+                    draft: { kind, vocabulary: [] },
+                    original: { kind, vocabulary: [] },
+                }}
+                setDraft={() => undefined}
+                saving={false}
+                errors={[]}
+                conflict={null}
+                data={{ work: [], taxonomy: [], capabilities: [] }}
+                scales={{ status: [], priority: [], lifecycle: [] }}
+                onSave={() => undefined}
+                onCancel={() => undefined}
+                onRefreshConflict={() => undefined}
+            />
+        </ThemeProvider>
+    )
+    expect(
+        screen.queryAllByRole("combobox", { name: "Vocabulary" })
+    ).toHaveLength(offered ? 1 : 0)
+})

@@ -5,6 +5,7 @@ import {
     waitFor,
     within,
 } from "@testing-library/react"
+import { vi } from "vitest"
 import { MemoryRouter, useLocation } from "react-router"
 import { ThemeProvider } from "../theme"
 import { fakeFetch, project, workDetail, workItem } from "../test-fixtures"
@@ -279,4 +280,148 @@ test("Create asks where the new document goes, then edits it", async () => {
         stage: "ask",
         kind: "document",
     })
+})
+
+const allPaths = (fetch: ReturnType<typeof serve>) =>
+    fetch.calls
+        .map((call) => call.path)
+        .filter((path) => path.includes("all=1"))
+
+test("unsaved comment text is asked about before a form replaces the page", async () => {
+    const fetch = serve({}, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        [
+            /^POST \/api\/work\/2026-10-01-a\/files$/,
+            200,
+            { path: "ask/ask.md", template: "" },
+        ],
+    ])
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
+    try {
+        renderApp("/work/2026-10-01-a")
+        fireEvent.change(
+            await screen.findByRole("textbox", { name: "New comment" }),
+            { target: { value: "Half a thought" } }
+        )
+        // Create on a stage file, and Edit on the properties, both ask.
+        fireEvent.click(
+            within(screen.getByRole("tabpanel")).getByRole("button", {
+                name: "Create",
+            })
+        )
+        fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+        expect(confirm).toHaveBeenCalledTimes(2)
+        expect(fetch.calls.some((call) => call.method === "POST")).toBe(false)
+        expect(
+            screen.getByRole("textbox", { name: "New comment" })
+        ).toHaveValue("Half a thought")
+        // Agreeing to leave opens the form.
+        confirm.mockReturnValue(true)
+        fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+        expect(
+            await screen.findByRole("combobox", { name: "Parent" })
+        ).toBeInTheDocument()
+    } finally {
+        confirm.mockRestore()
+    }
+})
+
+test("an unsaved declaration draft is asked about before a stage file opens", async () => {
+    serve({}, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+        [
+            /^POST \/api\/work\/2026-10-01-a\/files$/,
+            200,
+            { path: "ask/ask.md", template: "" },
+        ],
+    ])
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
+    try {
+        renderApp("/work/2026-10-01-a")
+        const section = await screen.findByRole("region", {
+            name: "Declaration",
+        })
+        fireEvent.click(
+            await within(section).findByRole("button", { name: "Create" })
+        )
+        const added = within(section).getByRole("combobox", {
+            name: "Capabilities: new",
+        })
+        fireEvent.change(added, { target: { value: "web/x" } })
+        fireEvent.keyDown(added, { key: "Enter" })
+        fireEvent.click(
+            within(screen.getByRole("tabpanel")).getByRole("button", {
+                name: "Create",
+            })
+        )
+        expect(confirm).toHaveBeenCalledTimes(1)
+        expect(within(section).getByText("web/x")).toBeInTheDocument()
+    } finally {
+        confirm.mockRestore()
+    }
+})
+
+test("every item is read once for an item page, not again on a board reload", async () => {
+    const fetch = serve({}, [
+        ["/api/work/2026-10-01-a$", 200, workDetail("2026-10-01-a")],
+    ])
+    renderApp("/work/2026-10-01-a")
+    await screen.findByRole("textbox", { name: "New comment" })
+    await waitFor(() => expect(allPaths(fetch)).toHaveLength(1))
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }))
+    fireEvent.click(await screen.findByRole("checkbox", { name: "ui" }))
+    await waitFor(() => expect(boardPaths(fetch)).toContain("/api/work?tag=ui"))
+    expect(allPaths(fetch)).toHaveLength(1)
+})
+
+test("the tickets view reads no list of every item, and an adopt's failed hook is shown", async () => {
+    const fetch = serve({ recordOwner: "backend" }, [
+        [
+            "/api/tickets$",
+            200,
+            {
+                tickets: [
+                    {
+                        key: "X-1",
+                        summary: "Please",
+                        status: "Inbox",
+                        created: "",
+                        reporter: "",
+                        url: "https://t.example/browse/X-1",
+                        description: null,
+                    },
+                ],
+                query: "q",
+            },
+        ],
+        [
+            /^POST \/api\/tickets\/X-1\/adopt$/,
+            201,
+            {
+                slug: "p/X-1-please",
+                code: 6,
+                problem:
+                    "adopted X-1 as p/X-1-please, but request post hook failed: exit 1",
+            },
+        ],
+        ["/api/work/X-1-please$", 200, workDetail("X-1-please")],
+    ])
+    renderApp()
+    await screen.findByText("Alpha")
+    fireEvent.click(screen.getByRole("button", { name: "Tickets" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Adopt" }))
+    expect(
+        await screen.findByText(/but request post hook failed: exit 1/)
+    ).toBeInTheDocument()
+    await waitFor(() =>
+        expect(screen.getByTestId("where")).toHaveTextContent(
+            "/work/X-1-please"
+        )
+    )
+    expect(
+        screen.getByText(/but request post hook failed: exit 1/)
+    ).toBeVisible()
+    // Neither the tickets view nor a page whose record the backend keeps
+    // offers items, so the full list is never read.
+    expect(allPaths(fetch)).toHaveLength(0)
 })

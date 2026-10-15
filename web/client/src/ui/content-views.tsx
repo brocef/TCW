@@ -227,10 +227,13 @@ export function DetailView({
                         name="Relates to"
                         value={term.relates_to?.join(", ") || "-"}
                     />
-                    <Field
-                        name="Vocabulary"
-                        value={term.vocabulary?.join(", ") || "-"}
-                    />
+                    {(term.kind === "Feature" ||
+                        Boolean(term.vocabulary?.length)) && (
+                        <Field
+                            name="Vocabulary"
+                            value={term.vocabulary?.join(", ") || "-"}
+                        />
+                    )}
                 </Fields>
                 <Markdown source={term.description ?? ""} resolveLinks />
             </>
@@ -486,19 +489,22 @@ function TaxonomyFields({
                     onChange={(value) => setDraft("relates_to", value)}
                 />
             )}
-            <ReferenceInput
-                label="Vocabulary"
-                multiple
-                mode="refuse"
-                value={(draft.vocabulary as string[] | undefined) ?? []}
-                options={optionsFor(
-                    "taxonomy-vocabulary",
-                    data,
-                    current,
-                    (draft.vocabulary as string[] | undefined) ?? []
-                )}
-                onChange={(value) => setDraft("vocabulary", value)}
-            />
+            {/* A vocabulary is a Feature's: the terms it operates on. */}
+            {draft.kind === "Feature" && (
+                <ReferenceInput
+                    label="Vocabulary"
+                    multiple
+                    mode="refuse"
+                    value={(draft.vocabulary as string[] | undefined) ?? []}
+                    options={optionsFor(
+                        "taxonomy-vocabulary",
+                        data,
+                        current,
+                        (draft.vocabulary as string[] | undefined) ?? []
+                    )}
+                    onChange={(value) => setDraft("vocabulary", value)}
+                />
+            )}
         </>
     )
 }
