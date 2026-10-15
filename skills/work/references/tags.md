@@ -1,8 +1,8 @@
 # Tags
 
-A project-scoped classification vocabulary for grouping and filtering work across
-statuses. Tags are descriptive facets — `cli`, `docs`, `bug`, `tech-debt` — and
-change nothing about priority, status, ownership, or transitions.
+A project's classification vocabulary for grouping and filtering work. Tags are
+descriptive facets — `cli`, `docs`, `bug`, `tech-debt` — and change nothing
+about priority, stage, ownership, or moves.
 
 Prefer a small reusable vocabulary. A tag that restates one item's title is
 noise.
@@ -13,43 +13,20 @@ unregistered tag is rejected, not created.
 ```sh
 tcw work tags list                   # the registered set
 tcw work tags add bug tech-debt      # register
-tcw work tags rm tech-debt           # unregister (warns if items still carry it)
+tcw work tags rm tech-debt           # unregister
 
 tcw work new "Login crash" --tag bug         # repeatable; must be registered
 tcw work edit <slug> --tag cli --untag stale
 tcw work list --tag bug --tag cli            # repeatable = match any
 ```
 
-**A comma separates tags, everywhere one is named.** `--tags` and `--untags` are
-accepted wherever `--tag` and `--untag` are, and any value of either spelling may
-be a list — including the positionals of `tags add` and `tags rm`. The spellings
-compose, blank segments are ignored, and a value naming no tag at all is refused.
+**One tag per use.** A tag may contain only letters, digits and hyphens, and a
+value holding a comma is refused rather than split: repeat the option, or list
+several tags as separate arguments to `tags add` and `tags rm`.
 
-One exception: `--untag` first matches its value against the item's tags as
-written, so a hand-written tag that is not valid (`'cli,docs'`, `'!!!'`, which
-`tcw validate` reports) is removed with `--untag 'cli,docs'` — as written, and not also split into
-`cli` and `docs`. An edit never refuses a tag the item already holds (invalid,
-or valid but no longer registered) — only one it adds.
+When deciding on an arrival or writing a request, read the registry and choose
+every tag that materially applies. Register a new one only when it will be
+useful beyond the item in front of you.
 
-```sh
-tcw work tags add cli,docs                   # registers two tags, not "cli-docs"
-tcw work new "Login crash" --tags bug,cli
-tcw work edit <slug> --tags web --untags cli,docs
-tcw work list --tags bug,cli                 # match any
-```
-
-A comma is never part of a tag: a tag may contain only letters, digits and
-hyphens, so there is nothing for it to mean inside one. That is why this is safe
-here and **not** on `--blocked-by`, whose value may be free text.
-
-During request intake, inspect the registry and choose every materially
-applicable tag. Register a new one only when it will be useful beyond the item in
-front of you.
-
-A tag written by hand into an item's `state.yaml` is read in its canonical
-form, so `CLI` is the tag `cli`. `tags add` and `tags rm` refuse, naming the
-entry, while `work.tags` holds something that is not a tag (a bare number,
-`"cli,docs"`); fix that entry by hand first.
-
-A tag left on an item after being unregistered is flagged by `tcw validate`,
-which stays red until the item is retagged or the tag restored.
+A tag left on an item after being unregistered is reported by `tcw validate`
+until the item is retagged or the tag restored.

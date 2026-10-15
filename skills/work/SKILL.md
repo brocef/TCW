@@ -1,8 +1,8 @@
 ---
 name: work
-description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, starting, implementing, verifying, or completing a tcw work item; resuming one across sessions; triaging a docs/work/inbox request; decomposing an item into child items; or coordinating a cross-node epic. Does not reimplement the CLI.
-when_to_use: Use when starting, continuing, triaging, planning, implementing, verifying, or decomposing tcw work items — when a user asks to plan work, drive work to completion, process a docs/work/inbox request, start or complete an item, resume an active item across sessions, break a large item into child items (`tcw work new --parent`), or coordinate orchestrator-level work across sub-project nodes via a cross-node epic. Also when searching the board, auditing the backlog, or consolidating external planning documents.
-allowed-tools: Bash(tcw *), Bash(git *), Read, Edit, Write
+description: Drives the `tcw work` change-tracking CLI — the Work axis of TCW (Taxonomy · Capabilities · Work). Use when planning, implementing, reviewing or testing a tcw work item; resuming one across sessions; deciding on an arrival in the inbox; splitting an item into child items; or filing work into another project. Does not reimplement the CLI.
+when_to_use: Use when starting, continuing, triaging, planning, implementing, reviewing, testing or splitting tcw work items — when a user asks to plan work, drive work to completion, decide on inbox arrivals, move an item to its next stage, resume an item across sessions, break a large item into child items (`tcw work new --parent`), or file work into another project (`tcw work new --project`). Also when searching the board, auditing unfinished work, or asking which stage could have caught a problem.
+allowed-tools: Bash(tcw *), Read, Edit, Write
 metadata:
     author: Brian Cefali
 license: Apache-2.0
@@ -12,59 +12,100 @@ dynamic_skill: false # which skills a project may override, and why: ../README.m
 
 # Driving `tcw work`
 
-`tcw work` is the change-tracking state machine. This skill is the **judgment**
-on top of it. Name `tcw …` commands; never hand-edit the store when a command
-exists, and never compose store paths — see [`commands.md`](references/commands.md).
+`tcw work` tracks each change as an item that moves through stages. This skill
+is the **judgment** on top of it. Name `tcw …` commands; never compose a path
+into the work store, and never edit the store by hand where a command exists —
+see [`commands.md`](references/commands.md).
 
 Work is the last layer in `Vocabulary → Features → Capabilities → Work`; an item
-may change any earlier one. For a product delta, check those layers in order
-first. **REQUIRED SUB-SKILL: Use the `capabilities` skill.**
+may change any earlier one. For a change users will notice, check those layers
+in order first. **REQUIRED SUB-SKILL: Use the `capabilities` skill.**
 
-## Two ladders
+## Stages
 
-A **stage** produces one artifact. A **transition** moves status. Nothing is
-both. Stage detection is artifact presence; status is the folder.
+An item is at exactly one stage. Each stage's instructions come from
+**`tcw work stage prompt <stage> <slug>`**: TCW's own text for that stage,
+composed with this project's, and the same under every harness. Read it before
+working a stage, and follow it; this skill does not repeat it.
 
-**To learn how to perform a stage, invoke the `work-stage` skill with the stage id and the work item — `work-stage <stage> [<slug>]`.**
-It is where a stage's instructions come from, composed with this project's own.
+| Stage        | Writes, through `tcw work path <slug> <stage>`                    |
+| ------------ | ---------------------------------------------------------------- |
+| `inbox`      | nothing: an arrival is accepted, split or turned away            |
+| `request`    | the request: what to build, for any reader                       |
+| `spec`       | the spec, `capabilities.yaml` in the item's folder, and a `QA plan` comment |
+| `plan`       | the plan                                                         |
+| `implement`  | the code, the records, and one round (`--next`) with no verdict  |
+| `review`     | one round with `verdict` and `judges` front matter               |
+| `qa`         | one round with `verdict` and `judges`, or findings when people decide |
+| `postmortem` | a side stage on any item that was not discarded; never moves it  |
 
-| Stage        | Produces                                |
-| ------------ | --------------------------------------- |
-| `inbox`      | — (creates the item)                    |
-| `request`    | `initial-request.md` — later amendments are appended there, never to `intake.md`: [`commands.md`](references/commands.md) § Amending a request |
-| `spec`       | `spec.md`                               |
-| `plan`       | `plan.md`                               |
-| `implement`  | `outcome.md`                            |
-| `verify`     | `refined-outcome.md` **or** `rework.md` |
-| `postmortem` | `post-mortem.md`                        |
+`completed` and `discarded` end an item. **`tcw work advance <slug>`** moves an
+item to its next enabled stage once the stage's output is written; the gates run
+on the move, and `--dry-run` says whether it would pass. A rejected review or qa
+round sends it back to implement. `--to <stage>` moves elsewhere (backwards
+needs no force); `tcw work discard <slug> --reason "<why>"` abandons it.
+**`judges`** in a round is the number of the newest implement round it judged,
+so a verdict on older work counts for nothing.
 
-`start` · `submit` · `rework` · `complete` · `discard` (`complete --resolution wontfix|duplicate|superseded`) → [`transitions.md`](references/transitions.md)
+Some backends keep a stage themselves (in Jira, request and qa happen on the
+ticket): the stage has no folder, a person moves the item on, and the stage
+prompt says so. The configure skill's Jira reference covers that setup.
 
 ## Finding your place
 
-Read the item — and if any `handoff-*.md` sits in its folder, an agent paused mid-task there: read them, newest last, let them place you, then delete what you read, because a stale one misleads the next reader. Then invoke `work-stage` for **only** the first missing artifact's stage:
-no `initial-request.md` nor `spec.md` → `request` · no `spec.md` → `spec` · no `plan.md` →
-`plan` · no `outcome.md`, or a `rework.md` in an `active` item → `implement` ·
-no `refined-outcome.md`/`rework.md` → `verify`. Resume across sessions with `tcw work list --status active` →
-`tcw work show <slug>`; for an epic, `tcw work reconcile <slug>` first.
+1. `tcw work show <slug>` prints the item's stage, its request, and its
+   comments, newest first. `tcw work list` lists unfinished items;
+   `tcw work list --mine` those assigned to you.
+2. Read the newest handoff for that stage: the newest `handoff-*.md` in the
+   folder `tcw work path <slug> <stage>` prints, or, where the backend keeps
+   the stage, the newest comment whose first line is `Handoff`. It describes
+   the work when it was written; check for anything newer before trusting it.
+   Handoffs are never deleted; the newest wins.
+3. `tcw work stage prompt <stage> <slug>`, and work the stage.
 
-## Always
+## Rules no project text changes
 
-- **Commit each stage artifact as you write it.** `[judgment]` — nothing enforces
-  it. Never batch several stages into one commit. TCW commits the _transitions_
-  and what `new`/`inbox accept` create itself; do not commit those by hand.
-- **`tcw work stage gate <id> <slug>`** at every stage entry — it refuses; `work-stage` carries the instructions.
-  Bindings → [`hooks.md`](references/hooks.md) · declaring them: the `configure` skill
-- For a small change, ask whether to compress planning detail — but keep the item
-  the durable source of truth and write whatever is needed to resume or review.
+- **Stages may go to a subagent; moves never do.** `tcw work advance` and
+  `tcw work discard` run the gates once, in the session that holds the user.
+  Request is not dispatched, because it asks the user. Qa is not dispatched
+  where a person decides its verdict: where the backend keeps qa, or where the
+  project's qa prompt says so. With TCW's own qa text on the filesystem, the
+  agent records the verdict, so qa may be dispatched like review. A subagent
+  is permitted, never required: a session that cannot dispatch runs the same
+  stage itself.
+- **Search is read-only.** No move, no `tcw work edit`, no file written. A
+  search that changed the board would make its own result untrustworthy.
+- **An audit asks before changing the board, grouped by kind**: one approval
+  for tag edits, one for blockers, one for discards, naming each discard
+  inside its group. Asking per item is unusable; asking once for everything is
+  a blanket yes on decisions that deserve thought.
+- **Epics are parents.** An item with children is an epic; add one with
+  `tcw work new "<title>" --parent <slug>`, and `tcw work list --parent <slug>`
+  lists them.
+- **Delegation is filing into another project**, with
+  `tcw work new "<title>" --project <id>`; `tcw projects list` names the
+  projects this one declares under `projects:` (the configure skill's
+  reference on projects explains the key).
+
+## Another project's exit codes
+
+- Reading a project nothing declares exits 4; one declared but not on this
+  machine exits 5.
+- `tcw work new --project` into a project nothing declares exits 3; into a
+  declared but absent project exits 3, unless its entry has a `jira` block:
+  then it exits 0 and prints the new ticket's key, which lands in that
+  project's inbox. Report the key.
+- Filing into an upstream project, which is read-only, exits 3; so does
+  `tcw work edit --blocks` into a project that exists only as a `jira` block.
+
+On exit 5, or exit 3 for an absent project, report it and suggest
+`tcw provision`; do not retry.
 
 ## Read on demand
 
-- [`commands.md`](references/commands.md) — every command, storage/item paths, addressing, command skills, the documentation gate (`tcw work docs`), publication on a provisioned store
-- [`delegation.md`](references/procedures/delegation.md) — dispatching stages to subagents · [`decompose.md`](references/procedures/decompose.md) — splitting one item into child items
+- [`commands.md`](references/commands.md) — every command, what it prints, piping text in, addressing items
+- [`tags.md`](references/tags.md) — the project's tag registry
 - Turning an idea into a work item without duplicating tracked work → the `work-create` skill
-- [`tags.md`](references/tags.md) — the node's tag vocabulary · [`epic-deltas.md`](references/epic-deltas.md) — `type: epic` differences · [`cross-node-deltas.md`](references/cross-node-deltas.md) — work across registered nodes
-- **Only when the user asks for it** — [`audit-backlog.md`](references/procedures/audit-backlog.md): reviewing the whole backlog for stale, duplicate, or misplaced items · [`consolidate-plans.md`](references/procedures/consolidate-plans.md): migrating planning documents from outside `docs/work/` into work items, then deleting the sources · [`search.md`](references/procedures/search.md): answering a described question about the board as a table
-
-> **Web editing:** items, artifacts (Request/Spec/Plan as tabs), and the `capabilities.yaml`
-> sidecar use the configured store through `tcw serve`; it commits transitions but runs **no** hooks.
+- **Only when the user asks for it** — reviewing every unfinished item for stale, duplicate or misplaced work: `tcw work procedure audit-backlog` · answering a described question about the board as a table: `tcw work procedure search`. Each prints this project's text, or TCW's own; the rules above hold whatever it says.
+- "Which stage could have caught this?" → the postmortem stage: `tcw work stage prompt postmortem <slug>`
+- Stage bindings, hooks and every configuration key → the configure skill

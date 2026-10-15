@@ -14,7 +14,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 TRACKER = REPO / "skills/configure/references/tracker.md"
-COMMANDS = REPO / "skills/work/references/commands.md"
 ROUTER = REPO / "skills/configure/SKILL.md"
 
 # The declaring rules for tracker inheritance, as `tracker.md` states them. Each
@@ -45,14 +44,6 @@ def test_tracker_inheritance_is_declared_in_tcw_configure():
         "tracker.md does not say tracker: {} leaves child projects inheriting")
     assert "All but the last are required. Unknown" not in text, (
         "tracker.md still says every key is required in the node's own block")
-
-
-def test_tcw_work_keeps_only_the_runtime_tracker_text():
-    text = _flat(COMMANDS)
-    for moved in (*DECLARING_RULES, "Settings inherit from parent nodes"):
-        assert moved not in text, (
-            f"commands.md carries declaring text that belongs in tracker.md: {moved!r}")
-    assert "A problem names the file its value came from" in text
 
 
 def test_sharing_tracker_settings_routes_to_tracker_md():

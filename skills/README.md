@@ -93,7 +93,6 @@ Documents are named by owner and by path within the owner.
 | `commands-drive-work-to-completion` | `SKILL.md` | fixed (Rule 2) | Runs every stage through `verify` via `work-stage`; the procedure is the stages' |
 | `commands-verify-work` | `SKILL.md` | fixed (Rule 2) | Runs `verify` through `work-stage`; the procedure is the stage's |
 | `commands-pause-work` | `SKILL.md` | overridable | Unlike the other four, it carries a procedure of its own: a pause is not a lifecycle stage, so there is no stage document behind it and Rule 2 does not apply. What it carries — how to stop, what to commit, how much to write down — is conduct. The handoff file's name and the rule that resuming deletes it stay TCW's. Note that no procedure id backs this skill, so `true` here records the intent; nothing yet mechanises the override |
-| `work-stage` | `SKILL.md` | composes already | A template around injected commands; the stage instructions it delivers come from `tcw work stage prompt`, which a project extends or replaces under `work.lifecycle.stages.<id>.prompt`. The file holds no procedure to replace |
 | `extras-autonomous-work` | `SKILL.md` | overridable | Which advisors to consult, how to review, how to close out and when to cut a version are conduct |
 | `extras-triage-issues` | `SKILL.md` | overridable | How a project sweeps and answers its own issue tracker is conduct |
 | `documentation-sync` | `SKILL.md` | overridable | Deciding which documents a change must update is the project's documentation practice |
@@ -102,14 +101,8 @@ Documents are named by owner and by path within the owner.
 | `post-mortem` | `SKILL.md` | overridable | How to investigate a miss is conduct; the stage ladder it reasons over stays TCW's |
 | `work-create` | `SKILL.md` | overridable | How an idea is filed is conduct; the rule that the board is searched first stays fixed (see `references/find-overlap.md`) |
 | `work-create` | `references/find-overlap.md` | fixed (Rule 1) | Does not travel with its skill. It defines the search for existing work and its four relations — `covers`, `partly covers`, `blocks`, `related` — which decide the item fields the skill writes (`blocked_by`, an amendment, a reference). That is a board rule; a project replacing it could define "duplicate" out of existence |
-| `work` | `references/procedures/*.md` | overridable | Auditing the backlog, consolidating plans, decomposing, delegating and searching the board are conduct |
-| `work` | `references/lifecycle/stage-*.md` | fixed (Rule 1) | Each is a stage's contract — its inputs, its artifact, which steps are gated. The conduct half of a stage is its prompt, which composes already, and `work-stage` delivers the two together |
 | `work` | `references/commands.md` | fixed (Rule 1) | The CLI's verbs and flags |
-| `work` | `references/transitions.md` | fixed (Rule 1) | Transitions |
-| `work` | `references/hooks.md` | fixed (Rule 1) | How lifecycle bindings resolve and run — the configuration surface |
 | `work` | `references/tags.md` | fixed (Rule 1) | The tag registry's model |
-| `work` | `references/epic-deltas.md` | fixed (Rule 1) | What each artifact means for an epic, and the relations between an epic and its children — data model |
-| `work` | `references/cross-node-deltas.md` | fixed (Rule 1) | Relations between projects, `delegate` and `escalate` — data model |
 | `agents` | `backlog-auditor.md` | fixed (accelerator) | Restates the per-item checks of the `audit-backlog.md` procedure |
 | `agents` | `post-mortem.md` | fixed (accelerator) | Restates the `post-mortem` skill |
 | `agents` | `verifier.md` | fixed (accelerator) | Carries assessment steps of its own beyond the `verify` stage; see "Agents" |
