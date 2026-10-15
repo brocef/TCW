@@ -61,17 +61,547 @@ The mapping tables in [What each 2.x name becomes](#what-each-2x-name-becomes)
 say what every 2.x folder, field, document, key, variable, command, skill and
 agent becomes. The steps point into them.
 
+## Before you start
+
+Check each of these before step 0; step 0's check confirms the ones a command
+can show.
+
+- **The project is on 2.8.x.** `tcw --version` prints `2.8.` and a patch
+  number. A project on an earlier version upgrades to 2.8 first.
+- **The 3.0 CLI is installed, beside 2.8.** Both are needed: 2.8 for step 0's
+  last check of the 2.x board, and 3.0 from step 3 on. One way is a virtual
+  environment, a private Python installation in a folder of its own:
+
+  ```sh
+  python3 -m venv ~/.tcw-3
+  ~/.tcw-3/bin/pip install 'tcw-cli>=3,<4'
+  ~/.tcw-3/bin/tcw --version     # prints 3. and the rest of the version
+  ```
+
+  Where a step runs `tcw` from step 3 on, it means this 3.0 CLI: run it as
+  `~/.tcw-3/bin/tcw`, or with `~/.tcw-3/bin` first on `PATH`. Step 11 makes
+  3.0 the `tcw` everyone runs.
+- **The working tree has no uncommitted changes**: `git status --porcelain`
+  prints nothing.
+- **No 2.x item worktree is open.** 2.x could give an item its own git
+  worktree on a branch named `work/<slug>`; 3.0 knows nothing about them. Merge
+  or remove each one first, so that `git worktree list | grep -E '\[work/'`
+  prints nothing. The migration itself may run in a worktree of its own; the
+  plan lists any other worktrees.
+- **A branch or tag marks the 2.x state**, so the project can return to it,
+  for example `git tag tcw-2.x-final`.
+- **Every connected project is on this machine.** 3.0 stops with exit code 5
+  when a project the configuration declares (under `connected-projects`) is
+  missing, which would hide the migration's own findings. 2.8's
+  `tcw validate` reports a missing one, and `tcw provision` fetches it.
+- **In Jira mode, the Jira credentials are set**: the two environment
+  variables the configuration names under `credentials` hold an email address
+  and an API token for an account that can read and edit the project's tickets.
+
+## Rules
+
+1. **Do the steps in order**, from step 0 to step 12. Steps 2 and 6 are for
+   Jira mode; in filesystem mode, run only their checks.
+2. **After each step, run its check, and do not go on until it passes.** A
+   check is a read-only shell command and the output it must print. It holds
+   however the step was done, by hand or with a throwaway script of your own;
+   commit no such script.
+3. Stop and ask the user at these four points only, and ask nothing item by
+   item:
+   - the consolidated plan, at step 1: one question that covers every
+     decision the migration needs, answered once;
+   - a Jira change you cannot make yourself, at step 2;
+   - the review of agent instructions and memories, at step 12: one question
+     listing every finding;
+   - **a check that fails after one retry**: report what you expected, what
+     you saw, and stop.
+4. **A step interrupted partway is rerun from its beginning**, not stopped:
+   a lost session, or a Jira error such as a 5xx response or a timeout, is not
+   a failure. Every action is written so that doing it again after it took
+   effect changes nothing: a folder already moved or renamed is skipped, a
+   ticket that already exists is reused, a comment already posted is not
+   posted again. Only when the rerun's check fails as well does the last stop
+   above apply.
+5. **Commits are the project's choice.** TCW never commits, stages or
+   branches. Committing once after each step's check passes is recommended,
+   so that a bad step can be reverted.
+6. **Jira writes are REST requests** ([Talking to Jira](#talking-to-jira)),
+   with the Jira web page, or any Jira tool you have, as an equivalent. A
+   REST request works the same under every harness. **Before each write, read
+   the ticket and skip the write when its effect is already there**, so that
+   Jira, not the log, says what was done:
+   - **creating a ticket**: search with
+     `project = <KEY> AND reporter = currentUser() AND created >= "<start date>"`
+     and compare summaries exactly. A match is the ticket an earlier run made,
+     and it is reused. The start date is the one step 0 writes into the log,
+     unchanged across restarts, and with the reporter it tells the
+     migration's own ticket apart from someone else's with the same summary;
+   - **posting a comment**: every comment the migration posts begins with a
+     fixed first line naming its kind. Read the ticket's comments, and skip
+     the post when one by the same account already begins with that line;
+   - **moving a ticket, or setting a field, label or link**: skip it when the
+     ticket already has that status, value or link.
+7. **Keep the migration log.** It is one file, named in the approved plan and
+   kept outside the work path (for example `docs/tcw-3.0-migration-log.md`),
+   because 3.0 treats any file at the top of the work path as a mistake. It
+   records the start date and starting commit (step 0), the approved plan
+   (step 1), every Jira write as it is made (the ticket's key and what
+   changed), each step's check output, and every place where this guide was
+   wrong or unclear and what was done instead. Commit it with each step. If a
+   run is abandoned and the migration starts again, keep the old branch, and
+   copy the log forward under a new heading `## Run <N>`, so every run's record
+   survives. A log lost anyway costs only the record: the reads of rule 6,
+   not the log, decide whether a Jira write is repeated.
+8. **Run `tcw` only where a step says to**: 2.8 at step 0, 3.0 in a scratch
+   folder at step 3, and 3.0 on the project from step 11 on. Every check
+   before that is a plain shell command, because neither CLI can read a board
+   that is half converted.
+
 ## 2.x behavior that had no key
 
-_Written in Task A5._
+Some of 2.x's behavior happened without the project setting anything, so no
+key in the configuration points at it, and nothing in the mapping tables would
+make you look for it. 3.0 drops all of it:
+
+- **Automatic commits.** 2.x committed every move by default:
+  `work.auto-commit-transitions` was on unless a project turned it off. A
+  project that never set the key still got a commit per move. 3.0 never
+  commits, so such a project silently stops committing unless it adopts the
+  [git example](guide/configuration.md#example-keeping-git-in-step-with-each-stage-change-something-your-project-adds).
+  The plan asks.
+- **Publishing.** `work.publish-transitions` was on by default too: 2.x pushed
+  the board after a move. 3.0 never pushes; the git example has an optional
+  push entry.
+- **Retention.** 2.x could delete finished items, recording each in
+  `graveyard.yaml`, under `work.retain` (by default it kept everything). 3.0
+  never deletes an item. A project that wants old items gone removes their
+  folders itself. Items 2.x already deleted stay deleted.
+- **Ignored discarded folders.** A project whose `.gitignore` ignored
+  `docs/work/discarded/*` has discarded items only on the machine that
+  discarded them. 3.0 never moves a folder, so that rule stops matching
+  anything, and those folders would be invisible to the migration unless step
+  0 looks for them.
+- **Folders that moved.** A 2.x move moved the item's folder between status
+  folders, so a path into an item changed with every move. A 3.0 folder stays
+  where it was made; only `tcw work rename` changes its name.
+- **Claims and item worktrees.** 2.x could claim a Jira ticket when work
+  started, and could give an item its own git worktree. 3.0 does neither.
 
 ## The steps
 
-_Written in Task A5._
+### Step 0: Prepare
+
+1. Check every point of [Before you start](#before-you-start).
+2. Run 2.8's `tcw validate`. Fix anything it reports under 2.8 now, while the
+   tools for it still exist.
+3. Find the item folders that `.gitignore` hides:
+   `git status --ignored --porcelain -- docs/work` lists them, each on a line
+   beginning with two exclamation marks. A run made in a worktree also runs it in the primary
+   checkout (`git -C <primary checkout> status --ignored --porcelain -- docs/work`),
+   since an ignored folder exists only in the checkout that made it. Keep the
+   list for the plan.
+4. Only then start the migration log, with the start date and the commit the
+   run starts from:
+
+   ```markdown
+   # TCW 3.0 migration log
+
+   ## Run 1
+
+   Started: <the date `date +%F` prints>
+   Starting commit: <the hash `git rev-parse HEAD` prints>
+   ```
+
+   A later run copies the log forward under `## Run 2` and so on, with its own
+   starting commit and the first run's start date.
+
+**Check:** before the log is started, `git status --porcelain` prints nothing
+and `git worktree list | grep -E '\[work/'` prints nothing. Afterwards,
+`grep -E '^(Started|Starting commit): ' <log> | tail -n 2` prints the two lines
+of this run.
+
+### Step 1: Survey, then ask once
+
+Read the whole board and the whole configuration, and in Jira mode every
+ticket of the Jira project (a search, [Talking to Jira](#talking-to-jira)).
+Then write one plan and present it to the user as one message. It covers:
+
+- **The backend**: filesystem or Jira mode. A 2.x project with `work.tracker`
+  usually becomes a Jira-mode project, but need not.
+- **The stages**: which optional stages to turn on (`spec`, `plan`, `review`,
+  `qa`, `postmortem`), and in Jira mode the status for each stage turned on,
+  and the statuses, transitions and fields that must be added (step 2).
+- **Each item**: its stage ([Status folders](#status-folders)), its converted
+  fields ([Item fields](#item-fields)), and everything dropped or listed (a
+  free-text blocker, an `initiative` beside a `parent`, an `owner` in Jira
+  mode). In filesystem mode, each folder to rename because its name is not a
+  date followed by lower-case words. In Jira mode, every difference between
+  the item and its ticket ([Reconciling](#reconciling-the-folder-with-the-ticket)),
+  and every `sync` record still `pending`.
+- **In Jira mode, the tickets to create** for items and inbox entries, any
+  item without a ticket to delete instead, where each request goes
+  ([The request](#the-request)), the exact text of every comment the
+  migration will post, and the tickets without items
+  ([Tickets without items](#tickets-without-items)).
+- **A prune list**: items and inbox entries whose subject 3.0 removes, such as
+  tracker sync, claims, start records, worktrees, retention, the graveyard,
+  the Definition of Done, `scaffold` or status folders, proposed for
+  discarding rather than migrating, each with the reason to record. Migrating
+  them would carry forward work that no longer applies. A pruned item keeps
+  its folder at stage `discarded`; in Jira mode its ticket, created if it has
+  none, is moved to the discarded status with the reason as its comment.
+- **The ignored discarded folders** step 0 found: which to keep as tracked
+  `discarded` items. The rest are moved out of the work path at step 4, to a
+  folder outside the repository that the plan names.
+- **The inbox entries**, and what each becomes (step 8).
+- **The rewrites**: the configuration, key by key
+  ([Configuration](#configuration)); each hook, with its variables and status
+  values ([Hook variables](#hook-variables)); the templates
+  ([Templates become prompt entries](#templates-become-prompt-entries));
+  whether to adopt the git example
+  ([2.x behavior that had no key](#2x-behavior-that-had-no-key)); the
+  capability records ([Capability records](#capability-records)); and the
+  project's own files ([The project's own files](#the-projects-own-files)).
+- **Items that will be at `qa` while `review` is on**, which the completion
+  gate will refuse until a review round is written
+  ([Acceptance history goes to qa](#acceptance-history-goes-to-qa)).
+- **`<hook files>`**, the fixed list of files step 10's check searches: the
+  configuration files (`tcw-config.yaml`, and `tcw-config.local.yaml` where it
+  exists), every file a `command:` or `generate:` binding in them runs, every
+  file a `file:` binding in them names, and the agent guides (`AGENTS.md`,
+  `CLAUDE.md`). Never the whole repository: changelogs, release notes,
+  finished items' documents, tests and this guide name the 2.x variables on
+  purpose.
+- **What step 9's check skips**: the migration log, and, when the migration
+  is itself tracked as a work item, that item's folder, since both name the
+  old folders on purpose.
+- **The migration log's file name**, and the open items and live documents
+  step 9 searches.
+
+**Stop and ask**: one question, for the whole plan. Change nothing before the
+answer. Record the plan and the user's answer, word for word, in the log under
+a heading `## Approved plan`.
+
+**Check:** `grep -c '^## Approved plan' <log>` prints `1` (a second run, under
+its own `## Run <N>` heading, records its plan under `### Approved plan` and
+the check counts that instead).
+
+### Step 2: Jira mode: prepare Jira
+
+In filesystem mode there is nothing to do.
+
+In Jira mode, read the project's workflow first (the Jira web page, or the
+reads in [Talking to Jira](#talking-to-jira)), then make, or list, what the
+new configuration needs:
+
+- **a status for each stage turned on** that has none yet;
+- **a route for every move** `tcw work advance` makes. For each move, TCW
+  takes the one transition into the target stage's status; when several lead
+  there, the one whose screen asks for nothing but a comment; and it refuses
+  with exit code 3 when that still leaves none or more than one. The simplest
+  workflow that satisfies this is one **global transition** (a transition
+  every status can take) into each mapped status, with no screen fields, and
+  no other transition into those statuses: an older transition with no screen
+  into the same status would be an equal candidate, and `advance` would
+  refuse. Keep the transition that creates a ticket;
+- **the custom fields**: `TCW Project` and `TCW Item`, text fields of one line,
+  and, if the project tracks effort and complexity, two single-choice fields
+  whose options are `Low`, `Medium`, `High` and `Very High`. Each must be on
+  the create screen and the edit screen of every issue type the project uses.
+
+**Stop and ask** for every change you cannot make yourself: give the user a
+checklist, one line per change with how to confirm it was made, and wait until
+they say each line is done. Record the checklist and each confirmation in the
+log. A workflow change also changes how 2.8 moves these tickets, so make it
+only once nothing will run 2.8 against the project again.
+
+**Check:** this step's check is the Jira-workflow reading at the end of step 3,
+because it reads the new configuration.
+
+### Step 3: Rewrite the configuration
+
+Rewrite `tcw-config.yaml`, and `tcw-config.local.yaml` where it exists, key by
+key as the plan says ([Configuration](#configuration)): stages and their
+bindings under `work.stages`, hook limits under `work.hooks`, templates as
+prompt entries, `connected-projects` as `projects`, and the git example if the
+plan adopts it. In Jira mode, add `work.backend: jira`, the `work.jira` block
+(`site`, `project`, `credentials`, `fields`, and `priorities`, `issue-type`
+or `timeout` where they differ from the defaults), and each stage's `status`.
+Give each template its first line saying what it outlines. The `configure`
+skill's reference documents, linked from [Configuration](#configuration),
+describe every key.
+
+Then check the new configuration with the 3.0 CLI, away from the board, which
+3.0 cannot read yet. Build a scratch folder outside the repository holding the
+new `tcw-config.yaml`, every file it binds at the same relative path, and empty
+folders at the configured work, taxonomy and capabilities paths, and make it a
+git repository:
+
+```sh
+SCRATCH=$(mktemp -d)
+cp tcw-config.yaml "$SCRATCH/"
+for f in docs/lifecycle/*.md; do mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"; done   # each bound file
+mkdir -p "$SCRATCH/docs/work" "$SCRATCH/docs/taxonomy" "$SCRATCH/docs/capabilities"
+git -C "$SCRATCH" init -q
+```
+
+A connected project's path is relative to the project, so from the scratch
+folder it points nowhere, and 3.0 would stop with exit code 5. For each one,
+set `TCW_PROJECT_<ID>` (its ID in capitals, with `-` written `_`) to the
+project's real folder, for example `export TCW_PROJECT_SHOP_API=/work/shop-api`.
+
+Then, in the scratch folder, run `tcw validate` (filesystem mode) or
+`tcw validate --remote` (Jira mode), which prints one finding per line. Read
+every line:
+
+- **a finding about the configuration** (one naming `tcw-config.yaml` or a
+  bound file) is fixed now, and the run repeated;
+- **in Jira mode, a Jira-workflow finding**: a move with two candidate
+  transitions, a missing status, or a screen that asks for more than a comment
+  is fixed in Jira before going on (back to step 2's checklist); a move it
+  could not check, a `warning` starting `unchecked:`, is listed for step 11;
+- **any other finding** is noted in the log and left to step 11, which
+  validates the real project.
+
+**Check:**
+`grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml`
+prints nothing, and the scratch folder's run prints no finding about the
+configuration and, in Jira mode, no Jira-workflow finding other than
+`unchecked:` ones. In Jira mode this is step 2's check too.
+
+### Step 4: Flatten the store and give every item a stage
+
+For every item folder under a status folder, and every child nested inside
+another item's folder:
+
+1. **Move it to the top of the work path**, `docs/work/<folder>`. A nested
+   child gets its parent from the folder it was nested in, recorded at step 5.
+   In filesystem mode, a folder whose name is not a date and lower-case words
+   joined by `-` (`2026-10-20-refund-a-payment`, at most 128 characters) is
+   renamed to its `created` date and its title's words
+   ([Folder names](#folder-names) gives the rule for the words), and the old
+   and new names go in the log for step 9. In Jira mode every folder is
+   renamed at step 6 instead.
+2. **Write its `item.yaml`** with its `title` and its `stage`, from the
+   [Status folders](#status-folders) rule. Step 5 adds the rest.
+
+Then:
+
+3. **Copy every pair in `renames.yaml`** into the log, as `<old slug> -> <new
+   slug>`, one per line, for step 9.
+4. **Move the ignored discarded folders the plan does not keep** out of the
+   work path, to the folder the plan names outside the repository. The kept
+   ones were moved like any other item above.
+5. **Delete** the status folders (`backlog/`, `active/`, `review/`,
+   `blocked/`, `completed/`, `discarded/`) with their `.gitkeep` files,
+   `graveyard.yaml`, `dod.yaml` and `renames.yaml`. Leave `inbox/` for step 8.
+
+A step rerun skips a folder already at the top of the work path.
+
+**Check:**
+`find docs/work -mindepth 1 -maxdepth 1 -type d \( -name backlog -o -name active -o -name review -o -name blocked -o -name completed -o -name discarded \)`
+prints nothing, and
+`for d in docs/work/*/; do [ "$d" = docs/work/inbox/ ] || [ -f "$d/item.yaml" ] || echo "$d"; done`
+prints nothing.
+
+### Step 5: Convert item fields
+
+For every item, convert the rest of `state.yaml` into `item.yaml`, row by row
+of [Item fields](#item-fields): `priority` as a name, `effort`,
+`complexity` and `tags` as they are, `parent` and `blocked-by` as full slugs
+using each folder's name after step 4, `initiative` as `parent` where the plan
+says, and in filesystem mode `owner` as `assignee`. Then delete `state.yaml`.
+
+For a `discarded` item, record its 2.x resolution as a comment whose first line
+is `Carried over from TCW 2.x: discarded as <resolution>`, followed by any
+reason the item's documents give, or the reason the plan gives for a pruned
+item. In filesystem mode a comment is a file in the item's `comments/` folder
+named with the time in UTC, such as `comments/20261020T143000Z.md`; in Jira
+mode it is posted at step 6.
+
+In filesystem mode, delete `tracker.yaml` too. In Jira mode it stays until
+step 6 has read the binding from it, so the ticket's key is never held
+anywhere but the file 2.x wrote it in.
+
+**Check:** `find docs/work -name state.yaml` prints nothing (in filesystem
+mode, `find docs/work \( -name state.yaml -o -name tracker.yaml \)` prints
+nothing), and `grep -nE '^priority: [0-9]' docs/work/*/item.yaml` prints
+nothing.
+
+### Step 6: Jira mode: bind items to tickets
+
+In filesystem mode there is nothing to do.
+
+In Jira mode, following [Jira mode: binding items to tickets](#jira-mode-binding-items-to-tickets),
+and reading before every write (rule 6):
+
+1. **Find or create every ticket.** An item's ticket is the `ticket` key in
+   its `tracker.yaml`. For an item without one, create it, or delete the
+   folder, as the plan says. For every inbox entry the plan keeps, create a
+   ticket at the inbox stage's status with the entry's text as its
+   description, and record its key in the log for step 8. Do this for every
+   item first, since the next pass links tickets to one another.
+2. **Reconcile each ticket with its item**: summary, priority, labels,
+   effort and complexity, parent and `Blocks` links, as the plan says.
+3. **Move each ticket to its stage's status**, with no comment, when it is not
+   there already.
+4. **Post the discard comments** from step 5.
+5. **Set `TCW Project`** to the project's ID and **`TCW Item`** to the item's
+   full slug, `<project>/<KEY>-<title words>`, computed from the ticket's
+   summary as it now stands ([Folder names](#folder-names)).
+6. **Rename the folder** to `<KEY>-<title words>`, and record the old and new
+   names in the log for step 9.
+7. **Reduce `item.yaml`** to the one line `ticket: <site>/browse/<KEY>`, and
+   delete `tracker.yaml`.
+
+**Check:** `find docs/work -name tracker.yaml` prints nothing. In Jira mode
+also: `ls docs/work | grep -vxE 'inbox|<KEY>-[0-9]+-[a-z0-9-]+'`, with the
+project's key in place of `<KEY>`, prints nothing; and
+
+```sh
+for d in docs/work/*/; do
+  n=$(basename "$d"); [ "$n" = inbox ] && continue
+  k=$(printf '%s' "$n" | sed -E 's/^([A-Z][A-Z0-9_]*-[0-9]+)-.*/\1/')
+  [ "$(grep -cv '^[[:space:]]*$' "$d/item.yaml")" = 1 ] &&
+    grep -qxE "ticket: https://[^ ]+/browse/$k" "$d/item.yaml" || echo "$n"
+done
+```
+
+prints nothing: every `item.yaml` is the one `ticket:` line, and the key in
+it is the folder's own.
+
+### Step 7: Move documents
+
+For every item, move each document as [Documents](#documents) says:
+
+- the request: in filesystem mode into `request/request.md` (both request
+  files combined as described there); in Jira mode into the ticket, as
+  [The request](#the-request) says, and the files deleted;
+- `spec.md`, `plan.md`, `outcome.md` and `post-mortem.md` into their stage
+  folders;
+- `rework.md` and `refined-outcome.md`: in filesystem mode into `qa/` rounds
+  with front matter; in Jira mode into ticket comments, oldest first, each
+  beginning with its fixed first line, and the files deleted;
+- `capabilities.yaml` corrected where needed, and `rollup.md` deleted.
+
+**Check:**
+`find docs/work -maxdepth 2 \( -name intake.md -o -name initial-request.md -o -name spec.md -o -name plan.md -o -name outcome.md -o -name refined-outcome.md -o -name rework.md -o -name post-mortem.md -o -name rollup.md \)`
+prints nothing, and every verdict round has its front matter:
+
+```sh
+for f in docs/work/*/review/round-*.md docs/work/*/qa/round-*.md; do
+  [ -e "$f" ] || continue
+  head -n 1 "$f" | grep -qx -- '---' &&
+    sed -n '2,/^---$/p' "$f" | grep -qxE 'verdict: (accepted|rejected)' &&
+    sed -n '2,/^---$/p' "$f" | grep -qxE 'judges: [0-9]+' || echo "$f"
+done
+```
+
+prints nothing.
+
+### Step 8: Convert the inbox
+
+- **Filesystem mode:** each `inbox/<name>.md` becomes an item at stage
+  `inbox`: a folder `docs/work/<name>/` (renamed as in step 4 when `<name>` is
+  not a date and lower-case words) holding `item.yaml` with `title` (the
+  entry's first `# ` heading, or its name's words), `stage: inbox` and
+  `priority: medium`, and `request/request.md` holding the entry's text.
+- **Jira mode:** each entry's ticket was created at step 6, or the plan
+  pruned it; delete the file.
+
+Then delete `inbox/` and its `.gitkeep`.
+
+**Check:** `ls docs/work | grep -x inbox` prints nothing.
+
+### Step 9: Rewrite live references
+
+Collect every old name in one file, one per line: the folders renamed at steps
+4 and 6, and the old slugs copied from `renames.yaml` at step 4. Then, in the
+documents of open items (those not at `completed` or `discarded`), the
+configuration, and the project's live documents, rewrite each old name to its
+new one, and each `tcw://work/<old slug>` to the new slug
+([Live references](#live-references)). Leave alone what step 9's plan entry
+skips, and the documents of finished items, changelogs and release notes.
+
+**Check:** `grep -rnF -f <the file of old names> <open item folders> <live documents>`,
+with the folders and documents the approved plan lists and without what it
+skips, prints nothing.
+
+### Step 10: Review the project's own files
+
+Fix what the approved plan covers ([The project's own files](#the-projects-own-files),
+[Capability records](#capability-records)): the hook scripts' variables and
+status values, the `.gitignore` rules, the `Planning doc:` and `Tracker:` lines
+in capability records, links to the renamed Feature, and the agent guides'
+text. Point out to the user any other text that relies on removed behavior.
+
+**Check:** `grep -nE 'TCW_(STATUS|TRANSITION|NODE_ROOT|RESOLUTION)\b' <hook files>`
+over the plan's `<hook files>` prints nothing;
+`grep -rlnE '^(Planning doc|Tracker):' docs/capabilities`, with the project's
+capabilities path, prints nothing; `grep -n 'docs/work/discarded' .gitignore`
+prints nothing; and `grep -cx '/tcw-config.local.yaml' .gitignore` prints `1`.
+
+### Step 11: Validate
+
+Make 3.0 the `tcw` on `PATH`, for example `pipx install --force 'tcw-cli>=3,<4'`
+or `pip install --upgrade 'tcw-cli>=3,<4'`, the way 2.8 was installed: hooks
+run whatever `tcw` they find. Update the TCW plugin in each harness the
+project uses to the 3.0 release, the way it was installed, so that its skills
+match the CLI.
+
+Then run `tcw validate`, and in Jira mode `tcw validate --remote`. Fix each
+error. Fix each warning, or list it in the log with its reason for the user,
+including every `unchecked:` move from step 3. `tcw work list --all --json`
+lists every item; compare each one's stage with the stage the approved plan
+gave it.
+
+**Check:** `tcw validate; echo "exit $?"` prints its findings and ends with
+`exit 0`, and in Jira mode `tcw validate --remote; echo "exit $?"` ends with
+`exit 0` too.
+
+### Step 12: Review agent instructions and memories
+
+_Written in Task A6._
 
 ## Talking to Jira
 
-_Written in Task A5._
+Every Jira read and write the steps make, as a `curl` request to Jira Cloud's
+REST interface. Set these first, from the configuration:
+
+```sh
+SITE=https://example.atlassian.net            # work.jira.site
+KEY=SHOP                                      # work.jira.project
+AUTH="$TCW_JIRA_EMAIL:$TCW_JIRA_TOKEN"        # the two variables `credentials` names
+```
+
+Requests that send text (creating a ticket, posting a comment) use version 2
+of the interface, which takes plain text; version 3 needs Atlassian's own
+document format. Build a request's JSON with `jq` (or any JSON tool), never by
+pasting text between quotes, so that quotes and line breaks in the text are
+escaped. Every request has an equivalent on the ticket's Jira web page, given
+after it.
+
+| What | Request | On the web page |
+| --- | --- | --- |
+| Who you are (your account ID) | `curl -s -u "$AUTH" "$SITE/rest/api/3/myself"` | your profile |
+| Search | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/search/jql" -d "$BODY"`, where `BODY` is `{"jql": "<query>", "fields": ["summary", "status"], "maxResults": 100}`; while the answer says `"isLast": false`, repeat with its `nextPageToken` added | the issue search, in JQL mode |
+| Read one ticket | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42?fields=summary,status,priority,labels,assignee,parent,issuelinks,description"` | the ticket |
+| Find a custom field's ID | `curl -s -u "$AUTH" "$SITE/rest/api/3/field"`, then the entry whose `name` is the field's name; its `id` is `customfield_<number>` | the field's settings |
+| Create a ticket | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/2/issue" -d "$BODY"`, where `BODY` is `jq -n --arg s "$SUMMARY" --rawfile d request.md '{fields: {project: {key: env.KEY}, issuetype: {name: "Task"}, summary: $s, description: $d}}'`; the answer holds the new key | Create |
+| List a ticket's transitions | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/transitions"`: each has an `id`, a `name`, and `to.name`, the status it leads to | the status button |
+| Move a ticket | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42/transitions" -d '{"transition": {"id": "<id>"}}'` | the status button |
+| Set fields | `curl -s -u "$AUTH" -X PUT -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42" -d "$BODY"`, where `BODY` holds `{"fields": {…}}` with any of: `"summary": "<text>"`, `"priority": {"name": "High"}`, `"labels": ["billing"]`, `"parent": {"key": "<KEY>-7"}`, `"assignee": {"accountId": "<id>"}`, a text field `"customfield_<n>": "<text>"`, a single-choice field `"customfield_<n>": {"value": "Medium"}` | the ticket's fields |
+| Find a person's account ID | `curl -s -u "$AUTH" "$SITE/rest/api/3/user/assignable/search?project=$KEY&query=<name>"` | the assignee picker |
+| List a ticket's comments | `curl -s -u "$AUTH" "$SITE/rest/api/2/issue/$KEY-42/comment?maxResults=100"`: each has a `body` and an `author.accountId` | the comments |
+| Post a comment | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/2/issue/$KEY-42/comment" -d "$BODY"`, where `BODY` is `jq -n --rawfile b comment.txt '{body: $b}'` | Add a comment |
+| Link a blocker | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issueLink" -d '{"type": {"name": "Blocks"}, "inwardIssue": {"key": "<the blocker>"}, "outwardIssue": {"key": "<the blocked ticket>"}}'` | Link, "blocks" |
+| Read the project's statuses | `curl -s -u "$AUTH" "$SITE/rest/api/3/project/$KEY/statuses"`: the statuses of each issue type | the workflow, in project settings |
+
+A request that fails says so in its answer: check for `errorMessages` and
+`errors` before going on. An answer of 401 means the credentials are wrong; 403
+that the account may not do this, which makes it a change to give the user
+(step 2); 404 that the ticket or field does not exist; a 5xx answer or a
+timeout is an interruption (rule 4).
 
 ## What each 2.x name becomes
 
