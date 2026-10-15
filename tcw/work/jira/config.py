@@ -146,13 +146,16 @@ def _credentials(raw: dict, where: KeyPath,
     for key in CREDENTIAL_KEYS:
         value = block[key]
         # The value is never echoed: it may be a token pasted here by mistake.
+        # Every bad key is reported, not only the first.
         if not isinstance(value, str) or not VARIABLE.match(value):
             problems.add((*path, key),
                          "must name an environment variable: capital letters, "
                          "digits and _, not starting with a digit (the value is "
                          "not shown)")
-            return None
-        names.append(value)
+        else:
+            names.append(value)
+    if len(names) != len(CREDENTIAL_KEYS):
+        return None
     return names[0], names[1]
 
 

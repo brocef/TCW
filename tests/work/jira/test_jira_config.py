@@ -173,3 +173,11 @@ def test_a_delegation_block_missing_a_key():
     block = {k: v for k, v in BLOCK.items() if k != "inbox-status"}
     _, problems = parse_delegation_block(block, WHERE)
     assert [str(p) for p in problems] == [".".join(WHERE) + ".inbox-status: required"]
+
+
+def test_every_bad_credential_name_is_named():
+    raw = with_(("credentials", "email-env"), "not a name")
+    raw["credentials"]["token-env"] = "also bad"
+    problems = problems_of(raw)
+    assert sum(p.startswith("work.jira.credentials.email-env:") for p in problems) == 1
+    assert sum(p.startswith("work.jira.credentials.token-env:") for p in problems) == 1

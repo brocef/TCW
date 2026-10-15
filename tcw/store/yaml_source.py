@@ -16,7 +16,8 @@ def load(text: str, path: Path | str, loader: type = yaml.SafeLoader):
     which PyYAML keeps only for a string. Naming the loader built from the string
     keeps both. Two errors still name no file: a character YAML forbids is
     refused while the loader is built, before it has a name, and a duplicate
-    key (`UniqueKeyLoader`) is raised with no position at all."""
+    key (`UniqueKeyLoader`) is raised with no position at all. A key that is a
+    list or mapping (`UniqueKeyLoader`) names the file and its line."""
     parser = loader(text)
     parser.name = str(path)
     try:
@@ -35,6 +36,14 @@ def _no_dup_keys(loader: yaml.SafeLoader, node: yaml.MappingNode) -> dict:
     mapping: dict = {}
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=True)
+        try:
+            hash(key)
+        except TypeError:
+            # `? [a]` makes a list a key, which no dict can hold. PyYAML's own
+            # loader refuses it the same way, with the key's position.
+            raise yaml.constructor.ConstructorError(
+                None, None, "a mapping key must be a single value, not a list or "
+                "mapping", key_node.start_mark) from None
         if key in mapping:
             raise yaml.YAMLError(f"duplicate key: {key!r}")
         mapping[key] = loader.construct_object(value_node, deep=True)

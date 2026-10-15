@@ -470,6 +470,9 @@ def _merge(values: dict, origins: dict, written: dict, layer: dict,
             if value:
                 # An empty mapping below no longer speaks for this key.
                 origins.pop(here, None)
+            elif not lower:
+                # Both layers write an empty mapping: the higher one speaks.
+                origins[here] = origin
             _merge(lower, origins, written, value, origin, here)
         elif value is None and origin.layer == "project" and isinstance(lower, dict):
             # `work:` with nothing under it means "no settings", which is

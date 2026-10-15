@@ -14,6 +14,7 @@ skipped. Comments change nothing a YAML reader sees.
 from __future__ import annotations
 
 import argparse
+import base64
 import re
 import sys
 from pathlib import Path
@@ -39,6 +40,13 @@ def _scalar(value: Any) -> str:
         return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, bytes):
+        # `safe_dump` writes these over several lines; one line keeps the tag.
+        return f'!!binary "{base64.b64encode(value).decode("ascii")}"'
+    if isinstance(value, (set, frozenset)):
+        # Sorted by the written form: a set mixing types cannot sort itself.
+        members = sorted((_scalar(m) for m in value))
+        return "!!set {" + ", ".join(f"{m}: null" for m in members) + "}"
     if not isinstance(value, str):
         return _one_line(yaml.safe_dump(value))
     if _PLAIN.fullmatch(value) and not value.endswith(" "):
