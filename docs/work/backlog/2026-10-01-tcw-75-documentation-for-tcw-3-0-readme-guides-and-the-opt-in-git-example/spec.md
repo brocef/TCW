@@ -245,9 +245,13 @@ treats as errors. Seven problems follow.
    belongs in the migration guide or the release notes. The README and the
    documentation index link to the migration guide; nothing else refers to 2.x.
 5. **Keeping the suite passing in the meantime** follows epic decision 6.
-   TCW-70 adds a temporary allowance list to
-   `tests/test_documented_cli_surface.py`: the commands and keys it removes,
-   with a guard test asserting that each entry really is gone from the CLI.
+   TCW-70 put a temporary allowance in its own module, `tests/doc_allowance.py`,
+   which `tests/test_documented_cli_surface.py` and TCW-74's
+   `tests/test_shipped_text.py` import. It holds five lists:
+   `REMOVED_COMMANDS`, `REMOVED_FLAGS`, `REMOVED_FORMS`, `REFUSED_VALUES`
+   (TCW-74's, for `tcw work procedure prompt`) and `REFUSED_KEYS`. Its guard,
+   `tests/test_doc_allowance.py`, asserts that each entry really is gone from
+   the CLI or refused by the parser.
    TCW-71 and TCW-73 add their removals to it. TCW-74 and this item shrink it
    as they rewrite text, and TCW-76's "validate clean" step requires it to be
    empty before 3.0.0 is cut.
@@ -257,19 +261,28 @@ treats as errors. Seven problems follow.
      owns stays in the list, and is named, with that file, in this item's
      implement round, so TCW-74 or TCW-76 knows it is theirs. Criterion 4
      checks the owned documents.
-   - TCW-74's two new skill tests (no git words in shipped text, and every
-     named command exists) skip `skills/configure/` through one named
-     exclusion entry whose reason names this item (TCW-74 Design 6.2). This
-     item deletes that entry when it rewrites the skill, so both tests then
-     scan `skills/configure/` too. Any wording in the git example that
-     legitimately says "git" or "another repository" is added to those tests'
-     own allowlists, with its reason.
+   - TCW-74's scans of shipped text (`tests/test_shipped_text.py`: no git
+     words, no 2.x vocabulary, every named command exists, the file set
+     matches the disposition table) skip `skills/configure/` through one
+     constant, `EXCLUDED = ("skills/configure/",)`, whose comment names this
+     item. This item deletes that constant's entry when it rewrites the skill,
+     so every scan then reads `skills/configure/` too. That also means:
+     adding the configure skill's files to the `SHIPPED` set; dropping the
+     last assertion of `test_the_walk_sees_every_kind_of_shipped_text` (that
+     no configure file is scanned); passing TCW-74's extra patterns, which
+     include `builtin: true`, `procedure prompt` and `planning doc`, so
+     `personal.md`'s one sample of `config show` output needs an entry in
+     `VOCABULARY_ALLOWED` with its reason; and passing
+     `test_no_owned_skill_grants_git`, which `Bash(git *)` would fail. Any
+     wording in the configure references that legitimately says "git",
+     "pull", "branch" or "worktree" (a linked git worktree in `personal.md`,
+     a `repository` entry's `ref` in `stores.md`) is added to `GIT_ALLOWED`,
+     with its reason.
    - **[Decision]** `tests/test_configuration_text_home.py` is not covered by
-     the allowance. It reads only `tracker.md`, `commands.md` and the router,
-     whose text no code item changes, so it keeps passing until this item and
-     TCW-74 change those files. This item replaces it (Design 6.6); if TCW-74
-     rewrites `commands.md` first, TCW-74 deletes the one test that reads it
-     (`:50-55`).
+     the allowance. It reads only `tracker.md` and the router, whose text no
+     code item changes, so it keeps passing until this item changes those
+     files. This item replaces it (Design 6.6). TCW-74 already deleted the
+     one test in it that read `commands.md`.
 
 ### 2. Writing rules for every document this item writes
 
@@ -426,7 +439,11 @@ The `##` sections, in order:
     (`:845-848`) is replaced to match Design 7.4. "How work is tracked here"
     (`:867-879`) names the lifecycle files by stage without naming the 2.x
     `implement` binding mechanism. The Releasing paragraph (`:889-898`) says
-    entry files are named after the item's folder name.
+    entry files are named after the item's folder name. The note that the
+    `pnpm` commands need Node.js (`:863`) stays, because rebuilding the web
+    client still needs it (`docs/guide/web-viewer.md`, "Building the client
+    (contributors)"); it is written "Node.js", which the vocabulary scan
+    accepts.
 13. **Further Reading** (`README.md:910-916`): kept.
 
 ### 5. Guides
@@ -596,8 +613,9 @@ The `##` sections, in order:
        `TCW_HOOK_ROLE`, `TCW_HOOK_KIND`, `TCW_HOOK_ID` and `TCW_HOOK_PHASE`
        (TCW-69 Design 8); and on stdin one JSON object, `{"schema": 1,
        "item": …, "request": …, "hook": {…}}` (review decision R13). The
-       `{{tcw:request}}` placeholder is named here and explained in
-       `work.md`;
+       `{{tcw:request}}…{{/tcw:request}}` pair, whose span is replaced by the
+       item's request (`tcw/work/resolve.py:247-248`), is named here and
+       explained in `work.md`;
      - the timeout and the output cap;
    - documentation entries (kept from `:198-248`; its `<slug>` example
      placeholders become `<folder>`, per Design 10);
@@ -652,8 +670,10 @@ The `##` sections, in order:
      `spec/capabilities.yaml` (epic decision 19).
    - **Drift** is described by the 3.0 rule (TCW-69 Design 7): the newest
      declaration from a completed item wins; two items created the same day
-     that disagree are reported as ambiguous; and drift also reports inherited
-     capabilities nobody has reviewed.
+     that disagree are reported as ambiguous; a declaration that cannot be
+     checked is reported as `unchecked`; and drift also reports inherited
+     capabilities nobody has reviewed (`unreviewed:` lines). The kinds are
+     those `tcw/work/gates.py:254` and `tcw/capabilities/cli.py:172` print.
    - `check` (`:7`, `:89`) is replaced by `tcw validate`.
    - `Planning doc` (`:78`, `:94`) is removed from the guide's field list.
      TCW-73 removes it and the `Tracker` field from the capabilities commands, and
@@ -768,10 +788,11 @@ documented.
 
 1. **`docs/lifecycle/abstraction.md`.** **[Decision]** Rewritten on this premise:
 
-   > TCW's model sits on a small backend interface of eleven operations
+   > TCW's model sits on a small backend interface of twelve operations
    > (create, read, list, update properties, set stage, comment, rename, look
-   > up a backend name, read the request, read comments, and name the current
-   > user), which the filesystem and Jira backends both implement. The
+   > up a backend name, read the request, read comments, name the current
+   > user, and say whether a folder is one of its items), which the
+   > filesystem and Jira backends both implement. The
    > technical record (stage
    > documents, rounds, handoffs, the declared record changes, taxonomy and
    > capabilities) is files in the repository in both modes, so the model may
@@ -779,13 +800,16 @@ documented.
    > request, comments) it reaches only through the interface.
 
    - The interface is TCW-69's eight operations plus the three reads epic
-     decision 1 adds (`read_request`, `read_comments`, `current_user`). The
+     decision 1 adds (`read_request`, `read_comments`, `current_user`), plus
+     `is_item_folder`, which TCW-77 added (`tcw/work/backend.py:108`): whether
+     a folder under the work path is one of this backend's items, read from
+     the work path alone and never from the network. The
      document lists them under a heading `## The backend interface` as a
-     bullet list of exactly eleven items, each starting with its name in
+     bullet list of exactly twelve items, each starting with its name in
      bold, using the names of TCW-69's litmus table (TCW-69 spec, Abstraction litmus test table):
      **create**, **read**, **list**, **update**, **set stage**, **comment**,
      **rename**, **lookup**, **read request**, **read comments**, **current
-     user**. Each item says in plain words what the operation does; the
+     user**, and **is item folder**. Each item says in plain words what the operation does; the
      signatures live in `tcw/work/backend.py` and are not repeated. It also
      says that an
      item can carry the keys of linked tickets that have no item
@@ -794,17 +818,18 @@ documented.
      honest backend reports what it cannot map.
    - The question "Could a non-filesystem store implement this operation, even
      if less elegantly?" stays word for word. Module docstrings cite it
-     (`tcw/store/base.py:3`), and `tests/test_repo_lifecycle.py:81` asserts
-     it today. That test file is deleted by TCW-70 (Design 15.1 there), so
-     this item's own test asserts the phrase instead (criterion 9). It now
+     (`tcw/store/base.py:3`). `tests/test_repo_lifecycle.py:81` asserted it
+     until TCW-70 deleted that file (Design 15.1 there); nothing asserts it
+     on the epic branch now, so this item's own test asserts the phrase
+     (criterion 9). It now
      governs **operations on what a backend owns**.
    - A second question is added for everything else: **"Who owns this fact:
      the backend, or the repository?"** A fact the repository owns may be read
      as a file in both modes. This is not a failure of the litmus test,
      because it is true in both backends.
    - The heading "Abstract spine, filesystem leverage" stays
-     (asserted today at `tests/test_repo_lifecycle.py:82`, and by criterion 9
-     once that file is gone). Its vocabulary becomes: item, stage,
+     (asserted at `tests/test_repo_lifecycle.py:82` until TCW-70 deleted that
+     file, and by criterion 9 from this item on). Its vocabulary becomes: item, stage,
      move (`advance`), slug, reference, project relation, query, properties,
      request, comments, and the item folder's named files.
    - "Use freely" keeps documents next to code, one commit carrying a code
@@ -835,8 +860,12 @@ documented.
    - The section on stores in other repositories (`:14-50`) keeps its lesson
      (the store root and the project root vary independently; never prune at
      a nested repository) in "project" vocabulary. It uses the 3.0 helper names
-     TCW-70 and TCW-73 settle, in place of `FsWorkStore.open`,
-     `store_git_root` and `descendant_nodes`.
+     TCW-70 and TCW-73 settled, in place of `FsWorkStore.open`,
+     `store_git_root` and `descendant_nodes`: `work_path` and `open_backend`
+     (`tcw/work/open.py`), and `git_root`, `find_project_root` and
+     `descendant_projects` (`tcw/store/fs.py`). Its mention of
+     `tcw work list --include-descendants` (`:45`), a removed flag, goes too
+     (TCW-73's follow-up inbox entry, item 5).
    - **[Decision]** "Beginning implementation" (`:52-54`) is deleted. It
      orders `tcw work start` and a commit, and 3.0 has neither. When TCW's own
      process should move an item is TCW-76's configuration to decide.
@@ -1021,7 +1050,14 @@ level. It covers:
 
    It is the only `upcoming/` entry with leading text: every sibling item puts
    everything under `##` headings (epic decision 15), so the introduction
-   stays first. Criterion 11 checks it.
+   stays first. Criterion 11 checks it. TCW-70's
+   `tests/test_upcoming_entries.py` asserts that every entry starts at a
+   `## ` heading, with no exception, and its docstring says the cut script
+   writes the version's introduction, which it does not (`combine()` puts
+   leading blocks first, `scripts/cut_version.py:98-124`). This item narrows
+   that test: one named constant exempts exactly this item's release-notes
+   entry, with a comment citing epic decision 15, every other entry must
+   still start at `## `, and the docstring is corrected.
 3. **The rest of the release-notes entry** goes under `## Documentation`, a
    short list of the rewritten and new guides.
 4. **Changelog entry**: `## Added` (`docs/guide/cli.md`,
@@ -1043,13 +1079,32 @@ New or changed tests, all run by bare `pytest` as CI does
 
 - `tests/test_docs_describe_3_0.py` (new): the 2.x-vocabulary scan
   (criterion 2), link resolution (criterion 3), the README structure
-  (criterion 1), and the lifecycle-document phrases (criterion 9).
+  (criterion 1), and the lifecycle-document phrases (criterion 9). The scan
+  imports `PATTERNS` and `scan` from `tests/doc_vocabulary.py`, which TCW-74
+  wrote as criterion 2's table verbatim, shared with its own scan; it does
+  not restate the table.
+- `tests/test_doc_allowance.py` (changed): a new check that every entry in
+  each of the five allowance lists is still named by at least one live
+  document, so an entry nothing names fails rather than lingering
+  (TCW-74's `test_no_allowance_value_is_named_only_by_owned_text` passes
+  when nobody names an entry). Entries it finds dead are removed.
+- `tests/test_shipped_text.py` (changed): the `skills/configure/` exclusion
+  is removed, with the follow-on changes listed in Design 1.5.
+- `tests/test_upcoming_entries.py` (changed): narrowed as Design 10.2 says.
+- Existing tests that read documents this item rewrites, and must keep
+  passing: `tests/test_documentation_sync_wiring.py` (`docs-sync.md` still
+  names `work.documentation` and says "prefer config");
+  `tests/test_falsification_rule.py` (`implementation.md` keeps "assert that
+  the message it replaces" and "another program owns");
+  `tests/test_skill_path_pointers.py` (no file outside `skills/configure/`
+  names `configure/references/`); `tests/test_dynamic_skill_marker.py` (the
+  router keeps `dynamic_skill: false`).
 - `tests/test_git_example.py` (new): criterion 5.
 - `tests/test_configuration_text_home.py` (replaced): criteria 6 and 7.
   Criterion 7's table test is new here; TCW-72 has no test of the table to
   extend (Design 6.3).
 - `tests/test_cli_guide.py` (new): criterion 8.
-- `tests/test_repo_lifecycle.py`: not this item's. TCW-70 deletes it with the
+- `tests/test_repo_lifecycle.py`: not this item's. TCW-70 deleted it with the
   2.x parser it guards (TCW-70 Design 15.1), and TCW-76 writes a 3.0
   replacement for the parts about TCW's own configuration (TCW-76 Design 7).
   **[Decision]** The four phrases its `test_the_moved_rules_are_reachable`
@@ -1074,7 +1129,7 @@ This item adds no operation and changes none. Two parts of it touch the model:
 
 | Part | Verdict |
 | --- | --- |
-| The rewritten `abstraction.md` | Restates the rule for two backends. It keeps the litmus question and adds the ownership question (Design 7.1); each of the eleven backend operations (TCW-69's eight and epic decision 1's three reads) passes both. |
+| The rewritten `abstraction.md` | Restates the rule for two backends. It keeps the litmus question and adds the ownership question (Design 7.1); each of the twelve backend operations (TCW-69's eight, epic decision 1's three reads, and TCW-77's `is_item_folder`) passes both. |
 | The git example | Uses only stage prompts and `post` hooks, which `advance` runs the same way in both backends. It tolerates a move that changed no file, which is the normal case in Jira mode. |
 
 ## Harness compatibility
@@ -1151,7 +1206,8 @@ separately).
    the test, with a comment saying TCW-76 removes it when the guide exists.
 4. **No phantom commands.** `tests/test_documented_cli_surface.py` passes
    against the 3.0 CLI, and no entry left in its temporary allowance
-   (epic decision 6) is named by any owned document: a test fails when an
+   (`tests/doc_allowance.py`, all five lists; epic decision 6) is named by
+   any owned document: a test fails when an
    owned document names an allowance entry. Entries still named by other
    documents are listed in the implement round with the file that names them
    (Design 1.5). `tcw work advance`, `tcw work discard` and
@@ -1228,8 +1284,9 @@ separately).
    pre-abstract" in `implementation.md`, "Agentskills specification" in
    `harness.md`). `docs/lifecycle/abstraction.md` also contains the ownership
    question from Design 7.1 word for word; has a `## The backend interface`
-   heading whose bullet list has exactly eleven items, whose bold leading
-   names are exactly the eleven of Design 7.1 (epic decision 1); and does not
+   heading whose bullet list has exactly twelve items, whose bold leading
+   names are exactly the twelve of Design 7.1 (epic decision 1, and TCW-77's
+   `is_item_folder`); and does not
    match `\bmv\b`.
 10. **Inventory carried out.** `docs/work-inbox-template.md` and
     `skills/configure/references/tracker.md` do not exist.
@@ -1321,7 +1378,7 @@ separately).
   8. The binding rules move from the `work` skill's `hooks.md`, which TCW-74
      deletes, into the configure reference `work.md` (Design 6.4).
   9. The rewrite of `abstraction.md`: the litmus question kept word for word,
-     an ownership question added, the eleven operations named, and git
+     an ownership question added, the twelve operations named, and git
      operations kept out of the model (Design 7.1).
   10. "Beginning implementation" is deleted from `implementation.md`
       (Design 7.2).
@@ -1472,3 +1529,70 @@ still written as a round, Designs 4.8 and 5.1), R19 (Jira inbox rejections and
 what `tickets list` shows, Design 5.2), R20 (offline `validate`, Designs 5.2
 and 5.6). R8 also overrides TCW-72 spec Design 3.4, which still says
 `config show` prints `builtin: <packaged file>`.
+
+## Pre-plan amendments (2026-10-15)
+
+Checked against `epic/tcw-3.0` at `5b0dcf95`, after TCW-69 to TCW-74 and
+TCW-77 landed. Each entry says what the spec said, what is true, and where it
+was checked; the text above is corrected in place. Nothing here changes what
+`initial-request.md` asks for. The Problem section is left as it was: it
+describes the repository on 2026-10-02.
+
+1. **The backend interface has twelve operations, not eleven.** TCW-77 added
+   `is_item_folder` (`tcw/work/backend.py:108`). Corrected in Design 7.1, the
+   litmus table, criterion 9 and Notes decision 9. It passes both questions:
+   it reads only the work path, which the repository owns in both backends.
+2. **The allowance is its own module with five lists.** The spec said TCW-70
+   adds a list to `tests/test_documented_cli_surface.py`. It is
+   `tests/doc_allowance.py` (`REMOVED_COMMANDS`, `REMOVED_FLAGS`,
+   `REMOVED_FORMS`, `REFUSED_VALUES`, `REFUSED_KEYS`), guarded by
+   `tests/test_doc_allowance.py`. Corrected in Design 1.5 and criterion 4.
+3. **TCW-74's exclusion is wider than two tests.** `EXCLUDED` in
+   `tests/test_shipped_text.py:33` also governs the disposition-table test
+   (`SHIPPED`), the walk test's last assertion, the extra patterns
+   (`builtin: true`, `procedure prompt`, `planning doc`) and the git-grant
+   test. Corrected in Design 1.5; added to Design 11.
+4. **Criterion 2's table already exists** as `tests/doc_vocabulary.py`
+   (TCW-74), identical to the table in criterion 2. Design 11 now says the
+   new scan imports it.
+5. **`tests/test_repo_lifecycle.py` is already deleted** (TCW-70); the four
+   phrases are unchecked on the branch today. Tense corrected in Designs 7.1
+   and 11.
+6. **`tests/test_configuration_text_home.py` no longer reads
+   `commands.md`**: TCW-74 deleted that test. Corrected in Design 1.5.
+7. **`tests/test_upcoming_entries.py` (TCW-70) forbids leading text in every
+   entry**, which Design 10.2 requires for this item's release-notes entry;
+   its docstring wrongly says the cut script writes an introduction
+   (`scripts/cut_version.py:98-124`). Design 10.2 and 11 now narrow it.
+8. **The request placeholder is a pair**, `{{tcw:request}}…{{/tcw:request}}`
+   (`tcw/work/resolve.py:247-248`). Corrected in Design 5.3.
+9. **Drift has an `unchecked` kind and `unreviewed:` lines**
+   (`tcw/work/gates.py:254`, `tcw/capabilities/cli.py:172`). Added to
+   Design 5.5.
+10. **The 3.0 helper names for `implementation.md` are settled**: `work_path`,
+    `open_backend` (`tcw/work/open.py`), `git_root`, `find_project_root`,
+    `descendant_projects` (`tcw/store/fs.py`); and `implementation.md:45`
+    also names the removed `--include-descendants` (TCW-73's inbox
+    follow-up, item 5). Added to Design 7.2.
+11. **Four more existing tests read documents this item rewrites**:
+    `test_documentation_sync_wiring.py`, `test_falsification_rule.py`,
+    `test_skill_path_pointers.py`, `test_dynamic_skill_marker.py`. Listed in
+    Design 11 with what each needs.
+12. **The README's contributor note on Node.js stays** (`README.md:863`):
+    the web client's rebuild still needs it (`docs/guide/web-viewer.md`,
+    "Building the client"). Added to Design 4.12.
+13. **Confirmed as written, no change:** every command, flag and key the
+    spec names exists in the 3.0 parser (`tcw/cli.py` walked); the Jira and
+    delegation-block keys (`tcw/work/jira/config.py:31-37`); `PERSONAL_KEYS`
+    (`tcw/config.py:44-51`); the hook variables (`tcw/work/advance.py:164-179`,
+    `TCW_CONFIG_DIR` in `tcw/work/hooks.py`) and the `generate` variables and
+    stdin object (`tcw/work/resolve.py:152`, `:309-312`); the exit codes
+    (`tcw/exit.py`); the five delegation cases (`tcw/work/open.py:122-176`);
+    `config show` printing `- builtin: true  # <packaged file>`; the stage
+    table (`tcw/work/model.py:304-316`); the request template's sections
+    (`tcw/work/prompts/request.md:24-29`); the leftover pre-2.5.0 report in
+    `tcw validate` (`tcw/validate.py:15`, `:428`); `AGENTS.md:80-101` as the
+    worktree section and `CLAUDE.md` as a link to it; the git example's
+    configuration loads through `load_config` with no problems and resolves
+    `inherit: true` to the built-in prompt; and the commit script passes all
+    four cases of criterion 5 in a scratch repository.
