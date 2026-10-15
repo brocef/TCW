@@ -9,7 +9,7 @@ requirement a Codex user does not get._
 
 TCW ships to **both** Claude Code and Codex, and their plugin standards differ: Claude's system is far richer, while Codex follows the [Agentskills specification](https://agentskills.io/specification.md). Both are first-class targets — a task a Claude user can accomplish, a Codex user must also be able to accomplish.
 
-**Claude-only features are welcome as _enhancements_, never as the sole carrier of a requirement.** Dynamic context injection (`` !`cmd` ``), skill/command arguments, and hooks are Claude-only; their syntax is inert in Codex rather than fatal, so using them does not break a skill. That makes them safe to reach for — but only for ergonomics.
+**Claude-only features are welcome as _enhancements_, never as the sole carrier of a requirement.** Dynamic context injection (`` !`cmd` ``), skill/command arguments, and Claude Code's own hooks (the harness's, not TCW's `pre` and `post` hooks) are Claude-only; their syntax is inert in Codex rather than fatal, so using them does not break a skill. That makes them safe to reach for — but only for ergonomics.
 
 **Subagents are _not_ Claude-only.** Codex has them too — TOML agent definitions in `.codex/agents/`, model-driven spawning, parallel execution capped by `[agents] max_concurrent_threads_per_session` — and it "respects applicable `AGENTS.md` or skill instructions that request delegation" ([docs](https://learn.chatgpt.com/docs/agent-configuration/subagents)). So a skill may instruct delegation directly without a single-session fallback. The `agents/` **directory** is still Claude-specific packaging, which keeps the usual rule intact: a custom agent is an accelerator, and the skill document it accelerates must stand alone.
 

@@ -34,6 +34,9 @@ REPO = Path(__file__).resolve().parent.parent
 # The owned documents rewritten so far, by path from the repository root.
 # `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
 REWRITTEN: tuple[str, ...] = (
+    "docs/lifecycle/abstraction.md",
+    "docs/lifecycle/harness.md",
+    "docs/lifecycle/implementation.md",
     "skills/configure/SKILL.md",
     "skills/configure/references/docs-sync.md",
     "skills/configure/references/jira.md",
@@ -291,3 +294,54 @@ def test_the_agents_section_runs_to_the_next_level_two_heading():
 def test_the_agents_section_must_exist():
     with pytest.raises(AssertionError, match="has no line"):
         agents_worktree_section("# A\n\n### Working in a `--worktree` branch\n")
+
+
+# ── criterion 9: the lifecycle documents ──────────────────────────────────────
+
+ABSTRACTION = REPO / "docs/lifecycle/abstraction.md"
+
+# The four phrases `tests/test_repo_lifecycle.py` checked until TCW-70 deleted
+# it (TCW-75 spec, Design 11): module docstrings cite the first.
+MOVED_PHRASES = (
+    ("docs/lifecycle/abstraction.md",
+     "Could a non-filesystem store implement this operation, even if less elegantly?"),
+    ("docs/lifecycle/abstraction.md", "Abstract spine, filesystem leverage"),
+    ("docs/lifecycle/implementation.md", "don't pre-abstract"),
+    ("docs/lifecycle/harness.md", "Agentskills specification"),
+)
+
+BACKEND_OPERATIONS = ("create", "read", "list", "update", "set stage", "comment",
+                      "rename", "lookup", "read request", "read comments",
+                      "current user", "is item folder")
+
+
+@pytest.mark.parametrize("rel, phrase", MOVED_PHRASES)
+def test_the_lifecycle_documents_keep_their_rules(rel, phrase):
+    text = " ".join((REPO / rel).read_text(encoding="utf-8").split())
+    assert phrase in text, f"{rel} no longer says {phrase!r}"
+
+
+def test_abstraction_asks_who_owns_a_fact():
+    text = " ".join(ABSTRACTION.read_text(encoding="utf-8").split())
+    assert "Who owns this fact: the backend, or the repository?" in text
+
+
+def _bullets_under(text: str, heading: str) -> list[str]:
+    """The top-level bullets of the section under `heading`, each its first
+    line."""
+    _, found, rest = text.partition("\n" + heading + "\n")
+    assert found, f"no heading {heading!r}"
+    section = re.split(r"^#{1,2} ", rest, maxsplit=1, flags=re.M)[0]
+    return [line for line in section.splitlines() if line.startswith("- ")]
+
+
+def test_the_backend_interface_names_exactly_twelve_operations():
+    bullets = _bullets_under(ABSTRACTION.read_text(encoding="utf-8"),
+                             "## The backend interface")
+    names = [m.group(1) if (m := re.match(r"- \*\*([^*]+)\*\*", b)) else b
+             for b in bullets]
+    assert names == list(BACKEND_OPERATIONS), names
+
+
+def test_abstraction_has_no_move_command():
+    assert not re.search(r"\bmv\b", ABSTRACTION.read_text(encoding="utf-8"))
