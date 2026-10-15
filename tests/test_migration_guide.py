@@ -208,7 +208,7 @@ def test_a_tags_only_condition_becomes_not_tags_on_later_entries():
     text = section(GUIDE, 4, "Templates become prompt entries")
     assert "**When every earlier entry's condition is `tags` alone**" in text
     assert "add those tags to each later entry's `not_tags`" in text
-    assert "**Any other shape**" in text and "list it\nin the plan" in text
+    assert "**Any other shape**" in text and "list it in the plan" in " ".join(text.split())
 
 
 def test_the_rule_shows_this_repositorys_spec_templates():
@@ -279,10 +279,10 @@ def test_the_prerequisites_and_rules_come_before_any_mapping_table():
     "**No 2.x item worktree is open.**",
     "`git worktree list | grep -E '\\[work/'`",
     "**A branch or tag marks the 2.x state**",
-    "**Every connected project is on this machine.**",
+    "**Every connected project is on this machine, and is migrated with this one.**",
 ])
 def test_each_prerequisite_is_named(prerequisite):
-    assert prerequisite in section(GUIDE, 2, "Before you start")
+    assert prerequisite in " ".join(section(GUIDE, 2, "Before you start").split())
 
 
 def test_the_rules_say_order_then_check_then_stop():
@@ -373,7 +373,7 @@ def test_the_rules_state_the_stop_for_a_failing_check():
 # -- Criterion 7: behavior that had no key -------------------------------------------------
 
 @pytest.mark.parametrize("topic", ["**Automatic commits.**", "**Publishing.**",
-                                   "**Retention.**", "**Ignored discarded folders.**"])
+                                   "**Retention.**", "**Ignored completed and discarded folders.**"])
 def test_behavior_with_no_key_is_named(topic):
     assert topic in section(GUIDE, 2, "2.x behavior that had no key")
 
