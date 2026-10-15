@@ -263,11 +263,16 @@ migrates the board.
 
    Paths are written relative to the project's configured work path, which
    defaults to `docs/work`.
-5. **[Decision] Three kinds of stop, and only three:**
+5. **[Decision] Three kinds of stop, and only three** (**[Owner addition
+   2026-10-15]** four: the instruction review of step 12 is added, amendment 21):
    - **The consolidated plan** (step 1): one question, covering every decision the
      migration needs, answered once.
    - **Changes the agent cannot make itself:** Jira administration (statuses,
      workflow, custom fields) when the agent lacks the access.
+   - **The instruction review** (step 12): one question listing every agent
+     instruction and memory that mentions TCW, each with a proposed action,
+     answered once. The user decides each; nothing is deleted or rewritten
+     before the answer.
    - **A check that fails after one retry.** The agent reports what it expected,
      what it saw, and stops.
 
@@ -495,6 +500,44 @@ that configuration.
 11. **Validate.** `tcw validate` (and `tcw validate --remote` in Jira mode) exits 0.
     Each remaining warning or finding, including unchecked moves, is either fixed
     or listed for the user with its reason.
+12. **[Owner addition 2026-10-15, amendment 21] Revisit every agent instruction
+    and memory that mentions TCW. Stop and ask.** Projects using 2.x wrote
+    instructions for their agents that 3.0 makes wrong or pointless: a command
+    that no longer exists, a status folder, a worktree routine, a workaround for
+    2.x behavior that is gone. Step 10 fixed the project's own files the approved
+    plan named; this step looks wider, now that the configuration and board are
+    in their 3.0 form and the agent can say what each instruction should become.
+    - **Where to look.** The project's `CLAUDE.md` and `AGENTS.md`, and every
+      file they link to or import; the agent's saved memories for the project
+      (for Claude Code, the project's folder under `~/.claude/projects/`, its
+      `memory/` folder and `MEMORY.md`); personal and global instruction files
+      (`~/.claude/CLAUDE.md`, Codex's `~/.codex/AGENTS.md`); skills, commands,
+      agent definitions and hooks the project wrote (`.claude/skills/`,
+      `.claude/commands/`, `.claude/agents/`, `.codex/`, and the `hooks` of
+      `.claude/settings*.json`); the permission allow-lists in
+      `.claude/settings.json` and `.claude/settings.local.json` that name `tcw`
+      commands; and the prompt and procedure files the 2.x configuration bound.
+      Files outside the repository belong to the person running the
+      migration, on this machine; the guide says each other contributor does the
+      same for their own.
+    - **What to look for.** Every 2.x name in the first column of the guide's
+      mapping tables (Design 3): removed or renamed commands, flags and keys,
+      2.x document names, status-folder names (`backlog/`, `active/`,
+      `review/`, `completed/`, `discarded/`, `blocked/`), `state.yaml`,
+      `dod.yaml`, `tcw work start --worktree`, and text describing 2.x behavior
+      with no key (automatic commits, publishing, retention), which 3.0 no
+      longer has.
+    - **How to find them.** A `grep -rniE` over those places for `tcw` and for
+      the removed names, which the guide gives as one command with the pattern
+      written out; the agent lists each file and line it finds.
+    - **The decision is the user's.** The agent proposes, for each finding,
+      delete, rewrite (with the proposed 3.0 text) or keep (with the reason),
+      and asks once. It applies only what the user approves, and writes each
+      finding, the decision and what was done into the migration log under
+      `## Agent instructions`. Nothing is deleted automatically.
+    **Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and running
+    the step's search again prints only lines the log records as kept. If a
+    bound prompt or procedure file changed, `tcw validate` exits 0 again.
 
 ### 3. The mappings
 
@@ -1132,13 +1175,14 @@ TCW adopts TCW-75's opt-in example as TCW-75 writes it (TCW-75 Design 8):
 
 Criteria 1 to 10 are checked by reading the guide; criteria 11 to 26 and 28 to 30
 on the epic branch after the migration commit; 27 on the epic branch before it;
-31 during the migration, at step 6.
+31 during the migration, at step 6; 32 by reading the guide and, for TCW's
+run, the log after step 12.
 
 **The guide**
 
 1. `docs/migration-guide-2.8-to-3.0.0.md` exists and opens with the prerequisites
    and rules of Design 1.2.
-2. It has steps 0 to 11 in the order of Design 2, and every step has a **Check**.
+2. It has steps 0 to 12 in the order of Design 2, and every step has a **Check**.
    Every check except step 2's contains a shell command and its expected output
    (step 1's is the `grep -c '^## Approved plan'` of the log); step 2's says it is
    the Jira-workflow reading at the end of step 3. No check of steps 4 to 7
@@ -1146,9 +1190,9 @@ on the epic branch after the migration commit; 27 on the epic branch before it;
    `inbox/` is gone. The checks of steps 9 and 10 name their scope (the plan's
    skipped folders, and `<hook files>`) rather than the whole repository.
 3. It has exactly the stops of Design 1.5: one consolidated-plan stop (step 1), a
-   stop for Jira changes the agent cannot make (step 2), and the general rule that
-   a check failing after one retry stops the migration. No step asks a question
-   per item.
+   stop for Jira changes the agent cannot make (step 2), one instruction-review
+   stop (step 12, amendment 21), and the general rule that a check failing after
+   one retry stops the migration. No step asks a question per item.
 4. Each of these names appears in the first column of a mapping table row, and
    that row's second column gives its 3.0 form or "removed" with what replaces
    it. Checked per name with `grep -E '^\| [^|]*<name>'` on the guide, which
@@ -1281,12 +1325,27 @@ on the epic branch after the migration commit; 27 on the epic branch before it;
     with `updated >=` the rerun's start time returns none, and every action the
     rerun logs is a skip. Recorded in the implement round.
 
+**The owner's addition (amendment 21)**
+
+32. The guide's step 12 names every place Design 2 step 12 lists (project
+    `CLAUDE.md`/`AGENTS.md` and linked files, the per-project memory folder
+    under `~/.claude/projects/`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+    project skills, commands, agents and hooks, the `.claude/settings*.json`
+    allow-lists, bound prompt files); gives a search command whose pattern
+    includes `tcw` and the status-folder names; says the user decides delete,
+    rewrite or keep for each finding and that nothing is removed
+    automatically; and has a **Check**. For TCW's own run, the log's
+    `## Agent instructions` section lists every hit of that search over this
+    repository's `AGENTS.md`, `.claude/`, the memory folder
+    `~/.claude/projects/-Users-brian-Projects-TCW/memory/` and
+    `~/.claude/CLAUDE.md`, each with the owner's decision and what was done.
+
 ### Coverage
 
 | Design | Criteria |
 | --- | --- |
 | 1 The guide's form | 1, 2, 3, 9, 24, 31 |
-| 2 Steps | 2, 3, 24, 30, 31 |
+| 2 Steps | 2, 3, 24, 30, 31, 32 |
 | 3.1–3.4 Stages, fields, documents, store root | 4, 8, 11, 12, 13, 14 |
 | 3.5 Configuration | 4, 6, 16 |
 | 3.6 Hook variables | 4, 5, 6 |
@@ -1360,7 +1419,8 @@ Reconciled with the epic's cross-slice decisions on 2026-10-01, and revised on
 Each is marked **[Decision]** above:
 
 - checks are read-only shell commands; the CLI is used only at the end (1.4);
-- three kinds of stop only (1.5);
+- three kinds of stop only (1.5); four since the owner's addition of step 12
+  (amendment 21);
 - Jira writes have REST forms (1.7) and are safe to repeat and logged (1.8);
 - a survey step with one consolidated plan, including a prune list (2.1); TCW's
   prune list confirmed by the owner on 2026-10-01;
@@ -1800,3 +1860,19 @@ corrected by amendment 15.
     proves the guide. What 3.0 cannot handle is a 2.x **item** worktree, on a
     `work/<slug>` branch made by `tcw work start --worktree`; the check is
     narrowed to that, and other worktrees are listed in the survey.
+21. **Owner addition, 2026-10-15: revisit agent instructions and memories.**
+    This is the one change that goes beyond `initial-request.md`, and it is the
+    owner's. Their words: "Part of the migration plan should include to purge,
+    or at least revisit, any memories or instructions related to TCW. Projects
+    using TCW might have made instructions that pertain to TCW which might
+    become irrelevant, so all of that should be reevaluated." They then said
+    that "migration plan" means the migration guide. Added as Design 2 step 12,
+    after validation, so the configuration and board are already in their 3.0
+    form when each instruction is judged. Because the user decides each
+    finding, it adds a fourth stop to Design 1.5, still one question for all
+    findings, and criteria 2 and 3 change with it; criterion 32 is new. It is
+    numbered 12 rather than placed before validation so that no other step's
+    number, and no reference to one, changes. For TCW's own run it covers
+    `AGENTS.md` (and so `CLAUDE.md`), `.claude/`, the memory folder
+    `/Users/brian/.claude/projects/-Users-brian-Projects-TCW/memory/` and the
+    owner's `~/.claude/CLAUDE.md`, each decision recorded in the migration log.
