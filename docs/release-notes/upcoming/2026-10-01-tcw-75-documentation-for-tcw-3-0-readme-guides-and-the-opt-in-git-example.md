@@ -27,5 +27,5 @@ an agent.
   and [Linking and validation](../guide/linking-and-validation.md).
 - The configuration guide has an opt-in example, a script your project can add
   to commit each item after it moves; TCW itself never runs it for you.
-- The `configure` skill's references cover every 3.0 configuration key, and a
-  new one covers personal configuration.
+- The `configure` skill's references cover every 3.0 configuration key. Two
+  are new: one for personal configuration, and one for the Jira settings.
