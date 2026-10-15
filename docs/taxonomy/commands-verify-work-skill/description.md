@@ -1,1 +1,0 @@
-The TCW plugin command skill for the verification of a finished work item.
