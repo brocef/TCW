@@ -28,3 +28,11 @@ Things those items left in TCW-75's files on purpose. Plan a task for each.
    lists 15 of them; check which item owns the clean-up (this one or TCW-76).
 7. **`tests/doc_allowance.py`'s `--include-descendants` entry** is still needed
    by other guides; remove it once they are rewritten.
+8. **2.x viewer and verb text in the configure skill's references** (found by
+   TCW-77's confirming review): `skills/configure/references/tracker.md`
+   (about :237-242) links `tcw serve` item pages through `{slug}` and mentions
+   status folders, child projects served "under its path" and `work.retain`,
+   none of which the 3.0 viewer does (it serves one project and refuses a
+   `project/folder` name in the URL). `skills/configure/references/projects.md`
+   (about :75-78) lists `start`, `drop` and `delegate` as verbs. Item 4 already
+   replaces `tracker.md`; make sure the replacement drops this text.

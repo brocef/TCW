@@ -6,6 +6,7 @@ changed:
   - web/editing
   - cli/reference-a-tcw-object
   - cli/read-from-an-upstream-project
+  - work/configure-the-work-lifecycle
 taxonomy:
   changed:
     - local-web-app

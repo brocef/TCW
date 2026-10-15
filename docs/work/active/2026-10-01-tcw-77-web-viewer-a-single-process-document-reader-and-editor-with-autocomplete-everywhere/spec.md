@@ -14,6 +14,7 @@ changed:
   - web/editing
   - cli/reference-a-tcw-object
   - cli/read-from-an-upstream-project
+  - work/configure-the-work-lifecycle   # review round 1: adopting runs hooks
 taxonomy:
   changed:
     - local-web-app
@@ -140,7 +141,9 @@ included, built from two runtimes. Six problems follow.
 1. **One Python process** serves the prebuilt client and a JSON API on
    `127.0.0.1`, with no Node.js at install time or runtime. The server's own
    code starts no other process; the only child processes are the read-only git
-   checks that a CLI operation it calls already makes (Design 1.7).
+   checks that a CLI operation it calls already makes, and, when a Jira ticket
+   is adopted, the request stage's `post` hooks that `tcw work tickets adopt`
+   runs (Design 1.7; amended in review round 1).
 2. **Every Fastify protection, in that one process**, applied to reads as well
    as writes.
 3. **No logic of its own.** Every read and write goes through an operation the
@@ -222,8 +225,14 @@ included, built from two runtimes. Six problems follow.
      `xdg-open` on a document (`__init__.py:98-106`, `:1580-1650`). The route
      goes: the viewer shows the document itself, and the CLI's
      `tcw work path` names the file for anyone who wants their own editor;
-   - no hooks and no `generate:` scripts. Nothing the viewer calls runs a
-     hook, because hooks run only on `advance` (TCW-69 Design 6).
+   - no hooks and no `generate:` scripts of its own. Hooks run on `advance`
+     (TCW-69 Design 6), which the viewer never calls. **[Amended, review
+     round 1]** The one exception is adopting a Jira inbox ticket (Design
+     6.10): the viewer calls the same `tickets adopt` function as
+     `tcw work tickets adopt`, which runs the request stage's `post` hooks
+     (TCW-71 Design 7.2). The viewer keeps that, so adopting a ticket behaves
+     the same in both places; a hook that fails does not undo the adoption,
+     and its message is returned for the page to show.
 
    **Git is read, never changed.** TCW never changes git state (review decision
    R4). Two operations the viewer calls read git through a short-lived child
@@ -319,7 +328,7 @@ Design 5 names its operation. In full:
 | --- | --- | --- |
 | The board | `backend.list(Query)`, each item rendered as TCW-70's item record (the entries of `tcw work list --json`) | TCW-69, TCW-70, TCW-73 |
 | One item | `backend.read`, rendered as the same record (the `item` of `tcw work show --json`) | TCW-69, TCW-70, TCW-73 |
-| Item folders on disk, for the unreachable fallback | `layout.item_folders()`, which this slice adds to TCW-69's `layout.py` (Design 7.3) | this slice |
+| Item folders on disk, for the unreachable fallback and every "is this an item" check | `layout.item_folders()`, which this slice adds to TCW-69's `layout.py`, filtered by `backend.is_item_folder(folder)`, an offline predicate each backend implements (Design 7.3) | this slice |
 | Display names (Jira) | `user_name(account_id)`, beside `tickets list` | TCW-71 Design 7.3 |
 | Edit properties | `backend.update(folder, Changes)` | TCW-69 |
 | Add a comment | `backend.comment(folder, text)` | TCW-69 |
@@ -473,7 +482,7 @@ Design 11.
      variables, a 401 and a 403 (TCW-71 Design 10), which must leave the files
      usable (Design 7.4). `NotFound` and `UsageError` never degrade. When `read`
      fails, the route still answers 200 if `<folder>` is one of
-     `layout.item_folders()` (Design 7.3), and 404 if it is not; `people` then
+     the item folders of Design 7.3, and 404 if it is not; `people` then
      names only whoever the reads that succeeded mention, `link` still comes from `ticket_link` (it needs no network),
      and `files` and `verdicts` are computed from disk as usual. In filesystem
      mode nothing degrades: every failure is the error of Design 11.
@@ -674,7 +683,9 @@ first by Design 5.1, the second removed.
    mapping configures them), since otherwise the CLI refuses those flags.
 10. **Inbox tickets (Jira mode).** A **Tickets** view lists TCW-71's default
     inbox (or the configured `inbox-query`); **Adopt** runs TCW-71's adopt and
-    opens the new item. When adopt refuses because Jira offers no single usable
+    opens the new item. Adopt runs the request stage's `post` hooks, as the
+    CLI's does (Design 1.7); the answer is `{slug, code, problem}`, and when a
+    hook failed (`code` 6) the page opens the item and shows `problem`. When adopt refuses because Jira offers no single usable
     transition to the request status (epic decision 5), the 409 message lists
     the transitions, and the ticket stays in the list.
 
@@ -708,7 +719,17 @@ first by Design 5.1, the second removed.
      slice adds `item_folders() -> list[str]` to `tcw/work/layout.py`: the
      names of the directories directly under the work path, sorted, with the
      same hidden-entry rule the backends use when they scan. It reads no
-     `item.yaml` and needs no network.
+     `item.yaml` and needs no network. **[Amended, review round 1]** A
+     directory under the work path is not necessarily an item (a `notes/`
+     folder someone made), so the viewer keeps only the ones the backend
+     recognizes, through `is_item_folder(folder) -> bool`, which every backend
+     now implements with its own offline rule: the filesystem backend's is a
+     dated name holding `item.yaml` (`fs_backend.is_item_folder`), the Jira
+     backend's is a name starting with a ticket key (`folder_key`). The same
+     check decides whether a folder named in a URL, a `parent` or a
+     `blocked-by` is an item. It reads only the work path, so it answers
+     while the backend cannot, and any backend can say which of its own
+     folders are items, so it passes the litmus test.
 4. **Credentials missing.** **[Decision]** `tcw serve` still starts, since the
    backend is opened per request (Design 1.8). TCW-71 raises `BackendError`
    naming the unset variables (its Design 10), which degrades as in 7.3, so a
@@ -917,7 +938,7 @@ TCW-73's message for running outside a project).
 | Tickets list, adopt, assignable users, ticket link, display names | **Jira-only functions** outside the interface (TCW-71 Design 7.3), as TCW-69 already places `tickets` (Design 5.6). Filesystem mode answers 400, has no link, and needs no names. |
 | Create in another project, add a `blocks` link | `delegate` and `open_for_update` (TCW-70 Design 2.3, review decision R5), shared by the CLI. They read git (the uncommitted-changes check) and never change it (R4). |
 | Documents, rounds, handoffs, declaration file | **Shared layout** (TCW-69). Git owns them in both modes; reading and writing them is a file operation in both. |
-| Board fallback while unavailable | **Shared layout** read of item folder names, `layout.item_folders()`, which this slice adds (Design 7.3). Any backend keeps one folder per item in the layout, so any backend supports it. |
+| Board fallback while unavailable | **Shared layout** read of folder names, `layout.item_folders()`, which this slice adds, kept to those the backend's offline `is_item_folder` recognizes (Design 7.3). Any backend keeps one folder per item in the layout and knows its own naming rule, so any backend supports it. |
 | Stale-edit check on files | **Shared layout** (content hash). On properties: read-then-update over the interface, so any backend supports it. |
 | Taxonomy and capabilities | The existing filesystem stores, unchanged. |
 | What is read-only | A viewer rule inferred from `external_stages`, a declared backend fact, never from a backend name (Design 4.1). |
@@ -953,7 +974,9 @@ process as `web/e2e/parity.spec.ts:61` does today.
    - With `subprocess.Popen` wrapped to record every command, a pytest run that
      sends one valid request to every route, including a create into a
      connected project and a `blocks` link into it, records only commands whose
-     first two words are `git rev-parse` or `git --no-optional-locks`, the
+     first two words are `git rev-parse` or `git --no-optional-locks`
+     (optionally after `-C <root>`, which is how the operations call git;
+     amended in review round 1), the
      latter followed by `status`. A recorded `git add`, `git commit`, `node`,
      `open` or `xdg-open` fails the test.
    - `tcw/serve/dist/server.cjs`, `tcw/serve/runtime.py` and `web/server/` do
@@ -1099,7 +1122,9 @@ process as `web/e2e/parity.spec.ts:61` does today.
     shows "Open in Jira" with the ticket URL; that loading the board sends one
     search and no `/user` request, and shows assignees by display name; that
     adopting a fake inbox ticket opens the new item; and that creating the
-    marker file shows "Jira is unreachable" with Retry while `spec/spec.md`
+    marker file shows the operation's own message (TCW-71's "could not reach
+    the tracker at <site>", as Designs 7.3 and 11 call for; amended in review
+    round 1) with Retry while `spec/spec.md`
     stays editable. A pytest case runs the same launcher with the credential
     variables unset: the server starts, `GET /api/work` is 200 with
     `fallback: true` and a message naming the unset variable, and
@@ -1250,7 +1275,8 @@ process as `web/e2e/parity.spec.ts:61` does today.
   18. Jira-owned content is read-only in the viewer although the CLI can edit
       it (7.2).
   19. While Jira is unavailable, the board falls back to folder names (7.3),
-      listed by `layout.item_folders()`, which this slice adds.
+      listed by `layout.item_folders()`, which this slice adds, and kept to
+      those the backend's `is_item_folder` recognizes (review round 1).
   20. Missing Jira credentials do not stop the server (7.4).
   21. Inherited entries are read-only; overriding one stays a CLI act (8.2).
   22. "Refused" is enforced by the server (9.1).
@@ -1376,3 +1402,25 @@ process as `web/e2e/parity.spec.ts:61` does today.
     counts the rewrite; criterion 1 uses `pgrep -P`.
 17. ACCEPTED. Design 4.1 and the litmus table call read-only status a viewer
     rule inferred from `external_stages`.
+
+### Review round 1 amendments (2026-10-15)
+
+The fix round after the first adversarial review changed the spec in these
+places; `outcome.md` records each finding.
+
+1. **Adopting runs hooks** (Goal 1, Design 1.7, 6.10). The viewer's adopt is
+   the CLI's, so the request stage's `post` hooks run; a failure is returned
+   as `problem` and shown. `docs/capabilities/work/configure-the-work-lifecycle`
+   says the same, and the declaration lists it as changed.
+2. **Which folders are items** (Design 4 table, 5.2, 7.3, the litmus table,
+   Notes 19). `layout.item_folders()` lists directories; the backend's offline
+   `is_item_folder` says which are items, so a stray folder is never read,
+   written or referenced as one.
+3. **Criterion 1** allows the `git -C <root>` prefix the operations use.
+4. **Criterion 11** checks the operation's own unreachable message rather
+   than the example wording "Jira is unreachable".
+5. **A cross-project parent in Jira mode** follows Design 9's parent row: the
+   create form and the server keep it with a warning, and the Jira backend
+   accepts it only when it is a ticket on the same site, refusing otherwise
+   with its own message. A blocker in Jira mode must still be an item of this
+   project. No spec text changed for this; the code now matches the table.
