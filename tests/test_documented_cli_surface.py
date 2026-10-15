@@ -34,8 +34,8 @@ REPO = Path(__file__).resolve().parent.parent
 
 # Documents that record what was true at a point in time, and are therefore
 # expected to name commands that no longer exist. Trailing slashes are
-# load-bearing: without one, `docs/work/` would also swallow the live
-# `docs/work-inbox-template.md`.
+# load-bearing: without one, `docs/work/` would also swallow any live file
+# whose path begins `docs/work`, such as a `docs/work-<topic>.md`.
 ARCHIVAL = (
     "docs/work/",           # lifecycle artifacts, frozen once written
     "docs/plan/",           # the retired build-phase specs

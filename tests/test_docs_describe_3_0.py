@@ -38,6 +38,7 @@ AGENTS_HEADING = "### Working in a git worktree"
 # `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
 REWRITTEN: tuple[str, ...] = (
     AGENTS,
+    "README.md",
     "docs/guide/cli.md",
     "docs/guide/configuration.md",
     "docs/guide/jira.md",
@@ -354,3 +355,66 @@ def test_the_backend_interface_names_exactly_twelve_operations():
 
 def test_abstraction_has_no_move_command():
     assert not re.search(r"\bmv\b", ABSTRACTION.read_text(encoding="utf-8"))
+
+
+# ── criterion 1: the README's structure ───────────────────────────────────────
+
+README = REPO / "README.md"
+
+
+def _level_two_headings(text: str) -> list[str]:
+    return [line[3:].strip() for line in _outside_fences(text).splitlines()
+            if line.startswith("## ")]
+
+
+def _section(text: str, heading: str) -> str:
+    """The text under `heading`, up to the next heading of the same level or
+    higher."""
+    level = len(heading) - len(heading.lstrip("#"))
+    lines = _outside_fences(text).splitlines()
+    start = lines.index(heading)
+    end = next((i for i in range(start + 1, len(lines))
+                if (m := re.match(r"^(#{1,6}) ", lines[i]))
+                and len(m.group(1)) <= level), len(lines))
+    return "\n".join(lines[start + 1:end])
+
+
+def test_the_section_after_the_overview_says_why_the_records_live_in_the_repository():
+    headings = _level_two_headings(README.read_text(encoding="utf-8"))
+    after = headings[headings.index("Overview") + 1]
+    assert after == "Why taxonomy and capabilities live in the repository"
+
+
+def test_every_contents_link_points_at_a_readme_heading():
+    text = README.read_text(encoding="utf-8")
+    contents = _section(text, "## Contents")
+    targets = [target for _, target in links(contents)]
+    assert targets, "the Contents list has no links"
+    missing = [t for t in targets if t.lstrip("#") not in anchors(text)]
+    assert not missing, missing
+
+
+def test_the_work_section_has_a_filesystem_and_then_a_jira_heading():
+    work = _section(README.read_text(encoding="utf-8"), "## Work")
+    found = [(len(m.group(1)), m.group(2)) for line in work.splitlines()
+             if (m := re.match(r"^(#{3,6}) (Filesystem|Jira)\b", line))]
+    assert [name for _, name in found] == ["Filesystem", "Jira"], found
+    assert found[0][0] == found[1][0], found
+
+
+def test_the_web_app_and_the_cli_requirements_do_not_need_node():
+    text = README.read_text(encoding="utf-8")
+    assert "Node.js" not in _section(text, "## TCW Local Web App")
+    requirements = next(p for p in _section(text, "### CLI").split("\n\n")
+                        if p.startswith("Requires"))
+    assert "Node.js" not in requirements
+
+
+def test_the_documentation_index_links_the_guides_it_must():
+    index = {target for _, target in
+             links(_section(README.read_text(encoding="utf-8"), "## Documentation"))}
+    for must in ("docs/migration-guide-2.8-to-3.0.0.md",
+                 "docs/migration-guide-2.4.X-to-2.5.0.md", "docs/guide/cli.md"):
+        assert must in index, must
+    assert "docs/work-inbox-template.md" not in index
+
