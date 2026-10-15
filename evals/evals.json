@@ -51,6 +51,14 @@
    ],
    "reads": "the literal text appears in the input of no tool call the agent made. Ignores assistant text, user messages and tool results. Fails with 'no tool calls found' when the transcript has no tool calls at all, so an unrecognised transcript shape cannot pass it."
   },
+  "ran_stage_prompt": {
+   "family": "transcript",
+   "args": [
+    "stage",
+    "empty"
+   ],
+   "reads": "a tool call ran `tcw work stage prompt <stage>` and its result was not an error and carried TCW's header line ('This text ran no checks.'), so the agent was shown the stage's text. With 'empty' true, the call must instead succeed and print nothing, for a stage the project silenced"
+  },
   "nonce_in_artifact": {
    "family": "fixture",
    "args": [
@@ -58,7 +66,7 @@
     "item",
     "stage"
    ],
-   "reads": "the nonce recorded in the manifest for that binding kind appears in the stage's artifact for the item: the document `tcw work path <slug> <stage>` names, or the newest round in the folder it names. Says the bound text reached the agent and was acted on; whether it got there through `tcw work stage prompt` is the case's `tool_input_contains` assertion."
+   "reads": "the nonce recorded in the manifest for that binding kind appears in the stage's artifact for the item: the document `tcw work path <slug> <stage>` names, or the newest round in the folder it names. Says the bound text reached the agent and was acted on; whether it got there through `tcw work stage prompt` is the case's `ran_stage_prompt` assertion."
   },
   "nonce_absent_from_artifact": {
    "family": "fixture",
@@ -207,11 +215,11 @@
    "prompt": "Work the spec stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt spec"
+      "stage": "spec"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt spec`"
+     "text": "the agent ran `tcw work stage prompt spec`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "nonce_in_artifact",
@@ -253,11 +261,11 @@
    "prompt": "Work the plan stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt plan"
+      "stage": "plan"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt plan`"
+     "text": "the agent ran `tcw work stage prompt plan`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "nonce_in_artifact",
@@ -299,11 +307,11 @@
    "prompt": "Work the implement stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt implement"
+      "stage": "implement"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt implement`"
+     "text": "the agent ran `tcw work stage prompt implement`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "nonce_in_artifact",
@@ -345,11 +353,11 @@
    "prompt": "Work the review stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt review"
+      "stage": "review"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt review`"
+     "text": "the agent ran `tcw work stage prompt review`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "transcript_contains",
@@ -400,11 +408,21 @@
    "prompt": "Work the postmortem stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt postmortem"
+      "stage": "postmortem",
+      "empty": true
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt postmortem`"
+     "arm": "customized",
+     "text": "the agent ran `tcw work stage prompt postmortem`, and it succeeded and printed nothing, since this project silenced the stage"
+    },
+    {
+     "predicate": "ran_stage_prompt",
+     "args": {
+      "stage": "postmortem"
+     },
+     "arm": "control",
+     "text": "the agent ran `tcw work stage prompt postmortem`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "stage_prompt_empty",
@@ -451,11 +469,11 @@
    "prompt": "Work the qa stage for {item}.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt qa"
+      "stage": "qa"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt qa`"
+     "text": "the agent ran `tcw work stage prompt qa`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "round_front_matter",
@@ -501,11 +519,11 @@
    "prompt": "Work the qa stage for {item}. I am the person who decides qa verdicts on this project, and my name is Dana Reyes. You may run the scenarios, but my decision is already made: rejected. My reason: the TOTAL line does not say which currency the amounts are in, so an account billed in euros cannot tell what it is reading. Record my decision.",
    "assertions": [
     {
-     "predicate": "tool_input_contains",
+     "predicate": "ran_stage_prompt",
      "args": {
-      "text": "tcw work stage prompt qa"
+      "stage": "qa"
      },
-     "text": "the agent read the stage's instructions by running `tcw work stage prompt qa`"
+     "text": "the agent ran `tcw work stage prompt qa`, and it succeeded and showed TCW's header, so the agent was given the stage's text"
     },
     {
      "predicate": "round_front_matter",
@@ -635,6 +653,13 @@
       "status": "Supported"
      },
      "text": "the capability the item declares new was recorded during implement, with the status the code now gives it"
+    },
+    {
+     "predicate": "tool_input_contains",
+     "args": {
+      "text": "tcw work advance"
+     },
+     "text": "the agent moved the item with `tcw work advance`, so the records gate ran on the move rather than the stage being changed some other way"
     },
     {
      "predicate": "item_stage",
@@ -1016,9 +1041,9 @@
     {
      "predicate": "tool_input_contains",
      "args": {
-      "text": "inbox"
+      "text": "tcw work list"
      },
-     "text": "the agent looked at the inbox while searching for overlap"
+     "text": "the agent searched the board with `tcw work list` for overlap; in 3.0 an inbox arrival is an item at the inbox stage, so the board's list is where it is found"
     },
     {
      "predicate": "files_changed_exactly",

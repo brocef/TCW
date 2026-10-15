@@ -20,8 +20,9 @@ TCW 3.0 has one source of stage text: `tcw work stage prompt <stage> <slug>`.
 No skill injects it into the conversation, so there is no longer a question of
 *how* a nonce arrived — the agent either ran that command and acted on what it
 printed, or it did not. An axis A case therefore asks two things, each its own
-assertion: the agent ran the command (`tool_input_contains`), and the artifact
-carries the nonce (`nonce_in_artifact`).
+assertion: the agent ran the command and was shown the stage's text
+(`ran_stage_prompt`, which reads the call's result, not only its command
+line), and the artifact carries the nonce (`nonce_in_artifact`).
 
 ## Verdict rounds
 
@@ -46,7 +47,8 @@ from pathlib import Path
 import yaml
 
 from tcw.work.gates import parse_declarations
-from tcw.work.layout import INVALID, ROUND_NAME, round_verdict
+from tcw.work.layout import (INVALID, ROUND_NAME, front_matter, round_verdict,
+                              split_front_matter)
 
 # The environment every `tcw` call made here runs with: no personal
 # configuration layer, so grading reads what the project configured and
@@ -113,6 +115,39 @@ def _tool_inputs(events: list[dict]):
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 # Non-ASCII left as is, so a search text containing it matches.
                 yield json.dumps(block.get("input"), ensure_ascii=False)
+
+
+def _tool_calls(events: list[dict]):
+    """Every tool call the run made, in order, as (input as JSON text, its
+    result or None). A result is the matching `tool_result` block: its text,
+    and whether the harness marked it an error (a command that exited
+    non-zero is one)."""
+    results = {}
+    for event in events:
+        content = (event.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                body = block.get("content")
+                if isinstance(body, list):
+                    body = "".join(b.get("text", "") for b in body
+                                   if isinstance(b, dict))
+                results[block.get("tool_use_id")] = (
+                    body if isinstance(body, str) else "",
+                    bool(block.get("is_error")))
+    for event in events:
+        content = (event.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                yield (json.dumps(block.get("input"), ensure_ascii=False),
+                       results.get(block.get("id")))
+
+
+# What the harness puts in a tool result when a command printed nothing.
+_NO_OUTPUT = ("", "(Bash completed with no output)", "(No content)")
 
 
 def _first_index(texts: list[str], needle: str) -> int | None:
@@ -200,27 +235,16 @@ def artifact(run: dict, item: str, stage: str) -> tuple[Path | None, str]:
         None, f"no {stage} round in {path}")
 
 
-def _split(path: Path) -> tuple[str | None, str]:
-    """A round's front matter text (None when it has none) and its body. The
-    same shape TCW reads: a first line `---`, closed by the next `---`."""
-    lines = path.read_text(encoding="utf-8").splitlines()
-    if lines and lines[0].strip() == "---":
-        for end, line in enumerate(lines[1:], start=1):
-            if line.strip() == "---":
-                return "\n".join(lines[1:end]), "\n".join(lines[end + 1:])
-    return None, "\n".join(lines)
-
-
 def _body(path: Path) -> str:
-    """A round's text below its front matter."""
-    return _split(path)[1]
+    """A round's text below its front matter, split the way TCW splits it."""
+    return split_front_matter(path.read_text(encoding="utf-8"))[1]
 
 
 def _meta(path: Path) -> dict:
-    """A round's front matter as a mapping; empty when it has none or it does
-    not parse."""
+    """A round's front matter as a mapping, read by TCW's own reader; empty
+    when it has none or it does not parse."""
     try:
-        meta = yaml.safe_load(_split(path)[0] or "")
+        meta = front_matter(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
         return {}
     return meta if isinstance(meta, dict) else {}
@@ -269,6 +293,41 @@ def p_tool_input_absent(run, text="", **_):
                     f"{text!r} is in none of {len(inputs)} tool calls"
                     if hit is None
                     else f"{text!r} is in tool call {hit}: {inputs[hit][:140]}")
+
+
+def p_ran_stage_prompt(run, stage="", empty=False, **_):
+    """The agent ran `tcw work stage prompt <stage>` and it worked: the call's
+    result is not an error and carries TCW's header line, so the agent was
+    shown the stage's text. A call that exited non-zero, or printed something
+    else, read no instructions however its command line looks.
+
+    `empty` is for a stage the project silenced: the call must succeed and
+    print nothing at all, header included.
+    """
+    needle = f"tcw work stage prompt {stage}"
+    calls = [(i, result) for i, (text, result)
+             in enumerate(_tool_calls(run["events"])) if needle in text]
+    if not calls:
+        return _verdict(False, f"{needle!r} is in no tool call")
+    seen = []
+    for index, result in calls:
+        if result is None:
+            seen.append(f"call {index}: no result")
+            continue
+        body, error = result
+        if error:
+            seen.append(f"call {index}: failed: {body.strip()[:80]!r}")
+        elif empty and body.strip() in _NO_OUTPUT:
+            return _verdict(True, f"tool call {index} ran {needle!r} and it "
+                                  f"printed nothing")
+        elif not empty and PROMPT_HEADER in body:
+            return _verdict(True, f"tool call {index} ran {needle!r} and was "
+                                  f"shown the header {PROMPT_HEADER!r}")
+        else:
+            seen.append(f"call {index}: printed {body.strip()[:80]!r}")
+    return _verdict(False, f"{needle!r} never ran as expected "
+                           f"({'empty' if empty else 'with the header'}): "
+                           + "; ".join(seen))
 
 
 def p_nonce_in_artifact(run, kind="", item="", stage="", **_):
@@ -384,22 +443,25 @@ def p_round_decided_by(run, item="", stage="", name="", **_):
 
 
 def p_round_lists_scenarios(run, item="", stage="", **_):
-    """Every QA plan scenario the manifest records is named on a line of the
-    newest round's body, below its front matter."""
+    """Every QA plan scenario the manifest records has a line of its own in the
+    newest round's body, below its front matter: a line naming it and no other
+    scenario, so one line listing them all does not pass."""
     scenarios = run.get("qa_scenarios") or []
     if not scenarios:
         return _verdict(False, "the run's manifest records no QA scenarios")
     path, said = artifact(run, item, stage)
     if path is None:
         return _verdict(False, said)
-    lines = _body(path).splitlines()
-    counts = {s: sum(1 for line in lines
-                     if re.search(rf"(?<![\w-]){re.escape(s)}(?!\d)", line))
-              for s in scenarios}
+    def named(line):
+        return {s for s in scenarios
+                if re.search(rf"(?<![\w-]){re.escape(s)}(?!\d)", line)}
+    lines = [named(line) for line in _body(path).splitlines()]
+    counts = {s: sum(1 for n in lines if n == {s}) for s in scenarios}
     missing = [s for s, n in counts.items() if n == 0]
     return _verdict(not missing,
-                    f"{stage}/{path.name}: lines naming each scenario {counts}"
-                    + (f"; missing {missing}" if missing else ""))
+                    f"{stage}/{path.name}: lines naming only each scenario "
+                    f"{counts}"
+                    + (f"; no line of its own for {missing}" if missing else ""))
 
 
 def p_item_stage(run, item="", stage="", **_):
@@ -628,6 +690,8 @@ def main(argv: list[str] | None = None) -> int:
               f"{report['passed']}/{report['graded']}{flag}"
               + (f" +{report['unmechanized']} unmechanized"
                  if report["unmechanized"] else ""))
+        for problem in report["isolation_problems"]:
+            print(f"    ISOLATION {problem}")
         for a in report["assertions"]:
             mark = {True: "pass", False: "FAIL", None: "n/a "}[a["passed"]]
             print(f"    {mark} {a['text'][:88]}")
@@ -637,7 +701,10 @@ def main(argv: list[str] | None = None) -> int:
     out = args.run_root / "grading.json"
     out.write_text(json.dumps(reports, indent=1) + "\n")
     print(f"\nwrote {out}")
-    return 0 if all(r["passed"] == r["graded"] for r in reports) else 1
+    # A run that measured something other than this checkout fails, whatever
+    # its assertions say: its numbers describe the wrong instructions.
+    return 0 if all(r["passed"] == r["graded"] and not r["isolation_problems"]
+                    for r in reports) else 1
 
 
 if __name__ == "__main__":

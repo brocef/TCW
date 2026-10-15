@@ -23,6 +23,11 @@ replaces something the plan's first draft had wrong:
 * **Isolation is asserted from the `init` event**, which carries `plugins` and
   `skills` as structured fields, rather than by asking a model to report on
   itself.
+* **The `tcw` the agent runs comes from this checkout too.** The agent finds
+  `tcw` on PATH, and the first one there is usually an installed release, so a
+  run would measure that release's stage prompts rather than this checkout's.
+  The runner puts this interpreter's own folder first on the agent's PATH and
+  records where the `tcw` found there imports from.
 
 Results land in a run directory outside the repository. Measurements are
 disposable; the instrument is not.
@@ -32,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -113,8 +119,9 @@ def variant_for(case: dict, arm: str) -> str:
     """The name of this run's fixture variant (see `seed_fixture.VARIANTS`).
 
     A case's own `fixture` key wins. Otherwise axis A's arms *are* the variants,
-    and axis B toggles the plugin instead and runs against the customized node
-    in both arms, so its two arms differ only by the thing axis B is measuring.
+    and axis B toggles the plugin instead and runs against the customized
+    project in both arms, so its two arms differ only by the thing axis B is
+    measuring.
     """
     if case.get("fixture"):
         return case["fixture"]
@@ -132,14 +139,59 @@ def read_init(transcript: Path) -> dict:
     return {}
 
 
-def check_isolation(case: dict, arm: str, init: dict) -> list[str]:
+def agent_env() -> dict[str, str]:
+    """The environment the spawned agent gets: no personal configuration, and
+    this interpreter's folder first on PATH, so the `tcw` its shell finds is
+    the one installed beside the interpreter running the harness."""
+    env = dict(TCW_ENV)
+    first = str(Path(sys.executable).parent)
+    env["PATH"] = os.pathsep.join([first, *[p for p in env.get("PATH", "").split(
+        os.pathsep) if p and p != first]])
+    return env
+
+
+_WHERE = ("import pathlib, tcw; "
+          "print(pathlib.Path(tcw.__file__).resolve().parent.parent)")
+
+
+def spawned_tcw(env: dict[str, str], cwd: Path) -> dict:
+    """Which `tcw` the agent's shell will find, and which source tree it
+    imports from, found the way the agent will find it: through `env`'s PATH,
+    from `cwd`. A console script names its interpreter on its first line, so
+    that interpreter is asked where `tcw` comes from."""
+    found = shutil.which("tcw", path=env.get("PATH"))
+    if found is None:
+        return {"path": None, "imports_from": None}
+    try:
+        first = Path(found).read_text(encoding="utf-8", errors="replace"
+                                      ).splitlines()[0]
+    except (OSError, IndexError):
+        first = ""
+    interpreter = first[2:].strip().split()[0] if first.startswith("#!") else ""
+    if not interpreter or "python" not in Path(interpreter).name:
+        return {"path": found, "imports_from": None}
+    proc = subprocess.run([interpreter, "-c", _WHERE], cwd=str(cwd), env=env,
+                          capture_output=True, text=True,
+                          stdin=subprocess.DEVNULL)
+    where = proc.stdout.strip() if proc.returncode == 0 else None
+    return {"path": found, "imports_from": where}
+
+
+def check_isolation(case: dict, arm: str, init: dict,
+                    tcw: dict | None = None) -> list[str]:
     """Complaints about what the harness loaded. Empty means clean.
 
     Asserted rather than trusted: a silently-merged settings file would make
     every number wrong in the same direction, which is the failure a human
-    reading a pass rate could never spot.
+    reading a pass rate could never spot. `tcw` is what `spawned_tcw` found;
+    a `tcw` that does not import from this checkout runs other stage prompts
+    than the ones under test.
     """
     problems = []
+    if tcw is not None and tcw.get("imports_from") != str(REPO):
+        problems.append(
+            f"the agent's `tcw` ({tcw.get('path')}) imports from "
+            f"{tcw.get('imports_from')}, not this checkout ({REPO})")
     plugins = init.get("plugins") or []
     wants_plugin = not (case["axis"] == "B" and arm == "no-skill")
 
@@ -165,13 +217,16 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
 
     argv = command(case, arm, settings_path, manifest)
     transcript = out / "transcript.jsonl"
+    # The agent's `tcw` reads no personal configuration either, so a person
+    # running the harness cannot change what a stage prompt says to it, and it
+    # is this checkout's `tcw`, found first on PATH.
+    env = agent_env()
+    tcw = spawned_tcw(env, fixture)
     started = time.monotonic()
     with transcript.open("w") as stream:
-        # The agent's `tcw` reads no personal configuration either, so a person
-        # running the harness cannot change what a stage prompt says to it.
         proc = subprocess.run(argv, cwd=str(fixture), stdout=stream,
                               stderr=subprocess.PIPE, text=True,
-                              stdin=subprocess.DEVNULL, env=TCW_ENV)
+                              stdin=subprocess.DEVNULL, env=env)
     elapsed = time.monotonic() - started
 
     result = {}
@@ -204,7 +259,8 @@ def run_one(case: dict, arm: str, out: Path) -> dict:
         "stage_items": manifest["stage_items"],
         "qa_scenarios": manifest.get("qa_scenarios", []),
         "plugin_version": (init.get("plugins") or [{}])[0].get("version"),
-        "isolation_problems": check_isolation(case, arm, init),
+        "tcw": tcw,
+        "isolation_problems": check_isolation(case, arm, init, tcw),
     }
     (out / "timing.json").write_text(json.dumps(entry, indent=1) + "\n")
     if proc.stderr:
@@ -287,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"isolation map: {len(isolation_map())} plugin keys, all false")
         for key in isolation_map():
             print(f"  {key}: false")
+        found = spawned_tcw(agent_env(), REPO.parent)
+        print(f"agent's tcw: {found['path']}, imports from "
+              f"{found['imports_from']}"
+              + ("" if found["imports_from"] == str(REPO)
+                 else "  <- NOT this checkout"))
         for case in chosen:
             for arm in case["arms"]:
                 out = out_root / case["id"] / arm

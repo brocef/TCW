@@ -115,11 +115,19 @@ python -m evals.run_evals --axis a                     # spend money
 python -m evals.grade eval-runs/iteration-1            # read the result
 ```
 
-**`--plugin-dir` is not optional, and the runner passes it for you.** Enabling
+**The runner pins both the plugin and the `tcw` command to this checkout.**
+`--plugin-dir` is not optional, and the runner passes it for you: enabling
 `tcw@tcw` instead loads `~/.claude/plugins/marketplaces/tcw`, which is a
 different commit from your working tree and auto-updates, so a run would measure
-the published plugin rather than your changes. The runner asserts this from the
-spawned session's own `init` event and fails the run if anything else loaded.
+the published plugin rather than your changes. The same goes for the `tcw` the
+agent runs: the first one on PATH is usually an installed release, whose stage
+prompts are not the ones under test, so the runner puts its own Python's folder
+first on the agent's PATH. Run the harness with a Python that has this checkout
+installed (`pip install -e .`), or that folder holds no `tcw` of yours. The
+runner records which plugin the spawned session loaded (from its own `init`
+event) and where its `tcw` imports from in each run's `timing.json`, as
+`isolation_problems` when either is not this checkout; `evals.grade` prints them
+and exits non-zero for any run that has one.
 
 Two rules for anyone changing the harness. Every assertion is mutation-checked
 before it is trusted — break what it claims to observe, confirm it goes red, and

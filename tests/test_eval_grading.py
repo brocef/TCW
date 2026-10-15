@@ -227,6 +227,14 @@ def test_decided_by_must_be_in_the_front_matter_and_name_the_person(
     # Only in the front matter is not a line of the round.
     ("---\nverdict: accepted\njudges: 1\nnote: QA-1 QA-2 QA-3\n---\n\nAll good.\n",
      False),
+    # One line naming them all is not a line per scenario.
+    ("---\nverdict: accepted\njudges: 1\n---\n\nQA-1, QA-2 and QA-3 passed.\n",
+     False),
+    # Two on one line leaves those two without a line of their own.
+    (GOOD_QA.replace("- QA-2: passed. The last line read `TOTAL 0`.\n", "")
+     .replace("- QA-1: passed.", "- QA-1 and QA-2: passed."), False),
+    # A summary line as well as one line each is fine.
+    (GOOD_QA + "\nAll of QA-1, QA-2 and QA-3 passed.\n", True),
 ])
 def test_every_scenario_must_have_a_line(control, text, passes):
     root, manifest = control
@@ -501,23 +509,80 @@ def test_tool_input_absent_fails_when_there_are_no_tool_calls_at_all():
     assert "no tool calls found" in verdict["evidence"]
 
 
-def _bash(command):
+def _bash(command, id="b"):
     return {"type": "assistant", "message": {"content": [
-        {"type": "tool_use", "id": "b", "name": "Bash",
+        {"type": "tool_use", "id": id, "name": "Bash",
          "input": {"command": command}}]}}
+
+
+def _result(content, id="b", error=False):
+    return {"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": id, "content": content,
+         **({"is_error": True} if error else {})}]}}
+
+
+PROMPT_OUT = f"{grade.PROMPT_HEADER} `tcw work advance x --dry-run` ...\n# Stage: spec\n"
 
 
 def test_reading_a_stage_prompt_counts_only_when_the_agent_ran_it():
     """Axis A's first assertion. A skill that only shows the command, or the
-    agent saying it would run it, is not running it."""
-    assertion = {"text": "tcw work stage prompt spec"}
+    agent saying it would run it, is not running it; and running it counts
+    only when it succeeded and showed the stage's text."""
+    assertion = {"stage": "spec"}
     said = {"events": [{"type": "assistant", "message": {"content": [
         {"type": "text", "text": "I will run tcw work stage prompt spec x"}]}}]}
-    assert not grade.p_tool_input_contains(said, **assertion)["passed"]
-    other = {"events": [_bash("tcw work stage prompt plan demo-app/x")]}
-    assert not grade.p_tool_input_contains(other, **assertion)["passed"]
-    ran = {"events": [_bash("tcw work stage prompt spec demo-app/x")]}
-    assert grade.p_tool_input_contains(ran, **assertion)["passed"]
+    assert not grade.p_ran_stage_prompt(said, **assertion)["passed"]
+    other = {"events": [_bash("tcw work stage prompt plan demo-app/x"),
+                        _result(PROMPT_OUT)]}
+    assert not grade.p_ran_stage_prompt(other, **assertion)["passed"]
+    no_result = {"events": [_bash("tcw work stage prompt spec demo-app/x")]}
+    assert not grade.p_ran_stage_prompt(no_result, **assertion)["passed"]
+    failed = {"events": [_bash("tcw work stage prompt spec demo-app/x"),
+                         _result("Exit code 4\nno such work item", error=True)]}
+    verdict = grade.p_ran_stage_prompt(failed, **assertion)
+    assert not verdict["passed"] and "failed" in verdict["evidence"]
+    headless = {"events": [_bash("tcw work stage prompt spec demo-app/x"),
+                           _result("something else entirely")]}
+    assert not grade.p_ran_stage_prompt(headless, **assertion)["passed"]
+    ran = {"events": [_bash("tcw work stage prompt spec demo-app/x"),
+                      _result(PROMPT_OUT)]}
+    assert grade.p_ran_stage_prompt(ran, **assertion)["passed"]
+    # A failed try followed by a good one passes; the result is matched by id.
+    retried = {"events": [_bash("tcw work stage prompt spec x", id="1"),
+                          _result("Exit code 4", id="1", error=True),
+                          _bash("tcw work stage prompt spec demo-app/x", id="2"),
+                          _result([{"type": "text", "text": PROMPT_OUT}], id="2")]}
+    assert grade.p_ran_stage_prompt(retried, **assertion)["passed"]
+
+
+@pytest.mark.parametrize("content, error, passes", [
+    ("(Bash completed with no output)", False, True),
+    ("", False, True),
+    (PROMPT_OUT, False, False),
+    ("Exit code 1\nunknown stage", True, False),
+])
+def test_a_silenced_stage_prompt_must_succeed_and_print_nothing(content, error,
+                                                                passes):
+    run = {"events": [_bash("tcw work stage prompt postmortem demo-app/x"),
+                      _result(content, error=error)]}
+    verdict = grade.p_ran_stage_prompt(run, stage="postmortem", empty=True)
+    assert verdict["passed"] is passes, verdict["evidence"]
+
+
+def test_every_axis_a_case_checks_the_stage_prompt_ran():
+    """A1-A7 each assert `ran_stage_prompt` for their own stage, and A5's
+    customized arm asks for the silenced, empty form."""
+    for case in (c for c in EVALS["cases"] if c["axis"] == "A"):
+        found = [a for a in case["assertions"]
+                 if a.get("predicate") == "ran_stage_prompt"]
+        assert found and all(a["args"]["stage"] == case["stage"] for a in found)
+        assert not [a for a in case["assertions"]
+                    if a.get("predicate") == "tool_input_contains"
+                    and "stage prompt" in a["args"].get("text", "")], case["id"]
+    a5 = next(c for c in EVALS["cases"] if c["id"] == "A5")
+    by_arm = {a["arm"]: a["args"].get("empty", False) for a in a5["assertions"]
+              if a.get("predicate") == "ran_stage_prompt"}
+    assert by_arm == {"customized": True, "control": False}
 
 
 # --- the routing assertions the cases actually carry ----------------------
@@ -543,8 +608,9 @@ CASE_ROUTING = [
     ("B12", "tool_input_absent", CONFIGURE_DOCS, SETUP_PROJECT),
     ("B4", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
     ("B8", "tool_input_absent", SETUP_PROJECT, TAXONOMY_SKILL),
-    # B13 carries a second `tool_input_contains` (for the inbox), so its row
-    # names which assertion it pins by that assertion's search text.
+    # B13 carries a second `tool_input_contains` (for `tcw work list`, the
+    # board search that finds the inbox-stage item), so its row names which
+    # assertion it pins by that assertion's search text.
     ("B13", "tool_input_contains", WORK_SKILL, CREATE_SKILL, "work-create"),
 ]
 
@@ -593,8 +659,30 @@ def _run_dir(tmp_path, case, arm, root, manifest, events):
     return grade.grade_run(run_dir)
 
 
+def test_b13_board_search_passes_a_run_that_lists_the_board():
+    """In 3.0 an arrival is an inbox-stage item, found with `tcw work list`;
+    a correct run need never type the word "inbox"."""
+    assertion = _case_routing_assertion("B13", "tool_input_contains",
+                                        "tcw work list")
+    fn = grade.PREDICATES["tool_input_contains"]
+    assert fn({"events": [_bash("tcw work list --json")]},
+              **assertion["args"])["passed"]
+    assert not fn(_run_that_reads("/p/docs/work/inbox/x.md"),
+                  **assertion["args"])["passed"]
+
+
+def test_b3_needs_the_move_to_have_been_made_with_advance():
+    """Without it, an item edited into review some other way would pass."""
+    assertion = _case_routing_assertion("B3", "tool_input_contains")
+    fn = grade.PREDICATES["tool_input_contains"]
+    assert fn({"events": [_bash("tcw work advance demo-app/x")]},
+              **assertion["args"])["passed"]
+    assert not fn({"events": [_bash("mv a b")]}, **assertion["args"])["passed"]
+
+
 def _ran_qa_prompt(manifest):
-    return [_bash(f"tcw work stage prompt qa {manifest['items']['qa']}")]
+    return [_bash(f"tcw work stage prompt qa {manifest['items']['qa']}"),
+            _result(f"{grade.PROMPT_HEADER}\n# Stage: qa\n")]
 
 
 def test_a7_passes_a_round_recording_the_person_s_decision(customized, tmp_path):
@@ -643,7 +731,33 @@ def test_a6_fails_without_having_run_the_stage_prompt(control, tmp_path):
     report = _run_dir(tmp_path, "A6", "control", root, manifest,
                       [_bash("cat docs/work/x/qa/round-1.md")])
     failed = [a["predicate"] for a in report["assertions"] if a["passed"] is False]
-    assert failed == ["tool_input_contains"]
+    assert failed == ["ran_stage_prompt"]
+
+
+def test_a6_fails_when_the_stage_prompt_command_failed(control, tmp_path):
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    events = [_bash(f"tcw work stage prompt qa {manifest['items']['qa']}"),
+              _result("Exit code 2\nusage: tcw work stage prompt", error=True)]
+    report = _run_dir(tmp_path, "A6", "control", root, manifest, events)
+    failed = [a["predicate"] for a in report["assertions"] if a["passed"] is False]
+    assert failed == ["ran_stage_prompt"]
+
+
+def test_grade_exits_non_zero_for_a_run_with_an_isolation_problem(
+        control, tmp_path, capsys):
+    """A run that measured another `tcw` or plugin fails however its
+    assertions came out."""
+    root, manifest = control
+    _qa_round(root, manifest, GOOD_QA)
+    _run_dir(tmp_path, "A6", "control", root, manifest, _ran_qa_prompt(manifest))
+    timing_path = tmp_path / "run-A6-control" / "timing.json"
+    assert grade.main([str(tmp_path / "run-A6-control")]) == 0
+    timing = json.loads(timing_path.read_text())
+    timing["isolation_problems"] = ["the agent's `tcw` imports from /elsewhere"]
+    timing_path.write_text(json.dumps(timing))
+    assert grade.main([str(tmp_path / "run-A6-control")]) == 1
+    assert "ISOLATION the agent's `tcw`" in capsys.readouterr().out
 
 
 def test_an_arm_scoped_assertion_is_skipped_on_the_other_arm(control, tmp_path):

@@ -38,14 +38,22 @@ class Verdict:
 _INVALID = Verdict(INVALID, None)
 
 
-def _front_matter(text: str) -> object:
+def split_front_matter(text: str) -> tuple[str | None, str]:
+    """A document's front matter text, None when it has none, and the body
+    below it. Front matter is a first line `---` closed by the next `---`."""
     lines = text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None
-    for end, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
-            return yaml.safe_load("\n".join(lines[1:end]))
-    return None
+    if lines and lines[0].strip() == "---":
+        for end, line in enumerate(lines[1:], start=1):
+            if line.strip() == "---":
+                return "\n".join(lines[1:end]), "\n".join(lines[end + 1:])
+    return None, "\n".join(lines)
+
+
+def front_matter(text: str) -> object:
+    """A document's front matter, parsed; None when it has none. Raises
+    `yaml.YAMLError` when it does not parse."""
+    meta, _ = split_front_matter(text)
+    return None if meta is None else yaml.safe_load(meta)
 
 
 def round_verdict(path: Path) -> Verdict:
@@ -53,7 +61,7 @@ def round_verdict(path: Path) -> Verdict:
     that is not exactly `verdict: accepted|rejected` and a non-negative
     whole-number `judges`."""
     try:
-        meta = _front_matter(path.read_text(encoding="utf-8"))
+        meta = front_matter(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
         return _INVALID
     if not isinstance(meta, dict):

@@ -17,7 +17,7 @@ import pytest
 
 from tcw.cli import build_parser
 from tcw.store.base import PROCEDURE_IDS
-from tcw.work.layout import _front_matter
+from tcw.work.layout import front_matter
 from tcw.work.model import STAGES
 from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
                                   REMOVED_FLAGS, REMOVED_FORMS)
@@ -179,7 +179,7 @@ def _granted_tools(doc: Path, key: str) -> list[str]:
     """Every tool a skill's `allowed-tools` or an agent's `tools` grants, read
     from parsed front matter, so a YAML list spread over several lines counts
     as much as a one-line comma-separated string."""
-    meta = _front_matter(doc.read_text(encoding="utf-8"))
+    meta = front_matter(doc.read_text(encoding="utf-8"))
     assert isinstance(meta, dict), f"{_rel(doc)} has no front matter"
     value = meta.get(key) or []
     if isinstance(value, str):

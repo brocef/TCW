@@ -220,6 +220,62 @@ def test_a_baseline_arm_with_no_plugins_is_clean():
                                      {"plugins": []}) == []
 
 
+# --- the agent's `tcw` ----------------------------------------------------
+
+def test_the_agent_finds_this_interpreters_tcw_first(monkeypatch):
+    """Otherwise the agent runs whichever `tcw` is first on the user's PATH,
+    usually an installed release, and axis A measures its prompts."""
+    import os
+    import sys
+    from pathlib import Path
+    monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
+    monkeypatch.setattr(run_evals, "TCW_ENV", dict(os.environ))
+    path = run_evals.agent_env()["PATH"].split(os.pathsep)
+    assert path[0] == str(Path(sys.executable).parent)
+    assert path[1:] == ["/usr/bin", "/bin"]
+
+
+def test_the_spawned_tcw_is_traced_to_its_source_tree(tmp_path):
+    """Run through the same PATH the agent gets, from a folder with no `tcw/`
+    of its own, the `tcw` this suite runs under imports from this checkout."""
+    found = run_evals.spawned_tcw(run_evals.agent_env(), tmp_path)
+    assert found["path"] is not None
+    assert found["imports_from"] == str(run_evals.REPO)
+
+
+def test_a_tcw_from_elsewhere_is_an_isolation_problem(tmp_path):
+    """A `tcw` whose interpreter imports another tree is reported."""
+    import os
+    other = tmp_path / "other"
+    (other / "tcw").mkdir(parents=True)
+    (other / "tcw" / "__init__.py").write_text("")
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    script = bin_ / "tcw"
+    import sys
+    script.write_text(f"#!{sys.executable}\n")
+    script.chmod(0o755)
+    env = {"PATH": str(bin_), "PYTHONPATH": str(other)}
+    found = run_evals.spawned_tcw(env, tmp_path)
+    assert found == {"path": str(script), "imports_from": str(other)}
+    problems = run_evals.check_isolation(
+        {"axis": "A"}, "customized", _init([str(run_evals.REPO)]), found)
+    assert problems and "not this checkout" in problems[0]
+
+
+def test_no_tcw_on_path_is_an_isolation_problem(tmp_path):
+    found = run_evals.spawned_tcw({"PATH": str(tmp_path)}, tmp_path)
+    assert found == {"path": None, "imports_from": None}
+    assert run_evals.check_isolation(
+        {"axis": "A"}, "customized", _init([str(run_evals.REPO)]), found)
+
+
+def test_this_checkouts_tcw_is_clean():
+    assert run_evals.check_isolation(
+        {"axis": "A"}, "customized", _init([str(run_evals.REPO)]),
+        {"path": "/x/bin/tcw", "imports_from": str(run_evals.REPO)}) == []
+
+
 # --- aggregation ----------------------------------------------------------
 
 def _entry(**kw):
@@ -332,6 +388,8 @@ def test_a_run_records_what_grading_reads_and_hides_personal_config(
 
     monkeypatch.setattr(run_evals, "seed", fake_seed)
     monkeypatch.setattr(run_evals.subprocess, "run", fake_run)
+    traced = {"path": "/x/bin/tcw", "imports_from": "/somewhere/else"}
+    monkeypatch.setattr(run_evals, "spawned_tcw", lambda env, cwd: traced)
     case = {"id": "A6", "axis": "A", "stage": "qa", "item": "qa",
             "prompt": "Work the qa stage for {item}.", "arms": ["control"],
             "assertions": []}
@@ -345,3 +403,10 @@ def test_a_run_records_what_grading_reads_and_hides_personal_config(
     assert timing["items"] == manifest["items"]
     assert timing["qa_scenarios"] == ["QA-1"]
     assert timing["seeded_head"] == "abc123"
+    import os
+    import sys
+    from pathlib import Path
+    assert spawned["env"]["PATH"].split(os.pathsep)[0] == \
+        str(Path(sys.executable).parent)
+    assert timing["tcw"] == traced
+    assert any("not this checkout" in p for p in timing["isolation_problems"])
