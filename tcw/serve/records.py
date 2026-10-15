@@ -13,7 +13,8 @@ from typing import Any
 
 from tcw.findings import Finding
 from tcw.refs import resolve_tcw_ref
-from tcw.serve.server import Request, not_found, route, usage
+from tcw.serve.server import Request, not_found, read_only, route, usage
+from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
 
@@ -111,14 +112,38 @@ def update_term(request: Request):
     revision = request.field("revision", required=False)
     if revision is not None:
         changes["core_revision"] = revision
+    store = _taxonomy(request)
+    found = store.get(request.param(1))
+    if found is not None and found.origin != "local":
+        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
+                        f"change it there, or override it with the CLI")
     with request.lock:
-        detail = _taxonomy(request).update_term(request.param(1), **changes)
+        detail = store.update_term(request.param(1), **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,
                                   ValidationTarget("taxonomy", detail.term.slug))
 
 
 # -- capabilities ----------------------------------------------------------------------
+
+
+def _subjects_are_vocabulary(request: Request, fields: dict) -> None:
+    """A capability's `Subject` names vocabulary entries, inherited ones
+    included. The store refuses a Subject that names nothing, and every other
+    reference field that does not resolve; it accepts a Subject naming a
+    Feature, which the viewer refuses as it offers only vocabulary."""
+    subjects = fields.get("Subject")
+    if not subjects:
+        return
+    taxonomy = _taxonomy(request)
+    for ref in subjects if isinstance(subjects, list) else str(subjects).split(","):
+        ref = str(ref).strip()
+        try:
+            term = taxonomy.get(ref)
+        except AmbiguousRef:
+            continue                    # the store's own message names it
+        if term is not None and term.kind != "Vocabulary":
+            raise usage(f"Subject: {ref} is a {term.kind}, not a vocabulary entry")
 
 
 def list_capabilities(request: Request):
@@ -138,11 +163,14 @@ def create_capability(request: Request):
     path = request.field("path", required=False, default="")
     if not path:
         raise usage("path is required")
+    fields = request.field("fields", dict, required=False)
+    if fields:
+        _subjects_are_vocabulary(request, fields)
     with request.lock:
         store.add(path, name=request.field("name", required=False) or None,
                   status=request.field("status", required=False, default="Missing"),
                   body=request.field("body", required=False, default=""),
-                  fields=request.field("fields", dict, required=False))
+                  fields=fields)
         detail = store.get_capability_detail(path)
     response = {"capability": jsonable(detail.capability),
                 "coreRevision": detail.core_revision}
@@ -160,8 +188,15 @@ def update_capability(request: Request):
     revision = request.field("revision", required=False)
     if revision is not None:
         changes["core_revision"] = revision
+    store = _capabilities(request)
+    found = store.get(request.param(1))
+    if found is not None and found.origin != "local":
+        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
+                        f"override it with `tcw capabilities override`")
+    if fields:
+        _subjects_are_vocabulary(request, fields)
     with request.lock:
-        detail = _capabilities(request).update_capability(request.param(1), **changes)
+        detail = store.update_capability(request.param(1), **changes)
     response = {"capability": jsonable(detail.capability),
                 "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,

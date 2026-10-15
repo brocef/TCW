@@ -235,3 +235,153 @@ def test_the_configuration_is_read_again_while_serving(records_root, monkeypatch
     assert main(["serve", "--no-open"]) == 0
     assert "work.hooks.timeout" not in seen[0]
     assert "work.hooks.timeout" in seen[1], seen
+
+
+# -- refused values (Design 9's table, the server half of criterion 12) ------------------------
+#
+# One case per field the table refuses. Where the store already refuses, its
+# message is the answer; the viewer adds only what the store accepts.
+
+
+@pytest.fixture
+def refusing(records_root, serve_project):
+    """The records project with a Feature, a role and a condition."""
+    FsTaxonomyStore.open(records_root).add("Search", slug="search", kind="Feature",
+                                           vocabulary=["work-item"])
+    FsCapabilitiesStore.open(records_root).add("roles/admin", "Admin", status="Supported")
+    FsCapabilitiesStore.open(records_root).add("conditions/offline", "Offline",
+                                               status="Supported")
+    return serve_project(records_root)
+
+
+def term_patch(served, ref, fields):
+    revision = detail(served, "taxonomy", ref)["coreRevision"]
+    return served.patch(f"/api/taxonomy/{ref}", {"fields": fields, "revision": revision})
+
+
+def capability_patch(served, ref, fields):
+    revision = detail(served, "capabilities", ref)["coreRevision"]
+    return served.patch(f"/api/capabilities/{ref}", {"fields": fields,
+                                                      "revision": revision})
+
+
+@pytest.mark.parametrize(("name", "body"), [
+    ("parent", {"name": "Child", "slug": "child", "parent": "no-such-term"}),
+    ("vocabulary", {"name": "F", "slug": "f", "kind": "Feature",
+                    "vocabulary": ["no-such-term"]}),
+    ("vocabulary", {"name": "F", "slug": "f", "kind": "Feature",
+                    "vocabulary": ["search"]}),
+    ("kind", {"name": "K", "slug": "k", "kind": "Gadget"}),
+])
+def test_a_refused_term_value_creates_nothing(refusing, name, body):
+    answer = refusing.post("/api/taxonomy", body)
+    assert_error(answer, 400, "usage")
+    assert not (refusing.root / "docs" / "taxonomy" / body["slug"]).exists()
+
+
+@pytest.mark.parametrize("fields", [
+    {"relatesTo": ["no-such-term"]},
+    {"kind": "Feature", "vocabulary": ["search"]},
+])
+def test_a_refused_term_edit_is_400(refusing, fields):
+    assert_error(term_patch(refusing, "admin", fields), 400, "usage")
+
+
+@pytest.mark.parametrize("fields", [
+    {"Feature": "work-item"}, {"Feature": "no-such-term"},
+    {"Subject": ["search"]}, {"Subject": ["no-such-term"]},
+    {"Roles": ["admin"]}, {"Roles": ["roles/nobody"]},
+    {"When": ["offline"]}, {"When": ["conditions/never"]},
+    {"Blocked by": "no/such/capability"}, {"Superseded by": "no/such/capability"},
+    {"Status": "Sideways"},
+])
+def test_a_refused_capability_value_is_400_and_writes_nothing(refusing, fields):
+    meta = refusing.root / "docs" / "capabilities" / "web" / "meta.yaml"
+    before = meta.read_text()
+    assert_error(capability_patch(refusing, "web", fields), 400, "usage")
+    assert meta.read_text() == before
+    created = refusing.post("/api/capabilities", {"path": "fresh", "name": "Fresh",
+                                                  "fields": fields})
+    assert_error(created, 400, "usage")
+    assert not (refusing.root / "docs" / "capabilities" / "fresh").exists()
+
+
+def test_negation_is_accepted_on_roles_and_when(refusing):
+    answer = capability_patch(refusing, "web", {"Roles": ["!roles/admin"],
+                                                "When": ["!conditions/offline"]})
+    assert answer.status == 200, answer.body
+    fields = answer.json["capability"]["fields"]
+    assert (fields["Roles"], fields["When"]) == (["!roles/admin"], ["!conditions/offline"])
+
+
+def test_accepted_reference_values(refusing):
+    answer = capability_patch(refusing, "web", {
+        "Feature": "search", "Subject": ["work-item"], "Blocked by": "roles/admin"})
+    assert answer.status == 200, answer.body
+
+
+# -- inherited entries and other projects (criterion 13) -----------------------------------------
+
+
+@pytest.fixture
+def inheriting(tmp_path, serve_project):
+    """`child` extends `base`'s taxonomy and capabilities."""
+    from tcw.store.fs import init
+    from tests.work.projects import connect, git
+    roots = {}
+    for name in ("base", "child"):
+        root = tmp_path / name
+        root.mkdir()
+        git(root, "init", "-q")
+        init(["taxonomy", "capabilities", "work"], root, name)
+        roots[name] = root
+    connect(roots["child"], roots["base"], "children")
+    connect(roots["base"], roots["child"], "parent")
+    FsTaxonomyStore.open(roots["base"]).add("Shared", slug="shared")
+    FsCapabilitiesStore.open(roots["base"]).add("shared-cap", "Shared", status="Supported")
+    FsTaxonomyStore.open(roots["child"]).extends_add("base")
+    FsCapabilitiesStore.open(roots["child"]).extends_add("base")
+    return serve_project(roots["child"])
+
+
+def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inheriting):
+    listed = {c["path"]: c for c in inheriting.get("/api/capabilities").json}
+    assert listed["shared-cap"]["origin"] == "base"
+    meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
+        "meta.yaml"
+    before = meta.read_text()
+    answer = inheriting.patch("/api/capabilities/shared-cap",
+                              {"fields": {"Status": "Partial", "Gaps": "x"}})
+    assert_error(answer, 403, "read-only")
+    assert meta.read_text() == before
+    assert not (inheriting.root / "docs" / "capabilities" / "shared-cap").exists()
+
+
+def test_an_inherited_term_is_read_only(inheriting):
+    listed = {t["slug"]: t for t in inheriting.get("/api/taxonomy").json}
+    assert listed["shared"]["origin"] == "base"
+    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"}})
+    assert_error(answer, 403, "read-only")
+
+
+def test_an_inherited_capability_can_be_named_in_a_reference(inheriting):
+    from tcw.store.fs import FsCapabilitiesStore
+    FsCapabilitiesStore.open(inheriting.root).add("local", "Local", status="Missing")
+    answer = capability_patch(inheriting, "local", {"Blocked by": "shared-cap"})
+    assert answer.status == 200, answer.body
+
+
+def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
+                                                         serve_project, tcw):
+    from tests.serve.conftest import fs_project
+    from tests.serve.test_work_read import new
+    from tests.work.projects import commit_all, connect, make_project
+    root = fs_project(tmp_path)
+    other = make_project(tmp_path, "q")
+    connect(root, other, "children")
+    connect(other, root, "parent")
+    folder = new(tcw, other, "Theirs")
+    commit_all(other)
+    found = resolve(serve_project(root), [f"tcw://q/W/{folder}"])
+    assert found[f"tcw://q/W/{folder}"] == {"ok": False, "reason": "other-project",
+                                            "project": "q"}
