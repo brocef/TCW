@@ -559,9 +559,137 @@ gave it.
 `exit 0`, and in Jira mode `tcw validate --remote; echo "exit $?"` ends with
 `exit 0` too.
 
-### Step 12: Review agent instructions and memories
+### Step 12: Revisit agent instructions and memories
 
-_Written in Task A6._
+Agents are told how to use TCW in many places besides the project's own
+documents: instruction files, skills, commands, harness settings, and the
+memories a harness saves between sessions. Each can still tell an agent to run
+a 2.x command or look in a status folder, and nothing in steps 0 to 11 reads
+them. This step finds every such passage, asks the user once what to do with
+all of them, and does only what the user approves.
+
+The commands here are for `bash`. Run them from the project's root.
+
+**Where to look.** Three groups, whichever of them exist:
+
+- **The project:**
+  - `CLAUDE.md` and `AGENTS.md`, and every file they link to or import (a line
+    of `CLAUDE.md` that is `@` followed by a path imports that file);
+  - `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.codex/` and
+    `.agents/skills/`;
+  - the `hooks` and `permissions.allow` entries of `.claude/settings.json` and
+    `.claude/settings.local.json`;
+  - the prompt and procedure files the 2.x configuration bound (step 1's
+    `<hook files>` list names them).
+- **The user's own files:** `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+  `~/.claude/skills/`, `~/.claude/commands/`, `~/.claude/agents/`,
+  `~/.codex/skills/`, `~/.agents/skills/`, `~/.codex/prompts/`,
+  `~/.claude/settings.json` and `~/.codex/rules/`.
+- **Saved memories:** `~/.codex/memories/`, and the `memory/` folder (with its
+  index, `MEMORY.md`) of every Claude Code project folder under
+  `~/.claude/projects/` that belongs to this project. Those folders are found
+  by what their session records say, not by how they are named: a record that
+  starts in one of the project's checkouts says so in a `"cwd"` field, and
+  every checkout is a path `git worktree list --porcelain` prints.
+
+**A run made in a worktree** also searches the primary checkout's untracked
+per-user files, such as `.claude/settings.local.json`, by the primary
+checkout's absolute path: a worktree holds only the files git tracks, so the
+ones each person keeps for themselves exist only in the primary checkout.
+`git -C <primary checkout> status --ignored --porcelain -- .claude .codex`
+lists them.
+
+**Files outside the repository** are the person running the migration's own.
+Every other contributor repeats this step for their own files after the
+migration lands.
+
+Build the list of places:
+
+```sh
+PRIMARY=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+PLACES=()
+for p in CLAUDE.md AGENTS.md .claude/skills .claude/commands .claude/agents .codex .agents/skills \
+         .claude/settings.json .claude/settings.local.json \
+         ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.claude/skills ~/.claude/commands ~/.claude/agents \
+         ~/.codex/skills ~/.agents/skills ~/.codex/prompts ~/.claude/settings.json ~/.codex/rules \
+         ~/.codex/memories; do
+  [ -e "$p" ] && PLACES+=("$p")
+done
+# Each file CLAUDE.md and AGENTS.md link to or import, and each bound prompt
+# and procedure file, added by hand:
+#   PLACES+=(docs/lifecycle/implementation.md)
+# The primary checkout's own files, when this is a worktree:
+if [ "$PRIMARY" != "$(pwd -P)" ]; then
+  while read -r _ f; do PLACES+=("$PRIMARY/$f"); done \
+    < <(git -C "$PRIMARY" status --ignored --porcelain -- .claude .codex)
+fi
+# The Claude Code memory folders of every checkout:
+while read -r d; do PLACES+=("$d"); done < <(
+  git worktree list --porcelain | sed -n 's/^worktree //p' | while read -r path; do
+    find ~/.claude/projects -mindepth 2 -maxdepth 2 -name '*.jsonl' \
+      -exec grep -lF -e "\"cwd\":\"$path\"" -e "\"cwd\":\"$path/" {} +
+  done | while read -r t; do d=$(dirname "$t")/memory; [ -d "$d" ] && echo "$d"; done | sort -u)
+printf '%s\n' "${PLACES[@]}"
+```
+
+**What to look for**: every name in the first column of the tables in
+[What each 2.x name becomes](#what-each-2x-name-becomes), including the status
+folders with `inbox/`, `state.yaml`, `dod.yaml` and `--worktree`; the bare 2.x
+verbs (start, submit, rework, complete, drop, claim) and stage names (verify);
+and text that relies on automatic commits, publishing or retention, which a
+memory often describes without naming a command ("TCW commits each move, so
+there is no need to commit").
+
+The searches use two lists of `grep -E` alternatives. `NAMES` holds names that
+mean 2.x wherever they appear; `WORDS` holds ordinary words that may mean 2.x,
+matched as whole words:
+
+```sh
+NAMES='state\.yaml|tracker\.yaml|blocked_by|graveyard\.yaml|dod\.yaml|renames\.yaml|intake\.md|initial-request\.md|spec\.md|plan\.md|outcome\.md|refined-outcome\.md|rework\.md|post-mortem|rollup\.md|inbox/|backlog/|active/|review/|blocked/|completed/|discarded/|work\.tracker|work\.lifecycle|work\.retain|auto-commit-transitions|publish-transitions|trunk-branch|builtin: true|auto-delete|status-synced|catch-up|unlinked|TCW_SLUG|TCW_STATUS|TCW_TRANSITION|TCW_NODE_ROOT|TCW_RESOLUTION|TCW_WORK_OWNER|connected-projects|connected-project-registry|Planning doc:|Tracker:|tcw:body|commands-verify-work|work-stage|consolidate-plans|work (inbox|tracker|nodes|reconcile|delegate|escalate|tombstone|delete|scaffold|start|submit|rework|complete|drop)|(taxonomy|capabilities|work) (init|check)|stage (gate|validate)|provision --refresh|no-recurse|local-only|work list --status|procedure prompt'
+WORDS='start|submit|rework|complete|drop|verify|sync|claim|release|reconcile|scaffold|tombstone|escalate|delegate|nodes|backlog|wontfix|superseded|duplicate|graveyard|verifier|decompose|delegation|initiative|worktree|retain|retention|resolution|epic|auto-commit|publish|trunk'
+```
+
+**First, find the files to read**, every file in the places that names `tcw`
+or any of either list (case matters):
+
+```sh
+grep -rlsE "\btcw\b|\b($NAMES)|\b($WORDS)\b" "${PLACES[@]}"
+```
+
+**Read each printed file in full**, and judge every passage that tells an
+agent how TCW behaves, not only the lines that matched: a sentence such as
+"move the item to review when done" names nothing the search can find
+reliably. For each passage that is wrong for 3.0, propose one action:
+
+- **delete** it;
+- **rewrite** it, with the proposed text;
+- **keep** it, with the reason (it describes history, or is correct for 3.0).
+
+**Stop and ask**: one question listing every finding (the file, the passage,
+the proposed action). Change nothing before the answer, and apply only what
+the user approves. A finding the user rejects is left as it is.
+
+Then record the step in the log, under a heading `## Agent instructions`: one
+line per finding (the file and line as found, the decision, what was done),
+ending with a fenced block marked `expected-names` that holds every line the
+check's search should still print afterwards, as `<file>:<text>`: kept lines as
+they stand, and rewritten lines whose approved text still matches `NAMES`.
+Write it from the search's own output once the changes are applied, after
+reading each line in it, so that no line is in the block without having been
+judged.
+
+**Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and, with
+`LOG` set to the log's path and `PLACES`, `NAMES` and `WORDS` as above,
+
+```sh
+diff <(grep -rIsHE "\b($NAMES)" "${PLACES[@]}" | LC_ALL=C sort) \
+     <(awk '/^```expected-names$/{f=1;next} f&&/^```$/{f=0} f' "$LOG" | LC_ALL=C sort)
+```
+
+prints nothing. No line numbers are compared, so an edit above a kept line
+does not fail the check; and a rewritten line that still says `tcw` is not a
+failure, since `NAMES` does not contain it. If a configuration-bound file
+changed, `tcw validate; echo "exit $?"` ends with `exit 0`.
 
 ## Talking to Jira
 
@@ -768,7 +896,7 @@ skill's [`work.md`](../skills/configure/references/work.md) and
 
 | 2.x key | 3.0 |
 | --- | --- |
-| `work.lifecycle.stages.inbox`, `.request`, `.spec`, `.plan`, `.implement` | the same stage under `work.stages`. A stage's `pre` and `prompt` keep their names, and a stage now also takes `post`. A bare list given as the stage (the oldest shape) becomes its `prompt`, and a `command` entry in that list becomes `generate`. An empty `prompt` list, an error in 2.x, now means "print nothing" |
+| `work.lifecycle.stages.inbox`, `work.lifecycle.stages.request`, `work.lifecycle.stages.spec`, `work.lifecycle.stages.plan`, `work.lifecycle.stages.implement` | the same stage under `work.stages`. A stage's `pre` and `prompt` keep their names, and a stage now also takes `post`. A bare list given as the stage (the oldest shape) becomes its `prompt`, and a `command` entry in that list becomes `generate`. An empty `prompt` list, an error in 2.x, now means "print nothing" |
 | `work.lifecycle.stages.verify` | `work.stages.qa`. Ask the user whether its bindings also belong to `review`, the engineers' check |
 | `work.lifecycle.stages.postmortem` | `work.stages.postmortem`, with `prompt` only: a side stage takes no `pre` or `post`, so a `pre` there is removed and listed in the plan |
 | `builtin: true` | `inherit: true`, which keeps the layer below (in `tcw-config.yaml`, TCW's own text) at that position in the list. At most one per list; `builtin` written in a file is an error |
