@@ -1,5 +1,5 @@
 """The documents TCW-75 owns describe TCW 3.0, and nothing else (TCW-75 spec,
-acceptance criteria 2, 3 and 4).
+acceptance criteria 1, 2, 3, 4 and 10).
 
 "Owned documents" are the README, every guide but `web-viewer.md`, the three
 lifecycle documents, the `configure` skill, and the section of `AGENTS.md`
@@ -14,9 +14,9 @@ headed `### Working in a git worktree` (`CLAUDE.md` is a symbolic link to
   the temporary allowance in `tests/doc_allowance.py`, read with the same
   helpers TCW-74's scans use, so the two cannot read a document differently.
 
-The scans grow one document at a time: `REWRITTEN` lists the owned documents
-rewritten so far, and each document joins it in the commit that rewrites it,
-so a document is guarded from then on and the suite passes at every commit.
+The scans read every owned document, found by glob (`OWNED`), and a test pins
+that set, so a guide added later is a decision to scan it rather than an
+accident.
 """
 
 import re
@@ -33,30 +33,6 @@ REPO = Path(__file__).resolve().parent.parent
 
 AGENTS = "AGENTS.md"
 AGENTS_HEADING = "### Working in a git worktree"
-
-# The owned documents rewritten so far, by path from the repository root.
-# `AGENTS.md` stands for its worktree section only (`agents_worktree_section`).
-REWRITTEN: tuple[str, ...] = (
-    AGENTS,
-    "README.md",
-    "docs/guide/cli.md",
-    "docs/guide/configuration.md",
-    "docs/guide/jira.md",
-    "docs/guide/linking-and-validation.md",
-    "docs/guide/multi-repo.md",
-    "docs/guide/taxonomy-and-capabilities.md",
-    "docs/guide/work.md",
-    "docs/lifecycle/abstraction.md",
-    "docs/lifecycle/harness.md",
-    "docs/lifecycle/implementation.md",
-    "skills/configure/SKILL.md",
-    "skills/configure/references/docs-sync.md",
-    "skills/configure/references/jira.md",
-    "skills/configure/references/personal.md",
-    "skills/configure/references/projects.md",
-    "skills/configure/references/stores.md",
-    "skills/configure/references/work.md",
-)
 
 # Link targets that do not exist yet, each with the item that writes it.
 # TCW-76 writes the migration guide and removes this entry when it does.
@@ -80,7 +56,7 @@ def agents_worktree_section(text: str | None = None) -> str:
 
 
 def owned_text(rel: str) -> str:
-    """What the scans read for one entry of `REWRITTEN`."""
+    """What the scans read for one entry of `OWNED`."""
     if rel == AGENTS:
         return agents_worktree_section()
     return (REPO / rel).read_text(encoding="utf-8")
@@ -99,6 +75,51 @@ def owned_paths() -> set[str]:
     return found
 
 
+# The owned documents, by path from the repository root. `AGENTS.md` stands for
+# its worktree section only (`agents_worktree_section`).
+OWNED: tuple[str, ...] = tuple(sorted(owned_paths()))
+
+
+def test_the_scans_read_exactly_the_owned_documents():
+    assert set(OWNED) == {
+        AGENTS,
+        "README.md",
+        "docs/guide/cli.md",
+        "docs/guide/configuration.md",
+        "docs/guide/jira.md",
+        "docs/guide/linking-and-validation.md",
+        "docs/guide/multi-repo.md",
+        "docs/guide/taxonomy-and-capabilities.md",
+        "docs/guide/work.md",
+        "docs/lifecycle/abstraction.md",
+        "docs/lifecycle/harness.md",
+        "docs/lifecycle/implementation.md",
+        "skills/configure/SKILL.md",
+        "skills/configure/references/docs-sync.md",
+        "skills/configure/references/jira.md",
+        "skills/configure/references/personal.md",
+        "skills/configure/references/projects.md",
+        "skills/configure/references/stores.md",
+        "skills/configure/references/work.md",
+    }
+
+
+# ── criterion 10: the inventory was carried out ───────────────────────────────
+
+
+@pytest.mark.parametrize("rel", ("docs/work-inbox-template.md",
+                                 "skills/configure/references/tracker.md"))
+def test_a_retired_document_is_gone(rel):
+    assert not (REPO / rel).exists(), f"{rel} still exists"
+
+
+@pytest.mark.parametrize("rel", ("docs/guide/cli.md",
+                                 "docs/guide/examples/commit-item-after-move.sh",
+                                 "skills/configure/references/personal.md"))
+def test_a_new_document_exists(rel):
+    assert (REPO / rel).is_file(), f"{rel} is missing"
+
+
 # ── criterion 2: no 2.x vocabulary ────────────────────────────────────────────
 
 
@@ -110,7 +131,7 @@ def vocabulary_problems(rel: str, text: str) -> list[str]:
             for h in scan(text, PATTERNS)]
 
 
-@pytest.mark.parametrize("rel", REWRITTEN)
+@pytest.mark.parametrize("rel", OWNED)
 def test_no_owned_document_uses_2x_vocabulary(rel):
     problems = vocabulary_problems(rel, owned_text(rel))
     assert not problems, "2.x vocabulary:\n  " + "\n  ".join(problems)
@@ -214,7 +235,7 @@ def link_problems(rel: str, text: str) -> list[str]:
     return problems
 
 
-@pytest.mark.parametrize("rel", REWRITTEN)
+@pytest.mark.parametrize("rel", OWNED)
 def test_every_link_in_an_owned_document_resolves(rel):
     problems = link_problems(rel, owned_text(rel))
     assert not problems, "broken links:\n  " + "\n  ".join(problems)
@@ -278,7 +299,7 @@ def allowance_names(text: str) -> list[str]:
     return named
 
 
-@pytest.mark.parametrize("rel", REWRITTEN)
+@pytest.mark.parametrize("rel", OWNED)
 def test_no_owned_document_names_an_allowance_entry(rel):
     named = allowance_names(owned_text(rel))
     assert not named, f"{rel} names entries of tests/doc_allowance.py: {named}"
