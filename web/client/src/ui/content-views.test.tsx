@@ -161,6 +161,7 @@ test("a retired capability field is shown read-only and offered by no form", () 
                 errors={[]}
                 conflict={null}
                 data={{ work: [], taxonomy: [], capabilities: [] }}
+                scales={{ status: ["Supported"], priority: [], lifecycle: [] }}
                 onSave={() => undefined}
                 onCancel={() => undefined}
                 onRefreshConflict={() => undefined}

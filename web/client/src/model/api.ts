@@ -1,3 +1,4 @@
+import type { TReferenceOption } from "./reference-search"
 import type { ApiResult, TFinding, TUnavailable } from "./types"
 
 /** A GET. A failed answer throws with the server's own message, which names
@@ -85,4 +86,31 @@ export function findingLines(data: unknown): string[] {
             .filter(Boolean)
             .join(": ")
     })
+}
+
+/** Items of connected filesystem-mode projects found on this machine, for
+ * a parent or blocked-by field. */
+export async function suggestOtherItems(
+    text: string
+): Promise<TReferenceOption[]> {
+    const found = await fetchJson<
+        Array<{ slug: string; title: string; project: string }>
+    >(`/api/options/work?q=${encodeURIComponent(text)}`)
+    return found.map((item) => ({
+        identifier: item.slug,
+        displayName: `${item.title} (${item.project})`,
+    }))
+}
+
+/** The people the backend lets an item be assigned to, by display name. */
+export async function suggestAssignees(
+    text: string
+): Promise<TReferenceOption[]> {
+    const found = await fetchJson<Array<{ id: string; name: string }>>(
+        `/api/options/assignee?q=${encodeURIComponent(text)}`
+    )
+    return found.map((person) => ({
+        identifier: person.id,
+        displayName: person.name,
+    }))
 }

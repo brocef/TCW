@@ -1,4 +1,5 @@
 import {
+    useContext,
     useEffect,
     useMemo,
     useRef,
@@ -25,6 +26,8 @@ import {
 import { GearIcon } from "@radix-ui/react-icons"
 import { marked } from "marked"
 import { requestJson } from "../model/api"
+import { rankReferenceOptions, typedLink } from "../model/reference-search"
+import { LinkContext } from "./link-context"
 import type {
     Axis,
     AxisItem,
@@ -438,18 +441,110 @@ export function MarkdownEditor({
     placeholder?: string
 }) {
     const [fraction, setFraction] = useState(0.5)
+    const links = useContext(LinkContext)
+    const area = useRef<HTMLTextAreaElement>(null)
+    // The `tcw://` text just before the caret, while one is being typed.
+    const [typing, setTyping] = useState<{ text: string; end: number } | null>(
+        null
+    )
+    const [active, setActive] = useState(0)
+    const offered = useMemo(
+        () =>
+            typing
+                ? rankReferenceOptions(
+                      links,
+                      typing.text.slice("tcw://".length) || "tcw://"
+                  )
+                : [],
+        [links, typing]
+    )
+    const track = (text: string, caret: number) => {
+        const found = typedLink(text.slice(0, caret))
+        setTyping(found ? { text: found, end: caret } : null)
+        setActive(0)
+    }
+    const insert = (uri: string) => {
+        if (!typing) return
+        const start = typing.end - typing.text.length
+        const next = value.slice(0, start) + uri + value.slice(typing.end)
+        onChange(next)
+        setTyping(null)
+        const caret = start + uri.length
+        window.requestAnimationFrame(() => {
+            area.current?.focus()
+            area.current?.setSelectionRange(caret, caret)
+        })
+    }
     return (
         <div
             className="md-editor"
             style={{ "--md-split": `${fraction * 100}%` } as CSSProperties}
         >
-            <TextArea
-                className="md-input"
-                aria-label="Markdown"
-                value={value}
-                placeholder={placeholder}
-                onChange={(event) => onChange(event.target.value)}
-            />
+            <div className="md-input-wrap">
+                <TextArea
+                    ref={area}
+                    className="md-input"
+                    aria-label="Markdown"
+                    aria-autocomplete="list"
+                    aria-expanded={offered.length > 0}
+                    value={value}
+                    placeholder={placeholder}
+                    onChange={(event) => {
+                        onChange(event.target.value)
+                        track(
+                            event.target.value,
+                            event.target.selectionStart ??
+                                event.target.value.length
+                        )
+                    }}
+                    onKeyDown={(event) => {
+                        if (!offered.length) return
+                        if (event.key === "ArrowDown") {
+                            event.preventDefault()
+                            setActive((index) => (index + 1) % offered.length)
+                        } else if (event.key === "ArrowUp") {
+                            event.preventDefault()
+                            setActive(
+                                (index) =>
+                                    (index - 1 + offered.length) %
+                                    offered.length
+                            )
+                        } else if (
+                            event.key === "Enter" ||
+                            event.key === "Tab"
+                        ) {
+                            event.preventDefault()
+                            insert(offered[active].identifier)
+                        } else if (event.key === "Escape") setTyping(null)
+                    }}
+                    onBlur={() => setTyping(null)}
+                />
+                {offered.length > 0 && (
+                    <div
+                        className="reference-results"
+                        role="listbox"
+                        aria-label="Links"
+                    >
+                        {offered.map((link, index) => (
+                            <div
+                                role="option"
+                                aria-selected={index === active}
+                                className={`reference-option${index === active ? " active" : ""}`}
+                                key={link.identifier}
+                                onPointerDown={(event) => {
+                                    event.preventDefault()
+                                    insert(link.identifier)
+                                }}
+                            >
+                                <Text size="2">{link.displayName}</Text>{" "}
+                                <Text color="gray" size="1">
+                                    {link.identifier}
+                                </Text>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
             <div
                 className="md-resizer"
                 role="separator"

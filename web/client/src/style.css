@@ -380,6 +380,9 @@ p {
     gap: var(--space-3);
     min-height: 300px;
 }
+.md-input-wrap {
+    position: relative;
+}
 .md-input {
     width: 100%;
     height: 100%;
@@ -415,6 +418,10 @@ p {
 
 .reference-field {
     position: relative;
+}
+.field-refusal,
+.field-warning {
+    display: block;
 }
 .reference-results {
     position: absolute;

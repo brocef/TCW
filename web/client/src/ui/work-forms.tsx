@@ -15,6 +15,8 @@ import {
     isStaleWrite,
     isUnavailable,
     requestJson,
+    suggestAssignees,
+    suggestOtherItems,
 } from "../model/api"
 import {
     propertiesDraft,
@@ -39,6 +41,7 @@ import {
     TextInput,
 } from "./shared-components"
 import {
+    otherProjectWarning,
     referenceOptions,
     type TReferenceContext,
 } from "../model/reference-search"
@@ -205,6 +208,7 @@ export function PropertiesForm({
         }
     }
     const context = { ...references, currentIdentifier: item.slug }
+    const otherProject = (text: string) => otherProjectWarning(text, project.id)
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
             <EditorHeader
@@ -260,6 +264,7 @@ export function PropertiesForm({
                 <ReferenceInput
                     label="Tags"
                     multiple
+                    mode="refuse"
                     value={draft.tags}
                     options={project.tags.map((tag) => ({
                         identifier: tag,
@@ -276,12 +281,18 @@ export function PropertiesForm({
                 <ReferenceInput
                     label="Parent"
                     value={draft.parent}
+                    mode="warn"
+                    warning={otherProject}
+                    source={suggestOtherItems}
                     options={referenceOptions("work-parent", context)}
                     onChange={(value) => set("parent", value)}
                 />
                 <ReferenceInput
                     label="Blocked by"
                     multiple
+                    mode="warn"
+                    warning={otherProject}
+                    source={suggestOtherItems}
                     value={draft["blocked-by"]}
                     options={referenceOptions("work-blockers", {
                         ...context,
@@ -298,11 +309,13 @@ export function PropertiesForm({
  * so a refusal never leaves a link half made. An existing link is removed
  * from the other item's page, as the command line has no removal either. */
 export function BlocksForm({
+    project,
     item,
     folder,
     references,
     onSaved,
 }: {
+    project: TProject
     item: WorkItem
     folder: string
     references: TReferenceContext
@@ -343,6 +356,9 @@ export function BlocksForm({
             <ReferenceInput
                 label="Blocks (add)"
                 multiple
+                mode="warn"
+                warning={(text) => otherProjectWarning(text, project.id)}
+                source={suggestOtherItems}
                 value={targets}
                 options={referenceOptions("work-blockers", {
                     ...references,
@@ -521,6 +537,15 @@ export function NewItemForm({
         return id
     }
     const context = { ...references, currentIdentifier: undefined }
+    // In filesystem mode another project's item may be named, with a
+    // warning; in Jira mode only this project's items with an item here.
+    const crossProject = backend
+        ? { mode: "refuse" as const }
+        : {
+              mode: "warn" as const,
+              warning: (text: string) => otherProjectWarning(text, project.id),
+              source: suggestOtherItems,
+          }
     return (
         <div className={`editor-container${saving ? " saving" : ""}`}>
             <EditorHeader
@@ -584,6 +609,7 @@ export function NewItemForm({
                         <ReferenceInput
                             label="Tags"
                             multiple
+                            mode="refuse"
                             value={(props.tags as string[]) ?? []}
                             options={project.tags.map((tag) => ({
                                 identifier: tag,
@@ -594,11 +620,22 @@ export function NewItemForm({
                         <ReferenceInput
                             label="Assignee"
                             value={String(props.assignee ?? "")}
-                            options={referenceOptions("work-assignee", context)}
+                            {...(backend
+                                ? {
+                                      mode: "refuse" as const,
+                                      source: suggestAssignees,
+                                  }
+                                : { mode: "allow" as const })}
+                            options={
+                                backend
+                                    ? []
+                                    : referenceOptions("work-assignee", context)
+                            }
                             onChange={(value) => set("assignee", value)}
                         />
                         <ReferenceInput
                             label="Parent"
+                            {...crossProject}
                             value={String(props.parent ?? "")}
                             options={referenceOptions("work-parent", context)}
                             onChange={(value) => set("parent", value)}
@@ -606,6 +643,7 @@ export function NewItemForm({
                         <ReferenceInput
                             label="Blocked by"
                             multiple
+                            {...crossProject}
                             value={(props["blocked-by"] as string[]) ?? []}
                             options={referenceOptions("work-blockers", {
                                 ...context,

@@ -2,7 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
 import type { CapabilityItem, TaxonomyItem } from "../model/types"
 import { workItem } from "../test-fixtures"
-import { ItemMeta, Markdown, Tree } from "./shared-components"
+import { useState } from "react"
+import { LinkContext } from "./link-context"
+import { ItemMeta, Markdown, MarkdownEditor, Tree } from "./shared-components"
 
 const modified = "2026-07-22T18:30:00Z"
 
@@ -309,4 +311,47 @@ test("a superseded response never touches the document that replaced it", async 
     gate.b() // the current answer still applies
     await waitFor(() => expect(anchor).toHaveClass("tcw-other-project"))
     expect(anchor).toHaveAttribute("data-tcw-ref", URI)
+})
+
+test("typing tcw:// in the editor offers objects and inserts a work item's folder form", async () => {
+    let text = ""
+    function Editor() {
+        const [value, setValue] = useState("")
+        return (
+            <LinkContext.Provider
+                value={[
+                    {
+                        identifier: "tcw://W/2026-10-01-x",
+                        displayName: "The X item",
+                    },
+                    { identifier: "tcw://C/web", displayName: "Web" },
+                ]}
+            >
+                <MarkdownEditor
+                    value={value}
+                    onChange={(next) => {
+                        text = next
+                        setValue(next)
+                    }}
+                />
+            </LinkContext.Provider>
+        )
+    }
+    globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => ({}) })
+    render(
+        <ThemeProvider>
+            <Editor />
+        </ThemeProvider>
+    )
+    const area = screen.getByRole("textbox", { name: "Markdown" })
+    fireEvent.change(area, {
+        target: { value: "See tcw://x", selectionStart: 11 },
+    })
+    const listbox = screen.getByRole("listbox", { name: "Links" })
+    expect(listbox).toHaveTextContent("The X item")
+    fireEvent.keyDown(area, { key: "Enter" })
+    expect(text).toBe("See tcw://W/2026-10-01-x")
+    expect(screen.queryByRole("listbox", { name: "Links" })).toBeNull()
 })

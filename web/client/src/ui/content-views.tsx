@@ -1,3 +1,4 @@
+import { useCallback } from "react"
 import {
     Badge,
     Button,
@@ -13,6 +14,7 @@ import {
 import type { TSortDirection, TWorkSortKey } from "../model/tree"
 import { ModifiedAt } from "./modified-at"
 import {
+    pathSegments,
     referenceOptions,
     type TReferenceField,
 } from "../model/reference-search"
@@ -34,10 +36,13 @@ import type {
     TDraft as Draft,
     TEditorSession as Editor,
 } from "./ui-types"
+/** The capability fields a form offers, in order. Status, priority and
+ * lifecycle are fixed sets the project gives; the rest are references or
+ * free text. */
 const CAPABILITY_FIELDS = [
-    ["Status", ["", "Supported", "Partial", "Missing", "Blocked", "Omitted"]],
-    ["Priority", ["", "P0", "P1", "P2", "P3"]],
-    ["Lifecycle", ["", "Experimental", "Stable", "Deprecated"]],
+    ["Status", "status"],
+    ["Priority", "priority"],
+    ["Lifecycle", "lifecycle"],
     ["Feature", null],
     ["Subject", null],
     ["Roles", null],
@@ -270,6 +275,11 @@ export function DetailView({
     )
 }
 
+export type TCapabilityScales = Record<
+    "status" | "priority" | "lifecycle",
+    string[]
+>
+
 export function EditorView({
     editor,
     setDraft,
@@ -277,6 +287,7 @@ export function EditorView({
     errors,
     conflict,
     data,
+    scales,
     onSave,
     onCancel,
     onRefreshConflict,
@@ -287,6 +298,7 @@ export function EditorView({
     errors: string[]
     conflict: unknown
     data: Data
+    scales: TCapabilityScales
     onSave: () => void
     onCancel: () => void
     onRefreshConflict: () => void
@@ -323,6 +335,7 @@ export function EditorView({
                         setDraft={setDraft}
                         creating={editor.mode === "create"}
                         data={data}
+                        scales={scales}
                         current={
                             editor.mode === "core" ? editor.ref : undefined
                         }
@@ -451,6 +464,7 @@ function TaxonomyFields({
                     />
                     <ReferenceInput
                         label="Parent"
+                        mode="refuse"
                         value={String(draft.parent ?? "")}
                         options={optionsFor("taxonomy-parent", data, current)}
                         onChange={(value) => setDraft("parent", value)}
@@ -461,6 +475,7 @@ function TaxonomyFields({
                 <ReferenceInput
                     label="Relates to"
                     multiple
+                    mode="refuse"
                     value={(draft.relates_to as string[] | undefined) ?? []}
                     options={optionsFor(
                         "taxonomy-relates",
@@ -474,6 +489,7 @@ function TaxonomyFields({
             <ReferenceInput
                 label="Vocabulary"
                 multiple
+                mode="refuse"
                 value={(draft.vocabulary as string[] | undefined) ?? []}
                 options={optionsFor(
                     "taxonomy-vocabulary",
@@ -492,21 +508,36 @@ function CapabilityFields({
     setDraft,
     creating,
     data,
+    scales,
     current,
 }: {
     draft: Draft
     setDraft: (key: string, value: unknown) => void
     creating: boolean
     data: Data
+    scales: TCapabilityScales
     current?: string
 }) {
+    // One segment at a time, from the paths this project keeps; a new
+    // segment is allowed.
+    const pathSource = useCallback(
+        async (text: string) =>
+            pathSegments(
+                data.capabilities
+                    .filter((item) => (item.origin ?? "local") === "local")
+                    .map((item) => item.path),
+                text
+            ),
+        [data.capabilities]
+    )
     if (creating)
         return (
             <>
-                <TextInput
+                <ReferenceInput
                     label="Path"
                     value={String(draft.path ?? "")}
-                    placeholder="e.g. web/editing"
+                    options={[]}
+                    source={pathSource}
                     onChange={(value) => setDraft("path", value)}
                 />
                 <TextInput
@@ -517,13 +548,7 @@ function CapabilityFields({
                 <SelectInput
                     label="Status"
                     value={String(draft.status ?? "Missing")}
-                    options={[
-                        "Supported",
-                        "Partial",
-                        "Missing",
-                        "Blocked",
-                        "Omitted",
-                    ]}
+                    options={scales.status}
                     onChange={(value) => setDraft("status", value)}
                 />
             </>
@@ -536,20 +561,20 @@ function CapabilityFields({
     > = {
         Feature: { field: "capability-feature" },
         Subject: { field: "capability-subject", multiple: true },
-        Roles: { field: "capability-roles", multiple: true },
+        Roles: { field: "capability-roles", multiple: true, negated: true },
         When: { field: "capability-when", multiple: true, negated: true },
         "Blocked by": { field: "capability-blocked-by" },
         "Superseded by": { field: "capability-superseded-by" },
     }
     return (
         <>
-            {CAPABILITY_FIELDS.map(([label, selectOptions]) => {
-                if (selectOptions)
+            {CAPABILITY_FIELDS.map(([label, scale]) => {
+                if (scale)
                     return (
                         <SelectInput
                             label={label}
                             value={String(draft[label] ?? "")}
-                            options={selectOptions}
+                            options={["", ...scales[scale]]}
                             onChange={(value) => setDraft(label, value)}
                             key={label}
                         />
@@ -579,6 +604,7 @@ function CapabilityFields({
                         value={fieldValue}
                         multiple={config.multiple}
                         negated={config.negated}
+                        mode="refuse"
                         options={optionsFor(
                             config.field,
                             data,

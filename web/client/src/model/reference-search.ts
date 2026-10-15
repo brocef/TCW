@@ -138,19 +138,26 @@ export function referenceOptions(
             .filter((item) => item.kind === "Feature")
             .map((item) => option(item.qualified ?? item.slug, item.name))
     if (field === "capability-subject")
-        return taxonomy.filter((item) => !selected.has(item.identifier))
-    if (field === "capability-roles")
-        return capabilities.filter(
-            (item) =>
-                item.identifier.startsWith("roles/") &&
-                !selected.has(item.identifier)
-        )
-    if (field === "capability-when")
-        return capabilities.filter(
-            (item) =>
-                item.identifier.startsWith("conditions/") &&
-                !selected.has(item.identifier)
-        )
+        return context.taxonomy
+            .filter((item) => item.kind === "Vocabulary")
+            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .filter((item) => !selected.has(item.identifier))
+    if (field === "capability-roles" || field === "capability-when") {
+        // A role or condition is named by its path, `roles/…` or
+        // `conditions/…`, inherited ones included: the ledger resolves the
+        // bare path through `extends`.
+        const prefix = field === "capability-roles" ? "roles/" : "conditions/"
+        const seen = new Set<string>()
+        return context.capabilities
+            .filter((item) => item.path.startsWith(prefix))
+            .map((item) => option(item.path, item.name))
+            .filter((item) => {
+                if (seen.has(item.identifier) || selected.has(item.identifier))
+                    return false
+                seen.add(item.identifier)
+                return true
+            })
+    }
     return capabilities.filter(
         (item) => item.identifier !== current && !selected.has(item.identifier)
     )
@@ -211,4 +218,61 @@ export function highlightMatches(
         cursor = index + query.length
     }
     return parts
+}
+
+/** Capability paths one segment at a time: under what is typed up to its
+ * last `/`, the next segment of every existing path. A new segment is
+ * allowed; these are only what exists. */
+export function pathSegments(
+    paths: string[],
+    typed: string
+): TReferenceOption[] {
+    const prefix = typed.slice(0, typed.lastIndexOf("/") + 1)
+    const found = new Map<string, TReferenceOption>()
+    for (const path of paths) {
+        if (!path.startsWith(prefix) || path.length === prefix.length) continue
+        const segment = path.slice(prefix.length).split("/")[0]
+        const identifier = `${prefix}${segment}`
+        if (!found.has(identifier))
+            found.set(identifier, { identifier, displayName: segment })
+    }
+    return [...found.values()]
+}
+
+/** Every object a `tcw://` link can name, in the three axes, inherited
+ * entries included. A work item is named by its folder (`tcw://W/<folder>`),
+ * never by a key a backend gives it, so a link reads the same in every
+ * mode. */
+export function tcwLinkOptions(context: TReferenceContext): TReferenceOption[] {
+    const folder = (slug: string) => slug.slice(slug.lastIndexOf("/") + 1)
+    return [
+        ...context.work.map((item) =>
+            option(`tcw://W/${folder(item.slug)}`, item.title)
+        ),
+        ...context.taxonomy.map((item) =>
+            option(`tcw://T/${item.qualified ?? item.slug}`, item.name)
+        ),
+        ...context.capabilities.map((item) =>
+            option(`tcw://C/${item.qualified ?? item.path}`, item.name)
+        ),
+    ]
+}
+
+/** The `tcw://` text being typed just before the caret, or null. */
+export function typedLink(textBeforeCaret: string): string | null {
+    const found = /tcw:\/\/[^\s()[\]<>"']*$/.exec(textBeforeCaret)
+    return found ? found[0] : null
+}
+
+const SLUG = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9-]*)$/
+
+/** The warning a full slug naming another project's item carries: it is
+ * kept, but this page cannot check it. Null for anything else. */
+export function otherProjectWarning(
+    text: string,
+    projectId: string
+): string | null {
+    const found = SLUG.exec(text.trim())
+    if (!found || found[1] === projectId) return null
+    return `${text.trim()} is in project ${found[1]}, which this page does not check; make sure it exists`
 }

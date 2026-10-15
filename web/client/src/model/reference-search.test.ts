@@ -1,8 +1,13 @@
 import { describe, expect, test } from "vitest"
 import {
+    declarationField,
     highlightMatches,
+    otherProjectWarning,
+    pathSegments,
     rankReferenceOptions,
     referenceOptions,
+    tcwLinkOptions,
+    typedLink,
     type TReferenceOption,
 } from "./reference-search"
 import { workItem } from "../test-fixtures"
@@ -94,4 +99,116 @@ describe("reference search", () => {
             )
         ).toEqual(["conditions/online"])
     })
+})
+
+describe("the fields of the autocomplete table", () => {
+    const context = {
+        work: [
+            workItem("parent"),
+            workItem("child", { parent: "p/parent" }),
+            workItem("grandchild", { parent: "p/child" }),
+            workItem("other", { assignee: "acc-1" }),
+        ],
+        taxonomy: [
+            { slug: "term", name: "Term", kind: "Vocabulary" },
+            {
+                slug: "shared",
+                qualified: "base/shared",
+                name: "Shared",
+                kind: "Vocabulary",
+                origin: "base",
+            },
+            { slug: "feature", name: "Feature", kind: "Feature" },
+        ],
+        capabilities: [
+            { path: "roles/admin", name: "Admin" },
+            {
+                path: "roles/guest",
+                qualified: "base/roles/guest",
+                name: "Guest",
+                origin: "base",
+            },
+            { path: "web/editing", name: "Editing" },
+            { path: "web/reading", name: "Reading" },
+        ],
+        people: { "acc-1": "Ann" },
+        user: "acc-me",
+    }
+    const ids = (field: Parameters<typeof referenceOptions>[0], extra = {}) =>
+        referenceOptions(field, { ...context, ...extra }).map(
+            (item) => item.identifier
+        )
+
+    test("a work parent excludes the item and its descendants", () => {
+        expect(ids("work-parent", { currentIdentifier: "p/parent" })).toEqual([
+            "p/other",
+        ])
+    })
+
+    test("assignees are the names on items and the user", () => {
+        const found = referenceOptions("work-assignee", context)
+        expect(found).toEqual([
+            { identifier: "acc-1", displayName: "Ann" },
+            { identifier: "acc-me", displayName: "acc-me (me)" },
+        ])
+    })
+
+    test("a subject and a feature's vocabulary are vocabulary entries, inherited included", () => {
+        expect(ids("capability-subject")).toEqual(["term", "base/shared"])
+        expect(ids("taxonomy-vocabulary")).toEqual(["term", "base/shared"])
+        expect(ids("capability-feature")).toEqual(["feature"])
+    })
+
+    test("roles are roles capabilities by path, inherited included", () => {
+        expect(ids("capability-roles")).toEqual(["roles/admin", "roles/guest"])
+    })
+
+    test("declaration lists offer the ledger's entries", () => {
+        expect(ids(declarationField("capabilities", "changed"))).toContain(
+            "web/editing"
+        )
+        expect(ids(declarationField("taxonomy", "new"))).toContain(
+            "base/shared"
+        )
+    })
+})
+
+test("a capability path is offered one segment at a time", () => {
+    const paths = ["web/editing", "web/reading/fast", "cli/help"]
+    expect(pathSegments(paths, "").map((item) => item.identifier)).toEqual([
+        "web",
+        "cli",
+    ])
+    expect(
+        pathSegments(paths, "web/re").map((item) => item.identifier)
+    ).toEqual(["web/editing", "web/reading"])
+    expect(
+        pathSegments(paths, "web/reading/").map((item) => item.identifier)
+    ).toEqual(["web/reading/fast"])
+})
+
+test("tcw:// completion names a work item by its folder, and every axis", () => {
+    const found = tcwLinkOptions({
+        work: [workItem("2026-10-01-x", { title: "X" })],
+        taxonomy: [{ slug: "t", qualified: "base/t", name: "T" }],
+        capabilities: [{ path: "web", name: "Web" }],
+    })
+    expect(found.map((item) => item.identifier)).toEqual([
+        "tcw://W/2026-10-01-x",
+        "tcw://T/base/t",
+        "tcw://C/web",
+    ])
+})
+
+test("the link being typed is found before the caret", () => {
+    expect(typedLink("See tcw://W/20")).toBe("tcw://W/20")
+    expect(typedLink("See [x](tcw://C/we")).toBe("tcw://C/we")
+    expect(typedLink("See tcw://W/x done")).toBeNull()
+})
+
+test("another project's full slug is kept with a warning; this project's is not", () => {
+    expect(otherProjectWarning("q/2026-01-01-x", "p")).toMatch(/project q/)
+    expect(otherProjectWarning("p/2026-01-01-x", "p")).toBeNull()
+    expect(otherProjectWarning("2026-01-01-x", "p")).toBeNull()
+    expect(otherProjectWarning("not a slug", "p")).toBeNull()
 })

@@ -1,4 +1,11 @@
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import {
+    useEffect,
+    useId,
+    useMemo,
+    useRef,
+    useState,
+    type KeyboardEvent,
+} from "react"
 import { Badge, Flex, IconButton, Text, TextField } from "@radix-ui/themes"
 import {
     highlightMatches,
@@ -6,12 +13,24 @@ import {
     type TReferenceOption,
 } from "../model/reference-search"
 
+/** What happens to text that matches no suggestion: `refuse` will not
+ * commit it and says why; `warn` commits it when `warning` gives a reason
+ * to keep it, shown under the field, and refuses it otherwise; `allow`
+ * commits anything. */
+export type TReferenceMode = "refuse" | "warn" | "allow"
+
 interface TReferenceInputProps {
     label: string
     options: TReferenceOption[]
     value: string | string[]
     multiple?: boolean
+    /** A leading `!` negates a value, and is kept on it. */
     negated?: boolean
+    mode?: TReferenceMode
+    /** In `warn` mode, the warning that lets an unknown value be kept. */
+    warning?: (text: string) => string | null
+    /** Suggestions the server computes from the typed text. */
+    source?: (text: string) => Promise<TReferenceOption[]>
     onChange: (value: string | string[]) => void
 }
 
@@ -35,6 +54,9 @@ export function ReferenceInput({
     value,
     multiple = false,
     negated = false,
+    mode = "allow",
+    warning,
+    source,
     onChange,
 }: TReferenceInputProps) {
     const id = useId()
@@ -42,19 +64,67 @@ export function ReferenceInput({
     const [query, setQuery] = useState(multiple ? "" : String(value))
     const [open, setOpen] = useState(false)
     const [active, setActive] = useState(-1)
+    const [remote, setRemote] = useState<TReferenceOption[]>([])
+    const [refusal, setRefusal] = useState("")
     const input = useRef<HTMLInputElement>(null)
-    const searchQuery =
-        negated && query.startsWith("!") ? query.slice(1) : query
+    const bare = (text: string) =>
+        negated && text.startsWith("!") ? text.slice(1) : text
+    const searchQuery = bare(query)
+
+    useEffect(() => {
+        if (!source || !searchQuery.trim()) {
+            setRemote([])
+            return
+        }
+        let stale = false
+        const timer = window.setTimeout(() => {
+            source(searchQuery.trim())
+                .then((found) => {
+                    if (!stale) setRemote(found)
+                })
+                .catch(() => {
+                    if (!stale) setRemote([])
+                })
+        }, 150)
+        return () => {
+            stale = true
+            window.clearTimeout(timer)
+        }
+    }, [source, searchQuery])
+
+    const candidates = useMemo(() => {
+        const seen = new Set<string>()
+        return [...options, ...remote].filter((candidate) => {
+            if (seen.has(candidate.identifier)) return false
+            seen.add(candidate.identifier)
+            return true
+        })
+    }, [options, remote])
     const results = useMemo(
         () =>
             rankReferenceOptions(
-                options.filter(
-                    (candidate) => !values.includes(candidate.identifier)
+                candidates.filter(
+                    (candidate) =>
+                        !values.some(
+                            (chosen) => bare(chosen) === candidate.identifier
+                        )
                 ),
                 searchQuery
             ),
-        [options, searchQuery, values]
+        [candidates, searchQuery, values] // eslint-disable-line react-hooks/exhaustive-deps
     )
+    const known = (text: string) =>
+        candidates.some((candidate) => candidate.identifier === bare(text))
+    /** Why `text` cannot be committed, or "" when it can. */
+    const refused = (text: string) => {
+        if (!text || mode === "allow" || known(text)) return ""
+        if (mode === "warn" && warning?.(bare(text))) return ""
+        return `${text} is not one of the suggestions, so it is not kept.`
+    }
+    const warnings = (multiple ? values : value ? [String(value)] : [])
+        .filter((chosen) => mode === "warn" && !known(chosen))
+        .map((chosen) => warning?.(bare(chosen)))
+        .filter((note): note is string => Boolean(note))
 
     const choose = (identifier: string) => {
         const selected =
@@ -66,9 +136,25 @@ export function ReferenceInput({
             onChange(selected)
             setQuery(selected)
         }
+        setRefusal("")
         setOpen(false)
         setActive(-1)
         input.current?.focus()
+    }
+    const commitTyped = () => {
+        const raw = query.trim()
+        if (!raw) return
+        const why = refused(raw)
+        if (why) {
+            setRefusal(why)
+            return
+        }
+        setRefusal("")
+        if (multiple) {
+            if (!values.includes(raw)) onChange([...values, raw])
+            setQuery("")
+        } else onChange(raw)
+        setOpen(false)
     }
     const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
         if (event.key === "ArrowDown" && results.length) {
@@ -87,15 +173,12 @@ export function ReferenceInput({
             setOpen(false)
             setActive(-1)
         } else if (event.key === "Enter") {
-            if (active >= 0 && results[active]) {
+            if (open && active >= 0 && results[active]) {
                 event.preventDefault()
                 choose(results[active].identifier)
-            } else if (multiple && query.trim()) {
+            } else if (query.trim()) {
                 event.preventDefault()
-                const raw = query.trim()
-                if (!values.includes(raw)) onChange([...values, raw])
-                setQuery("")
-                setOpen(false)
+                commitTyped()
             }
         }
     }
@@ -136,33 +219,62 @@ export function ReferenceInput({
                 aria-autocomplete="list"
                 aria-expanded={open && results.length > 0}
                 aria-controls={`${id}-listbox`}
+                aria-invalid={refusal ? true : undefined}
                 aria-activedescendant={
                     active >= 0 ? `${id}-option-${active}` : undefined
                 }
                 value={query}
                 onFocus={() => setOpen(true)}
-                onBlur={() => setOpen(false)}
+                onBlur={() => {
+                    setOpen(false)
+                    // A single value that would be refused is not kept: the
+                    // field goes back to the value it holds, and says why.
+                    if (
+                        !multiple &&
+                        mode !== "allow" &&
+                        refused(query.trim())
+                    ) {
+                        setRefusal(refused(query.trim()))
+                        setQuery(String(value))
+                    }
+                }}
                 onChange={(event) => {
                     const next = event.target.value
-                    const search =
-                        negated && next.startsWith("!") ? next.slice(1) : next
                     setQuery(next)
                     setOpen(true)
+                    setRefusal("")
                     setActive(
-                        rankReferenceOptions(
-                            options.filter(
-                                (candidate) =>
-                                    !values.includes(candidate.identifier)
-                            ),
-                            search
-                        ).length
+                        rankReferenceOptions(candidates, bare(next)).length
                             ? 0
                             : -1
                     )
-                    if (!multiple) onChange(next)
+                    // A single value is committed as typed only when it
+                    // would be kept: empty, a suggestion, or allowed.
+                    if (!multiple && !refused(next.trim()))
+                        onChange(next.trim() ? next : "")
                 }}
                 onKeyDown={onKeyDown}
             />
+            {refusal && (
+                <Text
+                    className="field-refusal"
+                    color="red"
+                    size="1"
+                    role="alert"
+                >
+                    {refusal}
+                </Text>
+            )}
+            {warnings.map((note) => (
+                <Text
+                    className="field-warning"
+                    color="amber"
+                    size="1"
+                    key={note}
+                >
+                    {note}
+                </Text>
+            ))}
             {open && results.length > 0 && (
                 <div
                     id={`${id}-listbox`}

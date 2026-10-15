@@ -78,6 +78,8 @@ import type {
     WorkItem,
 } from "../model/types"
 import { WorkPage } from "./work-views"
+import { LinkContext } from "./link-context"
+import { tcwLinkOptions } from "../model/reference-search"
 import {
     BlocksForm,
     CommentBox,
@@ -158,6 +160,9 @@ export function App() {
     const [warnings, setWarnings] = useState<string[]>([])
     const [toast, setToast] = useState("")
     const [workMode, setWorkMode] = useState<TWorkMode>(null)
+    // Every item, whatever the board's filters, for the fields that suggest
+    // items and for `tcw://` links. Read only while something offers them.
+    const [allWork, setAllWork] = useState<WorkItem[] | null>(null)
     const [loadError, setLoadError] = useState("")
 
     const showToast = useCallback((message: string) => {
@@ -209,6 +214,7 @@ export function App() {
     }, [])
 
     const loadBoard = useCallback(async (search: string) => {
+        setAllWork(null)
         const found = await fetchJson<TBoard>(`/api/work${search}`)
         setData((old) => ({ ...old, work: boardRows(found) }))
         setBoard({
@@ -343,6 +349,36 @@ export function App() {
             .catch((error) => setLoadError(String(error)))
             .finally(() => setLoadingDetail(false))
     }, [axis, selected, data])
+
+    const wantsAll = Boolean(
+        axis === "work" &&
+        project?.axes.work &&
+        (workMode !== null ||
+            (workDetail !== null && project.recordOwner === "local"))
+    )
+    useEffect(() => {
+        if (!wantsAll || allWork !== null) return
+        let stale = false
+        fetchJson<TBoard>("/api/work?all=1")
+            .then((found) => {
+                if (!stale) setAllWork(boardRows(found))
+            })
+            .catch(() => {
+                if (!stale) setAllWork(data.work)
+            })
+        return () => {
+            stale = true
+        }
+    }, [wantsAll, allWork]) // eslint-disable-line react-hooks/exhaustive-deps
+    const links = useMemo(
+        () =>
+            tcwLinkOptions({
+                work: allWork ?? data.work,
+                taxonomy: data.taxonomy,
+                capabilities: data.capabilities,
+            }),
+        [allWork, data]
+    )
 
     const readFile = useCallback(
         (path: string) =>
@@ -693,6 +729,7 @@ export function App() {
     const people = { ...(project?.people ?? {}), ...board.people }
     const references = {
         ...data,
+        work: allWork ?? data.work,
         people,
         user: project?.user ?? null,
     }
@@ -769,7 +806,7 @@ export function App() {
     }
 
     return (
-        <>
+        <LinkContext.Provider value={links}>
             <header className="topbar">
                 <div>
                     <Heading as="h1" size="6">
@@ -1072,6 +1109,13 @@ export function App() {
                     ) : editor ? (
                         <EditorView
                             editor={editor}
+                            scales={
+                                project?.capabilityScales ?? {
+                                    status: [],
+                                    priority: [],
+                                    lifecycle: [],
+                                }
+                            }
                             setDraft={setDraft}
                             saving={saving}
                             errors={errors}
@@ -1157,6 +1201,7 @@ export function App() {
                                     ownsRecord &&
                                     !isUnavailable(workDetail.item) ? (
                                         <BlocksForm
+                                            project={project}
                                             item={workDetail.item}
                                             folder={workDetail.folder}
                                             references={references}
@@ -1202,7 +1247,7 @@ export function App() {
                     <Text size="2">{toast}</Text>
                 </Card>
             )}
-        </>
+        </LinkContext.Provider>
     )
 }
 

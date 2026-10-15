@@ -209,6 +209,7 @@ test("blocks are added one request per link, stopping at the first refusal", asy
     const onSaved = vi.fn()
     wrap(
         <BlocksForm
+            project={project()}
             item={workItem("x")}
             folder="x"
             references={references}

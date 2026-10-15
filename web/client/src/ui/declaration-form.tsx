@@ -205,6 +205,7 @@ export function DeclarationForm({
                         key={`${axis}-${list}`}
                         label={`${label}: ${list}`}
                         multiple
+                        mode={list === "new" ? "allow" : "refuse"}
                         value={draft[axis][list]}
                         options={referenceOptions(
                             declarationField(axis, list),
