@@ -256,24 +256,12 @@ def test_a_repeated_heading_gets_a_number():
 # ── criterion 4: no allowance entry is named ──────────────────────────────────
 
 
-class _Text:
-    """A document's text where TCW-74's helpers expect a path. They read the
-    path themselves; the `AGENTS.md` section is not a file of its own."""
-
-    def __init__(self, text: str) -> None:
-        self._text = text
-
-    def read_text(self, encoding: str = "utf-8") -> str:
-        return self._text
-
-
 def allowance_names(text: str) -> list[str]:
     """Every entry of the five allowance lists that `text` names."""
-    doc = _Text(text)
     named = [e for e in (*REMOVED_COMMANDS, *REMOVED_FORMS, *REFUSED_KEYS)
-             if _names(doc, e)]
-    named += [f"{c} {v}" for c, v in REFUSED_VALUES if _names(doc, f"{c} {v}")]
-    named += [f"{c} {f}" for c, f in REMOVED_FLAGS if _flag_named(doc, c, f)]
+             if _names(text, e)]
+    named += [f"{c} {v}" for c, v in REFUSED_VALUES if _names(text, f"{c} {v}")]
+    named += [f"{c} {f}" for c, f in REMOVED_FLAGS if _flag_named(text, c, f)]
     return named
 
 

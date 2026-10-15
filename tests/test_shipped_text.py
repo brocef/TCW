@@ -27,11 +27,6 @@ from tests.test_documented_cli_surface import (DOC_FILES, INVOCATION, KEY_SPELLI
 
 REPO = Path(__file__).resolve().parent.parent
 
-# TCW-75 owns all of `skills/configure/` (epic decision 3) and rewrites it after
-# this slice, so the git and vocabulary scans leave it out until then. TCW-75
-# deletes this entry when it rewrites the skill.
-EXCLUDED = ("skills/configure/",)
-
 # The release flow keeps its commit and tag steps (TCW-74 spec, Non-goals); the
 # git scan only, never the vocabulary scan, exempts it.
 GIT_EXEMPT = ("skills/documentation-sync/", "tcw/work/procedures/documentation-sync.md")
@@ -47,6 +42,16 @@ GIT_ALLOWED = {
             "advice on anonymizing an example in a bug report, not on running git "
             "(TCW-74 Design 6.3)",
     },
+    "skills/configure/references/personal.md": {
+        "git worktree of the project":
+            "a fact: a linked worktree has no copy of the untracked personal file "
+            "(TCW-75 spec, Design 6; TCW-72 spec, Risks)",
+    },
+    "skills/configure/references/stores.md": {
+        "opened from a linked worktree":
+            "a fact: how a relative store path is read from a linked worktree "
+            "(TCW-75 spec, Design 1.5)",
+    },
 }
 
 # TCW-74's own additions to the shared table: removals that TCW-75's documents
@@ -61,10 +66,15 @@ EXTRA_PATTERNS = (
 )
 
 # Exact phrases the vocabulary scan accepts, each with its reason.
-VOCABULARY_ALLOWED: dict[str, dict[str, str]] = {}
+VOCABULARY_ALLOWED: dict[str, dict[str, str]] = {
+    "skills/configure/references/personal.md": {
+        "- builtin: true  # built-in, tcw/work/prompts/spec.md":
+            "`tcw config show` prints it for a built-in entry (review decision R8)",
+    },
+}
 
-# What TCW-74's disposition table keeps, rewrites or adds (Design 7), outside
-# `skills/configure/`.
+# What TCW-74's disposition table keeps, rewrites or adds (Design 7), and the
+# `configure` skill, which TCW-75 rewrites (its Design 6).
 SHIPPED = {
     "agents/backlog-auditor.md",
     "agents/reviewer.md",
@@ -74,6 +84,13 @@ SHIPPED = {
     "skills/commands-pause-work/SKILL.md",
     "skills/commands-plan-work/SKILL.md",
     "skills/commands-process-inbox/SKILL.md",
+    "skills/configure/SKILL.md",
+    "skills/configure/references/docs-sync.md",
+    "skills/configure/references/jira.md",
+    "skills/configure/references/personal.md",
+    "skills/configure/references/projects.md",
+    "skills/configure/references/stores.md",
+    "skills/configure/references/work.md",
     "skills/documentation-sync/SKILL.md",
     "skills/documentation-sync/references/cut-version.md",
     "skills/documentation-sync/references/release-notes-and-changelogs.md",
@@ -102,12 +119,9 @@ def _rel(path: Path) -> str:
     return path.relative_to(REPO).as_posix()
 
 
-def _shipped_text(include_excluded: bool = False) -> list[Path]:
+def _shipped_text() -> list[Path]:
     roots = ("skills", "agents", "tcw/work/prompts", "tcw/work/procedures")
-    found = sorted(p for root in roots for p in (REPO / root).rglob("*.md"))
-    if include_excluded:
-        return found
-    return [p for p in found if not _rel(p).startswith(EXCLUDED)]
+    return sorted(p for root in roots for p in (REPO / root).rglob("*.md"))
 
 
 OWNED = _shipped_text()
@@ -152,7 +166,8 @@ def test_the_walk_sees_every_kind_of_shipped_text():
     assert "tcw/work/procedures/pause-work.md" in rels
     assert "agents/reviewer.md" in rels
     assert "skills/work/references/commands.md" in rels
-    assert not any(r.startswith("skills/configure/") for r in rels)
+    assert "skills/configure/SKILL.md" in rels
+    assert "skills/configure/references/personal.md" in rels
 
 
 @pytest.mark.parametrize("doc", [p for p in OWNED if not _rel(p).startswith(GIT_EXEMPT)],
@@ -294,27 +309,13 @@ def command_problem(span: str) -> str | None:
     return None
 
 
-def _in_allowance(span: str) -> bool:
-    command = " ".join(span[INVOCATION.search(span).start():].split())
-    if any(command == removed or command.startswith(removed + " ")
-           for removed in (*REMOVED_COMMANDS, *REMOVED_FORMS)):
-        return True
-    if any(command.startswith(f"{removed} {value}") for removed, value in REFUSED_VALUES):
-        return True
-    return any(command.startswith(removed + " ") and flag in command.split()
-               for removed, flag in REMOVED_FLAGS)
-
-
-@pytest.mark.parametrize("doc", _shipped_text(include_excluded=True), ids=_rel)
+@pytest.mark.parametrize("doc", OWNED, ids=_rel)
 def test_every_command_named_in_shipped_text_exists(doc):
     """Criterion 9: each `tcw …` command resolves in the 3.0 parser, flags
-    included. The shared allowance list counts only inside
-    `skills/configure/`, which TCW-75 has not rewritten yet."""
+    included. The shared allowance list counts nowhere here."""
     rel = _rel(doc)
     problems = []
     for span in _invocations(doc.read_text(encoding="utf-8")):
-        if rel.startswith(EXCLUDED) and _in_allowance(span):
-            continue
         if (problem := command_problem(span)) is not None:
             problems.append(f"`{span}`: {problem}")
     assert not problems, f"{rel} names commands that do not exist:\n  " + \
@@ -341,8 +342,9 @@ def test_the_command_check_accepts_real_commands(span):
     assert command_problem(span) is None
 
 
-def _names(doc: Path, entry: str) -> bool:
-    text = doc.read_text(encoding="utf-8")
+def _names(text: str, entry: str) -> bool:
+    """Whether the document `text` names the allowance entry `entry`: a
+    command as an invocation, a key as a key."""
     if entry.startswith("tcw "):
         return any(" ".join(s[INVOCATION.search(s).start():].split()) == entry
                    or " ".join(s[INVOCATION.search(s).start():].split())
@@ -352,8 +354,9 @@ def _names(doc: Path, entry: str) -> bool:
     return entry in keys
 
 
-def _flag_named(doc: Path, command: str, flag: str) -> bool:
-    for span in _invocations(doc.read_text(encoding="utf-8")):
+def _flag_named(text: str, command: str, flag: str) -> bool:
+    """Whether the document `text` invokes `command` with `flag`."""
+    for span in _invocations(text):
         words = " ".join(span[INVOCATION.search(span).start():].split())
         if words.startswith(command + " ") and flag in words.split():
             return True
@@ -369,7 +372,7 @@ def test_no_allowance_entry_is_named_only_by_owned_text(entry):
     own files named; one still named by an owned file fails the scans above
     anyway, so what this adds is that the list shrank."""
     owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES if _names(d, entry)}
+    namers = {_rel(d) for d in DOC_FILES if _names(d.read_text(encoding="utf-8"), entry)}
     assert not namers or not namers <= owned, \
         f"{entry} is named only by TCW-74's files ({sorted(namers)})"
 
@@ -377,7 +380,8 @@ def test_no_allowance_entry_is_named_only_by_owned_text(entry):
 @pytest.mark.parametrize("command, value", REFUSED_VALUES)
 def test_no_allowance_value_is_named_only_by_owned_text(command, value):
     owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES if _names(d, f"{command} {value}")}
+    namers = {_rel(d) for d in DOC_FILES
+              if _names(d.read_text(encoding="utf-8"), f"{command} {value}")}
     assert not namers or not namers <= owned, \
         f"{command} {value} is named only by TCW-74's files ({sorted(namers)})"
 
@@ -385,7 +389,8 @@ def test_no_allowance_value_is_named_only_by_owned_text(command, value):
 @pytest.mark.parametrize("command, flag", REMOVED_FLAGS)
 def test_no_allowance_flag_is_named_only_by_owned_text(command, flag):
     owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES if _flag_named(d, command, flag)}
+    namers = {_rel(d) for d in DOC_FILES
+              if _flag_named(d.read_text(encoding="utf-8"), command, flag)}
     assert not namers or not namers <= owned, \
         f"{command} {flag} is named only by TCW-74's files ({sorted(namers)})"
 
@@ -395,8 +400,7 @@ def test_no_allowance_flag_is_named_only_by_owned_text(command, flag):
 
 def test_the_shipped_files_are_exactly_the_disposition_table():
     found = {_rel(p) for root in ("skills", "agents") for p in (REPO / root).rglob("*")
-             if p.is_file() and not _rel(p).startswith(EXCLUDED)
-             and "__pycache__" not in p.parts and p.name != ".DS_Store"}
+             if p.is_file() and "__pycache__" not in p.parts and p.name != ".DS_Store"}
     assert found == SHIPPED, (f"unexpected: {sorted(found - SHIPPED)}; "
                               f"missing: {sorted(SHIPPED - found)}")
 
