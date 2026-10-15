@@ -27,7 +27,7 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | # | Finding | Verdict | Evidence or reason |
 | --- | --- | --- | --- |
 | J1 | A dropped connection while posting a note invites a duplicate | **fix** (Design 1) | `_post_note`, `tcw/work/jira/backend.py:946`, turns every `TrackerError` into `MovedWithoutNote`, including a drop after Jira received the comment; `advance.py:285-289` then says "add it with `tcw work comment`" |
-| J2 | Two shapes of Jira's answers were never recorded live | **reject from this item** | Recording them needs a transition restricted to some statuses (a workflow change only the owner makes, epic rule) and more than 100 tickets created in `TCWTEST` (Jira writes needing approved text). It changes no code unless the recording disagrees with the fake, and the fake is in `tests/`, which the freeze does not cover. Returned to the inbox as its own entry (plan, Task 8). Owner question 1 |
+| J2 | Three shapes of Jira's answers were never recorded live | **fix** (Design 18) | `tests/work/jira/test_recorded_shapes.py:74-76` lists them as read but never seen: a second page of search results (`nextPageToken`, read by `search`, `tcw/work/jira/client.py:225-244`), a transition restricted to some statuses (`links.*.fromStatusReference`, read by `_definition`, `tcw/work/jira/remote.py:352`), and a transition screen that lists fields (`transitions.*.fields`, read by `transitions`, `client.py:260-269`). Owner's answer 1: record all three before the freeze |
 | J3 | Recorded user objects keep `timeZone` and `locale` | **fix** | `tests/work/jira/capture.py` replaces only `accountId`, `displayName`, `emailAddress` (`_PEOPLE`, line 33); five recorded files hold `"timeZone": "America/New_York"` and `get-user-200.json` holds `"locale"` |
 | P1 | A YAML key that is itself a list crashes every command | **fix** | `_no_dup_keys`, `tcw/store/yaml_source.py:34-41`: `key in mapping` raises `TypeError` for an unhashable key |
 | P2 | Two layers writing the same empty mapping blame the lower one | **fix** | `_merge`, `tcw/config.py:469-473`: with `value == {}` and `lower == {}` the origin is never restamped |
@@ -49,8 +49,8 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | V4 | The stage-name scan misreads some TypeScript | **fix** | `tests/serve/test_no_stage_names.py`: template `${…}` bodies, unquoted object keys, member access, and a regex after a keyword |
 | V5 | `Conflict` nests a `<div>` inside a `<p>` | **fix** | `web/client/src/ui/content-views.tsx:399-417`: `Callout.Text` is a `<p>` and holds `Text as="p"` and a `Flex` |
 | V6 | Commands wrapped across a line inside backticks are never checked | **fix** (Design 11) | `BACKTICKED`, `tests/test_documented_cli_surface.py:84`, forbids a newline in a span |
-| V7 | `tcw work advance` leaves spec and plan with no document written | **fix: documentation only** (Design 12) | No built-in gate is added. Owner question 2 |
-| V8 | Unattended runs have no rule for an item at request | **fix** (Design 13) | `tcw/work/procedures/unattended-work.md`'s table has no request row |
+| V7 | `tcw work advance` leaves spec and plan with no document written | **fix: documentation only** (Design 12) | No built-in gate is added. Settled by owner's answer 2 |
+| V8 | Unattended runs have no rule for an item at request | **fix** (Design 13) | `tcw/work/procedures/unattended-work.md`'s table has no request row. Settled by owner's answer 3 |
 | T1 | Error messages name removed keys | **fix** | `tcw/work/generate.py:180` and `:184` say `work.lifecycle.output-cap` and `work.lifecycle.timeout`; the keys are `work.hooks.*` (`tcw/work/config.py:44`) |
 | T2 | A doubled quote in a refusal | **fix** | `uncommitted_changes`, `tcw/work/open.py:107-110`, prints `'child''s work store` |
 | T3 | Four out-of-date texts: `hooks.py` on `tcw serve`; `run_provision` "the only command that reaches the network"; `store/base.py` "remote adapters … unbuilt"; `skills/README.md:85` "TCW-75 rewrites this skill" | **fix** (all four) | Each read at the cited line; the viewer runs request `post` hooks on adopt (`tcw/serve/work.py:529-537`); the Jira backend reaches the network |
@@ -59,7 +59,9 @@ entry, **T** = TCW-75's code-text entry, each in the order of
 | T6 | The shared vocabulary scan reads one line at a time | **fix** (Design 16) | `scan`, `tests/doc_vocabulary.py:61-68` |
 | T7 | Offline Jira validation reports `qa/` rounds it says are ignored | **fix** (Design 17) | `round_findings`, `tcw/validate.py:597-624`, reads every enabled verdict stage, including those in `layout.external` |
 
-**Counts: 30 fix, 1 already fixed (C5), 1 rejected from this item (J2).**
+**Counts: 31 fix, 1 already fixed (C5).** J2 is the only one that needs the
+owner's hands first (the "Owner's TCWTEST checklist" below), so it is done
+last and the freeze waits for it.
 
 The two items the CLI entry lists as "already assigned elsewhere" are done:
 `tcw serve` prints only the URL, flushed (`tcw/serve/server.py:400`), and the
@@ -187,8 +189,7 @@ already adds such a check as a `pre` hook (TCW's own does, with
 `scripts/require_artifact.py`), and a built-in one would add a refusal every
 project must override when it decides the document is not needed. The work
 guide's "Built-in gates" says that no gate checks a stage's document and how
-to add one. Owner question 2 asks whether the owner wants a built-in gate
-instead.
+to add one. Settled: the owner chose documentation only (answer 2).
 
 ### 13. Unattended runs at request (V8)
 
@@ -198,7 +199,8 @@ Write the request from the evidence available, marking each assumption, as
 the request prompt says for "There is no user to ask"; where Jira keeps the
 request, post the questions with `tcw work comment <slug>` instead and leave
 the text alone; then continue. `skills/extras-autonomous-work/SKILL.md` gets
-the same rule if it lists stages itself.
+the same rule if it lists stages itself. Settled: the owner chose this rule
+(answer 3).
 
 ### 14. A missing Jira site (T4)
 
@@ -236,6 +238,194 @@ every caller (`test_shipped_text.py`'s `_allowed_at`) keep working.
 already does. A `qa/round-1.md` in Jira mode then gets only "Jira keeps the
 qa record, so this folder is ignored". The Jira guide already says offline
 validation checks "the latest `review` round".
+
+### 18. Recording the three unseen Jira shapes (J2)
+
+The owner chose (answer 1) to record, from `TCWTEST` and before the freeze,
+the three answers TCW reads but has never seen from a real site, then check
+the fake against them and fix the code where they differ. Litmus: everything
+here is Jira-adapter private; no operation changes unless a recording shows
+the adapter misreads Jira, and then only inside the adapter.
+
+**What `TCWTEST` is today** (read on 2026-10-15 with REST GET requests only):
+project id 10003, "TCW Bridge Test", company-managed. Workflow scheme 10040,
+used by `TCWTEST` alone, maps Task, Sub-task and Epic to the workflow
+`TCWTEST: TCW lifecycle workflow (Task, Sub-task)`
+(`19ccd58a-6ea1-49ff-b707-e0288d3495d7`); Story and Bug keep the simplified
+workflow. That workflow has the nine statuses (`Won't Do` is status 10041,
+`To Do` 10012) and ten transitions: `Create` (initial) and one global
+transition into each status, ids 11 to 91, named after the status. Only the
+one into `Planning` (41) has a screen, 10049 `TCWTEST: Planning transition
+screen`, which lists no field. The project holds 85 tickets (Task 69, Epic 9,
+Sub-task 7), none named like a probe. The scenario's account is a site
+administrator and may create tickets, but does **not** hold the project
+permission to delete them (`mypermissions`: `DELETE_ISSUES` false,
+`ADMINISTER_PROJECTS` false).
+
+**The restricted transition, and why it breaks nothing.** The owner adds one
+new transition, `J2 probe: reopen`, from `Won't Do` only to `To Do`, with a
+new screen listing the `Labels` field (not required in `TCWTEST`; the
+recorded create metadata says `required: false`). No existing transition or
+screen changes. This choice is safe for every recorded test:
+
+- `validate --remote` checks only the moves TCW needs (`needed_moves`,
+  `remote.py:307-322`): each stage to the next, the last to `completed`, a
+  verdict stage back to where it rejects to, and each stage to `discarded`.
+  None starts at `discarded` (`Won't Do`), so the new transition is never a
+  candidate and no sample ticket is read for it.
+- Every move into `To Do` still finds the global `To Do` transition (21).
+  Where two are offered, `choose_transition` (`tcw/work/jira/backend.py:1028`)
+  takes the one whose screen asks for nothing but a comment, which is 21.
+- The live scenario (`tests/work/jira/scenario.py`) reads transitions only for
+  tickets at `To Do`, `In Review` or `Planning` (probe question 2); on the
+  ticket it discards it tries only the transition id `999999`, to record a
+  refusal.
+- Screen 10049 and the move into `Planning`, which the fake copies
+  (`tests/work/jira/fake.py:100`), are untouched.
+
+The transition and its screen stay in `TCWTEST` afterwards, as part of the
+fixture, so a later capture can record the same shapes again.
+
+**The paging tickets.** The owner approved creating just over 100 throwaway
+tickets in `TCWTEST`. Exactly 101 are created, type `Task`, with the
+summaries `J2 paging probe 001` through `J2 paging probe 101`, no description
+and no other field set. `search` asks for pages of 100 (`PAGE`,
+`client.py:39`), and Jira may answer fewer per page when fields are named, so
+101 matching tickets always need at least two pages. No other text is written
+to Jira: the only other write is moving `J2 paging probe 101` to `Won't Do`
+through the global transition 91, with no comment.
+
+**The live test.** A new `tests/work/jira/test_jira_live_shapes.py` holds one
+test, gated as the live scenario is (`test_jira_scenario.py:51-55`: a
+`skipif` on `TCW_JIRA_LIVE=1` and both credential variables) and in addition
+on `TCW_JIRA_J2_PROBE=1` and `TCW_JIRA_CAPTURE` naming a folder. The extra
+variable is needed because `TCW_JIRA_LIVE=1` alone runs the live scenario,
+and a scenario run must never create 101 tickets. In every normal run,
+including CI, the test is collected and skipped. It writes a scratch project
+with the live scenario's `LIVE` configuration, opens its backend, installs
+the `Recorder`, and then:
+
+1. **Creates only what is missing.** It searches for tickets whose summary is
+   exactly `J2 paging probe NNN`, and creates only the numbers not found, so a
+   re-run never exceeds the 101 the owner approved.
+2. **Records the paging.** It waits (at most 120 seconds, as the scenario
+   waits for search lag) until a search finds all 101, then runs one real
+   `JiraClient.search` with the JQL `project = TCWTEST AND summary ~ "\"J2
+   paging probe\""` and the fields `tcw work list` reads (`read_fields`), and
+   asserts it returns every one of the 101 keys exactly once. That assertion
+   is itself the live check of the page walk.
+3. **Records the workflow.** It calls `client.workflows` for `TCWTEST` and
+   `Task`, and asserts the answer holds a transition from 10041 to 10012.
+4. **Records the screen.** It moves `J2 paging probe 101` to `Won't Do`
+   through transition 91, reads its transitions with
+   `expand=transitions.fields`, and asserts `J2 probe: reopen` is offered
+   with `labels` among its fields.
+5. **Cleans up.** It tries to delete each probe ticket
+   (`DELETE /rest/api/3/issue/<key>`). At the first refusal for lack of
+   permission it stops trying and prints every remaining key and the JQL
+   `project = TCWTEST AND summary ~ "\"J2 paging probe\""`, for the owner to
+   bulk-delete. Today the account cannot delete, so this is the expected path
+   unless the owner does the optional checklist step 4.
+
+**Where the recordings go.** `Recorder` keeps one file per endpoint and
+status, the answer with the most key paths (`capture.py:118-128`). The probe
+tickets are plain, so their search answers have fewer key paths than the
+recorded read of a full ticket and would be thrown away. `Recorder` therefore
+gains a way to record calls under a named file that never merges with the
+endpoint's shared one, and the test names four:
+`post-search-jql-200-first-page.json` (an answer with `nextPageToken` and
+`isLast: false`), `post-search-jql-200-next-page.json` (a request carrying
+`nextPageToken`, and its answer), `post-workflows-200-directed.json`, and
+`get-issue-key-transitions-200-screen-fields.json`. The capture folder is a
+scratch folder; only those four files are copied into
+`tests/work/jira/recorded/`, so no existing recording changes. J3's
+replacement of `timeZone` and `locale` (Task 1) is in `Recorder.record`, so it
+applies to these files too, and they must pass
+`test_no_person_or_real_site_is_recorded` like every other.
+
+**Comparing with the fake.** `test_recorded_shapes.py` gets a `READS` entry
+for each new file: `nextPageToken` and `isLast` for the first page;
+`nextPageToken` in the request and `issues.*.key` for the next page;
+`workflows.*.transitions.*.type` and
+`workflows.*.transitions.*.links.*.fromStatusReference` for the workflow;
+`transitions.*.hasScreen` and each screen field's `required` for the
+transitions (the field map is keyed by field id, so `has` gains a wildcard for
+a mapping's values). The shape test's `world` gains a ticket at `Won't Do`, a
+transition like `J2 probe: reopen` and more than 100 tickets for the search;
+these go in the test's fixture, not the fake's default project, so no other
+test's transitions change. The comment at lines 74-76 that calls these shapes
+"never seen" is removed. Beyond key paths, the comparison also reads by eye
+what key paths cannot show: whether `isLast` is present on a page that is not
+the last, whether the token is opaque text, whether the restricted transition's
+`type` is something other than `GLOBAL`, and whether a global transition still
+has `links: []`.
+
+**Fixing what differs.** Where Jira's answer differs from what the code
+reads, `tcw/work/jira/client.py` (`search`, `transitions`) or
+`tcw/work/jira/remote.py` (`_definition`) is fixed to read Jira's shape, the
+fake (`tests/work/jira/fake.py`) is changed to answer in that shape, and a
+test against the fake reproduces the recorded shape and fails before the fix.
+The one difference that matters most: `search` stops when `isLast` is
+absent (`client.py:243`), so if Jira leaves `isLast` off a page that is not
+the last, `tcw work list` silently loses tickets past the first page; step 2's
+assertion would catch it.
+
+## Owner's TCWTEST checklist
+
+For J2 (Design 18). Do these in Jira's administration screens on
+https://proposit.atlassian.net, in project `TCWTEST` ("TCW Bridge Test"),
+then tell the agent the list is done. The agent then confirms steps 1 to 3
+with REST GET requests before it creates any ticket. Nothing else in this
+item waits on this list; only J2 does, and the freeze waits for J2.
+
+Do not change any existing transition, status, screen or scheme, and in
+particular leave the `Planning` transition's screen
+(`TCWTEST: Planning transition screen`) as it is. The live tests rely on all
+of them.
+
+1. **Create the screen.** Settings (the gear, top right) → **Work items**
+   (called **Issues** on older sites) → **Screens** → **Add screen**. Name:
+   `TCWTEST: J2 probe transition screen`. Description:
+   `TCW pre-freeze clean-up, J2: a transition screen that lists a field`.
+   Add the field **Labels** to it, and nothing else. Do not add the screen to
+   any screen scheme.
+   *Confirm:* the Screens list shows the new screen, and opening it shows
+   Labels as its only field.
+2. **Add the restricted transition.** Project settings for `TCWTEST` →
+   **Workflows** → edit `TCWTEST: TCW lifecycle workflow (Task, Sub-task)`.
+   Add a transition:
+   - **From:** `Won't Do` only. Do not choose "any status" and do not mark it
+     global.
+   - **To:** `To Do`.
+   - **Name:** `J2 probe: reopen`.
+   - **Screen:** `TCWTEST: J2 probe transition screen`.
+   - Leave conditions, validators and post functions empty.
+
+   Save, and publish the workflow if the editor asks; if Jira asks how to
+   move existing tickets between statuses, keep every ticket in the status it
+   has.
+   *Confirm:* the workflow now lists eleven transitions: `Create`, the nine
+   global ones, and `J2 probe: reopen`, which starts only from `Won't Do`.
+3. **Check it on a ticket.** Open any Task whose status is `Won't Do` and open
+   its status menu.
+   *Confirm:* `J2 probe: reopen` is offered, and choosing it shows a screen
+   with a Labels field. Press **Cancel**; do not complete the move. A Task at
+   `To Do` does not offer it.
+4. **Optional: let the account delete the probe tickets.** Today the account
+   behind `TCW_JIRA_EMAIL` cannot delete tickets in `TCWTEST`. If you want the
+   101 probe tickets deleted automatically, grant it **Delete work items**
+   (called **Delete issues** on older sites): Project settings for `TCWTEST` →
+   **Permissions**; if the permission scheme shown there is used by other
+   projects, skip this step rather than widen it for them. Skipping is fine:
+   the agent will then give you the keys and the search
+   `project = TCWTEST AND summary ~ "\"J2 paging probe\""` to bulk-delete
+   them yourself.
+   *Confirm:* say whether you did it; the agent re-reads the permission with
+   a GET request.
+5. **Tell the agent the list is done.**
+
+The 101 tickets themselves are created by the agent's live test, not by hand
+(Design 18).
 
 ## Acceptance criteria
 
@@ -320,6 +510,30 @@ Each is checked by a test, named in the plan, unless a command is given.
     and release-notes entries list every user-facing change.
 32. **Collection.** `pytest --collect-only -q` is clean, and every new guard
     went red under its stated mutation.
+33. **J2.**
+    - The owner's TCWTEST checklist is done, and steps 1 to 3 were confirmed
+      with GET requests before any ticket was created.
+    - `tests/work/jira/recorded/` holds the four files of Design 18:
+      `post-search-jql-200-first-page.json` with `nextPageToken` and
+      `isLast: false` in its answer; `post-search-jql-200-next-page.json` with
+      `nextPageToken` in its request; `post-workflows-200-directed.json` with
+      a transition whose `links` hold a `fromStatusReference`; and
+      `get-issue-key-transitions-200-screen-fields.json` with a transition
+      whose `fields` hold `labels` with `required`. No other recorded file
+      changed in the J2 commits.
+    - In the live run, `JiraClient.search` returned all 101 probe keys, each
+      once (the test's output, quoted in `outcome.md`).
+    - `test_recorded_shapes.py` lists the Design 18 read paths for the four
+      files, its "never seen" comment is gone, and it passes; criterion 2 (J3)
+      and `test_no_person_or_real_site_is_recorded` hold for the new files.
+    - Each difference found between a recording and the code or the fake is
+      listed in `outcome.md` with its fix, and each fix has a test against the
+      fake that went red before it; or `outcome.md` says none was found.
+    - `test_jira_live_shapes.py` is skipped in a run without
+      `TCW_JIRA_J2_PROBE=1`, even with `TCW_JIRA_LIVE=1` set.
+    - No probe ticket remains in `TCWTEST`, or `outcome.md` lists every
+      remaining key with the search that finds them, and the owner has been
+      given that list.
 
 ## Risks
 
@@ -342,6 +556,17 @@ Each is checked by a test, named in the plan, unless a command is given.
   message names git's reason.
 - **V5 rebuilds the committed bundle.** `tcw/serve/dist` must be rebuilt and
   committed with the source, or CI's `web-build` job fails.
+- **J2 waits on the owner and blocks the freeze.** It cannot start until the
+  owner's TCWTEST checklist is done, and the item cannot complete without it.
+  Every other fix goes first, so only J2 is left waiting.
+- **J2 writes to a real Jira project.** It creates 101 tickets with approved
+  summaries and moves one; nothing else. If the account still cannot delete,
+  the tickets stay until the owner bulk-deletes them, and they show in
+  `tcw work tickets list` for a `TCWTEST` project meanwhile, since they sit at
+  `To Do`, the inbox status. The live scenario does not read that list.
+- **J2 may change `tcw/` late.** A recording that disagrees with the code
+  changes `client.py` or `remote.py` after every other fix; that change gets
+  its own review round (plan, Task 11) before the item lands.
 
 ## Overlap with TCW-76 Part A
 
@@ -351,15 +576,17 @@ there), and `tests/test_documented_cli_surface.py` (changed here) scans
 Markdown that TCW-76 changes. The plan avoids `tests/test_cli_config.py` by
 putting P5's test in a new file.
 
-## Questions only the owner can answer
+## Owner's answers (2026-10-15)
 
-1. **J2.** Recording the two unseen Jira shapes needs a status-restricted
-   transition configured in `TCWTEST`'s workflow and more than 100 tickets
-   created there. Do you want that done, and if so, before the freeze? This
-   spec assumes not: it becomes its own inbox entry.
-2. **V7.** This spec documents that no gate checks a stage's document instead
-   of adding a built-in one. Do you want a built-in gate (refuse leaving
-   `spec` or `plan` with no document unless `--force`)?
-3. **V8.** The rule chosen for unattended runs at request is "write from the
-   evidence and mark assumptions, then continue". The alternative is "leave
-   the item at request and report it". Which do you want?
+All three questions are settled.
+
+1. **J2: yes, before the freeze, all three shapes.** Record a second page of
+   search results, a transition restricted to some statuses, and a transition
+   screen that lists fields from `TCWTEST`, check the fake against them, and
+   fix the code if they differ. The owner makes the workflow change by hand
+   (the "Owner's TCWTEST checklist") and approved creating just over 100
+   throwaway tickets in `TCWTEST`. J2 is now a fix (Design 18).
+2. **V7: documentation only.** No built-in gate; the work guide says no gate
+   checks a stage's document and how to add one (Design 12, as written).
+3. **V8: write the request from the evidence and mark the assumptions**, then
+   continue (Design 13, as written).

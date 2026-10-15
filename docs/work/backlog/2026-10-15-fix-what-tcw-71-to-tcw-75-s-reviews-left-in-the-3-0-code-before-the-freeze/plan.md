@@ -39,20 +39,29 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   is gone is deleted or skipped, and listed in `outcome.md`.
 - **Every new guard is mutation-checked**: break what it claims to observe,
   confirm it goes red for the stated reason, restore. Each task names its
-  mutation; Task 9 records the results.
+  mutation; Task 10 records the results.
 - **One commit per task** on the work branch, no co-author or session lines.
 - **No 3.0 `tcw` against this repository.** Every check that needs a working
   `tcw` uses a fixture project in a scratch folder, with `HOME` and
   `XDG_CONFIG_HOME` pointed at scratch folders and `TCW_NO_PERSONAL_CONFIG=1`
   unless the test is about personal configuration.
-- **No Jira and no network.** Every Jira test uses the fake
-  (`tests/work/jira/fake.py`).
-- **Approval is a bounded adversarial review** (Task 10), in place of the
+- **No Jira and no network, except Task 9.** Every Jira test uses the fake
+  (`tests/work/jira/fake.py`). Task 9 alone reaches `TCWTEST`, through the
+  gated live test of spec Design 18, after the owner's checklist is done, and
+  writes to Jira only what Design 18 lists (101 tickets with the approved
+  summaries, one move with no comment, and the deletions). Reading `TCWTEST`'s
+  configuration is by REST GET only.
+- **Approval is a bounded adversarial review** (Task 11), in place of the
   owner's verify.
 
 ## Blockers and ordering
 
-- No blocker. TCW-76's freeze (its Task B3) waits for this item.
+- TCW-76's freeze (its Task B3) waits for this item.
+- **Task 9 (J2) waits for the owner's TCWTEST checklist** (spec, "Owner's
+  TCWTEST checklist"). Relay the checklist to the owner as soon as this plan
+  is accepted, and do Tasks 1 to 8 meanwhile. Task 9 blocks the item's
+  completion, and therefore the freeze: Tasks 10 and 11 run after it. Task 9
+  also needs Task 1 first, since J3's scrubbing must apply to its recordings.
 - TCW-76 Part A runs at the same time on its own branch. No file is changed
   by both (spec, "Overlap with TCW-76 Part A"). Task 7 widens two scans that
   read files Part A changes, so whichever item lands on `epic/tcw-3.0` second
@@ -75,6 +84,8 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   `Etc/UTC` and every `locale` to `en_US` before scrubbing; the docstring says
   so. Rewrite the existing files in `tests/work/jira/recorded/` with the same
   values by a one-off script (no live run; values only, nothing else changes).
+  Task 9's new recordings go through the same `record`, so they get the same
+  values.
 - **T4.** `tcw/work/jira/client.py`: `TrackerSiteMissing(TrackerError)`, and
   `_for_status` raises it for a 404 on `SITE_ENDPOINTS` (`/search/jql`,
   `/myself`, `/issuelinktype`, matched on the path without its query).
@@ -273,19 +284,88 @@ against the code after Tasks 1 to 7:
 - README: likely nothing; confirm.
 - `docs/changelogs/upcoming/<slug>.md` and `docs/release-notes/upcoming/<slug>.md`
   (`<slug>` is this item's), each listing the user-facing changes: J1, P1,
-  P3, P4, P5, C1, C2, C4, C7, C8, C9, V1, V2, T2, T4, T5, T7.
+  P3, P4, P5, C1, C2, C4, C7, C8, C9, V1, V2, T2, T4, T5, T7. J2 adds a line
+  in Task 9 only if it changes what a command does.
 - **Proves:** `tests/test_docs_describe_3_0.py`, `tests/test_shipped_text.py`,
   `tests/test_doc_allowance.py`, `tests/test_documented_cli_surface.py`,
   `tests/test_configuration_text_home.py`, and any test naming a changed
   document.
 
-### Task 9: Mutation record and collection (criterion 32)
+### Task 9: Record the three unseen Jira shapes (J2; criterion 33)
+
+Waits for the owner's TCWTEST checklist and for Task 1. It blocks Tasks 10
+and 11, the item's completion and the freeze. Do the steps in this order, a
+commit on the work branch after steps 2, 4 and 5 where they change files.
+
+1. **The owner's checklist.** The owner does the spec's "Owner's TCWTEST
+   checklist" by hand. When they say it is done, confirm steps 1 to 3 with
+   REST GET requests only (`source ~/.bashrc >/dev/null 2>&1` first for
+   `TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY`):
+   `/rest/api/3/workflow/search?workflowName=<the workflow>&expand=transitions,statuses`
+   shows `J2 probe: reopen` with type `directed`, from 10041 only, to 10012,
+   with the new screen; `/rest/api/3/screens?queryString=J2` finds the screen
+   and its tab lists only `labels`; the ten existing transitions and screen
+   10049 are as the spec's Design 18 records them. Re-read
+   `/rest/api/3/mypermissions?projectKey=TCWTEST&permissions=DELETE_ISSUES`
+   for step 4. Anything different: stop and tell the owner; create nothing.
+2. **Capture.** `tests/work/jira/capture.py`: a way to record calls under a
+   named file that never merges with the endpoint's shared file (Design 18).
+   New `tests/work/jira/test_jira_live_shapes.py`: the gated test of Design
+   18, steps 1 to 5, its `skipif` copying `test_jira_scenario.py:51-55` and
+   adding `TCW_JIRA_J2_PROBE=1` and `TCW_JIRA_CAPTURE`; reuse the scenario's
+   `LIVE` configuration rather than a copy of it. First run it without the
+   variables and confirm it is skipped, also with `TCW_JIRA_LIVE=1` alone.
+   Then run it once, live, from the venv in the worktree:
+   `TCW_JIRA_LIVE=1 TCW_JIRA_J2_PROBE=1 TCW_JIRA_CAPTURE=<scratch>/j2-capture
+   pytest -s tests/work/jira/test_jira_live_shapes.py`. Keep its output for
+   `outcome.md`. Copy only the four named files of Design 18 from the scratch
+   folder into `tests/work/jira/recorded/`, and confirm with `git status` that
+   no other recorded file changed. Read each of the four for a person's name,
+   an email address or the real host before committing.
+3. **Compare with the fake.** `tests/work/jira/test_recorded_shapes.py`: the
+   Design 18 `READS` entries for the four files, a wildcard in `has` for a
+   mapping's values, `fake_request` entries for them, and the `world` additions
+   (a ticket at `Won't Do`, a transition like `J2 probe: reopen` on the
+   fake's `TCW` project, and more than 100 tickets for the paged search), in
+   the test's fixture only. Remove the "never seen" comment (lines 74-76).
+   Then read the four recordings against `client.py`'s `search` and
+   `transitions` and `remote.py`'s `_definition` for what key paths cannot
+   show (Design 18's list). Write each difference down.
+4. **Fix if needed.** For each difference: a test against the fake that
+   reproduces Jira's recorded shape and fails; the fix in
+   `tcw/work/jira/client.py` or `tcw/work/jira/remote.py`; the fake changed to
+   answer in Jira's shape. If a fix changes what a command does, add a line to
+   this item's `upcoming/` changelog and release-notes entries, and update
+   `docs/guide/jira.md` if it describes the behavior. If nothing differs,
+   step 4 changes nothing and `outcome.md` says so.
+5. **Clean up.** The live test's step 5 deletes the probe tickets if the
+   account may. If not, give the owner every remaining key and the search
+   `project = TCWTEST AND summary ~ "\"J2 paging probe\""`, and list them in
+   `outcome.md`. The `J2 probe: reopen` transition and its screen stay
+   (Design 18).
+
+- **Proves:** `tests/work/jira/test_recorded_shapes.py` (all of it, including
+  `test_no_person_or_real_site_is_recorded` over the new files), the J3 test
+  of Task 1 over the new files, `tests/work/jira/test_jira_live_shapes.py`
+  skipped without its variables, `tests/work/jira/test_client.py`,
+  `test_fake.py`, `test_jira_validate_remote.py` and `test_jira_scenario.py`
+  (the fake scenario), plus any test step 4 adds.
+- **Mutations:** remove `nextPageToken` from the fake's search answer, and
+  separately drop `isLast` from it (the first-page comparison goes red); give
+  the fake's restricted transition `links: []` (the workflow comparison goes
+  red); empty the fake's screen field map (the transitions comparison goes
+  red); remove the named-file option so the first-page answer merges into the
+  shared file (the test's copy step finds no file). Each fix from step 4
+  names its own.
+
+### Task 10: Mutation record and collection (criterion 32)
 
 Run `pytest --collect-only -q`. Write `outcome.md` on `main`: each mutation
-from Tasks 1 to 7, whether it went red and for what reason, and any 2.x test
-deleted or skipped. Commit on `main`.
+from Tasks 1 to 7 and 9, whether it went red and for what reason, any 2.x
+test deleted or skipped, and Task 9's live output, differences found and
+remaining probe tickets. Commit on `main`.
 
-### Task 10: Review, landing and closing
+### Task 11: Review, landing and closing
 
 1. **Review.** One `adversarial-code-reviewer` round over
    `git diff <base>..work/<slug>` with `spec.md` and this plan, bounded per
@@ -294,16 +374,18 @@ deleted or skipped. Commit on `main`.
    one round (a commit per fix round), then one confirming round. If that is
    still NOT DONE, stop and report to the owner rather than looping.
    Separate-change findings that touch `tcw/` are raised with the owner at
-   once, since the freeze follows.
+   once, since the freeze follows. If Task 9 is still waiting on the owner
+   when Tasks 1 to 8 are done, this round may run over Tasks 1 to 8 then, and
+   Task 9's commits get one round of their own (with its confirming round)
+   once it is done.
 2. **Land.** If `epic/tcw-3.0` moved since the worktree was made, rebase the
    work branch onto it and re-run every task's tests plus the cross-scan
    check under "Blockers and ordering". Then fast-forward:
    `git -C /Users/brian/Projects/TCW fetch . work/<slug>:epic/tcw-3.0`
    (refuses anything but a fast-forward). Do not push.
 3. **Close on `main`.** `refined-outcome.md` records the review rounds and the
-   rule used; the J2 inbox entry is written to `docs/work/inbox/` (the two
-   unseen shapes, what recording them needs, and owner question 1's answer if
-   given); the item moves to `completed/`. Restore nothing in the shared
+   rule used, and any probe tickets the owner still has to delete; the item
+   moves to `completed/`. Restore nothing in the shared
    install, which this plan never re-points; remove the worktree after
    landing.
 
@@ -322,4 +404,4 @@ deleted or skipped. Commit on `main`.
 | 13, 14, 15 | 3 | 28 | 4 |
 | 16 | 5 | 29 | 7 |
 | 30 | 4 | 31 | 8 |
-| 32 | 9 | | |
+| 32 | 10 | 33 | 9 |
