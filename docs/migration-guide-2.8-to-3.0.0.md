@@ -375,14 +375,19 @@ describe every key.
 
 Then check the new configuration with the 3.0 CLI, away from the board, which
 3.0 cannot read yet. Build a scratch folder outside the repository holding the
-new `tcw-config.yaml`, every file it binds at the same relative path, and empty
-folders at the configured work, taxonomy and capabilities paths, and make it a
-git repository:
+new `tcw-config.yaml`, every file it binds at the same relative path (each
+path a `file:` binding names, and each script a `command:` or `generate:`
+binding runs), and empty folders at the configured work, taxonomy and
+capabilities paths, and make it a git repository. The files in this example
+are TCW's own; list the project's in their place:
 
 ```sh
 SCRATCH=$(mktemp -d)
 cp tcw-config.yaml "$SCRATCH/"
-for f in docs/lifecycle/*.md; do mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"; done   # each bound file
+for f in docs/lifecycle/*.md docs/lifecycle/templates/*.md docs/procedures/create-work.md \
+         scripts/require_artifact.py docs/guide/examples/commit-item-after-move.sh; do
+  mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"
+done
 mkdir -p "$SCRATCH/docs/work" "$SCRATCH/docs/taxonomy" "$SCRATCH/docs/capabilities"
 git -C "$SCRATCH" init -q
 ```
@@ -399,8 +404,8 @@ Then, in the scratch folder, run `tcw validate` (filesystem mode) or
 `tcw validate --remote` (Jira mode), which prints one finding per line. Read
 every line:
 
-- **a finding about the configuration** (one naming `tcw-config.yaml` or a
-  bound file) is fixed now, and the run repeated;
+- **a finding about the configuration** (one naming `tcw-config.yaml`) is
+  fixed now, and the run repeated;
 - **in Jira mode, a Jira-workflow finding**: a move with two candidate
   transitions, a missing status, or a screen that asks for more than a comment
   is fixed in Jira before going on (back to step 2's checklist); a move it
@@ -411,11 +416,30 @@ every line:
 - **any other finding** is noted in the log and left to step 11, which
   validates the real project.
 
+`tcw validate` does not open the bound files: a `file:` binding is read only
+when a prompt is composed, so it does not report a bound file missing from the
+scratch folder, or from the project. Compose, in the scratch folder, the
+prompt of every stage the configuration turns on and every procedure it binds,
+which reads each file and names one that is missing (`file '<path>' no longer
+exists`). TCW's own lists, with the project's stages and procedures in their
+place:
+
+```sh
+for s in inbox request spec plan implement review qa postmortem; do tcw work stage prompt "$s" >/dev/null || echo "stage $s"; done
+for p in create-work; do tcw work procedure "$p" >/dev/null || echo "procedure $p"; done
+```
+
+A `generate` binding runs its command there, as it would in the project. A
+binding whose `when:` lists `tags` matches no stage composed without an item,
+so its file is not read: confirm with `ls` that each such file is in the
+scratch folder.
+
 **Check:**
 `grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml`
-prints nothing, and the scratch folder's run prints no finding about the
+prints nothing; the scratch folder's run prints no finding about the
 configuration and, in Jira mode, no Jira-workflow finding other than
-`unchecked:` ones. In Jira mode this is step 2's check too.
+`unchecked:` ones; and the two composing loops print nothing. In Jira mode
+this is step 2's check too.
 
 ### Step 4: Flatten the store and give every item a stage
 

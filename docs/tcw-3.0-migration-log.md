@@ -131,6 +131,17 @@ text (spec Design 5.1):
 `tests/test_migration_guide.py`, `tests/test_docs_describe_3_0.py` and
 `tests/test_documented_cli_surface.py` pass after the change (800 passed).
 
+In step 3, one more (recorded in full under Step 3 below):
+
+4. **The scratch folder left bound files out, and the check could not see
+   it.** Step 3's snippet copied `docs/lifecycle/*.md`, 5 of the 9 files
+   TCW's configuration binds (not the two templates, `create-work.md`, or the
+   two hook scripts), and the step treated "a finding naming a bound file" as
+   something `tcw validate` reports. It does not: 3.0 reads a `file:` binding
+   only when it composes a prompt. Step 3 now copies every bound file, and
+   composes every stage's prompt and every bound procedure in the scratch
+   folder as part of its check.
+
 ### Step 1: Survey, then ask once
 
 The board, the configuration and every ticket were read (REST `GET` and one
@@ -895,3 +906,85 @@ Checklist (TCW-76 `outcome.md`, "Jira checklist") and each confirmation:
 6. **No other workflow.** Confirmed by the scheme read under 4.
 
 **Check:** the Jira-workflow reading at the end of step 3.
+
+### Step 3: Rewrite the configuration
+
+`tcw-config.yaml` was replaced by the proposed file of the approved plan
+("Rewrites"), byte for byte as the plan holds it. There is no
+`tcw-config.local.yaml`. Both spec templates already open with their outline
+line (Task A3). The configuration declares no connected projects, so no
+`TCW_PROJECT_<ID>` variable was set.
+
+**Amendment 4, made during the step.** The first scratch run followed the
+guide's snippet literally: it copied only `docs/lifecycle/*.md`, and
+`tcw validate --remote` reported no configuration finding although
+`docs/lifecycle/templates/spec.md`, `spec-bug.md` and
+`docs/procedures/create-work.md` were missing. Removing
+`docs/lifecycle/review.md` too still gave `0 errors, 0 warnings` from
+`tcw validate`. 3.0's own reference (`skills/configure/references/work.md`,
+"Binding kinds") does not say `validate` opens bound files, so this is not a
+3.0 defect; in the same folder `tcw work stage prompt spec` exited 1 with
+`file 'docs/lifecycle/templates/spec.md' no longer exists`, and
+`tcw work procedure create-work` with the same for `create-work.md`. The
+guide was fixed (amendment 4 above), the composing loops were confirmed to
+print `stage spec` and `procedure create-work` in that incomplete folder, and
+the step was redone in a fresh scratch folder from the fixed text.
+
+The scratch folder (`tcw76/step3.nZx7` in the session's scratch folder) holds
+`tcw-config.yaml`, the seven `file:` targets (`docs/lifecycle/abstraction.md`,
+`harness.md`, `implementation.md`, `review.md`,
+`docs/lifecycle/templates/spec.md`, `spec-bug.md`,
+`docs/procedures/create-work.md`), the two hook scripts
+(`scripts/require_artifact.py`, `docs/guide/examples/commit-item-after-move.sh`),
+empty `docs/work`, `docs/taxonomy` and `docs/capabilities`, and a fresh git
+repository. `tcw validate --remote` (the 3.0 CLI, `tcw76/venv`, imported from
+this worktree) printed:
+
+```text
+tcw: the credentials and Jira project TCW are readable
+tcw: moves read from the workflow definition had their screen fields left unchecked; only a sample ticket shows them
+tcw: 0 item folders checked against their tickets
+tcw: the model checks ran over 0 items
+0 errors, 1 warning, 0 unresolved
+warning: work.jira: unchecked: the Sub-task edit screen: no Sub-task ticket in TCW to sample
+exit 0
+```
+
+Each line read:
+
+- **Configuration findings:** none.
+- **Jira-workflow findings:** none: no move with two candidate transitions,
+  no missing status, no screen asking for more than a comment. Nothing goes
+  back to step 2.
+- **`unchecked:` warnings, listed for step 11:** the `Sub-task` edit screen.
+  Step 2 read the `Sub-task` create screen, which every type here uses for
+  create and edit alike (step 2, line 5), so the fields are there; no
+  `Sub-task` ticket exists to read the edit screen on.
+- **The note on moves' screen fields** is not a finding. 3.0 read the moves
+  from the workflow definition and says it left their screen fields
+  unchecked. Step 2 read them on sample tickets (`TCW-76` and `TCW-9`, with
+  `expand=transitions.fields`): one transition into each of the nine
+  statuses, none with a field. Listed for step 11, which reads them again on
+  the real items.
+- **Other findings:** none.
+
+The two composing loops of the amended step, in the same folder, printed
+nothing, and `ls docs/lifecycle/templates/spec-bug.md` (the one binding whose
+`when:` lists `tags`) found the file.
+
+Tests: the files that read the guide or this log
+(`tests/config/test_personal_merge.py`, `tests/test_capabilities_cli_contract.py`,
+`tests/test_docs_describe_3_0.py`, `tests/test_documented_cli_surface.py`,
+`tests/test_migration_guide.py`, `tests/test_projects_list.py`,
+`tests/test_upcoming_entries.py`, `tests/test_validate_command.py`,
+`tests/work/test_cli_config.py`), `tests/test_documentation_sync_wiring.py`,
+and the standing guard files passed: 1285 passed, 6 skipped. No test reads
+the repository's own `tcw-config.yaml` until Task B17 writes
+`tests/test_repo_lifecycle.py`. `pytest --collect-only -q` collected 5275
+tests.
+
+**Check:**
+`grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml`
+printed nothing (exit 1); the scratch run printed no configuration finding
+and no Jira-workflow finding other than the one `unchecked:` warning; the two
+composing loops printed nothing. This is step 2's check too: it passes.
