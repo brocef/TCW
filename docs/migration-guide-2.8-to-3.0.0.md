@@ -1331,8 +1331,9 @@ unchanged.
 
 #### Behavior that changed
 
-Commands whose names and arguments did not change, but which now refuse, or
-report, what 2.x let through:
+Commands that now refuse, or report, what 2.x let through. Most kept their
+names and arguments; `tcw work new --project` and `tcw config show` are new in
+3.0 and are listed for what they refuse:
 
 - **A slug given to `tcw taxonomy add --slug` must be a slug**: lower-case
   letters and digits in words joined by single hyphens, such as
@@ -1358,15 +1359,31 @@ report, what 2.x let through:
   needs a key that an ssh agent holds and a host already in
   `~/.ssh/known_hosts`: a first contact with an unknown host, or a key whose
   passphrase nothing supplies, fails with `git clone failed:` and git's
-  reason, instead of asking. **An ssh command the user has set**
-  (`GIT_SSH_COMMAND`, `GIT_SSH` or git's `core.sshCommand`) is left alone, so
-  with one of those set, ssh may still ask.
+  reason, instead of asking. **An ssh command the user has set** is left
+  alone, so with one set, ssh may still ask. TCW counts as the user's own
+  `GIT_SSH_COMMAND` or `GIT_SSH` in the environment, and a `core.sshCommand`
+  that `git config --show-scope --includes --get-all core.sshCommand` prints
+  from any scope but `local` and `worktree`: the global or system
+  configuration, or the command line (`git -c`, `GIT_CONFIG_PARAMETERS`,
+  `GIT_CONFIG_COUNT`). A `core.sshCommand` in the repository the command runs
+  in does not count, since a clone into a new folder does not use it.
 - **`tcw provision` refuses a configuration it cannot read.** When
   `tcw-config.yaml` cannot be parsed, it exits with code 1 and names the
   file. 2.x printed `Nothing to provision` and exited 0.
+- **A `tcw-config.yaml` that is not valid UTF-8 is named.** `tcw provision`
+  and `tcw init` exit with code 1 and say which file holds which byte, such
+  as `tcw init: <path>/tcw-config.yaml: is not valid UTF-8 text (byte 0xe9 at
+  position 17)`, and leave the file as it was. 2.x printed Python's own
+  decoding error, which names no file.
 - **The Jira client does not pass credentials on through a redirect.** When
-  Jira answers a request with a redirect to another host, TCW no longer
-  sends the account's email address and API token to that host.
+  Jira answers a request with a redirect, TCW no longer sends the account's
+  email address and API token on to the address it was redirected to,
+  whatever host that is; they go only to `work.jira.site`. **A 401 after a
+  redirect names the redirect**: when the address that answered 401 is not
+  the one TCW asked, the error says Jira redirected the request to that
+  address, that credentials are not sent on a redirect, and that
+  `work.jira.site` should be set to the address Jira answers at. A 401 from
+  `work.jira.site` itself is still reported as rejected credentials.
 - **`tcw work` commands check the connected projects.** A `tcw work` command
   that reads the board refuses (exit code 1, naming the file) when the
   configuration of this project, or of a project connected to it, holds a
@@ -1376,12 +1393,23 @@ report, what 2.x let through:
   `tcw work new --project`, which hands an item to another project, is not
   checked this way. This is why every connected project must finish its own
   step 3 before this project's step 11 ([Before you start](#before-you-start)).
+- **`tcw work new --project <id> --stage <stage>` is a usage error** (exit
+  code 2), naming `--stage`. An item created in another project starts where
+  that project's intake puts it, so `--stage` cannot choose; like every other
+  flag but `--priority`, it is refused with `--project` rather than ignored.
+- **`tcw config show` refuses a value it would print wrongly.** It reads its
+  own output back before printing it, and when a value would not read back
+  as the same value, it prints nothing and exits with code 1, naming the
+  value's key.
 - **Offline `tcw validate` in Jira mode reads each item's
   `capabilities.yaml`.** Without `--remote`, it reports a declaration that
   cannot be read or is malformed as an error naming the file, in every item
   folder whatever the item's stage. The records it declares are still checked
-  only under `--remote`. Step 7's corrections to `capabilities.yaml` are what
-  keep this quiet at step 11.
+  only under `--remote`, which does not report a malformed file a second
+  time. In Jira mode the viewer's check of one item, after a save in
+  `tcw serve` changes it, also reports a malformed `capabilities.yaml` in
+  the same words, whatever the item's stage. Step 7's corrections to
+  `capabilities.yaml` are what keep this quiet at step 11.
 
 ### Removed procedures
 

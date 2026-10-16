@@ -382,9 +382,39 @@ def test_the_rules_state_the_stop_for_a_failing_check():
     "**The Jira client does not pass credentials on through a redirect.**",
     "**`tcw work` commands check the connected projects.**",
     "**Offline `tcw validate` in Jira mode reads each item's\n  `capabilities.yaml`.**",
+    "**A `tcw-config.yaml` that is not valid UTF-8 is named.**",
+    "**A 401 after a\n  redirect names the redirect**",
+    "**`tcw work new --project <id> --stage <stage>` is a usage error** (exit\n  code 2)",
+    "**`tcw config show` refuses a value it would print wrongly.**",
 ])
 def test_each_stricter_behavior_is_named(topic):
     assert topic in section(GUIDE, 4, "Behavior that changed")
+
+
+def _behavior() -> str:
+    """The section with its line breaks turned to spaces."""
+    return " ".join(section(GUIDE, 4, "Behavior that changed").split())
+
+
+def test_the_users_ssh_command_is_read_from_every_scope_but_local_and_worktree():
+    """Pre-freeze clean-up, final fixes: one `--show-scope` read, and the
+    repository's own `core.sshCommand` does not count."""
+    text = _behavior()
+    assert "`git config --show-scope --includes --get-all core.sshCommand`" in text
+    assert "from any scope but `local` and `worktree`" in text
+    assert "or the command line (`git -c`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`)" in text
+
+
+def test_credentials_stay_off_every_redirect_not_only_one_to_another_host():
+    text = _behavior()
+    assert "redirect to another host" not in text
+    assert "whatever host that is; they go only to `work.jira.site`" in text
+
+
+def test_the_viewers_one_item_check_reports_a_malformed_declaration_too():
+    text = _behavior()
+    assert "In Jira mode the viewer's check of one item" in text
+    assert "which does not report a malformed file a second time" in text
 
 
 # -- Criterion 7: behavior that had no key -------------------------------------------------

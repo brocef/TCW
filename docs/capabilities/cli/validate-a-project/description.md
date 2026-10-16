@@ -60,8 +60,14 @@ shared with another project in this repository, which would mix their items, is
 an error.
 
 **Jira mode.** When the project keeps its work items in Jira, plain
-`tcw validate` checks only what is on this machine. `tcw validate --remote` also
-checks the project against Jira itself — its workflow, its fields, and the
-stages and links of its items — and only reads. A Jira that cannot be reached is
-exit 5. In a project that keeps its items in files, `--remote` is a usage error
-(exit 2).
+`tcw validate` checks only what is on this machine: each item folder's name and
+`item.yaml`, the latest `review` round, and each folder's `capabilities.yaml`,
+which is an error when it cannot be read or is malformed, whatever the item's
+stage, since the stage is kept in Jira. A folder for a stage Jira keeps, such as
+`qa/`, is a warning that the folder is ignored, and its rounds are not read.
+`tcw validate --remote` also checks the project against Jira itself — its
+workflow, its fields, the stages and links of its items, and the records each
+unfinished item's `capabilities.yaml` declares — and only reads; a
+`capabilities.yaml` already reported as malformed is not reported again. A Jira
+that cannot be reached is exit 5. In a project that keeps its items in files,
+`--remote` is a usage error (exit 2).
