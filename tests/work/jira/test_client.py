@@ -712,3 +712,55 @@ def test_a_redirect_carries_no_credentials(monkeypatch):
     assert seen["site"]["Authorization"].startswith("Basic ")
     assert "Authorization" not in seen["elsewhere"], seen["elsewhere"]
     assert seen["elsewhere"]["Accept"] == "application/json"
+
+
+@pytest.mark.parametrize("redirect", [True, False])
+def test_a_401_after_a_redirect_names_the_redirect(monkeypatch, redirect):
+    """Pre-freeze clean-up, final fixes: the redirected request goes without
+    `Authorization`, so a 401 from where it landed says nothing about the
+    credentials; the message names the address and `work.jira.site`. A 401
+    from the site itself is still a credentials problem."""
+    import http.server
+    import threading
+
+    class Refuses(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(401)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    other = http.server.HTTPServer(("127.0.0.1", 0), Refuses)
+    landed = f"http://localhost:{other.server_port}/landed"
+
+    class Site(Refuses):
+        def do_GET(self):
+            if not redirect:
+                return super().do_GET()
+            self.send_response(301)
+            self.send_header("Location", landed)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    site = http.server.HTTPServer(("127.0.0.1", 0), Site)
+    for server in (site, other):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        config = dataclasses.replace(CONFIG, site=f"http://127.0.0.1:{site.server_port}")
+        with pytest.raises(jira.TrackerAuthError) as raised:
+            jira.JiraClient(config)._request("GET", "/rest/api/3/myself", timeout=5)
+    finally:
+        for server in (site, other):
+            server.shutdown()
+            server.server_close()
+    message = str(raised.value)
+    if redirect:
+        assert message == (f"Jira redirected the request (/rest/api/3/myself) to "
+                           f"{landed}, and credentials are not sent on a redirect; "
+                           f"set work.jira.site to the address Jira answers at")
+    else:
+        assert "rejected the credentials" in message and "redirected" not in message

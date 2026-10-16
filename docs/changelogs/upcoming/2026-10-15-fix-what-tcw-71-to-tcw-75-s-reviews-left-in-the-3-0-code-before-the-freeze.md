@@ -47,6 +47,9 @@
   parsed, prints the error and returns 1 instead of "Nothing to provision".
 - `JiraClient._request` adds `Authorization` with `add_unredirected_header`,
   so urllib does not copy it onto a redirected request.
+  A 401 whose `HTTPError.geturl()` differs from the requested URL is a
+  `TrackerAuthError` naming the address it was redirected to and
+  `work.jira.site`, not "rejected the credentials".
 - `tcw/validate.py` `_work_target_findings`: in Jira mode, whenever the
   records check does not run (no item, or an item at a terminal stage), the
   item's `capabilities.yaml` is parsed (`_declaration_findings` with

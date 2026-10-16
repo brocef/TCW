@@ -180,6 +180,14 @@ class JiraClient:
                 detail = error.read().decode("utf-8", "replace")[:500]
             except Exception:                      # noqa: BLE001 - detail is a bonus
                 pass
+            landed = error.geturl()
+            if error.code == 401 and landed and landed != request.full_url:
+                # The redirected request went without `Authorization`, so the
+                # 401 says nothing about the credentials.
+                raise TrackerAuthError(
+                    f"Jira redirected the request ({path}) to {landed}, and "
+                    f"credentials are not sent on a redirect; set work.jira.site "
+                    f"to the address Jira answers at") from error
             raise _for_status(error.code, dict(error.headers or {}), detail, path,
                               site=self.config.site) from error
         except urllib.error.URLError as error:

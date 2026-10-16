@@ -11,7 +11,10 @@
   no longer hides one that never arrived.
 - **Your Jira token is sent to your Jira site only.** If the site answered a
   request with a redirect to another address, the token went along with the
-  redirected request. It no longer does.
+  redirected request. It no longer does. If the redirected request is then
+  refused, the message says Jira redirected it to that address and that
+  `work.jira.site` should be the address Jira answers at, rather than blaming
+  your credentials.
 - **`tcw provision` with a `tcw-config.yaml` it cannot read** now reports the
   error, naming the file, and exits with code 1. It used to say "Nothing to
   provision" and succeed.
