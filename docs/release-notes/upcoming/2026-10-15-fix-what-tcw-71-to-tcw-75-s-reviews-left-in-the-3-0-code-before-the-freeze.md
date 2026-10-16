@@ -73,6 +73,16 @@
   stage. A `qa` folder's rounds,
   which Jira keeps, now get only the "this folder is ignored" warning.
 
+## Unattended work
+
+- **At the request stage, an unattended run does not ask the advisors** what
+  the requester wants, since that is not theirs to know. It writes the
+  request from the evidence available and marks each assumption it made.
+  Where the backend keeps the request, as Jira does, it posts its questions
+  with `tcw work comment` instead and leaves the request's text alone. The
+  unattended-work procedure has a row for this, and the autonomous-work
+  skill states the same rule.
+
 ## The web viewer
 
 - **Saving a taxonomy term or a capability needs its revision.** A save that
@@ -81,7 +91,9 @@
   it.
 - **An item's files stay inside the item's folder.** When a stage folder or
   `capabilities.yaml` is a link that leads outside the item folder, the
-  viewer neither reads nor writes through it, and the item's page neither
-  lists the file nor reads a verdict from it.
+  viewer neither reads nor writes through it. On the item's page, a document
+  or declaration reached through such a link is shown as not written, and
+  rounds and handoffs reached that way are left out, so they decide no
+  verdict.
 - **The "stale write" banner** no longer makes the browser warn about its
   layout.

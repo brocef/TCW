@@ -9,7 +9,9 @@
 - `tcw.serve.files.inside_item`: the containment check used by `file_path` and
   the two declaration routes; `contained` is its yes-or-no form, used by
   `listing` and `verdicts` through `_ItemOnly`, a `Layout` whose `rounds`
-  keeps only the rounds inside the item folder.
+  keeps only the rounds inside the item folder: a document or declaration
+  reached through a link outside the item is listed as not written, and a
+  round or handoff reached that way is left out.
 - `tcw.work.jira.client.JiraComment.id`, and `MovedWithoutNote.uncertain`.
 - `tcw.validate._declaration_findings`: Jira mode's offline parse of each
   key-named folder's `capabilities.yaml`.
@@ -85,6 +87,10 @@
   `Callout.Text`; `tcw/serve/dist` rebuilt.
 - `tcw/work/config.py`: the removed-procedure messages build their stage names
   from the stage table.
+- `tcw/work/procedures/unattended-work.md`: a row for the request stage (do
+  not ask the advisors; write from the evidence, marking each assumption; for
+  a backend-kept request, post questions with `tcw work comment`), and
+  `skills/extras-autonomous-work/SKILL.md` states the same rule inline.
 
 ## Fixed
 

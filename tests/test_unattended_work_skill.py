@@ -6,6 +6,8 @@ project's replacement must still honor.
 import re
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 SKILL = REPO / "skills" / "extras-autonomous-work" / "SKILL.md"
 COMMAND = "tcw work procedure unattended-work"
@@ -79,3 +81,30 @@ def test_the_request_rule_is_in_the_body_itself():
     assert "write the request from the evidence available, marking each " \
            "assumption" in lowered
     assert "tcw work comment <slug>" in lowered
+
+
+ITEM = "2026-10-15-fix-what-tcw-71-to-tcw-75-s-reviews-left-in-the-3-0-code-before-the-freeze"
+
+
+def _entry(folder):
+    path = REPO / "docs" / folder / "upcoming" / f"{ITEM}.md"
+    if not path.exists():
+        pytest.skip("the entry files are combined into a version's file at a cut")
+    return " ".join(path.read_text(encoding="utf-8").lower().split())
+
+
+@pytest.mark.parametrize("folder", ["changelogs", "release-notes"])
+def test_the_request_rule_is_announced(folder):
+    """Pre-freeze clean-up, final fixes: the item's entry files say what an
+    unattended run now does at request."""
+    text = _entry(folder)
+    assert "unattended-work" in text, folder
+    assert "not ask the advisors" in text, folder
+    assert re.search(r"mark(s|ing) each assumption", text), folder
+    assert "`tcw work comment`" in text, folder
+
+
+def test_the_release_notes_say_what_the_viewer_shows_for_a_link_outside_the_item():
+    text = _entry("release-notes")
+    assert "shown as not written" in text
+    assert "rounds and handoffs reached that way are left out" in text
