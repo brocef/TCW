@@ -171,15 +171,18 @@ def _no_prompt_env() -> dict[str, str]:
     `BatchMode=yes` makes it fail instead of asking for a passphrase or to
     trust a new host, but only when the user has set no ssh command of their
     own (`GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand`), which is never
-    replaced.
+    replaced. Only the global and system `core.sshCommand` are read: those are
+    what a clone into a new folder uses, and the repository the command runs
+    in, whose own setting the clone does not use, must not turn `BatchMode` off.
     """
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
            "GIT_ASKPASS": ""}
     env.pop("SSH_ASKPASS", None)
     if not env.get("GIT_SSH_COMMAND") and not env.get("GIT_SSH"):
-        configured = _git(["git", "config", "--get", "core.sshCommand"],
-                          capture_output=True, text=True, env=env)
-        if not (configured.stdout or "").strip():
+        configured = [_git(["git", "config", scope, "--includes", "--get",
+                            "core.sshCommand"], capture_output=True, text=True, env=env)
+                      for scope in ("--global", "--system")]
+        if not any((done.stdout or "").strip() for done in configured):
             env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
     return env
 
