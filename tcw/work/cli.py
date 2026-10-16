@@ -203,9 +203,11 @@ def _new(args) -> int:
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
         if args.stage is not None:
-            raise UsageError(f"--stage cannot be used with --project; only "
-                             f"--priority can. An item created in another "
-                             f"project always starts in its {inbox_stage()}")
+            # Not "its inbox": a Jira-mode project's ticket waits in Jira
+            # for `tickets adopt` instead.
+            raise UsageError("--stage cannot be used with --project; only "
+                             "--priority can. An item created in another "
+                             "project starts where that project's intake puts it")
     backend = None
     if not args.project:
         # Before the read of piped input too, so `--stage` refused in this

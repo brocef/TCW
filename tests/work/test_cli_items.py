@@ -319,11 +319,15 @@ def test_new_with_project_takes_only_priority(tcw, pq):
 
 
 def test_new_with_project_refuses_stage(tcw, pq):
-    """`--stage` was dropped without a word: the delegated project never saw it."""
+    """`--stage` was dropped without a word: the delegated project never saw it.
+    The reason given holds whatever that project's backend: a Jira-mode
+    project's ticket waits in Jira for `tickets adopt`, not in an inbox."""
     root, q = pq
     r = tcw(["new", "T", "--project", "q", "--stage", "inbox"], root)
     assert r.code == 2, r
-    assert "--stage cannot be used with --project" in r.err, r.err
+    assert r.err.strip().endswith(
+        "--stage cannot be used with --project; only --priority can. An item "
+        "created in another project starts where that project's intake puts it"), r.err
     assert sorted(os.listdir(q / "docs/work")) == [".gitkeep"]
 
 

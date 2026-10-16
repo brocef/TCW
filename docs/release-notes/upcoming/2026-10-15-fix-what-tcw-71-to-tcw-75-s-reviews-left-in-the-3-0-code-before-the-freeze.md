@@ -20,7 +20,8 @@
   provision" and succeed.
 - **`tcw work new --project <id> --stage inbox`** is refused (exit code 2):
   `--stage` was dropped without a word. An item created in another project
-  always starts in that project's inbox.
+  starts where that project's intake puts it: its inbox, or, in a Jira
+  project, as a ticket waiting in Jira for `tcw work tickets adopt`.
 - **A Jira site address that is not a Jira site** is now reported as that
   (exit code 1, asking you to check `work.jira.site`) instead of "not found".
   A ticket or project that does not exist is still exit code 4.
