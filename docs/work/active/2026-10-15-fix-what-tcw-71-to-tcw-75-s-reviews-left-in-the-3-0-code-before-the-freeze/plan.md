@@ -99,7 +99,7 @@ are the spec's. Every file and line named was read on `epic/tcw-3.0` at
   values.
 - **T4.** `tcw/work/jira/client.py`: `TrackerSiteMissing(TrackerError)`, and
   `_for_status` raises it for a 404 on `SITE_ENDPOINTS` (`/search/jql`,
-  `/myself`, `/issuelinktype`, matched on the path without its query).
+  `/myself`, `/issueLinkType`, matched on the path without its query).
   `backend.py`'s `_jira()` maps it to `BackendError` with the Design 14
   message. `fake.py`: a `site_missing` switch answering 404 with an HTML body
   to every request.

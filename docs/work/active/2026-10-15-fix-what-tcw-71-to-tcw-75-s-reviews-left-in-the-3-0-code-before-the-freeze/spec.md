@@ -250,7 +250,7 @@ the same rule if it lists stages itself. Settled: the owner chose this rule
 ### 14. A missing Jira site (T4)
 
 A 404 from an endpoint every Jira Cloud site has (`/rest/api/3/search/jql`,
-`/rest/api/3/myself`, `/rest/api/3/issuelinktype`) cannot mean a missing
+`/rest/api/3/myself`, `/rest/api/3/issueLinkType`) cannot mean a missing
 ticket. The client raises a new `TrackerSiteMissing` for it, which `_jira()`
 turns into a backend error, exit 1: `Jira at <site> has no <path>; check that
 work.jira.site names your Jira site`. A 404 on any other path is unchanged.
@@ -679,3 +679,59 @@ All three questions are settled.
    checks a stage's document and how to add one (Design 12, as written).
 3. **V8: write the request from the evidence and mark the assumptions**, then
    continue (Design 13, as written).
+
+## Amendments (fix round, 2026-10-16)
+
+These record what the review rounds after implementation changed. The code
+and its tests are on the work branch; this section is not committed with it.
+
+- **Design 14 (T4).** The endpoint is spelled `/rest/api/3/issueLinkType`, as
+  the code spells it (corrected above and in the plan). A 404 on
+  `/rest/api/3/project/<key>` is ambiguous: the project may be missing, or the
+  site may not be a Jira site. `_read_metadata` then asks `/rest/api/3/myself`;
+  a 404 there is `TrackerSiteMissing` (exit 1, naming `work.jira.site`), and an
+  answer means the project is missing, which stays exit 4.
+- **Design 5 and criterion 11 (C4).** `GIT_ASKPASS` is set to the empty string,
+  not removed. git asks the first of `GIT_ASKPASS`, `core.askPass` and
+  `SSH_ASKPASS` that is set, so with the variable removed a configured
+  `core.askPass` would still run; set and empty, git skips the step.
+  `SSH_ASKPASS` is still removed. Only the global and system
+  `core.sshCommand` are read (`git config --global --includes --get` and
+  `--system`), not a plain `git config --get` in the current folder: a clone
+  into a new folder does not use the current repository's own setting, so that
+  setting must not turn `BatchMode` off. When the user has set their own ssh
+  command, TCW leaves it alone and ssh may still ask; every document that says
+  provisioning does not ask now says so.
+- **Design 1 (J1).** Before a note is sent, the ids of the newest
+  `NOTE_WINDOW` comments are read, and after a dropped connection only a
+  matching comment whose id was not among them counts as the note. An older
+  comment with the same words (the same forced move, made before) no longer
+  hides a note that never arrived. When the comments cannot be read after the
+  drop, the error says the note may have been posted, and `advance` says the
+  trace "may not have been recorded" rather than "was not recorded".
+- **Design 15 (T5).** The single-item check (`tcw validate` on one item, and
+  every viewer save) in Jira mode with no item still parses that item's
+  `capabilities.yaml`, offline, and reports a malformed one in the same words.
+- **Design 10 (V2).** The item's detail in the viewer lists files and verdicts
+  only from paths inside the item folder: a document or declaration reached
+  through a link that leads outside is shown as not written, and a round or
+  handoff reached that way is left out and decides no verdict.
+- **The Jira token on a redirect.** The client adds `Authorization` as an
+  unredirected header, so a redirect to another host does not carry the token.
+- **`tcw provision` with an unparseable config (pre-existing; the owner chose
+  to fix it here).** A `tcw-config.yaml` that cannot be parsed (a list as a
+  key, an unclosed bracket, a duplicate key) read as declaring nothing, so the
+  command printed "Nothing to provision" and exited 0. It now prints the parse
+  error, which names the file, and exits 1, with no traceback.
+- **`tcw work new --project <id> --stage <stage>` (pre-existing; the owner
+  chose to fix it here).** `--stage` was never passed to the delegated
+  project, so it was ignored without a word. It is now a usage error (exit 2)
+  naming the flag, the way `--project` refuses every other flag it does not
+  take ("only --priority can"). It is refused rather than passed through
+  because a delegated item always starts in the other project's inbox, and the
+  only value `--stage` accepts is `inbox`.
+- **`tcw config show` (P5).** A list of (key, value) pairs, which is how YAML
+  reads `!!omap` and `!!pairs`, is written with the `!!pairs` tag and reads
+  back equal. The printed YAML is read back before it is printed, and a value
+  that would come back as something else is refused with an error naming its
+  key.
