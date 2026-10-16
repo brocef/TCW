@@ -62,9 +62,10 @@ credentials cannot be found without asking fails, naming the reason, and the
 fix is for the user to set up a credential helper or load an ssh key into an
 ssh agent, not to retry. The exception is an ssh command the user has set
 (`GIT_SSH_COMMAND`, `GIT_SSH`, or `core.sshCommand` in their global or system
-git configuration or given on the git command line, not the current
-repository's own setting): TCW leaves it alone, so ssh may still ask. **Never run `tcw init` to get past a declared store that is
-missing here.** That creates a second, empty store beside the real one.
+configuration or given on the command line, not the current repository's own
+setting): TCW leaves it alone, so ssh may still ask. **Never run `tcw init` to
+get past a declared store that is missing here.** That creates a second, empty
+store beside the real one.
 
 If `tcw provision` is about to fetch a copy of a project that is already on this
 machine under a different folder layout, stop: the fix is the `TCW_PROJECT_<ID>`

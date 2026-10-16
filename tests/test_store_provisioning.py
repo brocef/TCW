@@ -2128,8 +2128,9 @@ def test_the_documents_name_the_ssh_command_exception(name):
     assert "ssh may still ask" in text, name
     # ...and which ssh command counts as the user's own: the one a clone into
     # a new folder uses, not the current repository's (`_no_prompt_env`).
-    assert "global or system git config" in text, name
-    assert "git command line" in text, name
+    assert "global or system" in text, name
+    assert "given on the git command line" in text \
+        or "given on the command line" in text, name
     assert "not the current repository's own setting" in text, name
 
 
