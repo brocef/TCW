@@ -202,6 +202,10 @@ def _new(args) -> int:
             flag = "--" + given[0].replace("_", "-")
             raise UsageError(f"{flag} cannot be used with --project; only "
                              f"--priority can. Set it in that project afterwards")
+        if args.stage is not None:
+            raise UsageError(f"--stage cannot be used with --project; only "
+                             f"--priority can. An item created in another "
+                             f"project always starts in its {inbox_stage()}")
     backend = None
     if not args.project:
         # Before the read of piped input too, so `--stage` refused in this

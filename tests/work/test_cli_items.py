@@ -318,6 +318,15 @@ def test_new_with_project_takes_only_priority(tcw, pq):
     assert sorted(os.listdir(q / "docs/work")) == [".gitkeep"]
 
 
+def test_new_with_project_refuses_stage(tcw, pq):
+    """`--stage` was dropped without a word: the delegated project never saw it."""
+    root, q = pq
+    r = tcw(["new", "T", "--project", "q", "--stage", "inbox"], root)
+    assert r.code == 2, r
+    assert "--stage cannot be used with --project" in r.err, r.err
+    assert sorted(os.listdir(q / "docs/work")) == [".gitkeep"]
+
+
 def test_new_into_an_undeclared_project(tcw, pq):
     root, _ = pq
     assert tcw(["new", "T", "--project", "nobody"], root).code == 3
