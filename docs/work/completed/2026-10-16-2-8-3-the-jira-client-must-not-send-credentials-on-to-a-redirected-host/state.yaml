@@ -1,7 +1,0 @@
-slug: 2026-10-16-2-8-3-the-jira-client-must-not-send-credentials-on-to-a-redirected-host
-title: '2.8.3: the Jira client must not send credentials on to a redirected host'
-created: '2026-10-16'
-resolution: done
-priority: 3
-effort: low
-complexity: low
