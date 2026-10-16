@@ -106,7 +106,7 @@ can show.
   and an API token for an account that can read and edit the project's tickets.
 - **In Jira mode, `jq` 1.6 or later is installed**: `jq --version` prints
   `jq-1.6` or a later version. The Jira commands use `--rawfile` and `IN`,
-  which earlier versions lack, and `all` with two arguments.
+  which earlier versions lack.
 
 ## Rules
 
@@ -337,7 +337,7 @@ new configuration needs:
   screen of every issue type the project uses. `Parent` is not needed on the
   type at the top of the project's hierarchy.
 - **what step 3 cannot check**: at step 3 there are no item folders yet, so
-  `tcw validate --remote` reads only two issue types: the configured one
+  `tcw validate --remote` reads at most two issue types: the configured one
   (`work.jira.issue-type`, `Task` by default) and the project's sub-task
   type. It checks the create screen of both; the edit screen of each only
   when the Jira project already has a ticket of that type to read it on,
@@ -773,7 +773,9 @@ PRIVATE=~/.tcw-3.0-migration-expected-names.txt   # outside the repository; neve
 ```
 
 The `expected-names` block in the log holds only lines of files git tracks in
-the repository. Delete the private file once the migration is accepted.
+the repository. Delete the private file, and the saved check output
+`~/.tcw-3.0-migration-check.txt` if there is one, once the migration is
+accepted.
 
 **Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and, with
 `LOG` set to the log's path and `PLACES`, `NAMES`, `WORDS` and `PRIVATE` as
@@ -871,7 +873,7 @@ in the fourth row.
 | List a ticket's comments | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/comment?startAt=0&maxResults=100"`: the answer has `comments`, `startAt` and `total`. While `startAt` plus the number of comments is less than `total`, repeat with `startAt` raised by that number. Each comment has `body`, a document, and `author.accountId` | the comments |
 | Post a comment | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42/comment" -d "$BODY"`, where `BODY` is `jq -n --rawfile b "$J/comment.txt" "$ADF"'{body: adf($b)}'` | Add a comment |
 | Link a blocker | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issueLink" -d '{"type": {"name": "Blocks"}, "inwardIssue": {"key": "<the blocker>"}, "outwardIssue": {"key": "<the blocked ticket>"}}'` | Link, "blocks" |
-| Read a create screen | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/createmeta/$KEY/issuetypes/<type id>?maxResults=200"`, with the type's `id` from the project's issue types: each entry of `fields` is a field the create screen shows, with its `fieldId` and `name` | Create, with that type chosen |
+| Read a create screen | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/createmeta/$KEY/issuetypes/<type id>?startAt=0&maxResults=200"`, with the type's `id` from the project's issue types: each entry of `fields` (or `values`) is a field the create screen shows, with its `fieldId` and `name`; while `startAt` plus the entries read is less than `total`, repeat with `startAt` moved on | Create, with that type chosen |
 | Read an edit screen | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/editmeta"`, on a ticket of that type: each key of `fields` is a field the edit screen shows | the ticket, in edit |
 | Read the project's statuses | `curl -s -u "$AUTH" "$SITE/rest/api/3/project/$KEY/statuses"`: the statuses of each issue type | the workflow, in project settings |
 
@@ -901,18 +903,23 @@ prints `true` or `false`. An `intake.md` that has a line
 was written by 2.x's import from that very ticket, so it prints `true`
 without comparing anything: 2.x read the description through version 2 of the interface, as
 wiki markup, so its copy never matches the text read back here. That holds
-only while the file is as the import wrote it: when `git log --follow
---diff-filter=M` shows a commit that changed it (moving the item's folder does
-not count), someone edited it after the import, and it is compared like any
-other file. Any other
+only while the file is exactly as the import wrote it, so the command compares
+the file as it stands now, uncommitted changes included, with the file 2.x's
+import commit added (its subject is `tcw work: import <KEY> → <slug>`). Any
+difference, or no such commit (2.x commits the import only when
+`work.auto-commit-transitions` is on), means someone may have written in it,
+and it is compared like any other file. Moving the item's folder changes
+nothing here. Any other
 request file is compared by text: the description's, read back from its
 document, with the file's, both with every white space character removed:
 
 ```sh
 F=<request file>
+C=$(git log -1 --format=%H --grep="^tcw work: import $T " 2>/dev/null)
+P=$([ -n "$C" ] && git show --format= --name-only --diff-filter=A "$C" | grep '/intake\.md$')
 if [ "$(basename "$F")" = intake.md ] &&
    grep -qE "^Imported on [^ ]+ from \[$T\]\(" "$F" &&
-   [ -z "$(git log --follow --diff-filter=M --format=%H -- "$F")" ]; then
+   [ -n "$P" ] && git show "$C:$P" | cmp -s - "$F"; then
   echo true
 else
   jq -r --rawfile r "$F" "$ADF"'
@@ -1443,9 +1450,10 @@ each carried-over verdict ([Acceptance history goes to qa](#acceptance-history-g
     key and summary, holding the description as 2.x read it (Jira's wiki
     markup) or `The ticket has no description.`, so its text never matches
     the description read back as a document, and it is not compared. This
-    holds only for a file no commit has changed since the import (moving the
-    item's folder does not count); an edited import is compared like any other
-    file, so text added to it is never deleted unseen;
+    holds only for a file whose contents, uncommitted changes included, are
+    exactly what 2.x's import commit added; an edited import, or one with no
+    import commit, is compared like any other file, so text added to it is
+    never deleted unseen;
   - **any other request file whose text the description holds**, ignoring
     all white space. The description is a document, so the comparison reads
     its text back first. This covers every ticket step 6 created, whose

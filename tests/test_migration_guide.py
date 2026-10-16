@@ -486,10 +486,13 @@ def test_a_2x_import_of_the_ticket_counts_as_contained_without_comparing():
     assert 'grep -qE "^Imported on [^ ]+ from \\[$T\\]\\(" "$F"' in block
     # The text comparison no longer drops the line, so it cannot hide one.
     assert "Imported on" not in block[block.index("jq -r"):]
-    # An import someone edited afterwards is compared, so added text is never
-    # deleted unseen; a move of the item's folder is not an edit.
-    assert '[ -z "$(git log --follow --diff-filter=M --format=%H -- "$F")" ]' in block
-    assert "an edited import is compared like any other file" in text
+    # The import is trusted only while the file, uncommitted changes included,
+    # is byte for byte what 2.x's import commit added: commit statuses cannot
+    # show an edit made in the same commit as a move, or one never committed.
+    assert 'C=$(git log -1 --format=%H --grep="^tcw work: import $T " 2>/dev/null)' in block
+    assert 'git show "$C:$P" | cmp -s - "$F"' in block
+    assert "diff-filter=M" not in block
+    assert "an edited import, or one with no import commit, is compared like any other file" in text
 
 
 def test_step_2_says_what_step_3_checks_and_lists_the_rest():
@@ -500,8 +503,10 @@ def test_step_2_says_what_step_3_checks_and_lists_the_rest():
     assert "It never reads an epic's screens or workflow" in text
     assert "one line per type for its create screen, its edit screen" in text
     assert "checks each of these at step 3" not in text
-    for action in ("Read a create screen", "Read an edit screen"):
-        assert "/rest/api/3/" in jira_row(action)[1]
+    assert '"$SITE/rest/api/3/issue/createmeta/$KEY/issuetypes/<type id>?startAt=0&maxResults=200"' \
+        in jira_row("Read a create screen")[1]
+    assert "repeat with `startAt` moved on" in jira_row("Read a create screen")[1]
+    assert '"$SITE/rest/api/3/issue/$KEY-42/editmeta"' in jira_row("Read an edit screen")[1]
 
 
 def test_the_reader_writes_the_text_files_requests_read():
