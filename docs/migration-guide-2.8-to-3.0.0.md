@@ -104,6 +104,9 @@ can show.
 - **In Jira mode, the Jira credentials are set**: the two environment
   variables the configuration names under `credentials` hold an email address
   and an API token for an account that can read and edit the project's tickets.
+- **In Jira mode, `jq` 1.6 or later is installed**: `jq --version` prints
+  `jq-1.6` or a later version. The Jira commands use `--rawfile` and `IN`,
+  which earlier versions lack, and `all` with two arguments.
 
 ## Rules
 
@@ -159,7 +162,8 @@ can show.
    because 3.0 treats any file at the top of the work path as a mistake. It
    records the start date and starting commit (step 0), the approved plan
    (step 1), every Jira write as it is made (the ticket's key and what
-   changed), each step's check output, and every place where this guide was
+   changed), each step's check output (for step 12's check when it fails,
+   only what step 12 says), and every place where this guide was
    wrong or unclear and what was done instead. Commit it with each step. If a
    run is abandoned and the migration starts again, keep the old branch, and
    copy the log forward under a new heading `## Run <N>`, so every run's record
@@ -331,8 +335,19 @@ new configuration needs:
   `Summary`, `Labels`, `Assignee`, `Parent` and, when the project has a
   priority field, `Priority`, must be on the create screen and the edit
   screen of every issue type the project uses. `Parent` is not needed on the
-  type at the top of the project's hierarchy. `tcw validate --remote` checks
-  each of these at step 3 and reports one that is missing.
+  type at the top of the project's hierarchy.
+- **what step 3 cannot check**: at step 3 there are no item folders yet, so
+  `tcw validate --remote` reads only two issue types: the configured one
+  (`work.jira.issue-type`, `Task` by default) and the project's sub-task
+  type. It checks the create screen of both; the edit screen of each only
+  when the Jira project already has a ticket of that type to read it on,
+  reporting `unchecked:` for that edit screen otherwise; and the statuses and
+  moves of the configured type's workflow alone. It never reads an epic's
+  screens or workflow, or those of any other type the project uses. Confirm
+  those by reading them (the create and edit screen reads in
+  [Talking to Jira](#talking-to-jira)), and put each one you cannot read on
+  the checklist below: one line per type for its create screen, its edit
+  screen and its workflow's statuses and moves.
 
 **Stop and ask** for every change you cannot make yourself: give the user a
 checklist, one line per change with how to confirm it was made, and wait until
@@ -771,7 +786,13 @@ diff <(grep -rIsHE "(^|[^[:alnum:]_])($NAMES)" "${PLACES[@]}" | LC_ALL=C sort) \
 
 prints nothing. No line numbers are compared, so an edit above a kept line
 does not fail the check; and a rewritten line that still says `tcw` is not a
-failure, since `NAMES` does not contain it. If a configuration-bound file
+failure, since `NAMES` does not contain it. **When the check fails, its output
+quotes the lines that differ, private ones included**, so it never goes into
+the log as it stands: save it beside `$PRIVATE`, outside the repository
+(`diff … > ~/.tcw-3.0-migration-check.txt`), and record in the log only the
+files it names, which
+`sed -nE 's/^[<>] ([^:]*):.*/\1/p' ~/.tcw-3.0-migration-check.txt | sort -u`
+prints. If a configuration-bound file
 changed, `tcw validate; echo "exit $?"` ends with `exit 0`.
 
 ## Talking to Jira
@@ -826,8 +847,11 @@ def adf_text(d): d | [.content[]? | adf_block] | join("\n\n");
 ```
 
 Build every request's JSON with `jq`, never by pasting text between quotes,
-so that quotes and line breaks in the text are escaped. Every request has an
-equivalent on the ticket's Jira web page, given after it. `<project field>`,
+so that quotes and line breaks in the text are escaped. The requests that
+send text read it from a file in `$J`: before each one, write the text there
+yourself, the description to `$J/request.md` and a comment, fixed first line
+included, to `$J/comment.txt`, replacing what the previous request left.
+Every request has an equivalent on the ticket's Jira web page, given after it. `<project field>`,
 `<item field>`, `<effort field>` and `<complexity field>` stand for the
 `customfield_<number>` IDs of the four custom fields, found with the request
 in the fourth row.
@@ -847,6 +871,8 @@ in the fourth row.
 | List a ticket's comments | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/comment?startAt=0&maxResults=100"`: the answer has `comments`, `startAt` and `total`. While `startAt` plus the number of comments is less than `total`, repeat with `startAt` raised by that number. Each comment has `body`, a document, and `author.accountId` | the comments |
 | Post a comment | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42/comment" -d "$BODY"`, where `BODY` is `jq -n --rawfile b "$J/comment.txt" "$ADF"'{body: adf($b)}'` | Add a comment |
 | Link a blocker | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issueLink" -d '{"type": {"name": "Blocks"}, "inwardIssue": {"key": "<the blocker>"}, "outwardIssue": {"key": "<the blocked ticket>"}}'` | Link, "blocks" |
+| Read a create screen | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/createmeta/$KEY/issuetypes/<type id>?maxResults=200"`, with the type's `id` from the project's issue types: each entry of `fields` is a field the create screen shows, with its `fieldId` and `name` | Create, with that type chosen |
+| Read an edit screen | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/editmeta"`, on a ticket of that type: each key of `fields` is a field the edit screen shows | the ticket, in edit |
 | Read the project's statuses | `curl -s -u "$AUTH" "$SITE/rest/api/3/project/$KEY/statuses"`: the statuses of each issue type | the workflow, in project settings |
 
 **The issue type of a new ticket** is `work.jira.issue-type` (`TYPE` above),
@@ -868,17 +894,27 @@ jq -r "$ADF"'.comments[] | [.author.accountId, (adf_text(.body) | split("\n")[0]
 ```
 
 **Whether a description already contains a request file**
-([The request](#the-request)), for the ticket read with `?fields=description`
-and saved as `$J/ticket.json`, prints `true` or `false`. It compares the
-description's text, read back from its document, with the file's text, both
-with every white space character and every `Imported on … from [KEY]` line
-removed:
+([The request](#the-request)), for the ticket whose key is in `T` (such as
+`T=$KEY-42`), read with `?fields=description` and saved as `$J/ticket.json`,
+prints `true` or `false`. An `intake.md` that has a line
+`Imported on <date> from [<the ticket's key>](https://…/browse/<the ticket's key>)`
+was written by 2.x's import from that very ticket, so it prints `true`
+without comparing anything: 2.x read the description through version 2 of the interface, as
+wiki markup, so its copy never matches the text read back here. Any other
+request file is compared by text: the description's, read back from its
+document, with the file's, both with every white space character removed:
 
 ```sh
-jq -r --rawfile r <request file> "$ADF"'
-  def squash: split("\n") | map(select(test("^Imported on .* from \\[") | not)) | join("") | gsub("\\s+"; "");
-  (adf_text(.fields.description) | squash) as $d | ($r | squash) as $q
-  | $q == "" or ($d | contains($q))' "$J/ticket.json"
+F=<request file>
+if [ "$(basename "$F")" = intake.md ] &&
+   grep -qE "^Imported on [^ ]+ from \[$T\]\(" "$F"; then
+  echo true
+else
+  jq -r --rawfile r "$F" "$ADF"'
+    def squash: gsub("\\s+"; "");
+    (adf_text(.fields.description) | squash) as $d | ($r | squash) as $q
+    | $q == "" or ($d | contains($q))' "$J/ticket.json"
+fi
 ```
 
 A request that fails says so in its answer: check for `errorMessages` and
@@ -1299,13 +1335,26 @@ report, what 2.x let through:
   is 400 `revision is required`, and with one that is out of date, 409. The
   viewer's own page always sends it; a script of the project's own that
   calls these routes must send it too.
-- **`tcw provision` never asks a question.** It runs git with its prompts
-  turned off. A private remote over HTTPS needs a credential helper, and one
-  over ssh needs a key that an ssh agent holds and a host already in
+- **`tcw provision` turns git's prompts off.** It runs git with every prompt
+  it can reach turned off: `GIT_TERMINAL_PROMPT=0` stops git's own prompt for
+  HTTPS credentials; `GIT_ASKPASS` is set to the empty string, which also
+  stops a configured `core.askPass`, and `SSH_ASKPASS` is removed, so no
+  password program is opened; and `GCM_INTERACTIVE=never` stops Git
+  Credential Manager from opening an interactive sign-in. A credential helper
+  that answers without asking still answers. For ssh, TCW sets
+  `GIT_SSH_COMMAND` to `ssh -o BatchMode=yes`, so a private remote over ssh
+  needs a key that an ssh agent holds and a host already in
   `~/.ssh/known_hosts`: a first contact with an unknown host, or a key whose
   passphrase nothing supplies, fails with `git clone failed:` and git's
-  reason, instead of asking. An ssh command the user has set
-  (`GIT_SSH_COMMAND`, `GIT_SSH` or git's `core.sshCommand`) is used as it is.
+  reason, instead of asking. **An ssh command the user has set**
+  (`GIT_SSH_COMMAND`, `GIT_SSH` or git's `core.sshCommand`) is left alone, so
+  with one of those set, ssh may still ask.
+- **`tcw provision` refuses a configuration it cannot read.** When
+  `tcw-config.yaml` cannot be parsed, it exits with code 1 and names the
+  file. 2.x printed `Nothing to provision` and exited 0.
+- **The Jira client does not pass credentials on through a redirect.** When
+  Jira answers a request with a redirect to another host, TCW no longer
+  sends the account's email address and API token to that host.
 - **`tcw work` commands check the connected projects.** A `tcw work` command
   that reads the board refuses (exit code 1, naming the file) when the
   configuration of this project, or of a project connected to it, holds a
@@ -1380,15 +1429,22 @@ each carried-over verdict ([Acceptance history goes to qa](#acceptance-history-g
 
 ### The request
 
-- **A request file whose text the ticket's description already contains**,
-  `intake.md` or `initial-request.md` alike, ignoring every
-  `Imported on … from [KEY]` line and all white space, is deleted without
-  asking and without posting anything. The description is a document, so
-  the comparison reads its text back first: the last command in
-  [Talking to Jira](#talking-to-jira) does both. This covers a 2.x import,
-  whose intake copied the ticket, and every ticket step 6 created, whose
-  description is the request already, so step 7 never posts that text a
-  second time.
+- **A request file the ticket's description already contains**,
+  `intake.md` or `initial-request.md` alike, is deleted without asking and
+  without posting anything. Two kinds count as contained:
+  - **a 2.x import of this ticket**: an `intake.md` that has the line
+    `Imported on <date> from [<KEY>](https://…/browse/<KEY>) (jira-cloud).`
+    with this ticket's own key. 2.x wrote it from the ticket, under a heading of the
+    key and summary, holding the description as 2.x read it (Jira's wiki
+    markup) or `The ticket has no description.`, so its text never matches
+    the description read back as a document, and it is not compared;
+  - **any other request file whose text the description holds**, ignoring
+    all white space. The description is a document, so the comparison reads
+    its text back first. This covers every ticket step 6 created, whose
+    description is the request already, so step 7 never posts that text a
+    second time.
+
+  The last command in [Talking to Jira](#talking-to-jira) decides both.
 - Other request text (the file left once a contained one is deleted, or both
   combined as [Documents](#documents) describes when neither is contained)
   goes into the description when the

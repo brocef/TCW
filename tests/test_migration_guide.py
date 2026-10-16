@@ -280,6 +280,7 @@ def test_the_prerequisites_and_rules_come_before_any_mapping_table():
     "`git worktree list | grep -E '\\[work/'`",
     "**A branch or tag marks the 2.x state**",
     "**Every connected project is on this machine, and is migrated with this one.**",
+    "**In Jira mode, `jq` 1.6 or later is installed**",
 ])
 def test_each_prerequisite_is_named(prerequisite):
     assert prerequisite in " ".join(section(GUIDE, 2, "Before you start").split())
@@ -375,7 +376,10 @@ def test_the_rules_state_the_stop_for_a_failing_check():
 @pytest.mark.parametrize("topic", [
     "**A slug given to `tcw taxonomy add --slug` must be a slug**",
     "**The viewer's record edits need a revision.**",
-    "**`tcw provision` never asks a question.**",
+    "**`tcw provision` turns git's prompts off.**",
+    "**An ssh command the user has set**",
+    "**`tcw provision` refuses a configuration it cannot read.**",
+    "**The Jira client does not pass credentials on through a redirect.**",
     "**`tcw work` commands check the connected projects.**",
     "**Offline `tcw validate` in Jira mode reads each item's\n  `capabilities.yaml`.**",
 ])
@@ -465,6 +469,50 @@ def test_every_request_file_already_in_the_description_is_deleted_unposted():
     text = " ".join(section(GUIDE, 3, "The request").split())
     assert "`intake.md` or `initial-request.md` alike" in text
     assert "deleted without asking and without posting anything" in text
+
+
+def test_a_2x_import_of_the_ticket_counts_as_contained_without_comparing():
+    # 2.x wrote an imported intake from the description in wiki markup, so a
+    # text comparison with the description read back as a document never
+    # matches (2.x tcw/work/cli.py, `_intake_text`).
+    text = " ".join(section(GUIDE, 3, "The request").split())
+    assert "**a 2.x import of this ticket**" in text
+    assert "`Imported on <date> from [<KEY>](https://…/browse/<KEY>) (jira-cloud).` with this ticket's own key" \
+        in text
+    assert "it is not compared" in text
+    [block] = [b for b in fenced(section(GUIDE, 2, "Talking to Jira"))
+               if "--rawfile r" in b]
+    assert '[ "$(basename "$F")" = intake.md ]' in block
+    assert 'grep -qE "^Imported on [^ ]+ from \\[$T\\]\\(" "$F"' in block
+    # The text comparison no longer drops the line, so it cannot hide one.
+    assert "Imported on" not in block[block.index("jq -r"):]
+
+
+def test_step_2_says_what_step_3_checks_and_lists_the_rest():
+    text = " ".join(step(2).split())
+    assert "the configured one (`work.jira.issue-type`, `Task` by default) and the " \
+           "project's sub-task type" in text
+    assert "reporting `unchecked:` for that edit screen otherwise" in text
+    assert "It never reads an epic's screens or workflow" in text
+    assert "one line per type for its create screen, its edit screen" in text
+    assert "checks each of these at step 3" not in text
+    for action in ("Read a create screen", "Read an edit screen"):
+        assert "/rest/api/3/" in jira_row(action)[1]
+
+
+def test_the_reader_writes_the_text_files_requests_read():
+    text = " ".join(section(GUIDE, 2, "Talking to Jira").split())
+    assert "write the text there yourself, the description to `$J/request.md` and a " \
+           "comment, fixed first line included, to `$J/comment.txt`" in text
+
+
+def test_a_failing_step_12_check_keeps_its_output_out_of_the_log():
+    text = " ".join(check(12).split())
+    assert "**When the check fails, its output quotes the lines that differ, private " \
+           "ones included**" in text
+    assert "record in the log only the files it names" in text
+    assert "for step 12's check when it fails, only what step 12 says" in \
+        " ".join(section(GUIDE, 2, "Rules").split())
 
 
 def test_step_6_finds_a_ticket_without_tracker_yaml():
@@ -564,13 +612,36 @@ def coverage() -> re.Pattern:
                       rf"|\b(?:{alternatives('WORDS')})\b")
 
 
-# 2.x text the first columns do not name, each checked in 2.8.x's source.
-@pytest.mark.parametrize("text", [
-    "tcw work start 2026-10-01-x --worktree", "the Definition of Done", "`tcw work tracker sync`",
-    "work.tracker.transitions.claim", "transitions.start",
+def _top_level(pattern: str) -> list[str]:
+    """`pattern`'s alternatives, split at each `|` outside parentheses."""
+    out, depth, current = [], 0, ""
+    for char in pattern:
+        depth += {"(": 1, ")": -1}.get(char, 0)
+        if char == "|" and depth == 0:
+            out.append(current)
+            current = ""
+        else:
+            current += char
+    return out + [current]
+
+
+def _names_match(names: str, text: str) -> bool:
+    return bool(re.search(rf"(?:^|[^A-Za-z0-9_])(?:{names})", text))
+
+
+# 2.x text the first columns do not name, each checked in 2.8.x's source, with
+# the start of the one alternative of NAMES that finds it: each text is found
+# by that alternative alone, so removing it turns this red.
+@pytest.mark.parametrize("text, alternative", [
+    ("run it with --worktree", "--worktree"),
+    ("the Definition of Done", "Definition of Done"),
+    ("a tracker sync failed", "tracker sync"),
+    ("transitions.claim", r"transitions\."),
+    ("transitions.start", r"transitions\."),
 ])
-def test_names_finds_2x_text_outside_the_tables(text):
-    assert re.search(rf"(?:^|[^A-Za-z0-9_])(?:{alternatives('NAMES')})", text), text
+def test_names_finds_2x_text_outside_the_tables(text, alternative):
+    finding = [a for a in _top_level(alternatives("NAMES")) if _names_match(a, text)]
+    assert len(finding) == 1 and finding[0].startswith(alternative), (text, finding)
 
 
 def test_names_holds_no_bare_tcw():
