@@ -220,3 +220,42 @@ def test_config_show_prints_a_blob_of_three_dots(personal):
     result = tcw(root, "config", "show")
     assert result.code == 0, result
     assert yaml.safe_load(result.out) == load_config(root).values
+
+
+# -- Ordered maps and pairs (pre-freeze clean-up, P5) -------------------------------------
+
+ORDERED = ("id: p\nx-extra:\n  om: !!omap [{a: 1}, {b: 2}]\n"
+           "  pairs: !!pairs [{a: 1}, {a: [2, 3]}]\n"
+           "  inside: [!!omap [{x: {y: 1}}], {k: !!pairs [{a: b}]}]\n")
+
+
+def test_an_ordered_map_and_pairs_read_back_as_themselves(personal):
+    """YAML reads both as a list of (key, value) tuples; written as a plain
+    list, each tuple came back as a list (`[['a'], ['b']]`)."""
+    root = project(personal)
+    personal.project_file.write_text(ORDERED)
+    config = load_config(root)
+    assert config.values["x-extra"]["om"] == [("a", 1), ("b", 2)]
+    assert config.values["x-extra"]["pairs"] == [("a", 1), ("a", [2, 3])]
+    for flags in ((), ("--origin",)):
+        result = tcw(root, "config", "show", *flags)
+        assert result.code == 0, result
+        assert yaml.safe_load(result.out) == config.values, result.out
+
+
+def test_a_value_that_would_not_read_back_is_refused(personal, monkeypatch):
+    """Whatever form a value takes, the printed YAML must read back as it:
+    one that would not is an error naming its key, and nothing is printed."""
+    from tcw import config_cli
+    root = project(personal)
+    personal.project_file.write_text("id: p\nx-extra:\n  keep: [a, b]\n")
+    real = config_cli._entry
+    monkeypatch.setattr(config_cli, "_entry",
+                        lambda value: "c" if value == "b" else real(value))
+    from tcw.errors import BackendError
+    config = load_config(root)
+    for origin in (False, True):
+        with pytest.raises(BackendError) as raised:
+            render(config, origin=origin)
+        assert str(raised.value) == ("cannot print x-extra.keep[1]: written as YAML, "
+                                     "it does not read back as the same value")

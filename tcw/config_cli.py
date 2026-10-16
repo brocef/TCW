@@ -4,7 +4,9 @@ actually runs with, every layer merged (TCW-72 Design 8).
 The output is YAML that reads back as the merged values, except that a
 value under a key ending in `-env` that is not shaped like an environment
 variable's name is printed as `(value not shown)`, since it is most likely a
-token pasted in by mistake (TCW-72 review finding C1). Each list
+token pasted in by mistake (TCW-72 review finding C1). A value that would
+not read back as itself is refused with an error naming its key, and
+nothing is printed. Each list
 entry is written on one line, so a comment can follow it: `--origin` adds one
 after every value and list entry, naming the layer it came from, and a
 trailing block of comments lists what a personal file set that was refused or
@@ -64,8 +66,19 @@ def _one_line(dumped: str) -> str:
     return dumped.split("\n", 1)[0]
 
 
+def _pairs(value: Any) -> bool:
+    """Whether `value` is what YAML's `!!omap` or `!!pairs` reads as: a list of
+    (key, value) tuples. It is written back with `!!pairs`, which reads as the
+    same list; written as a plain list, each tuple would become a list."""
+    return isinstance(value, list) and bool(value) and \
+        all(isinstance(e, tuple) and len(e) == 2 for e in value)
+
+
 def _flow(value: Any) -> str:
     """A mapping or list in YAML's one-line flow form."""
+    if _pairs(value):
+        return "!!pairs [" + ", ".join("{" + f"{_scalar(k)}: {_flow(v)}" + "}"
+                                       for k, v in value) + "]"
     if isinstance(value, dict):
         return "{" + ", ".join(f"{_scalar(k)}: {_flow(v)}"
                                for k, v in value.items()) + "}"
@@ -131,9 +144,11 @@ class _Writer:
                 self.lines.append(label)
                 self.mapping(value, here, indent + "  ")
             elif isinstance(value, list) and value:
-                self.lines.append(label)
+                pairs = _pairs(value)
+                self.lines.append(f"{label} !!pairs" if pairs else label)
                 for i, entry in enumerate(value):
-                    self.lines.append(f"{indent}  - {_entry(entry)}"
+                    written = _entry(dict([entry]) if pairs else entry)
+                    self.lines.append(f"{indent}  - {written}"
                                       f"{self.comment((*here, i), entry)}")
             else:
                 text = "{}" if isinstance(value, dict) else \
@@ -160,7 +175,35 @@ def _masked(value: Any) -> Any:
         return {k: HIDDEN if _secret(k, v) else _masked(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_masked(v) for v in value]
+    if isinstance(value, tuple) and len(value) == 2:
+        key, inner = value
+        return (key, HIDDEN if _secret(key, inner) else _masked(inner))
     return value
+
+
+def _differs(read: Any, meant: Any, path: tuple = ()) -> tuple | None:
+    """The key path of the first place where `read`, the printed YAML read
+    back, is not `meant`, or None when they are the same. Types must match
+    too, and `.nan` matches itself."""
+    if type(read) is not type(meant):
+        return path
+    if isinstance(meant, dict):
+        if read.keys() != meant.keys():
+            return path
+        for key, value in meant.items():
+            if (found := _differs(read[key], value, (*path, key))) is not None:
+                return found
+        return None
+    if isinstance(meant, (list, tuple)):
+        if len(read) != len(meant):
+            return path
+        for i, (a, b) in enumerate(zip(read, meant)):
+            if (found := _differs(a, b, (*path, i))) is not None:
+                return found
+        return None
+    if isinstance(meant, float) and meant != meant:
+        return None if read != read else path
+    return None if read == meant else path
 
 
 def _set_aside(config) -> list[str]:
@@ -182,8 +225,23 @@ def render(config, *, origin: bool) -> str:
     each value naming its layer and the set-aside block after them. A
     `_secret` is printed as `HIDDEN`: the one value whose printed form is not
     the effective value."""
+    import yaml
+    from tcw.config import dotted
+    meant = _masked(config.values)
     writer = _Writer(config, origin=origin)
-    writer.mapping(_masked(config.values), (), "")
+    writer.mapping(meant, (), "")
+    text = "\n".join(writer.lines) + "\n"
+    # Whatever YAML gave, the output must read back as it: a value written in
+    # a form that reads back as something else is refused, not printed.
+    try:
+        read = yaml.safe_load(text)
+        wrong = _differs({} if read is None else read, meant)
+    except yaml.YAMLError:
+        wrong = ()
+    if wrong is not None:
+        what = dotted(wrong) if wrong else "the configuration"
+        raise BackendError(f"cannot print {what}: written as YAML, it does not "
+                           f"read back as the same value")
     lines = writer.lines
     if origin:
         lines += _set_aside(config)
