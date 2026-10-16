@@ -5,9 +5,12 @@ trusted exactly as much as any other file there — a `Makefile`, a git hook, a
 `conftest.py`. Commands run through the shell so pipelines and `&&` work. This is
 stated plainly so nobody mistakes it for a sandbox.
 
-`tcw serve` does not call any of this: running configured shell from an HTTP
-handler on a button click is a meaningfully worse posture than a CLI the user
-invoked deliberately.
+`tcw serve` runs no `pre` hooks and moves no item: running configured shell
+from an HTTP handler on a button click is a meaningfully worse posture than a
+CLI the user invoked deliberately. The one exception is adopting a Jira
+ticket, which runs the request stage's `post` hooks, exactly as
+`tcw work tickets adopt` does, because the item it makes would otherwise
+differ from the one the CLI makes.
 """
 import subprocess
 import sys

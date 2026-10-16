@@ -281,6 +281,15 @@ has two of its own:
 A project adds its own checks as `pre` hooks on the target stage. A failing
 gate or `pre` hook refuses the move with exit code 3 and changes nothing.
 
+No built-in gate checks that a stage's document was written: an item can
+leave `spec` or `plan` with no `spec.md` or `plan.md`, because those stages
+are optional and a project may decide a document is not needed. A project
+that wants the check adds a `pre` hook on the next stage that fails when the
+document is missing. TCW's own `tcw-config.yaml` does this, with a `pre` hook
+on `plan` that requires `spec.md` and one on `implement` that requires both.
+How to write one is in [Configuration](configuration.md#stages-and-their-bindings),
+and how it runs in [How hooks run](configuration.md#how-hooks-run).
+
 ### After the move: `post` hooks, and exit code 6
 
 Once the item has moved, the target stage's `post` hooks run: commands a

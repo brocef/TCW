@@ -139,7 +139,7 @@ def _read_file(project_root: Path, rel: str) -> str:
 
 
 # The bound on the item `body` a hook receives, in UTF-8 bytes. Deliberately
-# **not** `work.lifecycle.output-cap`: that one bounds what a generator writes
+# **not** `work.hooks.output-cap`: that one bounds what a generator writes
 # back, and a project tightening it to keep prompts short would silently start
 # truncating the request its hooks read. Two limits, two reasons, one default.
 BODY_CAP = DEFAULT_OUTPUT_CAP

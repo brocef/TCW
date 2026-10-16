@@ -177,11 +177,11 @@ def run_generate(command: str, project_root: Path, env: dict[str, str],
     if killed_for == "cap" or out_over.is_set():
         raise GenerateError(
             f"`{command}` produced more than the {output_cap}-byte output cap "
-            f"(work.lifecycle.output-cap); nothing was used")
+            f"(work.hooks.output-cap); nothing was used")
     if killed_for == "timeout":
         raise GenerateError(
             f"`{command}` exceeded the {timeout}s timeout "
-            f"(work.lifecycle.timeout); nothing was used")
+            f"(work.hooks.timeout); nothing was used")
     if returncode != 0:
         # Everything is discarded, deliberately. Half a prompt reads like a
         # whole one to whoever gets it next.

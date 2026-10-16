@@ -82,7 +82,7 @@ Documents are named by owner and by path within the owner.
 | `taxonomy` | `SKILL.md` | fixed (Rule 1) | Describes the taxonomy axis; using TCW means adhering to its data model |
 | `capabilities` | `SKILL.md` | fixed (Rule 1) | Describes the capabilities axis; using TCW means adhering to its data model |
 | `work` | `SKILL.md` | fixed (Rule 1) | Describes the work axis — stages, rounds, handoffs, moves, and the rules no project text changes; using TCW means adhering to them |
-| `configure` | `SKILL.md` | fixed (Rule 1) | The configuration surface is how the `tcw` CLI works. TCW-75 rewrites this skill |
+| `configure` | `SKILL.md` | fixed (Rule 1) | The configuration surface is how the `tcw` CLI works |
 | `configure` | `references/*.md` | fixed (Rule 1) | Each describes configuration keys and what they do — the configuration surface |
 | `extras-report` | `SKILL.md` | fixed (Rule 1) | How to report to TCW is TCW's own upstream process, for its maintainers to decide |
 | `setup` | `SKILL.md` | fixed (Rule 1) | Installing and repairing the CLI is TCW's authority |

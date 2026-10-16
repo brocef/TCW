@@ -13,7 +13,9 @@ Drive the named items through the `commands-drive-work-to-completion`
 skill, back to back.
 Wherever a stage would ask the human — an open question in a spec or plan, a
 review, a qa verdict the agent may record — ask **the advisors** instead and
-decide yourself. Stop only on a hard blocker.
+decide yourself. The one exception is what the requester wants, at request:
+that is not the advisors' to know, so the procedure below says how to write
+the request without them. Stop only on a hard blocker.
 
 **Ask once, at the start:** confirm the item set (the user's list, or pick from
 `tcw work list`) and the order. After that, no more questions

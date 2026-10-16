@@ -86,10 +86,12 @@ def run_init(components: list[str], project_id: str | None = None,
 def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     """Make this project's declared component stores usable here.
 
-    The only command in `tcw` that reaches the network, and it does so only
-    because it was asked to. That is the whole security posture of the feature:
-    a repository's config can name a URL, so nothing may act on that URL without
-    an explicit instruction from the person holding the checkout. The remote is
+    The only command in `tcw` that clones a repository, and it does so only
+    because it was asked to. (The Jira backend's commands also reach the
+    network, but only the configured `work.jira.site`.) That is the whole
+    security posture of the feature: a repository's config can name a URL, so
+    nothing may act on that URL without an explicit instruction from the
+    person holding the checkout. The remote is
     printed before it is contacted, for the same reason. Everything it says
     goes to stderr, `--dry-run` included: it has no product (TCW-73 Design
     1.7). A store already here is never fetched into (Design 8.4).

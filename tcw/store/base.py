@@ -2,9 +2,9 @@
 
 Per `docs/lifecycle/abstraction.md` (the litmus test) the model is storage-abstracted: a tree of
 named entries with cross-links is implementable by any backend. The filesystem
-adapters in `fs.py` are the only realization shipped; remote adapters stay
-possible but unbuilt. The work axis has its own interface,
-`tcw.work.backend.WorkBackend`.
+adapters in `fs.py` are the only store adapters for taxonomy and capabilities.
+The work axis has its own interface, `tcw.work.backend.WorkBackend`, with a
+filesystem backend and a Jira backend.
 """
 
 # Defer annotation evaluation (PEP 563): the store interfaces use forward refs

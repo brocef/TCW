@@ -150,3 +150,15 @@ def test_stderr_is_forwarded_not_swallowed(tmp_path, capfd):
 def test_a_command_that_cannot_start_is_an_error_not_a_traceback(tmp_path):
     with pytest.raises(GenerateError):
         _run("this-command-does-not-exist-anywhere; exit 127", tmp_path)
+
+
+def test_the_limits_are_named_by_their_configuration_keys(tmp_path):
+    """Pre-freeze clean-up, T1: the keys are `work.hooks.*`; the 2.x
+    `work.lifecycle.*` spellings are gone."""
+    with pytest.raises(GenerateError) as over:
+        _run("printf 'abcd'", tmp_path, cap=3)
+    assert "(work.hooks.output-cap)" in str(over.value)
+    with pytest.raises(GenerateError) as slow:
+        _run("sleep 30", tmp_path, timeout=1)
+    assert "(work.hooks.timeout)" in str(slow.value)
+    assert "work.lifecycle" not in str(over.value) + str(slow.value)

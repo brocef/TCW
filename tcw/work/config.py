@@ -20,7 +20,7 @@ from typing import Any, Mapping
 from tcw.config import dotted
 from tcw.store.base import (MIGRATION_GUIDE, PROCEDURE_IDS, DocEntry, normalize_tag,
                             parse_documentation_entries)
-from tcw.work.model import SIDE, STAGES, stage as table_stage
+from tcw.work.model import DOCUMENT, FLOW, SIDE, STAGES, stage as table_stage
 
 BACKENDS = ("filesystem", "jira")
 DEFAULT_BACKEND = "filesystem"
@@ -58,18 +58,25 @@ _REMOVED_WORK_KEYS = {
     "retain": "TCW no longer deletes finished items",
 }
 
+# The stages two deleted procedures went into, found by the table's columns
+# rather than spelled, since only the table names a stage: the one side stage,
+# and the last flow stage that keeps a document, where the work is planned.
+_SIDE_STAGE = next(s.name for s in STAGES if s.kind == SIDE)
+_PLANNING_STAGE = [s.name for s in STAGES
+                   if s.kind == FLOW and s.artifact == DOCUMENT][-1]
+
 # Procedure ids TCW 3.0 deleted, each with where its text went (TCW-74
 # Design 5.1), so a project that still configures one learns where to move it
 # rather than only that the id is unknown.
 _REMOVED_PROCEDURES = {
-    "post-mortem": "it is now the postmortem stage prompt; bind replacement "
-                   "text under `work.stages.postmortem.prompt`",
-    "decompose": "it is now part of the plan stage prompt; bind replacement "
-                 "text under `work.stages.plan.prompt`",
+    "post-mortem": f"it is now the {_SIDE_STAGE} stage prompt; bind replacement "
+                   f"text under `work.stages.{_SIDE_STAGE}.prompt`",
+    "decompose": f"it is now part of the {_PLANNING_STAGE} stage prompt; bind "
+                 f"replacement text under `work.stages.{_PLANNING_STAGE}.prompt`",
     "delegation": "its rule is now fixed text in the work skill, and "
                   "delegating to another project is `tcw work new --project`",
-    "consolidate-plans": "it was deleted; move an outside plan into an item "
-                         "with `tcw work new`",
+    "consolidate-plans": "it was deleted; move a planning document kept "
+                         "outside TCW into an item with `tcw work new`",
 }
 
 KeyPath = tuple  # of str keys and int list indexes

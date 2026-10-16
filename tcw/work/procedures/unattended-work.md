@@ -29,6 +29,7 @@ advisor alone.
 
 | The stage asks for          | Do this instead |
 | --------------------------- | --------------- |
+| What the requester wants, at request | Do not ask the advisors: what the requester wants is not theirs to know. Write the request from the evidence available, marking each assumption, as the request prompt says when there is no user to ask. Where the backend keeps the request, as Jira does, post your questions with `tcw work comment <slug>` instead and leave its text alone. Then continue. |
 | One agent or several        | Decide yourself. One, unless the parts are truly independent. |
 | An open question in a spec or plan | Ask the advisors, then write the answer into the document with the assumption stated in the text. |
 | Review                      | Run the review stage as its prompt says: a read-only reviewer, never the agent that implemented. Apply what you agree with; write down what you reject and why. |
