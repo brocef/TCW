@@ -7,6 +7,7 @@ the backend's storage or not part of the model, and is not found.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 from http import HTTPStatus
 from pathlib import Path
@@ -21,7 +22,7 @@ from tcw.store.base import StaleRevision
 from tcw.store.fs import _atomic_write_all
 from tcw.validate import ValidationTarget
 from tcw.work.gates import Present, parse_declarations, project_reader
-from tcw.work.layout import CAPABILITIES_FILE, HANDOFF_NAME, ROUND_NAME, round_verdict
+from tcw.work.layout import CAPABILITIES_FILE, HANDOFF_NAME, ROUND_NAME, Layout, round_verdict
 from tcw.work.model import (
     DOCUMENT, NO_ARTIFACT, ROUNDS, STAGES, Slug, check_encodable, is_stage,
     stage as table_stage,
@@ -44,23 +45,48 @@ def file_stages(context) -> list:
             and row.name not in context.backend.external_stages]
 
 
-def _handoffs(folder: Path) -> list[Path]:
+class _ItemOnly(Layout):
+    """The layout with only the rounds that resolve inside their item folder:
+    the viewer reads no other file (`inside_item`), so it lists and judges
+    verdicts by these alone."""
+
+    def rounds(self, slug: Slug, stage: str) -> list[tuple[int, Path]]:
+        item_dir = self.item_dir(slug)
+        return [(number, path) for number, path in super().rounds(slug, stage)
+                if contained(item_dir, path)]
+
+
+def _item_only(layout: Layout) -> _ItemOnly:
+    return _ItemOnly(**{f.name: getattr(layout, f.name)
+                        for f in dataclasses.fields(layout) if f.init})
+
+
+def _handoffs(item_dir: Path, folder: Path) -> list[Path]:
     if not folder.is_dir():
         return []
     return sorted((e for e in folder.iterdir()
-                   if HANDOFF_NAME.match(e.name) and e.is_file()),
+                   if HANDOFF_NAME.match(e.name) and e.is_file()
+                   and contained(item_dir, e)),
                   key=lambda e: e.name)
 
 
 def _entry(item_dir: Path, path: Path) -> dict[str, Any]:
-    return {"path": path.relative_to(item_dir).as_posix(), "revision": revision(path)}
+    return {"path": path.relative_to(item_dir).as_posix(),
+            "revision": revision(path) if contained(item_dir, path) else None}
+
+
+def _present(item_dir: Path, path: Path) -> bool:
+    return path.is_file() and contained(item_dir, path)
 
 
 def listing(context, slug: Slug) -> list[dict[str, Any]]:
     """Every file the item may have, read from disk alone: per stage its
     document or its rounds, and its handoffs; then the declaration file.
-    Needs no backend read, so it answers while the backend cannot."""
-    layout = context.layout
+    Needs no backend read, so it answers while the backend cannot. A file
+    reached through a link that leads outside the item folder is not one of
+    its files: a document or the declaration is shown as not written yet, and
+    a round or handoff is left out."""
+    layout = _item_only(context.layout)
     item_dir = layout.item_dir(slug)
     found: list[dict[str, Any]] = []
     for row in file_stages(context):
@@ -69,7 +95,7 @@ def listing(context, slug: Slug) -> list[dict[str, Any]]:
         if row.artifact == DOCUMENT:
             document = layout.document(slug, row.name)
             entry["document"] = {**_entry(item_dir, document),
-                                 "present": document.is_file()}
+                                 "present": _present(item_dir, document)}
         elif row.artifact == ROUNDS:
             rounds = []
             for number, path in reversed(layout.rounds(slug, row.name)):
@@ -78,20 +104,21 @@ def listing(context, slug: Slug) -> list[dict[str, Any]]:
                     one["verdict"] = round_verdict(path).state
                 rounds.append(one)
             entry["rounds"] = rounds
-        entry["handoffs"] = [_entry(item_dir, p) for p in
-                             reversed(_handoffs(layout.stage_dir(slug, row.name)))]
+        entry["handoffs"] = [_entry(item_dir, p) for p in reversed(
+            _handoffs(item_dir, layout.stage_dir(slug, row.name)))]
         found.append(entry)
     declaration = layout.capabilities_file(slug)
     found.append({"stage": None, "artifact": "declaration",
                   "document": {**_entry(item_dir, declaration),
-                               "present": declaration.is_file()}})
+                               "present": _present(item_dir, declaration)}})
     return found
 
 
 def verdicts(context, slug: Slug) -> list[dict[str, str]]:
-    """`current_verdict` for each verdict stage whose rounds are on disk."""
-    return [{"stage": row.name,
-             "verdict": context.layout.current_verdict(slug, row.name)}
+    """`current_verdict` for each verdict stage whose rounds are on disk,
+    judged by the rounds inside the item folder alone."""
+    layout = _item_only(context.layout)
+    return [{"stage": row.name, "verdict": layout.current_verdict(slug, row.name)}
             for row in file_stages(context) if row.verdict]
 
 
@@ -125,13 +152,17 @@ def inside_item(item_dir: Path, path: Path, shown: str) -> Path:
     read nor written. Both sides are resolved, so a work path that is itself
     a link is unaffected; a file not written yet is judged by where it would
     go."""
-    try:
-        inside = path.resolve().is_relative_to(item_dir.resolve())
-    except (OSError, RuntimeError):             # a loop of links
-        inside = False
-    if not inside:
+    if not contained(item_dir, path):
         raise not_found(f"{shown} is not one of this item's files")
     return path
+
+
+def contained(item_dir: Path, path: Path) -> bool:
+    """Whether `path` resolves inside the item folder's resolved path."""
+    try:
+        return path.resolve().is_relative_to(item_dir.resolve())
+    except (OSError, RuntimeError):             # a loop of links
+        return False
 
 
 def _target(request: Request):

@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from tcw.errors import Unreachable
+from tcw.serve.files import revision
 from tests.serve.conftest import fs_project
 from tests.serve.test_work_read import new, ok
 
@@ -368,15 +369,48 @@ def test_a_stage_folder_linked_outside_is_not_read_or_written(item, tmp_path):
     assert list(outside.iterdir()) == []
 
 
+def test_files_linked_outside_are_not_listed_or_judged(item, tmp_path):
+    """B1: the item's detail lists its files and verdicts from disk; one
+    reached through a link that leads outside is not shown as present, has
+    no revision, and its verdict is not read."""
+    served, folder = item
+    outside = tmp_path / "outside"
+    for name in ("spec", "review", "plan"):
+        (outside / name).mkdir(parents=True)
+    (outside / "spec" / "spec.md").write_text("secret\n")
+    (outside / "review" / "round-1.md").write_text("---\njudges: 0\nverdict: accepted\n---\n")
+    (outside / "plan" / "handoff-20261015T120000Z.md").write_text("secret\n")
+    (outside / "capabilities.yaml").write_text("new: [secret]\n")
+    here = folder_of(served, folder)
+    for name in ("spec", "review"):
+        (here / name).symlink_to(outside / name, target_is_directory=True)
+    (here / "plan").mkdir()
+    (here / "plan" / "handoff-20261015T120000Z.md").symlink_to(
+        outside / "plan" / "handoff-20261015T120000Z.md")
+    (here / "capabilities.yaml").symlink_to(outside / "capabilities.yaml")
+    detail = ok(served.get(f"/api/work/{folder}"))
+    files = {f["stage"]: f for f in detail["files"]}
+    assert files["spec"]["document"] == {"path": "spec/spec.md", "revision": None,
+                                         "present": False}
+    assert files["review"]["rounds"] == []
+    assert files["plan"]["handoffs"] == []
+    assert files[None]["document"] == {"path": "capabilities.yaml", "revision": None,
+                                       "present": False}
+    assert {v["stage"]: v["verdict"] for v in detail["verdicts"]}["review"] == "none"
+
+
 def test_a_declaration_linked_outside_is_not_read_or_written(ledger, tmp_path):
     served, folder = ledger
     outside = tmp_path / "elsewhere.yaml"
     outside.write_text("new: [secret]\n")
     (folder_of(served, folder) / "capabilities.yaml").symlink_to(outside)
+    # The outside file's real revision, so a write is refused for being
+    # outside and not because the revision is stale (B3).
+    real = revision(outside)
     for answer in (served.get(f"/api/work/{folder}/declaration"),
-                   served.put(f"/api/work/{folder}/declaration", {**SIX, "revision": None}),
+                   served.put(f"/api/work/{folder}/declaration", {**SIX, "revision": real}),
                    served.get(f"/api/work/{folder}/files/capabilities.yaml"),
-                   put(served, folder, "capabilities.yaml", "new: [x]\n", None)):
+                   put(served, folder, "capabilities.yaml", "new: [x]\n", real)):
         assert answer.status == 404, answer.body
         assert "secret" not in answer.body.decode()
     assert outside.read_text() == "new: [secret]\n"
