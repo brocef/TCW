@@ -163,7 +163,10 @@ class JiraClient:
         request = urllib.request.Request(
             f"{self.config.site}{path}", data=payload, method=method)
         credentials = base64.b64encode(f"{email}:{token}".encode("utf-8")).decode("ascii")
-        request.add_header("Authorization", f"Basic {credentials}")
+        # Unredirected: urllib copies every other header onto a redirected
+        # request, whatever host it now goes to, and the token must reach
+        # only the configured site.
+        request.add_unredirected_header("Authorization", f"Basic {credentials}")
         request.add_header("Accept", "application/json")
         if payload is not None:
             request.add_header("Content-Type", "application/json")

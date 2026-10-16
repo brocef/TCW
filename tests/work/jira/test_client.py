@@ -354,7 +354,7 @@ def test_the_authorization_header_is_built_from_the_named_variables(monkeypatch)
     captured = {}
 
     def fake_urlopen(request, timeout=None):
-        captured["headers"] = dict(request.headers)
+        captured["headers"] = dict(request.header_items())
         captured["timeout"] = timeout
         captured["url"] = request.full_url
 
@@ -659,3 +659,56 @@ def test_nulls_the_code_already_treats_as_absent_still_read(monkeypatch):
     found = _client(monkeypatch, respond(f"/rest/api/3/issue/{KEY}/comment",
                                          comments)).comments(KEY, 5)
     assert (found[0].author_id, found[0].body) == (None, {"content": "not a list"})
+
+
+# -- the token reaches only the configured site (pre-freeze clean-up) ------------------
+
+
+def test_a_redirect_carries_no_credentials(monkeypatch):
+    """urllib copies a request's ordinary headers onto the request a redirect
+    makes, whatever host it now goes to; the token must not follow."""
+    import http.server
+    import threading
+
+    seen = {}
+
+    class Elsewhere(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen["elsewhere"] = dict(self.headers)
+            body = b"{}"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    other = http.server.HTTPServer(("127.0.0.1", 0), Elsewhere)
+
+    class Site(Elsewhere):
+        def do_GET(self):
+            seen["site"] = dict(self.headers)
+            self.send_response(302)
+            self.send_header("Location", f"http://localhost:{other.server_port}/landed")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    site = http.server.HTTPServer(("127.0.0.1", 0), Site)
+    for server in (site, other):
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    try:
+        config = dataclasses.replace(CONFIG, site=f"http://127.0.0.1:{site.server_port}")
+        status, _, raw = jira.JiraClient(config)._request("GET", "/rest/api/3/myself",
+                                                          timeout=5)
+    finally:
+        for server in (site, other):
+            server.shutdown()
+            server.server_close()
+    assert (status, raw) == (200, b"{}")
+    assert seen["site"]["Authorization"].startswith("Basic ")
+    assert "Authorization" not in seen["elsewhere"], seen["elsewhere"]
+    assert seen["elsewhere"]["Accept"] == "application/json"
