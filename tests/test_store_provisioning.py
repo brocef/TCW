@@ -2123,6 +2123,8 @@ NOT_ASKING = [
 def test_the_documents_name_the_ssh_command_exception(name):
     """A user's own ssh command is left alone, so ssh may still ask: no
     document may say provisioning never asks without saying so."""
+    if "/upcoming/" in name and not (REPO / name).exists():
+        pytest.skip("the entry files are combined into a version's file at a cut")
     text = " ".join((REPO / name).read_text(encoding="utf-8").lower().split())
     assert "never asks" not in text and "never prompts" not in text, name
     assert "ssh may still ask" in text, name
