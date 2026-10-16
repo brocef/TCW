@@ -2030,20 +2030,20 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
 # ── provisioning never asks (pre-freeze clean-up, C4) ────────────────────────
 
 
-def _git_envs(monkeypatch, ssh_command: str = "", scope: str = "--global"):
+def _git_envs(monkeypatch, ssh_command: str = "", scope: str = "global"):
     """Run `_run` with `_git` replaced, recording each call's argv and
-    environment; reading `core.sshCommand` in `scope` (`--global`, `--system`,
-    or `--local` for the repository the command runs in, which a plain
-    `git config --get` also reads) answers `ssh_command`."""
+    environment; the one `git config --show-scope --get-all core.sshCommand`
+    read answers `ssh_command` as set in `scope` (`global`, `system`,
+    `command`, or `local` and `worktree` for the repository the command runs
+    in)."""
     calls = []
 
     def fake_git(argv, **kwargs):
         calls.append((list(argv), kwargs.get("env")))
-        read = argv[1] == "config" and argv[-2:] == ["--get", "core.sshCommand"]
-        named = [a for a in argv if a in ("--global", "--system", "--local")]
-        here = named == [scope] or (not named and scope == "--local")
-        out = ssh_command if read and here else ""
-        return subprocess.CompletedProcess(argv, 0, out, "")
+        read = (argv[1] == "config" and "--show-scope" in argv
+                and argv[-2:] == ["--get-all", "core.sshCommand"])
+        out = f"{scope}\t{ssh_command}" if read and ssh_command else ""
+        return subprocess.CompletedProcess(argv, 1 if read and not out else 0, out, "")
     monkeypatch.setattr(fs, "_git", fake_git)
     for name in ("GIT_SSH_COMMAND", "GIT_SSH"):
         monkeypatch.delenv(name, raising=False)
@@ -2078,16 +2078,17 @@ def test_a_users_own_ssh_command_is_kept(monkeypatch):
     assert env["GIT_SSH_COMMAND"] == "ssh -i ~/.ssh/mine"
 
 
-@pytest.mark.parametrize("scope", ["--global", "--system"])
+@pytest.mark.parametrize("scope", ["global", "system", "command"])
 def test_a_configured_core_ssh_command_is_not_replaced(monkeypatch, scope):
     env = _git_envs(monkeypatch, ssh_command="ssh -i ~/.ssh/other\n", scope=scope)
     assert "GIT_SSH_COMMAND" not in env
 
 
-def test_the_current_repositorys_ssh_command_does_not_turn_batch_mode_off(monkeypatch):
+@pytest.mark.parametrize("scope", ["local", "worktree"])
+def test_the_current_repositorys_ssh_command_does_not_turn_batch_mode_off(monkeypatch, scope):
     """A clone into a new folder does not use the setting of the repository
     the command runs in, so that setting must not decide."""
-    env = _git_envs(monkeypatch, ssh_command="ssh -i ~/.ssh/other\n", scope="--local")
+    env = _git_envs(monkeypatch, ssh_command="ssh -i ~/.ssh/other\n", scope=scope)
     assert env["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
 
 
@@ -2108,6 +2109,11 @@ def test_the_documents_name_the_ssh_command_exception(name):
     text = " ".join((REPO / name).read_text(encoding="utf-8").lower().split())
     assert "never asks" not in text and "never prompts" not in text, name
     assert "ssh may still ask" in text, name
+    # ...and which ssh command counts as the user's own: the one a clone into
+    # a new folder uses, not the current repository's (`_no_prompt_env`).
+    assert "global or system git config" in text, name
+    assert "git command line" in text, name
+    assert "not the current repository's own setting" in text, name
 
 
 def test_with_real_git_a_local_ssh_command_is_not_read(monkeypatch, tmp_path):
@@ -2124,4 +2130,20 @@ def test_with_real_git_a_local_ssh_command_is_not_read(monkeypatch, tmp_path):
     monkeypatch.chdir(repo)
     assert fs._no_prompt_env()["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
     empty.write_text("[core]\n\tsshCommand = ssh -i global\n")
+    assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()
+
+
+def test_with_real_git_a_command_line_ssh_command_is_kept(monkeypatch, tmp_path):
+    """A `core.sshCommand` given on the command line, here through
+    `GIT_CONFIG_COUNT`, is what the clone uses, so it is the user's own."""
+    empty = tmp_path / "gitconfig"
+    empty.write_text("")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_DIR", "GIT_CONFIG_PARAMETERS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.sshCommand")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "ssh -i command-line")
     assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()

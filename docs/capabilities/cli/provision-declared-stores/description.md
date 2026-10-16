@@ -45,8 +45,9 @@ Where git or ssh would need an answer, the clone fails instead and I am told
 git's reason. So a private repository needs credentials git can use without
 asking, from a credential helper or an ssh key loaded in an ssh agent. The
 exception is an ssh command I have set myself (`GIT_SSH_COMMAND`, `GIT_SSH`, or
-`core.sshCommand` in my global or system git config): it is used as it is, so
-ssh may still ask.
+`core.sshCommand` in my global or system git config or given on the git
+command line, not the current repository's own setting): it is used as it is,
+so ssh may still ask.
 
 A failure — unreachable remote, unknown ref, refused authentication, or a
 repository that turns out not to carry the store where the declaration says —

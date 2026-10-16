@@ -59,9 +59,12 @@
   `GCM_INTERACTIVE=never` and an empty `GIT_ASKPASS` (git then skips every
   askpass program, including `core.askPass`), removes `SSH_ASKPASS`, and sets
   `GIT_SSH_COMMAND="ssh -o BatchMode=yes"` unless `GIT_SSH_COMMAND`, `GIT_SSH`
-  or a global or system `core.sshCommand` is set (`git config --global` and
-  `--system`, with `--includes`; the current repository's own setting, which
-  a clone into a new folder does not use, is not read).
+  or a `core.sshCommand` outside the current repository is set: one
+  `git config --show-scope --includes --get-all core.sshCommand` read counts
+  any value whose scope is not `local` or `worktree`, so the global, system
+  and command-line scopes (`git -c`, `GIT_CONFIG_PARAMETERS`,
+  `GIT_CONFIG_COUNT`) all count; the current repository's own setting, which
+  a clone into a new folder does not use, does not.
 - `refuse_retired_config` names `os.path.relpath(root / SENTINEL)`.
 - `open_backend` calls `require_valid()` on the registry when `personal` is
   true.

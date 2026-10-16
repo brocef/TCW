@@ -57,7 +57,8 @@
   repository needs a credential helper that already holds its credentials,
   or an ssh key loaded in an ssh agent. The exception is an ssh command you
   have set yourself (`GIT_SSH_COMMAND`, `GIT_SSH`, or `core.sshCommand` in your
-  global or system git config): TCW leaves it alone, so ssh may still ask.
+  global or system git config or given on the git command line, not the
+  current repository's own setting): TCW leaves it alone, so ssh may still ask.
 - **Offline `tcw validate` in a Jira project** now reads each item folder's
   `capabilities.yaml` and reports one that cannot be read or is malformed.
   With `--remote` it is reported once, not twice. Checking a single item,

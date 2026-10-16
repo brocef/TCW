@@ -170,19 +170,23 @@ def _no_prompt_env() -> dict[str, str]:
     run too, is removed. For ssh,
     `BatchMode=yes` makes it fail instead of asking for a passphrase or to
     trust a new host, but only when the user has set no ssh command of their
-    own (`GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand`), which is never
-    replaced. Only the global and system `core.sshCommand` are read: those are
-    what a clone into a new folder uses, and the repository the command runs
-    in, whose own setting the clone does not use, must not turn `BatchMode` off.
+    own, which is never replaced: `GIT_SSH_COMMAND` or `GIT_SSH`, or a
+    `core.sshCommand` in the global, system or command-line configuration
+    (`git -c`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`), which are what a
+    clone into a new folder uses. One read with `--show-scope` finds them all;
+    a value in the `local` or `worktree` scope belongs to the repository the
+    command runs in, whose own setting the clone does not use, so it must not
+    turn `BatchMode` off.
     """
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
            "GIT_ASKPASS": ""}
     env.pop("SSH_ASKPASS", None)
     if not env.get("GIT_SSH_COMMAND") and not env.get("GIT_SSH"):
-        configured = [_git(["git", "config", scope, "--includes", "--get",
-                            "core.sshCommand"], capture_output=True, text=True, env=env)
-                      for scope in ("--global", "--system")]
-        if not any((done.stdout or "").strip() for done in configured):
+        done = _git(["git", "config", "--show-scope", "--includes", "--get-all",
+                     "core.sshCommand"], capture_output=True, text=True, env=env)
+        found = [line.split("\t", 1) for line in (done.stdout or "").splitlines()]
+        if not any(len(f) == 2 and f[1].strip() and f[0] not in ("local", "worktree")
+                   for f in found):
             env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes"
     return env
 

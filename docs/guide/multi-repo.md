@@ -227,7 +227,8 @@ not an ssh key's passphrase, and not whether to trust a server it has not
 met. git's prompts and Git Credential Manager's are turned off, and ssh runs
 in batch mode. The one exception is an ssh command you have set yourself
 (`GIT_SSH_COMMAND`, `GIT_SSH`, or git's `core.sshCommand` in your global or
-system git config): TCW leaves it as it is, so ssh may still ask, as it would
+system git config or given on the git command line, not the current
+repository's own setting): TCW leaves it as it is, so ssh may still ask, as it would
 for any clone you run. Where an answer would be needed the clone fails, and
 the message gives git's reason.
 So a private repository needs credentials that git can find without asking:
