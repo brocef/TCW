@@ -1,8 +1,9 @@
 # Outcome (TCW-76): the migration log
 
 This file is the migration log for TCW-76 (plan, choice 5). Part A wrote the
-sections below before the freeze. The migration itself starts under `## Run 1`
-at Task B3.
+sections below before the freeze. The migration itself, from step 0 on, is
+logged in `docs/tcw-3.0-migration-log.md`, outside the work path as the
+guide's rule 7 says (that log's "Deviations from the plan", item d).
 
 ## Part A: work-branch commits
 
