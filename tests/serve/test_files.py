@@ -301,6 +301,19 @@ def test_files_stay_editable_while_the_backend_cannot_answer(jira):
     assert found["content"] == "# Spec\n"
 
 
+def test_a_malformed_declaration_save_is_reported_without_asking_the_backend(jira):
+    """Pre-freeze clean-up, T5: the single-item check parses the file
+    offline, so the save says it is malformed although no item is read."""
+    served = jira.served
+    jira.backend.calls.clear()
+    answer = ok(served.put("/api/work/TCW-1-first/files/capabilities.yaml",
+                           {"content": "added: [x]\n", "revision": None}))
+    assert [(w["severity"], w["message"]) for w in answer["warnings"]] == [
+        ("error", "capabilities.yaml: unknown key(s) added; expected new, changed, "
+                  "removed or taxonomy")], answer
+    assert jira.backend.named("read") == []
+
+
 # -- review round 1 ---------------------------------------------------------------------------
 
 

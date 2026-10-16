@@ -138,19 +138,41 @@ def test_a_filesystem_item_naming_a_jira_item_stays_offline(offline, tmp_path, m
     assert "TCW-1-x" not in text
 
 
-def test_one_item_without_its_item_contacts_nothing(offline):
+def test_one_item_without_its_item_contacts_nothing(offline, monkeypatch):
     """TCW-73 AC 24: with no `Item`, the stage- and link-dependent checks are
-    skipped, and nothing is asked of Jira (`offline` fails on any request)."""
+    skipped, and nothing is asked of Jira (`offline` fails on any request).
+    The declaration is well formed, so only the records check, which needs
+    the stage, could report it."""
     from tcw.findings import Finding
     from tcw.validate import ValidationTarget, validate as validate_one
+    from tcw.work import gates
+
+    def never(*args, **kwargs):
+        raise AssertionError("the records check ran without the item")
+    monkeypatch.setattr(gates, "records_problems", never)
     _, name = offline.item("At spec", "spec")
-    (offline.work / name / "capabilities.yaml").write_text("added: [x/y]\n")
+    (offline.work / name / "capabilities.yaml").write_text("changed: [auth/login]\n")
     (offline.work / name / "review").mkdir()
     (offline.work / name / "review" / "round-1.md").write_text("---\nverdict: x\n---\n")
     found = validate_one(offline.root, target=ValidationTarget("work", name))
     assert all(type(f) is Finding for f in found)
     assert [f.severity for f in found] == ["warning"], found
     assert found[0].where.endswith("review/round-1.md")
+
+
+def test_one_item_without_its_item_still_reports_a_malformed_declaration(offline):
+    """Pre-freeze clean-up, T5: the single-item check parses the file
+    offline, as a full `tcw validate` does, with the same words."""
+    from tcw.validate import ValidationTarget, validate as validate_one
+    _, name = offline.item("At spec", "spec")
+    _, other = offline.item("Other", "spec")
+    path = offline.work / name / "capabilities.yaml"
+    path.write_text("added: [x/y]\n")
+    (offline.work / other / "capabilities.yaml").write_text("added: [x/y]\n")
+    found = validate_one(offline.root, target=ValidationTarget("work", name))
+    assert [(f.severity, f.where, f.message) for f in found] == [
+        ("error", str(path), "capabilities.yaml: unknown key(s) added; expected "
+                             "new, changed, removed or taxonomy")], found
 
 
 # -- item-folder declarations and rounds (pre-freeze clean-up, T5 and T7) --------------

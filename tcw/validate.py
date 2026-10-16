@@ -471,8 +471,9 @@ def _work_target_findings(project_root: Path, registry,
     `capabilities.yaml` (when the stage is not terminal) and its `parent` and
     `blocked-by` within this project. They use `target.item` when given; in
     filesystem mode they read `item.yaml` otherwise; in Jira mode, with no
-    item, they are skipped, so this never contacts Jira. References into
-    other projects are left to a full `tcw validate`."""
+    item, they are skipped, so this never contacts Jira, and only whether
+    `capabilities.yaml` parses is checked, as a full `tcw validate` checks it
+    offline. References into other projects are left to a full `tcw validate`."""
     from tcw.errors import TcwError
     from tcw.work.fs_backend import FsWorkBackend, work_store_problems
     from tcw.work.gates import project_reader, records_problems
@@ -509,6 +510,9 @@ def _work_target_findings(project_root: Path, registry,
         except TcwError:
             item = None              # the backend's check above has said why
     if item is None:
+        if isinstance(backend, JiraBackend):
+            problems += _declaration_findings(layout, backend.project,
+                                              folders={target.ref})
         return problems
     if item.stage is not None and table_stage(item.stage).kind != TERMINAL \
             and layout.capabilities_file(item.slug).exists():
@@ -596,7 +600,7 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     return findings, note
 
 
-def _declaration_findings(layout, project: str) -> list[Finding]:
+def _declaration_findings(layout, project: str, folders=None) -> list[Finding]:
     """Jira mode, offline: an error for each item folder's `capabilities.yaml`
     that cannot be read or is malformed, worded as `records_problems` words
     it. Every key-named folder is read, finished or not, since the stage that
@@ -604,14 +608,15 @@ def _declaration_findings(layout, project: str) -> list[Finding]:
     whatever the stage; a folder not named for a key is
     `jira_store_problems`'s to report. The records the file declares are
     checked only under `--remote`, which then skips a file that does not
-    parse, so it is reported once."""
+    parse, so it is reported once. `folders` narrows the check to those item
+    folders' names."""
     from tcw.work.gates import parse_declarations
     from tcw.work.jira.backend import folder_key
     from tcw.work.model import Slug
 
     findings = []
     for name in layout.item_folders():
-        if folder_key(name) is None:
+        if folder_key(name) is None or (folders is not None and name not in folders):
             continue
         path = layout.capabilities_file(Slug(project, name))
         declared = parse_declarations(path)
