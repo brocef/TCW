@@ -47,10 +47,11 @@
   parsed, prints the error and returns 1 instead of "Nothing to provision".
 - `JiraClient._request` adds `Authorization` with `add_unredirected_header`,
   so urllib does not copy it onto a redirected request.
-- `tcw/validate.py` `_work_target_findings`: in Jira mode with no item, the
+- `tcw/validate.py` `_work_target_findings`: in Jira mode, whenever the
+  records check does not run (no item, or an item at a terminal stage), the
   item's `capabilities.yaml` is parsed (`_declaration_findings` with
   `folders`), so a single-item check and a viewer save report a malformed
-  one.
+  one whatever the stage, as a full `tcw validate` does.
 - `FsCapabilitiesStore.reset` refuses when `_nested_entries` (shared with
   `remove`) finds a `meta.yaml` below the override folder.
 - `FsTaxonomyStore.add` refuses a `slug` that is not `is_slug`, after

@@ -62,7 +62,8 @@
 - **Offline `tcw validate` in a Jira project** now reads each item folder's
   `capabilities.yaml` and reports one that cannot be read or is malformed.
   With `--remote` it is reported once, not twice. Checking a single item,
-  and saving a file in the web viewer, report it too. A `qa` folder's rounds,
+  and saving a file in the web viewer, report it too, whatever the item's
+  stage. A `qa` folder's rounds,
   which Jira keeps, now get only the "this folder is ignored" warning.
 
 ## The web viewer

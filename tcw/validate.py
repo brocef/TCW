@@ -471,9 +471,11 @@ def _work_target_findings(project_root: Path, registry,
     `capabilities.yaml` (when the stage is not terminal) and its `parent` and
     `blocked-by` within this project. They use `target.item` when given; in
     filesystem mode they read `item.yaml` otherwise; in Jira mode, with no
-    item, they are skipped, so this never contacts Jira, and only whether
-    `capabilities.yaml` parses is checked, as a full `tcw validate` checks it
-    offline. References into other projects are left to a full `tcw validate`."""
+    item, they are skipped, so this never contacts Jira. In Jira mode, whenever
+    the records check does not run (no item, or a terminal stage), whether
+    `capabilities.yaml` parses is still checked, as a full `tcw validate`
+    checks it offline whatever the stage. References into other projects are
+    left to a full `tcw validate`."""
     from tcw.errors import TcwError
     from tcw.work.fs_backend import FsWorkBackend, work_store_problems
     from tcw.work.gates import project_reader, records_problems
@@ -520,6 +522,12 @@ def _work_target_findings(project_root: Path, registry,
         problems += [Finding("error", str(layout.capabilities_file(item.slug)), message)
                      for message in records_problems(layout, item.slug, reader,
                                                      finished=False)]
+    elif isinstance(backend, JiraBackend):
+        # A finished item's records are not checked, but in Jira mode a full
+        # `tcw validate` reports a malformed file whatever the stage, so this
+        # does too.
+        problems += _declaration_findings(layout, backend.project,
+                                          folders={target.ref})
     refs = ([("parent", item.parent)] if item.parent else []) + \
         [("blocked-by", ref) for ref in item.blocked_by]
     for name, ref in refs:

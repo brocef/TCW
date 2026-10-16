@@ -228,3 +228,23 @@ def test_a_qa_round_is_only_ignored(offline, monkeypatch, capsys):
     assert code == 0, text
     assert "Jira keeps the qa record, so this folder is ignored" in text, text
     assert "latest qa round is invalid" not in text, text
+
+
+def test_one_finished_item_given_its_item_still_reports_a_malformed_declaration(offline):
+    """Pre-freeze clean-up, final fixes: with the item given and its stage
+    terminal, the records check does not run, but the file is still parsed
+    offline, as a full `tcw validate` parses it whatever the stage, and
+    nothing is asked of Jira."""
+    from datetime import date
+    from tcw.validate import ValidationTarget, validate as validate_one
+    from tcw.work.model import Item, Slug
+    _, name = offline.item("Done", "done", status="Done")
+    path = offline.work / name / "capabilities.yaml"
+    path.write_text("- a list\n")
+    item = Item(slug=Slug(offline.id, name), title="Done", stage="completed",
+                created=date(2026, 10, 1), priority=None, effort=None,
+                complexity=None, tags=(), assignee=None, parent=None, blocked_by=())
+    found = validate_one(offline.root, target=ValidationTarget("work", name, item=item))
+    assert [(f.severity, f.where, f.message) for f in found] == [
+        ("error", str(path), "capabilities.yaml: must be a mapping of new, changed, removed "
+                             "and taxonomy")], found
