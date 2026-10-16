@@ -988,3 +988,55 @@ tests.
 printed nothing (exit 1); the scratch run printed no configuration finding
 and no Jira-workflow finding other than the one `unchecked:` warning; the two
 composing loops printed nothing. This is step 2's check too: it passes.
+
+### Step 4: Flatten the store and give every item a stage
+
+**Items.** Each of the 33 item folders was moved with `git mv` from its
+status folder to the top of the work path (30 from `backlog/`, 1 from
+`active/`, 2 from `completed/`). There was no nested child: no `state.yaml`
+lies deeper than `docs/work/<status>/<folder>/`. In Jira mode no folder is
+renamed here; each takes its `<KEY>-<title words>` name at step 6. Each
+folder got an `item.yaml` holding its `title`, copied from its `state.yaml`
+unchanged (the `TCW-68 — ` and `TCW-76 — ` prefixes included, which step 6's
+reconciling drops), and its `stage`, from the approved plan's item table with
+D4 applied: 16 at `request`, 1 at `plan` (TCW-50), 1 at `implement` (TCW-76),
+3 at `completed` (TCW-9, item 26, item 33), 12 at `discarded` (the prune list
+and item 17). Read against the guide's Status folders rule, the only stages
+that differ from it are those 13 the plan closes, as the amended step 4 says.
+
+**`renames.yaml`**, its two pairs, for step 9:
+
+```text
+2026-09-30-report-a-slug-held-by-two-folders-in-tcw-validate-instead-of-crashing -> 2026-09-30-refuse-instead-of-crashing-when-a-slug-is-held-by-two-folders
+2026-09-30-run-ci-on-python-3-12-or-3-13-as-well -> 2026-09-30-run-ci-on-python-3-12-as-well
+```
+
+**Ignored folders** (D6, none kept). The worktree has none. In the primary
+checkout, `git -C /Users/brian/Projects/TCW status --ignored --porcelain -- docs/work`
+listed the same 37 folders as the plan, all under `docs/work/discarded/`.
+Each was moved with a plain `mv` to
+`/Users/brian/Projects/TCW-2.x-ignored-discarded-items/`, made for them and
+outside every repository, which now holds 37 folders. Afterwards the same
+`git status --ignored` command printed nothing, the primary checkout's
+`docs/work/discarded/` holds only its tracked `.gitkeep`, and
+`git -C /Users/brian/Projects/TCW status --porcelain` printed nothing, with
+`main` still at `8b5a212b`. Nothing else in the primary checkout was touched.
+
+**Deleted.** `find docs/work/backlog docs/work/active docs/work/review docs/work/blocked docs/work/completed docs/work/discarded -mindepth 1 ! -name .gitkeep 2>/dev/null`
+printed nothing first. Then the six status folders with their `.gitkeep`
+files, `graveyard.yaml`, `dod.yaml` and `renames.yaml` were removed with
+`git rm`. `inbox/` stays for step 8.
+
+**Check:**
+`find docs/work -mindepth 1 -maxdepth 1 -type d \( -name backlog -o -name active -o -name review -o -name blocked -o -name completed -o -name discarded \)`
+printed nothing, and
+`for d in docs/work/*/; do [ "$d" = docs/work/inbox/ ] || [ -f "$d/item.yaml" ] || echo "$d"; done`
+printed nothing. `docs/work` holds 33 item folders and `inbox/`.
+
+Tests: the files that read the guide or this log (as at step 3), the tests
+naming the deleted store-root files (`tests/test_validate.py`,
+`tests/work/test_cli_items.py`, `tests/work/test_fs_backend.py`,
+`tests/work/test_no_2x_names.py`, all on fixtures, none on this board), and
+the standing guard files: 1437 passed, 17 skipped. `docs/work/` is archival in
+`tests/test_documented_cli_surface.py`, so the moved documents are not read as
+live ones. `pytest --collect-only -q` collected 5275 tests.
