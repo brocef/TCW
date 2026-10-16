@@ -798,6 +798,34 @@ class NotAMapping(yaml.YAMLError):
     """
 
 
+class NotUtf8(UnicodeDecodeError):
+    """A YAML file holding a byte that is not valid UTF-8, worded with its path.
+
+    A **subclass** of `UnicodeDecodeError`, and so of `ValueError`, so every
+    site that catches either keeps catching it; only the message changes, from
+    codec words that name no file to the file and the byte, as `tcw.config`
+    words the same problem.
+    """
+
+    def __init__(self, path: Path, error: UnicodeDecodeError):
+        super().__init__(error.encoding, error.object, error.start, error.end,
+                         error.reason)
+        self.path = path
+
+    def __str__(self) -> str:
+        bad = self.object[self.start:self.start + 1].hex()
+        return (f"{self.path}: is not valid UTF-8 text (byte 0x{bad} at "
+                f"position {self.start})")
+
+
+def read_yaml_text(path: Path) -> str:
+    """The text of a YAML file, or `NotUtf8` naming it."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise NotUtf8(path, error) from None
+
+
 def load_yaml(path: Path, unique: bool = False) -> dict:
     """Load a YAML **mapping**. `{}` when the file is absent or has no content;
     `yaml.YAMLError` when it holds anything that is not a mapping.
@@ -821,7 +849,7 @@ def load_yaml(path: Path, unique: bool = False) -> dict:
     """
     if not path.exists():
         return {}
-    text = path.read_text(encoding="utf-8")
+    text = read_yaml_text(path)
     data = _load_named_yaml(text, path,
                             _UniqueKeyLoader if unique else yaml.SafeLoader)
     if data is None:                       # absent content: empty file, or `null`

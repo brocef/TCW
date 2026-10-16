@@ -776,6 +776,23 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     assert "Nothing to provision" not in err, err
 
 
+@pytest.mark.parametrize("command", [["provision"], ["init"]])
+def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, command):
+    """Pre-freeze clean-up, final fixes: the codec's own words named no
+    file. The shared reader names it, and the file is left as it was."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    broken = b"id: corelib\n# caf\xe9\n"
+    (code / "tcw-config.yaml").write_bytes(broken)
+    monkeypatch.chdir(code)
+
+    assert main(command) == 1
+    err = capsys.readouterr().err
+    assert err == (f"tcw {command[0]}: {code / 'tcw-config.yaml'}: is not valid "
+                   f"UTF-8 text (byte 0xe9 at position 17)\n"), err
+    assert (code / "tcw-config.yaml").read_bytes() == broken
+
+
 def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, tmp_path / "no-such-repository"))
 

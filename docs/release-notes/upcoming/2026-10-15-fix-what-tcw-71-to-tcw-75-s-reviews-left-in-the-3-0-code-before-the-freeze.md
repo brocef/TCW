@@ -24,6 +24,9 @@
 - **A Jira site address that is not a Jira site** is now reported as that
   (exit code 1, asking you to check `work.jira.site`) instead of "not found".
   A ticket or project that does not exist is still exit code 4.
+- **A `tcw-config.yaml` that is not valid UTF-8 text** is reported naming the
+  file and the byte, by `tcw provision` and `tcw init` as by the other
+  commands, instead of in Python's own words, which named no file.
 - **A configuration key written as a list or a mapping**, such as `? [a]`,
   is now an error that names the file and line, instead of a crash.
 - **Both bad Jira credential settings are reported**, when `email-env` and

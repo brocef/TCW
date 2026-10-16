@@ -19,7 +19,7 @@ from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
     LOCAL_CONFIG, declared_repository, find_project_root, git_root,
-    ignore_personal_file, init, load_config, refuse_retired_config,
+    ignore_personal_file, init, load_config, read_yaml_text, refuse_retired_config,
     provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
@@ -57,7 +57,7 @@ def run_init(components: list[str], project_id: str | None = None,
                          f"choose from {', '.join(COMPONENTS)}")
     sentinel = root / SENTINEL
     if project_id is None:
-        configured = (_load_named_yaml(sentinel.read_text(encoding="utf-8"), sentinel)
+        configured = (_load_named_yaml(read_yaml_text(sentinel), sentinel)
                       if sentinel.exists() else {})
         if not isinstance(configured, dict) or not configured.get("id"):
             raise UsageError("a new project needs `--id <project-id>`; IDs are not "

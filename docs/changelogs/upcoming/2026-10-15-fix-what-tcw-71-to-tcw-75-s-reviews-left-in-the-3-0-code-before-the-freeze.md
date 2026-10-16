@@ -15,6 +15,10 @@
   key-named folder's `capabilities.yaml`.
 - `tcw.store.fs._no_prompt_env`: the environment `FsStoreProvisioner._run`
   gives git.
+- `tcw.store.fs.NotUtf8` (a `UnicodeDecodeError`, so a `ValueError`) and
+  `read_yaml_text`, used by `load_yaml` and by `run_init`: a YAML file that is
+  not valid UTF-8 is reported as "<path>: is not valid UTF-8 text (byte 0x..
+  at position N)" instead of the codec's words.
 - Tests: `tests/config/test_config_edges.py`, `tests/test_doc_vocabulary.py`,
   `tests/test_suite_runs_its_own_tcw.py`, and new cases beside each change.
 
