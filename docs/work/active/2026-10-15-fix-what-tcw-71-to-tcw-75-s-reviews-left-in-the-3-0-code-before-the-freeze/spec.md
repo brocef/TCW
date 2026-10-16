@@ -735,3 +735,39 @@ and its tests are on the work branch; this section is not committed with it.
   back equal. The printed YAML is read back before it is printed, and a value
   that would come back as something else is refused with an error naming its
   key.
+
+### Final fixes
+
+- **Design 5 and criterion 11 (C4), replacing the read described above.**
+  Reading only `--global` and `--system` missed a `core.sshCommand` given on
+  the command line (`git -c`, `GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`),
+  which the clone does use, so TCW set its own `GIT_SSH_COMMAND` and replaced
+  the user's key. There is now one read,
+  `git config --show-scope --includes --get-all core.sshCommand`, and any
+  non-empty value whose scope is not `local` or `worktree` is the user's own
+  and is left alone. The current repository's own setting still does not turn
+  `BatchMode` off. The documents name the command line as a source.
+- **Design 15 (T5), the item-given path.** In Jira mode, when the item is
+  given and its stage is terminal, the records check does not run, but the
+  item's `capabilities.yaml` is still parsed offline and a malformed one is
+  reported in the same words, as the no-item path and a full `tcw validate`
+  report it whatever the stage. Nothing is asked of Jira.
+- **The Jira token on a redirect, the 401 that follows.** `Authorization` is
+  never sent on a redirect, so a 401 from the address a redirect led to says
+  nothing about the credentials. When the address that answered 401 differs
+  from the one requested, the error says Jira redirected the request to that
+  address, that credentials are not sent on a redirect, and that
+  `work.jira.site` should be the address Jira answers at. A 401 from the site
+  itself is still reported as rejected credentials.
+- **A `tcw-config.yaml` that is not valid UTF-8 (pre-existing).** `tcw
+  provision` and `tcw init` printed Python's codec error, which names no file.
+  The shared YAML reader (`read_yaml_text`, used by `load_yaml` and by
+  `tcw init`) raises `NotUtf8`, still a `UnicodeDecodeError` and so a
+  `ValueError`, whose message names the file and the byte, as the other
+  commands already word it.
+- **`tcw work new --project <id> --stage <stage>`, the reason given.** The
+  refusal said a delegated item always starts in the other project's inbox,
+  which is not true of a Jira-mode project, where the ticket waits in Jira for
+  `tcw work tickets adopt`. It now says the item starts where that project's
+  intake puts it, which holds for both; the earlier amendment's "always starts
+  in the other project's inbox" is superseded in the same way.
