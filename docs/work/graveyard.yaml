@@ -1221,3 +1221,6 @@
   location: 70f6db74124851b7aea02938db91a43b3f420785
   resolution: done
   resolved: '2026-10-15'
+2026-10-16-2-8-3-the-jira-client-must-not-send-credentials-on-to-a-redirected-host:
+  resolution: done
+  resolved: '2026-10-16'
