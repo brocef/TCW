@@ -234,5 +234,23 @@ def test_the_recorder_replaces_time_zone_and_locale(tmp_path):
         assert (user["timeZone"], user["locale"]) == ("Etc/UTC", "en_US")
 
 
+def test_a_named_call_is_recorded_apart_from_the_shared_file(tmp_path):
+    """Inside `named`, an answer with fewer key paths than the shared file's is
+    still written, to its own file, and the shared file is left alone."""
+    recorder = Recorder(tmp_path, SITE)
+    url = f"{SITE}/rest/api/3/search/jql"
+    rich = {"isLast": True, "issues": [{"key": "TCW-1", "fields": {"summary": "s"}}]}
+    recorder.record("POST", url, None, 200, json.dumps(rich).encode())
+    shared = (tmp_path / "post-search-jql-200.json").read_text()
+    with recorder.named("first-page"):
+        recorder.record("POST", url, b'{"jql": "x"}', 200,
+                        json.dumps({"issues": [], "nextPageToken": "t"}).encode())
+    named = json.loads((tmp_path / "post-search-jql-200-first-page.json").read_text())
+    assert named["response"] == {"issues": [], "nextPageToken": "t"}
+    assert (tmp_path / "post-search-jql-200.json").read_text() == shared
+    recorder.record("POST", url, None, 200, b'{"issues": []}')
+    assert (tmp_path / "post-search-jql-200.json").read_text() == shared
+
+
 def test_the_fake_site_stands_in_for_the_real_one():
     assert SITE.endswith(".atlassian.net") and REAL_HOST not in SITE

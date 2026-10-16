@@ -5,7 +5,10 @@ The live scenario installs this when `TCW_JIRA_CAPTURE=<dir>` is set. It wraps
 `urllib.request.urlopen`, the one call `JiraClient._request` makes, so it sees
 error bodies as well as successful ones, and writes one file per endpoint and
 status: the answer with the most distinct key paths, with the request that
-produced it.
+produced it. Inside `Recorder.named(label)`, calls are written to a file of
+their own instead (`...-<status>-<label>.json`), so an answer that shows a
+shape the shared file lacks is kept even when it has fewer key paths (TCW
+pre-freeze clean-up, Design 18).
 
 Before writing, it replaces every account id, email address, display name and
 the site's host with fixed values, so that `test_recorded_shapes.py` can fail
@@ -16,6 +19,7 @@ together they say where one lives.
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import re
@@ -99,6 +103,17 @@ class Recorder:
         self.site = site.rstrip("/")
         self.host = urllib.parse.urlsplit(self.site).netloc
         self.people: dict[str, str] = {}
+        self.label: str | None = None
+
+    @contextlib.contextmanager
+    def named(self, label: str):
+        """Record the calls made inside under `<endpoint>-<status>-<label>.json`,
+        each replacing the one before, and never in the endpoint's shared file."""
+        self.label = label
+        try:
+            yield self
+        finally:
+            self.label = None
 
     # -- scrubbing --------------------------------------------------------------
 
@@ -138,7 +153,10 @@ class Recorder:
                body: bytes) -> None:
         path = url.removeprefix(self.site)
         route = template(path, self.project)
-        target = self.directory / file_name(method, route, status)
+        name = file_name(method, route, status)
+        if self.label:
+            name = name.removesuffix(".json") + f"-{self.label}.json"
+        target = self.directory / name
         # The answer with the most distinct key paths is kept: it shows the most
         # of the endpoint's shape (a ticket with a parent, a link and estimates,
         # rather than one read for its status alone).
@@ -146,7 +164,7 @@ class Recorder:
             richness = len(key_paths(json.loads(body))) if body else 0
         except ValueError:
             richness = 0
-        if target.exists() and json.loads(target.read_text())["richness"] >= richness:
+        if not self.label and target.exists() and json.loads(target.read_text())["richness"] >= richness:
             return
         try:
             response = json.loads(body) if body else None
