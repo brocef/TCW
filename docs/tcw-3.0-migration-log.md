@@ -148,14 +148,16 @@ list, beside the migration guides. Without that line the test fails as
 described; with it, the test files named in the plan's rules pass (1153
 passed, 6 skipped), and `pytest --collect-only -q` collects 5275 tests.
 
-**Check:** to be run once the answer is recorded:
-`grep -c '^## Approved plan' docs/tcw-3.0-migration-log.md` must print `1`.
+**Check:** `grep -c '^## Approved plan' docs/tcw-3.0-migration-log.md`
+printed `1`.
 
 ## Approved plan
 
-Status: **presented to the owner on 2026-10-16; not yet answered.** Nothing
-in the board, the configuration or Jira has been changed. The owner's answer
-is recorded word for word at the end of this section once given.
+Status: **approved by the owner on 2026-10-16**, every decision as
+recommended (D2 replace, D3 comment, D4 prune, D5 drop, D6 move none kept, D7
+tag `tcw-2.x-final` on `8b5a212b`, D8 yes, D9 remove the line, D10 leave and
+amend the guide, D11 the agent applies the Jira changes). The answer is
+recorded word for word at the end of this section.
 
 Built from a read of the whole board and configuration on the migration
 branch after step 0 (`2e5e843a`), and of every ticket in the Jira project
@@ -819,4 +821,6 @@ runs no file of the project's.)
 
 ### The owner's answer
 
-(Not yet given.)
+Given in chat on 2026-10-16:
+
+> Approve as recommended
