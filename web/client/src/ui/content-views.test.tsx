@@ -4,6 +4,7 @@ import { vi } from "vitest"
 import { ThemeProvider } from "../theme"
 import type { TSortDirection, TWorkSortKey } from "../model/tree"
 import {
+    Conflict,
     DetailView,
     EditorView,
     FacetPopover,
@@ -205,4 +206,26 @@ test.each([
     expect(
         screen.queryAllByRole("combobox", { name: "Vocabulary" })
     ).toHaveLength(offered ? 1 : 0)
+})
+
+test("the conflict banner nests no block inside its paragraph", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+    const onRefresh = vi.fn()
+    const onDiscard = vi.fn()
+    try {
+        render(
+            <ThemeProvider>
+                <Conflict onRefresh={onRefresh} onDiscard={onDiscard} />
+            </ThemeProvider>
+        )
+        expect(errors).not.toHaveBeenCalled()
+    } finally {
+        errors.mockRestore()
+    }
+    const banner = screen.getByRole("alert")
+    expect(banner.querySelector("p div, p p")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Refresh from server" }))
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }))
+    expect(onRefresh).toHaveBeenCalledOnce()
+    expect(onDiscard).toHaveBeenCalledOnce()
 })

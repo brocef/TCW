@@ -60,9 +60,24 @@ def test_a_stale_term_edit_is_409(records):
     assert_error(answer, 409, "stale-revision")
 
 
+@pytest.mark.parametrize("ref", ["taxonomy/work-item", "capabilities/web"])
+def test_a_save_without_a_revision_is_400(records, ref):
+    """Pre-freeze clean-up, V1: no save skips the stale check."""
+    answer = records.patch(f"/api/{ref}", {"body": "Changed.\n"})
+    assert_error(answer, 400, "usage")
+    assert answer.json["error"] == "revision is required"
+
+
+@pytest.mark.parametrize("ref", ["taxonomy/work-item", "capabilities/web"])
+def test_a_save_with_a_stale_revision_is_409(records, ref):
+    answer = records.patch(f"/api/{ref}", {"body": "Changed.\n", "revision": "stale"})
+    assert_error(answer, 409, "stale-revision")
+
+
 def test_an_unknown_term_is_404(records):
     assert_error(records.get("/api/taxonomy/nonexistent"), 404, "not-found")
-    assert_error(records.patch("/api/taxonomy/nonexistent", {"fields": {"name": "x"}}),
+    assert_error(records.patch("/api/taxonomy/nonexistent", {"fields": {"name": "x"},
+                                                      "revision": "r"}),
                  404, "not-found")
 
 
@@ -140,7 +155,8 @@ def test_a_stale_capability_edit_is_409(records):
 
 def test_an_unknown_capability_is_404(records):
     assert_error(records.patch("/api/capabilities/nonexistent",
-                               {"fields": {"Status": "Supported"}}), 404, "not-found")
+                               {"fields": {"Status": "Supported"}, "revision": "r"}),
+                 404, "not-found")
 
 
 def test_a_capability_needs_a_path(records):
@@ -371,7 +387,8 @@ def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inherit
         "meta.yaml"
     before = meta.read_text()
     answer = inheriting.patch("/api/capabilities/shared-cap",
-                              {"fields": {"Status": "Partial", "Gaps": "x"}})
+                              {"fields": {"Status": "Partial", "Gaps": "x"},
+                               "revision": "r"})
     assert_error(answer, 403, "read-only")
     assert meta.read_text() == before
     assert not (inheriting.root / "docs" / "capabilities" / "shared-cap").exists()
@@ -380,7 +397,8 @@ def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inherit
 def test_an_inherited_term_is_read_only(inheriting):
     listed = {t["slug"]: t for t in inheriting.get("/api/taxonomy").json}
     assert listed["shared"]["origin"] == "base"
-    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"}})
+    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"},
+                                                       "revision": "r"})
     assert_error(answer, 403, "read-only")
 
 
@@ -448,7 +466,8 @@ def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
     """The 403 names `tcw capabilities set`; the real parser takes it, and
     run as named it makes a local override, leaving the inherited record."""
     from tcw.cli import build_parser
-    answer = inheriting.patch("/api/capabilities/shared-cap", {"fields": {"Gaps": "x"}})
+    answer = inheriting.patch("/api/capabilities/shared-cap", {"fields": {"Gaps": "x"},
+                                                                 "revision": "r"})
     assert_error(answer, 403, "read-only")
     named = _named_commands(answer.json["error"])
     assert named and named[0][:2] == ["capabilities", "set"], answer.json["error"]
@@ -467,7 +486,8 @@ def test_an_inherited_capabilitys_refusal_names_a_command_that_overrides_it(
 
 def test_an_inherited_terms_refusal_names_no_command_the_cli_lacks(inheriting):
     from tcw.cli import build_parser
-    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"}})
+    answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"},
+                                                       "revision": "r"})
     assert_error(answer, 403, "read-only")
     assert "override" not in answer.json["error"]
     for argv in _named_commands(answer.json["error"]):

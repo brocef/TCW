@@ -105,7 +105,7 @@ def file_path(context, slug: Slug, path: str) -> Path:
     either, and the declaration file. Anything else is not found."""
     item_dir = context.layout.item_dir(slug)
     if path == CAPABILITIES_FILE:
-        return item_dir / CAPABILITIES_FILE
+        return inside_item(item_dir, item_dir / CAPABILITIES_FILE, path)
     parts = path.split("/")
     if len(parts) == 2 and is_stage(parts[0]):
         name, file = parts
@@ -114,8 +114,24 @@ def file_path(context, slug: Slug, path: str) -> Path:
             if (row.artifact == DOCUMENT and file == f"{name}.md") or \
                     (row.artifact == ROUNDS and ROUND_NAME.fullmatch(file)) or \
                     HANDOFF_NAME.fullmatch(file):
-                return item_dir / name / file
+                return inside_item(item_dir, item_dir / name / file, path)
     raise not_found(f"{path} is not one of this item's files")
+
+
+def inside_item(item_dir: Path, path: Path, shown: str) -> Path:
+    """`path`, when it resolves inside the item folder's resolved path. A
+    symbolic link, the stage folder or the file itself, that leads outside
+    the item folder makes it not one of the item's files, so it is neither
+    read nor written. Both sides are resolved, so a work path that is itself
+    a link is unaffected; a file not written yet is judged by where it would
+    go."""
+    try:
+        inside = path.resolve().is_relative_to(item_dir.resolve())
+    except (OSError, RuntimeError):             # a loop of links
+        inside = False
+    if not inside:
+        raise not_found(f"{shown} is not one of this item's files")
+    return path
 
 
 def _target(request: Request):
@@ -238,7 +254,8 @@ def get_declaration(request: Request):
     """The six lists, or, for a file the parser rejects, its message and the
     text, so the file can be fixed as plain text."""
     ctx, folder, slug = _target(request)
-    path = ctx.layout.capabilities_file(slug)
+    path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
+                       CAPABILITIES_FILE)
     declared = parse_declarations(path)
     answer: dict[str, Any] = {"revision": revision(path), "present": path.is_file()}
     if isinstance(declared, str):
@@ -294,7 +311,8 @@ def _yaml(sent) -> str:
 
 def put_declaration(request: Request):
     ctx, folder, slug = _target(request)
-    path = ctx.layout.capabilities_file(slug)
+    path = inside_item(ctx.layout.item_dir(slug), ctx.layout.capabilities_file(slug),
+                       CAPABILITIES_FILE)
     expected = _expected(request)
     sent = _sent_lists(request)
     current = parse_declarations(path)

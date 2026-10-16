@@ -335,3 +335,48 @@ def test_a_file_save_does_not_ask_a_backend_that_owns_the_record(jira):
     ok(served.put("/api/work/TCW-1-first/files/spec/spec.md",
                   {"content": "# Spec\n", "revision": None}))
     assert jira.backend.named("read") == [] and jira.backend.named("list") == []
+
+
+# -- links that lead outside the item folder (pre-freeze clean-up, V2) ----------------------------
+
+
+def test_a_stage_folder_linked_outside_is_not_read_or_written(item, tmp_path):
+    served, folder = item
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "spec.md").write_text("secret\n")
+    (folder_of(served, folder) / "spec").symlink_to(outside, target_is_directory=True)
+    answer = served.get(f"/api/work/{folder}/files/spec/spec.md")
+    assert answer.status == 404, answer.body
+    assert "secret" not in answer.body.decode()
+    (outside / "spec.md").unlink()
+    answer = put(served, folder, "spec/spec.md", "# Spec\n", None)
+    assert answer.status == 404, answer.body
+    assert list(outside.iterdir()) == []
+
+
+def test_a_declaration_linked_outside_is_not_read_or_written(ledger, tmp_path):
+    served, folder = ledger
+    outside = tmp_path / "elsewhere.yaml"
+    outside.write_text("new: [secret]\n")
+    (folder_of(served, folder) / "capabilities.yaml").symlink_to(outside)
+    for answer in (served.get(f"/api/work/{folder}/declaration"),
+                   served.put(f"/api/work/{folder}/declaration", {**SIX, "revision": None}),
+                   served.get(f"/api/work/{folder}/files/capabilities.yaml"),
+                   put(served, folder, "capabilities.yaml", "new: [x]\n", None)):
+        assert answer.status == 404, answer.body
+        assert "secret" not in answer.body.decode()
+    assert outside.read_text() == "new: [secret]\n"
+
+
+def test_a_work_path_that_is_a_link_still_has_files(item, tmp_path):
+    """Both sides are resolved, so the link above the item folder is not
+    leaving it."""
+    served, folder = item
+    work = served.root / "docs" / "work"
+    moved = tmp_path / "work-elsewhere"
+    work.rename(moved)
+    work.symlink_to(moved, target_is_directory=True)
+    ok(put(served, folder, "spec/spec.md", "# Spec\n", None))
+    assert (moved / folder / "spec" / "spec.md").read_text() == "# Spec\n"
+    assert ok(served.get(f"/api/work/{folder}/files/spec/spec.md"))["content"] == "# Spec\n"

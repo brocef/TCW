@@ -396,25 +396,22 @@ export function Conflict({
 }) {
     return (
         <Callout.Root className="conflict-banner" color="amber" role="alert">
+            {/* Callout.Text is a <p>, so it holds only inline text; the
+                buttons' Flex is a <div> and sits beside it. */}
             <Callout.Text>
                 <strong>Stale write detected</strong>
-                <Text as="p" size="2">
+                <Text as="span" size="2" style={{ display: "block" }}>
                     The server version changed. Your draft is preserved.
                 </Text>
-                <Flex gap="2" mt="2">
-                    <Button size="1" variant="soft" onClick={onRefresh}>
-                        Refresh from server
-                    </Button>
-                    <Button
-                        size="1"
-                        color="red"
-                        variant="soft"
-                        onClick={onDiscard}
-                    >
-                        Discard draft
-                    </Button>
-                </Flex>
             </Callout.Text>
+            <Flex gap="2" mt="2">
+                <Button size="1" variant="soft" onClick={onRefresh}>
+                    Refresh from server
+                </Button>
+                <Button size="1" color="red" variant="soft" onClick={onDiscard}>
+                    Discard draft
+                </Button>
+            </Flex>
         </Callout.Root>
     )
 }

@@ -109,9 +109,9 @@ def update_term(request: Request):
                                if k in TERM_FIELDS}
     if "body" in request.body:
         changes["description"] = request.body["body"]
-    revision = request.field("revision", required=False)
-    if revision is not None:
-        changes["core_revision"] = revision
+    # Required, so no save skips the check that the record is unchanged since
+    # it was read; the client always sends the `coreRevision` it last read.
+    changes["core_revision"] = request.field("revision")
     store = _taxonomy(request)
     found = store.get(request.param(1))
     if found is not None and found.origin != "local":
@@ -185,9 +185,9 @@ def update_capability(request: Request):
         changes["fields"] = fields
     if "body" in request.body:
         changes["body"] = request.body["body"]
-    revision = request.field("revision", required=False)
-    if revision is not None:
-        changes["core_revision"] = revision
+    # Required, so no save skips the check that the record is unchanged since
+    # it was read; the client always sends the `coreRevision` it last read.
+    changes["core_revision"] = request.field("revision")
     store = _capabilities(request)
     found = store.get(request.param(1))
     if found is not None and found.origin != "local":

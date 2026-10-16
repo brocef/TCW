@@ -55,9 +55,11 @@ def override_variable(project_id: str) -> str:
     return "TCW_PROJECT_" + project_id.upper().replace("-", "_")
 
 
-# A CLI invocation never outlives the process, and a graph walk re-probes the
-# same handful of directories, so an unbounded module-level dict is the right
-# cache here — don't "fix" it into an LRU.
+# The cache lives as long as the process: one command for the CLI, but a whole
+# server run under `tcw serve`. A graph walk re-probes the same handful of
+# directories, so an unbounded module-level dict is the right cache here —
+# don't "fix" it into an LRU. The price is that a directory added or removed as
+# a linked worktree while a server runs is seen only after a restart.
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
 
 
