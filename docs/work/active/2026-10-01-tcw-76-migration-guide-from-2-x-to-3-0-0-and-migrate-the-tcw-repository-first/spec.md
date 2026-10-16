@@ -2027,3 +2027,23 @@ repository at `e301bef5` and, for user-level files, against this machine.
     - 2.8.2 is merged into `main`; the merge of Design 8.5.2 was tried with
       `git merge-tree`, and its conflicts are listed there.
     - The owner's answers to Notes items 7 to 9 are recorded above them.
+
+### Amendments after the guide's review (2026-10-16, Task A9)
+
+- **The request (Design, around line 868) changes.** An `intake.md` written by
+  2.x's import is no longer compared by text after dropping its
+  `Imported on … from [KEY]` line: 2.x copied the description through REST
+  version 2, as Jira wiki markup, under a `# <KEY> — <summary>` heading, so
+  that comparison never matched. Instead, such a file counts as contained,
+  and is deleted without asking or posting, only while it is byte for byte
+  what 2.x's import commit (`tcw work: import <KEY> → <slug>`) added,
+  uncommitted changes included. An edited import, or one with no import
+  commit, is compared by text like any other request file. Every other
+  request file, `initial-request.md` included, counts as contained when the
+  description, read back from its document, holds its text with white space
+  ignored; this covers the tickets step 6 creates.
+- **Jira text is written through REST version 3** as Atlassian's document
+  format, the same shape 3.0's `text_document` builds, not through version 2.
+- **The migration log holds no text from outside the repository** (step 12
+  and rule 7): only paths, line numbers and decisions; the copied lines stay
+  in an uncommitted file that is deleted once the migration is accepted.
