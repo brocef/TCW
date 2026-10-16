@@ -47,6 +47,9 @@ ARCHIVAL = (
     # from, so it documents a surface that by definition no longer exists. Not a
     # trailing-slash tree: these are files directly under `docs/`.
     "docs/migration-guide-",
+    # The record of TCW's own migration to 3.0, which names every 2.x key and
+    # command it converted.
+    "docs/tcw-3.0-migration-log.md",
 )
 
 
