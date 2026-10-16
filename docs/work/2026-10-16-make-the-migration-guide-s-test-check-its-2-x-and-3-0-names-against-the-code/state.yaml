@@ -1,8 +1,0 @@
-slug: 2026-10-16-make-the-migration-guide-s-test-check-its-2-x-and-3-0-names-against-the-code
-title: Make the migration guide's test check its 2.x and 3.0 names against the code
-created: '2026-10-16'
-resolution: null
-effort: medium
-complexity: medium
-blocked_by:
-- slug: 2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first

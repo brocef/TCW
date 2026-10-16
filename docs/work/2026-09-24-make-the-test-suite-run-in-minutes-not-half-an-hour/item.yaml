@@ -1,2 +1,3 @@
 title: Make the test suite run in minutes, not half an hour
 stage: request
+tags: [tech-debt]

@@ -1,2 +1,5 @@
 title: Write work item properties to mapped tracker fields
 stage: discarded
+priority: high
+effort: high
+tags: [remote, work, cli]

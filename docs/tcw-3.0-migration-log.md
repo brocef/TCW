@@ -1040,3 +1040,46 @@ naming the deleted store-root files (`tests/test_validate.py`,
 the standing guard files: 1437 passed, 17 skipped. `docs/work/` is archival in
 `tests/test_documented_cli_surface.py`, so the moved documents are not read as
 live ones. `pytest --collect-only -q` collected 5275 tests.
+
+### Step 5: Convert item fields
+
+Every `state.yaml` (33) was converted into its item's `item.yaml`, one key
+per line in the order of the guide's example, and then removed with `git rm`:
+
+- **`priority`** as a name: 19 items had one, now 7 `highest`, 4 `high`, 4
+  `medium`, 1 `low`, 3 `lowest`. The 14 with none have no `priority` key: in
+  Jira mode the ticket's own priority stands.
+- **`effort`** (15 items), **`complexity`** (6) and **`tags`** (30) as they
+  were. TCW-48's and TCW-41's empty `blocked_by: []` give no key.
+- **`parent`**: TCW-76's, as `tcw/2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend`
+  (the folder's name after step 4).
+- **`blocked-by`**: TCW-10's, as
+  `[tcw/2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes]`,
+  and item 30's, as
+  `[tcw/2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first]`.
+  TCW-76's blocker `2026-10-01-tcw-75-documentation-for-tcw-3-0-readme-guides-and-the-opt-in-git-example`
+  was dropped and is listed here: 2.x retention deleted its folder (D5). No
+  item had an `external:` blocker or an `initiative`.
+- **Dropped:** `slug`, `created`, `resolution`, `started`, `completed`,
+  `phase` (item 18's empty one) and `type` (TCW-68's `epic`); `owner` on
+  TCW-9, TCW-76 and item 33, since in Jira mode it is a git identity, not an
+  account.
+
+Each item's converted `priority`, `effort`, `complexity` and `tags` were
+compared with the approved plan's item table, row by row: all 33 agree.
+
+**Comments.** No item was discarded under 2.x (the tracked `discarded/` was
+empty, and none of the ignored ones is kept), so no `Carried over from TCW
+2.x: discarded as …` comment arises. The 13 items the plan closes (12 at
+`discarded`, item 26 at `completed`) each get the comment whose first line is
+`Closed at the migration to TCW 3.0 as <stage>`, with the plan's reason. In
+Jira mode those are posted at step 6, so no `comments/` file was written.
+
+`tracker.yaml` stays, as Jira mode says: 19 files, one per bound item, for
+step 6 to read the ticket keys from.
+
+Tests: as at step 4: 1437 passed, 17 skipped; `pytest --collect-only -q`
+collected 5275 tests.
+
+**Check:** `find docs/work -name state.yaml` printed nothing, and
+`grep -nE '^priority: [0-9]' docs/work/*/item.yaml` printed nothing (exit 1).

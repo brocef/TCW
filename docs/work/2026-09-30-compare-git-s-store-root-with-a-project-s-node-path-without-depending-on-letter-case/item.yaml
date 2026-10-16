@@ -1,2 +1,3 @@
 title: Compare git's store root with a project's node path without depending on letter case
 stage: discarded
+tags: [bug, store]

@@ -1,2 +1,4 @@
 title: Run the eval harness and report what it finds
 stage: request
+priority: lowest
+tags: [skills, work, docs]

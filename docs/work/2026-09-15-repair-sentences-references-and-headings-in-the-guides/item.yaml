@@ -1,2 +1,5 @@
 title: Repair misplaced sentences, broken references and overloaded headings in the guides
 stage: request
+priority: medium
+effort: medium
+tags: [docs]

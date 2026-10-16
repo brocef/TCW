@@ -1,2 +1,6 @@
 title: 'Nothing verifies that a changed: capability was actually changed'
 stage: request
+priority: highest
+effort: low
+complexity: medium
+tags: [cli, capabilities, work]

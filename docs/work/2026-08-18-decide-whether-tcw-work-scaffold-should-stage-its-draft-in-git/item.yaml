@@ -1,2 +1,6 @@
 title: Decide whether tcw work scaffold should stage its draft in git
 stage: discarded
+priority: medium
+effort: low
+complexity: low
+tags: [cli, work]

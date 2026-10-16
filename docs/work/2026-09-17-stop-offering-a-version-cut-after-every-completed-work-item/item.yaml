@@ -1,2 +1,6 @@
 title: Stop offering a version cut after every completed work item
 stage: completed
+priority: highest
+effort: medium
+complexity: medium
+tags: [work, cli, skills, docs]
