@@ -19,7 +19,8 @@ from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
     LOCAL_CONFIG, declared_repository, find_project_root, git_root,
-    ignore_personal_file, init, refuse_retired_config, provisioned_store_root,
+    ignore_personal_file, init, load_config, refuse_retired_config,
+    provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
@@ -88,7 +89,9 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
 
     The only command in `tcw` that clones a repository, and it does so only
     because it was asked to. (The Jira backend's commands also reach the
-    network, but only the configured `work.jira.site`.) That is the whole
+    network: the configured `work.jira.site`, and wherever that site
+    redirects a request, but the credentials are sent to the site alone.)
+    That is the whole
     security posture of the feature: a repository's config can name a URL, so
     nothing may act on that URL without an explicit instruction from the
     person holding the checkout. The remote is
@@ -100,6 +103,14 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     if project_root is None:
         from tcw.errors import NO_PROJECT, BackendError
         raise BackendError(NO_PROJECT)
+
+    # The readers below treat a config too broken to read as declaring
+    # nothing, which would end in "Nothing to provision" and success.
+    try:
+        load_config(project_root / SENTINEL)
+    except ValueError as error:
+        print(f"tcw provision: {error}", file=sys.stderr)
+        return 1
 
     # An override that is present and wrong refuses here too, and it has to be
     # said here rather than left to the registry. Every other command reaches a

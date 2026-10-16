@@ -754,6 +754,28 @@ def test_a_malformed_declaration_refuses_rather_than_doing_nothing(tmp_path,
     assert "work.repository.url" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("broken, words", [
+    ("id: corelib\n? [a]\n: 1\n", "a mapping key must be a single value"),
+    ("id: corelib\nx: [\n", "while parsing a flow node"),
+    ("id: corelib\nid: other\n", "duplicate key: 'id'"),
+])
+def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkeypatch,
+                                                                capsys, broken, words):
+    """It read as declaring nothing, so the command said "Nothing to
+    provision" and succeeded."""
+    code = _repo(tmp_path / "code")
+    init(["work"], code, "corelib")
+    (code / "tcw-config.yaml").write_text(broken)
+    monkeypatch.chdir(code)
+
+    assert main(["provision"]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("tcw provision: malformed "), err
+    assert f"{code.name}/tcw-config.yaml: " in err, err
+    assert words in err and "Traceback" not in err, err
+    assert "Nothing to provision" not in err, err
+
+
 def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(_declared_against(tmp_path, tmp_path / "no-such-repository"))
 
