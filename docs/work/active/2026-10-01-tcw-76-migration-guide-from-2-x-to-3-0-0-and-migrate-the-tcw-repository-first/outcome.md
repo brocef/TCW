@@ -10,7 +10,7 @@ On `work/2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw
 
 - A1 `251569a6`, A2 `6235ead9`, A3 `794a740b`, A4 `40dfdb3c`, A5 `5ab7bd32`,
   A6 `3170763a`, A7 `06d9a8e5` (the guide corrected after the rehearsal),
-  A10 `617743d9`.
+  A10 `617743d9`, A9 `59f3abf8`, `dd750f6d`, `9801a77c`, `d38255cc`.
 
 ## Task A3: the composed prompts, checked by hand
 
@@ -515,6 +515,45 @@ retired `Planning doc` or `Tracker` field, which migration step 10 removes.
 The only finding naming one of the three reworded records is that field on
 `work/configure-the-work-store-location`; no link or other finding names
 them.
+
+## Task A9: the guide's review
+
+Bounded adversarial review (`adversarial-code-reviewer`; the handoff chose it
+over the plan's spec reviewer, since the questions were whether the guide
+matches the code) of `e301bef5..617743d9`, run 2026-10-16. Rule: one review,
+one fix round, one confirming round, then the owner decides.
+
+- **Review: NOT DONE, 9 findings, all accepted.** REST version 2 reads text
+  as Jira wiki markup (now version 3 with Atlassian's document format, built
+  by `jq` functions checked against `mapping.py`); a rerun of step 6 could
+  duplicate tickets once `tracker.yaml` is gone; `initial-request.md` was
+  posted twice; inbox tickets had no summary; step 12 copied private memory
+  lines into the committed log; three read-before-write lookups were
+  incomplete (custom fields, comment paging, the time zone of the create
+  search); the issue type, screen fields, option values and `ticket.key`;
+  four 2.x names missing from step 12's search; the folder pattern and the
+  credential variables. Fixed in `59f3abf8`, which also added the five
+  behavior changes from the pre-freeze clean-up item.
+- **Confirming review: NOT DONE, 2 findings plus 5 notes, all accepted.** A
+  2.x import's `intake.md` never compared as contained; step 3's check was
+  overstated (it reads only the configured and sub-task issue types). Fixed in
+  `dd750f6d`.
+- **The owner chose one more short review of those edits.** It found that
+  the rule added in `9801a77c` (trust an import with no content-changing
+  commit) could still delete an edited import unread in three cases. Fixed
+  in `d38255cc`: an import is trusted only while it is byte for byte what
+  2.x's import commit added, uncommitted changes included, checked in a
+  scratch repository for an untouched, moved, edited-and-uncommitted, and
+  moved-and-edited file; plus its notes (create-screen paging, "at most two
+  issue types", deleting the saved check output, the `jq` note). This last
+  commit was checked by its tests and a mutation (removing the comparison
+  turns `test_a_2x_import_of_the_ticket_counts_as_contained_without_comparing`
+  red), not by another review round.
+- **Separate change, not done here:** `tests/test_migration_guide.py` can pass
+  while the guide is wrong (its 2.x names are typed by hand, no 3.0 name is
+  checked against the code, no check command is run). Generating the names
+  from v2.8.1's source would close that.
+- Tests: the guide's five test files, 991 passed, 6 skipped.
 
 ## Jira checklist (for the owner)
 
