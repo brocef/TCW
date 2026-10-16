@@ -370,6 +370,19 @@ def test_the_rules_state_the_stop_for_a_failing_check():
     assert "ask nothing item by\n   item" in rules
 
 
+# -- Behavior that changed in commands that kept their names -------------------------------
+
+@pytest.mark.parametrize("topic", [
+    "**A slug given to `tcw taxonomy add --slug` must be a slug**",
+    "**The viewer's record edits need a revision.**",
+    "**`tcw provision` never asks a question.**",
+    "**`tcw work` commands check the connected projects.**",
+    "**Offline `tcw validate` in Jira mode reads each item's\n  `capabilities.yaml`.**",
+])
+def test_each_stricter_behavior_is_named(topic):
+    assert topic in section(GUIDE, 4, "Behavior that changed")
+
+
 # -- Criterion 7: behavior that had no key -------------------------------------------------
 
 @pytest.mark.parametrize("topic", ["**Automatic commits.**", "**Publishing.**",
@@ -388,12 +401,12 @@ def test_no_shell_escape_and_no_slash_command():
 
 @pytest.mark.parametrize("action, form", [
     ("Search", "/rest/api/3/search/jql"),
-    ("Create a ticket", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/2/issue\""),
+    ("Create a ticket", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/3/issue\""),
     ("List a ticket's transitions", "/transitions\""),
     ("Move a ticket", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/3/issue/$KEY-42/transitions\""),
     ("Set fields", "-X PUT"),
-    ("List a ticket's comments", "/comment?maxResults=100"),
-    ("Post a comment", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/2/issue/$KEY-42/comment\""),
+    ("List a ticket's comments", "/rest/api/3/issue/$KEY-42/comment?startAt=0&maxResults=100"),
+    ("Post a comment", "-X POST -H 'Content-Type: application/json' \"$SITE/rest/api/3/issue/$KEY-42/comment\""),
     ("Link a blocker", "/rest/api/3/issueLink"),
 ])
 def test_every_jira_read_and_write_has_a_rest_form_and_a_web_equivalent(action, form):
@@ -401,10 +414,65 @@ def test_every_jira_read_and_write_has_a_rest_form_and_a_web_equivalent(action, 
     assert form in row[1] and row[2], row
 
 
-def test_jira_credentials_are_named_by_variable():
+def jira_row(action: str) -> list[str]:
+    [row] = [r for r in tables(section(GUIDE, 2, "Talking to Jira"))[0][1:] if r[0] == action]
+    return row
+
+
+def test_no_request_uses_version_2_of_jira_s_interface():
+    # Version 2 reads text as wiki markup, which re-renders Markdown.
+    assert "/rest/api/2/" not in GUIDE
+
+
+@pytest.mark.parametrize("action, built", [("Create a ticket", "description: adf($d)"),
+                                           ("Post a comment", "{body: adf($b)}")])
+def test_text_is_sent_as_a_document(action, built):
+    row = jira_row(action)
+    assert '"$ADF"' in row[1] and built in row[1], row
+
+
+def test_the_document_builder_has_text_documents_shape():
     text = section(GUIDE, 2, "Talking to Jira")
-    assert 'AUTH="$TCW_JIRA_EMAIL:$TCW_JIRA_TOKEN"' in text
-    assert "the two variables `credentials` names" in text
+    [block] = [b for b in fenced(text) if b.startswith("```sh\nADF='")]
+    assert '{type: "doc", version: 1, content: .}' in block
+    assert '{type: "hardBreak"}, {type: "text", text: .}' in block
+    assert "def adf_text(d):" in block
+
+
+def test_reading_a_ticket_names_the_custom_fields():
+    row = jira_row("Read one ticket")
+    assert "<project field>,<item field>,<effort field>,<complexity field>" in row[1]
+
+
+def test_the_issue_type_is_the_configured_one():
+    row = jira_row("Create a ticket")
+    assert 'issuetype: {name: $t}' in row[1] and '"Task"' not in row[1]
+    assert "TYPE=Task                                     # work.jira.issue-type" in \
+        section(GUIDE, 2, "Talking to Jira")
+
+
+def test_jira_credentials_are_read_from_the_variables_the_configuration_names():
+    text = section(GUIDE, 2, "Talking to Jira")
+    assert 'AUTH="$(printenv "$EMAIL_ENV"):$(printenv "$TOKEN_ENV")"' in text
+    assert "TOKEN_ENV=TCW_JIRA_API_KEY" in text and "TCW_JIRA_TOKEN" not in GUIDE
+
+
+def test_the_create_search_starts_the_day_before_the_start_date():
+    assert 'created >= "<the day before the start date>"' in section(GUIDE, 2, "Rules")
+
+
+def test_every_request_file_already_in_the_description_is_deleted_unposted():
+    text = " ".join(section(GUIDE, 3, "The request").split())
+    assert "`intake.md` or `initial-request.md` alike" in text
+    assert "deleted without asking and without posting anything" in text
+
+
+def test_step_6_finds_a_ticket_without_tracker_yaml():
+    text = step(6)
+    assert "`ticket.key` in its `tracker.yaml`" in text
+    assert "the `ticket:` line of its `item.yaml`" in text
+    assert "the key at the front of its folder's name" in text
+    assert "<KEY>-[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*" in check(6)
 
 
 # -- Criterion 32: step 12 revisits agent instructions and memories ---------------------
@@ -463,7 +531,7 @@ def test_step_12_proposes_delete_rewrite_or_keep(action):
 
 def test_step_12_reads_every_file_the_broad_search_prints_in_full():
     text = step_12()
-    search = 'grep -rlsE "\\btcw\\b|\\b($NAMES)|\\b($WORDS)\\b" "${PLACES[@]}"'
+    search = 'grep -rlsE "\\btcw\\b|(^|[^[:alnum:]_])($NAMES)|\\b($WORDS)\\b" "${PLACES[@]}"'
     assert any(search in b for b in fenced(text))
     after = text[text.index(search):]
     assert after.index("**Read each printed file in full**") < after.index("**Stop and ask**")
@@ -473,8 +541,16 @@ def test_step_12s_check_compares_the_names_search_with_the_logs_expected_lines()
     text = check(12)
     assert "`grep -c '^## Agent instructions' <log>` prints `1`" in text
     [block] = [b for b in fenced(text) if b.startswith("```sh\ndiff ")]
-    assert 'grep -rIsHE "\\b($NAMES)" "${PLACES[@]}" | LC_ALL=C sort' in block
+    assert 'grep -rIsHE "(^|[^[:alnum:]_])($NAMES)" "${PLACES[@]}" | LC_ALL=C sort' in block
     assert "/^```expected-names$/" in block
+    assert 'cat "$PRIVATE"' in block
+
+
+def test_step_12_keeps_text_from_outside_the_repository_out_of_the_log():
+    text = " ".join(step_12().split())
+    assert "**Nothing private goes into the log.**" in text
+    assert "never the passage" in text
+    assert "outside the repository and never committed" in text
 
 
 def alternatives(name: str) -> str:
@@ -484,7 +560,17 @@ def alternatives(name: str) -> str:
 
 
 def coverage() -> re.Pattern:
-    return re.compile(rf"\b(?:{alternatives('NAMES')})|\b(?:{alternatives('WORDS')})\b")
+    return re.compile(rf"(?:^|[^A-Za-z0-9_])(?:{alternatives('NAMES')})"
+                      rf"|\b(?:{alternatives('WORDS')})\b")
+
+
+# 2.x text the first columns do not name, each checked in 2.8.x's source.
+@pytest.mark.parametrize("text", [
+    "tcw work start 2026-10-01-x --worktree", "the Definition of Done", "`tcw work tracker sync`",
+    "work.tracker.transitions.claim", "transitions.start",
+])
+def test_names_finds_2x_text_outside_the_tables(text):
+    assert re.search(rf"(?:^|[^A-Za-z0-9_])(?:{alternatives('NAMES')})", text), text
 
 
 def test_names_holds_no_bare_tcw():

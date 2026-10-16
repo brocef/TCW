@@ -27,6 +27,8 @@ What changes, in short:
 - **The configuration is reshaped**: `work.lifecycle` and `work.tracker` give
   way to `work.stages`, `work.hooks`, `work.backend` and `work.jira`, and
   several keys are removed.
+- **Some commands that keep their names are stricter**: see
+  [Behavior that changed](#behavior-that-changed).
 
 **Who this guide is for.** It is written for an agent, under Claude Code,
 Codex or any other harness, working with a user: the person who owns the
@@ -94,7 +96,8 @@ can show.
   one.** 3.0 reads the configuration of every project the configuration
   declares (under `connected-projects`): one that is missing is reported as
   unresolved and cannot be checked, and one still on 2.x makes
-  `tcw validate` fail on its `connected-projects` key. 2.8's `tcw validate`
+  `tcw validate`, and every `tcw work` command that reads the board, fail on
+  its `connected-projects` key. 2.8's `tcw validate`
   reports a missing one, and `tcw provision` fetches it. Plan to run this
   guide in each connected project; at the least, each must have finished its
   own step 3 before this project's step 11.
@@ -135,14 +138,20 @@ can show.
    the ticket and skip the write when its effect is already there**, so that
    Jira, not the log, says what was done:
    - **creating a ticket**: search with
-     `project = <KEY> AND reporter = currentUser() AND created >= "<start date>"`
+     `project = <KEY> AND reporter = currentUser() AND created >= "<the day before the start date>"`
      and compare summaries exactly. A match is the ticket an earlier run made,
      and it is reused. The start date is the one step 0 writes into the log,
      unchanged across restarts, and with the reporter it tells the
-     migration's own ticket apart from someone else's with the same summary;
+     migration's own ticket apart from someone else's with the same summary.
+     The search starts a day early because Jira compares `created` in the
+     account's time zone, which may be a day behind the machine that wrote
+     the start date (`date -j -v-1d -f %F <start date> +%F` on macOS,
+     `date -d '<start date> -1 day' +%F` on Linux, prints the day before);
    - **posting a comment**: every comment the migration posts begins with a
      fixed first line naming its kind. Read the ticket's comments, and skip
-     the post when one by the same account already begins with that line;
+     the post when one by the same account already begins with that line.
+     Read every page of comments, not only the first
+     ([Talking to Jira](#talking-to-jira));
    - **moving a ticket, or setting a field, label or link**: skip it when the
      ticket already has that status, value or link.
 7. **Keep the migration log.** It is one file, named in the approved plan and
@@ -155,7 +164,11 @@ can show.
    run is abandoned and the migration starts again, keep the old branch, and
    copy the log forward under a new heading `## Run <N>`, so every run's record
    survives. A log lost anyway costs only the record: the reads of rule 6,
-   not the log, decide whether a Jira write is repeated.
+   not the log, decide whether a Jira write is repeated. **The log is
+   committed, so it never holds text from a file outside the repository**, or
+   from a file git does not track: for those, step 12 records only the file's
+   path and line number in the log, and keeps any text it needs in a private
+   file that is never committed.
 8. **Run `tcw` only where a step says to**: 2.8 at step 0, 3.0 in a scratch
    folder at step 3, and 3.0 on the project from step 11 on. Every check
    before that is a plain shell command, because neither CLI can read a board
@@ -312,8 +325,14 @@ new configuration needs:
   refuse. Keep the transition that creates a ticket;
 - **the custom fields**: `TCW Project` and `TCW Item`, text fields of one line,
   and, if the project tracks effort and complexity, two single-choice fields
-  whose options are `Low`, `Medium`, `High` and `Very High`. Each must be on
-  the create screen and the edit screen of every issue type the project uses.
+  whose options are `Low`, `Medium`, `High` and `Very High` (3.0 matches them
+  ignoring capitals, so `low` … `very high` serve as well);
+- **the fields on the screens**: every one of those custom fields, and also
+  `Summary`, `Labels`, `Assignee`, `Parent` and, when the project has a
+  priority field, `Priority`, must be on the create screen and the edit
+  screen of every issue type the project uses. `Parent` is not needed on the
+  type at the top of the project's hierarchy. `tcw validate --remote` checks
+  each of these at step 3 and reports one that is missing.
 
 **Stop and ask** for every change you cannot make yourself: give the user a
 checklist, one line per change with how to confirm it was made, and wait until
@@ -442,8 +461,7 @@ named with the time in UTC, such as `comments/20261020T143000Z.md`; in Jira
 mode it is posted at step 6.
 
 In filesystem mode, delete `tracker.yaml` too. In Jira mode it stays until
-step 6 has read the binding from it, so the ticket's key is never held
-anywhere but the file 2.x wrote it in.
+step 6, which reads the ticket's key from it.
 
 **Check:** `find docs/work -name state.yaml` prints nothing (in filesystem
 mode, `find docs/work \( -name state.yaml -o -name tracker.yaml \)` prints
@@ -457,12 +475,26 @@ In filesystem mode there is nothing to do.
 In Jira mode, following [Jira mode: binding items to tickets](#jira-mode-binding-items-to-tickets),
 and reading before every write (rule 6):
 
-1. **Find or create every ticket.** An item's ticket is the `ticket` key in
-   its `tracker.yaml`. For an item without one, create it, or delete the
-   folder, as the plan says. For every inbox entry the plan keeps, create a
-   ticket at the inbox stage's status with the entry's text as its
-   description, and record its key in the log for step 8. Do this for every
-   item first, since the next pass links tickets to one another.
+1. **Find or create every ticket.** An item's ticket is the first of these
+   that exists:
+   - `ticket.key` in its `tracker.yaml` (in 2.x, `ticket` is a mapping of
+     `id`, `key` and `url`);
+   - the `ticket:` line of its `item.yaml`, which this pass writes when it
+     creates a ticket, and which pass 7 leaves once `tracker.yaml` is gone;
+   - the key at the front of its folder's name, once pass 6 has renamed it.
+
+   On a rerun, an item whose `tracker.yaml` an earlier run deleted is found
+   this way and never gets a second ticket. For an item with none of the
+   three, create the ticket, or delete the folder, as the plan says; on
+   creating one, add the line `ticket: <site>/browse/<KEY>` to its `item.yaml`
+   at once. Create a parent's ticket before its children's, and give a child
+   its parent in the create request, with the issue type
+   [Talking to Jira](#talking-to-jira) gives for a child. For every inbox
+   entry the plan keeps, create a ticket at the inbox stage's status with the
+   entry's text as its description and, as its summary, the title step 8 would
+   give it (the entry's first `# ` heading, else its file name's words), and
+   record its key in the log for step 8. Do this for every item first, since
+   the next pass links tickets to one another.
 2. **Reconcile each ticket with its item**: summary, priority, labels,
    effort and complexity, parent and `Blocks` links, as the plan says.
 3. **Move each ticket to its stage's status**, with no comment, when it is not
@@ -477,8 +509,10 @@ and reading before every write (rule 6):
    delete `tracker.yaml`.
 
 **Check:** `find docs/work -name tracker.yaml` prints nothing. In Jira mode
-also: `ls docs/work | grep -vxE 'inbox|<KEY>-[0-9]+-[a-z0-9-]+'`, with the
-project's key in place of `<KEY>`, prints nothing; and
+also: `ls docs/work | grep -vxE 'inbox|<KEY>-[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*'`,
+with the project's key in place of `<KEY>`, prints nothing (the pattern 3.0
+reads a folder name with: no leading zero in the number, and title words
+joined by single hyphens); and
 
 ```sh
 for d in docs/work/*/; do
@@ -526,9 +560,11 @@ prints nothing.
 - **Filesystem mode:** each `inbox/<name>.md` becomes an item at stage
   `inbox`: a folder `docs/work/<name>/` (renamed as in step 4 when `<name>` is
   not a date and lower-case words, using the date the entry was added,
-  `git log --diff-filter=A -1 --format=%cs -- <entry>`) holding `item.yaml` with `title` (the
-  entry's first `# ` heading, or its name's words), `stage: inbox` and
-  `priority: medium`, and `request/request.md` holding the entry's text.
+  `git log --diff-filter=A -1 --format=%cs -- <entry>`, or today's date,
+  `date +%F`, for an entry that was never committed and so prints nothing)
+  holding `item.yaml` with `title` (the entry's first `# ` heading, or its
+  name's words), `stage: inbox` and `priority: medium`, and
+  `request/request.md` holding the entry's text.
 - **Jira mode:** each entry's ticket was created at step 6, or the plan
   pruned it; delete the file.
 
@@ -669,11 +705,12 @@ memory often describes without naming a command ("TCW commits each move, so
 there is no need to commit").
 
 The searches use two lists of `grep -E` alternatives. `NAMES` holds names that
-mean 2.x wherever they appear; `WORDS` holds ordinary words that may mean 2.x,
-matched as whole words:
+mean 2.x wherever they appear, each matched where it starts a word (or, for
+`--worktree`, where no letter, digit or `_` comes before it); `WORDS` holds
+ordinary words that may mean 2.x, matched as whole words:
 
 ```sh
-NAMES='state\.yaml|tracker\.yaml|blocked_by|graveyard\.yaml|dod\.yaml|renames\.yaml|intake\.md|initial-request\.md|spec\.md|plan\.md|outcome\.md|refined-outcome\.md|rework\.md|post-mortem|rollup\.md|inbox/|backlog/|active/|review/|blocked/|completed/|discarded/|work\.tracker|work\.lifecycle|work\.retain|auto-commit-transitions|publish-transitions|trunk-branch|builtin: true|auto-delete|status-synced|catch-up|unlinked|TCW_SLUG|TCW_STATUS|TCW_TRANSITION|TCW_NODE_ROOT|TCW_RESOLUTION|TCW_WORK_OWNER|connected-projects|connected-project-registry|Planning doc:|Tracker:|tcw:body|commands-verify-work|work-stage|consolidate-plans|work (inbox|tracker|nodes|reconcile|delegate|escalate|tombstone|delete|scaffold|start|submit|rework|complete|drop)|(taxonomy|capabilities|work) (init|check)|stage (gate|validate)|provision --refresh|no-recurse|local-only|work list --status|procedure prompt'
+NAMES='state\.yaml|tracker\.yaml|blocked_by|graveyard\.yaml|dod\.yaml|renames\.yaml|intake\.md|initial-request\.md|spec\.md|plan\.md|outcome\.md|refined-outcome\.md|rework\.md|post-mortem|rollup\.md|inbox/|backlog/|active/|review/|blocked/|completed/|discarded/|work\.tracker|work\.lifecycle|work\.retain|auto-commit-transitions|publish-transitions|trunk-branch|builtin: true|auto-delete|status-synced|catch-up|unlinked|TCW_SLUG|TCW_STATUS|TCW_TRANSITION|TCW_NODE_ROOT|TCW_RESOLUTION|TCW_WORK_OWNER|connected-projects|connected-project-registry|Planning doc:|Tracker:|tcw:body|commands-verify-work|work-stage|consolidate-plans|work (inbox|tracker|nodes|reconcile|delegate|escalate|tombstone|delete|scaffold|start|submit|rework|complete|drop)|(taxonomy|capabilities|work) (init|check)|stage (gate|validate)|provision --refresh|no-recurse|local-only|work list --status|procedure prompt|--worktree|Definition of Done|tracker sync|transitions\.(claim|start)'
 WORDS='start|submit|rework|complete|drop|verify|sync|claim|release|reconcile|scaffold|tombstone|escalate|delegate|nodes|backlog|wontfix|superseded|duplicate|graveyard|verifier|decompose|delegation|initiative|worktree|retain|retention|resolution|epic|auto-commit|publish|trunk'
 ```
 
@@ -681,7 +718,7 @@ WORDS='start|submit|rework|complete|drop|verify|sync|claim|release|reconcile|sca
 or any of either list (case matters):
 
 ```sh
-grep -rlsE "\btcw\b|\b($NAMES)|\b($WORDS)\b" "${PLACES[@]}"
+grep -rlsE "\btcw\b|(^|[^[:alnum:]_])($NAMES)|\b($WORDS)\b" "${PLACES[@]}"
 ```
 
 **Read each printed file in full**, and judge every passage that tells an
@@ -706,12 +743,30 @@ Write it from the search's own output once the changes are applied, after
 reading each line in it, so that no line is in the block without having been
 judged.
 
-**Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and, with
-`LOG` set to the log's path and `PLACES`, `NAMES` and `WORDS` as above,
+**Nothing private goes into the log.** The log is committed, and most places
+outside the repository hold the user's own text, often about other projects:
+`~/.claude/CLAUDE.md`, `~/.codex/rules/`, `~/.codex/memories/` and the Claude
+Code memory folders among them. So for a file outside the repository, or one
+git does not track (the primary checkout's own per-user files), the log's
+finding line gives only the file's path, the line number, the decision and
+what was done, never the passage. That file's expected lines go into a
+private file instead, outside the repository and never committed, in the
+same `<file>:<text>` form, one per line:
 
 ```sh
-diff <(grep -rIsHE "\b($NAMES)" "${PLACES[@]}" | LC_ALL=C sort) \
-     <(awk '/^```expected-names$/{f=1;next} f&&/^```$/{f=0} f' "$LOG" | LC_ALL=C sort)
+PRIVATE=~/.tcw-3.0-migration-expected-names.txt   # outside the repository; never committed
+```
+
+The `expected-names` block in the log holds only lines of files git tracks in
+the repository. Delete the private file once the migration is accepted.
+
+**Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and, with
+`LOG` set to the log's path and `PLACES`, `NAMES`, `WORDS` and `PRIVATE` as
+above,
+
+```sh
+diff <(grep -rIsHE "(^|[^[:alnum:]_])($NAMES)" "${PLACES[@]}" | LC_ALL=C sort) \
+     <({ awk '/^```expected-names$/{f=1;next} f&&/^```$/{f=0} f' "$LOG"; cat "$PRIVATE" 2>/dev/null; } | LC_ALL=C sort)
 ```
 
 prints nothing. No line numbers are compared, so an edit above a kept line
@@ -722,36 +777,109 @@ changed, `tcw validate; echo "exit $?"` ends with `exit 0`.
 ## Talking to Jira
 
 Every Jira read and write the steps make, as a `curl` request to Jira Cloud's
-REST interface. Set these first, from the configuration:
+REST interface. Set these first, from the configuration. `credentials` names
+two environment variables rather than holding the values, so read the names
+from the project's own `work.jira.credentials` (TCW's own project uses
+`TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY`); `printenv` then reads each one's
+value without printing it:
 
 ```sh
 SITE=https://example.atlassian.net            # work.jira.site
 KEY=SHOP                                      # work.jira.project
-AUTH="$TCW_JIRA_EMAIL:$TCW_JIRA_TOKEN"        # the two variables `credentials` names
+TYPE=Task                                     # work.jira.issue-type (default Task)
+EMAIL_ENV=TCW_JIRA_EMAIL                      # work.jira.credentials.email-env
+TOKEN_ENV=TCW_JIRA_API_KEY                    # work.jira.credentials.token-env
+AUTH="$(printenv "$EMAIL_ENV"):$(printenv "$TOKEN_ENV")"
+J=$(mktemp -d)                                # answers and request bodies, outside the repository
 ```
 
-Requests that send text (creating a ticket, posting a comment) use version 2
-of the interface, which takes plain text; version 3 needs Atlassian's own
-document format. Build a request's JSON with `jq` (or any JSON tool), never by
-pasting text between quotes, so that quotes and line breaks in the text are
-escaped. Every request has an equivalent on the ticket's Jira web page, given
-after it.
+**Text goes through version 3 of the interface, as Atlassian Document
+Format.** Version 2 reads a description or comment as Jira's wiki markup, so
+Markdown's `#`, `|`, `*x*`, `-`, `--` and `{{…}}` would be shown as headings,
+tables, bold text, lists, dashes and code. Version 3 takes Atlassian Document
+Format (ADF), a JSON document in which text is never read as markup, and 3.0
+writes every description and comment that way. These `jq` functions build a
+document from text in the same shape 3.0 does (`text_document` in
+`tcw/work/jira/mapping.py`: a paragraph for each run of lines between blank
+lines, a line break inside a paragraph as a `hardBreak`), and read a
+document's text back the way 3.0 does (`document_text`, beside it: paragraphs
+joined by a blank line). Set them once, beside the variables above:
+
+```sh
+ADF='
+def adf(t): t | gsub("\r\n?"; "\n") | split("\n")
+  | reduce .[] as $l ([[]];
+      if ($l | test("\\S")) then .[-1] += [$l]
+      elif (.[-1] | length) > 0 then . + [[]] else . end)
+  | map(select(length > 0) | {type: "paragraph",
+      content: ([.[] | {type: "hardBreak"}, {type: "text", text: .}] | .[1:])})
+  | {type: "doc", version: 1, content: .};
+def adf_inline: (.type | IN("text", "hardBreak", "mention", "emoji", "inlineCard", "date", "status"));
+def adf_line: if .type == "text" then .text // ""
+  elif .type == "hardBreak" then "\n"
+  else (.attrs // {} | .text // .shortName // .url // "") end;
+def adf_block: if all(.content[]?; adf_inline)
+  then [.content[]? | adf_line] | join("")
+  else [.content[]? | if adf_inline then adf_line else adf_block end] | join("\n") end;
+def adf_text(d): d | [.content[]? | adf_block] | join("\n\n");
+'
+```
+
+Build every request's JSON with `jq`, never by pasting text between quotes,
+so that quotes and line breaks in the text are escaped. Every request has an
+equivalent on the ticket's Jira web page, given after it. `<project field>`,
+`<item field>`, `<effort field>` and `<complexity field>` stand for the
+`customfield_<number>` IDs of the four custom fields, found with the request
+in the fourth row.
 
 | What | Request | On the web page |
 | --- | --- | --- |
 | Who you are (your account ID) | `curl -s -u "$AUTH" "$SITE/rest/api/3/myself"` | your profile |
 | Search | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/search/jql" -d "$BODY"`, where `BODY` is `{"jql": "<query>", "fields": ["summary", "status"], "maxResults": 100}`; while the answer says `"isLast": false`, repeat with its `nextPageToken` added | the issue search, in JQL mode |
-| Read one ticket | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42?fields=summary,status,priority,labels,assignee,parent,issuelinks,description"` | the ticket |
+| Read one ticket | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42?fields=summary,status,priority,labels,assignee,parent,issuelinks,issuetype,description,<project field>,<item field>,<effort field>,<complexity field>"`; leave out the effort and complexity fields when the project has none. The custom fields must be named, or the answer leaves them out and a field already set looks empty | the ticket |
 | Find a custom field's ID | `curl -s -u "$AUTH" "$SITE/rest/api/3/field"`, then the entry whose `name` is the field's name; its `id` is `customfield_<number>` | the field's settings |
-| Create a ticket | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/2/issue" -d "$BODY"`, where `BODY` is `jq -n --arg s "$SUMMARY" --rawfile d request.md '{fields: {project: {key: env.KEY}, issuetype: {name: "Task"}, summary: $s, description: $d}}'`; the answer holds the new key | Create |
+| Read the project's issue types | `curl -s -u "$AUTH" "$SITE/rest/api/3/project/$KEY"`: each entry of `issueTypes` has a `name`, a `hierarchyLevel` and `subtask` | the issue types, in project settings |
+| Create a ticket | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue" -d "$BODY"`, where `BODY` is `jq -n --arg k "$KEY" --arg t "$TYPE" --arg s "$SUMMARY" --rawfile d "$J/request.md" "$ADF"'{fields: {project: {key: $k}, issuetype: {name: $t}, summary: $s, description: adf($d)}}'`; for a child, add `parent: {key: $p}` (with `--arg p <the parent's key>`) beside `summary`. The answer holds the new key | Create |
 | List a ticket's transitions | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/transitions"`: each has an `id`, a `name`, and `to.name`, the status it leads to | the status button |
 | Move a ticket | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42/transitions" -d '{"transition": {"id": "<id>"}}'` | the status button |
-| Set fields | `curl -s -u "$AUTH" -X PUT -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42" -d "$BODY"`, where `BODY` holds `{"fields": {…}}` with any of: `"summary": "<text>"`, `"priority": {"name": "High"}`, `"labels": ["billing"]`, `"parent": {"key": "<KEY>-7"}`, `"assignee": {"accountId": "<id>"}`, a text field `"customfield_<n>": "<text>"`, a single-choice field `"customfield_<n>": {"value": "Medium"}` | the ticket's fields |
+| Set fields | `curl -s -u "$AUTH" -X PUT -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42" -d "$BODY"`, where `BODY` holds `{"fields": {…}}` with any of: `"summary": "<text>"`, `"priority": {"name": "High"}`, `"labels": ["billing"]`, `"parent": {"key": "<KEY>-7"}`, `"assignee": {"accountId": "<id>"}`, a text field `"customfield_<n>": "<text>"`, a single-choice field `"customfield_<n>": {"value": "<option>"}`, with the option's value exactly as the field offers it (`Medium`, or `medium` in a project such as TCW's own whose options are in lower case), and a description `"description": <document>`, built as `jq -n --rawfile d "$J/request.md" "$ADF"'{fields: {description: adf($d)}}'` | the ticket's fields |
 | Find a person's account ID | `curl -s -u "$AUTH" "$SITE/rest/api/3/user/assignable/search?project=$KEY&query=<name>"` | the assignee picker |
-| List a ticket's comments | `curl -s -u "$AUTH" "$SITE/rest/api/2/issue/$KEY-42/comment?maxResults=100"`: each has a `body` and an `author.accountId` | the comments |
-| Post a comment | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/2/issue/$KEY-42/comment" -d "$BODY"`, where `BODY` is `jq -n --rawfile b comment.txt '{body: $b}'` | Add a comment |
+| List a ticket's comments | `curl -s -u "$AUTH" "$SITE/rest/api/3/issue/$KEY-42/comment?startAt=0&maxResults=100"`: the answer has `comments`, `startAt` and `total`. While `startAt` plus the number of comments is less than `total`, repeat with `startAt` raised by that number. Each comment has `body`, a document, and `author.accountId` | the comments |
+| Post a comment | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issue/$KEY-42/comment" -d "$BODY"`, where `BODY` is `jq -n --rawfile b "$J/comment.txt" "$ADF"'{body: adf($b)}'` | Add a comment |
 | Link a blocker | `curl -s -u "$AUTH" -X POST -H 'Content-Type: application/json' "$SITE/rest/api/3/issueLink" -d '{"type": {"name": "Blocks"}, "inwardIssue": {"key": "<the blocker>"}, "outwardIssue": {"key": "<the blocked ticket>"}}'` | Link, "blocks" |
 | Read the project's statuses | `curl -s -u "$AUTH" "$SITE/rest/api/3/project/$KEY/statuses"`: the statuses of each issue type | the workflow, in project settings |
+
+**The issue type of a new ticket** is `work.jira.issue-type` (`TYPE` above),
+as 3.0 uses it. A child's ticket takes the type one level below its parent's
+in Jira's hierarchy, as 3.0 chooses it: read the parent's
+`issuetype.hierarchyLevel`, then pick from the project's issue types. A
+parent at level 1 (an epic) gives a child of type `TYPE`; a parent at level 0
+gives the project's one sub-task type (`subtask` true); a parent at level 2
+or above gives the one type at the level below it. When there is no single
+such type, or the parent is a sub-task, the child cannot be placed under that
+parent: list it in the plan.
+
+**Reading a comment's first line** (rule 6), for one page of the comments
+answer saved as `$J/comments.json`, prints each comment's author and first
+line:
+
+```sh
+jq -r "$ADF"'.comments[] | [.author.accountId, (adf_text(.body) | split("\n")[0])] | @tsv' "$J/comments.json"
+```
+
+**Whether a description already contains a request file**
+([The request](#the-request)), for the ticket read with `?fields=description`
+and saved as `$J/ticket.json`, prints `true` or `false`. It compares the
+description's text, read back from its document, with the file's text, both
+with every white space character and every `Imported on … from [KEY]` line
+removed:
+
+```sh
+jq -r --rawfile r <request file> "$ADF"'
+  def squash: split("\n") | map(select(test("^Imported on .* from \\[") | not)) | join("") | gsub("\\s+"; "");
+  (adf_text(.fields.description) | squash) as $d | ($r | squash) as $q
+  | $q == "" or ($d | contains($q))' "$J/ticket.json"
+```
 
 A request that fails says so in its answer: check for `errorMessages` and
 `errors` before going on. An answer of 401 means the credentials are wrong; 403
@@ -1153,6 +1281,47 @@ unchanged.
 | `tcw work procedure prompt <id>` | `tcw work procedure <id> [<slug>] [--no-exec]` |
 | (none) | new: `tcw config show [--origin]`, `tcw work comment <slug>` |
 
+#### Behavior that changed
+
+Commands whose names and arguments did not change, but which now refuse, or
+report, what 2.x let through:
+
+- **A slug given to `tcw taxonomy add --slug` must be a slug**: lower-case
+  letters and digits in words joined by single hyphens, such as
+  `refund-a-payment`. Anything else, a space, a capital letter or a `/`
+  among them, is a usage error (exit code 2) and nothing is created. A
+  nested term is made with `--parent`, not with a `/` in the slug. The
+  viewer's request that creates a term answers 400 for the same slugs.
+  Existing terms are not changed.
+- **The viewer's record edits need a revision.** `tcw serve`'s
+  `PATCH /api/taxonomy/<ref>` and `PATCH /api/capabilities/<ref>` require
+  `revision`, the `coreRevision` the client last read: without it the answer
+  is 400 `revision is required`, and with one that is out of date, 409. The
+  viewer's own page always sends it; a script of the project's own that
+  calls these routes must send it too.
+- **`tcw provision` never asks a question.** It runs git with its prompts
+  turned off. A private remote over HTTPS needs a credential helper, and one
+  over ssh needs a key that an ssh agent holds and a host already in
+  `~/.ssh/known_hosts`: a first contact with an unknown host, or a key whose
+  passphrase nothing supplies, fails with `git clone failed:` and git's
+  reason, instead of asking. An ssh command the user has set
+  (`GIT_SSH_COMMAND`, `GIT_SSH` or git's `core.sshCommand`) is used as it is.
+- **`tcw work` commands check the connected projects.** A `tcw work` command
+  that reads the board refuses (exit code 1, naming the file) when the
+  configuration of this project, or of a project connected to it, holds a
+  retired key such as `connected-projects`, or is otherwise invalid as a set
+  of connected projects, as the taxonomy and capabilities commands already
+  did. A connected project that is not on this machine does not stop it, and
+  `tcw work new --project`, which hands an item to another project, is not
+  checked this way. This is why every connected project must finish its own
+  step 3 before this project's step 11 ([Before you start](#before-you-start)).
+- **Offline `tcw validate` in Jira mode reads each item's
+  `capabilities.yaml`.** Without `--remote`, it reports a declaration that
+  cannot be read or is malformed as an error naming the file, in every item
+  folder whatever the item's stage. The records it declares are still checked
+  only under `--remote`. Step 7's corrections to `capabilities.yaml` are what
+  keep this quiet at step 11.
+
 ### Removed procedures
 
 | 2.x procedure (`work.procedures.<id>`) | 3.0 |
@@ -1173,8 +1342,9 @@ plan shows each one before anything changes.
 A Jira-mode item without a ticket is not legal. For each item without one, the
 plan offers two answers:
 
-- **Create it.** The agent creates the ticket in the Jira project, with the
-  item's `title` as its summary, its request as the description
+- **Create it.** The agent creates the ticket in the Jira project, of the
+  issue type [Talking to Jira](#talking-to-jira) gives, with the item's
+  `title` as its summary, its request as the description
   ([The request](#the-request)), and the status of the item's stage. These are
   REST requests ([Talking to Jira](#talking-to-jira)), not `tcw work new`:
   in Jira mode `tcw work new` creates only at `request`, and it makes a new
@@ -1210,15 +1380,23 @@ each carried-over verdict ([Acceptance history goes to qa](#acceptance-history-g
 
 ### The request
 
-- An `intake.md` whose text the ticket's description already contains,
-  ignoring an `Imported on … from [KEY]` line and white space, is deleted
-  without asking.
-- Other request text goes into the description when the description is
-  empty. When it has text, the request is posted as a comment whose first
-  line is `Request as written in the repository before 3.0`, and the
-  description is left as it is: Jira owns it, and someone outside engineering
-  may have written it. The plan offers "replace" or "append" instead, per
-  ticket.
+- **A request file whose text the ticket's description already contains**,
+  `intake.md` or `initial-request.md` alike, ignoring every
+  `Imported on … from [KEY]` line and all white space, is deleted without
+  asking and without posting anything. The description is a document, so
+  the comparison reads its text back first: the last command in
+  [Talking to Jira](#talking-to-jira) does both. This covers a 2.x import,
+  whose intake copied the ticket, and every ticket step 6 created, whose
+  description is the request already, so step 7 never posts that text a
+  second time.
+- Other request text (the file left once a contained one is deleted, or both
+  combined as [Documents](#documents) describes when neither is contained)
+  goes into the description when the
+  description is empty. When it has text, the request is posted as a comment
+  whose first line is `Request as written in the repository before 3.0`, and
+  the description is left as it is: Jira owns it, and someone outside
+  engineering may have written it. The plan offers "replace" or "append"
+  instead, per ticket.
 - The exact text of every comment is shown in the plan before anything is
   posted.
 
