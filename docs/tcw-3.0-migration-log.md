@@ -824,3 +824,74 @@ runs no file of the project's.)
 Given in chat on 2026-10-16:
 
 > Approve as recommended
+
+## Run 1, after the approved plan
+
+### Step 2: Jira mode: prepare Jira
+
+The workflow was read again before any change (`POST /rest/api/3/workflows`
+for `TCW work`, id `e42df41b-b7d8-4dd2-9cf1-ff67bd7a6679`, version 1): as in
+the checklist. `TCW work scheme` (10039) is used by `TCW` alone, and `TCW
+work` by that scheme alone, so the change reaches no other project. Nothing
+runs 2.8 against the project any more: `main`'s board is frozen (Task B3).
+
+The changes were applied by the agent through Jira's REST interface on
+2026-10-16, with the owner's account (site administrator), instead of in the
+owner's browser (deviation b): each one can be read back exactly. The
+permission check of the agent's session held the first write until the owner
+said, in chat, "Try to make the change again".
+
+Checklist (TCW-76 `outcome.md`, "Jira checklist") and each confirmation:
+
+1. **Statuses `Specifying`, `Planning`, `In QA` added to `TCW work`.**
+   Applied with `POST /rest/api/3/workflows/update` (checked first with
+   `/workflows/update/validation`: no errors); the workflow is at version 2.
+   Confirmed: `GET /rest/api/3/project/TCW/statuses` lists the nine statuses
+   for each of `Task`, `Sub-task`, `Bug` and `Epic`.
+2. **One global transition into each of the nine statuses**, named after it,
+   no screen, condition or validator (ids 101 to 181). Confirmed: `GET
+   /rest/api/3/issue/TCW-76/transitions?expand=transitions.fields` and the
+   same for `TCW-9` list exactly one transition to each of the nine statuses,
+   none with a field. Jira also lists the transition into the ticket's own
+   status, which a global transition always offers; 3.0 never moves a ticket
+   to the stage it is at.
+   **Addition to the checklist:** each new transition keeps 2.x's resolution
+   post-function, an action run after the move and not a screen, condition or
+   validator: the one into `Done` sets the resolution `Done` (10000), the one
+   into `Won't Do` sets `Won't Do` (10001), and the other seven clear it, as
+   `Accept`, `Start`, `Submit`, `Rework`, `Reopen`, `Complete` and `Cancel`
+   did. 3.0 does not read the resolution; Jira's "unresolved" filters and
+   resolved dates do.
+3. **`Accept`, `Start`, `Submit`, `Complete`, `Rework`, `Cancel`, `Stop` and
+   `Reopen` deleted; `Create` kept**, in the same update. Confirmed: the
+   workflow's transitions are `Create` (initial, to `Triage`) and the nine
+   global ones, and no status other than `Triage` (by `Create` and its global
+   transition, as intended) is reached by two.
+4. **Published.** The update applies to the active workflow directly; there is
+   no separate draft. Confirmed: the scheme still has `defaultWorkflow: TCW
+   work` and no issue type mappings, and the 77 tickets keep their statuses
+   (26 `Done`, 2 `In Progress`, 17 `To Do`, 32 `Won't Do`; the same counts as
+   before).
+5. **TCW's own screens** (deviation c). The source screens are named `PRPI:
+   Kanban Default Issue Screen` (10010), `PRPI: Kanban Bug Screen` (10011) and
+   `PRPI: Kanban Epic Screen` (10012), one tab each; the copies take TCW's
+   prefix: `TCW: Kanban Default Issue Screen` (10051), `TCW: Kanban Bug
+   Screen` (10052), `TCW: Kanban Epic Screen` (10053), each with its source's
+   fields in the same order followed by `TCW Project`, `Effort` and
+   `Complexity`. Screen schemes `TCW: Kanban Default Screen Scheme` (10049),
+   `… Bug Screen Scheme` (10050), `… Epic Screen Scheme` (10051), each using
+   its screen for create, edit and view as the PRPI ones do. Issue type screen
+   scheme `TCW: Kanban Issue Type Screen Scheme` (10037): default → 10049,
+   `Bug` → 10050, `Epic` → 10051, as 10002 maps PRPI's; assigned to `TCW`.
+   Confirmed: `GET /rest/api/3/issuetypescreenscheme/project` shows 10037 for
+   `TCW` and 10002 for `PRPI` alone; the create metadata of all four types
+   lists `TCW Project`, `TCW Item`, `Effort`, `Complexity`, `Summary`,
+   `Labels`, `Assignee`, `Priority` and, except on `Epic` (the top of the
+   hierarchy, where the guide does not need it), `Parent`; the edit metadata
+   of `TCW-76` (`Task`), `TCW-9` (`Task`) and `TCW-68` (`Epic`) lists the
+   same. No `Bug` or `Sub-task` ticket exists to read an edit screen on; each
+   type uses one screen for create and edit, so the create read covers it.
+   PRPI's three screens list the same fields as before the change.
+6. **No other workflow.** Confirmed by the scheme read under 4.
+
+**Check:** the Jira-workflow reading at the end of step 3.
