@@ -5,8 +5,28 @@ of the process.
 """
 
 import os
+import shutil
+import sys
+from pathlib import Path
 
 import pytest
+
+
+def pytest_configure(config):
+    """Every `tcw` the suite starts as a process is this interpreter's.
+
+    Tests run `subprocess.run(["tcw", ...])`, which takes the first `tcw` on
+    `PATH`. That is often an installed release rather than the code under
+    test, which then passes or fails for reasons that have nothing to do with
+    the change. So the folder holding `sys.executable` goes first on `PATH`
+    whenever it holds a `tcw` script: the one installed with this interpreter,
+    from this checkout. Done here rather than in a fixture so it is in place
+    before any fixture runs, session-scoped ones included; with no `tcw`
+    beside the interpreter `PATH` is left as it is.
+    """
+    here = Path(sys.executable).parent
+    if shutil.which("tcw", path=str(here)):
+        os.environ["PATH"] = os.pathsep.join([str(here), os.environ.get("PATH", "")])
 
 
 @pytest.fixture(autouse=True)

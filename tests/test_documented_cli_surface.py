@@ -29,6 +29,7 @@ import pytest
 
 from tests.doc_allowance import (REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS,
                                   REMOVED_FORMS)
+from tests.doc_vocabulary import blocks, joined
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -77,14 +78,38 @@ DOC_FILES = _doc_files()
 # `pipx install --force tcw-cli` does, was parsed as a `tcw` invocation and its
 # flags checked against tcw's. Anchoring on the whitespace is what separates
 # "runs tcw" from "mentions tcw".
-# A space or tab, not `\s`: `\s` matches a newline, which would let a span cross
-# the line breaks the `[^`\n]` classes exist to forbid — enough to reunite a
-# wrapped `tcw\nwork …` and read a sentence *denying* a verb as documenting one.
+# Code spans are read over a block of joined lines (`tests.doc_vocabulary.blocks`,
+# pre-freeze clean-up Design 11), as Markdown reads them: a span may cross a
+# single line break, which reads as a space, so a command wrapped inside its
+# backticks is checked. A block ends at a blank line, at a fence, and around a
+# table row, list item or heading, so an unpaired backtick can never pair with
+# one in a different paragraph, row, item or heading — which is what once
+# reunited a `tcw` and a verb from different sentences, when the scan read the
+# whole file. Backtick runs pair left to right with the next run of the same
+# length; one that never finds its partner is a literal backtick.
 INVOCATION = re.compile(r"\btcw(?=[ \t])")
-BACKTICKED = re.compile(r"`([^`\n]*\btcw[ \t][^`\n]*)`")
+BACKTICKS = re.compile(r"`+")
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
 WORD = re.compile(r"[a-z][a-z0-9-]*$")
 FLAG = re.compile(r"--[a-z][a-z-]*")
+
+
+def code_spans(text: str) -> list[str]:
+    """Every code span's text in `text`, each block's lines joined first."""
+    spans = []
+    for block in blocks(text):
+        whole, _ = joined(block)
+        runs = list(BACKTICKS.finditer(whole))
+        i = 0
+        while i < len(runs):
+            closing = next((j for j in range(i + 1, len(runs))
+                            if len(runs[j].group()) == len(runs[i].group())), None)
+            if closing is None:
+                i += 1                   # a literal backtick
+                continue
+            spans.append(whole[runs[i].end():runs[closing].start()])
+            i = closing + 1
+    return spans
 
 
 def _invocations(text: str) -> list[str]:
@@ -93,7 +118,7 @@ def _invocations(text: str) -> list[str]:
     Fenced blocks matter as much as backticks: README's command reference is one,
     and two of the three phantom verbs this test exists for live there.
     """
-    found = BACKTICKED.findall(text)
+    found = [span for span in code_spans(text) if INVOCATION.search(span)]
     for block in FENCE.findall(text):
         for line in block.splitlines()[1:-1]:
             line = line.split("#", 1)[0].strip()      # drop trailing comments
@@ -302,3 +327,31 @@ def test_documents_name_no_refused_key(doc):
     unexpected = sorted(named - set(REFUSED_KEYS))
     assert not unexpected, (f"{doc.relative_to(REPO)} names configuration keys "
                             f"TCW 3.0 refuses: {', '.join(unexpected)}")
+
+
+# ── spans over joined lines (pre-freeze clean-up, V6) ────────────────────────
+
+
+def test_a_command_wrapped_inside_its_backticks_is_one_command(tree):
+    [span] = _invocations("Run `tcw work\nlist --bogus` to see it.\n")
+    assert span == "tcw work list --bogus"
+    assert _check(span, tree) == "no such flag: --bogus on tcw work list"
+
+
+@pytest.mark.parametrize("text", [
+    "An unpaired ` here.\n\nThen `tcw work list` there.\n",           # a blank line
+    "| a ` b |\n| `tcw work list` |\n",                               # table rows
+    "- an item with a `\n- `tcw work list`\n",                         # list items
+    "1. an item with a `\n2. `tcw work list`\n",
+    "# A heading with a `\n`tcw work list`\n",                         # a heading
+])
+def test_an_unpaired_backtick_does_not_pair_across_a_boundary(text):
+    assert _invocations(text) == ["tcw work list"]
+
+
+def test_spans_are_not_joined_across_a_blank_line():
+    assert _invocations("`tcw work\n\nlist`\n") == []
+
+
+def test_backtick_runs_pair_with_their_own_length():
+    assert _invocations("``tcw work list --x ` y``\n") == ["tcw work list --x ` y"]

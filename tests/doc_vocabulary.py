@@ -13,6 +13,7 @@ criterion 2). TCW-74's own scan adds it, with its other extra patterns.
 """
 
 import re
+from bisect import bisect_right
 from typing import NamedTuple
 
 PATTERNS: tuple[tuple[str, str], ...] = (
@@ -53,17 +54,89 @@ PATTERNS: tuple[tuple[str, str], ...] = (
 class Hit(NamedTuple):
     line: int        # 1-based
     start: int       # column of the match in that line
-    end: int
+    end: int         # clamped to that line, for a match that runs onto the next
     text: str        # what matched
     reason: str
 
 
-def scan(text: str, patterns=PATTERNS) -> list[Hit]:
-    """Every match of every pattern in `text`, by line."""
-    compiled = [(re.compile(p, re.IGNORECASE), why) for p, why in patterns]
-    hits = []
+# A line that starts a table row, a list item or a heading starts a block of
+# its own, so nothing on the line before it joins it. A table row and a
+# heading are one line each in Markdown, so nothing after them joins either.
+_STARTS_BLOCK = re.compile(r"[ \t]*(\||[-*+][ \t]|[-*+]$|\d+[.)]([ \t]|$)|#)")
+_ONE_LINE = re.compile(r"[ \t]*(\||#)")
+_FENCE = re.compile(r"[ \t]*```")
+
+
+def blocks(text: str) -> list[list[tuple[int, str]]]:
+    """`text` cut into blocks of `(line number, line)`, the lines Markdown
+    joins into one paragraph, so a phrase or a code span wrapped across a line
+    break is read whole (pre-freeze clean-up, Designs 11 and 16).
+
+    A block ends at a blank line and at a fenced code block's fence, and before
+    a line that starts a table row (`|`), a list item (`-`, `*`, `+`, or a
+    number followed by `.` or `)`) or a heading (`#`), so nothing can reach
+    from one table row, list item or heading into the next. A fence line, and
+    each line inside a fenced block, is a block of its own: code is read line
+    by line, as it always was. So is a table row or a heading, which Markdown
+    never continues onto the next line."""
+    out: list[list[tuple[int, str]]] = []
+    current: list[tuple[int, str]] = []
+    fenced = False
     for number, line in enumerate(text.splitlines(), 1):
-        for regex, why in compiled:
-            for m in regex.finditer(line):
-                hits.append(Hit(number, m.start(), m.end(), m.group(0), why))
-    return hits
+        fence = bool(_FENCE.match(line))
+        if fence or fenced or not line.strip() or _STARTS_BLOCK.match(line):
+            if current:
+                out.append(current)
+            current = []
+        if fence:
+            fenced = not fenced
+        if fence or fenced or _ONE_LINE.match(line):
+            out.append([(number, line)])
+        elif line.strip():
+            current.append((number, line))
+    if current:
+        out.append(current)
+    return out
+
+
+def joined(block: list[tuple[int, str]]) -> tuple[str, list[tuple[int, int, int]]]:
+    """The block's lines as one string, each line break read as one space and
+    a continuation line's indentation dropped, as Markdown reads them; and for
+    each line `(offset in the string, line number, columns dropped)`."""
+    parts, where, at = [], [], 0
+    for index, (number, line) in enumerate(block):
+        text = line.rstrip()
+        dropped = 0
+        if index:
+            stripped = text.lstrip()
+            dropped = len(text) - len(stripped)
+            text = stripped
+            parts.append(" ")
+            at += 1
+        where.append((at, number, dropped))
+        parts.append(text)
+        at += len(text)
+    return "".join(parts), where
+
+
+def scan(text: str, patterns=PATTERNS) -> list[Hit]:
+    """Every match of every pattern in `text`, read a block at a time (see
+    `blocks`), so a phrase wrapped across a line break is found. Each hit is
+    reported at the line where it starts, with its columns in that line and
+    its end clamped to that line, ordered as a line-by-line scan orders them:
+    by line, then pattern, then column."""
+    compiled = [(re.compile(p, re.IGNORECASE), why) for p, why in patterns]
+    lines = text.splitlines()
+    found = []
+    for block in blocks(text):
+        whole, where = joined(block)
+        offsets = [at for at, _, _ in where]
+        for order, (regex, why) in enumerate(compiled):
+            for m in regex.finditer(whole):
+                at, number, dropped = where[bisect_right(offsets, m.start()) - 1]
+                width = len(lines[number - 1])
+                start = min(m.start() - at + dropped, width)
+                end = min(m.end() - at + dropped, width)
+                found.append((number, order, start,
+                              Hit(number, start, end, m.group(0), why)))
+    return [hit for *_, hit in sorted(found, key=lambda f: f[:3])]
