@@ -86,9 +86,12 @@ when Jira could not be reached. The other codes are in
   check below. In a Jira-mode project the stage, parent and blocking items are
   kept in Jira, so plain `tcw validate` checks only each item folder's name and
   its `item.yaml`, a ticket key used by two folders, a record folder for a
-  stage Jira keeps, and the latest `review` round. The `parent` and
-  `blocked-by`, stage-ahead and `capabilities.yaml` checks run only under
-  `tcw validate --remote`, which reads each item's properties from Jira.
+  stage Jira keeps, the latest `review` round, and each folder's
+  `capabilities.yaml` file's form: one that cannot be read or is malformed is
+  an error, whatever the item's stage. The `parent` and `blocked-by` and
+  stage-ahead checks, and the check of the records a `capabilities.yaml`
+  declares, run only under `tcw validate --remote`, which reads each item's
+  properties from Jira.
   - an `item.yaml` that cannot be read is an **error**;
   - a `parent` or `blocked-by` naming an item that does not exist is a
     **warning**;

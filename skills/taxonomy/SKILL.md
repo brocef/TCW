@@ -89,7 +89,9 @@ declared term: a `new` or `changed` one present, a `removed` one gone.
   area; it does not describe behavior, acceptance criteria, support status, or
   user stories. Put those details in capabilities.
 - **Nest specializations** under a parent: `tcw taxonomy add <Name> --parent <path>`
-  (`--slug` to override the leaf slug; the description piped on stdin). Reading
+  (`--slug` to override the leaf slug, which must already be a slug:
+  lowercase words joined by single hyphens, never a `/`, or it is refused with
+  exit 2; the description piped on stdin). Reading
   stdin is bounded: nothing piped adds the term with no description and warns,
   and a stream that stalls part-way is refused rather than stored truncated
   (`TCW_STDIN_TIMEOUT` sets the bound).

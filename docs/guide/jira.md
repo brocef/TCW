@@ -150,9 +150,12 @@ reason recorded. A ticket in a status that no stage maps to has **no stage**:
 
 `tcw validate` never contacts Jira. It checks the configuration's shape and
 what the item folders hold on their own: each folder's name and `item.yaml`, a
-ticket key used by two folders, a record folder for a stage Jira keeps, and
-the latest `review` round. The checks that need an item's properties, which
-Jira holds, wait for `--remote`.
+ticket key used by two folders, a record folder for a stage Jira keeps, the
+latest `review` round, and each folder's `capabilities.yaml`, which it
+reports when the file cannot be read or is malformed, whatever the item's
+stage. Whether the records that file declares have been changed, and the
+other checks that need an item's properties, which Jira holds, wait for
+`--remote`.
 
 `tcw validate --remote` also reads Jira, and changes nothing there. It prints
 findings only, one per line: a status that does not exist, a move between two
@@ -161,8 +164,9 @@ other than the comment, a configured field missing from a create or edit
 screen, and an item folder whose ticket is missing or names another item. It
 then runs the work-item checks plain `tcw validate` runs in a filesystem-mode
 project: a `parent` or `blocked-by` naming an item that does not exist, an
-item whose stage is ahead of its documents, and each unfinished item's
-`capabilities.yaml`. A move it could not check, such as one with no ticket at
+item whose stage is ahead of its documents, and the records each unfinished
+item's `capabilities.yaml` declares (a file plain `tcw validate` already
+reported as malformed is not reported again). A move it could not check, such as one with no ticket at
 that status to try, is a finding too. When Jira cannot be reached it exits
 with code 5.
 
@@ -236,7 +240,18 @@ describes the `jira` block, and
 Every command that reads or changes an item asks Jira: `new`, `list`, `show`,
 `edit`, `advance`, `discard`, `comment`, `rename`, `tickets`, and
 `stage prompt` or `path` for a named item. When Jira cannot be reached they
-exit with code 5.
+exit with code 5. When `work.jira.site` names a host that answers but is not
+a Jira site, so Jira answers "not found" for something every site has, they
+exit with code 1 and ask you to check that `work.jira.site` names your Jira
+site; a ticket or project that does not exist is still exit code 4.
+
+A move whose transition has no screen records its note as a separate
+comment, after the move. If the connection fails while that comment is being
+posted, TCW reads the ticket's newest comments to see whether Jira received
+it, and says nothing if it did. Otherwise the move stands and the command
+exits with code 6: either the note was not posted, or, when the comments
+cannot be read either, it may have been, and you should read them with
+`tcw work show <slug>` before adding it with `tcw work comment`.
 
 These work offline: `tcw validate` without `--remote`, which never calls Jira;
 `tcw work lifecycle`, `tcw work docs` and `tcw work tags`; and

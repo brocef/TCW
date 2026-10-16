@@ -222,6 +222,16 @@ contacting anything.
 It **clones a store or project that is missing, and never updates one that is
 already here**. Running it twice does nothing the second time.
 
+It **never asks for anything** while it clones: not a password or token, not
+an ssh key's passphrase, and not whether to trust a server it has not met.
+git's prompts and Git Credential Manager's are turned off, and ssh runs in
+batch mode unless you have set an ssh command of your own (`GIT_SSH_COMMAND`,
+`GIT_SSH` or git's `core.sshCommand`), which it leaves as it is. Where an
+answer would be needed the clone fails, and the message gives git's reason.
+So a private repository needs credentials that git can find without asking:
+a credential helper that already holds them, or an ssh key loaded in an ssh
+agent, with the server already in your known hosts.
+
 ### Keeping a store up to date
 
 Keeping a store in another repository up to date is the project's job: TCW

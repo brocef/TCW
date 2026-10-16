@@ -39,6 +39,11 @@ tcw taxonomy extends rm acme-shared    # stop inheriting it
 ```
 
 An entry's description is read from **standard input**, and may be left empty.
+Without `--slug` the leaf slug is made from the name. A `--slug` you give must
+already be in that form: lowercase letters and digits, in words joined by
+single hyphens, such as `memo` or `credit-note`. Anything else, a space, a
+capital letter or a `/` included, is a usage error (exit code 2) and nothing
+is created; nesting an entry under another is what `--parent` is for.
 Feature entries can carry repeatable `--vocab <ref>` links to the vocabulary
 they involve. A ref is a term path (`admin/permission`), a
 `<project-id>/<path>` into an inherited taxonomy, or a leaf slug that is unique
@@ -235,4 +240,8 @@ tcw capabilities reset web-frontend/auth/login   # drop the local override, inhe
 `reset` removes only your local override folder, never the upstream
 capability. It refuses with a clear message when there is nothing to drop: a
 standalone local capability (delete that with `tcw capabilities rm`) or a path
-that already inherits unchanged.
+that already inherits unchanged. It also refuses, with exit code 3, when a
+capability sits in a folder under the override's, since removing the override
+folder would delete it too; the message names each one. Delete a local one
+with `tcw capabilities rm` and drop a nested override with
+`tcw capabilities reset` first, then reset again.

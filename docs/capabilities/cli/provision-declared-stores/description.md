@@ -39,6 +39,13 @@ does it contact a remote other than the one it showed me: if the place a store
 would be fetched into is already occupied by something else, I am told what is
 there and nothing is contacted at all.
 
+It never asks me anything while it clones: not for a password or token, not
+for an ssh key's passphrase, and not whether to trust a server it has not met.
+Where git or ssh would need an answer, the clone fails instead and I am told
+git's reason. So a private repository needs credentials git can use without
+asking, from a credential helper or an ssh key loaded in an ssh agent. An ssh
+command I have set myself is used as it is.
+
 A failure — unreachable remote, unknown ref, refused authentication, or a
 repository that turns out not to carry the store where the declaration says —
 tells me the cause, exits 1, and leaves nothing new behind. A working copy I

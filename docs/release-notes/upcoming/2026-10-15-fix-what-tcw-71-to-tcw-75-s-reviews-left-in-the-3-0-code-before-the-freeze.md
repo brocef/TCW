@@ -1,0 +1,61 @@
+## Fixes
+
+- **A note that may already be on the ticket is not suggested twice.** When a
+  move in a Jira project records its note as a separate comment and the
+  connection fails while posting it, TCW now reads the ticket's newest
+  comments first. If the note is there, nothing is reported. If the comments
+  cannot be read either, the message says the note may have been posted and
+  to check with `tcw work show <slug>` before adding it with
+  `tcw work comment`.
+- **A Jira site address that is not a Jira site** is now reported as that
+  (exit code 1, asking you to check `work.jira.site`) instead of "not found".
+  A ticket or project that does not exist is still exit code 4.
+- **A configuration key written as a list or a mapping**, such as `? [a]`,
+  is now an error that names the file and line, instead of a crash.
+- **Both bad Jira credential settings are reported**, when `email-env` and
+  `token-env` are both wrong, not only the first.
+- **`tcw config show` writes binary and set values correctly**, each on one
+  line that reads back to the same value.
+- **`tcw work new --stage inbox` in a Jira project** is refused at once, without
+  waiting for text on standard input.
+- **The retired `connected-projects` key** is reported with the path to the
+  file from the folder you ran the command in, such as `../tcw-config.yaml`.
+- **The work commands now check the whole project graph**, as `tcw taxonomy`
+  does: `tcw work list` refuses when a child project's `tcw-config.yaml` still
+  uses a retired key, naming that file. A child project that is declared but
+  not on this machine still does not stop it.
+- **The refusal for a work store outside git** reads "the work store of
+  project '<id>' is not in a git repository".
+
+## Changes in what commands accept
+
+- **`tcw taxonomy add --slug`** must already be a slug: lowercase letters and
+  digits in words joined by single hyphens. A space, a capital letter or a
+  `/` is a usage error (exit code 2) and nothing is created; to nest an entry,
+  use `--parent`. The web viewer refuses the same slugs when it creates a
+  term.
+- **`tcw capabilities reset`** refuses (exit code 3) when a capability sits in
+  a folder under the override's, instead of deleting it with the override.
+  The message names each one; remove local ones with `tcw capabilities rm`
+  and nested overrides with `tcw capabilities reset` first.
+- **`tcw provision` never asks for anything** while it clones: no password,
+  no ssh passphrase, no question about trusting a new server. Where an answer
+  would be needed the clone fails with git's reason. A private repository
+  needs a credential helper that already holds its credentials, or an ssh key
+  loaded in an ssh agent. An ssh command you set yourself is left alone.
+- **Offline `tcw validate` in a Jira project** now reads each item folder's
+  `capabilities.yaml` and reports one that cannot be read or is malformed.
+  With `--remote` it is reported once, not twice. A `qa` folder's rounds,
+  which Jira keeps, now get only the "this folder is ignored" warning.
+
+## The web viewer
+
+- **Saving a taxonomy term or a capability needs its revision.** A save that
+  does not say which version it was edited from is refused, so it can never
+  overwrite someone else's change unseen. The viewer's own page always sends
+  it.
+- **An item's files stay inside the item's folder.** When a stage folder or
+  `capabilities.yaml` is a link that leads outside the item folder, the
+  viewer neither reads nor writes through it.
+- **The "stale write" banner** no longer makes the browser warn about its
+  layout.

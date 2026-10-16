@@ -57,7 +57,10 @@ tcw provision --component taxonomy      # only one component's store
 ```
 
 `tcw provision` follows connected projects in turn, since a project it fetches
-may declare others. **Never run `tcw init` to get past a declared store that is
+may declare others. It never prompts: cloning a private repository whose
+credentials cannot be found without asking fails, naming the reason, and the
+fix is for the user to set up a credential helper or load an ssh key into an
+ssh agent, not to retry. **Never run `tcw init` to get past a declared store that is
 missing here.** That creates a second, empty store beside the real one.
 
 If `tcw provision` is about to fetch a copy of a project that is already on this
