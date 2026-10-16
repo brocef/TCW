@@ -1185,3 +1185,47 @@
   location: 790c3054de788add1ed83a0e4d5b2b26742e802f
   resolution: done
   resolved: '2026-10-01'
+2026-10-01-tcw-69-core-work-model-stage-table-item-folders-that-never-move-and-advance:
+  location: 0e4d406165a7ac84bb8d49376b06ac6a91df2f36
+  resolution: done
+  resolved: '2026-10-02'
+2026-10-01-tcw-70-filesystem-work-backend-on-the-new-model:
+  location: 3207f3103f73bcefe5fedfe7e3ed7d50b39bc8cb
+  resolution: done
+  resolved: '2026-10-08'
+2026-10-01-tcw-71-jira-work-backend-jira-as-the-single-owner-of-status-and-the-request:
+  location: 6599dd209f89ae87c403455129e783aeff49bad2
+  resolution: done
+  resolved: '2026-10-13'
+2026-10-01-tcw-72-personal-configuration-user-identity-and-per-user-overrides:
+  location: a066ae201dc12928fbe06ad27dead370bfc85ed1
+  resolution: done
+  resolved: '2026-10-13'
+2026-10-01-tcw-73-cli-pass-one-command-surface-and-one-output-contract-across-all-three-axes:
+  location: e400dcfd046c6044d905c550902be9896899af20
+  resolution: done
+  resolved: '2026-10-13'
+2026-10-01-tcw-74-rewrite-stage-prompts-procedures-and-skills-for-the-new-lifecycle:
+  location: 64a2eb9478ecf4d0eec7dc16a5e390161ee852bd
+  resolution: done
+  resolved: '2026-10-15'
+2026-10-01-tcw-75-documentation-for-tcw-3-0-readme-guides-and-the-opt-in-git-example:
+  location: 560e312f1700893abbdf05d596d1817ae541916a
+  resolution: done
+  resolved: '2026-10-15'
+2026-10-01-tcw-77-web-viewer-a-single-process-document-reader-and-editor-with-autocomplete-everywhere:
+  location: 0a23906fb743a41ebf6d1fb2227ebf122ad2d318
+  resolution: done
+  resolved: '2026-10-15'
+2026-10-07-make-the-plugin-installable-in-pi:
+  location: 70f6db74124851b7aea02938db91a43b3f420785
+  resolution: done
+  resolved: '2026-10-15'
+2026-10-16-2-8-3-the-jira-client-must-not-send-credentials-on-to-a-redirected-host:
+  location: 013a936609a85a9e4bbfe81c35e848492f0cc9cb
+  resolution: done
+  resolved: '2026-10-16'
+2026-10-15-fix-what-tcw-71-to-tcw-75-s-reviews-left-in-the-3-0-code-before-the-freeze:
+  location: dbd0fd62f155378d17bbbbd2f9113ef111cdd9ac
+  resolution: done
+  resolved: '2026-10-16'
