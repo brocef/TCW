@@ -254,7 +254,19 @@ def test_the_client_asks_as_jira_was_asked(world, name):
     project, client, _key = world
     recorded = load(name)["request"]
     assert not [p for p in SENDS[name] if not has(recorded, p.split("."))]
-    client.search('project = "TCW"', ["summary"])
+    # A client that stopped sending the token would be answered page one
+    # forever, so a time limit turns that hang into a failure.
+    import signal
+
+    def _stuck(*_args):
+        raise AssertionError("the client kept asking for pages: is it sending the token?")
+    previous = signal.signal(signal.SIGALRM, _stuck)
+    signal.alarm(20)
+    try:
+        client.search('project = "TCW"', ["summary"])
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
     pages = [b for _m, _p, b in project.fake.requests("POST", "/search/jql")]
     assert len(pages) >= 2, "the fake answered every ticket in one page"
     missing = [p for p in SENDS[name] if not has(pages[1], p.split("."))]
@@ -306,6 +318,14 @@ def test_a_named_call_is_recorded_apart_from_the_shared_file(tmp_path):
     assert (tmp_path / "post-search-jql-200.json").read_text() == shared
     recorder.record("POST", url, None, 200, b'{"issues": []}')
     assert (tmp_path / "post-search-jql-200.json").read_text() == shared
+    # The label is cleared on leaving `named`, so a richer answer reaches the
+    # shared file again; also when the block ends in an error.
+    with pytest.raises(RuntimeError), recorder.named("broken"):
+        raise RuntimeError
+    richer = {**rich, "nextPageToken": "u"}
+    recorder.record("POST", url, None, 200, json.dumps(richer).encode())
+    assert json.loads((tmp_path / "post-search-jql-200.json").read_text())["response"] \
+        == richer
 
 
 def test_the_fake_site_stands_in_for_the_real_one():
