@@ -555,9 +555,11 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
         return [Finding("error", config_file, _config_message(error, project_root)), *blocks], None
     if isinstance(backend, JiraBackend):
         # Offline: nothing Jira owns is checked here (TCW-71 Design 9.1).
-        # Rounds are files in both modes, so they are checked here too.
+        # Rounds and declarations are files in both modes, so they are
+        # checked here too.
         return [*blocks, *jira_store_problems(backend.work_path, backend.jira),
-                *round_findings(backend.work_path, backend.project, backend.layout)], None
+                *round_findings(backend.work_path, backend.project, backend.layout),
+                *_declaration_findings(backend.layout, backend.project)], None
     if not isinstance(backend, FsWorkBackend):
         return blocks, None
     layout = backend.layout
@@ -594,14 +596,41 @@ def _work_findings(project_root: Path, registry) -> "tuple[list, str | None]":
     return findings, note
 
 
+def _declaration_findings(layout, project: str) -> list[Finding]:
+    """Jira mode, offline: an error for each item folder's `capabilities.yaml`
+    that cannot be read or is malformed, worded as `records_problems` words
+    it. Every key-named folder is read, finished or not, since the stage that
+    says an item is finished is kept in Jira and a malformed file is wrong
+    whatever the stage; a folder not named for a key is
+    `jira_store_problems`'s to report. The records the file declares are
+    checked only under `--remote`, which then skips a file that does not
+    parse, so it is reported once."""
+    from tcw.work.gates import parse_declarations
+    from tcw.work.jira.backend import folder_key
+    from tcw.work.model import Slug
+
+    findings = []
+    for name in layout.item_folders():
+        if folder_key(name) is None:
+            continue
+        path = layout.capabilities_file(Slug(project, name))
+        declared = parse_declarations(path)
+        if isinstance(declared, str):
+            findings.append(Finding("error", str(path), f"{path.name}: {declared}"))
+    return findings
+
+
 def round_findings(work_path: Path, project: str, layout, folders=None) -> list[Finding]:
     """A warning for each verdict stage whose latest round is invalid, naming
     the round file (TCW-73 Design 6.1.7). Older rounds are history and are not
-    read. `folders` narrows the check to those item folders' names."""
+    read. `folders` narrows the check to those item folders' names. A stage
+    the backend keeps (`layout.external`) is skipped, as `completion_gate`
+    skips it: its folder is ignored, and `jira_store_problems` says so."""
     from tcw.work.layout import INVALID
     from tcw.work.model import STAGES, Slug
 
-    stages = [s.name for s in STAGES if s.verdict and s.name in layout.enabled]
+    stages = [s.name for s in STAGES if s.verdict and s.name in layout.enabled
+              and s.name not in layout.external]
     work_path = Path(work_path)
     if not stages or not work_path.is_dir():
         return []

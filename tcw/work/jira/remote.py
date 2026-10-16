@@ -507,7 +507,7 @@ def _items_and_tickets(run: _Run, folders: Mapping[str, list[str]],
 
 def _model_checks(run: _Run, layout: Layout, reader: Any, resolve: Callable[[Slug], str],
                   folders: Mapping[str, list[str]], tickets: Mapping[str, Mapping]) -> None:
-    from tcw.work.gates import records_problems
+    from tcw.work.gates import parse_declarations, records_problems
     backend = run.backend
     pairs = [(Slug(backend.project, name), tickets[key])
              for key, names in folders.items() for name in names if key in tickets]
@@ -526,7 +526,11 @@ def _model_checks(run: _Run, layout: Layout, reader: Any, resolve: Callable[[Slu
     for item in items:
         if item.stage is None or table_stage(item.stage).kind == TERMINAL:
             continue
-        if not layout.capabilities_file(item.slug).exists():
+        path = layout.capabilities_file(item.slug)
+        if not path.exists():
+            continue
+        # Offline validation has already reported a file that does not parse.
+        if isinstance(parse_declarations(path), str):
             continue
         for message in records_problems(layout, item.slug, reader, finished=False):
             run.error(str(item.slug), message)

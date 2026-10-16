@@ -151,3 +151,58 @@ def test_one_item_without_its_item_contacts_nothing(offline):
     assert all(type(f) is Finding for f in found)
     assert [f.severity for f in found] == ["warning"], found
     assert found[0].where.endswith("review/round-1.md")
+
+
+# -- item-folder declarations and rounds (pre-freeze clean-up, T5 and T7) --------------
+
+
+def test_a_malformed_declaration_is_one_error_naming_the_file(offline, monkeypatch,
+                                                             capsys):
+    """T5: read offline, in every key-named folder, with the same words as
+    filesystem mode."""
+    path = folder(offline, "TCW-1-x") / "capabilities.yaml"
+    path.write_text("no-such-key: 1\n")
+    code, text = validate(offline, monkeypatch, capsys)
+    where = path.relative_to(offline.root).as_posix()
+    assert code == 1, text
+    assert [line for line in text.splitlines() if line.startswith("error: ")] == [
+        f"error: {where}: capabilities.yaml: unknown key(s) no-such-key; expected "
+        f"new, changed, removed or taxonomy"], text
+
+
+def test_a_declaration_that_cannot_be_read_is_an_error(offline, monkeypatch, capsys):
+    (folder(offline, "TCW-1-x") / "capabilities.yaml").write_text("changed: [a\n")
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 1 and "capabilities.yaml: cannot be read" in text, text
+
+
+def test_a_finished_items_malformed_declaration_is_still_an_error(offline, monkeypatch,
+                                                                 capsys):
+    """Offline, the stage is unknown, and a malformed file is wrong whatever
+    it is: the ticket is at Done, and the file is still reported."""
+    _, name = offline.item("Done", "done", status="Done")
+    (offline.work / name / "capabilities.yaml").write_text("- a list\n")
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 1, text
+    assert f"{name}/capabilities.yaml: capabilities.yaml: must be a mapping" in text, text
+
+
+def test_a_well_formed_declaration_has_no_offline_finding(offline, monkeypatch, capsys):
+    """Its records are `--remote`'s to check: this project keeps no ledger, so
+    `auth/login` could not be checked there, but offline says nothing."""
+    (folder(offline, "TCW-1-x") / "capabilities.yaml").write_text(
+        "changed: [auth/login]\n")
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 0 and "capabilities.yaml" not in text, text
+
+
+def test_a_qa_round_is_only_ignored(offline, monkeypatch, capsys):
+    """T7: Jira keeps the qa record, so its folder gets the "ignored" warning
+    and its rounds are not read."""
+    qa = folder(offline, "TCW-1-x") / "qa"
+    qa.mkdir()
+    (qa / "round-1.md").write_text("---\nverdict: x\n---\n")
+    code, text = validate(offline, monkeypatch, capsys)
+    assert code == 0, text
+    assert "Jira keeps the qa record, so this folder is ignored" in text, text
+    assert "latest qa round is invalid" not in text, text

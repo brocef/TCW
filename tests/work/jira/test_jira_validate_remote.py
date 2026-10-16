@@ -158,10 +158,12 @@ def test_search_lag_gives_a_new_item_no_finding(clean, monkeypatch, capsys):
 
 
 def test_records_problems_mid_work_only(clean, monkeypatch, capsys):
+    """Well formed, so only the records check sees it: this project keeps no
+    ledger, so `auth/login` cannot be checked, which is a problem mid-work."""
     _, open_ = clean.item("Open", "open", status="In Progress")
     _, done = clean.item("Done", "done", status="Done")
     for folder in (open_, done):
-        (clean.work / folder / "capabilities.yaml").write_text("no-such-key: 1\n")
+        (clean.work / folder / "capabilities.yaml").write_text("changed: [auth/login]\n")
     run = remote(clean, monkeypatch, capsys)
     assert run.code == 1
     assert any(line.startswith(f"error: tcw/{open_}:") for line in run.lines), run.out
@@ -171,14 +173,35 @@ def test_records_problems_mid_work_only(clean, monkeypatch, capsys):
 def test_records_problems_wait_for_remote_offline(clean, monkeypatch, capsys):
     """TCW-73 AC 15: the stage that decides whether the records check runs is
     in Jira, so plain `tcw validate` leaves it to `--remote` and asks Jira
-    nothing."""
+    nothing. The file is well formed: since the pre-freeze clean-up (T5) a
+    malformed one is reported offline, by the test below."""
+    from tcw.work import gates
+
+    def never(*args, **kwargs):
+        raise AssertionError("the records check ran offline")
     _, open_ = clean.item("Open", "open", status="In Progress")
-    (clean.work / open_ / "capabilities.yaml").write_text("no-such-key: 1\n")
+    (clean.work / open_ / "capabilities.yaml").write_text("changed: [auth/login]\n")
+    monkeypatch.setattr(gates, "records_problems", never)
     clean.fake.log.clear()
     monkeypatch.chdir(clean.root)
     assert main(["validate"]) == 0
     assert "capabilities.yaml" not in capsys.readouterr().out
     assert clean.fake.log == []
+
+
+def test_a_malformed_declaration_is_reported_once_with_remote(clean, monkeypatch,
+                                                              capsys):
+    """Pre-freeze clean-up, T5: the offline parse check reports it, and
+    `--remote` skips the records check of a file that does not parse."""
+    _, open_ = clean.item("Open", "open", status="In Progress")
+    path = clean.work / open_ / "capabilities.yaml"
+    path.write_text("no-such-key: 1\n")
+    run = remote(clean, monkeypatch, capsys)
+    assert run.code == 1
+    about = [line for line in run.lines if "no-such-key" in line]
+    where = path.relative_to(clean.root).as_posix()
+    assert about == [f"error: {where}: capabilities.yaml: unknown key(s) no-such-key; "
+                     f"expected new, changed, removed or taxonomy"], run.out
 
 
 def test_a_stage_status_missing_from_the_project(tmp_path, fake, monkeypatch, capsys):

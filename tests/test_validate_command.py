@@ -123,6 +123,18 @@ def test_an_invalid_latest_round_is_a_warning_naming_it(project, run):
     assert "review" in line and code == 0
 
 
+def test_an_invalid_qa_round_is_a_warning_in_filesystem_mode(tmp_path, run):
+    """Pre-freeze clean-up, T7: only a stage the backend keeps is skipped,
+    and a filesystem-mode project keeps none."""
+    root = make_project(tmp_path, "p", config={"stages": {"qa": {"enabled": True}}})
+    folder = write_item(root, "2026-10-01-a", {"title": "a", "stage": "qa"})
+    _round(folder, "qa", 1, "verdict: x\n")
+    code, out, _ = run(root)
+    [line] = about(out, "round-1.md")
+    assert line.startswith("warning: ") and "latest qa round is invalid" in line
+    assert code == 0
+
+
 def test_an_older_invalid_round_is_history(project, run):
     folder = write_item(project, "2026-10-01-a", {"title": "a", "stage": "review"})
     _round(folder, "review", 1, "verdict: accepted\n")
