@@ -609,11 +609,16 @@ company-managed workflow is edited as a draft and then published.
    its status (adding statuses and transitions maps nothing).
 5. Put `TCW Project`, `Effort` and `Complexity` on the create and edit screen
    of every issue type the TCW project uses (Task, Sub-task, Bug, Epic). The
-   screens 10010, 10011 and 10012 are shared with `PRPI`, so choose one:
-   (a) add the three fields to those screens, accepting that PRPI's tickets
-   show them too (empty, and changing nothing there); or (b) first give TCW its
-   own copy of the issue type screen scheme and its screen schemes and screens,
-   and add the fields to the copies. Confirm: `GET
+   screens 10010, 10011 and 10012 are shared with `PRPI`. **The owner chose
+   on 2026-10-16 to give TCW its own copies first**, so PRPI is not touched:
+   copy the three screens (`TCW: Kanban Default Screen`, `… Bug Screen`,
+   `… Epic Screen`), copy the screen schemes that use them and point the
+   copies at the new screens, copy the issue type screen scheme
+   `PRPI: Kanban Issue Type Screen Scheme` (10002) as `TCW: Kanban Issue Type
+   Screen Scheme` and point it at the copied screen schemes, assign that copy
+   to the `TCW` project only, and then add the three fields to the copied
+   screens. Confirm: `GET /rest/api/3/issuetypescreenscheme/project?projectId=10037`
+   shows the copy, and PRPI's still shows 10002. Then: `GET
    /rest/api/3/issue/createmeta/TCW/issuetypes/<id>` lists all four TCW fields
    for each of the four issue types, and an existing ticket's edit
    metadata (`GET /rest/api/3/issue/<KEY>/editmeta`) lists them too.
