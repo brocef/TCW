@@ -1,6 +1,0 @@
-changed:
-  - capabilities/reset-an-override       # C1: refuses a capability nested under the override
-  - taxonomy/add-a-term                  # C2: --slug must be a slug
-  - web/editing                          # V1: a save without a revision is refused; V2: a file path that leads outside the item folder is refused
-  - cli/provision-declared-stores        # C4: never asks for a password or a host-key confirmation
-  - cli/validate-a-project               # T5, T7: offline Jira-mode validation
