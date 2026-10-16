@@ -900,14 +900,19 @@ prints `true` or `false`. An `intake.md` that has a line
 `Imported on <date> from [<the ticket's key>](https://…/browse/<the ticket's key>)`
 was written by 2.x's import from that very ticket, so it prints `true`
 without comparing anything: 2.x read the description through version 2 of the interface, as
-wiki markup, so its copy never matches the text read back here. Any other
+wiki markup, so its copy never matches the text read back here. That holds
+only while the file is as the import wrote it: when `git log --follow
+--diff-filter=M` shows a commit that changed it (moving the item's folder does
+not count), someone edited it after the import, and it is compared like any
+other file. Any other
 request file is compared by text: the description's, read back from its
 document, with the file's, both with every white space character removed:
 
 ```sh
 F=<request file>
 if [ "$(basename "$F")" = intake.md ] &&
-   grep -qE "^Imported on [^ ]+ from \[$T\]\(" "$F"; then
+   grep -qE "^Imported on [^ ]+ from \[$T\]\(" "$F" &&
+   [ -z "$(git log --follow --diff-filter=M --format=%H -- "$F")" ]; then
   echo true
 else
   jq -r --rawfile r "$F" "$ADF"'
@@ -1437,7 +1442,10 @@ each carried-over verdict ([Acceptance history goes to qa](#acceptance-history-g
     with this ticket's own key. 2.x wrote it from the ticket, under a heading of the
     key and summary, holding the description as 2.x read it (Jira's wiki
     markup) or `The ticket has no description.`, so its text never matches
-    the description read back as a document, and it is not compared;
+    the description read back as a document, and it is not compared. This
+    holds only for a file no commit has changed since the import (moving the
+    item's folder does not count); an edited import is compared like any other
+    file, so text added to it is never deleted unseen;
   - **any other request file whose text the description holds**, ignoring
     all white space. The description is a document, so the comparison reads
     its text back first. This covers every ticket step 6 created, whose

@@ -486,6 +486,10 @@ def test_a_2x_import_of_the_ticket_counts_as_contained_without_comparing():
     assert 'grep -qE "^Imported on [^ ]+ from \\[$T\\]\\(" "$F"' in block
     # The text comparison no longer drops the line, so it cannot hide one.
     assert "Imported on" not in block[block.index("jq -r"):]
+    # An import someone edited afterwards is compared, so added text is never
+    # deleted unseen; a move of the item's folder is not an edit.
+    assert '[ -z "$(git log --follow --diff-filter=M --format=%H -- "$F")" ]' in block
+    assert "an edited import is compared like any other file" in text
 
 
 def test_step_2_says_what_step_3_checks_and_lists_the_rest():
