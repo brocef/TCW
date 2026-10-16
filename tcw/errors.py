@@ -78,6 +78,12 @@ class Unreachable(TcwError):
 
 
 class MovedWithoutNote(TcwError):
-    """The item's stage changed, but the note meant to record why did not."""
+    """The item's stage changed, but the note meant to record why did not, or,
+    when `uncertain`, may not have: the connection failed and whether the note
+    arrived could not be read."""
 
     code = codes.MOVED_WITH_PROBLEM
+
+    def __init__(self, message: str = "", *, uncertain: bool = False):
+        super().__init__(message)
+        self.uncertain = uncertain

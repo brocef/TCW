@@ -104,9 +104,26 @@ def test_a_dropped_note_that_did_not_land_is_reported_as_failed(item, tcw):
     result = force_to_implement(project, folder, tcw)
     assert result.code == 6, result.err
     assert "posting the note failed" in result.err
+    assert "the trace was not recorded" in result.err
     assert "if it is missing, add it with `tcw work comment`" in result.err
     assert project.fake.tickets[key].comments == []
     assert len(comment_posts(project, key)) == 1
+
+
+def test_an_older_identical_note_does_not_hide_one_that_did_not_land(item, tcw):
+    """The same move made before left a comment with the same words; only a
+    comment that arrived after this move's note was sent can be that note."""
+    project, key, folder = item
+    start = project.backend().read(folder).stage
+    assert force_to_implement(project, folder, tcw).code == 0
+    project.backend().set_stage(folder, start, None)
+    trace, = comment_texts(project, key)
+    project.fake.drop_before_next_comment()
+    result = force_to_implement(project, folder, tcw)
+    assert result.code == 6, result.err
+    assert "posting the note failed" in result.err
+    assert comment_texts(project, key) == [trace]
+    assert len(comment_posts(project, key)) == 2
 
 
 def test_a_dropped_note_whose_comments_cannot_be_read_may_have_been_posted(item, tcw):
@@ -115,10 +132,34 @@ def test_a_dropped_note_whose_comments_cannot_be_read_may_have_been_posted(item,
     result = force_to_implement(project, folder, tcw)
     assert result.code == 6, result.err
     assert "may have been posted" in result.err
+    assert "the trace may not have been recorded" in result.err
+    assert "the trace was not recorded" not in result.err
     assert f"`tcw work show {project.id}/{folder}`" in result.err \
         or f"`tcw work show {folder}`" in result.err
     assert len(project.fake.tickets[key].comments) == 1
     assert len(comment_posts(project, key)) == 1
+
+
+def test_a_dropped_move_whose_comments_cannot_be_read_says_the_note_may_be_there(
+        item, monkeypatch):
+    """The move carried the note and its connection dropped after landing; the
+    comments cannot be read, so whether the note is there is not known."""
+    project, key, folder = item
+    reads = []
+    real = project.fake._comments
+
+    def second_read_fails(ticket, query):
+        reads.append(query)
+        if len(reads) > 1:
+            raise jira.TrackerUnavailable("could not reach the tracker")
+        return real(ticket, query)
+    monkeypatch.setattr(project.fake, "_comments", second_read_fails)
+    project.fake.drop_after_next_write()
+    with pytest.raises(MovedWithoutNote) as raised:
+        project.backend().set_stage(folder, "plan", NOTE)
+    assert raised.value.uncertain
+    assert "may have been posted" in str(raised.value)
+    assert comment_texts(project, key) == [NOTE]
 
 
 def test_a_screenless_lost_race_posts_the_note_despite_a_matching_comment(

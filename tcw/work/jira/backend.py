@@ -925,23 +925,27 @@ class JiraBackend:
         # and discards it, so there the note is posted after the move (Design 5
         # step 3, a live finding).
         separate = document is not None and not chosen.has_screen
+        # The comments already there, so that after a dropped connection only a
+        # comment that arrived since can count as this note: an older one with
+        # the same words (the same move, made before) must not hide a lost note.
+        before = self._comment_ids(key) if document is not None else frozenset()
         try:
             self.client.apply_transition(key, chosen.id, None if separate else document)
         except TrackerRequestInvalid as error:
             return self._after_refusal(key, slug, stage, status, chosen, note, document,
-                                       error, separate=separate)
+                                       error, before, separate=separate)
         except TrackerUnavailable as error:
             moved = self._after_drop(key, slug, stage, status,
                                      None if separate else note,
-                                     None if separate else document, error)
+                                     None if separate else document, error, before)
             if separate:
-                self._post_note(key, slug, stage, note)
+                self._post_note(key, slug, stage, note, before)
             return moved
         except TrackerError:
             with _jira():
                 raise
         if separate:
-            self._post_note(key, slug, stage, note)
+            self._post_note(key, slug, stage, note, before)
         return self._stage_now(key)
 
     def _stage_now(self, key: str) -> str | None:
@@ -949,25 +953,34 @@ class JiraBackend:
             status = self._status(key)
         return {name: stage for stage, name in self.statuses.items()}.get(status)
 
-    def _note_found(self, key: str, note: str) -> bool:
+    def _comment_ids(self, key: str) -> frozenset[str]:
+        with _jira():
+            return frozenset(c.id for c in self.client.comments(key, NOTE_WINDOW)
+                             if c.id is not None)
+
+    def _note_found(self, key: str, note: str, before: frozenset[str]) -> bool:
+        """Whether a comment with the note's text arrived since `before` was read."""
         wanted = normalize_text(note)
-        return any(normalize_text(document_text(c.body)) == wanted
+        return any(c.id is not None and c.id not in before
+                   and normalize_text(document_text(c.body)) == wanted
                    for c in self.client.comments(key, NOTE_WINDOW))
 
-    def _post_note(self, key: str, slug: Slug, stage: str, note: str) -> None:
+    def _post_note(self, key: str, slug: Slug, stage: str, note: str,
+                   before: frozenset[str]) -> None:
         try:
             self.client.add_comment(key, text_document(note))
         except TrackerUnavailable as error:
             # The connection failed, so Jira may have the comment already:
             # look before suggesting it be added again (Design 1).
             try:
-                found = self._note_found(key, note)
+                found = self._note_found(key, note, before)
             except TrackerError:
                 raise MovedWithoutNote(
                     f"{slug} moved to {stage}, but the connection failed while "
                     f"posting the note ({error}) and its comments cannot be read "
                     f"now; the note may have been posted: read the comments with "
-                    f"`tcw work show {slug}` before adding it") from None
+                    f"`tcw work show {slug}` before adding it",
+                    uncertain=True) from None
             if not found:
                 raise MovedWithoutNote(f"{slug} moved to {stage}, but posting the "
                                        f"note failed: {error}") from None
@@ -976,7 +989,7 @@ class JiraBackend:
                                    f"failed: {error}") from None
 
     def _after_refusal(self, key, slug, stage, status, chosen, note, document,
-                       error, *, separate: bool = False) -> str | None:
+                       error, before, *, separate: bool = False) -> str | None:
         """Jira answered 400. Its text is never read to decide what happened;
         the status is (Design 5)."""
         with _jira():
@@ -987,11 +1000,11 @@ class JiraBackend:
             # comment can only be someone else's: post it without looking.
             if document is not None:
                 try:
-                    found = not separate and self._note_found(key, note)
+                    found = not separate and self._note_found(key, note, before)
                 except TrackerError:
                     found = False
                 if not found:
-                    self._post_note(key, slug, stage, note)
+                    self._post_note(key, slug, stage, note, before)
             return stage
         if document is None:
             raise Refused(_refusal_text(slug, stage, chosen, error))
@@ -1001,16 +1014,18 @@ class JiraBackend:
             raise Refused(_refusal_text(slug, stage, chosen, again)) from None
         except TrackerUnavailable as again:
             # The retry carried no comment, so posting the note cannot repeat it.
-            moved = self._after_drop(key, slug, stage, status, None, None, again)
-            self._post_note(key, slug, stage, note)
+            moved = self._after_drop(key, slug, stage, status, None, None, again,
+                                     before)
+            self._post_note(key, slug, stage, note, before)
             return moved
         except TrackerError:
             with _jira():
                 raise
-        self._post_note(key, slug, stage, note)
+        self._post_note(key, slug, stage, note, before)
         return self._stage_now(key)
 
-    def _after_drop(self, key, slug, stage, status, note, document, error) -> str | None:
+    def _after_drop(self, key, slug, stage, status, note, document, error,
+                    before) -> str | None:
         """The connection failed mid-request, which may have landed."""
         try:
             current = self._status(key)
@@ -1024,9 +1039,13 @@ class JiraBackend:
                               f"it was not moved: {error}")
         if document is not None:
             try:
-                found = self._note_found(key, note)
+                found = self._note_found(key, note, before)
             except TrackerError:
-                found = False
+                raise MovedWithoutNote(
+                    f"{slug} moved to {stage}, but the connection failed ({error}) "
+                    f"and its comments cannot be read now; the note may have been "
+                    f"posted: read the comments with `tcw work show {slug}` before "
+                    f"adding it", uncertain=True) from None
             if not found:
                 raise MovedWithoutNote(f"{slug} moved to {stage}, but the connection "
                                        f"failed and the note is not among its newest "

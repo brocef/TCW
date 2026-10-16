@@ -120,6 +120,7 @@ class JiraComment:
     author_name: str | None
     created: str
     body: object
+    id: str | None = None
 
 
 # ── the client ───────────────────────────────────────────────────────────────
@@ -295,11 +296,13 @@ class JiraClient:
                 _text(author.get("accountId"), path)
                 _text(author.get("displayName"), path)
                 _text(raw.get("created"), path)
+                _text(raw.get("id"), path)
                 out.append(JiraComment(
                     author_id=author.get("accountId") or None,
                     author_name=author.get("displayName") or None,
                     created=str(raw.get("created") or ""),
-                    body=raw.get("body")))
+                    body=raw.get("body"),
+                    id=raw.get("id") or None))
             start += len(page)
             total = payload.get("total")
             if not page or (isinstance(total, int) and start >= total):

@@ -285,7 +285,8 @@ def advance(backend: WorkBackend, config: WorkConfig, layout: Layout,
     except MovedWithoutNote as error:
         reported = target
         code = codes.MOVED_WITH_PROBLEM
-        messages.append(f"moved to {target}, but the trace was not recorded "
+        recorded = "may not have been" if error.uncertain else "was not"
+        messages.append(f"moved to {target}, but the trace {recorded} recorded "
                         f"({error}); if it is missing, add it with "
                         f"`tcw work comment`")
     if reported != target:
