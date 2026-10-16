@@ -18,7 +18,7 @@ import pytest
 
 from tcw.work.jira.mapping import text_document
 from tests.work.jira.capture import PROFILE, Recorder
-from tests.work.jira.fake import FIELDS, SITE
+from tests.work.jira.fake import FIELDS, SITE, Transition
 
 RECORDED = Path(__file__).parent / "recorded"
 FILES = sorted(RECORDED.glob("*.json"))
@@ -37,7 +37,7 @@ _ISSUE = ["key", "fields.summary", "fields.status.name", "fields.created",
           "fields.{effort}.value", "fields.{complexity}.value"]
 
 #: What the backend reads from each endpoint's answer, by recorded file. `*`
-#: is any element of a list. Writes are absent: their answers are read only as
+#: is any element of a list, `?` any value of a mapping. Writes are absent: their answers are read only as
 #: success or failure (client.py), and so are the error bodies.
 READS = {
     "get-myself-200.json": ["accountId", "displayName"],
@@ -70,12 +70,24 @@ READS = {
         "workflows.*.transitions.*.links", "statuses.*.statusReference",
         "statuses.*.name"],
     "post-issue-201.json": ["key"],
+    # Recorded by `test_jira_live_shapes.py` (J2), each in a file of its own: a
+    # search past one page, a transition offered from one status only, and a
+    # transition screen that lists a field.
+    "post-search-jql-200-first-page.json": ["nextPageToken", "isLast"],
+    "post-search-jql-200-next-page.json": ["isLast", "issues.*.key"],
+    "post-workflows-200-directed.json": [
+        "workflows.*.transitions.*.type", "workflows.*.transitions.*.toStatusReference",
+        "workflows.*.transitions.*.links.*.fromStatusReference",
+        "statuses.*.statusReference", "statuses.*.name"],
+    "get-issue-key-transitions-200-screen-fields.json": [
+        "transitions.*.id", "transitions.*.name", "transitions.*.to.name",
+        "transitions.*.hasScreen", "transitions.*.fields.?.required"],
 }
 
-#: Read, but never seen on TCWTEST, so not compared: `nextPageToken` (no
-#: search there ran past one page), a transition's
-#: `links.*.fromStatusReference` (its workflow has only global transitions), and
-#: the field entries of a transition screen (its one screen lists none).
+#: What the backend sends in a request, by recorded file, compared with what
+#: the client sends the fake for the same call.
+SENDS = {"post-search-jql-200-next-page.json": ["jql", "fields", "maxResults",
+                                                "nextPageToken"]}
 
 #: Paths the backend reads only when a value is set, so a recorded answer may
 #: lack them; every other listed path must be in the recording too, which
@@ -100,6 +112,8 @@ def has(value, path: list[str]) -> bool:
     head, rest = path[0], path[1:]
     if head == "*":
         return isinstance(value, list) and any(has(v, rest) for v in value)
+    if head == "?":
+        return isinstance(value, dict) and any(has(v, rest) for v in value.values())
     return isinstance(value, dict) and head in value and has(value[head], rest)
 
 
@@ -143,11 +157,23 @@ def test_each_read_path_is_in_the_recording(name):
     assert not missing, f"{name}: Jira's answer has no {missing}"
 
 
+#: More tickets than one search page holds, for the paged search.
+PAGED = 101
+
+
 @pytest.fixture
 def world(jira_project):
     """Enough state that every read path has a value: an epic; a child of it
-    with every property set, a comment, and a blocker."""
+    with every property set, a comment, and a blocker; a ticket at `Won't Do`
+    offered a transition from there only, whose screen lists a field, as
+    TCWTEST's `J2 probe: reopen` is; and more tickets than a search page holds."""
     fake, client = jira_project.fake, jira_project.backend().client
+    fake.projects["TCW"].transitions.append(Transition(
+        "2", "J2 probe: reopen", "To Do", sources=("Won't Do",),
+        screen={"labels": False}, has_screen=True))
+    fake.ticket("Closed", status="Won't Do")
+    for number in range(PAGED):
+        fake.ticket(f"Paged {number:03d}")
     epic, _ = jira_project.item("An epic", "e", issue_type="Epic")
     key, _ = jira_project.item("A child", "c", parent=epic, assignee="acct-dev",
                                labels=["ui"], priority="High",
@@ -160,10 +186,18 @@ def world(jira_project):
     return jira_project, client, key
 
 
+def _closed(project) -> str:
+    return next(k for k, t in project.fake.tickets.items() if t.status == "Won't Do")
+
+
 def fake_request(name: str, key: str, project) -> tuple[str, str, dict | None]:
     kind = project.fake.projects["TCW"].type_by("Task")
     fields = ["summary", "status", "created", "priority", "labels", "assignee",
               "parent", "issuelinks", "issuetype", "description", *FIELDS.values()]
+    paged = {"jql": 'project = "TCW"', "fields": fields, "maxResults": 100}
+    if name == "post-search-jql-200-next-page.json":
+        first = project.backend().client._payload("POST", "/rest/api/3/search/jql", paged)
+        paged = {**paged, "nextPageToken": first["nextPageToken"]}
     return {
         "get-myself-200.json": ("GET", "/rest/api/3/myself", None),
         "get-user-200.json": ("GET", "/rest/api/3/user?accountId=acct-dev", None),
@@ -190,6 +224,14 @@ def fake_request(name: str, key: str, project) -> tuple[str, str, dict | None]:
         "post-issue-201.json": ("POST", "/rest/api/3/issue", {"fields": {
             "project": {"key": "TCW"}, "issuetype": {"id": kind.id},
             "summary": "Made by the shape test"}}),
+        "post-search-jql-200-first-page.json": ("POST", "/rest/api/3/search/jql", paged),
+        "post-search-jql-200-next-page.json": ("POST", "/rest/api/3/search/jql", paged),
+        "post-workflows-200-directed.json": ("POST", "/rest/api/3/workflows", {
+            "projectAndIssueTypes": [{"projectId": project.fake.projects["TCW"].id,
+                                      "issueTypeId": kind.id}]}),
+        "get-issue-key-transitions-200-screen-fields.json": (
+            "GET", f"/rest/api/3/issue/{_closed(project)}/transitions"
+                   f"?expand=transitions.fields", None),
     }[name]
 
 
@@ -203,6 +245,20 @@ def test_the_fake_answers_in_jiras_shape(world, name):
     missing = [p for p in READS[name]
                if has(recorded, resolve(p, ids)) and not has(answer, resolve(p, fake_ids))]
     assert not missing, f"{name}: Jira sends {missing}, which the fake's answer lacks"
+
+
+@pytest.mark.parametrize("name", sorted(SENDS))
+def test_the_client_asks_as_jira_was_asked(world, name):
+    """A search past one page: the client's next-page request carries what the
+    recorded one did, the token included."""
+    project, client, _key = world
+    recorded = load(name)["request"]
+    assert not [p for p in SENDS[name] if not has(recorded, p.split("."))]
+    client.search('project = "TCW"', ["summary"])
+    pages = [b for _m, _p, b in project.fake.requests("POST", "/search/jql")]
+    assert len(pages) >= 2, "the fake answered every ticket in one page"
+    missing = [p for p in SENDS[name] if not has(pages[1], p.split("."))]
+    assert not missing, f"{name}: Jira was sent {missing}, which the client's request lacks"
 
 
 def _profile_values(value, key: str) -> list:
