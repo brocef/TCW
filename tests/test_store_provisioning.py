@@ -2091,6 +2091,25 @@ def test_the_current_repositorys_ssh_command_does_not_turn_batch_mode_off(monkey
     assert env["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
 
 
+REPO = Path(__file__).resolve().parents[1]
+#: Every document that says `tcw provision` does not ask (B2).
+NOT_ASKING = [
+    "docs/guide/multi-repo.md", "skills/setup/references/project.md",
+    "docs/capabilities/cli/provision-declared-stores/description.md",
+    "docs/release-notes/upcoming/2026-10-15-fix-what-tcw-71-to-tcw-75-s-reviews-"
+    "left-in-the-3-0-code-before-the-freeze.md",
+]
+
+
+@pytest.mark.parametrize("name", NOT_ASKING)
+def test_the_documents_name_the_ssh_command_exception(name):
+    """A user's own ssh command is left alone, so ssh may still ask: no
+    document may say provisioning never asks without saying so."""
+    text = " ".join((REPO / name).read_text(encoding="utf-8").lower().split())
+    assert "never asks" not in text and "never prompts" not in text, name
+    assert "ssh may still ask" in text, name
+
+
 def test_with_real_git_a_local_ssh_command_is_not_read(monkeypatch, tmp_path):
     repo = tmp_path / "repo"
     subprocess.run(["git", "init", "-q", str(repo)], check=True, stdin=subprocess.DEVNULL)

@@ -6,7 +6,18 @@
   comments first. If the note is there, nothing is reported. If the comments
   cannot be read either, the message says the note may have been posted and
   to check with `tcw work show <slug>` before adding it with
-  `tcw work comment`.
+  `tcw work comment`. Only a comment that arrived after the note was sent
+  counts, so an older note with the same words (the same move, made before)
+  no longer hides one that never arrived.
+- **Your Jira token is sent to your Jira site only.** If the site answered a
+  request with a redirect to another address, the token went along with the
+  redirected request. It no longer does.
+- **`tcw provision` with a `tcw-config.yaml` it cannot read** now reports the
+  error, naming the file, and exits with code 1. It used to say "Nothing to
+  provision" and succeed.
+- **`tcw work new --project <id> --stage inbox`** is refused (exit code 2):
+  `--stage` was dropped without a word. An item created in another project
+  always starts in that project's inbox.
 - **A Jira site address that is not a Jira site** is now reported as that
   (exit code 1, asking you to check `work.jira.site`) instead of "not found".
   A ticket or project that does not exist is still exit code 4.
@@ -14,8 +25,10 @@
   is now an error that names the file and line, instead of a crash.
 - **Both bad Jira credential settings are reported**, when `email-env` and
   `token-env` are both wrong, not only the first.
-- **`tcw config show` writes binary and set values correctly**, each on one
-  line that reads back to the same value.
+- **`tcw config show` writes binary, set, ordered-map and pairs values
+  correctly**, each reading back as the same value. A value it cannot write
+  that way is reported as an error naming its key, instead of being printed
+  wrong.
 - **`tcw work new --stage inbox` in a Jira project** is refused at once, without
   waiting for text on standard input.
 - **The retired `connected-projects` key** is reported with the path to the
@@ -38,14 +51,17 @@
   a folder under the override's, instead of deleting it with the override.
   The message names each one; remove local ones with `tcw capabilities rm`
   and nested overrides with `tcw capabilities reset` first.
-- **`tcw provision` never asks for anything** while it clones: no password,
-  no ssh passphrase, no question about trusting a new server. Where an answer
-  would be needed the clone fails with git's reason. A private repository
-  needs a credential helper that already holds its credentials, or an ssh key
-  loaded in an ssh agent. An ssh command you set yourself is left alone.
+- **`tcw provision` does not ask for anything** while it clones: no
+  password, no ssh passphrase, no question about trusting a new server. Where
+  an answer would be needed the clone fails with git's reason. A private
+  repository needs a credential helper that already holds its credentials,
+  or an ssh key loaded in an ssh agent. The exception is an ssh command you
+  have set yourself (`GIT_SSH_COMMAND`, `GIT_SSH`, or `core.sshCommand` in your
+  global or system git config): TCW leaves it alone, so ssh may still ask.
 - **Offline `tcw validate` in a Jira project** now reads each item folder's
   `capabilities.yaml` and reports one that cannot be read or is malformed.
-  With `--remote` it is reported once, not twice. A `qa` folder's rounds,
+  With `--remote` it is reported once, not twice. Checking a single item,
+  and saving a file in the web viewer, report it too. A `qa` folder's rounds,
   which Jira keeps, now get only the "this folder is ignored" warning.
 
 ## The web viewer
@@ -56,6 +72,7 @@
   it.
 - **An item's files stay inside the item's folder.** When a stage folder or
   `capabilities.yaml` is a link that leads outside the item folder, the
-  viewer neither reads nor writes through it.
+  viewer neither reads nor writes through it, and the item's page neither
+  lists the file nor reads a verdict from it.
 - **The "stale write" banner** no longer makes the browser warn about its
   layout.

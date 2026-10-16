@@ -68,3 +68,14 @@ def test_the_manual_fallback_names_the_command():
     assert last.startswith("Document command summary"), \
         "the skill does not end with its manual fallback block"
     assert COMMAND in last
+
+
+def test_the_request_rule_is_in_the_body_itself():
+    """Pre-freeze clean-up, B4: a project's replacement procedure may not say
+    how to write the request without the advisors, so the body says it."""
+    _, body = _split()
+    lowered = " ".join(body.lower().split())
+    assert "the procedure below says how" not in lowered
+    assert "write the request from the evidence available, marking each " \
+           "assumption" in lowered
+    assert "tcw work comment <slug>" in lowered

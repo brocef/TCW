@@ -39,12 +39,14 @@ does it contact a remote other than the one it showed me: if the place a store
 would be fetched into is already occupied by something else, I am told what is
 there and nothing is contacted at all.
 
-It never asks me anything while it clones: not for a password or token, not
+It does not ask me anything while it clones: not for a password or token, not
 for an ssh key's passphrase, and not whether to trust a server it has not met.
 Where git or ssh would need an answer, the clone fails instead and I am told
 git's reason. So a private repository needs credentials git can use without
-asking, from a credential helper or an ssh key loaded in an ssh agent. An ssh
-command I have set myself is used as it is.
+asking, from a credential helper or an ssh key loaded in an ssh agent. The
+exception is an ssh command I have set myself (`GIT_SSH_COMMAND`, `GIT_SSH`, or
+`core.sshCommand` in my global or system git config): it is used as it is, so
+ssh may still ask.
 
 A failure — unreachable remote, unknown ref, refused authentication, or a
 repository that turns out not to carry the store where the declaration says —
