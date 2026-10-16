@@ -300,7 +300,9 @@ def test_the_authorization_header_is_built_from_the_named_variables(monkeypatch)
     captured = {}
 
     def fake_urlopen(request, timeout=None):
-        captured["headers"] = dict(request.headers)
+        # `header_items()` rather than `headers`: the authorization header is
+        # an unredirected one, which `headers` does not include.
+        captured["headers"] = dict(request.header_items())
         captured["timeout"] = timeout
         captured["url"] = request.full_url
 
@@ -501,3 +503,63 @@ def test_a_server_that_drops_the_connection_is_unavailable_not_a_crash():
     finally:
         thread.join(timeout=5)
         listener.close()
+
+
+def test_a_redirect_to_another_host_does_not_carry_the_credentials():
+    """urllib copies every header added with `add_header` onto the request a
+    redirect produces, whatever host it points at. So the authorization header has
+    to be an unredirected one, or a redirect from the tracker (or anything between
+    it and us) to another host receives the user's email and API token. Two real
+    local servers: the first answers 302 to the second, under a different host
+    name and port, and the second records what it was sent."""
+    import http.server
+    import threading
+
+    seen = {}
+
+    def handler(name, answer):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen[name] = self.headers.get("Authorization")
+                answer(self)
+
+            def log_message(self, *args):
+                pass
+        return Handler
+
+    def ok(request_handler):
+        body = b"{}"
+        request_handler.send_response(200)
+        request_handler.send_header("Content-Type", "application/json")
+        request_handler.send_header("Content-Length", str(len(body)))
+        request_handler.end_headers()
+        request_handler.wfile.write(body)
+
+    other = http.server.HTTPServer(("127.0.0.1", 0), handler("other", ok))
+    other_port = other.server_address[1]
+
+    def redirect(request_handler):
+        request_handler.send_response(302)
+        request_handler.send_header(
+            "Location", f"http://localhost:{other_port}/rest/api/3/myself")
+        request_handler.send_header("Content-Length", "0")
+        request_handler.end_headers()
+
+    tracker = http.server.HTTPServer(("127.0.0.1", 0), handler("tracker", redirect))
+    servers = (tracker, other)
+    threads = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
+    for thread in threads:
+        thread.start()
+    try:
+        config = dataclasses.replace(
+            CONFIG, base_url=f"http://127.0.0.1:{tracker.server_address[1]}",
+            timeout_seconds=5)
+        jira.JiraClient(config).myself()
+    finally:
+        for server in servers:
+            server.shutdown()
+            server.server_close()
+
+    assert seen["tracker"] is not None and seen["tracker"].startswith("Basic ")
+    assert "other" in seen, "the redirect was never followed"
+    assert seen["other"] is None
