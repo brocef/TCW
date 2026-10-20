@@ -1,5 +1,5 @@
-"""A removal that stops partway names every file it did delete and says the
-removal was partial (TCW-73 review fix S2). Covers `taxonomy rm`,
+"""A removal that cannot finish deletes everything it can, names every file it
+did delete and says the removal was partial (TCW-73 review fix S2). Covers `taxonomy rm`,
 `capabilities rm` and `capabilities reset`, which all delete through
 `FsTreeStore._rm`."""
 
@@ -45,6 +45,10 @@ def check(err: str, store_root: Path, top: Path) -> None:
     assert len(errors) == 1, err
     assert "removal was partial" in errors[0] and "stuck.txt" in errors[0], err
     assert "Errno" not in errors[0].split("(")[0], err
+    # Everything that could be deleted was, whatever order the folder lists
+    # its entries in: only what sits in the locked folder is left.
+    left = [p for p in top.rglob("*") if p.is_file()]
+    assert all(p.parent.name in {"kid", "files"} for p in left), (left, err)
 
 
 def project(tmp_path: Path) -> Path:
@@ -116,3 +120,46 @@ def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     printed = capsys.readouterr()
     assert code == 1 and printed.out == "", printed
     check(printed.err, child / "docs" / "capabilities", override)
+
+
+class _FoldersFirst:
+    """An `os.scandir` result that lists folders before files: the order that
+    made a bare `rmtree` stop before it had deleted anything (CI's Linux,
+    Python 3.11)."""
+
+    def __init__(self, it):
+        self._it = it
+        self._entries = sorted(it, key=lambda e: not e.is_dir(follow_symlinks=False))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._it.close()
+
+    def __iter__(self):
+        return iter(self._entries)
+
+    def close(self):
+        self._it.close()
+
+
+def test_a_removal_deletes_everything_it_can_whatever_the_listing_order(
+        tmp_path, monkeypatch, capsys):
+    root = project(tmp_path)
+    d = root / "docs" / "taxonomy" / "zed"
+    d.mkdir()
+    (d / "meta.yaml").write_text(yaml.safe_dump({"name": "zed"}))
+    (d / "description.md").write_text("")
+    kid = locked(d / "kid")
+    real = os.scandir
+    monkeypatch.setattr(os, "scandir", lambda *a, **k: _FoldersFirst(real(*a, **k)))
+    monkeypatch.chdir(root)
+    try:
+        code = main(["taxonomy", "rm", "zed"])
+    finally:
+        unlock(kid)
+    printed = capsys.readouterr()
+    assert code == 1 and printed.out == "", printed
+    check(printed.err, root / "docs" / "taxonomy", d)
+    assert "2 of 3 files removed" in printed.err, printed.err

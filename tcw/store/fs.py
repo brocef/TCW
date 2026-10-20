@@ -1521,20 +1521,28 @@ class FsTreeStore:
             self.changed.append(("removed", path))
             return
         files = sorted(f for f in path.rglob("*") if f.is_file() or f.is_symlink())
-        try:
-            shutil.rmtree(path)
-        except OSError as e:
+        # Every entry that can be deleted is, and each failure is kept: a bare
+        # `rmtree` stops at the first one, so what it had deleted by then
+        # depended on the order the folder lists its entries in.
+        errors: list[BaseException] = []
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(path, onexc=lambda _f, _p, exc: errors.append(exc))
+        else:
+            shutil.rmtree(path, onerror=lambda _f, _p, info: errors.append(info[1]))
+        if errors:
             # A delete that stops partway has still deleted files, and each one
             # must be named. Which ones went is read back from the disk, so the
             # lines name exactly what changed.
+            e = errors[0]
             gone = [f for f in files if not (f.exists() or f.is_symlink())]
             self.changed += [("removed", f) for f in gone]
             left = [f for f in files if f not in gone]
             what = (", ".join(_shown(f) for f in left) if left
                     else f"the folder {_shown(path)}")
+            reason = getattr(e, "strerror", None) or e
             raise BackendError(f"the removal was partial: {len(gone)} of {len(files)} "
                                f"files removed; still present: {what} "
-                               f"({e.strerror or e})") from None
+                               f"({reason})") from None
         self.changed += [("removed", f) for f in files]
 
 
