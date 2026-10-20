@@ -340,6 +340,22 @@ def test_the_lifecycle_documents_keep_their_rules(rel, phrase):
     assert phrase in text, f"{rel} no longer says {phrase!r}"
 
 
+def test_harness_points_at_where_a_subagent_is_never_required():
+    """TCW-76 review round 2, D3: `harness.md` names the section that says a
+    subagent is never required, and that section says so. The link check
+    above reads anchors only in owned documents, and the work skill is not
+    one, so the anchor is checked here."""
+    text = " ".join((REPO / "docs/lifecycle/harness.md").read_text(encoding="utf-8").split())
+    assert ("a subagent is permitted, never required: a session that cannot dispatch runs "
+            "the same stage itself (the `work` skill's [Rules no project text changes]"
+            "(../../skills/work/SKILL.md#rules-no-project-text-changes))") in text
+    skill = (REPO / "skills/work/SKILL.md").read_text(encoding="utf-8")
+    assert "rules-no-project-text-changes" in anchors(skill)
+    rules = skill.split("\n## Rules no project text changes\n", 1)[1].split("\n## ", 1)[0]
+    assert ("A subagent is permitted, never required: a session that cannot dispatch "
+            "runs the same stage itself.") in " ".join(rules.split())
+
+
 def test_abstraction_asks_who_owns_a_fact():
     text = " ".join(ABSTRACTION.read_text(encoding="utf-8").split())
     assert "Who owns this fact: the backend, or the repository?" in text

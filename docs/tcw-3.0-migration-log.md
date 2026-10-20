@@ -585,12 +585,16 @@ above), and its file is deleted at step 8:
 
 None. Every ticket at `To Do` or `In Progress` is bound to an item; the other
 58 are at `Done` or `Won't Do`. TCW-69 to TCW-75 and TCW-77 (TCW-68's
-children, `Done`, their folders deleted by 2.x retention) have no items, and
-3.0 lists them nowhere: `tcw work show` reports as `untracked` only an
-item's parent and blockers that have no item, never its children
-(`tcw/work/jira/backend.py`, `_items`). (Corrected at Task B22; this plan
-first said they became untracked references under TCW-68.) Whether to give
-them, and TCW-67, `TCW Project` alone is D8.
+children, `Done`, their folders deleted by 2.x retention) become untracked
+references under TCW-68. Whether to give them, and TCW-67, `TCW Project`
+alone is D8.
+
+**Note added on 2026-10-20 (Task B22), not part of the approved plan,** which
+stands above as it was approved: the sentence about TCW-69 to TCW-75 and
+TCW-77 is wrong. They have no items, and 3.0 lists them nowhere:
+`tcw work show` reports as `untracked` only an item's parent and blockers
+that have no item, never its children (`tcw/work/jira/backend.py`,
+`_items`).
 
 ### Rewrites
 

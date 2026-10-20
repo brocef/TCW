@@ -23,10 +23,11 @@
 
 - TCW's own repository is on 3.0: `tcw-config.yaml` uses `work.backend: jira`
   with the project `TCW`, `work.stages` with a status per stage, a
-  `git pull --ff-only` prompt on every stage from `request` on, the
-  commit-after-move `post` hook on every move to a stage after `inbox`, and
-  the `Tracker-Change` documentation trigger renamed
-  `Jira-Change`; the board is flattened to one `TCW-<n>-<words>` folder per
+  `git pull --ff-only` prompt on `request`, `spec`, `plan`, `implement`,
+  `review`, `qa` and `postmortem` (`inbox` is bound none, and `completed`
+  and `discarded` take no prompt), the commit-after-move `post` hook on
+  every move to a stage after `inbox`, and the `Tracker-Change`
+  documentation trigger renamed `Jira-Change`; the board is flattened to one `TCW-<n>-<words>` folder per
   item with a one-line `item.yaml`, its documents in stage folders, and no
   inbox, `graveyard.yaml` or status folders. `AGENTS.md`, `.gitignore` and
   the capability records' `Planning doc:` lines were updated to match.

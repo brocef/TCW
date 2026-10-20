@@ -260,7 +260,12 @@ Then write one plan and present it to the user as one message. It covers:
   plan turns it off. In Jira mode, also the status
   for each stage turned on ([Configuration](#configuration), the
   `work.tracker.statuses` row, says what to decide), and the statuses,
-  transitions and fields that must be added (step 2).
+  transitions and fields that must be added (step 2). **Compare each status
+  name with Jira's exactly first**, capitals and spaces included: read the
+  project's statuses ([Talking to Jira](#talking-to-jira)) and write each
+  name as Jira spells it. 3.0 compares status names exactly, where 2.x
+  ignored case and spacing, so a 2.x `in progress` for Jira's `In Progress`
+  is a spelling the plan corrects, not a status to add at step 2.
 - **Each item**: its stage ([Status folders](#status-folders)), its converted
   fields ([Item fields](#item-fields)), and everything dropped or listed (a
   free-text blocker, an `initiative` beside a `parent`, an `owner` in Jira
@@ -326,7 +331,11 @@ In Jira mode, read the project's workflow first (the Jira web page, or the
 reads in [Talking to Jira](#talking-to-jira)), then make, or list, what the
 new configuration needs:
 
-- **a status for each stage turned on** that has none yet;
+- **a status for each stage turned on** that has none yet. Before deciding
+  that one is missing, compare the plan's status names with the names the
+  project's statuses read gives, exactly, capitals and spaces included
+  (step 1's stages entry): a name that differs only in spelling is corrected
+  in the plan, and Jira is left as it is;
 - **a route for every move** `tcw work advance` makes. For each move, TCW
   takes the one transition into the target stage's status; when several lead
   there, the one whose screen asks for nothing but a comment; and it refuses
@@ -378,12 +387,9 @@ hook limits under `work.hooks`, templates as prompt entries,
 it. In Jira mode, add `work.backend: jira`, the `work.jira` block (`site`,
 `project`, `credentials`, `fields`, and `priorities`, `issue-type` or
 `timeout` where they differ from the defaults), and each stage's `status`.
-**Spell each status exactly as Jira does**, capitals and spaces included: 3.0
-compares status names exactly, where 2.x ignored case and spacing, so a 2.x
-`in progress` for Jira's `In Progress` no longer matches. Read the names from
-the project's statuses ([Talking to Jira](#talking-to-jira)) and correct the
-configuration's spelling before deciding that Jira lacks a status and
-changing Jira at step 2.
+**Spell each status exactly as Jira does**, capitals and spaces included, as
+step 1 compared them and step 2 relied on: a 2.x `in progress` for Jira's
+`In Progress` no longer matches.
 Give each template its first line saying what it outlines. The `configure`
 skill's reference documents, linked from [Configuration](#configuration),
 describe every key.
@@ -522,8 +528,9 @@ in the item's `comments/` folder named with the time in UTC, such as
 in Jira mode it is posted at step 6. A rerun names a new file with a new
 time, so, as rule 6 does for Jira, **look before writing**: skip the comment
 when a file in the folder already begins with its first line, which
-`for f in docs/work/<folder>/comments/*.md; do [ -e "$f" ] && head -n 1 "$f"; done | grep -cxF '<first line>'`
-counts (`0` means write it).
+`awk 'FNR==1' docs/work/<folder>/comments/*.md 2>/dev/null | grep -cxF '<first line>'`
+counts (`0` means write it). `awk` ends each first line it prints, so a file
+whose last line has no newline is not joined to the next file's first line.
 
 In filesystem mode, delete `tracker.yaml` too. In Jira mode it stays until
 step 6, which reads the ticket's key from it.
@@ -749,7 +756,10 @@ The commands here are for `bash`. Run them from the project's root.
   - `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.codex/` and
     `.agents/skills/`;
   - Pi's project files: `.pi/skills/`, `.pi/prompts/`, `.pi/SYSTEM.md`,
-    `.pi/APPEND_SYSTEM.md` and `.pi/settings.json`;
+    `.pi/APPEND_SYSTEM.md` and `.pi/settings.json`, and the other names Pi
+    reads beside `AGENTS.md`: `AGENTS.override.md`, and `AGENTS.MD` and
+    `CLAUDE.MD` in capitals, which are files of their own on a disk that
+    tells capitals apart;
   - the `hooks` and `permissions.allow` entries of `.claude/settings.json` and
     `.claude/settings.local.json`;
   - the prompt and procedure files the 2.x configuration bound (step 1's
@@ -758,7 +768,8 @@ The commands here are for `bash`. Run them from the project's root.
   `~/.claude/skills/`, `~/.claude/commands/`, `~/.claude/agents/`,
   `~/.codex/skills/`, `~/.agents/skills/`, `~/.codex/prompts/`,
   `~/.claude/settings.json` and `~/.codex/rules/`; and Pi's:
-  `~/.pi/agent/AGENTS.md` (or `AGENTS.override.md` or `CLAUDE.md` beside it),
+  `~/.pi/agent/AGENTS.md` (or `AGENTS.override.md`, `AGENTS.MD`, `CLAUDE.md`
+  or `CLAUDE.MD` beside it),
   `~/.pi/agent/SYSTEM.md`, `~/.pi/agent/APPEND_SYSTEM.md`,
   `~/.pi/agent/skills/`, `~/.pi/agent/prompts/`, and what
   `~/.pi/agent/settings.json` lists: each path under its `skills` and
@@ -790,7 +801,7 @@ Build the list of places:
 ```sh
 PRIMARY=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 PLACES=()
-for p in CLAUDE.md AGENTS.md .claude/skills .claude/commands .claude/agents .codex .agents/skills \
+for p in CLAUDE.md AGENTS.md AGENTS.override.md .claude/skills .claude/commands .claude/agents .codex .agents/skills \
          .claude/settings.json .claude/settings.local.json \
          .pi/skills .pi/prompts .pi/SYSTEM.md .pi/APPEND_SYSTEM.md .pi/settings.json \
          ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.claude/skills ~/.claude/commands ~/.claude/agents \
@@ -799,6 +810,11 @@ for p in CLAUDE.md AGENTS.md .claude/skills .claude/commands .claude/agents .cod
          ~/.pi/agent/SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md ~/.pi/agent/skills ~/.pi/agent/prompts \
          ~/.codex/memories; do
   [ -e "$p" ] && PLACES+=("$p")
+done
+# Pi reads these in capitals too. On a disk that ignores capitals each is the
+# lower-case file again, so it is added only when it is a file of its own.
+for p in AGENTS.MD CLAUDE.MD ~/.pi/agent/AGENTS.MD ~/.pi/agent/CLAUDE.MD; do
+  [ -e "$p" ] && ! [ "$p" -ef "${p%.MD}.md" ] && PLACES+=("$p")
 done
 # Each file CLAUDE.md and AGENTS.md link to or import, each bound prompt and
 # procedure file, and each skill, prompt and package folder Pi's settings.json
@@ -838,7 +854,8 @@ while [ "$i" -lt "${#PLACES[@]}" ]; do
   p=${PLACES[i]}; i=$((i + 1))
   [ -d "$p" ] || continue
   while read -r l; do
-    t=$(realpath "$l" 2>/dev/null) || continue   # a link that points nowhere
+    [ -e "$l" ] || continue                       # a link that points nowhere:
+    t=$(realpath "$l" 2>/dev/null) || continue   # GNU realpath resolves it anyway
     held "$t" || PLACES+=("$(local_path "$t")")
   done < <(find "$p" -mindepth 1 -type l)
 done
@@ -1275,7 +1292,7 @@ skill's [`work.md`](../skills/configure/references/work.md) and
 | `work.tracker.provider` | `work.backend: jira` |
 | `work.tracker.base-url` | `work.jira.site` |
 | `work.tracker.credentials` (`email-env`, `token-env`) | `work.jira.credentials`, with the same variable names |
-| `work.tracker.statuses.<status>` | `work.stages.<stage>.status`: `backlog` gives `request`'s, `active` gives `implement`'s, `completed` and `discarded` give their own. `review` gives its status to whichever 3.0 stage the user chooses: `qa`, where 2.x review items go, or `review`. `spec`, `plan`, `qa` and any other stage turned on need statuses of their own. **A `discarded` given as a mapping by resolution** (`wontfix`, `duplicate`, `superseded`, each with its own status) has no 3.0 form, since `discarded` takes one status: the plan chooses that one, and says what becomes of tickets at the others (moved to the chosen status at step 6, or left, with each resolution kept in its discard comment). **Two stages may not share a status**: 3.0 refuses the configuration (`each stage needs its own status`), so a 2.x status that two 3.0 stages would take, such as `review`'s when both `review` and `qa` are on, means a new Jira status for one of them, made at step 2 and listed in the plan. **Names are compared exactly**: 2.x ignored capitals and runs of spaces, 3.0 does not, so each name is written as Jira spells it (step 3) |
+| `work.tracker.statuses.<status>` | `work.stages.<stage>.status`: `backlog` gives `request`'s, `active` gives `implement`'s, `completed` and `discarded` give their own. `review` gives its status to whichever 3.0 stage the user chooses: `qa`, where 2.x review items go, or `review`. `spec`, `plan`, `qa` and any other stage turned on need statuses of their own. **A `discarded` given as a mapping by resolution** (`wontfix`, `duplicate`, `superseded`, each with its own status) has no 3.0 form, since `discarded` takes one status: the plan chooses that one, and says what becomes of tickets at the others (moved to the chosen status at step 6, or left, with each resolution kept in its discard comment). **Two stages may not share a status**: 3.0 refuses the configuration (`each stage needs its own status`), so a 2.x status that two 3.0 stages would take, such as `review`'s when both `review` and `qa` are on, means a new Jira status for one of them, made at step 2 and listed in the plan. **Names are compared exactly**: 2.x ignored capitals and runs of spaces, 3.0 does not, so each name is compared with Jira's in the plan (step 1) and again before Jira is changed (step 2), and written as Jira spells it |
 | `work.tracker.pre-backlog` | `work.stages.inbox.status`, the status it names; its transition name is dropped |
 | `work.tracker.inbox-query` | dropped when it only selects the project's inbox status, which 3.0 offers by default; otherwise `work.jira.inbox-query` |
 | `work.tracker.candidate-query` | removed: "what can I pick up" is `tcw work list --stage request --mine` |

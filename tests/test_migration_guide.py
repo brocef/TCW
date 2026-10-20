@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -611,6 +612,8 @@ PLACES = (
     # Pi's (TCW-76 review round 1)
     ".pi/skills/", ".pi/prompts/", "~/.pi/agent/AGENTS.md", "~/.pi/agent/skills/",
     "~/.pi/agent/prompts/",
+    # Pi's other names beside AGENTS.md (TCW-76 review round 2, N4)
+    "AGENTS.override.md", "AGENTS.MD", "CLAUDE.MD",
 )
 
 
@@ -849,7 +852,13 @@ def test_step_9s_patterns_find_a_whole_old_name_and_not_a_longer_one(tmp_path):
         "not oldXname+x\n"
         "tcw://work/old.name+x\n")
     subprocess.run(["sh", "-c", builder], cwd=tmp_path, check=True)
-    found = subprocess.run(["grep", "-rnE", "-f", "old.re", "docs"], cwd=tmp_path,
+    # The check's own search (review round 2, D2), with the plan's folders
+    # and documents standing for the sample's one folder.
+    [search] = [s for s in SPAN.findall(check(9)) if "-f <the file of patterns>" in s]
+    command = (search.replace("<the file of patterns>", "old.re")
+               .replace("<open item folders> <live documents>", "docs"))
+    assert "<" not in command, command
+    found = subprocess.run(["sh", "-c", command], cwd=tmp_path,
                            capture_output=True, text=True).stdout
     assert sorted(line.split(":")[1] for line in found.splitlines()) == ["1", "2", "5"], found
 
@@ -863,7 +872,7 @@ def test_step_12_names_the_packages_pi_lists():
 _PATH = os.environ.get("PATH", "")
 
 
-def _places(tmp_path: Path, setup) -> list[str]:
+def _places(tmp_path: Path, setup, path: str = _PATH) -> list[str]:
     """The guide's own list of places, built in a scratch project with its
     own home folder."""
     home, repo = tmp_path / "home", tmp_path / "repo"
@@ -873,7 +882,7 @@ def _places(tmp_path: Path, setup) -> list[str]:
     setup(repo, tmp_path)
     snippet = places_block().split("\n", 1)[1].rsplit("```", 1)[0]
     out = subprocess.run(["bash", "-c", snippet], cwd=repo, capture_output=True,
-                         text=True, env={"HOME": str(home), "PATH": _PATH})
+                         text=True, env={"HOME": str(home), "PATH": path})
     assert out.returncode == 0, out.stderr
     return out.stdout.splitlines()
 
@@ -888,27 +897,68 @@ def _links(repo: Path, tmp_path: Path) -> None:
     (skills / "notes.md").symlink_to("../../docs/notes.md")
     (skills / "agents.md").symlink_to("../../AGENTS.md")
     (skills / "broken.md").symlink_to("nowhere.md")
+    (skills / "gone").symlink_to(tmp_path / "gone")
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "o.md").write_text("state.yaml\n")
     (skills / "outside").symlink_to(outside)
 
 
+def _gnu_realpath(tmp_path: Path) -> str:
+    """A PATH whose `realpath` behaves as GNU's does without options: it
+    resolves a link that points nowhere instead of failing, as macOS's
+    fails."""
+    bin_dir = tmp_path / "gnu-bin"
+    bin_dir.mkdir()
+    shim = bin_dir / "realpath"
+    shim.write_text(f"#!{sys.executable}\nimport os, sys\n"
+                    "print(os.path.realpath(sys.argv[-1]))\n")
+    shim.chmod(0o755)
+    return f"{bin_dir}{os.pathsep}{_PATH}"
+
+
 @pytest.mark.skipif(not (shutil.which("bash") and shutil.which("git")
                          and shutil.which("realpath")),
                     reason="needs bash, git and realpath")
-def test_step_12s_places_follow_links_and_keep_the_project_relative(tmp_path):
+@pytest.mark.parametrize("realpath", ["this machine's", "GNU's"])
+def test_step_12s_places_follow_links_and_keep_the_project_relative(tmp_path, realpath):
     """Amendment 7, and review round 1: a place that is a link is replaced by
     what it points to unless that is listed; a link inside a listed folder
     adds its target, unless a listed place holds it; a target inside the
-    project is added by its path from the project's root."""
-    places = _places(tmp_path, _links)
+    project is added by its path from the project's root. Review round 2, D4:
+    a link that points nowhere adds nothing, under GNU's `realpath` too, which
+    resolves it where macOS's fails; so the test runs under both whichever
+    machine runs it."""
+    path = _gnu_realpath(tmp_path) if realpath == "GNU's" else _PATH
+    places = _places(tmp_path, _links, path)
     root = str((tmp_path / "repo").resolve())
     assert "AGENTS.md" in places and "CLAUDE.md" not in places, places
     assert "docs/notes.md" in places, places
     assert str((tmp_path / "outside").resolve()) in places, places
+    assert not [p for p in places if p.endswith("gone")], places
     assert not [p for p in places if p.startswith(root)], places
     assert len(places) == len(set(places)), places
+
+
+def _pi_capitals(repo: Path, tmp_path: Path) -> None:
+    (repo / "AGENTS.md").write_text("state.yaml\n")
+    probe = tmp_path / "Case-Probe"
+    probe.write_text("")
+    if not (tmp_path / "case-probe").exists():
+        (repo / "AGENTS.MD").write_text("state.yaml\n")
+
+
+@pytest.mark.skipif(not (shutil.which("bash") and shutil.which("git")
+                         and shutil.which("realpath")),
+                    reason="needs bash, git and realpath")
+def test_step_12s_places_add_pis_capital_names_only_when_they_are_other_files(tmp_path):
+    """Review round 2, N4: on a disk that tells capitals apart `AGENTS.MD` is
+    a file of its own and is searched; on one that does not, it is
+    `AGENTS.md` again, and listing it would print each line twice."""
+    places = _places(tmp_path, _pi_capitals)
+    tells_apart = not (tmp_path / "case-probe").exists()
+    assert "AGENTS.md" in places, places
+    assert ("AGENTS.MD" in places) == tells_apart, places
 
 
 def test_step_12s_private_files_carry_the_projects_id():
@@ -943,14 +993,48 @@ def test_step_12s_check_reads_only_this_runs_expected_names(tmp_path):
 def test_step_5_skips_a_filesystem_comment_already_written():
     text = _flat(step(5))
     assert "**look before writing**" in text
-    assert ("`for f in docs/work/<folder>/comments/*.md; do [ -e \"$f\" ] && head -n 1 "
-            "\"$f\"; done | grep -cxF '<first line>'`") in text
+    assert ("`awk 'FNR==1' docs/work/<folder>/comments/*.md 2>/dev/null "
+            "| grep -cxF '<first line>'`") in text
+
+
+@pytest.mark.skipif(not (shutil.which("awk") and shutil.which("grep")),
+                    reason="needs awk and grep")
+def test_step_5s_counter_reads_a_comment_without_a_final_newline(tmp_path):
+    """Review round 2, N1: a file whose last line has no newline is not
+    joined to the next file's first line."""
+    first = "Carried over from TCW 2.x: discarded as wontfix"
+    [span] = [s for s in SPAN.findall(step(5)) if s.startswith("awk 'FNR==1'")]
+    comments = tmp_path / "docs" / "work" / "x" / "comments"
+    comments.mkdir(parents=True)
+    (comments / "20261020T143000Z.md").write_text(first)
+    (comments / "20261020T143100Z.md").write_text(f"{first}\nmore\n")
+    command = span.replace("<folder>", "x").replace("<first line>", first)
+    out = subprocess.run(["sh", "-c", command], cwd=tmp_path, capture_output=True, text=True)
+    assert out.stdout == "2\n", (out.stdout, out.stderr)
+    (comments / "20261020T143000Z.md").unlink()
+    (comments / "20261020T143100Z.md").unlink()
+    out = subprocess.run(["sh", "-c", command], cwd=tmp_path, capture_output=True, text=True)
+    assert out.stdout == "0\n", (out.stdout, out.stderr)
 
 
 def test_a_discards_reason_is_in_its_comment_not_in_tcw_reason():
     row = _row("`TCW_RESOLUTION`")
     assert "a discard's reason is in `TCW_REASON`" not in row[1]
     assert "it is in the comment the discard writes on the item" in row[1]
+
+
+def test_status_names_are_compared_with_jiras_before_step_2_changes_jira():
+    """Review round 2, D1: step 2 adds the statuses Jira lacks, so the
+    spellings are compared in step 1's plan and in step 2's first bullet,
+    not first at step 3, which runs after it."""
+    assert "**Compare each status name with Jira's exactly first**" in _flat(step(1))
+    [bullet] = [b for b in step(2).split("\n- ")
+                if b.startswith("**a status for each stage turned on**")]
+    assert ("Before deciding that one is missing, compare the plan's status names "
+            "with the names the project's statuses read gives, exactly") in _flat(bullet)
+    [row] = [r for r in mapping_rows() if r[0] == "`work.tracker.statuses.<status>`"]
+    assert row[1].endswith("compared with Jira's in the plan (step 1) and again before "
+                           "Jira is changed (step 2), and written as Jira spells it"), row[1]
 
 
 def test_optional_stages_are_on_unless_turned_off():
