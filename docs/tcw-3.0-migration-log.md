@@ -40,6 +40,11 @@ worktree `.worktrees/tcw-3-0-migration-run-1`, on the branch
   board. Step 0 ran 2.8.3, the released version the board is on, from PyPI
   in a private virtual environment (`tcw76/venv-28` in the session's scratch
   folder; `tcw --version` printed `tcw 2.8.3`).
+- **(f) 3.0 is not made everyone's `tcw` at step 11.** The guide's step 11
+  installs the released 3.0 and updates the plugin. 3.0.0 is cut and
+  published only at Task B24, so step 11 ran the private environment
+  `tcw76/venv` (this worktree's 3.0 code) first on `PATH`, as the plan's rules
+  say, and the shared install and the plugins are left for B24.
 
 ### Step 0: Prepare
 
@@ -1489,4 +1494,78 @@ already in step 9's list); and the three code tests of Task A1
 (`tests/work/test_removed_commands.py`, `tests/work/test_no_2x_names.py`,
 `tests/work/test_cli_config.py`), 36 files in sorted order: 1773 passed, 44
 skipped (before the test fix: 1 failed, the one above).
+`pytest --collect-only -q` collected 5275 tests.
+
+### Step 11: Validate
+
+**3.0 on `PATH`, and the plugin.** Not done as the guide words it, by the
+plan's rules: 3.0.0 is not released yet, so there is no
+`pipx install 'tcw-cli>=3,<4'` to run and no 3.0 plugin release to update
+to, and the epic's rule is a private virtual environment rather than a
+re-pointed shared install. Every `tcw` of this step, and the hooks it runs,
+ran with the private environment `tcw76/venv` first on `PATH`
+(`which tcw` printed its `bin/tcw`; `import tcw` resolved to this worktree's
+`tcw/__init__.py`). The shared install stays 2.8.3 and the plugins stay as
+they are until 3.0.0 is published (Task B24). This is not a fault in the
+guide, which is written for a released 3.0: it is the epic's own ordering
+(deviation f).
+
+Jira credentials: `TCW_JIRA_EMAIL` and `TCW_JIRA_API_KEY` were already set in
+the session's environment, and `source ~/.bashrc` was run first as well.
+`git status --porcelain` printed nothing before and after each run.
+
+**`tcw validate; echo "exit $?"`** printed:
+
+```text
+0 errors, 0 warnings, 0 unresolved
+exit 0
+```
+
+**`tcw validate --remote; echo "exit $?"`** printed:
+
+```text
+tcw: the credentials and Jira project TCW are readable
+tcw: moves read from the workflow definition had their screen fields left unchecked; only a sample ticket shows them
+tcw: 33 item folders checked against their tickets
+tcw: the model checks ran over 33 items
+0 errors, 1 warning, 0 unresolved
+warning: work.jira: unchecked: the Sub-task edit screen: no Sub-task ticket in TCW to sample
+exit 0
+```
+
+Each line read:
+
+- **Errors:** none in either run.
+- **`unchecked:` warning, listed for the owner:** the `Sub-task` edit screen,
+  the one step 3 listed. Every type uses one screen for create and edit
+  (step 2, item 5), step 2 read the `Sub-task` create screen with every field
+  TCW needs, and TCW has no `Sub-task` ticket to read an edit screen on. Kept,
+  with that reason.
+- **The note on moves' screen fields** is the one step 3 listed. As step 3
+  said, it was read again on real items:
+  `GET /rest/api/3/issue/<key>/transitions?expand=transitions.fields` on one
+  ticket at each status in use, TCW-92 (`Triage`), TCW-5 and TCW-68 (`To Do`),
+  TCW-50 (`Planning`), TCW-76 (`In Progress`), TCW-9 (`Done`) and TCW-33
+  (`Won't Do`): each lists 9 transitions, one into each of the nine statuses,
+  and none has a field (all `HTTP 200`).
+- **The board against Jira:** 33 item folders checked against their tickets,
+  and the model checks ran over 33 items, with no finding.
+- **Other findings:** none.
+
+**Stages.** `tcw work list --all --json` (exit 0) lists 33 items. Each one's
+`stage` was compared, by its new folder name, with the stage the approved
+plan's item table gives its 2.x folder (D4 applied to item 17), through step
+6's table of old and new names: 0 differences. 16 at `request` (TCW-5,
+TCW-14, TCW-21, TCW-22, TCW-23, TCW-27, TCW-39, TCW-41, TCW-42, TCW-48,
+TCW-68, TCW-84, TCW-85, TCW-87, TCW-90, TCW-91), 1 at `plan` (TCW-50), 1 at
+`implement` (TCW-76), 3 at `completed` (TCW-9, TCW-78, TCW-88) and 12 at
+`discarded` (TCW-10, TCW-26, TCW-33, TCW-40, TCW-54, TCW-79, TCW-80, TCW-81,
+TCW-82, TCW-83, TCW-86, TCW-89).
+
+**Check:** `tcw validate; echo "exit $?"` ended with `exit 0`, and
+`tcw validate --remote; echo "exit $?"` ended with `exit 0`, as above.
+
+Tests: step 11 changed only this log. The files that read the guide or this
+log (as at step 3), `tests/test_documentation_sync_wiring.py` and the
+standing guard files, 19 files in sorted order: 1282 passed, 9 skipped.
 `pytest --collect-only -q` collected 5275 tests.
