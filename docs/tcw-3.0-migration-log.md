@@ -1781,3 +1781,46 @@ Tests: `AGENTS.md`, the guide and this log changed. The test files that read
 any of them, 10 files in sorted order (`grep -rl` over `tests`, less the
 helper `tests/doc_allowance.py` and a fixture): 930 passed.
 `pytest --collect-only -q` collected 5275 tests.
+
+## After the migration: Tasks B17 to B20
+
+### Task B17: `tests/test_repo_lifecycle.py` for 3.0
+
+New file, 8 tests, written against the 3.0 parser (spec Design 7):
+
+- `tcw-config.yaml` loads through `tcw.config.load_config` with
+  `TCW_NO_PERSONAL_CONFIG=1` and no problems, and its `work.jira` block
+  parses through `tcw.work.jira.config.parse_jira_config` with none;
+- every `file:` bound to a stage or a procedure exists and is not empty;
+- every `command:` that runs a script through `sh` or `python` names a script
+  that exists (and the two scripts, `scripts/require_artifact.py` and
+  `docs/guide/examples/commit-item-after-move.sh`, are among them). The one
+  other command, `tcw validate` on `completed`, names a program found on
+  `PATH` and no file, so it has nothing to check;
+- `plan` binds no spec template, and some stage does;
+- both templates carry the seven sections `tcw/work/prompts/spec.md` asks for
+  (Capability changes, Problem, Goals, Non-goals, Design, Acceptance criteria,
+  Risks);
+- the documentation entries are exactly the seven of Design 6.4, by path and
+  trigger: `Jira-Change` present, no `Tracker-Change`, the upcoming entries at
+  `upcoming/<folder>.md` and none at `<slug>`, no description naming
+  `dod.yaml`, and the `Guide-Topic-Change` description naming `Jira-Change`.
+
+Mutations, each restored with `git checkout` afterwards:
+
+- `## Non-goals` renamed `## Out of scope` in `docs/lifecycle/templates/spec.md`:
+  1 failed, `test_a_template_carries_the_seven_spec_sections[…spec.md]`,
+  "lacks ['Non-goals']". (Plan's mutation.)
+- `trigger: Jira-Change` put back to `trigger: Tracker-Change`: 1 failed,
+  `test_the_documentation_entries_are_those_of_design_6_4`, on the set of
+  path and trigger pairs. (Plan's mutation.)
+- `implement`'s second `pre` pointed at `scripts/require_artifactX.py`: 1
+  failed, `test_every_hook_script_exists`, naming the missing script.
+- `docs/lifecycle/templates/spec.md` added to `plan`'s prompt: 1 failed,
+  `test_plan_binds_no_spec_template`.
+- an unknown key `projekt` added to `work.jira`: 2 failed, the two
+  no-problems tests.
+
+Tests: `tests/test_repo_lifecycle.py`, `tests/test_documentation_sync_wiring.py`
+and the standing guard files, 12 files in sorted order: 803 passed, 9 skipped.
+`pytest --collect-only -q` collected 5283 tests.
