@@ -142,6 +142,15 @@ In step 3, one more (recorded in full under Step 3 below):
    composes every stage's prompt and every bound procedure in the scratch
    folder as part of its check.
 
+In step 9, one more (D10, recorded under Step 9 below):
+
+5. **Text already in Jira.** Step 9 said to rewrite old names "in the
+   documents of open items", but in Jira mode steps 6 and 7 had already put
+   the requests and acceptance history into tickets, and step 9 rewrites only
+   files. Step 9 now says that in Jira mode an old folder name inside text
+   already posted to Jira is left as written, and that git history resolves
+   it.
+
 ### Step 1: Survey, then ask once
 
 The board, the configuration and every ticket were read (REST `GET` and one
@@ -1358,3 +1367,54 @@ names the inbox (`tests/test_eval_grading.py`, on its own fixtures),
 passed, 6 skipped. `pytest --collect-only -q` collected 5275 tests.
 
 **Check:** `ls docs/work | grep -x inbox` printed nothing (exit 1).
+
+### Step 9: Rewrite live references
+
+**Amendment 5, made before the step** (D10, as approved): the guide's step 9
+now says that in Jira mode an old folder name inside text steps 6 and 7
+already posted to Jira (the 6 request files of open items named in the
+plan's Step 9 entry, now ticket descriptions, and the two acceptance-history
+comments) is left as written, since step 9 rewrites only files. Nothing in
+Jira was read or changed for this step.
+
+**Old names**, one per line in a file in the session's scratch folder
+(`tcw76/step9-oldnames.txt`), 35 in all: the 33 old folder names of step 6's
+table (taken from this log's table and compared with the rename list the
+step 6 script used: identical; every new name is a folder under `docs/work`),
+and the two old slugs of `renames.yaml` from step 4. In Jira mode step 4
+renamed no folder.
+
+**Searched**, as the plan's Step 9 entry says:
+
+- open item folders, 17: the 16 at `request` (TCW-5, TCW-14, TCW-21,
+  TCW-22, TCW-23, TCW-27, TCW-39, TCW-41, TCW-42, TCW-48, TCW-68, TCW-84,
+  TCW-85, TCW-87, TCW-90, TCW-91) and TCW-50 at `plan`. TCW-76's folder is
+  skipped. After step 7 only TCW-50's holds documents (`spec/spec.md`,
+  `plan/plan.md`); the others hold only `item.yaml`;
+- live documents: `git ls-files` without `docs/work/`, `docs/changelogs/`,
+  `docs/release-notes/`, `docs/plan/`, `docs/superpowers/`, the
+  `docs/migration-guide-*` files, this log and `tests/fixtures/`: 704 files,
+  `tcw-config.yaml` among them.
+
+**Found and rewritten**, 1 line: `TCW-50-…/plan/plan.md:432`,
+`tcw work path 2026-09-15-let-tcw-work-list-sort-by-created-priority-effort-or-title`
+became `tcw work path TCW-50-order-and-limit-the-output-of-the-commands-that-list-entities`.
+No live document names an old folder or slug, and no `tcw://work/` link in
+either set names one. No relative link between an open item's documents
+names a document by its 2.x path; TCW-50's documents mention `spec.md`,
+`plan.md`, `outcome.md` and `initial-request.md` in backquotes as names, not
+as links, so the guide's link rule does not reach them, and they are left as
+written.
+
+**Check:** `grep -rnF -f tcw76/step9-oldnames.txt <the 17 open item folders>`
+printed nothing (exit 1); the same search over the 704 live documents printed
+nothing (exit 1); and
+`grep -rnE '\]\((\./)?(intake|initial-request|spec|plan|outcome|refined-outcome|rework|post-mortem)\.md' <the 17 open item folders>`
+printed nothing (exit 1).
+
+Tests: the files that read the guide or this log, or name TCW-50's folder
+(those of step 3, and `tests/work/jira/test_jira_validate_remote.py`), those
+that read under `docs/work` from the repository root (as at step 6),
+`tests/test_documentation_sync_wiring.py` and the standing guard files, 25
+files run in sorted order: 1544 passed, 29 skipped.
+`pytest --collect-only -q` collected 5275 tests.

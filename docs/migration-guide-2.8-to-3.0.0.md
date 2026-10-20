@@ -630,6 +630,13 @@ folders: a link to `spec.md` in the plan becomes a link to
 `../spec/spec.md`. Leave alone what step 9's plan entry skips,
 and the documents of finished items, changelogs and release notes.
 
+**In Jira mode, text already in Jira is left as written.** Steps 6 and 7
+put requests into tickets' descriptions and comments, and acceptance
+history into comments, before this step runs; step 9 rewrites only files,
+so an old folder name inside that text stays as it was posted. Git history
+still resolves it: the step 6 commit renames each old folder to its new
+one.
+
 **Check:** `grep -rnF -f <the file of old names> <open item folders> <live documents>`,
 with the folders and documents the approved plan lists and without what it
 skips, prints nothing; and

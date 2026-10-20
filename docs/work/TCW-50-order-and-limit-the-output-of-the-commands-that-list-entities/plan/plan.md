@@ -429,7 +429,7 @@ returns 4 (three candidate lines plus the `searched:` line), and
 ## Task 10 — Capability records
 
 1. Create the item's `capabilities.yaml` sidecar (in the folder
-   `tcw work path 2026-09-15-let-tcw-work-list-sort-by-created-priority-effort-or-title`
+   `tcw work path TCW-50-order-and-limit-the-output-of-the-commands-that-list-entities`
    prints) containing:
    ```yaml
    changed:
