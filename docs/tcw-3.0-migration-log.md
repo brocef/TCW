@@ -2313,3 +2313,20 @@ No documentation edit was needed.
 
 Tests: the full suite (run 2 above). `pytest --collect-only -q` collected 5255
 tests.
+
+## Task B21: the migration merged, and TCW-76's first 3.0 move
+
+- `migrate/tcw-3.0-run-1` (`61af5c5a`) merged into `epic/tcw-3.0` in the
+  epic worktree, with a merge commit: `a2cbe9ee`.
+- **Criterion 23:** `git diff --stat 3b71ea78..a2cbe9ee -- tcw skills agents web`
+  printed nothing.
+- The private environment re-pointed at the epic worktree; `import tcw`
+  resolves to `.worktrees/tcw-3-0-epic/tcw/__init__.py`.
+- **Criterion 26:** from the epic worktree,
+  `tcw work advance TCW-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first --dry-run`
+  printed "would move … from implement to review" (exit 0), and the move
+  itself printed `review`, exit 0. Its `post` hook,
+  `commit-item-after-move.sh`, made no commit, since the move changed no file
+  in the item's folder (the working tree stayed clean). Read back through
+  REST: `TCW-76` is at `In Review`. No trace comment was posted, as 3.0
+  writes one only for a move given a `--reason`.
