@@ -69,9 +69,6 @@
 ## Internal
 
 - The Jira HTTP client moved to `tcw/work/jira/client.py`, with its tests.
-- `tests/doc_allowance.py` lists the commands, flags and keys the README,
-  guides and skills may still name until TCW-74 and TCW-75 rewrite them;
-  `tests/test_doc_allowance.py` checks each entry really is gone.
 - `tests/not_ported.py` skips 2.x tests whose subject a later 3.0 slice
   rewrites; tests of deleted code were removed.
 - New guards: no module names a 2.x store file or removed command, and no

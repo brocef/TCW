@@ -9,7 +9,7 @@
 - `docs/lifecycle/review.md`, bound to the `review` stage's prompt.
 - `docs/tcw-3.0-migration-log.md`: the record of TCW's own migration.
 - Tests: `tests/test_migration_guide.py` (the guide against its acceptance
-  criteria, and that the documentation allowance stays gone; it runs the
+  criteria; it runs the
   guide's own step 9 pattern builder, step 12 list of places and step 12
   `expected-names` reader on scratch fixtures),
   `tests/test_require_artifact.py`, `tests/test_repo_lifecycle.py` (TCW's own
@@ -34,14 +34,7 @@
 - `scripts/require_artifact.py` asks `tcw work path "$TCW_SLUG" <stage>`
   where the document lives instead of composing a path, and still fails
   closed.
+- `scripts/cut_version.py` puts a release's `## Upgrading` section first in
+  the combined release notes.
 - The spec templates say they are the outline for `spec/spec.md`;
   `docs/procedures/create-work.md` matches 3.0's `create-work` procedure.
-
-## Removed
-
-- `tests/doc_allowance.py` and `tests/test_doc_allowance.py`, the temporary
-  list of removed commands, flags and keys documents could still name while
-  TCW 3.0 was written, with every branch that read it in
-  `tests/test_documented_cli_surface.py`, `tests/test_shipped_text.py` and
-  `tests/test_docs_describe_3_0.py`. A document naming a removed command or
-  a refused key now always fails.

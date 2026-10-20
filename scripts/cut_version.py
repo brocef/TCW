@@ -31,7 +31,8 @@ VERSION_FILES = {
 # in this order; every other heading follows in the order it first appears.
 UPCOMING = {
     "docs/changelogs/upcoming": ("Added", "Changed", "Fixed", "Removed", "Internal"),
-    "docs/release-notes/upcoming": (),
+    # How to upgrade is what a reader needs before anything else.
+    "docs/release-notes/upcoming": ("Upgrading",),
 }
 # Drafting guidance for whoever writes an entry; never combined, and it keeps the
 # folder in git when there are no entries.

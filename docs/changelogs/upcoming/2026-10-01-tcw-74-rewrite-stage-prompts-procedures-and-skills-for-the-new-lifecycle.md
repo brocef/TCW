@@ -29,8 +29,6 @@
   reads `tcw work procedure audit-backlog`.
 - The eval harness (`evals/`) seeds and grades 3.0 projects, with review and
   two qa cases.
-- `tests/doc_allowance.py` loses the entries only TCW-74's files named and
-  gains `REFUSED_VALUES` for `tcw work procedure prompt`.
 
 ## Removed
 

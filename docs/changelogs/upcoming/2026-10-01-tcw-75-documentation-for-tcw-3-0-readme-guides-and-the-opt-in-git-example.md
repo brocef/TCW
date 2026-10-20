@@ -10,7 +10,7 @@
 - `docs/guide/examples/commit-item-after-move.sh`: the opt-in git example, a
   `post` hook that commits an item's folder after it moves.
 - Tests: `tests/test_docs_describe_3_0.py` (README structure, 2.x vocabulary
-  scan, links and anchors, allowance names, owned set, inventory, and every
+  scan, links and anchors, owned set, inventory, and every
   `tcw` command named in an owned document resolving in the parser, procedure
   and stage names included), `tests/test_cli_guide.py`,
   `tests/test_git_example.py` (the script run from the project root, as TCW
@@ -20,8 +20,6 @@
   guide, and the cut puts it first in the combined release notes (criterion
   11). Before the cut, this item's release-note and changelog entries must
   both exist; after it, the introduction is checked in `v3.0.0.md`.
-- `tests/test_doc_allowance.py`: every allowance entry must still be named by
-  some live document.
 
 ## Changed
 
@@ -40,8 +38,6 @@
   first move nor the rest of a rename.
 - Edited for 3.0: `docs/guide/taxonomy-and-capabilities.md` and
   `docs/guide/linking-and-validation.md`.
-- `tests/doc_allowance.py` holds only entries named by files TCW-76 rewrites;
-  the flag, form and value lists are empty.
 - `tests/test_upcoming_entries.py` exempts this item's release-notes entry,
   which carries the 3.0.0 introduction, from starting at a `##` heading.
 - The `upcoming/README.md` files name entries after the item's folder name.

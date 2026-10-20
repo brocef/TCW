@@ -160,6 +160,17 @@ def test_release_notes_keep_first_appearance_order(tmp_path):
     assert shipped.index("- a zeta") < shipped.index("- b zeta") < shipped.index("## Alpha")
 
 
+def test_release_notes_lead_with_upgrading(tmp_path):
+    root = make_repo(tmp_path, "0.2.2")
+    _entries(root, "release-notes", {
+        "a.md": "## Zeta\n\n- a zeta\n",
+        "b.md": "## Upgrading\n\n- b upgrading\n",
+    })
+    cv.main(["patch"], root=root)
+    shipped = (root / "docs/release-notes/v0.2.3.md").read_text()
+    assert _headings(shipped) == ["## Upgrading", "## Zeta"]
+
+
 def test_text_before_the_first_heading_follows_the_title(tmp_path):
     root = make_repo(tmp_path, "0.2.2")
     _entries(root, "changelogs", {
