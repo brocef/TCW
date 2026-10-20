@@ -1,5 +1,0 @@
-title: Make pnpm prettify:check pass on a clean checkout
-stage: request
-priority: low
-effort: medium
-tags: [tech-debt]

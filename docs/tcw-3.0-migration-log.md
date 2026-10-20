@@ -1083,3 +1083,168 @@ collected 5275 tests.
 
 **Check:** `find docs/work -name state.yaml` printed nothing, and
 `grep -nE '^priority: [0-9]' docs/work/*/item.yaml` printed nothing (exit 1).
+
+### Step 6: Jira mode: bind items to tickets
+
+Made on 2026-10-20 through Jira's REST interface, every request through one
+script that logs each call, with the owner's account
+(`557058:f365e97a-cd5d-4f27-a5c2-b5dc8dbad702`). Every write was preceded by
+the read of rule 6. Request bodies were built with `jq` and the guide's `ADF`
+functions, which were compared with the guide's block first (identical).
+
+**Read first.** The 19 bound tickets and the 9 of D8 were read with every
+field the guide names, and their comments: each was as the approved plan
+describes it (`Medium`, no labels, no effort, complexity, `TCW Project` or
+`TCW Item`, no `Blocks` link, no comments; TCW-76's parent TCW-68). The search
+`project = TCW AND reporter = currentUser() AND created >= "2026-10-15"`
+(the day before the start date) found nothing, so no ticket of this run
+existed yet.
+
+**The approved text.** Every comment and request text of the appendix
+(`tcw76/step1-comments.md`, built from `2e5e843a`) was derived again from the
+files at `38e6b82b` and compared: all 32 are identical. Between the two
+commits every document was only moved (`git diff -M --name-status` shows
+`R100` for each), so the files are the same. The longest text is 14012
+characters, under Jira's limit of 32767.
+
+**Pass 1, tickets.** 16 created, each of type `Task`, at `Triage` by
+`Create`, with the request as its description (both files combined as the
+plan says where an item has both; an inbox entry's whole text). Each item's
+`ticket:` line was written into its `item.yaml` straight after its create
+answer, and the search was repeated before each create.
+
+| Key | For | Summary |
+| --- | --- | --- |
+| TCW-78 | item 33 | Stop offering a version cut after every completed work item |
+| TCW-79 | item 17 | Tidy the loose ends the combined v2.5.1 review found in children and config messages |
+| TCW-80 | item 18 | Two tracker create runs at once can make two tickets for one item |
+| TCW-81 | item 19 | Let a leftover start record stop refusing a legitimate rework |
+| TCW-82 | item 20 | Refuse an unconfigured start before the ticket leaves triage |
+| TCW-83 | item 21 | Give a strict tracker claim past the active status a way forward instead of a transition list |
+| TCW-84 | item 22 | Make the test suite run in minutes, not half an hour |
+| TCW-85 | item 23 | Decide whether a capability path may name a connected project by an unambiguous shorthand |
+| TCW-86 | item 24 | Compare git's store root with a project's node path without depending on letter case |
+| TCW-87 | item 25 | Follow renamed slugs in the web app, tracker verbs and capability drift check |
+| TCW-88 | item 26 | Keep an item's folder in one place and its status only in state.yaml |
+| TCW-89 | item 27 | Let the worktree merge-back wait out a store commit's index.lock |
+| TCW-90 | item 28 | Run CI on Python 3.12 as well |
+| TCW-91 | item 30 | Make the migration guide's test check its 2.x and 3.0 names against the code |
+| TCW-92 | inbox `2026-10-13-settle-the-jira-live-check-questions-that-need-a-second-account.md` | Settle the Jira live-check questions that need a second account |
+| TCW-93 | inbox `2026-10-15-tidy-what-tcw-74-s-reviews-left-for-the-eval-harness.md` | Tidy what TCW-74's reviews left for the eval harness |
+
+TCW-92 and TCW-93 are the inbox entries' tickets, for step 8.
+
+**Pass 2, reconciling.** One `PUT` per ticket that differed, 31 in all;
+TCW-68 and TCW-76 differed in nothing (their titles' `<KEY> — ` prefix is
+not a difference). Each set of values was compared with the plan's item
+table before it was sent, and all agree:
+
+- priority: `Highest` on TCW-5, TCW-9, TCW-10, TCW-14, TCW-21, TCW-78 and
+  TCW-80; `High` on TCW-22, TCW-23, TCW-26 and TCW-27; `Low` on TCW-42;
+  `Lowest` on TCW-48, TCW-81 and TCW-82. The rest keep `Medium`.
+- labels: each item's tags, on every ticket but TCW-68, TCW-76 and TCW-91
+  (which have none). No ticket had a label its folder lacks.
+- effort and complexity: as the item table gives them, on TCW-5, TCW-9,
+  TCW-10, TCW-21, TCW-23, TCW-26, TCW-27, TCW-33, TCW-39, TCW-41, TCW-42,
+  TCW-78, TCW-81, TCW-82 and TCW-91.
+- summaries and parents: none differed; TCW-76's parent TCW-68 was already
+  set.
+- `Blocks` links, 2: TCW-14 blocks TCW-10, TCW-76 blocks TCW-91. Read back on
+  both sides: TCW-10 lists `is blocked by TCW-14` (`inwardIssue` TCW-14),
+  TCW-14 lists `blocks TCW-10`; TCW-91 lists `is blocked by TCW-76`, TCW-76
+  `blocks TCW-91`.
+
+**Pass 3, moves**, by the global transitions, no comment: 21 moved, 14
+already at their status.
+
+- To `Won't Do`: TCW-33, TCW-10, TCW-40, TCW-26, TCW-54, TCW-79 (D4), TCW-80,
+  TCW-81, TCW-82, TCW-83, TCW-86, TCW-89.
+- To `Done`: TCW-9 (from `In Progress`: the 2.x completion that never reached
+  Jira), TCW-78, TCW-88.
+- To `Planning`: TCW-50.
+- To `To Do`: TCW-84, TCW-85, TCW-87, TCW-90, TCW-91.
+- Already there: TCW-5, TCW-14, TCW-21, TCW-22, TCW-23, TCW-27, TCW-39,
+  TCW-41, TCW-42, TCW-48, TCW-68 (`To Do`); TCW-76 (`In Progress`); TCW-92,
+  TCW-93 (`Triage`).
+
+**Pass 4, closing comments**, 13, the approved text exactly:
+`Closed at the migration to TCW 3.0 as discarded` / blank line /
+`subject removed by TCW 3.0 (TCW-68)` on TCW-33, TCW-10, TCW-40, TCW-26,
+TCW-54, TCW-79, TCW-80, TCW-81, TCW-82, TCW-83, TCW-86 and TCW-89; and
+`Closed at the migration to TCW 3.0 as completed` / blank line /
+`Delivered by the TCW 3.0 redesign (TCW-68)` on TCW-88.
+
+**Pass 5, `TCW Project` and `TCW Item`.** `TCW Project` `tcw` and `TCW Item`
+`tcw/<folder>` (the new folder names below, from each summary as it stands,
+computed with 3.0's own `title_words`) set on the 33 items' tickets. D8:
+`TCW Project` `tcw` alone on TCW-67, TCW-69, TCW-70, TCW-71, TCW-72, TCW-73,
+TCW-74, TCW-75 and TCW-77. TCW-92 and TCW-93 have no item, so neither field
+is set on them.
+
+**Pass 6, folders renamed** with `git mv`, old and new names for step 9:
+
+| 2.x folder (after step 4) | 3.0 folder |
+| --- | --- |
+| `2026-08-18-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git` | `TCW-33-decide-whether-tcw-work-scaffold-should-stage-its-draft-in-git` |
+| `2026-08-31-nothing-verifies-that-a-changed-capability-was-actually-changed` | `TCW-5-nothing-verifies-that-a-changed-capability-was-actually-changed` |
+| `2026-09-01-fan-the-backlog-audit-out-across-every-connected-work-root` | `TCW-22-fan-the-backlog-audit-out-across-every-connected-work-root` |
+| `2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes` | `TCW-14-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes` |
+| `2026-09-04-tcw-provision-cannot-be-scoped-and-a-third-hop-config-can-name-a-checkout-directory` | `TCW-23-tcw-provision-cannot-be-scoped-and-a-third-hop-config-can-name-a-checkout-directory` |
+| `2026-09-11-run-the-eval-harness-and-act-on-what-it-finds` | `TCW-48-run-the-eval-harness-and-report-what-it-finds` |
+| `2026-09-15-add-tcw-work-tracker-create-to-make-and-bind-a-ticket-for-an-existing-item` | `TCW-9-add-tcw-work-tracker-create-to-make-and-bind-a-ticket-for-an-existing-item` |
+| `2026-09-15-check-the-tracker-s-workflow-against-the-statuses-mapping-in-tcw-validate` | `TCW-10-check-the-tracker-s-workflow-against-the-statuses-mapping-in-tcw-validate` |
+| `2026-09-15-check-the-whole-tracked-tree-ledgers-included-for-removed-skill-names` | `TCW-39-check-the-whole-tracked-tree-ledgers-included-for-removed-skill-names` |
+| `2026-09-15-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition` | `TCW-40-decide-claim-exclusivity-from-a-jira-project-s-workflow-definition` |
+| `2026-09-15-let-tcw-work-list-sort-by-created-priority-effort-or-title` | `TCW-50-order-and-limit-the-output-of-the-commands-that-list-entities` |
+| `2026-09-15-make-pnpm-prettify-check-pass-on-a-clean-checkout` | `TCW-42-make-pnpm-prettify-check-pass-on-a-clean-checkout` |
+| `2026-09-15-repair-sentences-references-and-headings-in-the-guides` | `TCW-41-repair-misplaced-sentences-broken-references-and-overloaded-headings-in-the-guides` |
+| `2026-09-15-test-as-ci-does-and-warn-on-red-ci-and-unpublished-tags` | `TCW-21-test-the-suite-the-way-ci-runs-it-and-notice-red-ci-runs-unpublished-tags-and-a-shadowing-install` |
+| `2026-09-15-write-work-item-properties-to-mapped-tracker-fields` | `TCW-26-write-work-item-properties-to-mapped-tracker-fields` |
+| `2026-09-16-add-a-rename-verb-to-tcw-capabilities-and-tcw-taxonomy` | `TCW-27-add-a-rename-verb-to-tcw-capabilities-and-tcw-taxonomy` |
+| `2026-09-17-stop-offering-a-version-cut-after-every-completed-work-item` | `TCW-78-stop-offering-a-version-cut-after-every-completed-work-item` |
+| `2026-09-19-aggregate-descendant-nodes-taxonomy-and-capabilities-in-tcw-serve` | `TCW-54-aggregate-descendant-nodes-taxonomy-and-capabilities-in-tcw-serve` |
+| `2026-09-21-tidy-the-loose-ends-the-combined-v2-5-1-review-found-in-children-and-config-messages` | `TCW-79-tidy-the-loose-ends-the-combined-v2-5-1-review-found-in-children-and-config-messages` |
+| `2026-09-21-two-tracker-create-runs-at-once-can-make-two-tickets-for-one-item` | `TCW-80-two-tracker-create-runs-at-once-can-make-two-tickets-for-one-item` |
+| `2026-09-22-let-a-leftover-start-record-stop-refusing-a-legitimate-rework` | `TCW-81-let-a-leftover-start-record-stop-refusing-a-legitimate-rework` |
+| `2026-09-22-refuse-an-unconfigured-start-before-the-ticket-leaves-triage` | `TCW-82-refuse-an-unconfigured-start-before-the-ticket-leaves-triage` |
+| `2026-09-24-give-a-strict-tracker-claim-past-the-active-status-a-way-forward-instead-of-a-transition-list` | `TCW-83-give-a-strict-tracker-claim-past-the-active-status-a-way-forward-instead-of-a-transition-list` |
+| `2026-09-24-make-the-test-suite-run-in-minutes-not-half-an-hour` | `TCW-84-make-the-test-suite-run-in-minutes-not-half-an-hour` |
+| `2026-09-26-decide-whether-a-capability-path-may-name-a-connected-project-by-an-unambiguous-shorthand` | `TCW-85-decide-whether-a-capability-path-may-name-a-connected-project-by-an-unambiguous-shorthand` |
+| `2026-09-30-compare-git-s-store-root-with-a-project-s-node-path-without-depending-on-letter-case` | `TCW-86-compare-git-s-store-root-with-a-project-s-node-path-without-depending-on-letter-case` |
+| `2026-09-30-follow-renamed-slugs-in-the-web-app-tracker-verbs-and-capability-drift-check` | `TCW-87-follow-renamed-slugs-in-the-web-app-tracker-verbs-and-capability-drift-check` |
+| `2026-09-30-keep-an-item-s-folder-in-one-place-and-its-status-only-in-state-yaml` | `TCW-88-keep-an-item-s-folder-in-one-place-and-its-status-only-in-state-yaml` |
+| `2026-09-30-let-the-worktree-merge-back-wait-out-a-store-commit-s-index-lock` | `TCW-89-let-the-worktree-merge-back-wait-out-a-store-commit-s-index-lock` |
+| `2026-09-30-run-ci-on-python-3-12-as-well` | `TCW-90-run-ci-on-python-3-12-as-well` |
+| `2026-10-01-tcw-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend` | `TCW-68-tcw-3-0-a-simpler-work-lifecycle-with-jira-as-a-first-class-backend` |
+| `2026-10-01-tcw-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first` | `TCW-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first` |
+| `2026-10-16-make-the-migration-guide-s-test-check-its-2-x-and-3-0-names-against-the-code` | `TCW-91-make-the-migration-guide-s-test-check-its-2-x-and-3-0-names-against-the-code` |
+
+**Pass 7, `item.yaml` reduced** to its one `ticket:` line in all 33 folders,
+and the 19 `tracker.yaml` files removed with `git rm` (`-f`, since each was
+staged as part of its folder's rename; its content is in the step 5 commit).
+
+**The rerun (criterion 31).** The whole step was run a second time, every
+pass, straight after the first. It made no write: the reads found every
+ticket (the 14 items by the key in their folder's name, the 2 inbox tickets by
+the search), every field, label, link and status already set, the 13
+comments already posted (first line and author), the folders already named
+and every `item.yaml` already reduced. The script's call log shows no `POST`
+or `PUT` in the rerun other than the searches, and `git status` was the same
+before and after. Passes 2 and 3 of the rerun read each item's properties
+from its `item.yaml` in the step 5 commit, since pass 7 had already reduced
+the files; they agreed with Jira in every case.
+
+**Check:** `find docs/work -name tracker.yaml` printed nothing;
+`ls docs/work | grep -vxE 'inbox|TCW-[1-9][0-9]*-[a-z0-9]+(-[a-z0-9]+)*'`
+printed nothing (exit 1); the guide's loop over `docs/work/*/` printed
+nothing.
+
+Tests: the files that read the guide or this log (as at step 3), those naming
+`tracker.yaml` (`tests/test_migration_guide.py`,
+`tests/work/jira/test_jira_guards.py`, `tests/work/test_no_2x_names.py`),
+those that read under `docs/work` from the repository root
+(`tests/test_eval_coverage.py`, `tests/test_git_example.py`,
+`tests/test_store_provisioning.py`, `tests/test_validate.py`,
+`tests/work/test_cli_installed.py`), `tests/test_documentation_sync_wiring.py`
+and the standing guard files: 1586 passed, 29 skipped.
+`pytest --collect-only -q` collected 5275 tests.

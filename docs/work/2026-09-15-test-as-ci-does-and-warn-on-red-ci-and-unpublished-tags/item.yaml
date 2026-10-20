@@ -1,5 +1,0 @@
-title: Test the suite the way CI runs it, and notice red CI runs, unpublished tags and a shadowing install
-stage: request
-priority: highest
-effort: medium
-tags: [tech-debt]

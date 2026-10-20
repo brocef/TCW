@@ -1,6 +1,0 @@
-title: tcw provision cannot be scoped, and a third-hop config can name a checkout directory
-stage: request
-priority: high
-effort: low
-complexity: medium
-tags: [cli, remote]

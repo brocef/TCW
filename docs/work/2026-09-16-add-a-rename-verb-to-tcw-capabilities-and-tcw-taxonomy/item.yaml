@@ -1,6 +1,0 @@
-title: Add a rename verb to tcw capabilities and tcw taxonomy
-stage: request
-priority: high
-effort: medium
-complexity: medium
-tags: [capabilities, taxonomy, cli]

@@ -1,6 +1,0 @@
-title: Check the tracker's workflow against the statuses mapping in tcw validate
-stage: discarded
-priority: highest
-effort: high
-tags: [remote, work, cli]
-blocked-by: [tcw/2026-09-01-make-tcw-validate-usable-as-a-gate-suppressible-references-and-graded-exit-codes]

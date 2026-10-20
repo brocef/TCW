@@ -1,3 +1,0 @@
-title: Let the worktree merge-back wait out a store commit's index.lock
-stage: discarded
-tags: [bug, work, tech-debt]
