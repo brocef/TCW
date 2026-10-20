@@ -156,6 +156,16 @@ In step 9, one more (D10, recorded under Step 9 below):
    already posted to Jira is left as written, and that git history resolves
    it.
 
+In step 12, one more (recorded under Step 12 below):
+
+6. **Files someone else installed.** Step 12 said to read every file the
+   search prints in full, but its `WORDS` list (start, release, claim,
+   verify, …) also prints every skill a harness or another plugin installed:
+   on this machine 99 such files, Office XML schemas and library scripts
+   among them, none naming `tcw` or `TCW`. Step 12 now says such a file is
+   read where it matches `NAMES`, and enough of the rest to confirm it is not
+   about TCW, and is listed with that reason.
+
 ### Step 1: Survey, then ask once
 
 The board, the configuration and every ticket were read (REST `GET` and one
@@ -1569,3 +1579,137 @@ Tests: step 11 changed only this log. The files that read the guide or this
 log (as at step 3), `tests/test_documentation_sync_wiring.py` and the
 standing guard files, 19 files in sorted order: 1282 passed, 9 skipped.
 `pytest --collect-only -q` collected 5275 tests.
+
+### Step 12: Revisit agent instructions and memories
+
+**Amendment 6, made during the step** (above): the step's reading rule for
+files someone else installed. `tests/test_migration_guide.py` and the other
+files that read the guide pass after it (923 passed).
+
+Run from this worktree on 2026-10-20, read only outside it: nothing outside
+the migration worktree was changed. The guide's snippet built 23 places
+(the bound files of the plan's `<hook files>` added by hand):
+
+- in the repository: `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json` (the
+  only tracked file under `.claude/`; there is no `.codex/` or
+  `.agents/skills/`), and `docs/lifecycle/abstraction.md`, `harness.md`,
+  `implementation.md`, `review.md`, `docs/lifecycle/templates/spec.md`,
+  `spec-bug.md`, `docs/procedures/create-work.md`,
+  `scripts/require_artifact.py`,
+  `docs/guide/examples/commit-item-after-move.sh`;
+- the primary checkout's one untracked file under `.claude` and `.codex`:
+  `/Users/brian/Projects/TCW/.claude/settings.local.json`;
+- the owner's files: `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+  `~/.claude/skills`, `~/.claude/agents`, `~/.codex/skills`,
+  `~/.agents/skills`, `~/.claude/settings.json`, `~/.codex/rules`
+  (`~/.claude/commands` and `~/.codex/prompts` do not exist);
+- memories: `~/.codex/memories`, and
+  `~/.claude/projects/-Users-brian-Projects-TCW/memory`, the only Claude Code
+  memory folder whose session records start in one of the three checkouts
+  (the primary checkout and this worktree; `.worktrees/tcw-3-0-epic` has no
+  session of its own).
+
+The files-to-read search printed 145 files: 99 installed by someone else
+(`~/.claude/skills/synced/…`, `~/.codex/skills/.system/…`,
+`~/.agents/skills/pi/…`), none naming `tcw` or `TCW`, read as amendment 6
+says and not about TCW; and 46 read in full.
+
+The proposal, with the passages and the proposed text, is in a private file
+in the session's scratch folder (`tcw76/step12-proposal.md`), since most of
+it quotes files outside the repository. It goes to the owner as the step's
+one question. **Nothing has been changed yet.**
+
+Tests: the guide and this log changed. The files that read them (as at step
+3), `tests/test_documentation_sync_wiring.py` and the standing guard files,
+19 files in sorted order: 1282 passed, 9 skipped. `pytest --collect-only -q`
+collected 5275 tests. The step's check runs after the owner's answer is
+applied.
+
+## Agent instructions
+
+Status: **proposed on 2026-10-20, waiting for the owner's answer** (the
+guide's step 12 stop). One line per finding: the file and line as found, and
+the proposed action. For a file outside the repository, or one git does not
+track, only its path and line numbers are given (rule 7). The decision and
+what was done are added once the owner answers, followed by the
+`expected-names` block. `[decide]` marks the findings with a real choice.
+
+In the repository:
+
+- A1. `AGENTS.md:5` (also `CLAUDE.md:5`, the same file), "**Live status &
+  pending work:** `tcw work` — this repo dogfoods its own work component
+  (`docs/work/`)": a bare `tcw work` is a usage error in 3.0, and the board
+  is the Jira project. Proposed: **rewrite** to name `tcw work list`, the
+  Jira project `TCW`, and the item documents under `docs/work/`.
+- A2. `AGENTS.md`, every other section: correct for 3.0. Proposed: **keep**.
+- A3. `.claude/settings.json` (the plugin and the session-start hook):
+  proposed: **keep**.
+- A4. The bound files: written for 3.0 in Part A; the templates' first line
+  names `spec/spec.md`, which is right. Proposed: **keep**.
+
+The primary checkout's untracked file:
+
+- B1. `/Users/brian/Projects/TCW/.claude/settings.local.json`, its `tcw`
+  allow entries: proposed: **keep**.
+- B2. Same file, lines 72, 74, 76, 78, 80, 101: proposed: **delete**.
+  `[decide]`
+- B3. Same file, line 111: proposed: **delete at the end of the epic**
+  (Task B24).
+- B4. Same file, lines 90, 91, 95, 96, 98, 99, 110: no finding; listed for
+  the owner.
+
+The owner's own files:
+
+- C1. `~/.claude/CLAUDE.md:43`: proposed: **keep** for now, rewrite later.
+  `[decide]`
+- C2. `~/.claude/CLAUDE.md:27`: proposed: **keep**.
+- C3. `~/.claude/skills/autonomous-work/SKILL.md:3, 8, 14, 49, 50, 52, 53,
+  54, 74`: proposed: **delete** the file, or rewrite it. `[decide]`
+- C4. `~/.claude/settings.json:81`: proposed: **keep**.
+- C5. `~/.claude/settings.json:314-317, 339, 340, 373, 374`: proposed:
+  **keep**.
+- C6. `~/.codex/rules/default.rules:21, 26`: proposed: **delete**. Lines 20,
+  23, 58, 62, 73, 74: proposed: **delete**. `[decide]` Lines 3, 38, 41, 42,
+  57, 59: proposed: **keep**.
+- C7. `~/.claude/agents/adversarial-code-reviewer.md:187`,
+  `~/.claude/agents/adversarial-spec-reviewer.md:74, 88, 112`: proposed:
+  **keep**.
+- C8. `~/.codex/AGENTS.md`: no finding.
+
+Claude Code memories (`~/.claude/projects/-Users-brian-Projects-TCW/memory/`):
+
+- D1. `tcw-can-be-driven-by-manual-edits.md:3, 11, 15`, `MEMORY.md:7`:
+  proposed: **rewrite**.
+- D2. `the-item-is-truth-always-applies.md` (whole file), `MEMORY.md:13`:
+  proposed: **delete**.
+- D3. `triage-writes-the-request-read-it-first.md:3, 11, 15`,
+  `MEMORY.md:14`: proposed: **rewrite**.
+- D4. `fold-small-follow-ups-into-the-current-item.md:3, 19, 20`,
+  `MEMORY.md:9`: proposed: **rewrite**.
+- D5. `venv-instead-of-repointing-the-shared-tcw-install.md:11-15`:
+  proposed: **rewrite**.
+- D6. `source-bashrc-for-jira-credentials.md:13, 15-18`: proposed:
+  **rewrite**.
+- D7. `no-backward-compat-for-old-tcw-reading-new-configs.md:16-18, 24-27`:
+  proposed: **rewrite**, or keep. `[decide]`
+- D8. `skills-restructure-resume-point.md` (whole file), `MEMORY.md:6`:
+  proposed: **delete**.
+- D9. `tcw-release-is-ci-published-on-tag-push.md`,
+  `push-releases-without-asking.md`,
+  `ci-runs-bare-pytest-not-python-m-pytest.md`: proposed: **keep**.
+- D10. `skip-full-suite-during-tcw-3-0-epic.md`,
+  `tcw-3-0-epic-adversarial-review-is-approval.md`,
+  `tcw-3-0-epic-resume-point.md`, `MEMORY.md:15-17`: proposed: **delete at
+  the end of the epic** (Task B24); `tcw-3-0-epic-resume-point.md:23-29,
+  37-41`: proposed: **rewrite now**, or leave to B24. `[decide]`
+- D11. `MEMORY.md`: each line follows its file's decision.
+
+Codex memories (`~/.codex/memories/`):
+
+- E1. `memory_summary.md:23`: proposed: **rewrite**.
+- E2. `memory_summary.md:21`, `MEMORY.md:142-144`: proposed: **keep**.
+- E3. `MEMORY.md:57-96, 239-261, 312-338`, `memory_summary.md:49-53,
+  80-85`, `raw_memories.md`, and three files under `rollout_summaries/`:
+  proposed: **keep**, or delete `MEMORY.md:239-261, 312-338`. `[decide]`
+- E4. The other files under `rollout_summaries/` and the rest of
+  `raw_memories.md`: proposed: **keep**.

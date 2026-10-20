@@ -776,7 +776,14 @@ grep -rlsE "\btcw\b|(^|[^[:alnum:]_])($NAMES)|\b($WORDS)\b" "${PLACES[@]}"
 **Read each printed file in full**, and judge every passage that tells an
 agent how TCW behaves, not only the lines that matched: a sentence such as
 "move the item to review when done" names nothing the search can find
-reliably. For each passage that is wrong for 3.0, propose one action:
+reliably. One kind of file is the exception: a file that never names `tcw`
+or `TCW` and that someone else installed, such as a harness's own skills or
+another plugin's, matched only on an ordinary word or a common file name
+(`plan.md`, `review/`). Read its lines that match `NAMES`, with the lines
+around them, and enough of the rest to confirm the file is not about TCW, and
+list the file with that reason; a schema or a library file cannot be judged by
+reading it whole. For
+each passage that is wrong for 3.0, propose one action:
 
 - **delete** it;
 - **rewrite** it, with the proposed text;
