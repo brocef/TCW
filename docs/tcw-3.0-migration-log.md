@@ -1248,3 +1248,96 @@ those that read under `docs/work` from the repository root
 `tests/work/test_cli_installed.py`), `tests/test_documentation_sync_wiring.py`
 and the standing guard files: 1586 passed, 29 skipped.
 `pytest --collect-only -q` collected 5275 tests.
+
+### Step 7: Move documents
+
+Made on 2026-10-20, through the same script and with the reads of rule 6.
+
+**Requests.** Each request file was decided by the guide's last command in
+"Talking to Jira", run as written, on a fresh read of the ticket's
+description:
+
+- **Contained, deleted without posting** (21 files): TCW-68's and TCW-76's
+  `intake.md` (the 2.x imports, identical to what their import commits
+  added), and every request file of the 14 tickets step 6 created (TCW-78 to
+  TCW-91), whose descriptions are their requests.
+- **TCW-76's `initial-request.md`** was not contained. Its description was
+  left as it is, and the request was posted as a comment (D3): the approved
+  text, `Request as written in the repository before 3.0` / blank line / the
+  file exactly. Then the file was deleted.
+- **The 17 tickets of D2** (TCW-5, TCW-9, TCW-10, TCW-14, TCW-21, TCW-22,
+  TCW-23, TCW-26, TCW-27, TCW-33, TCW-39, TCW-40, TCW-41, TCW-42, TCW-48,
+  TCW-50, TCW-54): none of their 24 files was contained, and each description
+  was the 2026-09-20 binding note ("Tracked in the TCW work system as
+  `<slug>`. …"). Each description was replaced by the request text (the
+  approved text without its first line and the blank line after it,
+  `initial-request.md` then `## Original intake` and `intake.md` where both
+  exist), and no comment was posted. The same command was run again on each
+  file after the write, and every one printed `true`; then the files were
+  deleted.
+
+46 request files deleted in all; nothing posted for a request but TCW-76's
+comment.
+
+**Stage folders.** With `git mv`: `spec.md` to `spec/spec.md` and `plan.md`
+to `plan/plan.md` in TCW-9, TCW-50, TCW-76 and TCW-78; `outcome.md` to
+`implement/round-1.md` in TCW-9, TCW-76 (its 2.x implement document) and
+TCW-78. No item has `post-mortem.md`.
+
+**Acceptance history.** No item has `rework.md`. The two `refined-outcome.md`
+files became comments, the approved text exactly,
+`Carried over from TCW 2.x: qa round 1, verdict accepted` / blank line / the
+file: on TCW-9 and on TCW-78 (item 33). Both files were deleted, so no item
+has a `qa/` folder.
+
+**`capabilities.yaml`.** Two, both mappings with no `added:` key. D9:
+TCW-78's line `    - work/customize-the-definition-of-done` (a record
+TCW-70 deleted) was removed; its other three entries, and TCW-76's three,
+name records that exist. No item has `rollup.md`.
+
+`TCW-76-…/notes-from-tcw-74.md` stays at the item's root, as the Documents
+table says for any other file.
+
+**Read back.** After the writes of steps 6 and 7, every ticket the migration
+touched was read again and compared with the plan, the expected values taken
+from the step 5 commit (`38e6b82b`), the plan's decisions and step 6's first
+reads, not from the script's own record: for the 33 items' tickets, summary,
+status, priority, labels, effort, complexity, `TCW Project`, `TCW Item` (and
+that the folder name is the key and the summary's title words), parent,
+`Blocks` links, description (D2: the request; TCW-68 and TCW-76: as read
+before; the new tickets: the request) and every comment's author and text;
+for TCW-92 and TCW-93, summary, `Triage`, the entry's text as the
+description, no fields, labels or comments; for the 9 tickets of D8,
+`TCW Project` `tcw`, no `TCW Item`, and every other field as read before.
+All 44 agree (`differences: 0`). The comparison was checked by breaking it
+(one word of the closing comment's expected text, and one label dropped from
+every ticket's labels): it then reported the 12 discarded tickets' comments
+and the 30 tickets with labels, and nothing else.
+
+The tickets now: 16 at `To Do` (TCW-5, TCW-14, TCW-21, TCW-22, TCW-23,
+TCW-27, TCW-39, TCW-41, TCW-42, TCW-48, TCW-68, TCW-84, TCW-85, TCW-87,
+TCW-90, TCW-91), 1 at `Planning` (TCW-50), 1 at `In Progress` (TCW-76), 3 at
+`Done` (TCW-9, TCW-78, TCW-88), 12 at `Won't Do`, and 2 at `Triage` (TCW-92,
+TCW-93).
+
+**Check:** the `find docs/work -maxdepth 2 \( -name intake.md … \)` command
+printed nothing, and the loop over `review/round-*.md` and `qa/round-*.md`
+printed nothing (no item has either folder).
+
+Tests: step 6's files, and those naming `outcome.md`, `refined-outcome.md`,
+`capabilities.yaml` or `notes-from-tcw-74.md` (`tests/serve/test_files.py`,
+`tests/test_capabilities_rm.py`, `tests/test_command_suggestions.py`,
+`tests/test_eval_grading.py`, `tests/test_shipped_prompts.py`,
+`tests/test_skill_flow.py`, `tests/test_validate_target.py`, the four under
+`tests/work/jira/` for drift and validate, `tests/work/test_drift_work.py`,
+`tests/work/test_layout.py`, `tests/work/test_review_findings.py`,
+`tests/work/test_validate_work.py`), 40 files: 2024 passed, 45 skipped, run
+with the files sorted. Given in the order of the lists above, the same files
+gave 52 errors, `fixture 'jira_project' not found`, in the tests of
+`tests/work/jira/`: pytest does not find that folder's `conftest.py` fixtures
+when its files are named on either side of a file from `tests/work/`
+(`tests/work/jira/test_jira_guards.py tests/work/test_no_2x_names.py
+tests/work/jira/test_jira_drift.py` is enough). The same three files in that
+order give the same 2 errors on a copy of the step 5 commit, and pass in any
+order that keeps each folder's files together, so it is how the files were
+named, not this step. `pytest --collect-only -q` collected 5275 tests.
