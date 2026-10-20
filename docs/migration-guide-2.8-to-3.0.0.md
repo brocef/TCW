@@ -272,7 +272,9 @@ Then write one plan and present it to the user as one message. It covers:
   discarding rather than migrating, each with the reason to record. Migrating
   them would carry forward work that no longer applies. A pruned item keeps
   its folder at stage `discarded`; in Jira mode its ticket, created if it has
-  none, is moved to the discarded status with the reason as its comment.
+  none, is moved to the discarded status with the comment step 5 describes.
+  An item whose work 3.0 itself delivers can be closed the same way, at stage
+  `completed`, with its own reason.
 - **The ignored completed and discarded folders** step 0 found: which to
   keep as tracked items. The rest are moved out of the work path at step 4, to
   a folder outside the repository that the plan names.
@@ -373,14 +375,19 @@ describe every key.
 
 Then check the new configuration with the 3.0 CLI, away from the board, which
 3.0 cannot read yet. Build a scratch folder outside the repository holding the
-new `tcw-config.yaml`, every file it binds at the same relative path, and empty
-folders at the configured work, taxonomy and capabilities paths, and make it a
-git repository:
+new `tcw-config.yaml`, every file it binds at the same relative path (each
+path a `file:` binding names, and each script a `command:` or `generate:`
+binding runs), and empty folders at the configured work, taxonomy and
+capabilities paths, and make it a git repository. The files in this example
+are TCW's own; list the project's in their place:
 
 ```sh
 SCRATCH=$(mktemp -d)
 cp tcw-config.yaml "$SCRATCH/"
-for f in docs/lifecycle/*.md; do mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"; done   # each bound file
+for f in docs/lifecycle/*.md docs/lifecycle/templates/*.md docs/procedures/create-work.md \
+         scripts/require_artifact.py docs/guide/examples/commit-item-after-move.sh; do
+  mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"
+done
 mkdir -p "$SCRATCH/docs/work" "$SCRATCH/docs/taxonomy" "$SCRATCH/docs/capabilities"
 git -C "$SCRATCH" init -q
 ```
@@ -397,8 +404,8 @@ Then, in the scratch folder, run `tcw validate` (filesystem mode) or
 `tcw validate --remote` (Jira mode), which prints one finding per line. Read
 every line:
 
-- **a finding about the configuration** (one naming `tcw-config.yaml` or a
-  bound file) is fixed now, and the run repeated;
+- **a finding about the configuration** (one naming `tcw-config.yaml`) is
+  fixed now, and the run repeated;
 - **in Jira mode, a Jira-workflow finding**: a move with two candidate
   transitions, a missing status, or a screen that asks for more than a comment
   is fixed in Jira before going on (back to step 2's checklist); a move it
@@ -409,11 +416,30 @@ every line:
 - **any other finding** is noted in the log and left to step 11, which
   validates the real project.
 
+`tcw validate` does not open the bound files: a `file:` binding is read only
+when a prompt is composed, so it does not report a bound file missing from the
+scratch folder, or from the project. Compose, in the scratch folder, the
+prompt of every stage the configuration turns on and every procedure it binds,
+which reads each file and names one that is missing (`file '<path>' no longer
+exists`). TCW's own lists, with the project's stages and procedures in their
+place:
+
+```sh
+for s in inbox request spec plan implement review qa postmortem; do tcw work stage prompt "$s" >/dev/null || echo "stage $s"; done
+for p in create-work; do tcw work procedure "$p" >/dev/null || echo "procedure $p"; done
+```
+
+A `generate` binding runs its command there, as it would in the project. A
+binding whose `when:` lists `tags` matches no stage composed without an item,
+so its file is not read: confirm with `ls` that each such file is in the
+scratch folder.
+
 **Check:**
 `grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml`
-prints nothing, and the scratch folder's run prints no finding about the
+prints nothing; the scratch folder's run prints no finding about the
 configuration and, in Jira mode, no Jira-workflow finding other than
-`unchecked:` ones. In Jira mode this is step 2's check too.
+`unchecked:` ones; and the two composing loops print nothing. In Jira mode
+this is step 2's check too.
 
 ### Step 4: Flatten the store and give every item a stage
 
@@ -429,7 +455,8 @@ another item's folder:
    and new names go in the log for step 9. In Jira mode every folder is
    renamed at step 6 instead.
 2. **Write its `item.yaml`** with its `title` and its `stage`, from the
-   [Status folders](#status-folders) rule. Step 5 adds the rest.
+   [Status folders](#status-folders) rule, or the stage the approved plan
+   closes it at instead (`discarded` for a pruned item). Step 5 adds the rest.
 
 Then:
 
@@ -468,12 +495,14 @@ reads it that way), row by row of that table: `priority` as a name, `effort`,
 using each folder's name after step 4, `initiative` as `parent` where the plan
 says, and in filesystem mode `owner` as `assignee`. Then delete `state.yaml`.
 
-For a `discarded` item, record its 2.x resolution as a comment whose first line
-is `Carried over from TCW 2.x: discarded as <resolution>`, followed by any
-reason the item's documents give, or the reason the plan gives for a pruned
-item. In filesystem mode a comment is a file in the item's `comments/` folder
-named with the time in UTC, such as `comments/20261020T143000Z.md`; in Jira
-mode it is posted at step 6.
+For an item 2.x discarded, record its 2.x resolution as a comment whose first
+line is `Carried over from TCW 2.x: discarded as <resolution>`, followed by any
+reason the item's documents give. An item the plan closes instead of
+migrating (a pruned item, or one closed at `completed`) has no 2.x resolution:
+its comment's first line is `Closed at the migration to TCW 3.0 as <stage>`,
+followed by the reason the plan gives. In filesystem mode a comment is a file
+in the item's `comments/` folder named with the time in UTC, such as
+`comments/20261020T143000Z.md`; in Jira mode it is posted at step 6.
 
 In filesystem mode, delete `tracker.yaml` too. In Jira mode it stays until
 step 6, which reads the ticket's key from it.
@@ -514,7 +543,8 @@ and reading before every write (rule 6):
    effort and complexity, parent and `Blocks` links, as the plan says.
 3. **Move each ticket to its stage's status**, with no comment, when it is not
    there already.
-4. **Post the discard comments** from step 5.
+4. **Post the comments from step 5**: the discard comments, and those of
+   the items the plan closes.
 5. **Set `TCW Project`** to the project's ID and **`TCW Item`** to the item's
    full slug, `<project>/<KEY>-<title words>`, computed from the ticket's
    summary as it now stands ([Folder names](#folder-names)).
@@ -599,6 +629,13 @@ relative link between one item's documents, which step 7 moved into stage
 folders: a link to `spec.md` in the plan becomes a link to
 `../spec/spec.md`. Leave alone what step 9's plan entry skips,
 and the documents of finished items, changelogs and release notes.
+
+**In Jira mode, text already in Jira is left as written.** Steps 6 and 7
+put requests into tickets' descriptions and comments, and acceptance
+history into comments, before this step runs; step 9 rewrites only files,
+so an old folder name inside that text stays as it was posted. Git history
+still resolves it: the step 6 commit renames each old folder to its new
+one.
 
 **Check:** `grep -rnF -f <the file of old names> <open item folders> <live documents>`,
 with the folders and documents the approved plan lists and without what it
@@ -708,6 +745,16 @@ while read -r d; do PLACES+=("$d"); done < <(
     find ~/.claude/projects -mindepth 2 -maxdepth 2 -name '*.jsonl' \
       -exec grep -lF -e "\"cwd\":\"$path\"" -e "\"cwd\":\"$path/" {} +
   done | while read -r t; do d=$(dirname "$t")/memory; [ -d "$d" ] && echo "$d"; done | sort -u)
+# A place that is a symbolic link, such as a CLAUDE.md that links to
+# AGENTS.md: GNU grep -r reads a link named on its command line and macOS's
+# grep -r skips it, so the searches below would print different lines under
+# each. Replace the link with the file it points to, unless that is listed.
+for i in "${!PLACES[@]}"; do
+  [ -L "${PLACES[i]}" ] || continue
+  t=$(realpath "${PLACES[i]}"); unset 'PLACES[i]'
+  for q in "${PLACES[@]}"; do [ "$(realpath "$q")" = "$t" ] && continue 2; done
+  PLACES+=("$t")
+done
 printf '%s\n' "${PLACES[@]}"
 ```
 
@@ -739,7 +786,14 @@ grep -rlsE "\btcw\b|(^|[^[:alnum:]_])($NAMES)|\b($WORDS)\b" "${PLACES[@]}"
 **Read each printed file in full**, and judge every passage that tells an
 agent how TCW behaves, not only the lines that matched: a sentence such as
 "move the item to review when done" names nothing the search can find
-reliably. For each passage that is wrong for 3.0, propose one action:
+reliably. One kind of file is the exception: a file that never names `tcw`
+or `TCW` and that someone else installed, such as a harness's own skills or
+another plugin's, matched only on an ordinary word or a common file name
+(`plan.md`, `review/`). Read its lines that match `NAMES`, with the lines
+around them, and enough of the rest to confirm the file is not about TCW, and
+list the file with that reason; a schema or a library file cannot be judged by
+reading it whole. For
+each passage that is wrong for 3.0, propose one action:
 
 - **delete** it;
 - **rewrite** it, with the proposed text;
@@ -999,7 +1053,7 @@ ticket and then reduces it to that line.
 | `effort`, `complexity` | unchanged: `low`, `medium`, `high` or `very-high` (Jira: the custom fields `work.jira.fields` names) |
 | `tags` | `tags` (Jira: the ticket's labels) |
 | `owner` | filesystem: `assignee`. Jira: dropped, because it is a git identity rather than a Jira account; listed in the plan |
-| `blocked_by` | `blocked-by`, a list of full slugs using the folders' final names: each 2.x entry `slug: <folder>` becomes `<project>/<folder>`. An entry `external: <text>` is dropped and listed, since a 3.0 blocker is an item. Jira: a `Blocks` link; a link to a ticket that has no item shows as `untracked` in `tcw work show` |
+| `blocked_by` | `blocked-by`, a list of full slugs using the folders' final names: each 2.x entry `slug: <folder>` becomes `<project>/<folder>`. An entry `external: <text>` is dropped and listed, since a 3.0 blocker is an item, and so is an entry naming an item whose folder is not migrated (deleted by 2.x retention, or ignored and not kept), since no item will have that slug. Jira: a `Blocks` link; a link to a ticket that has no item shows as `untracked` in `tcw work show` |
 | `parent` | `parent`, as a full slug. A child nested inside its parent's folder takes that folder. Jira: the ticket's parent |
 | `initiative` | `parent`, as a full slug in the project it names, when the item has no `parent`; when it has both, `parent` stays and the `initiative` is listed in the plan |
 | `type` | dropped: in 3.0 an item with children is an epic |
@@ -1464,8 +1518,9 @@ behind a move), is shown in the plan.
 ### Moves and comments
 
 **A status move the migration makes carries no comment**: it is bookkeeping,
-not a step in the work. A discard's reason does become a comment, and so does
-each carried-over verdict ([Acceptance history goes to qa](#acceptance-history-goes-to-qa)).
+not a step in the work. A discard's reason does become a comment, as does the
+reason for each item the plan closes (step 5), and so does each carried-over
+verdict ([Acceptance history goes to qa](#acceptance-history-goes-to-qa)).
 
 ### The request
 

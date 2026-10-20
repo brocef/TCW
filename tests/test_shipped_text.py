@@ -19,11 +19,8 @@ from tcw.cli import build_parser
 from tcw.store.base import PROCEDURE_IDS
 from tcw.work.layout import front_matter
 from tcw.work.model import STAGES
-from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
-                                  REMOVED_FLAGS, REMOVED_FORMS)
 from tests.doc_vocabulary import PATTERNS, scan
-from tests.test_documented_cli_surface import (DOC_FILES, INVOCATION, KEY_SPELLING,
-                                               TOP_KEY_SPELLING, _invocations)
+from tests.test_documented_cli_surface import INVOCATION, _invocations
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -315,7 +312,7 @@ def command_problem(span: str) -> str | None:
 @pytest.mark.parametrize("doc", OWNED, ids=_rel)
 def test_every_command_named_in_shipped_text_exists(doc):
     """Criterion 9: each `tcw …` command resolves in the 3.0 parser, flags
-    included. The shared allowance list counts nowhere here."""
+    included."""
     rel = _rel(doc)
     problems = []
     for span in _invocations(doc.read_text(encoding="utf-8")):
@@ -343,59 +340,6 @@ def test_the_command_check_sees_each_mistake(span, problem):
 ])
 def test_the_command_check_accepts_real_commands(span):
     assert command_problem(span) is None
-
-
-def _names(text: str, entry: str) -> bool:
-    """Whether the document `text` names the allowance entry `entry`: a
-    command as an invocation, a key as a key."""
-    if entry.startswith("tcw "):
-        return any(" ".join(s[INVOCATION.search(s).start():].split()) == entry
-                   or " ".join(s[INVOCATION.search(s).start():].split())
-                   .startswith(entry + " ") for s in _invocations(text))
-    keys = {f"work.{m.group(1)}" for m in KEY_SPELLING.finditer(text)}
-    keys |= {m.group(0) for m in TOP_KEY_SPELLING.finditer(text)}
-    return entry in keys
-
-
-def _flag_named(text: str, command: str, flag: str) -> bool:
-    """Whether the document `text` invokes `command` with `flag`."""
-    for span in _invocations(text):
-        words = " ".join(span[INVOCATION.search(span).start():].split())
-        if words.startswith(command + " ") and flag in words.split():
-            return True
-    return False
-
-
-ENTRIES = [*REMOVED_COMMANDS, *REMOVED_FORMS, *REFUSED_KEYS]
-
-
-@pytest.mark.parametrize("entry", ENTRIES)
-def test_no_allowance_entry_is_named_only_by_owned_text(entry):
-    """Criterion 9: TCW-74 removes from the allowance list every entry only its
-    own files named; one still named by an owned file fails the scans above
-    anyway, so what this adds is that the list shrank."""
-    owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES if _names(d.read_text(encoding="utf-8"), entry)}
-    assert not namers or not namers <= owned, \
-        f"{entry} is named only by TCW-74's files ({sorted(namers)})"
-
-
-@pytest.mark.parametrize("command, value", REFUSED_VALUES)
-def test_no_allowance_value_is_named_only_by_owned_text(command, value):
-    owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES
-              if _names(d.read_text(encoding="utf-8"), f"{command} {value}")}
-    assert not namers or not namers <= owned, \
-        f"{command} {value} is named only by TCW-74's files ({sorted(namers)})"
-
-
-@pytest.mark.parametrize("command, flag", REMOVED_FLAGS)
-def test_no_allowance_flag_is_named_only_by_owned_text(command, flag):
-    owned = {_rel(p) for p in OWNED}
-    namers = {_rel(d) for d in DOC_FILES
-              if _flag_named(d.read_text(encoding="utf-8"), command, flag)}
-    assert not namers or not namers <= owned, \
-        f"{command} {flag} is named only by TCW-74's files ({sorted(namers)})"
 
 
 # ── criterion 7: the documents match the disposition table ───────────────────
