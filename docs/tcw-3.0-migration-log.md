@@ -1341,3 +1341,20 @@ tests/work/jira/test_jira_drift.py` is enough). The same three files in that
 order give the same 2 errors on a copy of the step 5 commit, and pass in any
 order that keeps each folder's files together, so it is how the files were
 named, not this step. `pytest --collect-only -q` collected 5275 tests.
+
+### Step 8: Convert the inbox
+
+Jira mode. Both entries' tickets were created at step 6 and read back at step
+7 with each entry's whole text as the description, at `Triage`:
+`2026-10-13-settle-the-jira-live-check-questions-that-need-a-second-account.md`
+is TCW-92, and `2026-10-15-tidy-what-tcw-74-s-reviews-left-for-the-eval-harness.md`
+is TCW-93. The plan pruned neither. Both files and `inbox/.gitkeep` were
+removed with `git rm`, which leaves no `inbox/` folder. `docs/work` now holds
+the 33 item folders and nothing else.
+
+Tests: the files that read the guide or this log (as at step 3), the one that
+names the inbox (`tests/test_eval_grading.py`, on its own fixtures),
+`tests/test_documentation_sync_wiring.py` and the standing guard files: 1364
+passed, 6 skipped. `pytest --collect-only -q` collected 5275 tests.
+
+**Check:** `ls docs/work | grep -x inbox` printed nothing (exit 1).
