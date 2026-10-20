@@ -27,8 +27,6 @@ from pathlib import Path
 
 import pytest
 
-from tests.doc_allowance import (REFUSED_KEYS, REMOVED_COMMANDS, REMOVED_FLAGS,
-                                  REMOVED_FORMS)
 from tests.doc_vocabulary import blocks, joined
 
 REPO = Path(__file__).resolve().parent.parent
@@ -213,10 +211,8 @@ def _check(span: str, tree: dict[tuple, set[str]]) -> str | None:
             return f"no such verb: tcw {' '.join([*path, token])}"
         break                            # a positional arg, not a subcommand
     known = tree.get(tuple(path), set())
-    allowed = {flag for command, flag in REMOVED_FLAGS
-               if command == " ".join(["tcw", *path])}
     for flag in FLAG.findall(span):
-        if flag not in known and flag not in allowed:
+        if flag not in known:
             return f"no such flag: {flag} on tcw {' '.join(path)}"
     return None
 
@@ -239,20 +235,10 @@ def test_only_real_invocations_are_parsed(text, spans):
     assert _invocations(text) == spans
 
 
-def _allowed(span: str) -> bool:
-    """A span invoking a command TCW-70 removed, which a later slice rewrites
-    (`tests/doc_allowance.py`)."""
-    command = " ".join(span[INVOCATION.search(span).start():].split())
-    return any(command == removed or command.startswith(removed + " ")
-               for removed in (*REMOVED_COMMANDS, *REMOVED_FORMS))
-
-
 @pytest.mark.parametrize("doc", DOC_FILES, ids=lambda p: str(p.relative_to(REPO)))
 def test_documented_verbs_and_flags_exist(doc, tree):
     problems = []
     for span in _invocations(doc.read_text(encoding="utf-8")):
-        if _allowed(span):
-            continue
         if (problem := _check(span, tree)) is not None:
             problems.append(f"`{span}` — {problem}")
     assert not problems, (
@@ -327,7 +313,7 @@ def test_documents_name_no_refused_key(doc):
     text = doc.read_text(encoding="utf-8")
     named = {f"work.{m.group(1)}" for m in KEY_SPELLING.finditer(text)}
     named |= {m.group(0) for m in TOP_KEY_SPELLING.finditer(text)}
-    unexpected = sorted(named - set(REFUSED_KEYS))
+    unexpected = sorted(named)
     assert not unexpected, (f"{doc.relative_to(REPO)} names configuration keys "
                             f"TCW 3.0 refuses: {', '.join(unexpected)}")
 

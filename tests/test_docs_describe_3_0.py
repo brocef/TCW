@@ -1,5 +1,7 @@
 """The documents TCW-75 owns describe TCW 3.0, and nothing else (TCW-75 spec,
-acceptance criteria 1, 2, 3, 4 and 10).
+acceptance criteria 1, 2, 3 and 10). Criterion 4's check, that no owned
+document names an entry of the temporary documentation allowance, went with
+the allowance itself (TCW-76 Design 7).
 
 "Owned documents" are the README, every guide but `web-viewer.md`, the three
 lifecycle documents, the `configure` skill, and the section of `AGENTS.md`
@@ -10,9 +12,6 @@ headed `### Working in a git worktree` (`CLAUDE.md` is a symbolic link to
   `tests/doc_vocabulary.py`, shared with its own scan of the skills;
 - the link check (criterion 3): every relative Markdown link points at a file
   that exists, and an `#anchor` into an owned document at a heading in it;
-- the allowance-name check (criterion 4): no owned document names an entry of
-  the temporary allowance in `tests/doc_allowance.py`, read with the same
-  helpers TCW-74's scans use, so the two cannot read a document differently;
 - the command check: every `tcw …` invocation resolves in the 3.0 parser,
   procedure and stage names included, with the same `command_problem` TCW-74's
   scan of the skills uses. The argument parser alone accepts any word as a
@@ -28,11 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.doc_allowance import (REFUSED_KEYS, REFUSED_VALUES, REMOVED_COMMANDS,
-                                  REMOVED_FLAGS, REMOVED_FORMS)
 from tests.doc_vocabulary import PATTERNS, scan
 from tests.test_documented_cli_surface import _invocations
-from tests.test_shipped_text import _flag_named, _names, command_problem
+from tests.test_shipped_text import command_problem
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -277,40 +274,6 @@ def test_anchors_are_made_the_way_github_makes_them(heading, expected):
 
 def test_a_repeated_heading_gets_a_number():
     assert anchors("## Setup\n\n## Setup\n") == {"setup", "setup-1"}
-
-
-# ── criterion 4: no allowance entry is named ──────────────────────────────────
-
-
-def allowance_names(text: str) -> list[str]:
-    """Every entry of the five allowance lists that `text` names."""
-    named = [e for e in (*REMOVED_COMMANDS, *REMOVED_FORMS, *REFUSED_KEYS)
-             if _names(text, e)]
-    named += [f"{c} {v}" for c, v in REFUSED_VALUES if _names(text, f"{c} {v}")]
-    named += [f"{c} {f}" for c, f in REMOVED_FLAGS if _flag_named(text, c, f)]
-    return named
-
-
-@pytest.mark.parametrize("rel", OWNED)
-def test_no_owned_document_names_an_allowance_entry(rel):
-    named = allowance_names(owned_text(rel))
-    assert not named, f"{rel} names entries of tests/doc_allowance.py: {named}"
-
-
-def test_the_allowance_check_sees_a_removed_command(monkeypatch):
-    # The command list is empty since `AGENTS.md` was rewritten, so the check
-    # is shown one to find.
-    monkeypatch.setitem(globals(), "REMOVED_COMMANDS", ("tcw work stage gate",))
-    assert "tcw work stage gate" in allowance_names("Run `tcw work stage gate <slug>`.")
-
-
-def test_the_allowance_check_sees_a_removed_flag_and_a_refused_key(monkeypatch):
-    # The flag and key lists are empty once every document is rewritten, so the
-    # check is shown one of each to find.
-    monkeypatch.setitem(globals(), "REMOVED_FLAGS", (("tcw work list", "--status"),))
-    monkeypatch.setitem(globals(), "REFUSED_KEYS", ("work.retain",))
-    named = allowance_names("`tcw work list --status active` and `work.retain`")
-    assert {"tcw work list --status", "work.retain"} <= set(named)
 
 
 # ── every command named exists ────────────────────────────────────────────────

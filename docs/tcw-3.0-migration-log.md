@@ -1824,3 +1824,56 @@ Mutations, each restored with `git checkout` afterwards:
 Tests: `tests/test_repo_lifecycle.py`, `tests/test_documentation_sync_wiring.py`
 and the standing guard files, 12 files in sorted order: 803 passed, 9 skipped.
 `pytest --collect-only -q` collected 5283 tests.
+
+### Task B18: the documentation allowance emptied and deleted
+
+Every list in `tests/doc_allowance.py` was already empty (the last entries
+went at step 10 and with `AGENTS.md`'s rewrite), so the module and its guard
+were deleted:
+
+- **Deleted** `tests/doc_allowance.py` and `tests/test_doc_allowance.py`.
+- **`tests/test_documented_cli_surface.py`:** the import, the
+  removed-flag exception in `_check`, `_allowed` and its use, and the
+  refused-key exception in `test_documents_name_no_refused_key` removed. A
+  documented removed command, flag or refused key now fails with no way
+  through.
+- **`tests/test_shipped_text.py`:** the import, `_names`, `_flag_named`,
+  `ENTRIES` and the three allowance-only tests
+  (`test_no_allowance_entry_is_named_only_by_owned_text`, `…_value_…`,
+  `…_flag_…`) removed, with the imports only they used.
+- **`tests/test_docs_describe_3_0.py`** (step 10 had added `monkeypatch`
+  tests here): the import, `allowance_names`,
+  `test_no_owned_document_names_an_allowance_entry` and both
+  `test_the_allowance_check_sees_…` tests removed; the module's docstring no
+  longer lists the allowance-name check, and says TCW-75's criterion 4 went
+  with the allowance.
+- **`tests/work/removed_2x.py`:** its docstring named the module's path; it
+  now describes the allowance without naming it. Its list,
+  `REMOVED_2X_COMMANDS`, still holds 21 entries and is what the three code
+  tests of Task A1 read.
+- **`tests/test_migration_guide.py`:** new
+  `test_the_documentation_allowance_is_gone`: neither file exists, and no
+  file under `tests/` names the module (the test spells the name in two
+  parts so it does not name it itself).
+
+Collected tests went from 5283 to 5253: 30 removed (7 in
+`test_doc_allowance.py`, 21 in `test_docs_describe_3_0.py`, 3 parametrized
+on empty lists in `test_shipped_text.py`) and 1 added.
+
+Mutations, each restored afterwards:
+
+- `tests/doc_allowance.py` recreated from `HEAD`: the new test failed on
+  the file existing. (Plan's mutation.)
+- a comment naming `tests/doc_allowance.py` appended to
+  `tests/work/removed_2x.py`: the new test failed, naming that file.
+- ``Run `tcw work stage gate spec <slug>`.`` appended to `docs/guide/work.md`:
+  `test_documented_verbs_and_flags_exist[docs/guide/work.md]` failed, "no
+  such verb: tcw work stage gate", which the allowance's command list would
+  once have let through.
+- ``Set `work.retain`.`` appended to `docs/guide/work.md`:
+  `test_documents_name_no_refused_key[docs/guide/work.md]` failed, "names
+  configuration keys TCW 3.0 refuses: work.retain".
+
+Tests: the four edited test files, the three code tests of Task A1, the new
+`tests/test_repo_lifecycle.py` and the standing guard files, 15 files in
+sorted order: 1229 passed. `pytest --collect-only -q` collected 5253 tests.

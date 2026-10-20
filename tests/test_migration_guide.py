@@ -773,3 +773,18 @@ def test_every_command_outside_a_first_column_parses_on_3_0(tree):
         if (problem := _check(span, tree)) is not None:
             problems.append(f"`{span}`: {problem}")
     assert not problems, "\n  ".join(["the guide names commands 3.0 lacks:", *problems])
+
+
+# -- Criterion 28: the documentation allowance is gone ----------------------------------
+
+# Spelled in two parts so this file does not name it.
+ALLOWANCE = "doc_" + "allowance"
+
+
+def test_the_documentation_allowance_is_gone():
+    assert not (REPO / "tests" / f"{ALLOWANCE}.py").exists()
+    assert not (REPO / "tests" / f"test_{ALLOWANCE}.py").exists()
+    namers = sorted(str(p.relative_to(REPO)) for p in (REPO / "tests").rglob("*")
+                    if p.is_file() and "__pycache__" not in p.parts
+                    and ALLOWANCE.encode() in p.read_bytes())
+    assert not namers, f"these files still name {ALLOWANCE}: {namers}"
