@@ -1627,89 +1627,157 @@ applied.
 
 ## Agent instructions
 
-Status: **proposed on 2026-10-20, waiting for the owner's answer** (the
-guide's step 12 stop). One line per finding: the file and line as found, and
-the proposed action. For a file outside the repository, or one git does not
-track, only its path and line numbers are given (rule 7). The decision and
-what was done are added once the owner answers, followed by the
-`expected-names` block. `[decide]` marks the findings with a real choice.
+Status: **answered.** Proposed on 2026-10-20; the owner answered the same
+day, in chat: "as recommended". Every finding below was applied as its
+recommendation says, and nothing else was changed. One line per finding: the
+file and line as found, the decision, and what was done. For a file outside
+the repository, or one git does not track, only its path and line numbers are
+given (rule 7); its passages and the approved text are in the private
+proposal (`tcw76/step12-proposal.md` in the session's scratch folder).
 
 In the repository:
 
 - A1. `AGENTS.md:5` (also `CLAUDE.md:5`, the same file), "**Live status &
   pending work:** `tcw work` — this repo dogfoods its own work component
-  (`docs/work/`)": a bare `tcw work` is a usage error in 3.0, and the board
-  is the Jira project. Proposed: **rewrite** to name `tcw work list`, the
-  Jira project `TCW`, and the item documents under `docs/work/`.
-- A2. `AGENTS.md`, every other section: correct for 3.0. Proposed: **keep**.
-- A3. `.claude/settings.json` (the plugin and the session-start hook):
-  proposed: **keep**.
-- A4. The bound files: written for 3.0 in Part A; the templates' first line
-  names `spec/spec.md`, which is right. Proposed: **keep**.
+  (`docs/work/`)": **rewrite**, approved. Done: the line now names
+  `tcw work list`, the Jira project `TCW`, and each item's documents under
+  `docs/work/`. The new text matches no `NAMES` pattern.
+- A2. `AGENTS.md`, every other section: **keep**, approved. Unchanged.
+- A3. `.claude/settings.json`: **keep**, approved. Unchanged.
+- A4. The bound files: **keep**, approved. Unchanged. The proposal named
+  only the templates' `spec/spec.md` line as their `NAMES` match; the search
+  after the answer also prints `TCW_SLUG` in
+  `docs/guide/examples/commit-item-after-move.sh` and
+  `scripts/require_artifact.py`. Both use it as 3.0 defines it (the full
+  slug, put in a commit message or passed to `tcw work path` as it is; the
+  guide's Hook variables table), so the same keep covers them, and they are
+  in the block below.
 
-The primary checkout's untracked file:
+The primary checkout's untracked file
+(`/Users/brian/Projects/TCW/.claude/settings.local.json`):
 
-- B1. `/Users/brian/Projects/TCW/.claude/settings.local.json`, its `tcw`
-  allow entries: proposed: **keep**.
-- B2. Same file, lines 72, 74, 76, 78, 80, 101: proposed: **delete**.
-  `[decide]`
-- B3. Same file, line 111: proposed: **delete at the end of the epic**
-  (Task B24).
-- B4. Same file, lines 90, 91, 95, 96, 98, 99, 110: no finding; listed for
-  the owner.
+- B1. Its `tcw` allow entries: **keep**, approved. Unchanged.
+- B2. Lines 72, 74, 76, 78, 80, 101: **delete**, approved. Done by the owner,
+  who removed the six entries themselves.
+- B3. Line 111: **delete at Task B24**, approved. Unchanged until then.
+- B4. Lines 90, 91, 95, 96, 98, 99, 110: no finding. Unchanged.
 
 The owner's own files:
 
-- C1. `~/.claude/CLAUDE.md:43`: proposed: **keep** for now, rewrite later.
-  `[decide]`
-- C2. `~/.claude/CLAUDE.md:27`: proposed: **keep**.
+- C1. `~/.claude/CLAUDE.md:43`: **keep** until the `llama` project migrates
+  to 3.0, approved. Unchanged.
+- C2. `~/.claude/CLAUDE.md:27`: **keep**, approved. Unchanged.
 - C3. `~/.claude/skills/autonomous-work/SKILL.md:3, 8, 14, 49, 50, 52, 53,
-  54, 74`: proposed: **delete** the file, or rewrite it. `[decide]`
-- C4. `~/.claude/settings.json:81`: proposed: **keep**.
-- C5. `~/.claude/settings.json:314-317, 339, 340, 373, 374`: proposed:
-  **keep**.
-- C6. `~/.codex/rules/default.rules:21, 26`: proposed: **delete**. Lines 20,
-  23, 58, 62, 73, 74: proposed: **delete**. `[decide]` Lines 3, 38, 41, 42,
-  57, 59: proposed: **keep**.
+  54, 74`: **delete**, approved. Done by moving the folder, not deleting it,
+  to `~/.claude/deprecated-skills/autonomous-work`, where Claude Code no
+  longer loads it; deleting it for good is offered to the owner at Task B24.
+- C4. `~/.claude/settings.json:81`: **keep**, approved. Unchanged.
+- C5. `~/.claude/settings.json:314-317, 339, 340, 373, 374`: **keep**,
+  approved. Unchanged.
+- C6. `~/.codex/rules/default.rules:20, 21, 23, 26, 58, 62, 73, 74`:
+  **delete**, approved. Done: the eight lines removed (a backup is in the
+  scratch folder). Lines 3, 38, 41, 42, 57, 59: **keep**, approved;
+  unchanged, now lines 3, 34, 37, 38, 53, 54 after the deletions. Lines 44
+  and 47-52 as they now stand match `NAMES` only through `review/` inside a
+  temporary folder's name that has nothing to do with TCW: no finding,
+  unchanged, in the private expected file.
 - C7. `~/.claude/agents/adversarial-code-reviewer.md:187`,
-  `~/.claude/agents/adversarial-spec-reviewer.md:74, 88, 112`: proposed:
-  **keep**.
-- C8. `~/.codex/AGENTS.md`: no finding.
+  `~/.claude/agents/adversarial-spec-reviewer.md:74, 88, 112`: **keep**,
+  approved. Unchanged.
+- C8. `~/.codex/AGENTS.md`: no finding. Unchanged.
+- `~/.claude/skills/synced/…/google-workspace/references/sheets.md:149`, a
+  skill someone else installed (amendment 6): no finding, unchanged, in the
+  private expected file.
 
 Claude Code memories (`~/.claude/projects/-Users-brian-Projects-TCW/memory/`):
 
 - D1. `tcw-can-be-driven-by-manual-edits.md:3, 11, 15`, `MEMORY.md:7`:
-  proposed: **rewrite**.
-- D2. `the-item-is-truth-always-applies.md` (whole file), `MEMORY.md:13`:
-  proposed: **delete**.
+  **rewrite**, approved. Done: the description, both paragraphs and the
+  index line's hook rewritten as proposed.
+- D2. `the-item-is-truth-always-applies.md`, `MEMORY.md:13`: **delete**,
+  approved. Done: the file and its index line deleted.
 - D3. `triage-writes-the-request-read-it-first.md:3, 11, 15`,
-  `MEMORY.md:14`: proposed: **rewrite**.
+  `MEMORY.md:14`: **rewrite**, approved. Done. Line 11's new text still
+  matches `NAMES` (it names the 2.x file the migration moved), so it is in
+  the private expected file.
 - D4. `fold-small-follow-ups-into-the-current-item.md:3, 19, 20`,
-  `MEMORY.md:9`: proposed: **rewrite**.
+  `MEMORY.md:9`: **rewrite**, approved. Done.
 - D5. `venv-instead-of-repointing-the-shared-tcw-install.md:11-15`:
-  proposed: **rewrite**.
-- D6. `source-bashrc-for-jira-credentials.md:13, 15-18`: proposed:
-  **rewrite**.
+  **rewrite**, approved. Done: the opening paragraph only, as proposed.
+- D6. `source-bashrc-for-jira-credentials.md:13, 15-18`: **rewrite**,
+  approved. Done.
 - D7. `no-backward-compat-for-old-tcw-reading-new-configs.md:16-18, 24-27`:
-  proposed: **rewrite**, or keep. `[decide]`
-- D8. `skills-restructure-resume-point.md` (whole file), `MEMORY.md:6`:
-  proposed: **delete**.
+  **rewrite**, approved. Done: the 2.x examples replaced and the dead link
+  dropped. Line 12, the owner's dated quote, is kept as history and is in
+  the private expected file.
+- D8. `skills-restructure-resume-point.md`, `MEMORY.md:6`: **delete**,
+  approved. Done: the file and its index line deleted.
 - D9. `tcw-release-is-ci-published-on-tag-push.md`,
   `push-releases-without-asking.md`,
-  `ci-runs-bare-pytest-not-python-m-pytest.md`: proposed: **keep**.
+  `ci-runs-bare-pytest-not-python-m-pytest.md`: **keep**, approved.
+  Unchanged.
 - D10. `skip-full-suite-during-tcw-3-0-epic.md`,
   `tcw-3-0-epic-adversarial-review-is-approval.md`,
-  `tcw-3-0-epic-resume-point.md`, `MEMORY.md:15-17`: proposed: **delete at
-  the end of the epic** (Task B24); `tcw-3-0-epic-resume-point.md:23-29,
-  37-41`: proposed: **rewrite now**, or leave to B24. `[decide]`
-- D11. `MEMORY.md`: each line follows its file's decision.
+  `tcw-3-0-epic-resume-point.md`, `MEMORY.md:15-17`: **delete at Task B24**,
+  approved; until then their lines that match `NAMES` are in the private
+  expected file. `tcw-3-0-epic-resume-point.md:23-29, 37-41`: **rewrite
+  now**, approved. Done: the file rewritten to the current state, its 2.x
+  closing route removed.
+- D11. `MEMORY.md`: each line follows its file's decision. Done, hooks
+  updated.
 
 Codex memories (`~/.codex/memories/`):
 
-- E1. `memory_summary.md:23`: proposed: **rewrite**.
-- E2. `memory_summary.md:21`, `MEMORY.md:142-144`: proposed: **keep**.
+- E1. `memory_summary.md:23`: **rewrite**, approved. Done.
+- E2. `memory_summary.md:21`, `MEMORY.md:142-144`: **keep**, approved.
+  Unchanged.
 - E3. `MEMORY.md:57-96, 239-261, 312-338`, `memory_summary.md:49-53,
   80-85`, `raw_memories.md`, and three files under `rollout_summaries/`:
-  proposed: **keep**, or delete `MEMORY.md:239-261, 312-338`. `[decide]`
+  **keep** as history, approved. Unchanged.
 - E4. The other files under `rollout_summaries/` and the rest of
-  `raw_memories.md`: proposed: **keep**.
+  `raw_memories.md`: **keep**, approved. Unchanged.
+
+**Amendment 7, made during the step.** The step's check gave a different
+result depending on which `grep` ran. `CLAUDE.md` here is a symbolic link to
+`AGENTS.md`: GNU grep's `-r` reads a link named on its command line, and
+macOS's `/usr/bin/grep -r` skips it, so the same search printed each
+`AGENTS.md` line once more, as `CLAUDE.md:…`, under one and not the other,
+and no `expected-names` block could pass under both. The guide's list of
+places now replaces each place that is a link with the file it points to, or
+leaves it out when that file is listed already. Here that drops `CLAUDE.md`,
+and the search prints the same lines under both greps (checked). A link to a
+file outside the list, which macOS's grep would have skipped without a word,
+is now searched as well.
+
+The block below holds the lines of tracked files that the check's search
+still prints, each read and judged above (A2 and A4). The other lines it
+prints are in files outside the repository, and are in the private file the
+guide names, `~/.tcw-3.0-migration-expected-names.txt`.
+
+```expected-names
+AGENTS.md:| `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) · the spec outline, [`spec.md`](docs/lifecycle/templates/spec.md) or, for an item tagged `bug`, [`spec-bug.md`](docs/lifecycle/templates/spec-bug.md) |
+docs/guide/examples/commit-item-after-move.sh:git commit --quiet -m "Move $TCW_SLUG to $TCW_STAGE" -- .
+docs/lifecycle/templates/spec-bug.md:_The outline for this item's spec: the file `tcw work path <slug> spec` names (`spec/spec.md`)._
+docs/lifecycle/templates/spec.md:_The outline for this item's spec: the file `tcw work path <slug> spec` names (`spec/spec.md`)._
+scripts/require_artifact.py:        print("require_artifact: TCW_SLUG is not set; this runs as a tcw "
+scripts/require_artifact.py:    slug = os.environ.get("TCW_SLUG")
+scripts/require_artifact.py:Fails closed. An unset `TCW_SLUG`, a `tcw` that cannot be run, or a `tcw`
+scripts/require_artifact.py:It asks `tcw work path "$TCW_SLUG" <stage>` where the document lives rather
+scripts/require_artifact.py:`docs/work/<folder>/spec/spec.md` would hardcode one store's layout.
+```
+
+**Check**, run as the guide gives it from this worktree on 2026-10-20, with
+the list of places built afresh by the amended snippet (22 places: the 23
+of the survey less `CLAUDE.md`) and the bound files added by hand:
+`grep -c '^## Agent instructions'` printed `1`, and the `diff` printed
+nothing. The search printed 70 lines: the 9 in the block above and 61 in the
+private file. Run under both macOS's `/usr/bin/grep` and ugrep, it printed
+the same 70 lines.
+
+No configuration-bound file changed at this step (`AGENTS.md` and the guide
+are not bound), so `tcw validate` was not required.
+
+Tests: `AGENTS.md`, the guide and this log changed. The test files that read
+any of them, 10 files in sorted order (`grep -rl` over `tests`, less the
+helper `tests/doc_allowance.py` and a fixture): 930 passed.
+`pytest --collect-only -q` collected 5275 tests.

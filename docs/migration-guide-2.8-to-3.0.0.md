@@ -745,6 +745,16 @@ while read -r d; do PLACES+=("$d"); done < <(
     find ~/.claude/projects -mindepth 2 -maxdepth 2 -name '*.jsonl' \
       -exec grep -lF -e "\"cwd\":\"$path\"" -e "\"cwd\":\"$path/" {} +
   done | while read -r t; do d=$(dirname "$t")/memory; [ -d "$d" ] && echo "$d"; done | sort -u)
+# A place that is a symbolic link, such as a CLAUDE.md that links to
+# AGENTS.md: GNU grep -r reads a link named on its command line and macOS's
+# grep -r skips it, so the searches below would print different lines under
+# each. Replace the link with the file it points to, unless that is listed.
+for i in "${!PLACES[@]}"; do
+  [ -L "${PLACES[i]}" ] || continue
+  t=$(realpath "${PLACES[i]}"); unset 'PLACES[i]'
+  for q in "${PLACES[@]}"; do [ "$(realpath "$q")" = "$t" ] && continue 2; done
+  PLACES+=("$t")
+done
 printf '%s\n' "${PLACES[@]}"
 ```
 

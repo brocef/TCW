@@ -2,7 +2,7 @@
 
 **TCW** (Taxonomy · Capabilities · Work) is a storage-abstracted framework for describing and evolving a software project along three axes, exposed through one CLI, `tcw`, with three subcommand groups (`tcw taxonomy | capabilities | work`). This guide governs all work in this repo.
 
-- **Live status & pending work:** `tcw work` — this repo dogfoods its own work component (`docs/work/`); the historical build-phase tracker is retired.
+- **Live status & pending work:** `tcw work list` — this repo dogfoods its own work component: its items are kept in the Jira project `TCW`, and each item's documents are under `docs/work/`; the historical build-phase tracker is retired.
 
 ## Generic instructions
 
