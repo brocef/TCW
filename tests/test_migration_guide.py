@@ -9,7 +9,10 @@ A **mapping table** is a table whose header's first cell begins with `2.x`
 or `2.8`: its first column holds 2.x names, its second what each becomes.
 """
 
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -342,6 +345,18 @@ def test_step_1s_check_counts_the_approved_plan():
 def test_no_check_before_step_8_needs_the_inbox_gone(number):
     text = check(number)
     assert "grep -x inbox" not in text and "-name inbox" not in text
+    # Every loop over the work path's folders steps over the inbox, which has
+    # no item.yaml until step 8 removes it; so does step 6's name listing.
+    for loop in re.findall(r"for d in docs/work/\*/; do[^\n]*(?:\n[^\n]*){0,2}", text):
+        assert ('[ "$d" = docs/work/inbox/ ] ||' in loop
+                or '[ "$n" = inbox ] && continue' in loop), loop
+    if "ls docs/work | grep -v" in text:
+        assert "grep -vxE 'inbox|" in text
+
+
+def test_the_checks_of_steps_4_and_6_step_over_the_inbox():
+    assert '[ "$d" = docs/work/inbox/ ] || [ -f "$d/item.yaml" ] || echo "$d"' in check(4)
+    assert '[ "$n" = inbox ] && continue' in check(6)
 
 
 def test_step_8s_check_is_that_the_inbox_is_gone():
@@ -352,6 +367,10 @@ def test_steps_9_and_10_check_only_their_scope():
     assert "without what it\nskips" in check(9)
     assert "<hook files>" in check(10)
     assert "`<hook files>`" in step(1)
+    # Step 10's variable search reads the plan's list and nothing else: no
+    # recursive search, and no folder in place of the list.
+    [search] = [s for s in SPAN.findall(check(10)) if "TCW_(" in s]
+    assert search == "grep -nE 'TCW_(STATUS|TRANSITION|NODE_ROOT|RESOLUTION)\\b' <hook files>"
 
 
 # -- Criterion 3: the four stops, and no question per item --------------------------------
@@ -386,9 +405,18 @@ def test_the_rules_state_the_stop_for_a_failing_check():
     "**A 401 after a\n  redirect names the redirect**",
     "**`tcw work new --project <id> --stage <stage>` is a usage error** (exit\n  code 2)",
     "**`tcw config show` refuses a value it would print wrongly.**",
+    "**`tcw capabilities reset` refuses when something is nested under the\n  override.**",
 ])
 def test_each_stricter_behavior_is_named(topic):
     assert topic in section(GUIDE, 4, "Behavior that changed")
+
+
+def test_capabilities_reset_is_not_listed_as_unchanged():
+    [row] = [r for r in mapping_rows() if r[0] == "`tcw capabilities reset`"]
+    assert row[1].startswith("unchanged in shape; it now refuses") and \
+        "(#behavior-that-changed)" in row[1]
+    assert not [r for r in mapping_rows()
+                if "`tcw capabilities reset`" in r[0] and r[1] == "unchanged"]
 
 
 def _behavior() -> str:
@@ -580,6 +608,9 @@ PLACES = (
     "~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.claude/skills/", "~/.claude/commands/",
     "~/.claude/agents/", "~/.codex/skills/", "~/.agents/skills/", "~/.codex/prompts/",
     "~/.claude/settings.json", "~/.codex/rules/", "~/.codex/memories/",
+    # Pi's (TCW-76 review round 1)
+    ".pi/skills/", ".pi/prompts/", "~/.pi/agent/AGENTS.md", "~/.pi/agent/skills/",
+    "~/.pi/agent/prompts/",
 )
 
 
@@ -747,6 +778,186 @@ def test_every_exception_is_a_first_column_name_the_searches_miss():
     spans, pattern = set(first_column_spans()), coverage()
     stale = sorted(s for s in STEP_12_EXCEPTIONS if s not in spans or pattern.search(s))
     assert not stale, stale
+
+
+# -- Amendments 4 to 7 of TCW's own migration, and review round 1 (TCW-76 B22) ---------
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_step_3_copies_every_bound_file_and_composes_every_prompt():
+    """Amendment 4: `tcw validate` does not read a `file:` binding, so the
+    scratch folder holds every bound file and the check composes prompts."""
+    text = step(3)
+    [scratch] = [b for b in fenced(text) if "SCRATCH=$(mktemp -d)" in b]
+    for bound in ("docs/lifecycle/templates/*.md", "docs/procedures/create-work.md",
+                  "scripts/require_artifact.py",
+                  "docs/guide/examples/commit-item-after-move.sh"):
+        assert bound in scratch, bound
+    assert '[ -f tcw-config.local.yaml ] && cp tcw-config.local.yaml "$SCRATCH/"' in scratch
+    assert 'tcw work stage prompt "$s" >/dev/null || echo "stage $s"' in text
+    assert 'tcw work procedure "$p" >/dev/null || echo "procedure $p"' in text
+    assert "`tcw validate` does not open the bound files" in text
+    assert "the two composing loops print nothing" in _flat(check(3))
+    assert "tcw-config.yaml $(ls tcw-config.local.yaml 2>/dev/null)`" in check(3)
+
+
+def test_step_9_leaves_text_already_in_jira_as_written():
+    """Amendment 5, without assuming the project committed each step."""
+    text = _flat(step(9))
+    assert "**In Jira mode, text already in Jira is left as written.**" in text
+    assert "the step 6 commit" not in text
+    assert "where the project committed each step (rule 5)" in text
+
+
+def test_step_12_reads_files_someone_else_installed_where_they_match():
+    """Amendment 6."""
+    text = _flat(step_12())
+    assert ("a file that never names `tcw` or `TCW` and that someone else installed"
+            in text)
+    assert "Read its lines that match `NAMES`, with the lines around them" in text
+
+
+def test_step_9_rewrites_whole_names_longest_first_to_the_end_of_each_chain():
+    text = _flat(step(9))
+    assert "the inbox entries step 8 converted" in text
+    assert "**Follow each chain to its end**" in text
+    assert "**matches whole names only**" in text
+    assert "**rewrites the longest old names first**" in text
+    assert "**is tried first on a small sample**" in text and "a prefix case" in text
+
+
+@pytest.mark.skipif(not (shutil.which("sed") and shutil.which("grep")),
+                    reason="needs sed and grep")
+def test_step_9s_patterns_find_a_whole_old_name_and_not_a_longer_one(tmp_path):
+    """The check's own pattern builder, run on a sample holding a prefix
+    case and a name with characters `grep -E` reads specially."""
+    [block] = [b for b in fenced(check(9)) if "cut -f1" in b]
+    builder = (block.split("\n", 1)[1].rsplit("```", 1)[0]
+               .replace("<the file of pairs>", "pairs.tsv")
+               .replace("<the file of patterns>", "old.re"))
+    (tmp_path / "pairs.tsv").write_text(
+        "2026-09-30-run-ci\tTCW-90-run-ci\n"
+        "2026-09-30-run-ci-on-python\tTCW-91-run-ci-on-python\n"
+        "old.name+x\t2026-01-01-old-name-x\n")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.md").write_text(
+        "a docs/work/2026-09-30-run-ci/plan.md link\n"
+        "the 2026-09-30-run-ci-on-python/spec.md link\n"
+        "not 2026-09-30-run-ci-extra, a longer name\n"
+        "not oldXname+x\n"
+        "tcw://work/old.name+x\n")
+    subprocess.run(["sh", "-c", builder], cwd=tmp_path, check=True)
+    found = subprocess.run(["grep", "-rnE", "-f", "old.re", "docs"], cwd=tmp_path,
+                           capture_output=True, text=True).stdout
+    assert sorted(line.split(":")[1] for line in found.splitlines()) == ["1", "2", "5"], found
+
+
+def test_step_12_names_the_packages_pi_lists():
+    text = _flat(step_12())
+    assert "and what `~/.pi/agent/settings.json` lists" in text
+    assert "each package under `packages` other than TCW itself" in text
+
+
+_PATH = os.environ.get("PATH", "")
+
+
+def _places(tmp_path: Path, setup) -> list[str]:
+    """The guide's own list of places, built in a scratch project with its
+    own home folder."""
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    (home / ".claude" / "projects").mkdir(parents=True)
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    setup(repo, tmp_path)
+    snippet = places_block().split("\n", 1)[1].rsplit("```", 1)[0]
+    out = subprocess.run(["bash", "-c", snippet], cwd=repo, capture_output=True,
+                         text=True, env={"HOME": str(home), "PATH": _PATH})
+    assert out.returncode == 0, out.stderr
+    return out.stdout.splitlines()
+
+
+def _links(repo: Path, tmp_path: Path) -> None:
+    (repo / "AGENTS.md").write_text("state.yaml\n")
+    (repo / "CLAUDE.md").symlink_to("AGENTS.md")
+    (repo / "docs").mkdir()
+    (repo / "docs" / "notes.md").write_text("state.yaml\n")
+    skills = repo / ".claude" / "skills"
+    skills.mkdir(parents=True)
+    (skills / "notes.md").symlink_to("../../docs/notes.md")
+    (skills / "agents.md").symlink_to("../../AGENTS.md")
+    (skills / "broken.md").symlink_to("nowhere.md")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "o.md").write_text("state.yaml\n")
+    (skills / "outside").symlink_to(outside)
+
+
+@pytest.mark.skipif(not (shutil.which("bash") and shutil.which("git")
+                         and shutil.which("realpath")),
+                    reason="needs bash, git and realpath")
+def test_step_12s_places_follow_links_and_keep_the_project_relative(tmp_path):
+    """Amendment 7, and review round 1: a place that is a link is replaced by
+    what it points to unless that is listed; a link inside a listed folder
+    adds its target, unless a listed place holds it; a target inside the
+    project is added by its path from the project's root."""
+    places = _places(tmp_path, _links)
+    root = str((tmp_path / "repo").resolve())
+    assert "AGENTS.md" in places and "CLAUDE.md" not in places, places
+    assert "docs/notes.md" in places, places
+    assert str((tmp_path / "outside").resolve()) in places, places
+    assert not [p for p in places if p.startswith(root)], places
+    assert len(places) == len(set(places)), places
+
+
+def test_step_12s_private_files_carry_the_projects_id():
+    text = step_12()
+    assert "PRIVATE=~/.tcw-3.0-migration-$ID-expected-names.txt" in text
+    assert "~/.tcw-3.0-migration-$ID-check.txt" in text
+    assert "tcw-3.0-migration-expected-names" not in text
+    assert "tcw-3.0-migration-check" not in text
+
+
+def _expected_names_reader() -> str:
+    [block] = [b for b in fenced(check(12)) if b.startswith("```sh\ndiff ")]
+    [line] = [l for l in block.splitlines() if "awk " in l]
+    return line[line.index("awk "):line.index('"$LOG"') + len('"$LOG"')]
+
+
+@pytest.mark.skipif(not shutil.which("awk"), reason="needs awk")
+def test_step_12s_check_reads_only_this_runs_expected_names(tmp_path):
+    log = tmp_path / "log.md"
+    log.write_text("# log\n\n## Run 1\n\n## Agent instructions\n\n```expected-names\n"
+                   "AGENTS.md:first run\n```\n\n## Run 2\n\n### Agent instructions\n\n"
+                   "```expected-names\nAGENTS.md:second run\n```\n")
+    reader = _expected_names_reader()
+    for run, lines in (("## Run 1", "AGENTS.md:first run\nAGENTS.md:second run\n"),
+                       ("## Run 2", "AGENTS.md:second run\n")):
+        out = subprocess.run(["bash", "-c", reader], cwd=tmp_path, capture_output=True,
+                             text=True, env={"LOG": str(log), "RUN": run, "PATH": _PATH})
+        assert out.stdout == lines, (run, out.stdout, out.stderr)
+    assert "records the step under\n`### Agent instructions`" in check(12)
+
+
+def test_step_5_skips_a_filesystem_comment_already_written():
+    text = _flat(step(5))
+    assert "**look before writing**" in text
+    assert ("`for f in docs/work/<folder>/comments/*.md; do [ -e \"$f\" ] && head -n 1 "
+            "\"$f\"; done | grep -cxF '<first line>'`") in text
+
+
+def test_a_discards_reason_is_in_its_comment_not_in_tcw_reason():
+    row = _row("`TCW_RESOLUTION`")
+    assert "a discard's reason is in `TCW_REASON`" not in row[1]
+    assert "it is in the comment the discard writes on the item" in row[1]
+
+
+def test_optional_stages_are_on_unless_turned_off():
+    for text in (step(1), step(3)):
+        assert "enabled: false" in text
+    [row] = [r for r in mapping_rows() if r[0].startswith("an optional stage")]
+    assert row[1].startswith("**on in 3.0**")
 
 
 # -- Criterion 10, its automatic part: every 3.0 command named parses --------------------

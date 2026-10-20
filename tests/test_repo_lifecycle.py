@@ -5,12 +5,13 @@ TCW-70 deleted the 2.x file of this name together with the parser it
 guarded. This one checks `tcw-config.yaml` against the 3.0 parser: it loads
 with no problems, its `work.jira` block parses, every file a stage binds
 exists and is not empty, every script a hook runs exists, `plan` binds no
-spec template, both templates carry the seven sections the spec stage asks
-for, and the documentation entries are those of Design 6.4.
+spec template, both templates carry the sections the spec stage asks for
+(read from its prompt), and the documentation entries are those of Design 6.4.
 """
 
 from __future__ import annotations
 
+import re
 import shlex
 from pathlib import Path
 
@@ -23,10 +24,18 @@ REPO = Path(__file__).resolve().parent.parent
 TEMPLATES = ("docs/lifecycle/templates/spec.md",
              "docs/lifecycle/templates/spec-bug.md")
 
-# The seven sections the built-in spec prompt asks for
-# (`tcw/work/prompts/spec.md`, "**Produce**").
-SPEC_HEADINGS = ("Capability changes", "Problem", "Goals", "Non-goals",
-                 "Design", "Acceptance criteria", "Risks")
+
+
+def _spec_headings() -> tuple[str, ...]:
+    """The sections the built-in spec prompt asks for, read from its
+    "**Produce**" list (`tcw/work/prompts/spec.md`), so a change to the
+    prompt reaches this test."""
+    prompt = " ".join((REPO / "tcw/work/prompts/spec.md").read_text(encoding="utf-8").split())
+    found = re.search(r"with \w+ sections: (.*?)\.", prompt)
+    assert found, "tcw/work/prompts/spec.md no longer lists the spec's sections"
+    names = tuple(re.findall(r"\*\*([^*]+)\*\*", found.group(1)))
+    assert names, f"no section names in {found.group(0)!r}"
+    return names
 
 # Design 6.4: `Tracker-Change` became `Jira-Change`; the upcoming entries are
 # named by the item's folder name.
@@ -108,11 +117,11 @@ def test_plan_binds_no_spec_template(config):
 
 
 @pytest.mark.parametrize("template", TEMPLATES)
-def test_a_template_carries_the_seven_spec_sections(template):
+def test_a_template_carries_every_spec_section(template):
     headings = {line[3:].strip() for line in
                 (REPO / template).read_text(encoding="utf-8").splitlines()
                 if line.startswith("## ")}
-    missing = [h for h in SPEC_HEADINGS if h not in headings]
+    missing = [h for h in _spec_headings() if h not in headings]
     assert not missing, f"{template} lacks {missing}"
 
 

@@ -1,9 +1,10 @@
-# Outcome (TCW-76): the migration log
+# Outcome (TCW-76): implement round 1
 
-This file is the migration log for TCW-76 (plan, choice 5). Part A wrote the
+This file is TCW-76's first implement round, its 2.x `outcome.md`. The plan
+(choice 5) meant it to be the migration log as well; Part A wrote the
 sections below before the freeze. The migration itself, from step 0 on, is
-logged in `docs/tcw-3.0-migration-log.md`, outside the work path as the
-guide's rule 7 says (that log's "Deviations from the plan", item d).
+logged elsewhere, in `docs/tcw-3.0-migration-log.md`, outside the work path
+as the guide's rule 7 says (that log's "Deviations from the plan", item d).
 
 ## Part A: work-branch commits
 

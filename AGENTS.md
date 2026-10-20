@@ -19,7 +19,7 @@ The rules for *how* to do that work are bound to the lifecycle stages rather tha
 written here. Before working a stage, run
 **`tcw work stage prompt <stage> <item>`**: it prints TCW's own instructions for
 that stage composed with this repo's, and it behaves identically under Claude
-and Codex. When the stage's output is written, **`tcw work advance <item>`**
+Code, Codex and Pi. When the stage's output is written, **`tcw work advance <item>`**
 moves the item to its next stage and runs the checks bound to that move;
 **`tcw work advance <item> --dry-run`** says whether the move would be allowed,
 and moves nothing.
@@ -32,8 +32,8 @@ and moves nothing.
 | `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict |
 | `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                 |
 
-Every stage's instructions start by asking for `git pull --ff-only`, and every
-move to a stage after `inbox` runs
+Every stage's instructions from `request` on start by asking for
+`git pull --ff-only`, and every move to a stage after `inbox` runs
 `docs/guide/examples/commit-item-after-move.sh`, which commits the item's
 folder when the move changed a file in it. The bindings are in
 `tcw-config.yaml`; `tcw work lifecycle` lists them.

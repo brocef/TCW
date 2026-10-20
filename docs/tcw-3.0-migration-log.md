@@ -165,6 +165,41 @@ In step 12, one more (recorded under Step 12 below):
    among them, none naming `tcw` or `TCW`. Step 12 now says such a file is
    read where it matches `NAMES`, and enough of the rest to confirm it is not
    about TCW, and is listed with that reason.
+7. **Places that are symbolic links.** `CLAUDE.md` here links to
+   `AGENTS.md`, and GNU grep's `-r` reads a link named on its command line
+   while macOS's skips it, so step 12's check could not pass under both.
+   The list of places now replaces each place that is a link with what it
+   points to, or leaves it out when that is listed already.
+
+After the run, the first review of TCW-76 (Task B22) found more, and the
+guide was corrected again (implement round 2 has the detail):
+
+8. **Links inside listed folders.** Amendment 7 covered only places that
+   are links. A link inside a listed folder is skipped by GNU and macOS grep
+   alike, so step 12 now adds what each such link points to, unless a listed
+   place holds it, and adds a target inside the project by its path from the
+   project's root, so no home folder reaches the committed block.
+9. **Pi's places.** Step 12 now searches Pi's instruction files, skills,
+   prompts and listed packages.
+10. **Step 12's private files and a second run.** Their names carry the
+    project's ID, and the check reads only the `expected-names` block below
+    this run's `## Run <N>` heading.
+11. **Step 9's names.** The rewrite and its check match whole names only,
+    rewrite the longest first, follow chained renames to their end, include
+    the inbox entries step 8 converted, and are tried on a sample first; the
+    step no longer assumes the project committed each step.
+12. **Optional stages and statuses.** Step 1, step 3 and the Configuration
+    table say that an optional stage is on unless turned off; the statuses
+    row covers a `discarded` mapped by resolution, two stages sharing one
+    status, and status names now compared exactly, which step 3 checks before
+    Jira is changed.
+13. **Smaller corrections.** A discard's reason is in its comment, not in
+    `TCW_REASON`; `tcw capabilities reset` is listed as changed; step 5's
+    filesystem comment is skipped on a rerun; step 3 copies and checks
+    `tcw-config.local.yaml` too, and a line from it, or from any untracked
+    file, reaches the log as a file and line number only; an existing ticket
+    whose parent Jira's hierarchy would refuse is listed in the plan; and
+    the guide names `jq` among the tools Jira mode uses.
 
 ### Step 1: Survey, then ask once
 
@@ -550,9 +585,12 @@ above), and its file is deleted at step 8:
 
 None. Every ticket at `To Do` or `In Progress` is bound to an item; the other
 58 are at `Done` or `Won't Do`. TCW-69 to TCW-75 and TCW-77 (TCW-68's
-children, `Done`, their folders deleted by 2.x retention) become untracked
-references under TCW-68. Whether to give them, and TCW-67, `TCW Project`
-alone is D8.
+children, `Done`, their folders deleted by 2.x retention) have no items, and
+3.0 lists them nowhere: `tcw work show` reports as `untracked` only an
+item's parent and blockers that have no item, never its children
+(`tcw/work/jira/backend.py`, `_items`). (Corrected at Task B22; this plan
+first said they became untracked references under TCW-68.) Whether to give
+them, and TCW-67, `TCW Project` alone is D8.
 
 ### Rewrites
 
@@ -862,6 +900,10 @@ Given in chat on 2026-10-16:
 
 ## Run 1, after the approved plan
 
+**D7, the tag.** As approved, the agent made the tag `tcw-2.x-final` on
+`8b5a212b` (`main`'s frozen tip) on 2026-10-16: a lightweight tag, in the
+local repository only, not pushed.
+
 ### Step 2: Jira mode: prepare Jira
 
 The workflow was read again before any change (`POST /rest/api/3/workflows`
@@ -1111,8 +1153,7 @@ collected 5275 tests.
 ### Step 6: Jira mode: bind items to tickets
 
 Made on 2026-10-20 through Jira's REST interface, every request through one
-script that logs each call, with the owner's account
-(`557058:f365e97a-cd5d-4f27-a5c2-b5dc8dbad702`). Every write was preceded by
+script that logs each call, with the owner's account. Every write was preceded by
 the read of rule 6. Request bodies were built with `jq` and the guide's `ADF`
 functions, which were compared with the guide's block first (identical).
 
@@ -1745,14 +1786,17 @@ macOS's `/usr/bin/grep -r` skips it, so the same search printed each
 and no `expected-names` block could pass under both. The guide's list of
 places now replaces each place that is a link with the file it points to, or
 leaves it out when that file is listed already. Here that drops `CLAUDE.md`,
-and the search prints the same lines under both greps (checked). A link to a
-file outside the list, which macOS's grep would have skipped without a word,
-is now searched as well.
+and the search prints the same lines under both greps (checked). A place
+that links to a file outside the list, which macOS's grep would have skipped
+without a word, is now searched as well. Links inside a listed folder were
+still skipped, by both greps; amendment 8 (Task B22) covers them.
 
 The block below holds the lines of tracked files that the check's search
 still prints, each read and judged above (A2 and A4). The other lines it
 prints are in files outside the repository, and are in the private file the
-guide names, `~/.tcw-3.0-migration-expected-names.txt`.
+guide names, `~/.tcw-3.0-migration-tcw-expected-names.txt` (renamed at Task
+B22 from `~/.tcw-3.0-migration-expected-names.txt`, when the guide gave the
+file the project's ID; its contents were kept).
 
 ```expected-names
 AGENTS.md:| `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) · the spec outline, [`spec.md`](docs/lifecycle/templates/spec.md) or, for an item tagged `bug`, [`spec-bug.md`](docs/lifecycle/templates/spec-bug.md) |
@@ -1772,10 +1816,38 @@ of the survey less `CLAUDE.md`) and the bound files added by hand:
 `grep -c '^## Agent instructions'` printed `1`, and the `diff` printed
 nothing. The search printed 70 lines: the 9 in the block above and 61 in the
 private file. Run under both macOS's `/usr/bin/grep` and ugrep, it printed
-the same 70 lines.
+the same 70 lines. (There is no GNU grep on this machine. The session's
+`grep` is ugrep, which follows a link named on its command line, as GNU
+grep does.)
 
 No configuration-bound file changed at this step (`AGENTS.md` and the guide
 are not bound), so `tcw validate` was not required.
+
+**Re-checked at Task B22, 2026-10-20**, from the epic worktree, with the list
+of places built by the guide as amended then (amendments 8 to 10):
+
+- **Pi's places.** `~/.pi/agent/AGENTS.md`, `AGENTS.override.md`,
+  `CLAUDE.md`, `SYSTEM.md` and `APPEND_SYSTEM.md`, `~/.pi/agent/skills/`,
+  `~/.pi/agent/prompts/`, and the repository's `.pi/` do not exist.
+  `~/.pi/agent/settings.json` lists one `skills` entry,
+  `~/.pi/agent/skills/pi/SKILL.md`, which does not exist, and three
+  packages: the TCW checkout (TCW's own plugin, which step 11 updates, so
+  not searched), `npm:@juicesharp/rpiv-ask-user-question` (its
+  `package.json` names only an extension, so it has no skills or prompts to
+  search), and `npm:pi-subagents`, whose `skills/` and `prompts/` folders
+  under `~/.pi/agent/npm/node_modules/pi-subagents/` were added by hand. Its
+  14 files the files-to-read search prints were installed by someone else,
+  name neither `tcw` nor `TCW`, and were read as amendment 6 says: no
+  finding, they hold no 2.x instruction. The 7 lines of 5 of them that match
+  `NAMES` were added to the private file.
+- **Links inside listed folders.** The one link found,
+  `~/.claude/skills/pi`, points into `~/.agents/skills`, which is listed, so
+  nothing was added.
+- **The check**, with `RUN='## Run 1'`: the list held 24 places (the 22
+  above and the two Pi folders), the `diff` printed nothing, and the search
+  printed 77 lines (the 70 above and the 7 Pi lines), the same under macOS's
+  `/usr/bin/grep` and ugrep. `grep -c '^## Agent instructions'` printed `1`.
+  The saved check output was deleted afterwards.
 
 Tests: `AGENTS.md`, the guide and this log changed. The test files that read
 any of them, 10 files in sorted order (`grep -rl` over `tests`, less the
@@ -2305,8 +2377,14 @@ No documentation edit was needed.
     `Done`, each with one comment, folders at `discarded` and `completed`,
     none in the open list. The "beginning with" wording difference is noted
     above.
-31. The step 6 rerun, its JQL `updated >=` search and its skips are recorded
-    under step 6, "The rerun (criterion 31)".
+31. The step 6 rerun and its skips are recorded under step 6, "The rerun
+    (criterion 31)". The criterion's JQL search with `updated >=` the
+    rerun's start was not run: the rerun was checked by the script's call
+    log instead, which shows no `POST` or `PUT` in it but the searches. The
+    search cannot be run now, because steps 7 to 12 and Task B21 wrote to the
+    same tickets after the rerun, so it would find those later writes and
+    could not tell them apart from the rerun's. (Corrected at Task B22; this
+    line first said the search was run.)
 32. The guide's step 12 tests pass (A6's five mutations each turn one red),
     and `## Agent instructions` above lists every finding with the owner's
     decision; the step's check printed nothing.

@@ -31,5 +31,6 @@ If the item came from a GitHub issue, the issue is answered and closed only
 after the fix is published: complete every item, cut the version, push, and
 only then answer and close the issue, with text the owner has approved. An
 issue closed earlier tells its reporter the fix is out when they still cannot
-install it. The review does not close it; the qa round records that the
+install it. The review does not close it; the item's qa findings (on this
+project, a comment on its ticket, since qa is kept in Jira) say that the
 closing waits for publication, and why.

@@ -35,7 +35,7 @@ Codex or any other harness, working with a user: the person who owns the
 project and decides for it. The agent does the steps; the user answers the
 few questions the guide asks. The agent may have any level of Jira access: a
 Jira change it cannot make is handed to the user as a checklist. Every step
-uses only a shell, `curl` and `tcw`.
+uses only a shell, `curl` and `tcw`, and, in Jira mode, `jq`.
 
 **Projects older than 2.8** upgrade to 2.8 first, with the earlier migration
 guides (for example [2.4 to 2.5](migration-guide-2.4.X-to-2.5.0.md); the
@@ -170,9 +170,10 @@ can show.
    survives. A log lost anyway costs only the record: the reads of rule 6,
    not the log, decide whether a Jira write is repeated. **The log is
    committed, so it never holds text from a file outside the repository**, or
-   from a file git does not track: for those, step 12 records only the file's
-   path and line number in the log, and keeps any text it needs in a private
-   file that is never committed.
+   from a file git does not track, such as `tcw-config.local.yaml`: for those,
+   the log records only the file's path and line number, wherever a check
+   prints one of their lines (steps 3, 10 and 12), and step 12 keeps any text
+   it needs in a private file that is never committed.
 8. **Run `tcw` only where a step says to**: 2.8 at step 0, 3.0 in a scratch
    folder at step 3, and 3.0 on the project from step 11 on. Every check
    before that is a plain shell command, because neither CLI can read a board
@@ -251,9 +252,15 @@ Then write one plan and present it to the user as one message. It covers:
 
 - **The backend**: filesystem or Jira mode. A 2.x project with `work.tracker`
   usually becomes a Jira-mode project, but need not.
-- **The stages**: which optional stages to turn on (`spec`, `plan`, `review`,
-  `qa`, `postmortem`), and in Jira mode the status for each stage turned on,
-  and the statuses, transitions and fields that must be added (step 2).
+- **The stages**: which optional stages to keep on (`spec`, `plan`, `review`,
+  `qa`, `postmortem`). **Every optional stage is on unless the configuration
+  turns it off** with `work.stages.<stage>.enabled: false`, so a 2.x project
+  that never had a stage still gets it in 3.0, and in Jira mode each such
+  flow stage needs a status (`postmortem`, a side stage, has none) until the
+  plan turns it off. In Jira mode, also the status
+  for each stage turned on ([Configuration](#configuration), the
+  `work.tracker.statuses` row, says what to decide), and the statuses,
+  transitions and fields that must be added (step 2).
 - **Each item**: its stage ([Status folders](#status-folders)), its converted
   fields ([Item fields](#item-fields)), and everything dropped or listed (a
   free-text blocker, an `initiative` beside a `parent`, an `owner` in Jira
@@ -364,11 +371,19 @@ because it reads the new configuration.
 
 Rewrite `tcw-config.yaml`, and `tcw-config.local.yaml` where it exists, key by
 key as the plan says ([Configuration](#configuration)): stages and their
-bindings under `work.stages`, hook limits under `work.hooks`, templates as
-prompt entries, `connected-projects` as `projects`, and the git example if the
-plan adopts it. In Jira mode, add `work.backend: jira`, the `work.jira` block
-(`site`, `project`, `credentials`, `fields`, and `priorities`, `issue-type`
-or `timeout` where they differ from the defaults), and each stage's `status`.
+bindings under `work.stages`, `enabled: false` for each optional stage the
+plan turns off (an optional stage the configuration does not mention is on),
+hook limits under `work.hooks`, templates as prompt entries,
+`connected-projects` as `projects`, and the git example if the plan adopts
+it. In Jira mode, add `work.backend: jira`, the `work.jira` block (`site`,
+`project`, `credentials`, `fields`, and `priorities`, `issue-type` or
+`timeout` where they differ from the defaults), and each stage's `status`.
+**Spell each status exactly as Jira does**, capitals and spaces included: 3.0
+compares status names exactly, where 2.x ignored case and spacing, so a 2.x
+`in progress` for Jira's `In Progress` no longer matches. Read the names from
+the project's statuses ([Talking to Jira](#talking-to-jira)) and correct the
+configuration's spelling before deciding that Jira lacks a status and
+changing Jira at step 2.
 Give each template its first line saying what it outlines. The `configure`
 skill's reference documents, linked from [Configuration](#configuration),
 describe every key.
@@ -384,6 +399,7 @@ are TCW's own; list the project's in their place:
 ```sh
 SCRATCH=$(mktemp -d)
 cp tcw-config.yaml "$SCRATCH/"
+[ -f tcw-config.local.yaml ] && cp tcw-config.local.yaml "$SCRATCH/"
 for f in docs/lifecycle/*.md docs/lifecycle/templates/*.md docs/procedures/create-work.md \
          scripts/require_artifact.py docs/guide/examples/commit-item-after-move.sh; do
   mkdir -p "$SCRATCH/$(dirname "$f")"; cp "$f" "$SCRATCH/$f"
@@ -435,7 +451,7 @@ so its file is not read: confirm with `ls` that each such file is in the
 scratch folder.
 
 **Check:**
-`grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml`
+`grep -nE '^[[:space:]]*(tracker|lifecycle|retain|auto-commit-transitions|publish-transitions|trunk-branch):|builtin: true|^connected-projects:' tcw-config.yaml $(ls tcw-config.local.yaml 2>/dev/null)`
 prints nothing; the scratch folder's run prints no finding about the
 configuration and, in Jira mode, no Jira-workflow finding other than
 `unchecked:` ones; and the two composing loops print nothing. In Jira mode
@@ -502,7 +518,12 @@ migrating (a pruned item, or one closed at `completed`) has no 2.x resolution:
 its comment's first line is `Closed at the migration to TCW 3.0 as <stage>`,
 followed by the reason the plan gives. In filesystem mode a comment is a file
 in the item's `comments/` folder named with the time in UTC, such as
-`comments/20261020T143000Z.md`; in Jira mode it is posted at step 6.
+`comments/20261020T143000Z.md`, whose first line is the comment's first line;
+in Jira mode it is posted at step 6. A rerun names a new file with a new
+time, so, as rule 6 does for Jira, **look before writing**: skip the comment
+when a file in the folder already begins with its first line, which
+`for f in docs/work/<folder>/comments/*.md; do [ -e "$f" ] && head -n 1 "$f"; done | grep -cxF '<first line>'`
+counts (`0` means write it).
 
 In filesystem mode, delete `tracker.yaml` too. In Jira mode it stays until
 step 6, which reads the ticket's key from it.
@@ -619,12 +640,34 @@ Then delete `inbox/` and its `.gitkeep`.
 
 ### Step 9: Rewrite live references
 
-Collect every old name in one file, one per line: the folders renamed at steps
-4 and 6, and the old slugs copied from `renames.yaml` at step 4. Then, in the
-documents of open items (those not at `completed` or `discarded`), the
-configuration, and the project's live documents, rewrite each old name to its
-new one, and each `tcw://work/<old slug>` to the new slug
-([Live references](#live-references)). In open items, also rewrite each
+Collect every old name with its new one in one file outside the repository,
+one pair per line, the old name, a tab, then the new name: the folders
+renamed at steps 4 and 6, the old slugs copied from `renames.yaml` at step 4,
+and the inbox entries step 8 converted (in filesystem mode, each entry's name
+without `.md` and the folder it became, when they differ; in Jira mode, each
+entry's name and its ticket's key). **Follow each chain to its end**: when
+`renames.yaml` says `a` became `b` and step 6 renamed `b` to `c`, the pair
+for `a` is `a` and `c`, never `a` and `b`.
+
+Then, in the documents of open items (those not at `completed` or
+`discarded`), the configuration, and the project's live documents, rewrite
+each old name to its new one, and each `tcw://work/<old slug>` to the new slug
+([Live references](#live-references)). In Jira mode a link to an inbox
+entry's deleted file is rewritten by hand to name its ticket. However the
+rewrite is done (rule 2), it:
+
+- **matches whole names only**: an old name counts only where the character
+  before it and the one after it are neither a letter, a digit, `_` nor `-`
+  (or the line starts or ends there), so `2026-09-30-run-ci` is not found
+  inside `2026-09-30-run-ci-on-python`;
+- **rewrites the longest old names first**, so a short name is never
+  replaced inside a longer one that is still to be rewritten;
+- **is tried first on a small sample** outside the repository: a file
+  holding one old name, an old name that is the start of another (a prefix
+  case such as the one above), and a name reached through a chain. Read the
+  result before running it over the project.
+
+In open items, also rewrite each
 relative link between one item's documents, which step 7 moved into stage
 folders: a link to `spec.md` in the plan becomes a link to
 `../spec/spec.md`. Leave alone what step 9's plan entry skips,
@@ -633,11 +676,20 @@ and the documents of finished items, changelogs and release notes.
 **In Jira mode, text already in Jira is left as written.** Steps 6 and 7
 put requests into tickets' descriptions and comments, and acceptance
 history into comments, before this step runs; step 9 rewrites only files,
-so an old folder name inside that text stays as it was posted. Git history
-still resolves it: the step 6 commit renames each old folder to its new
-one.
+so an old folder name inside that text stays as it was posted. The
+migration log's lists of old and new names resolve it, since steps 4 and 6
+record every pair, and so does git history where the project committed
+each step (rule 5).
 
-**Check:** `grep -rnF -f <the file of old names> <open item folders> <live documents>`,
+**Check:** build one pattern per old name, matching it whole, from the file
+of pairs:
+
+```sh
+cut -f1 <the file of pairs> | sed -e 's/[][\.*^$+?(){}|]/\\&/g' \
+  -e 's/.*/(^|[^A-Za-z0-9_-])&($|[^A-Za-z0-9_-])/' > <the file of patterns>
+```
+
+Then `grep -rnE -f <the file of patterns> <open item folders> <live documents>`,
 with the folders and documents the approved plan lists and without what it
 skips, prints nothing; and
 `grep -rnE '\]\((\./)?(intake|initial-request|spec|plan|outcome|refined-outcome|rework|post-mortem)\.md' <open item folders>`
@@ -656,6 +708,9 @@ over the plan's `<hook files>` prints nothing;
 `grep -rlnE '^(Planning doc|Tracker):' docs/capabilities`, with the project's
 capabilities path, prints nothing; `grep -nE 'docs/work/(completed|discarded)' .gitignore`
 prints nothing; and `grep -cx '/tcw-config.local.yaml' .gitignore` prints `1`.
+`<hook files>` can include `tcw-config.local.yaml`, which git does not track:
+a line this check, or step 3's, prints from it goes into the log as the
+file's name and line number only (rule 7).
 
 ### Step 11: Validate
 
@@ -693,6 +748,8 @@ The commands here are for `bash`. Run them from the project's root.
     of `CLAUDE.md` that is `@` followed by a path imports that file);
   - `.claude/skills/`, `.claude/commands/`, `.claude/agents/`, `.codex/` and
     `.agents/skills/`;
+  - Pi's project files: `.pi/skills/`, `.pi/prompts/`, `.pi/SYSTEM.md`,
+    `.pi/APPEND_SYSTEM.md` and `.pi/settings.json`;
   - the `hooks` and `permissions.allow` entries of `.claude/settings.json` and
     `.claude/settings.local.json`;
   - the prompt and procedure files the 2.x configuration bound (step 1's
@@ -700,7 +757,16 @@ The commands here are for `bash`. Run them from the project's root.
 - **The user's own files:** `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
   `~/.claude/skills/`, `~/.claude/commands/`, `~/.claude/agents/`,
   `~/.codex/skills/`, `~/.agents/skills/`, `~/.codex/prompts/`,
-  `~/.claude/settings.json` and `~/.codex/rules/`.
+  `~/.claude/settings.json` and `~/.codex/rules/`; and Pi's:
+  `~/.pi/agent/AGENTS.md` (or `AGENTS.override.md` or `CLAUDE.md` beside it),
+  `~/.pi/agent/SYSTEM.md`, `~/.pi/agent/APPEND_SYSTEM.md`,
+  `~/.pi/agent/skills/`, `~/.pi/agent/prompts/`, and what
+  `~/.pi/agent/settings.json` lists: each path under its `skills` and
+  `prompts` keys (relative to `~/.pi/agent`), and each package under
+  `packages` other than TCW itself, whose plugin step 11 updates. A package's
+  instructions are the skills and prompts its `package.json` names under `pi`,
+  or its `skills/` and `prompts/` folders; an npm package is installed under
+  `~/.pi/agent/npm/node_modules/`, and a git one under `~/.pi/agent/git/`.
 - **Saved memories:** `~/.codex/memories/`, and the `memory/` folder (with its
   index, `MEMORY.md`) of every Claude Code project folder under
   `~/.claude/projects/` that belongs to this project. Those folders are found
@@ -726,14 +792,19 @@ PRIMARY=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 PLACES=()
 for p in CLAUDE.md AGENTS.md .claude/skills .claude/commands .claude/agents .codex .agents/skills \
          .claude/settings.json .claude/settings.local.json \
+         .pi/skills .pi/prompts .pi/SYSTEM.md .pi/APPEND_SYSTEM.md .pi/settings.json \
          ~/.claude/CLAUDE.md ~/.codex/AGENTS.md ~/.claude/skills ~/.claude/commands ~/.claude/agents \
          ~/.codex/skills ~/.agents/skills ~/.codex/prompts ~/.claude/settings.json ~/.codex/rules \
+         ~/.pi/agent/AGENTS.md ~/.pi/agent/AGENTS.override.md ~/.pi/agent/CLAUDE.md \
+         ~/.pi/agent/SYSTEM.md ~/.pi/agent/APPEND_SYSTEM.md ~/.pi/agent/skills ~/.pi/agent/prompts \
          ~/.codex/memories; do
   [ -e "$p" ] && PLACES+=("$p")
 done
-# Each file CLAUDE.md and AGENTS.md link to or import, and each bound prompt
-# and procedure file, added by hand:
+# Each file CLAUDE.md and AGENTS.md link to or import, each bound prompt and
+# procedure file, and each skill, prompt and package folder Pi's settings.json
+# lists, added by hand:
 #   PLACES+=(docs/lifecycle/implementation.md)
+#   PLACES+=(~/.pi/agent/npm/node_modules/<package>/skills)
 # The primary checkout's own files, when this is a worktree:
 if [ "$PRIMARY" != "$(pwd -P)" ]; then
   while read -r _ f; do PLACES+=("$PRIMARY/$f"); done \
@@ -748,12 +819,28 @@ while read -r d; do PLACES+=("$d"); done < <(
 # A place that is a symbolic link, such as a CLAUDE.md that links to
 # AGENTS.md: GNU grep -r reads a link named on its command line and macOS's
 # grep -r skips it, so the searches below would print different lines under
-# each. Replace the link with the file it points to, unless that is listed.
+# each. Replace the link with what it points to, unless a listed place holds
+# that already. A link inside a listed folder is skipped by both greps, so
+# add what each of those points to as well, folders included, under the same
+# rule. A target inside the project is added by its path from the project's
+# root, so that no absolute path, and no home folder, reaches the log.
+ROOT=$(pwd -P)
+held() { for q in "${PLACES[@]}"; do case "$1/" in "$(realpath "$q")"/*) return 0;; esac; done; return 1; }
+local_path() { case "$1" in "$ROOT"/*) printf '%s\n' "${1#"$ROOT"/}";; *) printf '%s\n' "$1";; esac; }
 for i in "${!PLACES[@]}"; do
   [ -L "${PLACES[i]}" ] || continue
   t=$(realpath "${PLACES[i]}"); unset 'PLACES[i]'
-  for q in "${PLACES[@]}"; do [ "$(realpath "$q")" = "$t" ] && continue 2; done
-  PLACES+=("$t")
+  held "$t" || PLACES+=("$(local_path "$t")")
+done
+PLACES=("${PLACES[@]}")
+i=0
+while [ "$i" -lt "${#PLACES[@]}" ]; do
+  p=${PLACES[i]}; i=$((i + 1))
+  [ -d "$p" ] || continue
+  while read -r l; do
+    t=$(realpath "$l" 2>/dev/null) || continue   # a link that points nowhere
+    held "$t" || PLACES+=("$(local_path "$t")")
+  done < <(find "$p" -mindepth 1 -type l)
 done
 printf '%s\n' "${PLACES[@]}"
 ```
@@ -823,31 +910,39 @@ private file instead, outside the repository and never committed, in the
 same `<file>:<text>` form, one per line:
 
 ```sh
-PRIVATE=~/.tcw-3.0-migration-expected-names.txt   # outside the repository; never committed
+ID=shop                                              # the project's ID, `id` in tcw-config.yaml
+PRIVATE=~/.tcw-3.0-migration-$ID-expected-names.txt   # outside the repository; never committed
 ```
 
-The `expected-names` block in the log holds only lines of files git tracks in
-the repository. Delete the private file, and the saved check output
-`~/.tcw-3.0-migration-check.txt` if there is one, once the migration is
-accepted.
+The project's ID in the name keeps two projects that one person migrates
+from sharing the file. The `expected-names` block in the log holds only lines
+of files git tracks in the repository. Delete the private file, and the saved
+check output `~/.tcw-3.0-migration-$ID-check.txt` if there is one, once the
+migration is accepted.
 
-**Check:** `grep -c '^## Agent instructions' <log>` prints `1`, and, with
-`LOG` set to the log's path and `PLACES`, `NAMES`, `WORDS` and `PRIVATE` as
-above,
+**Check:** `grep -c '^## Agent instructions' <log>` prints `1` (a second run,
+under its own `## Run <N>` heading, records the step under
+`### Agent instructions` and the check counts that instead), and, with `LOG`
+set to the log's path, `RUN` to this run's heading (`RUN='## Run 1'`), and
+`PLACES`, `NAMES`, `WORDS` and `PRIVATE` as above,
 
 ```sh
 diff <(grep -rIsHE "(^|[^[:alnum:]_])($NAMES)" "${PLACES[@]}" | LC_ALL=C sort) \
-     <({ awk '/^```expected-names$/{f=1;next} f&&/^```$/{f=0} f' "$LOG"; cat "$PRIVATE" 2>/dev/null; } | LC_ALL=C sort)
+     <({ awk -v run="$RUN" '$0==run{r=1} r&&/^```expected-names$/{f=1;next} f&&/^```$/{f=0} f' "$LOG"
+         cat "$PRIVATE" 2>/dev/null; } | LC_ALL=C sort)
 ```
+
+The `awk` reads only the blocks below this run's heading, so a second run
+compares its own block, not the first run's.
 
 prints nothing. No line numbers are compared, so an edit above a kept line
 does not fail the check; and a rewritten line that still says `tcw` is not a
 failure, since `NAMES` does not contain it. **When the check fails, its output
 quotes the lines that differ, private ones included**, so it never goes into
 the log as it stands: save it beside `$PRIVATE`, outside the repository
-(`diff … > ~/.tcw-3.0-migration-check.txt`), and record in the log only the
+(`diff … > ~/.tcw-3.0-migration-$ID-check.txt`), and record in the log only the
 files it names, which
-`sed -nE 's/^[<>] ([^:]*):.*/\1/p' ~/.tcw-3.0-migration-check.txt | sort -u`
+`sed -nE 's/^[<>] ([^:]*):.*/\1/p' ~/.tcw-3.0-migration-$ID-check.txt | sort -u`
 prints. If a configuration-bound file
 changed, `tcw validate; echo "exit $?"` ends with `exit 0`.
 
@@ -939,7 +1034,12 @@ parent at level 1 (an epic) gives a child of type `TYPE`; a parent at level 0
 gives the project's one sub-task type (`subtask` true); a parent at level 2
 or above gives the one type at the level below it. When there is no single
 such type, or the parent is a sub-task, the child cannot be placed under that
-parent: list it in the plan.
+parent: list it in the plan. **The same holds for a ticket that already
+exists**: when step 6's reconciling would give an existing ticket a parent,
+compare the ticket's own `issuetype.hierarchyLevel` with the parent's. Jira
+accepts the parent only one level up (a level-0 ticket under an epic, a
+sub-task under a level-0 ticket), so any other pair cannot be placed either,
+and is listed in the plan rather than attempted.
 
 **Reading a comment's first line** (rule 6), for one page of the comments
 answer saved as `$J/comments.json`, prints each comment's author and first
@@ -1160,6 +1260,7 @@ skill's [`work.md`](../skills/configure/references/work.md) and
 | `work.lifecycle.stages.inbox`, `work.lifecycle.stages.request`, `work.lifecycle.stages.spec`, `work.lifecycle.stages.plan`, `work.lifecycle.stages.implement` | the same stage under `work.stages`. A stage's `pre` and `prompt` keep their names, and a stage now also takes `post`. A bare list given as the stage (the oldest shape) becomes its `prompt`, and a `command` entry in that list becomes `generate`. An empty `prompt` list, an error in 2.x, now means "print nothing" |
 | `work.lifecycle.stages.verify` | `work.stages.qa`. Ask the user whether its bindings also belong to `review`, the engineers' check |
 | `work.lifecycle.stages.postmortem` | `work.stages.postmortem`, with `prompt` only: a side stage takes no `pre` or `post`, so a `pre` there is removed and listed in the plan |
+| an optional stage the 2.x configuration does not name (spec, plan, review, qa or postmortem) | **on in 3.0**, since every optional stage is on unless turned off: write `work.stages.<stage>.enabled: false` for each one the plan turns off. In Jira mode each flow stage left on needs its `status` |
 | `builtin: true` | `inherit: true`, which keeps the layer below (in `tcw-config.yaml`, TCW's own text) at that position in the list. At most one per list; `builtin` written in a file is an error |
 | `work.lifecycle.transitions.start` | `work.stages.implement`, its `pre` and `post` |
 | `work.lifecycle.transitions.submit` | the first stage after `implement` that is turned on (`review`, else `qa`), its `pre` and `post`: a submit hook guarded "the implementation is finished", which is what entering that stage means |
@@ -1174,7 +1275,7 @@ skill's [`work.md`](../skills/configure/references/work.md) and
 | `work.tracker.provider` | `work.backend: jira` |
 | `work.tracker.base-url` | `work.jira.site` |
 | `work.tracker.credentials` (`email-env`, `token-env`) | `work.jira.credentials`, with the same variable names |
-| `work.tracker.statuses.<status>` | `work.stages.<stage>.status`: `backlog` gives `request`'s, `active` gives `implement`'s, `completed` and `discarded` give their own. `review` gives its status to whichever 3.0 stage the user chooses: `qa`, where 2.x review items go, or `review`. `spec`, `plan`, `qa` and any other stage turned on need statuses of their own |
+| `work.tracker.statuses.<status>` | `work.stages.<stage>.status`: `backlog` gives `request`'s, `active` gives `implement`'s, `completed` and `discarded` give their own. `review` gives its status to whichever 3.0 stage the user chooses: `qa`, where 2.x review items go, or `review`. `spec`, `plan`, `qa` and any other stage turned on need statuses of their own. **A `discarded` given as a mapping by resolution** (`wontfix`, `duplicate`, `superseded`, each with its own status) has no 3.0 form, since `discarded` takes one status: the plan chooses that one, and says what becomes of tickets at the others (moved to the chosen status at step 6, or left, with each resolution kept in its discard comment). **Two stages may not share a status**: 3.0 refuses the configuration (`each stage needs its own status`), so a 2.x status that two 3.0 stages would take, such as `review`'s when both `review` and `qa` are on, means a new Jira status for one of them, made at step 2 and listed in the plan. **Names are compared exactly**: 2.x ignored capitals and runs of spaces, 3.0 does not, so each name is written as Jira spells it (step 3) |
 | `work.tracker.pre-backlog` | `work.stages.inbox.status`, the status it names; its transition name is dropped |
 | `work.tracker.inbox-query` | dropped when it only selects the project's inbox status, which 3.0 offers by default; otherwise `work.jira.inbox-query` |
 | `work.tracker.candidate-query` | removed: "what can I pick up" is `tcw work list --stage request --mine` |
@@ -1260,7 +1361,7 @@ that means the same, even where its name looks like another's.
 | `TCW_STATUS` in a stage's `pre` hook, run by 2.x's stage gate (the item's current status) | `TCW_FROM_STAGE`: a 3.0 stage's `pre` hook runs when an item is moved into that stage, from wherever it is |
 | `TCW_TRANSITION` (`start`, `submit`, `complete`, `rework`, `discard`, `auto-delete`, or a stage name) | `TCW_STAGE`, compared with the name of the stage being entered instead of the name of the move |
 | `TCW_NODE_ROOT` | `TCW_PROJECT_ROOT` |
-| `TCW_RESOLUTION` | removed: `TCW_STAGE` is `completed` or `discarded`, and a discard's reason is in `TCW_REASON` |
+| `TCW_RESOLUTION` | removed: `TCW_STAGE` is `completed` or `discarded`. A discard's reason is in no variable: it is in the comment the discard writes on the item (`tcw work show` lists it). `TCW_REASON` is set only on a move forced with `--force`, and `tcw work discard` does not force |
 | `TCW_ITEM_PATH` | `TCW_ITEM_PATH`; since the folder no longer moves, it is the same before and after a move |
 | (none) | new: `TCW_FORCED`, set to `1`, and `TCW_REASON`, on a move forced with `--force` |
 | (none) | new: `TCW_CONFIG_DIR`, the folder of the configuration file that declared the binding, which a relative `file:` path is read from |
@@ -1359,7 +1460,8 @@ unchanged.
 | `tcw capabilities list --local-only` | `tcw capabilities list --local`; the command also takes `--json` |
 | `tcw capabilities show`, `tcw capabilities search` | unchanged, and each takes `--json` |
 | `tcw capabilities add <path> <name> -s <status>` | `tcw capabilities add <path> [<name>] [--status]`, with the body on standard input |
-| `tcw capabilities path`, `tcw capabilities set`, `tcw capabilities reset`, `tcw capabilities rm` | unchanged |
+| `tcw capabilities path`, `tcw capabilities set`, `tcw capabilities rm` | unchanged |
+| `tcw capabilities reset` | unchanged in shape; it now refuses when anything is nested under the override (see [Behavior that changed](#behavior-that-changed)) |
 | `tcw capabilities extends <id>`, `tcw capabilities extends <id> --rm` | `tcw capabilities extends add <id>`, `tcw capabilities extends rm <id>` |
 | `tcw capabilities drift` | unchanged in shape; it reads completed items' declarations |
 | `tcw work inbox list\|path\|show\|accept` | removed. Filesystem mode: inbox items, `tcw work list --stage inbox`. Jira mode: `tcw work tickets list`, `tcw work tickets adopt <KEY>` |
@@ -1451,6 +1553,12 @@ names and arguments; `tcw work new --project` and `tcw config show` are new in
   code 2), naming `--stage`. An item created in another project starts where
   that project's intake puts it, so `--stage` cannot choose; like every other
   flag but `--priority`, it is refused with `--project` rather than ignored.
+- **`tcw capabilities reset` refuses when something is nested under the
+  override.** When a local capability or another override sits inside the
+  override's folder, `reset` exits with code 3, names what is nested, and
+  changes nothing. 2.x removed the override's folder with everything inside
+  it. Delete a nested local capability with `tcw capabilities rm`, or drop a
+  nested override with `tcw capabilities reset`, first.
 - **`tcw config show` refuses a value it would print wrongly.** It reads its
   own output back before printing it, and when a value would not read back
   as the same value, it prints nothing and exits with code 1, naming the
