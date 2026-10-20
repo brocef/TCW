@@ -11,44 +11,60 @@
 ## Work Planning and Implementation
 
 **All work in this repository should be tracked by the `tcw work` system!**
+This project keeps its items in Jira (the `TCW` project): each item's stage,
+request and comments are on its ticket, and its folder under `docs/work/`
+holds its other documents.
 
 The rules for *how* to do that work are bound to the lifecycle stages rather than
-written here. Run **`tcw work stage gate <stage> <work-item-slug>`** to check the
-stage may run, then **`tcw work stage prompt <stage> <work-item-slug>`**: it prints TCW's
-own instructions for that stage composed with this repo's, and it behaves
-identically under Claude and Codex.
+written here. Before working a stage, run
+**`tcw work stage prompt <stage> <item>`**: it prints TCW's own instructions for
+that stage composed with this repo's, and it behaves identically under Claude
+and Codex. When the stage's output is written, **`tcw work advance <item>`**
+moves the item to its next stage and runs the checks bound to that move;
+**`tcw work advance <item> --dry-run`** says whether the move would be allowed,
+and moves nothing.
 
 | Stage       | What this repo adds to TCW's own instructions                                                                                |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md)     |
-| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and refuses until the spec is written                        |
-| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and refuses until the spec and plan are written |
+| `spec`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) · the spec outline, [`spec.md`](docs/lifecycle/templates/spec.md) or, for an item tagged `bug`, [`spec-bug.md`](docs/lifecycle/templates/spec-bug.md) |
+| `plan`      | [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md) — and the move into `plan` refuses until the spec is written |
+| `implement` | [`docs/lifecycle/implementation.md`](docs/lifecycle/implementation.md) · [`docs/lifecycle/harness.md`](docs/lifecycle/harness.md) — and the move into `implement` refuses until the spec and plan are written |
+| `review`    | [`docs/lifecycle/review.md`](docs/lifecycle/review.md): the suite run as CI runs it, and the documentation entries, before an accepted verdict |
+| `completed` | the move into `completed` runs `tcw validate`, and refuses unless it passes                                                 |
 
-The bindings are in `tcw-config.yaml`; `tcw work lifecycle` lists them.
+Every stage's instructions start by asking for `git pull --ff-only`, and every
+move to a stage after `inbox` runs
+`docs/guide/examples/commit-item-after-move.sh`, which commits the item's
+folder when the move changed a file in it. The bindings are in
+`tcw-config.yaml`; `tcw work lifecycle` lists them.
+
+**Advance an item to `implement` before the first change to code.** As soon as
+its plan is written, `tcw work advance <item>` moves it from `plan` to
+`implement`, so that its ticket shows the work as in progress while it is
+being done.
 
 **Exception — do not drive the lifecycle with the `tcw` CLI while TCW's own code
 is being changed in the working tree.** The CLI you would be driving is the thing
 under modification, so its behavior is in flux: results are unreliable and it can
 hang (`tcw work new` once blocked inside a capture script). As soon as a session
-starts editing `tcw/`, drive the work system by editing its files directly, and say
-so rather than silently alternating between the two. Everything in `docs/work/` is
-plain files and can be maintained by hand: add an inbox entry or an item folder,
-write its artifacts, edit `state.yaml`, rename a folder to change a slug
-(`tcw work rename` does that and rewrites every reference, when it is not the
-code being changed), or move it to another status directory. A hand edit runs
-none of the lifecycle's gates or hooks — no `pre` checks, Definition of Done,
-commits or tracker sync — so do what those would have done yourself, and update
-every reference to a slug you rename.
+starts editing `tcw/`, work the lifecycle by hand, and say so rather than
+silently alternating between the two: move each ticket in Jira itself, to the
+status of the stage it is going to (`work.stages` in `tcw-config.yaml` gives
+each stage's status), and write the files in an item's folder directly. A hand
+move runs none of the checks or hooks bound to it — no `pre` checks and no
+commit — so do what they would have done yourself. A hand move that skips a
+stage whose document was never written is reported by `tcw validate --remote`
+as a stage ahead of its documents.
 
-**Closing the originating GitHub issue waits for publication.** `docs/work/dod.yaml`
-lists _"originating GitHub issue answered and closed, if the item came from one"_
-as a completion criterion, but an issue closed before the fix ships tells the
-reporter it is fixed when they still cannot install it. The order is: complete
-every work item → cut the version → push → then answer and close the issues.
-Complete the item anyway and record the deferral explicitly in
-`refined-outcome.md`, naming this sequencing as the reason; batch the version cut
-across a run of items rather than cutting one per item. Nothing is ever posted to
-an issue without the exact text being approved first.
+**Closing the originating GitHub issue waits for publication.** An item that
+came from a GitHub issue is not finished until the issue is answered and
+closed, but an issue closed before the fix ships tells the reporter it is fixed
+when they still cannot install it. The order is: complete every work item → cut
+the version → push → then answer and close the issues. Complete the item anyway,
+and say in its qa findings (on this project, a comment on its ticket) that the
+closing waits for publication, naming this sequencing as the reason; batch the
+version cut across a run of items rather than cutting one per item. Nothing is
+ever posted to an issue without the exact text being approved first.
 
 **The prime directive is the abstraction litmus test** — _"could a non-filesystem
 store implement this operation, even if less elegantly?"_ It governs every change
@@ -158,7 +174,7 @@ that drift from each other if nobody is told to look.
 
 The version string is **duplicated across 5 files** — a release bumps _all_ of them in lockstep, not just `pyproject.toml`. Keep them identical. `tests/test_plugin_manifests.py` guards that they agree.
 
-**Cut a release with `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`** — it bumps all 5 files, combines the entry files in `docs/{changelogs,release-notes}/upcoming/` into each folder's `v{version}.md` (merging sections by heading, deleting the entry files, keeping each folder's `README.md`), commits, and tags. It aborts on version drift or a missing `upcoming/` folder; it does **not** push (publishing stays a human step). Each change adds its own `upcoming/<work-item-slug>.md` entry files _before_ the cut — never edit another change's file. The 5 files:
+**Cut a release with `python scripts/cut_version.py <patch|minor|major|X.Y.Z>`** — it bumps all 5 files, combines the entry files in `docs/{changelogs,release-notes}/upcoming/` into each folder's `v{version}.md` (merging sections by heading, deleting the entry files, keeping each folder's `README.md`), commits, and tags. It aborts on version drift or a missing `upcoming/` folder; it does **not** push (publishing stays a human step). Each change adds its own `upcoming/<work-item-folder>.md` entry files, named by the item's folder name, _before_ the cut — never edit another change's file. The 5 files:
 
 1. `pyproject.toml` — `project.version`
 2. `tcw/__init__.py` — `__version__`

@@ -1418,3 +1418,75 @@ that read under `docs/work` from the repository root (as at step 6),
 `tests/test_documentation_sync_wiring.py` and the standing guard files, 25
 files run in sorted order: 1544 passed, 29 skipped.
 `pytest --collect-only -q` collected 5275 tests.
+
+### Step 10: Review the project's own files
+
+As the approved plan's "The project's own files" and "Capability records"
+say:
+
+- **`AGENTS.md`** (`CLAUDE.md` is a symbolic link to it, so it was edited
+  once). "Work Planning and Implementation" rewritten for 3.0 (spec Design 7
+  and 8.6): it says the items are kept in Jira; `tcw work stage prompt` before
+  a stage, `tcw work advance` after it, and `tcw work advance --dry-run`
+  instead of `tcw work stage gate`; the bindings table gains `review`
+  (`docs/lifecycle/review.md`) and `completed` (`tcw validate`), and its
+  `spec` row names the two outlines; a paragraph names the pull text and the
+  commit hook; a new paragraph says an item is advanced to `implement` before
+  the first change to code (what TCW-75 removed from `implementation.md`); the
+  exception now says to move tickets by hand in Jira and edit item folders
+  directly while `tcw/` is being changed, and that `tcw validate --remote`
+  reports a hand move that skips a stage's document; the GitHub-issue
+  paragraph no longer names `dod.yaml` or `refined-outcome.md`, and records
+  the deferral in the item's qa findings, a comment on its ticket. Versioning:
+  `upcoming/<work-item-slug>.md` became `upcoming/<work-item-folder>.md`. The
+  worktree section and "Measuring the skill layer" are untouched
+  (`notes-from-tcw-74.md` items 1 and 3).
+- **`.gitignore`**: the comment `# Discarded work: …`, `docs/work/discarded/*`
+  and `!docs/work/discarded/.gitkeep` removed; `/tcw-config.local.yaml` added
+  under a comment line.
+- **Capability records**: the `Planning doc:` line removed from the 13
+  records the plan names (no other line changed); no record has `Tracker:`.
+- **`tests/doc_allowance.py`**: `tcw work stage gate` removed from
+  `REMOVED_COMMANDS` (spec amendment 23), which is now an empty tuple, and its
+  comments say so. **Not foreseen by the plan:**
+  `tests/test_docs_describe_3_0.py::test_the_allowance_check_sees_a_removed_command`
+  read that entry from the list, so it failed once the list was empty
+  (`assert 'tcw work stage gate' in []`). It now gives the check the entry
+  with `monkeypatch`, as its neighbour
+  `test_the_allowance_check_sees_a_removed_flag_and_a_refused_key` already
+  does for the other lists. Mutation: `allowance_names` made to skip
+  `REMOVED_COMMANDS` → the test fails with the same assertion; restored → it
+  passes. Task B18 deletes the allowance and this test with it.
+- **Already clean**, as the plan expected: `scripts/require_artifact.py`,
+  both templates, `docs/lifecycle/review.md`, `docs/procedures/create-work.md`.
+
+**Other text that relies on removed behavior**, pointed out for the owner
+(not changed, since the plan does not cover it; step 12 proposes it):
+`AGENTS.md:5`, "**Live status & pending work:** `tcw work` — this repo
+dogfoods its own work component (`docs/work/`)": in 3.0 a bare `tcw work`
+prints a usage error, and in Jira mode the board is the Jira project, listed
+by `tcw work list`.
+
+**Check**, over the plan's `<hook files>`:
+`grep -nE 'TCW_(STATUS|TRANSITION|NODE_ROOT|RESOLUTION)\b' <hook files>`
+printed nothing (exit 1);
+`grep -rlnE '^(Planning doc|Tracker):' docs/capabilities` printed nothing
+(exit 1); `grep -nE 'docs/work/(completed|discarded)' .gitignore` printed
+nothing (exit 1); `grep -cx '/tcw-config.local.yaml' .gitignore` printed `1`.
+A wider search of the hook files for `state.yaml`, `dod.yaml`, `Definition of
+Done`, `refined-outcome`, `stage gate`, `--worktree`, the 2.x verbs, status
+folders, `claim`, `retain` and `auto-commit` found only the ordinary word
+"claim" (the templates' "A claim recalled …", `AGENTS.md`'s "what it claims
+to observe").
+
+Tests: step 9's files; those naming `doc_allowance`, `AGENTS.md`,
+`.gitignore` or `Planning doc` (`tests/config/test_personal_validate_init.py`,
+`tests/test_capabilities.py`, `tests/test_config_edit_writers.py`,
+`tests/test_eval_files_changed.py`, `tests/test_smoke.py`,
+`tests/test_worktree_sibling_nodes.py`, `tests/work/test_drift_work.py`,
+`tests/work/test_init_provision.py`, `tests/work/test_open.py`, beside those
+already in step 9's list); and the three code tests of Task A1
+(`tests/work/test_removed_commands.py`, `tests/work/test_no_2x_names.py`,
+`tests/work/test_cli_config.py`), 36 files in sorted order: 1773 passed, 44
+skipped (before the test fix: 1 failed, the one above).
+`pytest --collect-only -q` collected 5275 tests.

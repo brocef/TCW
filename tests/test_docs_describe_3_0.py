@@ -297,7 +297,10 @@ def test_no_owned_document_names_an_allowance_entry(rel):
     assert not named, f"{rel} names entries of tests/doc_allowance.py: {named}"
 
 
-def test_the_allowance_check_sees_a_removed_command():
+def test_the_allowance_check_sees_a_removed_command(monkeypatch):
+    # The command list is empty since `AGENTS.md` was rewritten, so the check
+    # is shown one to find.
+    monkeypatch.setitem(globals(), "REMOVED_COMMANDS", ("tcw work stage gate",))
     assert "tcw work stage gate" in allowance_names("Run `tcw work stage gate <slug>`.")
 
 

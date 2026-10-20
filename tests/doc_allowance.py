@@ -11,17 +11,16 @@ really be gone from the CLI, and every key must really be refused, so an entry
 cannot hide a new mistake.
 
 TCW-71 and TCW-73 added their own removals; TCW-74 and TCW-75 shrank the
-lists as they rewrote the text. What is left is named only by files other items
-rewrite: `AGENTS.md` outside its worktree section, which is TCW-76's. A list emptied entirely stays as an empty tuple, so its importers keep
-working. **TCW-76 requires every list to be empty before 3.0.0 is cut.**
+lists as they rewrote the text, and TCW-76 removed the last entry when it
+rewrote `AGENTS.md`. A list emptied entirely stays as an empty tuple, so its
+importers keep working. **TCW-76 requires every list to be empty before 3.0.0
+is cut.**
 """
 
 # `tcw work` commands TCW-70 and TCW-73 removed. A documented invocation
-# starting with one of these is not checked. The one left is still named by a
-# file TCW-76 rewrites: `stage gate` by `AGENTS.md`.
-REMOVED_COMMANDS = (
-    "tcw work stage gate",
-)
+# starting with one of these is not checked. TCW-76 rewrote `AGENTS.md`, the
+# last document naming one.
+REMOVED_COMMANDS: tuple[str, ...] = ()
 
 # Flags removed from commands that survive, as (command, flag). A documented
 # invocation of that command is not checked for that flag.

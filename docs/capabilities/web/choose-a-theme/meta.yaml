@@ -2,4 +2,3 @@ id: cap-cd936d
 name: Choose the web interface theme
 Status: Supported
 Feature: local-web-app
-Planning doc: 2026-07-22-add-theme-preferences-and-migrate-the-web-ui-to-radix-themes

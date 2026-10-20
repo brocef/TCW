@@ -25,9 +25,8 @@ venv/
 logs/
 .worktrees/
 
-# Discarded work: kept on disk and in history, out of the tracked tree.
-docs/work/discarded/*
-!docs/work/discarded/.gitkeep
+# Personal TCW configuration, never committed.
+/tcw-config.local.yaml
 
 # Working directory the fixture capture scripts build their throwaway nodes in.
 tests/fixtures/*/_scratch/
