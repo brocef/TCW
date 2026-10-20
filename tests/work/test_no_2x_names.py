@@ -47,10 +47,21 @@ def test_the_tracker_package_is_gone():
     """`import tcw.tracker` fails in an installed tree. Asked of this package
     rather than of the import alone: with a second editable install of another
     checkout on the path (a worktree beside the primary checkout), that
-    install's import hook can still answer for `tcw.tracker`."""
+    install's import hook can still answer for `tcw.tracker`. A checkout that
+    git moved past the package's deletion can keep its ignored `__pycache__/`,
+    which Python then reports as a package with no file; that folder holds no
+    source, so it is not the package coming back."""
     assert not (PACKAGE / "tracker").exists()
     try:
         spec = importlib.util.find_spec("tcw.tracker")
     except ModuleNotFoundError:
         return
-    assert spec is None or PACKAGE not in Path(spec.origin).resolve().parents
+    if spec is None:
+        return
+    if spec.origin is None:
+        sources = [p for folder in spec.submodule_search_locations
+                   for p in Path(folder).rglob("*.py")
+                   if "__pycache__" not in p.parts]
+        assert not sources, f"tcw.tracker still has source: {sources}"
+        return
+    assert PACKAGE not in Path(spec.origin).resolve().parents
