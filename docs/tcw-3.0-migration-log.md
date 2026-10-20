@@ -1877,3 +1877,31 @@ Mutations, each restored afterwards:
 Tests: the four edited test files, the three code tests of Task A1, the new
 `tests/test_repo_lifecycle.py` and the standing guard files, 15 files in
 sorted order: 1229 passed. `pytest --collect-only -q` collected 5253 tests.
+
+### Task B19: this item's release notes and changelog
+
+Two entry files, named by this item's folder name after step 6,
+`TCW-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first.md`,
+under `docs/release-notes/upcoming/` and `docs/changelogs/upcoming/`, each
+starting at its first `##` with no text before it (criterion 29):
+
+- release notes: `## Upgrading`, how a 2.8 project moves to 3.0.0 with a
+  link to the guide (`../migration-guide-2.8-to-3.0.0.md`), and that TCW's
+  own repository was moved first by following it;
+- changelog: `## Added` (the guide, `docs/lifecycle/review.md`, this log,
+  and the new tests), `## Changed` (TCW's own configuration and board on
+  3.0, `AGENTS.md`, `.gitignore` and the `Planning doc:` lines,
+  `scripts/require_artifact.py`, the spec templates and `create-work.md`)
+  and `## Removed` (the documentation allowance).
+
+Mutation: a line of text put before the changelog entry's first `##`:
+`test_an_entry_starts_at_a_level_two_heading[changelogs/TCW-76-…]` failed;
+restored from a copy.
+
+Tests: `tests/test_upcoming_entries.py`, `tests/test_cut_version.py`
+(including `test_the_cut_puts_the_introduction_first`, which combines every
+release-notes entry), `tests/test_documentation_config.py`,
+`tests/test_documented_cli_surface.py` and `tests/test_shipped_text.py` (which
+read every Markdown file) and the standing guard files, 12 files in sorted
+order: 860 passed, 1 skipped. `pytest --collect-only -q` collected 5255
+tests.
