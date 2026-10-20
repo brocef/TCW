@@ -1905,3 +1905,411 @@ release-notes entry), `tests/test_documentation_config.py`,
 read every Markdown file) and the standing guard files, 12 files in sorted
 order: 860 passed, 1 skipped. `pytest --collect-only -q` collected 5255
 tests.
+
+### Task B20: mutation record, full suite, drift, and the evidence
+
+Run on 2026-10-20 from this worktree, with the private environment
+`tcw76/venv` (this worktree's 3.0 code) first on `PATH`.
+
+#### The stale prompt fixture
+
+The first full run (below) failed
+`tests/test_prompt_fallback.py::test_an_unconfigured_project_sees_the_recorded_bytes[review]`.
+The fixture's own capture script,
+`python tests/fixtures/prompt_fallback/capture.py <scratch out> <scratch>`,
+run with `import tcw` resolving to this worktree, was compared stage by stage
+with the recorded `tests/fixtures/prompt_fallback/unconfigured.json`: the
+`argv`, exit code and `stderr` of all eight stages, and the `stdout` of seven,
+are identical. The one difference is in `review`'s `stdout`:
+
+```diff
+--- recorded
++++ current
+@@ -36,2 +36,7 @@
+ 
++**Who reviews.** A reviewer that did not write the code: a separate agent
++where you can start one, given this stage's instructions and able only to read.
++Where you cannot, read the change afresh against the spec in this session, and
++say plainly in the round that the author reviewed it.
++
+ ## Steps
+```
+
+That paragraph is TCW-74's: `git log -S'**Who reviews.**' --
+tcw/work/prompts/review.md` names only `e411e681` ("TCW-74 review fixes"),
+after the fixture's last capture (`02124618`, TCW-74 task 10). So the bytes
+were stale, not a regression. The fixture was re-recorded the test's own
+way, `capture.py` writing into `tests/fixtures/prompt_fallback/` (a scratch
+folder for the project), and the result is byte-identical to the comparison
+capture. The test's docstring now says it was re-captured by TCW-76 for that
+paragraph only. Nothing under `tcw/`, `skills/`, `agents/` or `web/` changed.
+
+Mutations: a line appended to `tcw/work/prompts/review.md` →
+`…recorded_bytes[review]` failed; `seven sections` changed to `eight
+sections` in `tcw/work/prompts/spec.md` → `…recorded_bytes[spec]` failed.
+Both restored with `git checkout`. `tests/test_prompt_fallback.py` after the
+re-capture: 10 passed.
+
+#### The full suite (criterion 21)
+
+`pytest --collect-only -q`: clean, 5255 tests.
+
+Run 1, bare `pytest` from this worktree at `05c4d6b6` (before the fixture
+fix): **3 failed, 5140 passed, 112 skipped** in 845.61s. The failures:
+
+- `tests/test_prompt_fallback.py::test_an_unconfigured_project_sees_the_recorded_bytes[review]`:
+  the stale fixture above.
+- `tests/test_check_versions.py::test_a_hanging_cli_is_abandoned_silently[hangs]`
+  and `[hangs and ignores TERM]`: "the check waited 5.7s on a hanging tcw"
+  against the test's 4-second limit. Rerun on its own three times, the file
+  passed each time (36 passed in 11.6s, 11.0s and 17.2s). The test cannot see
+  the migration's environment: it runs `scripts/check_versions.sh` with
+  `env={"PATH": "<stub bin>:<system PATH>"}` and nothing else, so neither the
+  Jira credentials nor this environment's `tcw` reach it, and neither the
+  script nor the test changed since the freeze commit. The script's 3-second
+  deadline is 30 rounds of `sleep 0.1` plus a `kill -0`, so it is counted in
+  rounds, not measured: when the machine is busy, each round takes longer
+  and the deadline stretches. During run 1 this session was also running
+  the criterion 10 `--help` commands, the Jira reads and the fixture capture
+  beside the suite. Recorded as **timing under load, not a migration
+  failure**; the round-counted deadline belongs to whoever owns
+  `scripts/check_versions.sh`, not to this item.
+
+Run 2, bare `pytest` from this worktree at `05c4d6b6` with the re-recorded
+fixture and the docstring (this commit's test changes), with nothing else
+running: **5143 passed, 112 skipped** in 510.52s, exit 0.
+
+#### Every mutation the plan names, re-run once
+
+Each applied, its test files run, and the file restored (checked against
+`git status --porcelain` after each). Every one went red for the stated
+reason:
+
+```text
+## A1: "tcw work list" added to REMOVED_2X_COMMANDS
+  1 failed, 21 passed in 0.58s
+  FAILED tests/work/test_removed_commands.py::test_a_removed_command_is_unknown[tcw work list]
+## A2: the emptiness test dropped from require_artifact.py
+  3 failed, 4 passed in 1.50s
+  FAILED tests/test_require_artifact.py::test_no_spec_refuses_the_move - Assert...
+  FAILED tests/test_require_artifact.py::test_an_unwritten_spec_refuses_the_move[empty]
+  FAILED tests/test_require_artifact.py::test_an_unwritten_spec_refuses_the_move[white-space]
+## A4: the renames.yaml row deleted
+  1 failed, 248 passed in 11.09s
+  FAILED tests/test_migration_guide.py::test_every_2x_name_is_in_a_mapping_rows_first_column[renames.yaml]
+## A4: TCW_FROM_STAGE and TCW_STAGE swapped in the TCW_STATUS rows
+  2 failed, 247 passed in 5.58s
+  FAILED tests/test_migration_guide.py::test_tcw_status_in_a_pre_hook_is_the_stage_left
+  FAILED tests/test_migration_guide.py::test_tcw_status_in_a_post_hook_is_the_stage_entered
+## A4: a link to docs/guide/jira.md#no-such-heading added
+  1 failed, 341 passed in 7.16s
+  FAILED tests/test_migration_guide.py::test_every_link_in_the_guide_resolves
+## A4: the guide file renamed
+  1 failed, 92 passed in 1.69s
+  FAILED tests/test_docs_describe_3_0.py::test_every_link_in_an_owned_document_resolves[README.md]
+## A5: step 4's **Check:** removed
+  3 failed, 246 passed in 5.61s
+  FAILED tests/test_migration_guide.py::test_every_step_has_one_check[4] - Asse...
+  FAILED tests/test_migration_guide.py::test_every_check_but_step_2s_has_a_command_and_its_output[4]
+  FAILED tests/test_migration_guide.py::test_no_check_before_step_8_needs_the_inbox_gone[4]
+## A5: **Stop and ask** added to step 5
+  1 failed, 248 passed in 5.54s
+  FAILED tests/test_migration_guide.py::test_stop_and_ask_is_in_steps_1_2_and_12_only
+## A5: !`tcw validate` added
+  1 failed, 248 passed in 5.51s
+  FAILED tests/test_migration_guide.py::test_no_shell_escape_and_no_slash_command
+## A5: `tcw work start x` added to a step
+  1 failed, 248 passed in 5.53s
+  FAILED tests/test_migration_guide.py::test_every_command_outside_a_first_column_parses_on_3_0
+## A5: ## Rules moved below the first mapping table
+  2 failed, 247 passed in 5.55s
+  FAILED tests/test_migration_guide.py::test_the_first_two_sections_are_the_prerequisites_and_the_rules
+  FAILED tests/test_migration_guide.py::test_the_prerequisites_and_rules_come_before_any_mapping_table
+## A6: ~/.codex/AGENTS.md removed from step 12
+  1 failed, 248 passed in 5.53s
+  FAILED tests/test_migration_guide.py::test_step_12_names_each_place[~/.codex/AGENTS.md]
+## A6: step 12's **Stop and ask** removed
+  2 failed, 247 passed in 5.62s
+  FAILED tests/test_migration_guide.py::test_stop_and_ask_is_in_steps_1_2_and_12_only
+  FAILED tests/test_migration_guide.py::test_step_12_reads_every_file_the_broad_search_prints_in_full
+## A6: verifier removed from WORDS and NAMES
+  1 failed, 248 passed in 5.55s
+  FAILED tests/test_migration_guide.py::test_every_first_column_name_is_found_by_step_12s_searches
+## A6: tcw added to NAMES
+  2 failed, 247 passed in 5.51s
+  FAILED tests/test_migration_guide.py::test_names_holds_no_bare_tcw - Assertio...
+  FAILED tests/test_migration_guide.py::test_every_exception_is_a_first_column_name_the_searches_miss
+## A6: "in full" removed from the files-to-read instruction
+  1 failed, 248 passed in 5.52s
+  FAILED tests/test_migration_guide.py::test_step_12_reads_every_file_the_broad_search_prints_in_full
+## A10 (substitute): `tcw work init` named in a capability description A10 rewrote
+  1 failed, 435 passed in 5.29s
+  FAILED tests/test_documented_cli_surface.py::test_documented_verbs_and_flags_exist[docs/capabilities/work/configure-the-work-store-location/description.md]
+## B17: a template heading renamed
+  1 failed, 7 passed in 0.07s
+  FAILED tests/test_repo_lifecycle.py::test_a_template_carries_the_seven_spec_sections[docs/lifecycle/templates/spec.md]
+## B17: Tracker-Change restored
+  1 failed, 7 passed in 0.07s
+  FAILED tests/test_repo_lifecycle.py::test_the_documentation_entries_are_those_of_design_6_4
+## B18: tests/doc_allowance.py recreated
+  1 failed, 248 passed in 5.53s
+  FAILED tests/test_migration_guide.py::test_the_documentation_allowance_is_gone
+## B19: text before the changelog entry's first ##
+  1 failed, 21 passed in 0.04s
+  FAILED tests/test_upcoming_entries.py::test_an_entry_starts_at_a_level_two_heading[changelogs/TCW-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first.md]
+## B20: a line added to the review prompt
+  1 failed, 9 passed in 1.37s
+  FAILED tests/test_prompt_fallback.py::test_an_unconfigured_project_sees_the_recorded_bytes[review]
+```
+
+Notes on the list:
+
+- A2's mutation also fails `test_no_spec_refuses_the_move`, since a missing
+  file is read as empty text; the empty and white-space-only cases fail as
+  the plan says.
+- A10's own mutation (an entry put back into `REMOVED_COMMANDS`, failing
+  `test_an_entry_is_still_named_by_some_live_document`) cannot be re-run:
+  Task B18 deleted the module and that test. In its place, the thing A10
+  protected: `tcw work init` named again in a description A10 rewrote now
+  fails `test_documented_verbs_and_flags_exist` for that file outright.
+- Step 10's mutation (`allowance_names` made to skip a list) went with
+  `allowance_names` at Task B18, and is not re-run.
+- B17, B18 and B19 also ran theirs within their own tasks above.
+
+#### Drift (criterion 22)
+
+`tcw capabilities drift; echo "exit $?"` printed nothing and `exit 0`. The
+line the plan expected, `work/customize-the-definition-of-done` from the
+completed TCW-78, is gone because D9 removed it from TCW-78's
+`capabilities.yaml` at step 7, which now declares only
+`work/read-the-documentation-gate-for-a-change`, `skills/documentation-sync`
+and `skills/extras-autonomous-work` as `changed:`.
+
+#### Jira (criteria 24 and 30)
+
+Read through `jira-write.sh GET` only; no write.
+
+Criterion 24, `GET /rest/api/3/workflow/search?workflowName=TCW%20work&expand=transitions,statuses`
+(`HTTP 200`, one workflow, `TCW work`): its nine statuses are `Triage`,
+`To Do`, `Specifying`, `Planning`, `In Progress`, `In Review`, `In QA`,
+`Done` and `Won't Do`. Its transitions are `Create` (id 1, initial, to
+`Triage`) and nine global ones, ids 101 to 181, one into each status. Non-
+initial transitions into each status: 1 each.
+
+Criterion 30, `GET /rest/api/2/issue/<key>?fields=status,comment,summary` on
+each ticket of the approved prune list (all `HTTP 200`), with each folder's
+`item.yaml` and `tcw work list --all --json` / `tcw work list --json`
+(both exit 0):
+
+| Ticket | Status | Comments | With `subject removed by TCW 3.0 (TCW-68)` | Folder, stage | In open list |
+| --- | --- | --- | --- | --- | --- |
+| TCW-33 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-10 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-40 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-26 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-54 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-79 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-80 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-81 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-82 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-83 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-86 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-89 | `Won't Do` | 1 | 1 | yes, `discarded` | no |
+| TCW-88 | `Done` | 1 | 0 (its one comment names TCW-68: `Delivered by the TCW 3.0 redesign (TCW-68)`) | yes, `completed` | no |
+
+Every folder's `item.yaml` is the one line naming its own ticket. The prune
+list had no inbox entry. **One wording difference, for the review:** the
+criterion asks for a comment *beginning with* `subject removed by TCW 3.0
+(TCW-68)`, but each of the twelve comments, as the approved plan worded it
+(step 6, pass 4), begins `Closed at the migration to TCW 3.0 as discarded`,
+with the phrase on its third line. Each ticket has exactly one comment, and
+exactly one containing the phrase, so a repeated post would still show; no
+comment begins with the phrase.
+
+#### Criterion 10 over the final guide
+
+Every `tcw` command the guide names, from `tests/test_migration_guide.py`'s
+own list of invocations outside a mapping table's first column, plus the
+3.0 command each first-column span resolves to, resolved against the 3.0
+parser's command tree and run with `--help` on this worktree's CLI (a stage
+name after `tcw work stage prompt` kept, as at A7):
+
+```text
+tcw work advance --help: exit 0
+tcw work discard --help: exit 0
+tcw validate --help: exit 0
+tcw --help: exit 0
+tcw work --help: exit 0
+tcw provision --help: exit 0
+tcw init --help: exit 0
+tcw work rename --help: exit 0
+tcw work list --help: exit 0
+tcw work show --help: exit 0
+tcw work path --help: exit 0
+tcw work stage prompt review --help: exit 0
+tcw work stage prompt qa --help: exit 0
+tcw work stage prompt postmortem --help: exit 0
+tcw work stage prompt --help: exit 0
+tcw projects list --help: exit 0
+tcw taxonomy show --help: exit 0
+tcw capabilities show --help: exit 0
+tcw taxonomy add --help: exit 0
+tcw capabilities list --help: exit 0
+tcw capabilities add --help: exit 0
+tcw capabilities extends add --help: exit 0
+tcw capabilities extends rm --help: exit 0
+tcw work tickets list --help: exit 0
+tcw work tickets adopt --help: exit 0
+tcw work new --help: exit 0
+tcw work edit --help: exit 0
+tcw work lifecycle --help: exit 0
+tcw work procedure --help: exit 0
+tcw config show --help: exit 0
+tcw work comment --help: exit 0
+tcw serve --help: exit 0
+tcw taxonomy --help: exit 0
+tcw capabilities --help: exit 0
+tcw taxonomy list --help: exit 0
+tcw taxonomy search --help: exit 0
+tcw taxonomy path --help: exit 0
+tcw taxonomy rm --help: exit 0
+tcw taxonomy extends add --help: exit 0
+tcw taxonomy extends rm --help: exit 0
+tcw capabilities search --help: exit 0
+tcw capabilities path --help: exit 0
+tcw capabilities set --help: exit 0
+tcw capabilities reset --help: exit 0
+tcw capabilities rm --help: exit 0
+tcw capabilities extends --help: exit 0
+tcw capabilities drift --help: exit 0
+tcw work stage --help: exit 0
+tcw work docs --help: exit 0
+tcw work tags --help: exit 0
+-- 50 commands; 89 spans outside a first column, 61 more only in first columns
+tcw init work --help: exit 0   (the guide names `tcw init work`, where `work` is the positional axis of `tcw init`; run by hand)
+```
+
+All 51 exit 0. The 2.x commands in mapping tables' first columns are not 3.0
+commands and are not run.
+
+#### Validate (criterion 15)
+
+`tcw validate`: `0 errors, 0 warnings, 0 unresolved`, exit 0.
+`tcw validate --remote`: `0 errors, 1 warning, 0 unresolved`, exit 0; the
+warning is the `Sub-task` edit screen, kept at step 11 with its reason.
+
+#### Documentation sync
+
+The `documentation-sync` skill run over the item's whole difference on this
+branch, `git diff epic/tcw-3.0...HEAD`: `.gitignore`, `AGENTS.md`, 13
+capability `meta.yaml` files, the guide, this log, `tcw-config.yaml`, the
+tests, the two upcoming entries, and `docs/work/`. Nothing under `tcw/`,
+`skills/`, `agents/` or `web/` (`git diff --name-only` over those prints
+nothing). TCW-76's Part A commits, merged into `epic/tcw-3.0` before the
+freeze, were answered by the plan's own Documentation Sync table. Each entry
+from `tcw work docs`:
+
+- `README.md` [Public-API]: **does not fire.** No command, flag, output or
+  behavior of `tcw` changed. The README's link to the guide is TCW-75's and
+  resolves (`tests/test_docs_describe_3_0.py`).
+- `docs/guide/jira.md` [Jira-Change]: **does not fire.** No command's effect
+  on a ticket, no `work.jira` key, and nothing about `tickets list|adopt`
+  changed; TCW's own statuses are its configuration, not the product's.
+- `docs/guide/<topic>.md` [Guide-Topic-Change]: **does not fire.** The guide
+  this item changed is not under `docs/guide/`; no setting moved and no
+  command writes anything new. `git grep` over `README.md`, `docs/guide`,
+  `skills`, `docs/lifecycle` and `docs/procedures` finds no mention of what
+  this branch removed (`Tracker-Change`, the allowance module,
+  `docs/work/discarded`, `upcoming/<slug>`, `Planning doc`).
+- `docs/release-notes/upcoming/<folder>.md` [Public-API]: **fires** for the
+  item as a whole (the guide is new user-facing material). Answered by Task
+  B19's entry.
+- `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change]: **fires**
+  (configuration, tests). Answered by Task B19's entry, which also covers
+  the re-recorded fixture as a test change; no edit needed.
+- `skills/<component>/SKILL.md` [Skill-Driven-Component]: **does not fire.**
+  No component changed.
+- `skills/configure/references/<document>.md` [Configuration-Key-Change]:
+  **does not fire.** No key was added, removed or changed meaning; this
+  branch changed TCW's own values only.
+
+No documentation edit was needed.
+
+#### Evidence, one line per criterion
+
+1. The guide opens with `## Before you start` and `## Rules` as its first two
+   sections: `test_the_first_two_sections_are_the_prerequisites_and_the_rules`
+   passes, and A5's mutation turns it red (above).
+2. Steps 0 to 12 each with one check: `test_every_step_has_one_check` and its
+   companions pass; A5's step 4 mutation turns three red.
+3. Stops only at steps 1, 2 and 12: `test_stop_and_ask_is_in_steps_1_2_and_12_only`
+   passes; both stop mutations turn it red.
+4. Every 2.x name in a first column: `test_every_2x_name_is_in_a_mapping_rows_first_column`
+   passes; the `renames.yaml` mutation turns it red.
+5. Hook variables by meaning: the two `TCW_STATUS` tests pass; the swap turns
+   both red.
+6. The `artifacts` row and status translation: `tests/test_migration_guide.py`
+   passes in the full run.
+7. 2.x behavior with no key: the guide's `## 2.x behavior that had no key`;
+   its test passes in the full run.
+8. Verdict rounds: the mapping rows; tested, and rehearsed at A7 (TCW-76's
+   implement round, "Rehearsal").
+9. No `` !` ``, no slash command: `test_no_shell_escape_and_no_slash_command`
+   passes; the mutation turns it red.
+10. Every command the guide names exits 0 with `--help`: the 51 lines above.
+11. `find docs/work -mindepth 1 -maxdepth 1 -not -type d` prints nothing, and
+    all 33 directories match `^TCW-[0-9]+-[a-z0-9-]+$`.
+12. Every `item.yaml` is one line, `ticket: https://proposit.atlassian.net/browse/<KEY>`,
+    `<KEY>` its folder's prefix: checked over all 33, none differs.
+13. The `find` of criterion 13 prints nothing, and every `spec.md` and
+    `plan.md` sits at `<folder>/spec/spec.md` or `<folder>/plan/plan.md`.
+14. `tcw work list --all --json` lists 33 items: 16 `request`, 1 `plan`, 1
+    `implement`, 3 `completed`, 12 `discarded`, as step 11 compared with the
+    approved plan.
+15. `tcw validate` and `tcw validate --remote` exit 0 (above); the one
+    warning is recorded with its reason.
+16. `tests/test_repo_lifecycle.py` (Task B17) passes: the configuration and
+    its `work.jira` block parse with no problems.
+17. `grep -rln '^Planning doc:' docs/capabilities` prints nothing.
+18. `.gitignore` has no line containing `docs/work/discarded`, and line 29 is
+    `/tcw-config.local.yaml`.
+19. `readlink CLAUDE.md` prints `AGENTS.md`; `AGENTS.md` names none of
+    `dod.yaml`, `refined-outcome.md`, `stage gate`, `<work-item-slug>`; neither
+    `upcoming/README.md` names `<work-item-slug>`.
+20. `tests/test_require_artifact.py` passes; the script names neither `--json`
+    nor `TCW_NODE_ROOT`; A2's mutation turns it red.
+21. `tests/test_repo_lifecycle.py` passes, and bare `pytest` passed (run 2:
+    5143 passed, 112 skipped).
+22. `tcw capabilities drift` prints nothing (above).
+23. Not yet: checked at Task B21 on the merge. On this branch,
+    `git diff --name-only epic/tcw-3.0...HEAD -- tcw skills agents web`
+    prints nothing.
+24. This log holds the run's start date and freeze commit, the approved plan
+    under `## Approved plan`, every Jira write, every amendment to the guide;
+    the Jira checklist is in TCW-76's implement round; the workflow `GET`
+    above shows one non-initial transition into each of the nine statuses.
+25. The rehearsal is in TCW-76's implement round (`## Rehearsal`), with its
+    2.8 commands and a clean `tcw validate`.
+26. Not yet: TCW-76's first 3.0 move is Task B21.
+27. The eight slices' `graveyard.yaml` locations and `git cat-file -e` results
+    are in this log under step 0, "Finished slices".
+28. `tests/doc_allowance.py` and `tests/test_doc_allowance.py` are gone and no
+    file under `tests/` names the module (`test_the_documentation_allowance_is_gone`);
+    the three code tests read `REMOVED_2X_COMMANDS`, 21 entries;
+    `tests/test_documented_cli_surface.py` passes without the allowance;
+    TCW-75's link test exempts nothing; bare `pytest` passes.
+29. Both entries are named
+    `TCW-76-migration-guide-from-2-x-to-3-0-0-and-migrate-the-tcw-repository-first.md`
+    and start at `##`; `tests/test_upcoming_entries.py` passes.
+30. Every pruned ticket read (table above): 12 at `Won't Do` and TCW-88 at
+    `Done`, each with one comment, folders at `discarded` and `completed`,
+    none in the open list. The "beginning with" wording difference is noted
+    above.
+31. The step 6 rerun, its JQL `updated >=` search and its skips are recorded
+    under step 6, "The rerun (criterion 31)".
+32. The guide's step 12 tests pass (A6's five mutations each turn one red),
+    and `## Agent instructions` above lists every finding with the owner's
+    decision; the step's check printed nothing.
+
+Tests: the full suite (run 2 above). `pytest --collect-only -q` collected 5255
+tests.

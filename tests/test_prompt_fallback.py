@@ -17,6 +17,10 @@ added the generated footer. That moved the text deliberately, so the 2.x bytes
 would have asserted something false. A prompt rewrite is the one reason to
 touch these bytes; a *substitution* changing them is the regression, and
 re-baselining to hide that is what this file exists to prevent.
+
+**Re-captured again by TCW-76**, for one paragraph only: TCW-74's review fixes
+(`e411e681`) added "Who reviews" to the review prompt after the capture, and
+the recorded bytes were never brought up to it. Nothing else moved.
 """
 
 import json
