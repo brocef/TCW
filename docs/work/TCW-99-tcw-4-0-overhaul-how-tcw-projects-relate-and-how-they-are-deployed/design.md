@@ -1,29 +1,32 @@
-# TCW-99 design: how TCW projects relate (TCW 4.0)
+# TCW-99 design: TCW 4.0 project relationships and deployments
 
 The working design for TCW-99. The ticket holds the vision and objective;
 this document holds the technical design, every decision taken, and the
 questions still open. It is updated as decisions are made, and the spec
 stage builds on it.
 
-Design the *ideal* way TCW projects relate to each other, ignoring how TCW
-works today, then work backwards to what has to change. Agreed with the
-user in design sessions on 2026-10-20 and 2026-10-21. It began from TCW-98
-(show a project's descendants as well as its ancestors, in every command
-and in `tcw serve`), which this design contains; TCW-98 was discarded as
-replaced by TCW-99.
+TCW 4.0 is designed from first principles as the ideal version for the
+people who will use it. Earlier versions bind nothing: where the ideal
+differs from how TCW works now, the ideal wins, and 4.0 makes a clean
+break. The section "Coming from 3.x" records how TCW works now only so
+that `tcw migrate` can move the few existing projects over. Agreed with
+the user in design sessions on 2026-10-20 and 2026-10-21; it contains
+TCW-98 (seeing a project's descendants as well as its ancestors), which
+was discarded in its favour.
 
 This is far larger than one piece of work. It is split into child items
 (see "Next step").
 
-## Cost, risk and the alternative rejected
+## Cost and the alternative rejected
 
-- **Cost and risk:** very large; it is TCW 4.0. It moves the configuration file,
-  changes its format, changes how every list and show command reads data, which
-  commands may write, the CLI's top-level command set, and the name of the
-  file that marks each object. It removes commands people use today
-  (`tcw work new --project`, `tcw work edit --blocks`, `tcw init`,
-  `tcw projects`, `tcw config`). Every existing TCW project needs
-  migrating, including this repository's.
+- **Cost:** it defines most of what a user sees in TCW 4.0: where a
+  project's configuration lives and its format, how every list and show
+  command reads data, which commands may write, the CLI's top-level
+  command set, and the file that marks each record. Several 3.x commands
+  go (`tcw work new --project`, `tcw work edit --blocks`, `tcw init`,
+  `tcw projects`, `tcw config`). The cost of the break is small because
+  TCW has almost no users yet; the existing projects, this repository's
+  included, move over with `tcw migrate`.
 - **Alternatives:** keep two kinds of link, a tree for organizing and
   viewing projects plus a separate "builds on" link for content (today's
   `extends`, cleaned up). Rejected in discussion: every view would have to
@@ -54,7 +57,7 @@ These are the user's, and every part of the design below must keep them.
 8. One repository may contain many TCW projects.
 9. Git worktrees are fully supported (see "Git worktrees").
 
-## How it works today (for working backwards)
+## Coming from 3.x (for migration only)
 
 - **The configuration file** is `tcw-config.yaml` at the project's root,
   with `tcw-config.local.yaml` beside it. Its layers (`LAYERS` in
