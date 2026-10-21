@@ -40,7 +40,7 @@ def test_a_creatable_folder_makes_the_item(pair, fake, tcw):
     assert "uncommitted" in result.err
     # The next filing there would stay in the inbox until these are committed
     # (TCW-101), so the message says so.
-    assert "commit them before filing into tcw again" in " ".join(result.err.split())
+    assert "before filing into tcw again" in " ".join(result.err.split())
     assert not hook.exists()                         # creation runs no hooks
 
 

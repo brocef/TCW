@@ -21,6 +21,11 @@ re-baselining to hide that is what this file exists to prevent.
 **Re-captured again by TCW-76**, for one paragraph only: TCW-74's review fixes
 (`e411e681`) added "Who reviews" to the review prompt after the capture, and
 the recorded bytes were never brought up to it. Nothing else moved.
+
+**Re-captured again by TCW-101**, for two passages it added on purpose: the
+spec prompt's "The requester revises the request" bullet, and the plan
+prompt's step 6 on filing a part into another project. A diff of the old and
+new bytes showed nothing else moved.
 """
 
 import json

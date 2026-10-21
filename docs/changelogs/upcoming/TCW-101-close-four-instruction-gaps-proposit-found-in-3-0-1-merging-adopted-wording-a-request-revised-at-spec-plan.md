@@ -10,4 +10,4 @@
 - `commands-plan-work`: says the plan prompt's advance line does not apply.
 - `delegate_to_jira` (`tcw/work/jira/tickets.py`): the "left uncommitted"
   report adds that the next filing into that project stays in its Jira inbox
-  until the files are committed.
+  until the files are recorded in its version control.

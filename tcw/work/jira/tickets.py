@@ -393,8 +393,8 @@ def delegate_to_jira(project_id: str, title: str, request: str | None,
                                   f"making it the item {slug}: {error}; finish with "
                                   f"`tcw work tickets adopt {key}` there"), key) from None
     report(f"the new files in {backend.work_path / slug.folder} are left uncommitted; "
-           f"commit them before filing into {project_id} again, or the next ticket "
-           f"stays in its Jira inbox")
+           f"record them in that project's version control before filing into "
+           f"{project_id} again, or the next ticket stays in its Jira inbox")
     return str(slug)
 
 
