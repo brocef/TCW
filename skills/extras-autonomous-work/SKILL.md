@@ -21,8 +21,12 @@ instead and leave its text alone). Stop only on a hard blocker.
 
 **A stage the backend keeps** (in Jira, request and qa) moves on only when the
 person who decides tells you to. An advisor never stands in for that person.
-Unless the user's own instruction for this run said to move those stages,
-reaching one is a hard blocker: post what the stage asks for and stop that item.
+At request, the item may move only if the user's own instruction for this run
+explicitly said to move it out of request. At qa it never moves in an
+unattended run: the verdict is the person's, given after they have seen the
+findings, so no instruction given before the run counts as one. Otherwise,
+post what the stage asks for, leave the item at that stage, and move on to
+other work, as the `unattended-work` procedure's table says.
 
 **Ask once, at the start:** confirm the item set (the user's list, or pick from
 `tcw work list`) and the order. After that, no more questions

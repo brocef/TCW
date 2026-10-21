@@ -110,9 +110,13 @@ The rules every changed place must state, consistently:
    Rejected: `tcw work advance <slug> --to implement --reason "rejected by
    <name>: <what to fix>"`.
 5. **Not told.** Unchanged: the agent posts what the stage asks for, stops, and
-   reports that the item waits for that person. In an unattended run this is
-   still a stop, unless the user's own instruction for the run explicitly said
-   to move these stages.
+   reports that the item waits for that person. In an unattended run the item
+   stays at request unless the user's own instruction for the run explicitly
+   said to move it out of request, and it always stays at qa: a verdict is
+   given after the person has seen the findings, so an instruction given
+   before the run is never one. (Corrected at review: the first version
+   allowed a run instruction to move qa too, which let the agent choose the
+   verdict.)
 6. **Why `advance` and not a click in Jira.** The text says that moving with
    `tcw work advance` runs the checks and hooks bound to the move, and that a
    transition made directly in Jira does not.
@@ -128,7 +132,7 @@ Where each rule goes:
 | P5 `commands-process-inbox` | 1-3, 5 (one sentence pointing to the request prompt) |
 | P6 `work` skill, line 50-52 | 1, 2, 6 |
 | P7 `commands-drive-work-to-completion` | 4, 5 |
-| P8 `extras-autonomous-work` | 2 (advisors never stand in), 5 |
+| P8 `extras-autonomous-work`, and the `unattended-work` procedure's request row (`tcw/work/procedures/unattended-work.md`, added at review) | 2 (advisors never stand in), 5 |
 | P9 `docs/guide/jira.md`, `docs/guide/work.md`, `README.md` | 1, 3, 4, 6, in plain language |
 
 The footer stays generic: it names no stage and no backend, as its comment at

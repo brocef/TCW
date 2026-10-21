@@ -14,3 +14,4 @@
   `commands-drive-work-to-completion` and `extras-autonomous-work`, the Jira and
   work guides, the README and three capability descriptions state the same
   rule. Advisors in an unattended run never stand in for the deciding person.
+- `extras-autonomous-work` and the `unattended-work` procedure: a Jira-kept request moves only on the user's explicit instruction for the run; a Jira-kept qa never moves in an unattended run.
