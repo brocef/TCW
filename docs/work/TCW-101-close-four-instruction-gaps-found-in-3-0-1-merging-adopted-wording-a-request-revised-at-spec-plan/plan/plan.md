@@ -1,4 +1,4 @@
-# Plan — Close four instruction gaps proposit found in 3.0.1
+# Plan — Close four instruction gaps found in 3.0.1
 
 Step 2 onward edits `tcw/`. As soon as it starts, the lifecycle is worked by
 hand until the edits are committed, as this repository's CLAUDE.md requires.

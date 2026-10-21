@@ -1,4 +1,4 @@
-# Spec — Close four instruction gaps proposit found in 3.0.1
+# Spec — Close four instruction gaps found in 3.0.1
 
 ## Capability changes
 
@@ -16,8 +16,8 @@ one stderr line's wording does, and that record does not quote it (checked:
 
 1. `tcw/work/prompts/request.md`, Jira passage (added by TCW-100): "If they
    adopted changed wording, first put it into the ticket's description". It
-   does not say whether that replaces the description. PRPI-198's description
-   held an audit the proposed sections did not repeat.
+   does not say whether that replaces the description. One real request's
+   description held an audit the proposed sections did not repeat.
 2. `tcw/work/prompts/spec.md:50-58`, "Exit badly": only "_The code contradicts
    the request._ Stop and return to request." Nothing covers a requester who
    revises the request at spec.
