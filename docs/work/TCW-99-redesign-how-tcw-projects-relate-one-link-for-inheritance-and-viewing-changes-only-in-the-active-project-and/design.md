@@ -1,0 +1,613 @@
+# TCW-99 design: how TCW projects relate (TCW 4.0)
+
+The working design for TCW-99. The ticket holds the vision and objective;
+this document holds the technical design, every decision taken, and the
+questions still open. It is updated as decisions are made, and the spec
+stage builds on it.
+
+Design the *ideal* way TCW projects relate to each other, ignoring how TCW
+works today, then work backwards to what has to change. Agreed with the
+user in design sessions on 2026-10-20 and 2026-10-21. It began from TCW-98
+(show a project's descendants as well as its ancestors, in every command
+and in `tcw serve`), which this design contains; TCW-98 was discarded as
+replaced by TCW-99.
+
+This is far larger than one piece of work. It is split into child items
+(see "Next step").
+
+## Cost, risk and the alternative rejected
+
+- **Cost and risk:** very large; it is TCW 4.0. It moves the configuration file,
+  changes its format, changes how every list and show command reads data, which
+  commands may write, the CLI's top-level command set, and the name of the
+  file that marks each object. It removes commands people use today
+  (`tcw work new --project`, `tcw work edit --blocks`, `tcw init`,
+  `tcw projects`, `tcw config`). Every existing TCW project needs
+  migrating, including this repository's.
+- **Alternatives:** keep two kinds of link, a tree for organizing and
+  viewing projects plus a separate "builds on" link for content (today's
+  `extends`, cleaned up). Rejected in discussion: every view would have to
+  merge two graphs, and the rule "never show siblings" would need an
+  exception for siblings a project builds on, which is the confusion this
+  item exists to remove.
+
+## Requirements for TCW as a whole
+
+These are the user's, and every part of the design below must keep them.
+
+1. TCW's records are trivially readable by an AI agent. Taxonomy and
+   capabilities are markdown and YAML files in the repository; work items
+   are too, though a work item's stage, request and comments may live on a
+   Jira ticket instead.
+2. TCW's records are tracked by git. That is where they live; TCW does
+   not otherwise depend on git's state, and never refuses to act because a
+   working tree has uncommitted changes. (Git worktree support necessarily
+   asks git where the main checkout is.)
+3. Taxonomy and capabilities support inheritance.
+4. TCW configuration supports inheritance.
+5. TCW configuration supports personal (local) overrides and overrides
+   from environment variables.
+6. A folder is a TCW project if it contains a `.tcw/` folder holding
+   `tcw-config.yaml`.
+7. For any folder, the *active TCW project* is the nearest enclosing
+   folder (the folder itself included) that is a TCW project.
+8. One repository may contain many TCW projects.
+9. Git worktrees are fully supported (see "Git worktrees").
+
+## How it works today (for working backwards)
+
+- **The configuration file** is `tcw-config.yaml` at the project's root,
+  with `tcw-config.local.yaml` beside it. Its layers (`LAYERS` in
+  `tcw/config.py`) are built-in, project, user-wide and local; they never
+  include another project. Today the personal layers cannot set `projects`
+  or `extends`.
+- **Three mechanisms relate projects:**
+  - `projects:` connects projects. A project has at most one parent, and
+    parent and child must each name the other. An `upstream` is a
+    one-sided, read-only connection. On its own, a connection shares only
+    work items, which are read by full slug.
+  - A store's `path` and `repository` say only where its folder is.
+  - `extends` names, per axis, any connected project (a sibling included)
+    whose taxonomy or capabilities this one inherits.
+- **No inheritance through folder nesting.** `find_project_root`
+  (`tcw/store/fs.py`) stops at the nearest `tcw-config.yaml`.
+- **Objects:** a taxonomy entry or a capability is a folder holding
+  `meta.yaml` and `description.md`. Capabilities are nested one level, in
+  group folders such as `docs/capabilities/work/`, which are not objects
+  themselves. A work item is a folder holding `item.yaml`; child items sit
+  side by side with their parents and name them in a `parent:` field.
+- **Slugs:** a work item's slug today is `<project-id>/<folder-name>`, for
+  example `tcw/TCW-99-redesign-how-tcw-projects-relate-...`, with no axis
+  in it.
+- **Environment variables:** `TCW_PROJECT_<ID>` gives a connected
+  project's folder; `TCW_CONFIG_DIR` and `TCW_NO_PERSONAL_CONFIG` control
+  the user-wide layer. No variable can set an arbitrary configuration key.
+- **`tcw serve`** serves only the project it was started in
+  (`docs/guide/web-viewer.md`). Before 3.0 it combined descendants' work
+  boards; that was lost in the 3.0 rewrite (TCW-68) without anyone
+  deciding to drop it.
+- **The registry already exists.** It has `ancestors()` and
+  `descendants()` (`tcw/store/project.py`, `tcw/store/base.py`), and
+  `descendant_projects()` in `tcw/store/fs.py` has no callers.
+
+## Agreed design
+
+### Principles
+
+1. **Only declared links create relationships.** Where a folder sits on
+   disk, or where a store's files are kept, never means anything about how
+   projects relate. TCW may look on disk to *find where* a project is (see
+   "Locating a project"), but a relationship is only ever declared.
+2. **There is one kind of link between projects,** and it means the same
+   thing on taxonomy, capabilities and work.
+3. **Every object belongs to exactly one project,** the one that declares
+   it, wherever it is viewed from and wherever its files are stored. In the
+   user's setup, Desktop-App's work items are stored in Docs-and-Plans but
+   owned by Desktop-App.
+4. **The web app shows only what the CLI can also show.** Every view and
+   control in `tcw serve` has a matching command or flag.
+
+### The `.tcw/` folder
+
+- Every TCW project has a `.tcw/` folder at its root. Its location is
+  fixed: it cannot be configured. It holds:
+  - `tcw-config.yaml`: the project's configuration, much as today. It
+    declares the project's `id`, its relationships (by ID only), and where
+    its stores are (see "Where stores live").
+  - `tcw-config.local.yaml`: personal overrides. It should be untracked,
+    but keeping it out of git is the repository owner's job, not TCW's.
+  - `tcw-manifest.yaml`: where other TCW projects are, as a mapping from
+    project ID to a relative path.
+  - `tcw-manifest.local.yaml`: the personal counterpart of `tcw-manifest.yaml`,
+    for paths that differ from machine to machine. Untracked on the same
+    terms as `tcw-config.local.yaml`.
+- **Where each axis's records live is configurable** (see "Where stores
+  live"). Only `.tcw/` itself is fixed.
+
+### The manifest
+
+- **The manifest says where projects are, and nothing else.** Being in a
+  manifest does not make a project a parent, a child or anything else;
+  relationships are declared by ID in `tcw-config.yaml` (principle 1).
+  A project's location never appears in `tcw-config.yaml`.
+- An entry can also carry the repository a project is fetched from, so
+  that a project not on this machine can be shown with the command that
+  fetches it. The repository may name a branch, with a git-like suffix.
+  (The exact shape of an entry, and of the suffix, is for the spec.)
+- **The common case:** a monorepo whose root is a TCW project and whose
+  packages are TCW projects too. The root's manifest lists each package.
+- `tcw validate` checks that every project in the manifest can be reached
+  and declares the ID the manifest gives it.
+
+### Locating a project
+
+To find the folder of a project from its ID:
+
+1. Look it up in the active project's manifest (`tcw-manifest.local.yaml`
+   first, then `tcw-manifest.yaml`), and then in its ancestors' manifests.
+   This is how Desktop-App can reach a blocker in Server-App through
+   Shared-Libs' manifest, even though Server-App never appears in
+   Desktop-App's views.
+2. If no manifest has it, look at the folders next to the active
+   project's root (the folder holding its `.tcw/`). A folder matches if its
+   `.tcw/tcw-config.yaml` declares that `id`.
+3. Then walk up through the folders that contain the active project's
+   root, matching the same way. This is how a package one folder below
+   its parent finds the parent without a manifest entry. It only locates
+   the project: an enclosing project is never a parent unless the child
+   names it (principle 1).
+
+TCW looks no further than that.
+
+Finding a project is not the same as seeing it: which projects a view
+includes is decided by `--scope` (below), never by what can be found.
+
+Full identifiers must be unique, so project IDs must be unique across
+every project that can be reached this way. `tcw validate` checks it.
+
+### Full identifiers
+
+- **Every TCW object (a taxonomy entry, a capability or a work item) has a
+  full identifier** of the form `<project-id>.<namespace>/<id-path>`:
+  - `<project-id>` is the `id` declared in the owning project's
+    `tcw-config.yaml`.
+  - `<namespace>` is one of `taxonomy`, `capabilities`, `work`. The
+    period cannot be confused with part of the project ID, which never
+    contains one.
+  - `<id-path>` is the object's folder path under that namespace's folder,
+    for example `main-app/feature-alpha/component-one`.
+  - A full example: `my-proj.taxonomy/main-app/feature-alpha/component-one`.
+- **Names.** "Full identifier" is the proper name. "Full id" and "slug" are
+  nicknames for the same thing, including where existing text says "slug"
+  for a work item.
+- **As an address, it is the full identifier after `tcw://`:**
+  `tcw://my-proj.work/work-item-1`. The same form with `.path` added after
+  the project or the namespace names a folder on disk rather than an
+  object:
+  - `tcw://p1.work/work-item-1`: the work item `work-item-1` in p1.
+  - `tcw://p1.path/`: the root folder of project p1.
+  - `tcw://p1.work.path/`: the folder of p1's work store.
+  - `tcw://p1.path/docs/p2-work`: a folder inside p1's project folder,
+    for example next to p1's work store when that is `docs/work`.
+  - `tcw://p1/`: invalid; an address needs a namespace, `.path`, or both.
+
+  Without `.path`, the rest must name an existing TCW object, and
+  `tcw validate` checks it. With `.path`, the rest is an ordinary folder
+  path and is not checked against TCW's objects.
+- **An address never contains a `.` or `..` folder.** Addresses must read
+  the same in any general-purpose URL parser, and those parsers (the one
+  built into browsers among them) drop `..` at the start of a path:
+  `tcw://p1.work.path/../p2-work` would become `tcw://p1.work.path/p2-work`,
+  a different folder. Since the project root is always available
+  (`tcw://p1.path/`), a folder outside a store is written from the root
+  instead. `tcw validate` rejects an address with a `.` or `..` folder.
+- **An object's ID is its folder's name.** `docs/work/some-work-item` is
+  the work item with ID `some-work-item`. Its state file may repeat it as
+  `id:`, but does not have to.
+- **Object IDs need not be unique; full identifiers must be.**
+- **References are never shortened.** A reference to an object, in a
+  file or anywhere else TCW stores it, is always its full identifier, and
+  every command prints full identifiers in its output. A shorter display
+  can come later, in the web app or through extra flags.
+- **A work item's tracker key stays accepted as command input.** Today's
+  work item folder `TCW-99-redesign-how-tcw-projects-relate-...` gives a
+  full identifier of about 140 characters; `TCW-99` remains usable wherever
+  a command accepts an item, and the full identifier is stored on the
+  ticket anyway.
+- **Turning a full identifier into a folder:**
+  1. Find the project named by `<project-id>` (see "Locating a project").
+  2. Load that project's configuration: its files, inheritance, local
+     overrides and environment variables.
+  3. From that configuration, find the folder for `<namespace>`.
+  4. Join that folder with each part of `<id-path>`.
+
+### Where stores live
+
+- **A store's location is either a plain path or a `.path` address.** A
+  plain path is relative to the project's own root, as today
+  (`docs/work`), and may use `..`, since no URL parser reads it. An
+  address places the store inside another project, for example
+  `tcw://p1.path/docs/p2-work`, so that a project whose work is kept in
+  another repository says so without a machine-specific path. Wherever a
+  store is, its objects belong only to the project that declares it
+  (principle 3).
+- **Stores never nest.** `tcw validate` fails when one project's store
+  folder lies inside another project's store folder, since the outer
+  project would list the inner one's objects as its own. A store elsewhere
+  inside another project's folder is fine.
+- **No loops.** `tcw validate` fails when store locations are defined in
+  terms of each other in a loop.
+
+### Objects, folders and state files
+
+- **A folder is an object only if it holds the state file for its
+  namespace.** The state files are renamed with a `tcw-` prefix, one name
+  per namespace: `tcw-taxonomy.yaml`, `tcw-capability.yaml` and
+  `tcw-work-item.yaml` (replacing `meta.yaml` and `item.yaml`). Anyone
+  reading a folder can tell at once what it is.
+- **An object's folder may hold other folders** for resources that belong
+  to it. They are not objects unless they hold a state file.
+- **A folder without a state file is allowed anywhere.** It is not an
+  object and never appears in an object listing, but its name is part of
+  the full identifier of every object inside it (as capability group
+  folders are today).
+- **Folder nesting does not declare a parent.** For taxonomy,
+  capabilities and work alike, which object is another's parent is
+  declared in its state file (`parent:`), never by where its folder sits.
+  But TCW should *encourage* nesting a child's folder inside its parent's,
+  through the plugin's skills and the stage prompts, so that the folders
+  read the way the objects relate. (Projects are the exception: they never
+  nest this way, since a project's parents are in its configuration.)
+
+### The parent link
+
+- A project names its parent or parents, by ID, in `tcw-config.yaml`. That
+  one link does two jobs. **Content flows down:** a child inherits its
+  parents' taxonomy, capabilities and configuration, and can override
+  them. **Views look down:** a parent's views can include its children.
+- **The child's declaration alone gives it the inheritance.** The
+  child finds the parent's folder through its manifest or as a sibling
+  folder.
+- **A parent may list its children by ID; it does not have to.** It can
+  list them in the committed `tcw-config.yaml`, for an organization whose
+  engineers can be expected to have every child repository. Or it can list
+  them in the personal `tcw-config.local.yaml`, with their paths in
+  `tcw-manifest.local.yaml`, for one person who wants the top-down view
+  without committing the children's names (for example, a public library's
+  maintainer viewing private readers). This replaces today's `upstream`: a
+  one-sided link is an ordinary parent link the parent does not list.
+- **Children listed in both files are combined.** The local file can add
+  children but not remove committed ones, so two engineers on the same
+  commit always get the same totals.
+- **A listed child must name the parent back,** whether it is listed in
+  the committed file or the local one. If it does not, that is an error.
+- **A listed child that is not on this machine** is shown as present but
+  unavailable, with the command that fetches it. It is never left out
+  silently, or totals would look complete when they are not.
+
+### Multiple parents, and which value wins
+
+- A project may have several parents.
+- **Parents are listed in order, and the last one wins.** If a project's
+  parents are [A, B, C] and each declares an inheritable value or object
+  `P`, the project uses C's `P`. Its own declaration beats all of them.
+- **Several levels resolve progressively.** If C's parents are [A, B], F's
+  are [D, E] and G's are [C, F], then C is resolved from [A, B, C], F from
+  [D, E, F], and G from the two results and its own declarations. Where no
+  project is reached twice, this is the same as the flat order
+  [A, B, C, D, E, F, G].
+- **Only a project that actually declares or overrides a value replaces
+  it.** A project that only passes an inherited value along does not put
+  the original back. This matters only when two parents share an
+  ancestor. Example: B is the parent of C and D, E's parents are [C, D], C
+  overrides `P` and D does not. E gets C's `P`, not B's, even though D is
+  listed later: D merely passes B's value along. (Resolving each parent
+  fully and letting the last one win would have given B's `P` and silently
+  lost C's override; the user chose the rule above on 2026-10-21.)
+- **A project reached twice is loaded once,** after all of its own
+  ancestors. In the example, B is reached through both C and D, and E's
+  load order is [A, B, C, D, E].
+- **The algorithm is depth-first** (agreed 2026-10-21). Go through the
+  active project's parents in the order they are listed; for each, first
+  place its own ancestors by the same rule, then the parent itself,
+  skipping any project already placed; the active project goes last. A
+  project therefore always comes after all of its ancestors, and listing
+  order decides the rest.
+- **Two shapes have no order that satisfies every project, and
+  `tcw validate` warns about them rather than failing:**
+  - Parents that disagree: Z's parents are [X, Y], X's are [A, B] and Y's
+    are [B, A]. Depth-first gives [A, B, X, Y, Z], so B's values win in Z
+    although Y alone would see A's.
+  - A child listed before its own parent: E's parents are [D, C] and C is
+    D's parent. Depth-first gives [C, D, E]; an ancestor always comes
+    first, whatever the listing order says.
+
+  These warn rather than fail because the fix usually lies in projects
+  the active one cannot change (only the active project can be changed),
+  so a failure would leave it stuck. The warning names the projects, so
+  the active project can override the value itself. (The alternative
+  considered was C3, the algorithm Python uses to order a class's parents,
+  which gives the same order whenever one exists but refuses these two
+  shapes.)
+- **A loop is an error.** If a project is its own ancestor, there is no
+  order; `tcw validate`, and any command that loads the project, reject
+  it.
+
+### What is inherited
+
+- **Work is never inherited.** A project does not take on its parents'
+  work items. Ancestors' or descendants' items appear only when a command
+  is asked for them with `--scope`.
+- **Taxonomy and capabilities:** everything; there is no choosing an axis
+  per parent. This replaces `taxonomy.extends` and
+  `capabilities.extends`. A way to leave out an axis can be added later if
+  a real case needs it.
+- **Overrides are separate objects.** Desktop-App's override of
+  `shared-libs.capabilities/work/abc` is its own object,
+  `desktop-app.capabilities/work/abc`, matched to the original by having
+  the same namespace and id-path. So `--project shared-libs` returns only
+  the original, and a mixed-status summary counts one status per project.
+- **Configuration:** inherited through the same link, in the same load
+  order, starting with a basic set of keys: the work tags, the Jira
+  settings and similar shared settings. Inheriting `work.jira.project`
+  means a child's items go into the parent's Jira project, told apart by
+  the existing "TCW Project" field. Never inherited: the project's `id`,
+  its store locations (they are relative to the parent's own folder), and
+  its lists of parents and children. If inheriting configuration turns out
+  to cause problems, it can be dropped and each project declares its own.
+- **How values combine:** a mapping is merged key by key, all the way
+  down; a list or a single value is replaced whole. So a child that sets
+  only `work.jira.project` keeps its parent's `work.jira.site`, and a
+  child that sets `work.tags` replaces the parent's list (to add one tag
+  it repeats the parent's tags).
+- **`null` removes an inherited value.** A child that sets a key to
+  `null` has no value for it. Inherited objects cannot be removed: a
+  taxonomy entry has no way to be, and a capability can only be given the
+  status "omitted". A way to remove inherited objects can be added if a
+  real case needs it.
+- **An object** in taxonomy or capabilities is replaced whole by the last
+  project in the load order that has an object at the same namespace and
+  id-path.
+
+### Personal overrides and environment variables
+
+- Each project's configuration is assembled from its own files
+  (`tcw-config.yaml`, then the user-wide file, then
+  `tcw-config.local.yaml`), then environment variables, and only then
+  inherited by its children. So a child that inherits a value gets the
+  overridden one.
+- **Any configuration value can be overridden by an environment variable
+  whose name follows mechanically from the key and the project ID:**
+  `TCW_<KEY>__<PROJECT>`. The key's parts are joined with a single `_`,
+  the project ID follows a double `__`, everything is uppercase, and each
+  hyphen becomes `_`, since shells reject hyphens in variable names. For
+  project `my-proj`, `work.path` is overridden by
+  `TCW_WORK_PATH__MY_PROJ=/other/path`. Shells accept only letters,
+  digits and underscores in a variable's name, so no other separator
+  (`.`, `-`, `,`) is usable.
+- **The key part is decoded against the keys TCW knows.** A hyphen and a
+  dot both become `_`, so `..._EMAIL_ENV__...` could on its face mean
+  `email-env` or `email.env`; TCW picks the one that is a real key. Two
+  keys can encode to the same name only where a key part is chosen by the
+  user, such as a stage or procedure name, and `tcw validate` reports such
+  a configuration as an error.
+- **Project IDs** are restricted to lowercase letters and digits in groups
+  joined by single hyphens (no leading, trailing or doubled hyphen), so
+  the project part decodes one way only. `tcw validate` enforces it.
+- **Values are read by the key's type.** A string stays exactly as
+  written, so `no`, `on` and `1.0` are not turned into booleans or
+  numbers. A boolean or number must be a valid one. A list or mapping is
+  read as YAML and replaces the whole value; there is no way to override
+  one entry of a list. A variable that names no real key is an error.
+- **A name with `__` is an override; one without is not.** So the
+  existing `TCW_PROJECT_<ID>`, `TCW_CONFIG_DIR`, `TCW_NO_PERSONAL_CONFIG`
+  and user-chosen credential names such as `TCW_JIRA_EMAIL` keep working.
+  `TCW_PROJECT_<ID>` may become redundant once a manifest path can be
+  overridden; the spec decides.
+- Codex was consulted on the naming (2026-10-21) and proposed
+  `TCW__PROJECT__<ID>__<KEY>` with a separate `TCW__ALL__<KEY>` form; the
+  user chose the shorter form above.
+
+### Git worktrees
+
+TCW in a git worktree behaves as it does in the main checkout, with the
+branch's own changes:
+
+- **Tracked files** (configuration, manifests, every record) are read from
+  the worktree, because that is where the branch's changes are.
+- **Untracked files** (`tcw-config.local.yaml`, `tcw-manifest.local.yaml`)
+  are read from the worktree if it has them, and otherwise from the main
+  checkout. So a worktree has the main checkout's personal settings by
+  default, and a person can give one worktree its own `tcw-manifest.local.yaml`
+  to point it at a different copy of another project.
+- **A path that leads outside the repository** (a manifest entry such as
+  `../shared-libs`) is resolved from the main checkout's location, since a
+  worktree usually lives elsewhere on disk. The same goes for the
+  sibling-folder search in "Locating a project".
+- **A project found both in the worktree and in its main checkout is one
+  project,** not two with the same ID. This happens when a worktree is
+  made inside its own repository's folder and the walk up through
+  enclosing folders reaches the main checkout. The worktree's copy is
+  used, and `tcw validate` does not report it as a duplicate.
+
+### Only the active project can be changed
+
+- **TCW commands create, change and delete objects only in the active
+  project.** An inherited object is never changed from below, and a
+  descendant's object is never changed from above.
+- **Overriding an inherited object is allowed,** because the override is a
+  new object owned by the active project.
+- **`tcw serve`** is read-only for every object the project it runs in
+  does not own.
+- **`tcw work new --project <id>` and `tcw work edit --blocks` are
+  dropped,** because each one changes another project. An item can still
+  name a blocker in another project, since that changes only the active
+  project's own item. Accepted loss: today you can file a ticket into the
+  Jira project of a project you have not cloned. That is no longer
+  possible.
+
+### A `tcw project` command group
+
+| Today | Becomes |
+| --- | --- |
+| `tcw init` | `tcw project new` |
+| `tcw projects list` | `tcw project list` |
+| `tcw config show` | `tcw project config`; with `--origin`, each value is printed with the project and file it came from, as `git config --show-origin` does |
+| `tcw provision` | `tcw project provision` |
+| (new) | `tcw project path <id>`: the folder of that project on this machine, so a person or an agent knows where to run a command that changes it |
+| (new) | `tcw project info`: the active project's ID, parents, children, load order with any load-order warnings, and important configuration values |
+
+`tcw validate` and `tcw serve` stay at the top level, since they act on
+all three axes rather than on the project's own settings.
+
+### Choosing what a list or show command covers
+
+- **`--scope`** has four settings:
+  - `own`: only the active project's objects.
+  - `up`: own, plus everything from ancestors (for work, which is not
+    inherited, the ancestors' own items).
+  - `down`: own, plus everything from descendants.
+  - `all`: ancestors, own and descendants. Never siblings, nor anything
+    else in another branch.
+
+  **The default is `own` on every axis.** The web app has a matching
+  control.
+- **`--project <id>`** keeps only results owned by that project.
+- **There is no `--as`.** To see things as another project sees them,
+  change into that project's folder and run the command there
+  (`tcw project path <id>` gives the folder). That is more explicit than a
+  flag, and it is what a change to that project needs anyway.
+- **Mixed capability status** (shown when the scope includes several
+  projects, `down` or `all`). Where projects in the view give a
+  capability different statuses, a list shows a short summary such as
+  "Missing(1), Supported(1), Omitted(1)". The detail view shows which
+  project has which status. To open the capability as one of those
+  projects sees it, run the command in that project's folder. A project that inherits a status
+  without overriding it counts with that status, marked as inherited. A
+  sketch:
+
+  ```
+  $ tcw capabilities show shared-libs.capabilities/work/abc
+  full id: shared-libs.capabilities/work/abc
+  owner: shared-libs
+  status:
+    missing:   [shared-libs]
+    supported: [desktop-app]
+    omitted:   [server-app]
+  ```
+
+### Moving an object
+
+Because the id-path is the folder path, moving an object into another
+folder (as the encouraged nesting invites) changes its full identifier.
+**`tcw validate` fails** while any reference still names the old one.
+
+### Versions and migration
+
+- **This is TCW 4.0.** The changes are large enough for a new major
+  version. 4.0 migrates 3.x projects; 2.x projects are not supported.
+- **Every file TCW writes carries a version**: the configuration files,
+  the manifests and the objects' state files, all of which are named
+  `tcw-*.yaml` (so the manifests are `tcw-manifest.yaml` and
+  `tcw-manifest.local.yaml`). The field's name is for the spec.
+- **The version is the TCW CLI's version when the file was created or last
+  migrated.** Ordinary edits never change it, so it records which format
+  the file follows. A file created by 4.0 and later edited by 4.3 still
+  says 4.0.
+- **A file with no version is a 3.x file,** since 3.x never wrote one.
+- **`tcw migrate`** migrates the active project, in place: every one of
+  its files that is in an older format. It takes no project or object
+  argument for now, and, like every change, never touches another
+  project. To find a 3.x project, which has no `.tcw/` folder, it also
+  recognises `tcw-config.yaml` at a project's root.
+- **Other commands may migrate an object silently** when they touch it,
+  for future migrations that change one kind of object at a time. The
+  3.x-to-4.0 migration is whole-project only, since it moves the
+  configuration and rewrites every reference together.
+- **Related projects are migrated together.** 4.0 assumes every project
+  it reaches is 4.x; the person runs `tcw migrate` in each one. A 3.x
+  project that a 4.0 project reaches is reported as needing
+  `tcw migrate`, not read.
+- **`tcw migrate --dry-run`** lists every file and Jira ticket it would
+  change, and changes nothing. (A ticket stores its item's slug in the
+  "TCW Item" field, so migrating changes tickets too.)
+- **`tcw migrate` does not check git.** It runs whether or not the working
+  tree has uncommitted changes (see requirement 2).
+- **A 3.x `extends` naming a sibling becomes a parent link:** the project
+  it extended becomes one more parent. Siblings never extend each other in
+  4.0; the parent link is the only way content is inherited. The
+  conversion keeps the content the project depended on, but a parent link
+  passes on more than `extends` did (taxonomy, capabilities and the
+  inherited configuration, where `extends` named one axis), so
+  `tcw migrate` prints each such conversion, and `--dry-run` lists it, for
+  the person to review. An `extends` naming a project already inherited
+  through another parent adds nothing, since 4.0 inheritance passes down
+  every level (3.x `extends` did not, so it was often repeated).
+- **The other 3.x relationships convert as follows:**
+  - `parent` and `children` become parent and child IDs in
+    `tcw-config.yaml`. Their paths become manifest entries, except where
+    "Locating a project" would find the project anyway.
+  - `upstream` becomes a parent link, printed and listed for review like
+    a sibling `extends`, since the project now inherits from it as well.
+  - A connection's or a store's `repository` (address, branch, folder)
+    goes into the manifest entry, with the branch carried over.
+  - A store written both as a path and as a `repository` becomes one
+    location: a plain path when the store is inside the project, otherwise
+    a `.path` address from the root of the project whose folder holds it.
+  - Work item slugs become full identifiers, in files and on tickets.
+
+### The user's example, rearranged under this model
+
+```
+Docs-and-Plans
+└── Shared-Libs
+    ├── Desktop-App
+    └── Server-App
+```
+
+Desktop-App and Server-App now inherit from Shared-Libs through the parent
+link instead of `extends`. Docs-and-Plans still sees everything.
+Shared-Libs sees itself and both apps. Desktop-App sees Shared-Libs and
+Docs-and-Plans, but never Server-App, though it can still name an
+object in Server-App by its full identifier.
+
+## Open questions
+
+None at the request level. The spec writes the remaining detail: the
+shape of a manifest entry and its branch suffix, the
+version field's name, and the migration step by step. Two of the user's
+multi-repository setups were described to Claude in anonymized form on
+2026-10-21 and shaped the rules above; nothing specific to them is
+recorded here, as they are private.
+
+## Next step
+
+Work backwards: list every command, flag,
+configuration key, document and web view that has to change, and split
+this item into smaller items.
+
+## Origin
+
+Design discussions with the user on 2026-10-20 (starting from TCW-98) and
+2026-10-21 (from the user's notes on requirements, configuration, full
+identifiers and locating projects). The user asked for this item as the
+record of those discussions.
+
+## References
+
+- TCW-98 (discarded, replaced by this item): the request this design grew
+  out of, with top-down views in every command and in `tcw serve`, and
+  mixed capability status. Its comment of 2026-10-20 records the first
+  part of the discussion.
+- TCW-54 (discarded): the earlier web-only attempt at descendants'
+  taxonomy and capabilities in `tcw serve`; lists the reference and
+  overlap problems.
+- TCW-68: the 3.0 rewrite in which descendant board aggregation was lost.
+- TCW-22: the backlog audit ignores child projects; the same problem for
+  one procedure.
+- TCW-85: how a capability path names a connected project; largely
+  answered by full identifiers, which are never shortened.
+- `docs/guide/multi-repo.md`, `skills/configure/references/projects.md`,
+  `docs/guide/taxonomy-and-capabilities.md`: today's three mechanisms.
+
+No known blockers.
