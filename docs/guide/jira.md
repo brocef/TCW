@@ -224,8 +224,8 @@ TCW cannot read a verdict Jira keeps. Moving on names the target and gives a
 reason, which is recorded as a comment on the ticket:
 
 ```sh
-tcw work advance SHOP-42 --to completed --reason "Checked every QA plan scenario; all pass"
-tcw work advance SHOP-42 --to implement --reason "Refunds over 30 days still fail"
+tcw work advance SHOP-42 --to completed --reason "accepted by Dana: every QA plan scenario passes"
+tcw work advance SHOP-42 --to implement --reason "rejected by Dana: refunds over 30 days still fail"
 ```
 
 A rejection's reason is the comment the implementation reads next.

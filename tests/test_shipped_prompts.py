@@ -273,7 +273,8 @@ def test_jira_qa_moves_the_ticket_when_the_person_gives_the_verdict():
     paragraph = _paragraph_with(prompt("qa", "jira"), "gives you the verdict")
     assert "--to completed --reason" in paragraph
     assert "--to implement --reason" in paragraph
-    assert "stop" in paragraph
+    assert "after they have seen your findings" in paragraph
+    assert "stop at qa" in paragraph
 
 
 def test_jira_request_writes_adopted_wording_before_moving():

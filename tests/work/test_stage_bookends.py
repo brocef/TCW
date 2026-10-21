@@ -131,6 +131,7 @@ def test_an_external_footer_moves_the_item_only_when_the_person_says_so(name):
                                    "<slug>").split())
     assert EXTERNAL_SENTENCE in footer
     assert "only when that person tells you to" in footer
+    assert "a question or an implied yes is not that" in footer
     assert "Do not move it yourself" not in footer
     assert "`tcw work advance <slug> " in footer and "--reason" in footer
     assert ("--to <stage>" in footer) == bool(table_stage(name).verdict)

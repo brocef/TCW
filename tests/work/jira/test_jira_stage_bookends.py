@@ -26,6 +26,7 @@ def test_an_external_stage_footer_moves_only_when_told(stage, item, jira_project
     footer = " ".join(last_block(r.out).split())
     assert EXTERNAL_SENTENCE in footer
     assert "only when that person tells you to" in footer
+    assert "a question or an implied yes is not that" in footer
     assert f"`tcw work advance {item} " in footer and "--reason" in footer
     assert f"`tcw work advance {item}`" not in footer
     assert "Do not move it yourself" not in r.out

@@ -52,7 +52,7 @@ QA plan scenario as passed, failed or not run, with the evidence for each.
 <!-- /backend -->
 <!-- backend: jira -->
 **Produce** findings, not a verdict. In Jira, qa happens on the ticket, and the
-ticket's status, which people move, is the verdict. You may run the scenarios
+ticket's status, which a person decides, is the verdict. You may run the scenarios
 and post what you found with `tcw work comment <slug>`.
 
 ## Steps
@@ -65,8 +65,10 @@ and post what you found with `tcw work comment <slug>`.
    with `tcw work advance <slug> --to completed --reason "accepted by <name>:
    <why>"`, rejected with `tcw work advance <slug> --to implement --reason
    "rejected by <name>: <what to fix>"`, whose reason becomes the comment
-   implement reads. They may instead move the ticket in Jira themselves. If
-   they give no verdict, stop at qa and say the item waits for them.
+   implement reads. A verdict comes after they have seen your findings: an
+   instruction given before that, such as "accept it if it passes", is not
+   one. They may instead move the ticket in Jira themselves. If they give no
+   verdict, stop at qa and say the item waits for them.
 <!-- /backend -->
 
 ## Exit badly
