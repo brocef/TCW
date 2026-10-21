@@ -779,22 +779,53 @@ incomplete), listings marking every override, a move command that
 rewrites the project's own references, and `tcw validate` failing loudly
 in other projects.
 
-## Next step
+## Success criteria
 
-1. Check every case in `docs/use-cases.md` against this design and update
-   the architecture cases (UC-1 to UC-8) to describe 4.0, as that
-   document asks.
-2. Write success criteria: what shows 4.0 is finished, and what result
-   would show the model was wrong (for example, how many `null` or
-   `inherit` overrides migrated projects need).
-3. Work backwards: list every command, flag, configuration key, document
-   and web view that has to change, and split this item into child items
-   in dependency order. The renamed files, full identifiers, `.tcw/` and
-   `tcw migrate` ship together; say how `main` stays releasable meanwhile.
-4. Settle the related items: TCW-27 and TCW-87 (renames), TCW-22 and
-   TCW-23 (become `--scope` and `tcw project provision` questions), TCW-85
-   (answered here), TCW-50 (touches the same list commands), TCW-102 and
-   TCW-103 (filing into other projects, which 4.0 drops).
+Agreed with the user on 2026-10-21. TCW 4.0 is finished when:
+
+1. Every case in `docs/use-cases.md` is answered in a child item's spec.
+2. This repository and the user's two real multi-repository setups
+   migrate with `tcw migrate`, with nothing left that has to be fixed by
+   hand.
+3. A single project in its own repository (UC-1) needs no more
+   configuration than in 3.x.
+
+A sign the model is wrong: migrated projects needing many `null`
+removals or `inherit` lists to undo what flows down.
+
+## How 4.0 is built
+
+- **On one feature branch, `v4`,** created from `main` on 2026-10-21.
+  Every child item merges into `v4`. `main` stays releasable and keeps
+  taking 3.x patches; `v4` merges into `main` only when all of 4.0 is
+  done (TCW-118). Several children change file formats, so `main` is never
+  left half 3.x and half 4.0.
+- **Split into 13 child items** on 2026-10-21, in dependency order (each
+  names its blockers):
+
+| Item | What | Needs |
+| --- | --- | --- |
+| TCW-106 | The `.tcw/` folder and a version on every file TCW writes | — |
+| TCW-107 | Manifests and finding a project's folder | TCW-106 |
+| TCW-108 | Parent links, per-parent inheritance and the load order | TCW-107 |
+| TCW-109 | Inherited configuration, personal settings and environment overrides | TCW-108 |
+| TCW-110 | Full identifiers and `tcw://` addresses | TCW-106 |
+| TCW-111 | Object folders, `tcw-` state files and nested work items | TCW-110 |
+| TCW-112 | Inheriting taxonomy and capabilities, and overrides by path | TCW-108, TCW-111 |
+| TCW-113 | `--scope`, `--project` and a project's whole family in the CLI and the web app | TCW-108, TCW-112 |
+| TCW-114 | Changes only in the owning project, and moving or renaming objects | TCW-110, TCW-111 |
+| TCW-115 | The `tcw project` command group | TCW-107, TCW-108, TCW-109 |
+| TCW-116 | `tcw migrate` from 3.x | TCW-106 to TCW-115 |
+| TCW-117 | Guides, skills, use cases and the 3.x-to-4.0 migration guide | written alongside, finished last |
+| TCW-118 | Release | all of the above |
+
+- **Related items, settled the same day:** TCW-22 absorbed into TCW-113,
+  TCW-23 into TCW-115, TCW-27 into TCW-114; TCW-87 settled by TCW-114;
+  TCW-85 answered by full identifiers (TCW-110); TCW-102 and TCW-103
+  superseded, since 4.0 removes filing into other projects (TCW-103's
+  finding that a Jira child accepts only a same-site parent carries into
+  TCW-114). All seven were discarded with those reasons. TCW-50 (list
+  ordering and limits) now waits for TCW-113.
 
 ## Origin
 
