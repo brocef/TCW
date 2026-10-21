@@ -595,6 +595,19 @@ branch's own changes:
   dropped,** because each one changes another project. Accepted loss:
   today you can file a ticket into the Jira project of a project you have
   not cloned. That is no longer possible.
+- **`tcw -C <folder or address>` runs any command as if started there**
+  (decided 2026-10-21), as `git -C` does. It accepts a path or a `.path`
+  address (`tcw -C tcw://app.path/ work new 'Add export' --parent
+  planning.work/TCW-120`), found by the manifest and search rules. The
+  command runs entirely as that project, with its own configuration,
+  personal settings and checks, so it is the same as changing folder
+  first and keeps the owning-project rule; it works only for a project on
+  this machine. It replaces today's epic-parts flow one step for one step,
+  so agents taught that flow in 3.0.1 and 3.0.2 need one small change, and
+  the migration guide shows each step. Built in TCW-114. Still for its
+  spec: a part whose Jira site differs from its parent's cannot take a Jira
+  parent link (TCW-103's finding), so the spec decides whether such a
+  `--parent` is kept only in the item's file or refused.
 - **One stated exception: a blocker in another project.** An item can
   name a blocker in another project. The link belongs to the blocked item.
   In Jira it is an issue link, which also shows on the other project's
