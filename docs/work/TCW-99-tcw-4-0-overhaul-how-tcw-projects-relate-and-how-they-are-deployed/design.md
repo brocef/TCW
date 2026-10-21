@@ -187,7 +187,12 @@ ID; not necessarily the active project):
    It only locates the project: an enclosing project is never a parent
    unless the child names it (principle 1).
 
-TCW looks no further than that.
+TCW looks no further than that, and **never downwards**: the search
+reads only folders next to a project root and folders enclosing it,
+never the contents of a project. So a dependency folder inside a project
+(`node_modules`, `vendor`, `.venv`) is never reached, and a dependency's
+own `.tcw/` is never taken for a project, a parent or a child
+(`docs/use-cases.md`, S-10).
 
 - **Two folders matching one ID is an error** that names both folders: a
   second clone of a repository beside the first, or a retired copy of a
