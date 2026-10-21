@@ -209,30 +209,28 @@ own `.tcw/` is never taken for a project, a parent or a child
 ### Full identifiers
 
 - **Every TCW object (a taxonomy entry, a capability or a work item) has a
-  full identifier** of the form `<project-id>.<namespace>/<object-id>`:
+  full identifier** of the form `<project-id>.<namespace>/<id-path>`:
   - `<project-id>` is the `id` declared in the owning project's
     `tcw-config.yaml`.
   - `<namespace>` is one of `taxonomy`, `capabilities`, `work`. The
     period cannot be confused with part of the project ID, which never
     contains one.
-  - `<object-id>` is the object's own ID: in the files store, the name of
-    its own folder. It is unique within its project and namespace,
-    however deeply the folder is nested.
-  - A full example: `my-proj.taxonomy/component-one`, whether its folder
-    is `docs/taxonomy/component-one` or
-    `docs/taxonomy/main-app/feature-alpha/component-one`.
-- **Identity does not depend on where a folder sits** (decided
-  2026-10-21, replacing an earlier rule that the whole folder path was the
-  identifier). Folders above an object organise it, and nothing more.
-  Moving an object into another folder never changes its full identifier,
-  so no reference breaks and no override detaches. Renaming the object's
-  own folder does change it (see "Moving and renaming an object").
-- **Object IDs** use lowercase or uppercase letters, digits, hyphens and
-  underscores, so they can be written in an address without escaping
-  (`#`, `?`, `%` and spaces are not allowed). Work item folders such as
-  `TCW-120-add-login` qualify. The exact grammar is for the spec.
-  `tcw validate` reports two objects in one project and namespace with the
-  same ID.
+  - `<id-path>` is the object's folder path under that namespace's
+    folder: the names of every folder above it, organising folders
+    included, then its own.
+  - A full example: `my-proj.taxonomy/main-app/feature-alpha/component-one`,
+    for the folder `docs/taxonomy/main-app/feature-alpha/component-one`.
+- **The identifier says where the object is** (the user's choice,
+  confirmed 2026-10-21 after a review-round decision to make identity
+  independent of the folder was reversed). Reading a full identifier
+  tells a person or an agent where to find the object. The cost, accepted:
+  moving an object into another folder changes its full identifier (see
+  "Moving and renaming an object").
+- **Each part of an id-path** (each folder name) uses lowercase or
+  uppercase letters, digits, hyphens and underscores, so an identifier
+  can be written in an address without escaping (`#`, `?`, `%` and spaces
+  are not allowed). Work item folders such as `TCW-120-add-login`
+  qualify. The exact grammar is for the spec.
 - **Names.** "Full identifier" is the proper name. "Full id" and "slug" are
   nicknames for the same thing, including where existing text says "slug"
   for a work item.
@@ -260,8 +258,8 @@ own `.tcw/` is never taken for a project, a parent or a child
 - **An object's ID is its folder's name.** `docs/work/some-work-item` is
   the work item with ID `some-work-item`. Its state file may repeat it as
   `id:`, but does not have to.
-- **Object IDs need not be unique across projects; full identifiers
-  must be.**
+- **Object IDs need not be unique; full identifiers must be,** and are,
+  since no two folders share a path.
 - **An address is resolved from the project that wrote it.** A store
   address such as `tcw://p1.path/docs/p2-work` in p2's configuration is
   resolved from p2, wherever the command runs, so it names the same folder
@@ -281,8 +279,9 @@ own `.tcw/` is never taken for a project, a parent or a child
   2. Load that project's configuration: its files, inheritance, local
      overrides and environment variables.
   3. From that configuration, find the folder for `<namespace>`.
-  4. Find the folder named `<object-id>` that holds the namespace's state
-     file, at any depth inside that folder.
+  4. Join that folder with each part of `<id-path>`.
+- **A work item's tracker key** (`TCW-120`), accepted as command input,
+  is looked up by the store wherever the item's folder is nested.
 
 ### Where stores live
 
@@ -320,8 +319,8 @@ own `.tcw/` is never taken for a project, a parent or a child
   follow the same shape.
 - **A folder without a state file is allowed between objects** (an
   organising folder, like today's capability group folders). It is not an
-  object, never appears in an object listing, and is not part of any full
-  identifier.
+  object and never appears in an object listing, but its name is part of
+  the full identifier of every object inside it.
 - **Folder nesting does not declare a parent.** For taxonomy,
   capabilities and work alike, which object is another's parent is
   declared in its state file (`parent:`), never by where its folder sits.
@@ -333,7 +332,7 @@ own `.tcw/` is never taken for a project, a parent or a child
   its configuration.)
 - **The work backends change shape.** Today both refuse an item name
   containing `/` and look only at the top of the work folder. In 4.0 an
-  item is found by its ID wherever it is nested; the spec states the new
+  item is found by its id-path, which may contain `/`; the spec states the new
   backend operations (`read`, `rename`, `lookup` and the test for an item
   folder).
 
@@ -459,7 +458,9 @@ parent.
   object, owned by Desktop-App, whose state file names the original with
   `overrides: shared-libs.capabilities/abc` (as 3.x's overrides already
   do). It is matched by that pointer, never by sharing a name or a folder
-  position, so moving either object never detaches it. An override merges
+  position. If the original is moved, the pointer names an identifier
+  that no longer exists, and `tcw validate` in the overriding project
+  reports it: an override never detaches silently. An override merges
   with its original field by field, as in 3.x, so one that changes only
   the status keeps following the original's description. So
   `--project shared-libs` returns only the original, and a mixed-status
@@ -467,7 +468,7 @@ parent.
   gone is reported by `tcw validate`.
 - **Two parents defining the same object is reported,** not settled
   silently (`docs/use-cases.md`, UC-3): when two projects in the load
-  order each have an object with the same ID and neither overrides the
+  order each have an object at the same id-path and neither overrides the
   other, the load order picks one and `tcw validate` and the listing warn.
   A child's own override is never a warning.
 - **Configuration:** a fixed list of keys, which TCW documents and grows
@@ -644,16 +645,22 @@ all three axes rather than on the project's own settings.
 
 ### Moving and renaming an object
 
-- **Moving an object into another folder changes nothing** about its
-  identity: no reference breaks, no override detaches.
-- **Renaming an object's own folder changes its full identifier.** A
-  rename command rewrites the active project's own references to it (and,
-  in Jira, the ticket's "TCW Item" field, as `tcw work rename` does today).
-  References held by other projects cannot be rewritten from here, so
-  **`tcw validate` fails** in those projects while they name the old
-  identifier. TCW-27 (a rename command for taxonomy and capabilities) and
-  TCW-87 (following renamed slugs) are settled against this rule when the
-  item is split.
+- **Moving an object into another folder, or renaming its folder, changes
+  its full identifier,** since the identifier says where the object is.
+  Moving a parent folder changes the identifier of everything inside it.
+- **A move or rename command rewrites the active project's own
+  references** to every identifier it changed (and, in Jira, each
+  ticket's "TCW Item" field, as `tcw work rename` does today), so a
+  project that reorganises itself stays consistent.
+- **References held by other projects cannot be rewritten from here.**
+  `tcw validate` fails in those projects while they name an old
+  identifier, and an override whose original moved is reported there (see
+  "What is inherited"). Nothing breaks silently, but the project that
+  moved an object cannot fix its readers; the command says so and lists
+  the identifiers it changed, so they can be passed on.
+- TCW-27 (a rename command for taxonomy and capabilities) and TCW-87
+  (following renamed slugs) are settled against these rules when the item
+  is split.
 
 ### Versions and migration
 
@@ -752,6 +759,11 @@ and the local model on five slices, one of which timed out) gave
 order, identity, per-parent inheritance, which settings are inherited,
 the planning workspace, cross-project blockers, a missing parent, and
 item folders), and the accepted fixes are folded into the sections above.
+On identity, the user first chose an identifier independent of the folder
+(so moves break nothing), then reversed it the same day: the identifier
+shows where the object is, and the review's concerns are met by an
+explicit `overrides:` pointer, a move command that rewrites the project's
+own references, and `tcw validate` failing loudly in other projects.
 
 ## Next step
 
