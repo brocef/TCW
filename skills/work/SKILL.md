@@ -48,8 +48,12 @@ needs no force); `tcw work discard <slug> --reason "<why>"` abandons it.
 so a verdict on older work counts for nothing.
 
 Some backends keep a stage themselves (in Jira, request and qa happen on the
-ticket): the stage has no folder, a person moves the item on, and the stage
-prompt says so. The configure skill's Jira reference covers that setup.
+ticket): the stage has no folder, and a person decides whether the item moves
+on. When that person tells you in the conversation to move it, or gives you
+the qa verdict, move it with `tcw work advance` as the stage prompt says; a
+move made that way runs the checks and hooks bound to it, and one made by
+hand in Jira does not. A question or an implied yes is not that instruction,
+and without it you stop. The configure skill's Jira reference covers that setup.
 
 ## Finding your place
 

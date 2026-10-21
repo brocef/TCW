@@ -1,11 +1,12 @@
 """The footer of each stage prompt in a Jira-mode project, through the fake
 (TCW-74 Design 4.1; criterion 5's Jira half). Request and qa are kept by
-Jira, so their footer names no `tcw work advance`; every other stage with
-files names it."""
+Jira, so their footer says a person decides, and names the `tcw work advance`
+the agent runs once that person says to move the item (TCW-100); every other
+stage with files names the plain `advance`."""
 
 import pytest
 
-EXTERNAL_SENTENCE = "a person moves the item on in the backend"
+EXTERNAL_SENTENCE = "a person decides whether the item moves on"
 
 
 def last_block(text: str) -> str:
@@ -19,12 +20,15 @@ def item(jira_project):
 
 
 @pytest.mark.parametrize("stage", ["request", "qa"])
-def test_an_external_stage_footer_names_no_advance(stage, item, jira_project, tcw):
+def test_an_external_stage_footer_moves_only_when_told(stage, item, jira_project, tcw):
     r = tcw(["stage", "prompt", stage, item], jira_project.root)
     assert r.code == 0, r.err
-    footer = last_block(r.out)
+    footer = " ".join(last_block(r.out).split())
     assert EXTERNAL_SENTENCE in footer
-    assert "tcw work advance" not in footer
+    assert "only when that person tells you to" in footer
+    assert f"`tcw work advance {item} " in footer and "--reason" in footer
+    assert f"`tcw work advance {item}`" not in footer
+    assert "Do not move it yourself" not in r.out
 
 
 @pytest.mark.parametrize("stage", ["spec", "plan", "implement", "review"])

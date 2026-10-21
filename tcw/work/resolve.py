@@ -450,8 +450,14 @@ def stage_footer(row, external, target: str) -> str | None:
     if row.artifact == NO_ARTIFACT:
         return None              # how an arrival becomes work differs by backend
     if row.name in external:
-        text = ("> **When this stage's work is done, a person moves the item on "
-                "in the backend.** Do not move it yourself.")
+        # A person decides; the agent carries out the move once told (TCW-100).
+        move = (f"`tcw work advance {target} --to <stage> --reason \"<who decided, "
+                f"and why>\"`" if row.verdict else
+                f"`tcw work advance {target} --reason \"<who told you>\"`")
+        text = ("> **When this stage's work is done, a person decides whether the "
+                "item moves on.** Move it only when that person tells you to, in "
+                "this conversation; a question or an implied yes is not that. "
+                f"Then run {move}.")
         if row.verdict:
             text += " The verdict is that move."
         return text

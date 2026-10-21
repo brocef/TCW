@@ -508,7 +508,8 @@ A change to the product is followed from the first request to the records:
 In filesystem mode, the agent working `qa` may record the verdict itself, unless
 the project's own instructions for `qa` ask for a person to decide. When they
 do, the agent still writes the round, recording the person's decision. In Jira
-mode, a person accepts or rejects on the ticket.
+mode, a person accepts or rejects: on the ticket, or by telling the agent,
+which then moves the ticket and records who decided.
 
 Work reaches taxonomy through those capabilities: a new capability names the
 vocabulary and feature it involves, and those entries must exist first.

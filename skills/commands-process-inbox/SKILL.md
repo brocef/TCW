@@ -23,7 +23,8 @@ Use the `work` skill. This skill covers the stage range **`inbox` →
    write its request, asking the user whatever is unclear, since that is what
    the stage exists for. Where the backend keeps the request (in Jira, the
    ticket's description), the prompt has you propose changes in a comment
-   rather than write it; a person moves the ticket on.
+   rather than write it, and the requester decides when the item moves on:
+   move it only when they tell you to, as the request prompt says.
 3. Report each arrival: accepted (with its slug), split (with every slug),
    turned away or left for a person (with the reason), and recorded on an
    existing item (naming it).

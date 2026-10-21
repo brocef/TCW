@@ -60,11 +60,13 @@ and post what you found with `tcw work comment <slug>`.
 1. Run each scenario in the QA plan, in the environment it names.
 2. Post one comment listing each scenario as passed, failed or not run, with
    evidence. **No claim without output or an observation from just now.**
-3. Leave the decision to a person. Tell them how to record it: accept by
-   moving the ticket on in Jira, or with
-   `tcw work advance <slug> --to completed --reason "<why>"`; reject with
-   `tcw work advance <slug> --to implement --reason "<what to fix>"`, whose
-   reason becomes the comment implement reads.
+3. A person decides the verdict, never you. Ask them for it. When the person
+   who decides gives you the verdict in this conversation, record it: accepted
+   with `tcw work advance <slug> --to completed --reason "accepted by <name>:
+   <why>"`, rejected with `tcw work advance <slug> --to implement --reason
+   "rejected by <name>: <what to fix>"`, whose reason becomes the comment
+   implement reads. They may instead move the ticket in Jira themselves. If
+   they give no verdict, stop at qa and say the item waits for them.
 <!-- /backend -->
 
 ## Exit badly

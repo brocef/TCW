@@ -19,6 +19,11 @@ the evidence available, marking each assumption (where the backend keeps the
 request, as Jira does, post your questions with `tcw work comment <slug>`
 instead and leave its text alone). Stop only on a hard blocker.
 
+**A stage the backend keeps** (in Jira, request and qa) moves on only when the
+person who decides tells you to. An advisor never stands in for that person.
+Unless the user's own instruction for this run said to move those stages,
+reaching one is a hard blocker: post what the stage asks for and stop that item.
+
 **Ask once, at the start:** confirm the item set (the user's list, or pick from
 `tcw work list`) and the order. After that, no more questions
 until the run ends or a hard blocker hits.

@@ -267,6 +267,25 @@ def test_jira_qa_records_no_verdict():
     assert "tcw work path <slug> qa" not in text and "verdict:" not in text
 
 
+def test_jira_qa_moves_the_ticket_when_the_person_gives_the_verdict():
+    """TCW-100: the person decides; once they give the verdict in the
+    conversation, the agent records it with `advance`, and otherwise stops."""
+    paragraph = _paragraph_with(prompt("qa", "jira"), "gives you the verdict")
+    assert "--to completed --reason" in paragraph
+    assert "--to implement --reason" in paragraph
+    assert "stop" in paragraph
+
+
+def test_jira_request_writes_adopted_wording_before_moving():
+    """TCW-100: adopted wording goes into the description, is read back, and
+    only then is the item moved, with a reason naming who said to move it."""
+    paragraph = _paragraph_with(prompt("request", "jira"), "tell you to move")
+    for words in ("description", "paste", "read it back",
+                  "tcw work advance <slug> --reason"):
+        assert words in paragraph, words
+    assert paragraph.index("read it back") < paragraph.index("tcw work advance")
+
+
 @pytest.mark.parametrize("sid", sorted(SHIPPED))
 def test_no_prompt_tells_the_agent_to_ask_what_it_is_reading(sid):
     """`tcw work lifecycle --stage <id>` inside the text that command reports

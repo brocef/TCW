@@ -1,0 +1,12 @@
+## Fixes
+
+- **Agents no longer stall at a Jira ticket's Request or QA status when you
+  tell them to move it.** The instructions used to say only that a person
+  moves the ticket on. An agent asked to move a ticket by the person who
+  decides would stop and refuse. Now a person still decides, and once you tell
+  the agent in the conversation to move the ticket, or give it the QA verdict,
+  it moves the ticket with `tcw work advance` and a comment naming you.
+  At Request, it first puts any wording you adopted into the ticket's
+  description, or asks you to paste it in. A question, or an instruction given
+  before you have seen the QA findings, does not count. In an unattended run,
+  advisors never stand in for you.

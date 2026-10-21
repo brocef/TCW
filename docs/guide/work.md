@@ -165,8 +165,9 @@ for accepted or rejected with a reason, and writes the round recording that
 decision, with `decided-by: <name>` in its front matter beside `verdict` and
 `judges`.
 
-In Jira mode, qa happens on the ticket: a person accepts or rejects by moving
-it, and no round file is written. The [Jira guide](jira.md) describes it.
+In Jira mode, qa happens on the ticket: a person accepts or rejects, by moving
+it or by telling the agent, which then moves it with the person's reason, and
+no round file is written. The [Jira guide](jira.md) describes it.
 
 ### Handoffs
 

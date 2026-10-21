@@ -43,7 +43,15 @@ item's **request**, and the request has five sections:
 
 `tcw work stage prompt request` prints the full template, with what the agent
 does when a section is missing: it comments on the ticket, listing what is
-missing and proposing wording, and never rewrites the description itself.
+missing and proposing wording, and does not rewrite the description on its own.
+
+The requester decides when the request is ready to be worked on. They can move
+the ticket on in Jira themselves, or tell the agent they are working with to do
+it. When told, the agent puts any wording the requester adopted into the
+description (or asks them to paste it in, if it cannot edit Jira), checks it,
+and moves the item with `tcw work advance`, which posts a comment naming who
+asked for the move. Moving it that way also runs any checks and hooks the
+project attached to the move, which a move made in Jira does not.
 
 ### Following progress
 
@@ -60,6 +68,11 @@ decides:
 - **Accept** by moving the ticket on to its finished status.
 - **Reject** by moving it back to the implementation status, **with a comment
   saying why**: that comment is what the engineer reads next.
+
+Or tell the agent that ran the checks: "accepted", or "rejected, because …".
+It records the decision by moving the ticket, with a comment naming you and
+your reason. The agent never decides the verdict itself, and does not take an
+instruction given before you saw its findings as one.
 
 ### A ticket that will not be worked on
 

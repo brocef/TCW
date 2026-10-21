@@ -40,7 +40,12 @@ for a separate reviewer and your harness has the `reviewer` agent, use that.
   and write the round recording their decision with `decided-by`, as the
   prompt says. Then advance.
 - **The backend keeps qa** (in Jira, the ticket's move is the verdict): run the
-  scenarios if the prompt asks, post the findings, and stop at qa for a person.
+  scenarios if the prompt asks, post the findings, and ask the person who
+  decides for the verdict. When they give it in this conversation, record it
+  with `tcw work advance <slug> --to completed` or `--to implement`, and a
+  `--reason` naming them, as the qa prompt says. An instruction given before
+  the findings, such as "drive it to completion", is not a verdict. With no
+  verdict, stop at qa for that person.
 
 **Before reporting done,** say what changed, the documentation entries the
 change fired and how each was answered, and any follow-up items created. A

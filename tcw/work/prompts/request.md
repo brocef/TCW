@@ -32,10 +32,19 @@ Write it to `tcw work path <slug> request`. Keep any dated `## Added`
 sections already there: they are amendments made after it was written.
 <!-- /backend -->
 <!-- backend: jira -->
-The request is the ticket's description, and Jira owns it: never rewrite it.
-When a section is missing or unclear, post a comment with
+The request is the ticket's description, and Jira owns it: never rewrite it on
+your own judgment. When a section is missing or unclear, post a comment with
 `tcw work comment <slug>` listing what is missing and proposing wording, for
 the requester to adopt.
+
+The requester decides when the request is ready. When they tell you to move
+the item on, in this conversation, do it. If they adopted changed wording,
+first put it into the ticket's description: write it yourself if your harness
+can edit Jira tickets, or ask them to paste it in. Then read it back and
+confirm the description now says what they adopted. Then run
+`tcw work advance <slug> --reason "<who told you to move it>"`. A question,
+such as whether accepting the wording moves the item, is not an instruction to
+move it.
 <!-- /backend -->
 
 ## Steps

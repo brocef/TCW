@@ -32,9 +32,13 @@ spec and plan that the project has enabled:
    disabled, stop at the last of the three stages the project runs.
 
 **Where the backend keeps request** (in Jira, the request is the ticket), the
-request prompt proposes changes as a comment, and a person moves the ticket on.
-Stop after that comment and report that the item waits for its requester; pick
-the work up again with this skill once the item is at spec.
+request prompt proposes changes as a comment, and the requester decides when
+the item moves on. When they tell you in this conversation to move it, do what
+the request prompt says: put any wording they adopted into the description,
+read it back, and run `tcw work advance <slug> --reason "<who told you>"`, then
+carry on to spec. A question, or an advisor's opinion, is not that
+instruction. Without it, stop after the comment and report that the item waits
+for its requester; pick the work up again with this skill once it is at spec.
 
 **Stop once the plan is written**, leaving the item at plan. Moving it on and
 writing code is the `commands-drive-work-to-completion` skill. Ask the user to
