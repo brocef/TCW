@@ -453,24 +453,32 @@ parent.
 - **Taxonomy and capabilities:** everything, from each parent whose
   `inherit` includes that axis (see "The parent link"). This replaces
   `taxonomy.extends` and `capabilities.extends`.
-- **Overrides are separate objects that say what they override.**
-  Desktop-App's override of `shared-libs.capabilities/abc` is its own
-  object, owned by Desktop-App, whose state file names the original with
-  `overrides: shared-libs.capabilities/abc` (as 3.x's overrides already
-  do). It is matched by that pointer, never by sharing a name or a folder
-  position. If the original is moved, the pointer names an identifier
-  that no longer exists, and `tcw validate` in the overriding project
-  reports it: an override never detaches silently. An override merges
-  with its original field by field, as in 3.x, so one that changes only
-  the status keeps following the original's description. So
-  `--project shared-libs` returns only the original, and a mixed-status
-  summary counts one status per project. An override whose original is
-  gone is reported by `tcw validate`.
-- **Two parents defining the same object is reported,** not settled
-  silently (`docs/use-cases.md`, UC-3): when two projects in the load
-  order each have an object at the same id-path and neither overrides the
-  other, the load order picks one and `tcw validate` and the listing warn.
-  A child's own override is never a warning.
+- **An override is an object at the same path as an inherited one**
+  (decided 2026-10-21; no marker or pointer). `desktop-app.capabilities/abc`
+  overrides `shared-libs.capabilities/abc` because both sit at the path
+  `abc` in the same namespace and Shared-Libs is Desktop-App's ancestor.
+  It is a separate object owned by Desktop-App. So `--project
+  shared-libs` returns only the original, and a mixed-status summary
+  counts one status per project.
+- **An override holds only what it changes** and merges with its
+  original field by field, as in 3.x, so one that changes only the status
+  keeps following the original's description.
+- **What an override shows, and what catches a broken one:**
+  - Listings, `show` and `tcw project info` mark each object that
+    replaces an inherited one ("overrides `shared-libs.capabilities/abc`"),
+    so an unintended clash, where a child's own object happens to sit at
+    a path a parent later uses, is visible.
+  - If the original moves, a partial override is left without required
+    fields (a name, a description) and `tcw validate` fails it as
+    incomplete. A full-copy override whose original moved is the one case
+    nothing reports; it then stands as the child's own object. Accepted as
+    rare.
+- **Two unrelated projects defining the same path is reported,** not
+  settled silently (`docs/use-cases.md`, UC-3): when two projects in the
+  load order, neither an ancestor of the other, each have an object at the
+  same id-path, the load order picks one and `tcw validate` and the
+  listing warn. A descendant's object at an ancestor's path is an
+  override, never a warning.
 - **Configuration:** a fixed list of keys, which TCW documents and grows
   only in a release (decided 2026-10-21), crosses the link from each
   parent whose `inherit` includes `config`. To start: `work.tags`,
@@ -717,8 +725,10 @@ all three axes rather than on the project's own settings.
     project's 3.x `extends` took from it (`inherit: none` if nothing),
     printed and listed for review. A sibling `extends` likewise becomes a
     parent link inheriting only the axes it named.
-  - A 3.x override's `overrides:` pointer is kept, rewritten to a full
-    identifier.
+  - A 3.x override (an object with an `overrides:` pointer) is moved to
+    the same path as its original and the pointer dropped, since in 4.0
+    an override is matched by path. If that path is already taken in the
+    project, the migration reports it instead of guessing.
   - A connection's or a store's `repository` (address, branch, folder)
     goes into the manifest entry, with the branch carried over.
   - A store written both as a path and as a `repository` becomes one
@@ -761,9 +771,13 @@ the planning workspace, cross-project blockers, a missing parent, and
 item folders), and the accepted fixes are folded into the sections above.
 On identity, the user first chose an identifier independent of the folder
 (so moves break nothing), then reversed it the same day: the identifier
-shows where the object is, and the review's concerns are met by an
-explicit `overrides:` pointer, a move command that rewrites the project's
-own references, and `tcw validate` failing loudly in other projects.
+shows where the object is. An override is matched by path, with no
+marker (an explicit pointer, then an `override: true` marker, were
+considered and dropped). The review's concerns are met by overrides
+holding only what they change (an orphaned one fails validation as
+incomplete), listings marking every override, a move command that
+rewrites the project's own references, and `tcw validate` failing loudly
+in other projects.
 
 ## Next step
 
