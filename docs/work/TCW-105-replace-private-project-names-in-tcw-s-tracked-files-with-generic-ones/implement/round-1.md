@@ -15,7 +15,7 @@ applied to `main` as `4c6636a1`.
   `test_the_cache_key_is_unchanged` were recomputed by calling
   `tcw.store.checkouts._cache_key`. The same call reproduced the old pinned
   value for the old URL.
-- **Renames.** `test_the_proposit_migration_passes_through_no_blocked_state`
+- **Renames.** The migration test named after the private workspace
   became `test_the_workspace_migration_passes_through_no_blocked_state`, in
   the test file and in `tests/not_ported.py`.
 - **Mutation checks.** Eight breaks to the cache key, `normalized_url` and
@@ -23,7 +23,7 @@ applied to `main` as `4c6636a1`.
   migration test is skipped through `not_ported.py`. With the skip removed,
   it fails identically before and after the change.
 - **Left alone.** `proposit.atlassian.net` (kept by decision), and one
-  `pnpm-lock.yaml` hit, which is the letters "PRPI" inside a hash.
+  `pnpm-lock.yaml` hit, which is the private Jira key's letters inside a hash.
 
 ## Test results
 

@@ -7,8 +7,8 @@ judges: 1
 Reviewed by the session that delegated the work, which did not write it. It
 read the commit's diff and ran the checks below just now.
 
-1. **Met.** `git grep -n -i "proposit\|PRPI" -- . ':!pnpm-lock.yaml'` at
-   `main` shows only `proposit.atlassian.net`.
+1. **Met.** A search of `main` for the private names (excluding `pnpm-lock.yaml`)
+   finds only the kept Jira site address.
 2. **Met.** The implementer's mutation checks (eight, listed in the implement
    round) cover each changed assertion. The recomputation method was
    validated against the old value.

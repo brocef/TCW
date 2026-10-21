@@ -13,7 +13,7 @@ its example paths.
 
 ## Problem
 
-`git grep -i "proposit\|PRPI"` at the head of `main` found private project
+A search for the private names at the head of `main` found private project
 IDs, a GitHub organisation, a Jira project key and ticket keys, folder
 layouts and capability paths in 11 tracked files outside `docs/work`, and in
 some work items. The repository is public.
@@ -47,8 +47,8 @@ reader's names) is what this enforces for TCW itself.
 
 ## Acceptance criteria
 
-1. `git grep -n -i "proposit\|PRPI" -- . ':!pnpm-lock.yaml'` shows only
-   `proposit.atlassian.net`.
+1. A search for the private names, excluding `pnpm-lock.yaml`, finds only
+   the kept Jira site address.
 2. Each changed test goes red when the behavior it names is broken.
 3. Bare `pytest` passes, apart from failures shown to be unrelated.
 
