@@ -187,7 +187,9 @@ inbox. What happens depends on where that project is:
    the ticket to the `request` stage and writes its item folder there, left
    uncommitted, and standard output is the new item's slug.
    Otherwise the ticket stays in the Jira inbox, TCW says why on standard
-   error, prints the ticket's key, and exits 0.
+   error, prints the ticket's key, and exits 0. Until the files a filing
+   wrote are recorded in that project's version control, the next filing
+   there is refused, or, with Jira, stays in the inbox.
 4. **It is declared but not on this machine, and its entry here has a `jira`
    block:** TCW creates a ticket in the inbox status the block names, prints
    the ticket's key, and exits 0.

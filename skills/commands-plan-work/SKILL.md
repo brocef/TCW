@@ -42,6 +42,6 @@ for its requester; pick the work up again with this skill once it is at spec.
 
 **Stop once the plan is written**, leaving the item at plan. The plan
 prompt's last line says to run `tcw work advance`; under this skill, do not.
-That line is for `commands-drive-work-to-completion`. Moving it on and
-writing code is the `commands-drive-work-to-completion` skill. Ask the user to
+Moving the item on and writing code is the
+`commands-drive-work-to-completion` skill's job. Ask the user to
 read the plan, and name its path, `tcw work path <slug> plan`.

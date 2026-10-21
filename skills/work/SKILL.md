@@ -94,9 +94,10 @@ every arrival it names.
   `tcw work new "<title>" --project <id>`; `tcw projects list` names the
   projects this one declares under `projects:` (the configure skill's
   reference on projects explains the key). It sets no parent, tags or
-  blockers, and leaves what it wrote as uncommitted changes: record them in
-  that project's version control before filing there again, then set those
-  with `tcw work edit` from inside that project. The plan prompt's step 6
+  blockers: set those afterwards with `tcw work edit` from inside that
+  project, then record the uncommitted changes TCW left there in that
+  project's version control before filing there again. A ticket key printed
+  instead of a slug means no item exists there yet. The plan prompt's step 6
   gives the order for an epic's parts.
 
 ## Another project's exit codes

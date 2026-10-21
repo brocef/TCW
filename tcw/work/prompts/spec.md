@@ -51,8 +51,8 @@ it to `tcw work path <slug> spec --handoff`.
 
 - _The code contradicts the request._ Stop and return to request. A spec that
   quietly reinterprets the request is worse than one that refuses.
-- _The requester revises the request._ It stays at spec: record the change at
-  their word as request does (Jira: description and comment; files: `## Added`).
+- _The requester revises the request._ It stays at spec: record it as an
+  amendment (a dated `## Added`; in Jira, an `Added` comment), and follow it.
 - _The work is too large for one item._ Say so; plan decomposes it.
 - _You cannot ground a claim._ Mark it as an assumption, not a fact.
 - _`tcw work comment` failed._ Report the command and its exit code, do not

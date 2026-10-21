@@ -36,15 +36,14 @@ tests cannot check.
 5. Record dependencies between items as blockers, not prose:
    `tcw work edit <slug> --blocked-by <ref>`.
 6. **Too large for one item?** Split it here: `tcw work new "<title>" --parent
-   <slug>` for each part, the part's request on stdin, and plan this item as
-   the parent that ties them together. A part that belongs to another project
-   is filed with `tcw work new "<title>" --project <id>`, which takes no
-   `--parent`. TCW leaves what it wrote there as uncommitted changes, so next
-   record them in that project's version control, the way that project does,
-   and set `--parent` and any `--blocked-by` with `tcw work edit` run from
-   inside that project. File the next part there only once they are recorded:
-   until then a filing is refused, or, where that project keeps its work in
-   Jira, its ticket stays in the Jira inbox.
+   <slug>` per part, its request on stdin; this item is the parent. A part for
+   another project: `tcw work new "<title>" --project <id>` (no `--parent`). A
+   ticket key printed instead of a slug means no item exists there yet: report
+   it. Otherwise, from inside that project, set `--parent` (a Jira project
+   takes only a ticket on its own site) and `--blocked-by` with `tcw work edit`,
+   then record TCW's uncommitted changes in that project's version control
+   before filing there again: until then a filing is refused, or its Jira
+   ticket stays in the inbox.
 7. **No placeholders.** "TBD", "add error handling", "as in step 3": a step
    nobody can carry out without asking you a question is not a step.
 8. **Self-review.** Re-read the plan against the spec: every acceptance

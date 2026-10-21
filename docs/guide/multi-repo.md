@@ -176,10 +176,13 @@ What happens depends on where the target is:
 5. **It is declared but not on this machine, with no `jira` block:** refused,
    exit code 3.
 
-To file an epic's part into another project, file it with `--project`,
-commit the files TCW wrote in that project, then set its parent, tags and
-blockers with `tcw work edit` from inside that project. Commit before the next
-filing there, for the reasons above.
+To file an epic's part into another project, file it with `--project`. If
+that prints a ticket key rather than a slug, no item exists there yet, and the
+parent is set once that project adopts the ticket. Otherwise set its parent,
+tags and blockers with `tcw work edit` from inside that project (a Jira
+project accepts as parent only a ticket on its own Jira site), then commit
+everything TCW wrote there, the edit included, before the next filing, for the
+reasons above.
 
 `tcw work edit <folder> --blocks <project>/<folder>` changes an item in
 another project, adding this item to its `blocked-by`, and never creates one.
