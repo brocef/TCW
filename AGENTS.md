@@ -71,6 +71,13 @@ store implement this operation, even if less elegantly?"_ It governs every chang
 to an operation, not only the ones made at a lifecycle stage, and it lives in
 full in [`docs/lifecycle/abstraction.md`](docs/lifecycle/abstraction.md).
 
+**Check every change against the setups TCW is used in**:
+[`docs/use-cases.md`](docs/use-cases.md) lists them (a single project, a
+library others read, a monorepo of several projects, many repositories with a
+planning workspace, a Jira project shared by several projects, and the
+situations that cut across them), each with its requirements and known gaps.
+Every spec names the cases it touches in its `## Use cases` section.
+
 ## Development environment
 
 A **Claude Code remote session** provisions itself at session start:

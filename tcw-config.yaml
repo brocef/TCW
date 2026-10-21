@@ -69,6 +69,12 @@ work:
     description: How to declare or change each configuration setting. Update the matching
       document whenever a key in `tcw-config.yaml`, a component config file, or a
       `TCW_PROJECT_<ID>`-style variable is added, removed, or changes meaning.
+  - path: docs/use-cases.md
+    trigger: Project-Setup-Change
+    description: The project setups and working situations TCW must work in, each
+      with its requirements and known gaps, for people changing TCW. Update when a
+      change alters how TCW behaves in one of those setups, when a new real setup
+      is found, or when a known gap's item is finished; plain language.
   procedures:
     create-work:
     - inherit: true

@@ -47,6 +47,7 @@ DOCUMENTATION = {
     ("docs/changelogs/upcoming/<folder>.md", "Any-Code-Change"),
     ("skills/<component>/SKILL.md", "Skill-Driven-Component"),
     ("skills/configure/references/<document>.md", "Configuration-Key-Change"),
+    ("docs/use-cases.md", "Project-Setup-Change"),
 }
 
 # Programs a `command:` hook runs a script with; the script is then its

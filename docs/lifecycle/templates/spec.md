@@ -28,6 +28,13 @@ _model / store interface, or filesystem-adapter private detail. See_
 _[`../abstraction.md`](../abstraction.md). "No new operation" is a valid answer_
 _and still has to be written._
 
+## Use cases
+
+_Name each case (UC-) and situation (S-) in
+[`../../use-cases.md`](../../use-cases.md) this change touches, and say how it
+behaves in each; run that document's checklist. "None" needs a reason. A
+setup the document does not describe is added to it in this change._
+
 ## Acceptance criteria
 
 _Each one checkable by someone else without asking what it meant._
