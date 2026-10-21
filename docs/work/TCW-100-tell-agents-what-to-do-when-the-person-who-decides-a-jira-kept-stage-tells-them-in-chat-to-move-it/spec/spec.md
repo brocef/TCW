@@ -58,7 +58,7 @@ given `--reason` posts a note on the ticket, "Moved from X to Y. Reason: …"
 description: the Jira backend's `update` (`tcw/work/jira/backend.py:793`)
 changes properties and links, never the description.
 
-Observed: a session working proposit-app-repo's PRPI-198 under
+Observed: a session working app's APP-198 under
 `commands-plan-work` posted its proposed request wording and stopped. When the
 requester asked why it could not move the item itself, it did not know whether
 it was allowed to.

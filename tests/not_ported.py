@@ -128,8 +128,8 @@ NOT_PORTED = frozenset({
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[.]',
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[a]',
     'tests/test_upstream_projects.py::test_reading_an_upstream_item_is_allowed[b]',
-    'tests/test_upstream_projects.py::test_the_proposit_migration_passes_through_no_blocked_state',
     'tests/test_upstream_projects.py::test_the_upstream_stays_off_the_familys_lists',
+    'tests/test_upstream_projects.py::test_the_workspace_migration_passes_through_no_blocked_state',
     # tests/test_validate.py
     'tests/test_validate.py::test_a_broken_path_and_an_unprovisioned_declaration_are_two_problems',
     'tests/test_validate.py::test_a_reference_to_resolved_work_validates_where_it_was_resolved',

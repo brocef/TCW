@@ -15,13 +15,13 @@ _Applies at `implement`. The design rules that govern what you build are in
 
 `work.path` in a project's `tcw-config.yaml` may point at a store outside that
 project's own repository, and in the orchestrator layout it normally does. The
-reference shape, from `/Users/brian/Projects/proposit-orchestration/`:
+reference shape, from a planning workspace:
 
 ```
-proposit-orchestration/          git repo A — owns docs/ and every work store
-├── docs/proposit-core/work/     the child's store
-├── proposit-core/               git repo B, nested, and gitignored by A
-│   └── tcw-config.yaml          work.path → ../docs/proposit-core/work
+workspace/                       git repo A — owns docs/ and every work store
+├── docs/core/work/              the child's store
+├── core/                        git repo B, nested, and gitignored by A
+│   └── tcw-config.yaml          work.path → ../docs/core/work
 ```
 
 Planning consolidates in one repository; code lives in several. This is the

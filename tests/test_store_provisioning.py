@@ -320,25 +320,25 @@ def test_the_cache_key_is_unchanged():
     exactly what a shared normalizer would change.
     """
     expected = {
-        ("https://github.com/Proposit-App/proposit-orchestration.git", "main"):
-            "github.com-proposit-app-proposit-orchestration-73cbcd814e44",
-        ("https://github.com/Proposit-App/proposit-orchestration", "main"):
-            "github.com-proposit-app-proposit-orchestration-bc251d728153",
-        ("git@github.com:Proposit-App/proposit-orchestration.git", "main"):
-            "github.com-proposit-app-proposit-orchestration-d5bbabd1bdc8",
-        ("https://github.com/Proposit-App/proposit-orchestration.git", "dev"):
-            "github.com-proposit-app-proposit-orchestration-447264907fc6",
+        ("https://github.com/Example-Org/workspace.git", "main"):
+            "github.com-example-org-workspace-ec7917e6e4c3",
+        ("https://github.com/Example-Org/workspace", "main"):
+            "github.com-example-org-workspace-f86dcb6399fe",
+        ("git@github.com:Example-Org/workspace.git", "main"):
+            "github.com-example-org-workspace-1a37f0559bb2",
+        ("https://github.com/Example-Org/workspace.git", "dev"):
+            "github.com-example-org-workspace-c6c86f756591",
     }
     for (url, ref), key in expected.items():
         assert checkouts._cache_key(RepositoryDeclaration(url=url, ref=ref)) == key
 
 
 @pytest.mark.parametrize("spelling", [
-    "https://github.com/Proposit-App/proposit-orchestration",
-    "https://github.com/Proposit-App/proposit-orchestration.git",
-    "https://github.com/Proposit-App/proposit-orchestration/",
-    "  https://github.com/Proposit-App/proposit-orchestration.git  ",
-    "git@github.com:Proposit-App/proposit-orchestration.git",
+    "https://github.com/Example-Org/workspace",
+    "https://github.com/Example-Org/workspace.git",
+    "https://github.com/Example-Org/workspace/",
+    "  https://github.com/Example-Org/workspace.git  ",
+    "git@github.com:Example-Org/workspace.git",
 ])
 def test_two_spellings_of_one_repository_normalize_alike(spelling):
     """The question `_cache_key` deliberately answers the other way.
@@ -348,18 +348,18 @@ def test_two_spellings_of_one_repository_normalize_alike(spelling):
     new resolution rung has to see through that.
     """
     canonical = checkouts.normalized_url(
-        "https://github.com/Proposit-App/proposit-orchestration")
+        "https://github.com/Example-Org/workspace")
     assert checkouts.normalized_url(spelling) == canonical
 
 
 @pytest.mark.parametrize("other", [
-    "https://github.com/Proposit-App/proposit-core",
-    "https://github.com/Someone-Else/proposit-orchestration",
-    "https://gitlab.invalid/Proposit-App/proposit-orchestration",
+    "https://github.com/Example-Org/core",
+    "https://github.com/Someone-Else/workspace",
+    "https://gitlab.invalid/Example-Org/workspace",
 ])
 def test_two_different_repositories_do_not_normalize_alike(other):
     assert checkouts.normalized_url(other) != checkouts.normalized_url(
-        "https://github.com/Proposit-App/proposit-orchestration")
+        "https://github.com/Example-Org/workspace")
 
 
 def test_an_undeclared_component_is_a_no_op(tmp_path):

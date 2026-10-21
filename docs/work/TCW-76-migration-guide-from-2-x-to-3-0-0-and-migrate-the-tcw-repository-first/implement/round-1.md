@@ -579,12 +579,12 @@ The custom fields `TCW Project` (`customfield_10076`, text), `TCW Item`
 global context. `Effort` and `Complexity` offer `low`, `medium`, `high` and
 `very-high`, which 3.0 reads and writes as they are (it compares option names
 ignoring case, with spaces read as `-`), so their options need no change. The
-project's screens (`PRPI: Kanban Default Screen`, `… Bug Screen`, `… Epic
+project's screens (`APP: Kanban Default Screen`, `… Bug Screen`, `… Epic
 Screen`, ids 10010, 10011 and 10012, each one tab used for create, edit and
 view) carry `TCW Item` but not `TCW Project`, `Effort` or `Complexity`. **They
-belong to the issue type screen scheme `PRPI: Kanban Issue Type Screen
-Scheme` (10002), which the `PRPI` project uses too**, so a field added to them
-also appears on PRPI's tickets. The link type `Blocks` exists.
+belong to the issue type screen scheme `APP: Kanban Issue Type Screen
+Scheme` (10002), which the `APP` project uses too**, so a field added to them
+also appears on APP's tickets. The link type `Blocks` exists.
 
 Each line below says how to confirm it was done. In Jira's settings, a
 company-managed workflow is edited as a draft and then published.
@@ -611,16 +611,16 @@ company-managed workflow is edited as a draft and then published.
    its status (adding statuses and transitions maps nothing).
 5. Put `TCW Project`, `Effort` and `Complexity` on the create and edit screen
    of every issue type the TCW project uses (Task, Sub-task, Bug, Epic). The
-   screens 10010, 10011 and 10012 are shared with `PRPI`. **The owner chose
-   on 2026-10-16 to give TCW its own copies first**, so PRPI is not touched:
+   screens 10010, 10011 and 10012 are shared with `APP`. **The owner chose
+   on 2026-10-16 to give TCW its own copies first**, so APP is not touched:
    copy the three screens (`TCW: Kanban Default Screen`, `… Bug Screen`,
    `… Epic Screen`), copy the screen schemes that use them and point the
    copies at the new screens, copy the issue type screen scheme
-   `PRPI: Kanban Issue Type Screen Scheme` (10002) as `TCW: Kanban Issue Type
+   `APP: Kanban Issue Type Screen Scheme` (10002) as `TCW: Kanban Issue Type
    Screen Scheme` and point it at the copied screen schemes, assign that copy
    to the `TCW` project only, and then add the three fields to the copied
    screens. Confirm: `GET /rest/api/3/issuetypescreenscheme/project?projectId=10037`
-   shows the copy, and PRPI's still shows 10002. Then: `GET
+   shows the copy, and APP's still shows 10002. Then: `GET
    /rest/api/3/issue/createmeta/TCW/issuetypes/<id>` lists all four TCW fields
    for each of the four issue types, and an existing ticket's edit
    metadata (`GET /rest/api/3/issue/<KEY>/editmeta`) lists them too.

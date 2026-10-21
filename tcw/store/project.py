@@ -39,8 +39,8 @@ def validate_project_id(project_id: str) -> str:
 def override_variable(project_id: str) -> str:
     """The environment variable that says where `project_id` lives on this machine.
 
-    The id, uppercased, with `-` as `_`: `proposit-core` →
-    `TCW_PROJECT_PROPOSIT_CORE`. **Project ids, not repository names** — the two are
+    The id, uppercased, with `-` as `_`: `app-repo` →
+    `TCW_PROJECT_APP_REPO`. **Project ids, not repository names** — the two are
     routinely different, and a workspace where they are crossed is what this
     mapping is most often got wrong against.
 

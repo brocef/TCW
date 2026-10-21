@@ -6,9 +6,9 @@ with the child's project id:
 
 ```yaml
 new:
-    - proposit-shared/authoring/add-a-claim
+    - shared/authoring/add-a-claim
 changed:
-    - proposit-server/authoring/add-a-claim
+    - server/authoring/add-a-claim
 ```
 
 The child must be declared under my project's `projects.children`.

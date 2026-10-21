@@ -66,13 +66,12 @@ def test_the_override_variable_name_follows_the_id():
     """The id, uppercased with `-` as `_` — node ids, never repository names.
 
     The distinction costs an hour when the two are crossed, which they are in
-    the workspace that prompted this: the directory `proposit-orchestration`
-    holds the node `proposit-app`, and the directory `proposit-app` holds the
-    node `proposit-app-repo`.
+    the workspace that prompted this: the directory `workspace` holds the
+    node `product`, and the directory `app` holds the node `app-repo`.
     """
-    assert override_variable("proposit-core") == "TCW_PROJECT_PROPOSIT_CORE"
-    assert override_variable("proposit-app") == "TCW_PROJECT_PROPOSIT_APP"
-    assert override_variable("proposit-app-repo") == "TCW_PROJECT_PROPOSIT_APP_REPO"
+    assert override_variable("app-repo") == "TCW_PROJECT_APP_REPO"
+    assert override_variable("product") == "TCW_PROJECT_PRODUCT"
+    assert override_variable("app-repo-web") == "TCW_PROJECT_APP_REPO_WEB"
     assert override_variable("a") == "TCW_PROJECT_A"
 
 

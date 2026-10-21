@@ -28,7 +28,7 @@ worktree `.worktrees/tcw-3-0-migration-run-1`, on the branch
   them by hand (spec Design 2 step 2 and 6.2 said by hand). Each change is
   still listed in the step 1 plan, for approval before it is made.
 - **(c) TCW gets its own screens.** The owner chose on 2026-10-16 that TCW
-  gets its own copies of the screens it shares with `PRPI` (TCW-76's
+  gets its own copies of the screens it shares with `APP` (TCW-76's
   `outcome.md`, Jira checklist step 5).
 - **(d) Where the log lives.** TCW-76's spec (Design 1.8) and plan (choice 5)
   made the log TCW-76's 2.x `outcome.md`, becoming `implement/round-1.md` at
@@ -265,8 +265,8 @@ are `Triage` (10011), `To Do` (10012), `In Progress` (3), `In Review`
 (10013), `Done` (10009) and `Won't Do` (10041), and whose transitions are
 `Create` (initial, to Triage) and the directed `Accept`, `Start`, `Submit`,
 `Complete`, `Rework`, `Cancel`, `Stop` and `Reopen`, none with a screen. The
-project still uses the issue type screen scheme `PRPI: Kanban Issue Type
-Screen Scheme` (10002), shared with `PRPI`. The custom fields are `TCW
+project still uses the issue type screen scheme `APP: Kanban Issue Type
+Screen Scheme` (10002), shared with `APP`. The custom fields are `TCW
 Project` (`customfield_10076`, text), `TCW Item` (`customfield_10042`, text),
 `Effort` (`customfield_10077`) and `Complexity` (`customfield_10078`), single
 choice with the options `low`, `medium`, `high`, `very-high`. The site's
@@ -292,7 +292,7 @@ and logged:
    `TCW: Kanban Issue Type Screen Scheme`, point it at the copied screen
    schemes and assign it to `TCW` only; then add `TCW Project`, `Effort` and
    `Complexity` to the three copied screens (`TCW Item`, `Summary`, `Labels`,
-   `Assignee`, `Parent` and `Priority` are checked there as well). `PRPI`
+   `Assignee`, `Parent` and `Priority` are checked there as well). `APP`
    keeps 10002, unchanged.
 6. No other workflow: confirmed by the scheme read above.
 
@@ -953,26 +953,26 @@ Checklist (TCW-76 `outcome.md`, "Jira checklist") and each confirmation:
    work` and no issue type mappings, and the 77 tickets keep their statuses
    (26 `Done`, 2 `In Progress`, 17 `To Do`, 32 `Won't Do`; the same counts as
    before).
-5. **TCW's own screens** (deviation c). The source screens are named `PRPI:
-   Kanban Default Issue Screen` (10010), `PRPI: Kanban Bug Screen` (10011) and
-   `PRPI: Kanban Epic Screen` (10012), one tab each; the copies take TCW's
+5. **TCW's own screens** (deviation c). The source screens are named `APP:
+   Kanban Default Issue Screen` (10010), `APP: Kanban Bug Screen` (10011) and
+   `APP: Kanban Epic Screen` (10012), one tab each; the copies take TCW's
    prefix: `TCW: Kanban Default Issue Screen` (10051), `TCW: Kanban Bug
    Screen` (10052), `TCW: Kanban Epic Screen` (10053), each with its source's
    fields in the same order followed by `TCW Project`, `Effort` and
    `Complexity`. Screen schemes `TCW: Kanban Default Screen Scheme` (10049),
    `… Bug Screen Scheme` (10050), `… Epic Screen Scheme` (10051), each using
-   its screen for create, edit and view as the PRPI ones do. Issue type screen
+   its screen for create, edit and view as the APP ones do. Issue type screen
    scheme `TCW: Kanban Issue Type Screen Scheme` (10037): default → 10049,
-   `Bug` → 10050, `Epic` → 10051, as 10002 maps PRPI's; assigned to `TCW`.
+   `Bug` → 10050, `Epic` → 10051, as 10002 maps APP's; assigned to `TCW`.
    Confirmed: `GET /rest/api/3/issuetypescreenscheme/project` shows 10037 for
-   `TCW` and 10002 for `PRPI` alone; the create metadata of all four types
+   `TCW` and 10002 for `APP` alone; the create metadata of all four types
    lists `TCW Project`, `TCW Item`, `Effort`, `Complexity`, `Summary`,
    `Labels`, `Assignee`, `Priority` and, except on `Epic` (the top of the
    hierarchy, where the guide does not need it), `Parent`; the edit metadata
    of `TCW-76` (`Task`), `TCW-9` (`Task`) and `TCW-68` (`Epic`) lists the
    same. No `Bug` or `Sub-task` ticket exists to read an edit screen on; each
    type uses one screen for create and edit, so the create read covers it.
-   PRPI's three screens list the same fields as before the change.
+   APP's three screens list the same fields as before the change.
 6. **No other workflow.** Confirmed by the scheme read under 4.
 
 **Check:** the Jira-workflow reading at the end of step 3.
