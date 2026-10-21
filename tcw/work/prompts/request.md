@@ -40,7 +40,8 @@ the requester to adopt.
 The requester decides when the request is ready. When they tell you to move
 the item on, in this conversation, do it. If they adopted changed wording,
 first put it into the ticket's description: write it yourself if your harness
-can edit Jira tickets, or ask them to paste it in. Then read it back and
+can edit Jira tickets, or ask them to paste it in. Change only what they
+adopted, and keep everything else in the description. Then read it back and
 confirm the description now says what they adopted. Then run
 `tcw work advance <slug> --reason "<who told you to move it>"`. A question,
 such as whether accepting the wording moves the item, is not an instruction to

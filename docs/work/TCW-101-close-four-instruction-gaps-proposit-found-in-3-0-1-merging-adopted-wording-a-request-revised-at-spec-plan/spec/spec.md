@@ -110,3 +110,18 @@ test reads skill wording (the TCW-93 gap).
 - **Item 2 could read as "rewrite the request whenever you like".** The bullet
   says "their word decides it": the requester's word, as at request.
 - **Plan step 6 grows.** It stays one paragraph.
+
+## Notes
+
+Changed during implement, and why:
+
+- **Design 4's wording.** It said "commit". Shipped agent text may not name
+  git or tell an agent to commit (`tests/test_shipped_text.py`,
+  `test_no_shipped_text_names_git`, from TCW-74 criterion 8): TCW's text stays
+  free of any one version control system, and each project brings its own
+  through its hooks. The plan prompt and the `work` skill say instead to
+  "record them in that project's version control, the way that project does".
+  The guide and the CLI message, which may name git, still say "commit".
+- **Design 2's bullet** is two lines, not six. The spec prompt has a 60-line
+  limit (`test_each_prompt_is_at_most_60_lines_for_each_backend`), and it
+  stood at 58.

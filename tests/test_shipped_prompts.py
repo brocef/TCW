@@ -311,3 +311,28 @@ def test_the_self_review_pass_appears_in_exactly_three_prompts():
     prompts = load_builtins().stage_prompts
     found = {sid for sid, text in prompts.items() if "self-review" in text.lower()}
     assert found == {"spec", "plan", "implement"}
+
+
+def test_jira_request_keeps_what_the_requester_did_not_change():
+    """TCW-101: adopted wording changes only what was adopted."""
+    paragraph = _paragraph_with(prompt("request", "jira"), "tell you to move")
+    assert "keep everything else in the description" in paragraph
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_spec_says_what_to_do_when_the_requester_revises_the_request(backend):
+    """TCW-101: the item stays at spec, and the change is recorded where the
+    request lives, in either backend's form."""
+    paragraph = _paragraph_with(prompt("spec", backend), "The requester revises")
+    for words in ("stays at spec", "description", "## Added"):
+        assert words in paragraph, words
+
+
+def test_plan_says_how_to_file_a_part_into_another_project():
+    """TCW-101: --project takes no --parent, what it wrote is recorded in
+    that project's version control, and the parent is set from inside that
+    project, in that order."""
+    paragraph = _paragraph_with(prompt("plan", "filesystem"), "Too large for one item")
+    order = [paragraph.index(w) for w in ("--project", "version control",
+                                          "tcw work edit")]
+    assert order == sorted(order), paragraph

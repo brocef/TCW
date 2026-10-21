@@ -165,7 +165,9 @@ What happens depends on where the target is:
      the `request` stage, TCW then moves the ticket to the `request` stage
      and writes its item folder, left uncommitted; standard output is the new
      item's slug. Otherwise the ticket stays in the Jira inbox, TCW says why on
-     standard error, prints the ticket's key, and exits 0.
+     standard error, prints the ticket's key, and exits 0. A filing that made
+     the item says so, and says that the next filing into that project will
+     stay in its inbox until the new files are committed.
 4. **It is declared but not on this machine, and this project's entry for it
    has a `jira` block:** TCW creates the ticket in that project's Jira inbox,
    prints the ticket's key, and exits 0. The block names the target's site,
@@ -173,6 +175,11 @@ What happens depends on where the target is:
    ([`projects.md`](../../skills/configure/references/projects.md#creating-an-item-in-another-project)).
 5. **It is declared but not on this machine, with no `jira` block:** refused,
    exit code 3.
+
+To file an epic's part into another project, file it with `--project`,
+commit the files TCW wrote in that project, then set its parent, tags and
+blockers with `tcw work edit` from inside that project. Commit before the next
+filing there, for the reasons above.
 
 `tcw work edit <folder> --blocks <project>/<folder>` changes an item in
 another project, adding this item to its `blocked-by`, and never creates one.

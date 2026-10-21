@@ -40,6 +40,8 @@ carry on to spec. A question, or an advisor's opinion, is not that
 instruction. Without it, stop after the comment and report that the item waits
 for its requester; pick the work up again with this skill once it is at spec.
 
-**Stop once the plan is written**, leaving the item at plan. Moving it on and
+**Stop once the plan is written**, leaving the item at plan. The plan
+prompt's last line says to run `tcw work advance`; under this skill, do not.
+That line is for `commands-drive-work-to-completion`. Moving it on and
 writing code is the `commands-drive-work-to-completion` skill. Ask the user to
 read the plan, and name its path, `tcw work path <slug> plan`.

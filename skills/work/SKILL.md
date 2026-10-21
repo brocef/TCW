@@ -93,7 +93,11 @@ every arrival it names.
 - **Delegation is filing into another project**, with
   `tcw work new "<title>" --project <id>`; `tcw projects list` names the
   projects this one declares under `projects:` (the configure skill's
-  reference on projects explains the key).
+  reference on projects explains the key). It sets no parent, tags or
+  blockers, and leaves what it wrote as uncommitted changes: record them in
+  that project's version control before filing there again, then set those
+  with `tcw work edit` from inside that project. The plan prompt's step 6
+  gives the order for an epic's parts.
 
 ## Another project's exit codes
 
