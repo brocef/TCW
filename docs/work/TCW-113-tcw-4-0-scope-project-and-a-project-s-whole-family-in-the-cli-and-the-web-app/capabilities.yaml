@@ -1,0 +1,24 @@
+new:
+    - cli/choose-which-projects-a-list-or-show-command-covers
+    - capabilities/see-each-projects-status-for-a-capability
+changed:
+    - work/view-the-board
+    - work/read-a-work-item
+    - work/keep-work-items-in-jira
+    - work/run-a-procedure
+    - taxonomy/browse-the-term-forest
+    - taxonomy/read-a-term
+    - taxonomy/search-terms
+    - capabilities/browse-capabilities-by-status
+    - capabilities/read-a-capability
+    - capabilities/search-capabilities
+    - cli/rely-on-one-output-contract
+    - web
+    - web/editing
+    - cli/reference-a-tcw-object
+    - web/see-jira-owned-work-read-only
+taxonomy:
+    new:
+        - scope
+    changed:
+        - local-web-app
