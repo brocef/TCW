@@ -1,0 +1,27 @@
+new:
+    - cli/change-objects-only-in-the-project-that-owns-them
+    - cli/run-a-command-as-if-started-in-another-folder
+    - work/move-a-work-item
+    - taxonomy/rename-or-move-a-term
+    - capabilities/rename-or-move-a-capability
+changed:
+    - work/rename-a-work-item
+    - work/open-a-work-item
+    - work/tell-tcw-who-i-am
+    - work/decompose-a-work-item-into-children
+    - work/manage-blocking-relations
+    - work/keep-work-items-in-jira
+    - work/manage-the-work-inbox
+    - work/configure-the-work-store-location
+    - cli/list-connected-projects
+    - cli/reference-a-tcw-object
+    - capabilities/override-inherited
+    - web/editing
+removed:
+    - work/delegate-a-work-item-to-another-project
+taxonomy:
+    new:
+        - owning-project
+    changed:
+        - reference
+        - project
