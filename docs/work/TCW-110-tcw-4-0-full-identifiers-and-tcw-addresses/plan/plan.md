@@ -221,6 +221,19 @@ every remaining failure one by one: an assertion is changed only where the
 text it checks has legitimately changed form, never to make different
 behavior pass (spec Risks, "Test churn").
 
+**Creates**, in `tests/projectfiles.py`, `connect_projects(root, relation,
+*project_ids)`: it writes each ID under `projects.<relation>` in `root`'s
+`.tcw/tcw-config.yaml`, in the form TCW-107 leaves that key (by ID, the
+location coming from the manifest or from the folders next to `root`). It is
+the one place this item's tests write a `projects:` entry: every TCW-110 test
+that connects two projects (Steps 6, 7, 8, 10, 11, 13 and 14, including every
+fixture that uses `taxonomy.extends` or `capabilities.extends` and so needs
+the extended project connected) calls it, and none writes `projects:` by
+hand. TCW-108 then converts these fixtures by changing this one function's
+body (Step 17). The older `connect` in `tests/work/projects.py:46-55`, which
+writes a relative path, stays for the tests that already use it; TCW-110's
+new tests do not call it.
+
 **Proves it:** imported by Step 4's tests.
 
 ## Step 4 — work items are named by their full identifier
@@ -267,8 +280,9 @@ files-backend project `demo` built with `tests/work/projects.py`'s
   `tcw/work/jira/backend.py:342`, `:401`, `:694`, `:795`, `:891` (two),
   `:913`; `tcw/work/jira/remote.py:465`, `:512`; `tcw/work/fs_backend.py:154`,
   `:310`, `:448` (two), `:488`; `tcw/serve/work.py:63`), with `folder` a
-  property reading `id_path`. It is no longer `@dataclass(order=True)`: it
-  inherits `FullId`'s equality, hashing and order (Step 1), so a `Slug` and
+  property reading `id_path`. It carries **no `@dataclass` decorator at
+  all** (a plain `@dataclass(frozen=True)` would generate `__eq__` and
+  `__hash__` again and undo Step 1's equality): it inherits `FullId`'s equality, hashing and order (Step 1), so a `Slug` and
   a `FullId` for the same item are equal. `__str__` is inherited,
   so every message, `TCW_SLUG` (`tcw/work/advance.py:168`,
   `tcw/work/resolve.py:334`), the stage prompt's `<slug>`
@@ -523,6 +537,27 @@ key).
 moved to the new forms; `tests/test_refs.py`'s `tcw://T/` and `tcw://C/`
 cases still passing with the new route key; `pnpm test`; the web gate.
 
+**Note for implement — where `route_key` lives.** Not in
+`tcw/serve/records.py`, as the `tcw/refs.py` bullet above says:
+`tcw/serve/records.py:15` imports `tcw.refs`, and `tcw/validate.py:37`
+imports `tcw.refs` while `tcw/serve/records.py:19` imports `tcw.validate`, so
+`tcw/refs.py` importing `route_key` from `tcw/serve/records.py` would be a
+circular import, and would make the link code depend on the web server
+module. `route_key(obj, project_id)` is defined in `tcw/refs.py`, and
+`tcw/serve/records.py` imports it from there.
+
+**Note for implement — client reads not listed above.** Besides the lines
+named in "Changes, web client", these read `slug` or `path` and move to
+`"full-id"` (or `itemKey`) in this step: `web/client/src/ui/app.tsx:640`
+(`capability.path`), `web/client/src/ui/content-views.tsx:210` (`term.slug`),
+`:248` and `:251` (`capability.path`), and `:531` (`item.path`). `tsc` fails
+on each once `types.ts:180-200` drops the fields.
+
+**Note for implement — test files not named above.** `.qualified` is also
+read in `tests/test_capabilities_federation.py`,
+`tests/test_legacy_store_config.py` and `tests/test_taxonomy.py` (18 uses);
+they move to `full_id` in this step.
+
 ## Step 7 — finding the owner of a full identifier
 
 **Tests first.** New `tests/test_locate.py`, two git repositories side by
@@ -532,7 +567,7 @@ TCW-107 leaves it; TCW-108, which lands after this item, converts the
 fixture) and no `extends`:
 
 - `Locator(app).owner_root("core", named_by=app)` returns `core`'s root;
-  with `core`'s folder removed it raises `Unreachable`; for `cor` (named by
+  with `core`'s folder deleted it raises `Unreachable`; for `cor` (named by
   nothing, nothing next to `app` declares it) `UnknownProject` with `no
   project with ID 'cor' is known or found near this one; check the
   spelling`; with two folders next to `app` declaring `id: lib` (named by
@@ -598,6 +633,23 @@ TCW-107's function):
   `project_folder(project_id, here)`, so any project TCW can locate opens,
   not only one `projects:` names (Design 6.1); `UnknownProject` and
   `ProjectGraphError` propagate (exit 1), `Unreachable` keeps exit 5.
+
+**Note for implement — "folder deleted".** Every absence test in this item
+(Steps 7, 9, 10, 11 and 13) deletes the other project's whole folder. Deleting
+only its `.tcw/` leaves a folder that has contents but holds no project,
+which TCW-107 reports as a graph problem (`ProjectGraphError`: `error`, exit
+1), not as `Unreachable` (`unresolved`, exit 5). Two optional cases in
+`tests/test_locate.py` pin the difference: a folder that is empty or holds
+only `.git` is `Unreachable`; one with other contents and no project is
+`ProjectGraphError`.
+
+**Note for implement — two more store openings with no `Locator`.** Besides
+`_inherited_stores` and `Locator.read`, a taxonomy store opens its project's
+capabilities store at `tcw/store/fs.py:1909` (`_capability_referrers`), and a
+capabilities store opens its project's taxonomy at `:2758` (`_taxonomy`). Both open from
+`self.project_root`, so a store opened from its owner's root would build a
+second registry. Both pass `locator=self.locator`. (`tcw/work/gates.py:453`,
+reached from `:472`, is Step 11's.)
 - `tcw/work/open.py:210-241` (`reference_resolver`) and
   `tcw/work/references.py:13-67`: a new answer `ERROR` carrying the message,
   for `ProjectGraphError` and `UnknownProject`, reported as an `error`
@@ -686,6 +738,40 @@ TCW-107's function):
   `tests/test_capabilities.py`, `test_capabilities_federation.py`,
   `test_taxonomy.py`, `test_store_editor.py`, `test_environment_hardness.py`
   and `test_eval_grading.py`) keep calling it until Step 11.
+- **The store interface** (`tcw/store/base.py`), changed in this step so the
+  abstract classes say what the file-system stores now do (the litmus test
+  of `docs/lifecycle/abstraction.md`: another kind of store implements the
+  same three reads). `TaxonomyStore` (`:346`) declares, beside `get`
+  until Step 11:
+  - `get_local(slug: str) -> Term | None`: the store's own project's entry
+    at that id-path, or `None`;
+  - `get_inherited(owner: str, slug: str) -> Term | None`: the entry at that
+    id-path in the project `owner` (a project ID this store extends), as
+    this project sees it, override applied, or `None`;
+  - `get_view(slug: str) -> Term | None`: an id-path read the way form `d`
+    is, local first and then inherited, with no prefix branch.
+
+  `CapabilitiesStore` (`:511`) declares the same three with `path: str`
+  and `Capability`. Every operation that names one existing object takes
+  `target: FullId | str` in place of `ref: str` / `identifier: str`: a
+  `FullId`, or text read by `sort_input` as command input is (below):
+  taxonomy `remove`, `get_term_detail`, `update_term`; capabilities `remove`,
+  `reset`, `set`, `get_capability_detail`, `update_capability`. `add` (it
+  names an object that does not exist yet), `check(identifier)` (an id-path
+  in the store's own project, `str | None`) and `search` keep their types.
+  The `AmbiguousRef` sentences of the docstrings (`:368`, `:408`, `:536`,
+  `:549`, `:569`) go: a form-`d` lookup takes the local entry
+  first, and a full identifier names one owner. The docstrings of
+  `get_local`, `get_inherited` and `get_view` are the ones written on the
+  file-system methods.
+- **Note for implement — `_found` and text.** `_found(target: FullId | str)`
+  above reads a `str` with `sort_input(text, namespace)`, not as an id-path:
+  form `a` text goes the way a `FullId` does, form `d` to `get_view`, and
+  any other form is refused with `sort_input`'s message. So the tests that
+  call the store directly with text (`tests/test_capabilities_federation.py:252`,
+  `:343`, `:376`, `store(child).set("base/…")`) can pass the moved
+  `core.<namespace>/…` text, and it reaches the inherited owner. (The `get`
+  calls beside them, `:367-368`, move in Step 11.)
 - `tcw/locate.py`: `find_tree(store, namespace, text) -> Term | Capability`:
   `sort_input`, then form `a` → own owner `get_local`, inherited owner
   `get_inherited`, other owner `Locator.read`; form `d` → `get_view`.
@@ -757,7 +843,7 @@ use the alias-prefixed `core/…` input today) moved to `core.<namespace>/…`.
   for `relatesTo`, `Feature`, `Roles: roles/x` and `Blocked by`.
 - A reference into a project `app` does not extend:
   `Subject: [core.taxonomy/term]` passes `tcw validate`;
-  `core.taxonomy/missing` fails it; with `core` removed it is `unresolved`
+  `core.taxonomy/missing` fails it; with `core`'s folder deleted it is `unresolved`
   and the run exits 0 (Design 6.3, all namespaces).
 - `Roles: [!demo.capabilities/roles/admin]` keeps its negation and is checked.
 
@@ -818,7 +904,7 @@ fixtures' `meta.yaml` values written through `tests/fullids.py`.
   under `projects.upstream` by ID (TCW-108 converts this fixture later), no
   `extends`: `[t](tcw://core.taxonomy/term)` in
   `app` passes; `tcw://core.taxonomy/missing` fails; with `core`'s folder
-  removed the first is `unresolved` and the run exits 0.
+  deleted the first is `unresolved` and the run exits 0.
 - AC 13a (validate half): `[t](tcw://cor.taxonomy/term)` exits 1 with an error
   at the link containing `no project with ID 'cor'` and `check the
   spelling`; `[t](tcw://lib.taxonomy/term)` with two siblings declaring
@@ -868,6 +954,10 @@ fixtures' `meta.yaml` values written through `tests/fullids.py`.
 kept as "recognised and refused"), `tests/test_validate.py`'s link tests,
 `pnpm test`.
 
+**Note for implement — a test file not named above.**
+`tests/serve/test_records.py:260-267` imports `resolve_tcw_ref`, which this
+step deletes; it moves to `resolve_address`.
+
 ## Step 11 — `capabilities.yaml` entries name their ledger
 
 **Tests first**, in `tests/work/test_gates.py`:
@@ -879,7 +969,7 @@ kept as "recognised and refused"), `tests/test_validate.py`'s link tests,
   `projects.children` by ID, as TCW-107 leaves the key; TCW-108 converts
   the fixture):
   `changed: [server.capabilities/x]` passes the gate; with `server`'s folder
-  removed it is "could not check"; `app.capabilities/x` with no such
+  deleted it is "could not check"; `app.capabilities/x` with no such
   capability in `app` fails.
 - AC 23 (last part): `app` extending `core`, `changed:
   [core.capabilities/cli/x]`: `route_capability_path`'s answer is `app`'s own
@@ -904,14 +994,27 @@ kept as "recognised and refused"), `tests/test_validate.py`'s link tests,
   (through `parse_stored` and `Locator.read`, so a term in a project not
   extended is found).
 - `tcw/work/gates.py:450-483` (`project_reader`): `open_child` becomes the
-  `Locator`; `registry.declared_child_ids()` is no longer asked.
+  `Locator`.
+- **After this step `tcw/work/gates.py` makes no `declared_child_ids()` call
+  anywhere.** Today's one call is in `route_capability_path`
+  (`tcw/work/gates.py:356`), which goes with the first-folder rule above,
+  and its `child_ids` also fills the no-ledger message (`:377-379`). That
+  message no longer lists child projects: it reads `<path>: this project
+  ('<id>') keeps no capabilities ledger; name the ledger's project in the
+  entry (<project>.capabilities/<path>)`. TCW-108 relies on this
+  (`docs/work/TCW-108-*/spec/spec.md:309-314`).
 - `tcw/work/gates.py:101-148` (`parse_declarations`) unchanged: it reads
   strings; the routing judges them.
 - `evals/seed_fixture.py:669-670` and `:700-701`: write
   `demo-app.capabilities/billing/download-invoice` and
   `demo-app.capabilities/reports/view` (`PROJECT_ID`, `:66`).
 - **`get` is deleted** from both tree stores (`tcw/store/fs.py:1799-1817`,
-  `:2425-2440`), with its 3.x prefix branches (`:1801-1803`, `:2426-2428`):
+  `:2425-2440`), with its 3.x prefix branches (`:1801-1803`, `:2426-2428`),
+  **and from the store interface**: the abstract `TaxonomyStore.get`
+  (`tcw/store/base.py:364-369`) and `CapabilitiesStore.get` (`:534-537`) are
+  deleted in the same change, so `FsTaxonomyStore` and `FsCapabilitiesStore`
+  stay instantiable; the reads that replace it are Step 8's `get_local`,
+  `get_inherited` and `get_view`, already abstract:
   `tcw/work/gates.py:409` and `:434` were its last callers outside the
   tests (Step 8's table), and they move above. The tests that call `get`
   directly (Step 8) move to `get_view`, `get_local` or `get_inherited`,
@@ -920,7 +1023,13 @@ kept as "recognised and refused"), `tests/test_validate.py`'s link tests,
 **Proves it:** `tests/work/test_gates.py`, `tests/work/test_drift_work.py`,
 `tests/test_routing_nodes.py` moved to full-identifier entries;
 `tests/test_eval_fixture.py`; a search finding no `.get(` call on a tree
-store in `tcw/`.
+store in `tcw/` and no `def get(` in `tcw/store/base.py`'s two tree-store
+classes; a search finding no `declared_child_ids` in `tcw/work/gates.py`.
+
+**Note for implement — callers of `project_reader`.** If its signature
+changes (`project_reader(project_root, registry)` today), its callers change
+with it: `tcw/validate.py:529`, `:609`, `tcw/cli.py:523` and
+`tcw/capabilities/cli.py:217`.
 
 ## Step 12 — a plain store location is relative
 
@@ -1070,8 +1179,10 @@ git repositories side by side under `tmp_path`:
   folders. The call at `tcw/validate.py:403-405` stays where it is (it
   returns early, as today).
 
-**Proves it:** the tests above; `tests/test_validate.py`'s old
-`_shared_work_paths` tests reworded to the new message.
+**Proves it:** the tests above; the old `_shared_work_paths` tests in
+`tests/work/test_validate_work.py` (`:8`, `:139`, `:150`), which import the
+function by name and call it with a registry, rewritten to call
+`_store_overlaps` with a `Locator`, not only reworded.
 
 ## Step 15 — the sweep, and a guard that keeps it swept
 
@@ -1164,7 +1275,10 @@ these 3.x ledgers by design.
 
 Comments the dispatching session posts (the text is in the implement round):
 
-- **TCW-108** (lands after this item): the tests of this item that connect
+- **TCW-108** (lands after this item): every test of this item writes its
+  `projects:` entries through one function, `connect_projects` in
+  `tests/projectfiles.py` (Step 3), so converting them is a change to that
+  function's body. The tests of this item that connect
   projects through the 3.x `projects:` key, which TCW-108 converts when it
   removes the key: `tests/test_locate.py` (`app` naming `core` under
   `projects.upstream`, Step 7); `tests/test_links_full_identifiers.py`
