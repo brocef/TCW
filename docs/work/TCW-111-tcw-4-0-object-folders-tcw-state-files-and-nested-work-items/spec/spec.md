@@ -43,7 +43,8 @@ neither reads nor changes them.
   `meta.yaml` or `item.yaml`, a state file's version problem, an `id:` that
   differs from its folder's name, a full identifier longer than 255
   characters, and (as a warning) an object nested in a folder that is not its
-  parent's.
+  parent's; it never checks the YAML files under an object's `resources/`,
+  so a broken sample file there stops no other check.
 - **Changed** `cli/read-a-file-by-the-format-version-it-records`: objects'
   state files carry `tcw-version` and are read by the same rule as the
   configuration files.
@@ -65,7 +66,15 @@ neither reads nor changes them.
 - **Changed** `work/adopt-a-jira-ticket`: the folder it writes holds
   `tcw-work-item.yaml`; finishing a nested `new` puts the folder inside the
   parent's folder, where the ticket's `TCW Item` says, while a fresh
-  adoption stays at the top.
+  adoption stays at the top; a fresh adoption's full identifier fits in 255
+  characters, and it is still refused while a folder named for the key with
+  no state file sits anywhere in the work store.
+- **Changed** `work/delegate-a-work-item-to-another-project`: the `TCW Item`
+  it sets in the other project is at most 255 characters.
+- **Changed** `taxonomy/remove-a-local-term`,
+  `capabilities/remove-a-capability`: the removal is refused while anything
+  it would delete holds a state file, or a TCW 3.x `meta.yaml` or
+  `item.yaml` (which names `tcw migrate`).
 - **Changed** `web/editing`: the create form offers to put a new child's
   folder inside its parent's folder, unticked by default.
 - **Changed** `taxonomy/add-a-term`, `taxonomy/browse-the-term-forest`,
@@ -74,7 +83,8 @@ neither reads nor changes them.
 - **Changed** `capabilities/add-a-capability`,
   `capabilities/set-a-capabilitys-status`, `capabilities/read-a-capability`:
   a capability is a folder holding `tcw-capability.yaml`; `add` and `set`
-  take `--parent`; `prependedDocs` and `appendedDocs` name files in
+  take `--parent` (`set --parent` is refused on an inherited capability
+  until TCW-112); `prependedDocs` and `appendedDocs` name files in
   `resources/`. A new capability's state file still holds the 3.x opaque
   `id: cap-…` until TCW-112.
 - **Taxonomy:** new `state-file`, `object-folder`, `organising-folder`;
@@ -302,8 +312,10 @@ child objects. Hidden names (starting with `.`) are ignored, as today
 (`tcw/work/layout.py:108-109`; `_load_entry`, `tcw/store/fs.py:1662`).
 
 2.2. **`resources/`** holds anything else that belongs to the object, at any
-depth, in any format. TCW never writes into it. It reads it in two places
-only:
+depth, in any format. TCW never writes into it. An object's `resources/` is
+found by its exact spelling (TCW-110 Design 1.1), so on a disk that ignores
+letter case a folder spelt `Resources/` is never read as it, and is reported
+as 2.6 c. Commands read `resources/` in two places only:
 
 - A term's `attachments` (`Term.attachments`, `tcw/store/base.py:336`, shown
   by `tcw taxonomy show`, `tcw/taxonomy/cli.py:38`, `:84`) are the files under
@@ -316,6 +328,23 @@ only:
 
 Containment is unchanged: a file that resolves outside the store is not read
 (`_within_store`, `tcw/store/fs.py:1393-1410`).
+
+`tcw validate` reads `resources/` in one more place, and the checks before a
+removal search it (2.5):
+
+- Its `tcw://` link check reads every Markdown file under `resources/`, as it
+  reads every Markdown file in a store today (`_file_findings`,
+  `tcw/validate.py:280-349`), since a design kept there (TCW-116 moves them
+  there) is where broken links will be. A Markdown file under `resources/`
+  that is not valid UTF-8 is a warning, `not checked for tcw:// links: not
+  valid UTF-8`, not today's error (`_read_text`, `tcw/validate.py:82-91`),
+  since `resources/` may hold anything.
+- Its YAML well-formedness check skips every file under `resources/`. So a
+  sample YAML file of any shape there is never reported, and in particular
+  never switches off the taxonomy and capability checks, which today any YAML
+  syntax error under a store root does (`yaml_syntax_error`,
+  `tcw/validate.py:310`, `:317`, `:325`, read at `:418-421`). Nothing found under
+  `resources/` stops another check (Notes, review decision 14).
 
 2.3. **Organising folders.** In any store, a folder with no state file that
 sits directly in the store's root or in another organising folder is an
@@ -373,6 +402,28 @@ down from the store root is a symbolic link, or a fixed folder of 2.1 or
 backend's naming rule for the last part (Design 5, row 12). So an id-path is
 accepted by a command exactly when the walk would return it.
 
+**The checks before a removal are not listings.** `tcw taxonomy rm` and
+`tcw capabilities rm` delete an object's whole folder, hidden folders, fixed
+folders and `resources/` included, so the check that refuses a removal with
+something nested below it (`tcw/store/fs.py:1888-1889`; `_nested_entries`,
+`:2528-2534`) never uses the walk, which skips hidden folders and never
+enters `resources/` (step 2, 3). It searches everything the removal would
+delete, below the object's own folder, and refuses (`Refused`, exit 3,
+changing nothing) when it finds:
+
+- a state file of any namespace: `cannot remove '<id-path>': nested under
+  it: <path>, … (remove those first)`, today's message; or
+- a TCW 3.x `meta.yaml` or `item.yaml`: `cannot remove '<id-path>': <path>
+  holds a TCW 3.x <file>; run 'tcw migrate' in this project first`, so a
+  folder not yet migrated is never deleted without a word (Notes, review
+  decision 16).
+
+This keeps today's protection, which `tests/test_capabilities_rm.py:192-200`
+(`test_remove_refuses_capability_nested_in_a_dot_directory`) locks in. A
+state file or 3.x file kept under `resources/`, a sample for instance, also
+blocks the removal; the message names its path, so the person can move or
+delete it, and that is intended.
+
 **3.x override folders.** A capability folder whose state file holds
 `overrides:` (at the mirror path or at `<alias>/<path>`,
 `tcw/store/fs.py:2676-2681`) is returned by the walk like any folder holding
@@ -391,7 +442,7 @@ override. TCW-112 replaces these folders with overrides by path.
 | a | a file in an object's folder that is not one of its fixed files | error: `is not one of <full id>'s files; move it into resources/` |
 | b | a folder in an object's folder that is not fixed, not `resources/`, and holds no state file | error: `is not a child object of <full id>: it has no <state file>; give it one, or move it into resources/` |
 | c | a folder with a reserved name outside its own place | error: `'<name>' is reserved in the <namespace> store` |
-| d | a non-hidden file directly in the store root or an organising folder | warning, as today for the work store's root (`tcw/work/fs_backend.py:541-543`): `is not part of any object` |
+| d | a non-hidden file directly in the store root or an organising folder, other than a file another check already reports (a tree store's leftover `config.yaml` at its root, `_legacy_config_problems`, `tcw/store/fs.py:1619-1640`) | warning, as today for the work store's root (`tcw/work/fs_backend.py:541-543`): `is not part of any object` |
 | e | an organising folder with no object anywhere below it | warning: `holds no TCW object` |
 | f | a folder holding a 3.x `meta.yaml` or `item.yaml` and no state file | error: `holds a TCW 3.x <file>; run 'tcw migrate' in this project` |
 | g | a state file in the store root | error: `the store's root is not an object; move this file into an object's folder` |
@@ -399,9 +450,9 @@ override. TCW-112 replaces these folders with overrides by path.
 | i | work: a folder holding the state file whose name breaks the backend's rule | error, as today (`tcw/work/fs_backend.py:545-548`; `tcw/work/jira/backend.py:125-130`, which now applies only to a folder holding the state file) |
 | j | a state file's version problem | error (1.5); no other check of that file's contents runs |
 | k | an `id` that differs from the folder's name (taxonomy and work; capabilities only once TCW-112 drops the opaque `id`, 1.3) | error (1.3) |
-| l | a `parent` that is not a full identifier of an object in the same namespace, names the object itself, or makes a loop | error; for work, the existing rules (`validate_changes`, `tcw/work/model.py:188-233`); a parent in a project not on this machine is "could not check" (TCW-110 Design 6.3) |
+| l | terms and capabilities: a `parent` that is not a full identifier of an object in the same namespace, names the object itself, or makes a loop | error; a parent in a project not on this machine is "could not check" (TCW-110 Design 6.3). For work, the existing rules, unchanged: a `parent` naming no item is a warning (`reference_problems`, `tcw/work/references.py:48-51`), and a self-parent or a loop is refused when it is written (`validate_changes`, `tcw/work/model.py:188-233`) |
 | m | an object nested in the folder of an object that is not its `parent` | warning (3.2) |
-| n | a full identifier longer than 255 characters | error (4.2) |
+| n | an object whose full identifier is longer than 255 characters, such as one placed by hand (3.x override folders excepted, as above) | error at its state file: `<full id> is <n> characters; a full identifier is at most 255` (4.2) |
 
 Rows a and b replace the work store's "is not an item folder" error for any
 folder directly in the work path (`tcw/work/fs_backend.py:545-548`), which
@@ -410,6 +461,20 @@ not an object, so the objects below it are found by the walk as any others;
 row f takes the place of row h for it. Rows b and c name the folder they
 report; the objects below it stay readable (2.5 step 4), so the message
 names nothing more.
+
+Row l's two severities differ on purpose, and neither should be changed to
+match the other. A work item's missing parent stays the warning it is in
+3.x, because work items are finished, discarded and moved between projects
+all the time, and changing it would turn existing passing projects into
+failing ones. A term's or capability's `parent` is new in this item, so it
+starts strict, as every other reference between terms and capabilities is
+(AC 13).
+
+Row n is checked on every object the walk lists, in both tree stores and both
+work backends. The limit is applied where an identifier is parsed from text
+and where TCW builds one (4.2), never when an object found on disk is given
+its identifier, so an over-long object made by hand is still listed and read,
+and row n is what reports it.
 
 ### 3. Parents and nesting
 
@@ -423,7 +488,10 @@ this item.
 
 3.2. **The folder's parent, and when the two disagree.** An object's *folder
 parent* is the object whose folder directly holds its folder, or none when
-its folder sits in the store root or an organising folder. Where an object
+its folder sits in the store root, in an organising folder, or in any other
+folder that holds no state file, such as a misplaced folder of 2.6 b or c (an
+item in `<epic>/drafts/` has no folder parent; `tcw validate` reports
+`drafts/` instead, AC 6a). Where an object
 has a folder parent and its `parent` does not name that object (it names
 another, or none), `parent` decides and `tcw validate` warns:
 `<full id> sits in the folder of <folder parent>, but its parent is <parent or "not set">; parent: decides (set it to <folder parent>, or move the folder)`.
@@ -463,7 +531,13 @@ assumed (the user's decision, Notes):
 3.4. **Changing a parent never moves a folder.** `tcw work edit --parent` and
 `tcw capabilities set --parent <P>` (new option; an empty value clears it)
 change only `parent`, and print the 3.2 warning on standard error when the
-result disagrees with the folder. Moving the folder is TCW-114's. A term's
+result disagrees with the folder. Moving the folder is TCW-114's. On an
+inherited capability, `tcw capabilities set --parent` is refused (`Refused`,
+exit 3, `the parent of <full id> is set in project '<owner>'`) until TCW-112:
+the only place to write it here would be an override folder, which TCW-112
+replaces, so writing one would leave TCW-112 data to migrate. The whole
+command is refused before anything is written, even when other flags such
+as `--status` are given with `--parent`. A term's
 `parent` is changed by editing its state file, as `relatesTo` is today
 (`skills/taxonomy/SKILL.md:129`).
 
@@ -490,11 +564,31 @@ limit; TCW-110 itself builds nothing for it. It is enforced:
   anything is written.
 - `tcw work new` and the web app's create: the title words are shortened to
   fit (4.3).
+- `tcw work tickets adopt`, a fresh adoption (`<KEY>-<title words>`,
+  `tcw/work/jira/tickets.py:160`, whose `TCW Item` is set before any folder
+  is written, `:178-180`): the title words are fitted with the real key,
+  which is known before anything is written (4.3), and when fewer than 8
+  characters are left it is a usage error (exit 2) before the edit, so
+  nothing changes. A resumed adoption takes the `TCW Item` Jira already
+  holds, which was within the limit when it was set.
+- Delegation into another project (`tcw work new --project`, which sets that
+  project's `TCW Item` to `<KEY>-<title words>` after the ticket exists,
+  `tcw/work/jira/tickets.py:385-388`), until TCW-114 removes it: the words
+  are fitted to the other project's room with the real key, by the rule for
+  after the ticket exists (4.3).
 - `tcw work rename`: a usage error (exit 2), changing nothing, when the
   item's new identifier would exceed the limit. (An item with nested items
   is refused before this check, Design 5 row 7.)
 - `tcw validate`: an error for an existing object whose identifier exceeds
   it (2.6 n), such as one placed by hand.
+
+The parser's check bounds the text a person types or a file stores, which
+for a full identifier is the identifier itself. Text typed in a shorter form
+(an id-path, TCW-110 Design 3.1 d) is bounded by the same 255 characters,
+but its full identifier is checked only where TCW builds one: by the
+commands above, and by `tcw validate`. That difference is intended: an
+over-long object placed by hand can still be named by its id-path, to rename
+it shorter.
 
 4.3. **Title words that fit.** `title_words` already takes a limit
 (`tcw/work/model.py:78`). When a backend makes an item's folder name, the
@@ -507,8 +601,20 @@ a date and `-`, 11 characters. The Jira backend does not know the key before
 the ticket exists, so it counts the prefix at `PREFIX_ALLOWANCE` (20)
 characters for the check below, then recomputes the room with the real key
 once Jira has answered, before it sets `TCW Item`
-(`tcw/work/jira/backend.py:693`); a real key is never longer than the
-allowance, so the room only grows.
+(`tcw/work/jira/backend.py:693`).
+
+**After the ticket exists, nothing is refused for length.** A key is
+normally shorter than the allowance, so the room only grows; but a Jira
+administrator can allow longer project keys, and a key of more than 19
+characters makes the room smaller than the check before allowed for. Then
+the title words are cut to the room that is left, however short (one
+character at least). Only when not even one character is left (a parent's
+id-path within a few characters of the limit, and an unusually long key) is
+`TCW Item` left unset, and the command stops with today's message for a
+ticket with no item: finish with `tcw work tickets adopt <KEY>`
+(`tcw/work/jira/backend.py:705-719`), which makes a fresh adoption at the
+top (6.4). A usage error after the ticket exists would leave a ticket with no
+item and no way named to finish it, which is Problem 6's failure.
 
 Before anything is created, when the room leaves fewer than 8 characters for
 title words, the command is a usage error (exit 2), and with Jira no ticket
@@ -589,6 +695,21 @@ id-path.
   adopt's comparison of the folder found with the one the ticket names
   (`here != named.folder`, `:147`) compares id-paths, and stays correct.
 
+**Folders named for the key with no state file.** Once a key-named folder
+without `tcw-work-item.yaml` is not an item (6.1), `lookup` never returns
+one. Adopt depends on seeing such folders (`tcw/work/jira/tickets.py:138-159`):
+a folder left without its file by an adoption that stopped is finished only at
+a status nothing has moved the ticket on from (`:150-155`), a moved-on ticket
+whose file is gone is refused as "already the item" rather than taken back,
+and a fresh adoption is refused while any folder for the key exists
+(`:158-159`). So adopt does not ask `lookup`. It asks for every folder named
+for the key at any depth, with a state file or without one, and keeps
+today's rules on that answer unchanged: a stateless folder is "unfinished"
+exactly as today, two folders for one key are today's error naming both
+id-paths, and `here != named.folder` (`:147`) compares id-paths. This is the
+one place outside `tcw validate` that sees a key-named folder with no state
+file; every other command treats it as no item.
+
 6.5. **`tcw validate --remote`** compares each item folder the walk finds with
 its ticket (today only the top, `tcw/work/jira/remote.py:415-421`), and adds
 the 3.2 check.
@@ -603,7 +724,10 @@ the 3.2 check.
 the folder that holds it; it then rewrites references as row 7 says,
 reporting a reference it could not rewrite as today (`:455-472`), and lists
 the lines of other files that still name the old identifier, as
-`report_mentions` does (`:211-223`).
+`report_mentions` does (`:211-223`). It searches for the old id-path, which
+for an item at the top is the old folder name it searches for today, so a
+different item with the same last part under another parent is not
+reported.
 
 ### 8. The sweep
 
@@ -617,8 +741,10 @@ Repository-wide over `tcw/`, `web/client/src/`, `scripts/` and `evals/`:
   `scripts/` or `evals/`;
 - every scan of the top of a store, listed in Problem 4, and the tree stores'
   own listings (`_local_slugs`, `tcw/store/fs.py:1763-1769`;
-  `_all_meta_dirs`, `:2258-2271`; the nested-object checks before a removal,
-  `:1888-1889`, `:2528-2534`), which all call the walk (2.5);
+  `_all_meta_dirs`, `:2258-2271`), which all call the walk (2.5). The
+  nested-object checks before a removal (`:1888-1889`, `:2528-2534`) are not
+  listings and keep searching the folder itself (2.5, "The checks before a
+  removal are not listings"), now for the state files and the 3.x names;
 - every refusal of a `/` in a work item's name (Problem 4) and every
   `folder[:10]`-style read of a folder name that now takes the last part;
 - the web app's item routes, which already take a path parameter
@@ -689,7 +815,12 @@ parent's move. Leaving the child out of `git add` alone is not enough: a
 file under them, staged or not. So the hook leaves out every folder below the
 item that holds `tcw-work-item.yaml` from both the `git add` paths and the
 `git commit` paths (git's `:(exclude)<path>` form), and checks for staged
-changes with the same paths.
+changes with the same paths. Its search for those folders does not enter
+hidden folders, `resources/`, `comments/` or stage folders, as the walk does
+not (2.5), so a sample state file kept in `resources/` never leaves that
+folder out of the commit. A folder the search cannot read fails the hook,
+which the move reports as a failed `post` check, rather than letting it
+commit files it could not sort.
 
 ## Abstraction litmus test
 
@@ -767,7 +898,8 @@ from a folder name to an id-path, and `create` gains its `nest` argument.
   before anything changes (row 7). A nested create that stops in Jira is
   finished by `tcw work tickets adopt` (6.4).
 - **S-9 (upgrades).** A 3.x `meta.yaml` or `item.yaml` in a 4.0 store is
-  recognised and names `tcw migrate` (2.6 f), never read; a state file from a
+  recognised and names `tcw migrate` (2.6 f), never read, and never deleted
+  by removing an object above it (2.5); a state file from a
   newer TCW is never rewritten (1.5). A 3.x TCW reading a 4.0 store finds no
   objects, which is not designed for (TCW-106 Use cases, S-9).
 - **S-10 (things TCW does not own).** This item makes S-10's "treat an item
@@ -842,7 +974,12 @@ means standard output; "warns" means a `tcw validate` finding of severity
    (h) and a folder `notes` holding a `tcw-work-item.yaml` (i). It passes with
    `resources/notes.md` and `resources/a/b.png` in the same item's and term's
    folders. It warns for `README.md` in the capabilities store root (d) and an
-   empty organising folder `docs/work/empty/` (e).
+   empty organising folder `docs/work/empty/` (e). A leftover `config.yaml`
+   at the taxonomy store's root is reported once, by today's check, and not
+   again under d. A `resources/sample.yaml` in a term's folder that does not
+   parse as YAML is not reported, and a capability beside it whose
+   `appendedDocs` names a missing file is still reported (today's `missing
+   attachment`), so the tree checks still ran; a `resources/old.md` that is not valid UTF-8 is a warning.
 6. **Reserved names refused.** `tcw taxonomy add Resources` and
    `tcw capabilities add cli/resources` exit 2 and write nothing; in a files-backend
    project a hand-made organising folder `docs/work/review/` holding an item is
@@ -892,8 +1029,11 @@ means standard output; "warns" means a `tcw validate` finding of severity
     that names another id-path. In the same Jira-mode store, an organising
     folder `2026/` holding an item passes `tcw validate` and the item is
     listed; a key-named folder `TCW-7-x/` with no state file is an error
-    (2.6 h) and `tcw work show TCW-7` exits 4; a folder `notes/` holding a
-    `tcw-work-item.yaml` is an error (2.6 i).
+    (2.6 h), `tcw work show TCW-7` exits 4, and a fresh `tcw work tickets
+    adopt TCW-7` (its ticket naming no item, its summary giving other words)
+    exits 3 naming `TCW-7-x`, makes no edit on the fake and creates no
+    folder; a folder `notes/` holding a `tcw-work-item.yaml` is an error
+    (2.6 i).
 11. **Parents of terms and capabilities.** `tcw taxonomy add Refund --parent
     invoice` writes `docs/taxonomy/invoice/refund/tcw-taxonomy.yaml` holding
     `parent: demo.taxonomy/invoice`; `tcw taxonomy show invoice/refund --json`
@@ -906,7 +1046,11 @@ means standard output; "warns" means a `tcw validate` finding of severity
     `parent: demo.capabilities/cli/y`, exits 0 and prints on standard error a
     warning containing `sits in the folder of demo.capabilities/cli/x` and
     `parent: decides`; `tcw capabilities set cli/w --parent ''` removes
-    `parent` from `cli/w`'s state file.
+    `parent` from `cli/w`'s state file. In a project that inherits the
+    capability `core.capabilities/cli/v` from its parent project `core`,
+    `tcw capabilities set core.capabilities/cli/v --parent cli/x --status
+    Supported` exits 3 naming `core`, and no file changes in either project
+    (3.4).
 12. **Folder and parent disagree.** `tcw validate` warns, with 3.2's text and
     exit 0, for: a nested term whose state file has no `parent`; a
     files-backend item nested in `<epic>` whose `parent` is another item; and,
@@ -932,7 +1076,20 @@ means standard output; "warns" means a `tcw validate` finding of severity
     Under a parent of 240 characters both backends exit 2 naming the parent. A project whose ID is 231 characters
     long: `tcw work new 'x'` (no parent) exits 2 naming the project ID.
     `tcw work rename <item> <words>` that would make the item's identifier
-    256 characters exits 2 and moves nothing.
+    256 characters exits 2 and moves nothing. With the Jira fake: under a
+    parent leaving exactly 8 characters at the 20-character allowance, a
+    fake answering with a 24-character key makes the item with title words
+    cut to 3 characters, exits 0, and its `TCW Item` is at most 255
+    characters; a fresh `tcw work tickets adopt <KEY>` in a project whose ID
+    leaves fewer than 8 characters exits 2 and makes no edit on the fake; and
+    a delegation (`tcw work new --project <other>`) into a project whose ID
+    leaves fewer than 8 characters sets a `TCW Item` of at most 255
+    characters. **`tcw validate` (2.6 n):** a capability folder made by hand
+    whose full identifier is 256 characters, and in a files-backend project
+    an item nested by hand whose full identifier is 256 characters, each give
+    one error at its state file naming 255, exit 1, and are still listed by
+    `tcw capabilities list` and `tcw work list`; at 255 characters neither is
+    reported.
 15. **A parent in another project is checked as a reference.** Two projects
     side by side in two git repositories, `app` naming `core` under
     `parents:` with `inherit: none` (TCW-108 Design 1.1): a term of `app`
@@ -949,7 +1106,10 @@ means standard output; "warns" means a `tcw validate` finding of severity
     the part inside the epic's folder: its identifier becomes
     `demo.work/<epic>/<date>-new-words`, the third item's state file names
     the new identifier, and standard error names the old and new
-    identifier. Jira fake: the same nested-part rename updates that ticket's
+    identifier; a Markdown file under `resources/` that mentions
+    `<epic>/<part>` is listed as still naming the old identifier, and one
+    that mentions only another item `<other-epic>/<part>`, with the same last
+    part, is not (7.2). Jira fake: the same nested-part rename updates that ticket's
     `TCW Item` to the new id-path; with the fake set to fail the folder move,
     the command exits 1 and `TCW Item` is set back.
 16a. **A rename and a nested create meet on merge.** Files backend, built by
@@ -965,6 +1125,13 @@ means standard output; "warns" means a `tcw validate` finding of severity
     `item.yaml` is not listed by `tcw work list` and is reported by
     `tcw validate` with `tcw migrate` (2.6 f); likewise a taxonomy folder with
     only `meta.yaml`.
+17a. **Removal never deletes what it cannot see.** `tcw taxonomy rm
+    invoice`, with a folder `invoice/old/` holding only a 3.x `meta.yaml`,
+    exits 3 naming `invoice/old` and `tcw migrate`, and every file is still
+    there; the same for `tcw capabilities rm cli/x` with `cli/x/.drafts/y/`
+    holding a `tcw-capability.yaml` (today's message, `nested under it`),
+    and with `cli/x/resources/sample/tcw-capability.yaml` (the message names
+    that path). With none of these, both removals succeed.
 18. **The web app.** `/api/work/<id-path, percent-encoded>` for a nested item
     returns its record, and its board lists it. A create request with a
     parent and no `nest` makes the item at the top; with `nest: true` it
@@ -982,10 +1149,13 @@ means standard output; "warns" means a `tcw validate` finding of severity
     file with uncommitted changes,
     `docs/guide/examples/commit-item-after-move.sh` commits the epic's own
     changed files and leaves both of the part's files uncommitted (`git
-    status` still shows them).
+    status` still shows them), while a file the epic keeps at
+    `resources/sample/tcw-work-item.yaml` is committed with the epic.
 21. **The sweep.** After the change, a search for `meta.yaml`, `item.yaml`
     and `ITEM_FILE` under `tcw/`, `web/client/src/`, `scripts/` and `evals/`
-    finds only the 2.6 f recogniser and its messages; a search for
+    finds only the one module's 3.x names (1.1), which the 2.6 f recogniser
+    and the checks before a removal (2.5) use, and those two's messages; a
+    search for
     `iterdir()` applied to a store root finds only the walk. A reviewer checks
     the plan's list of sites against a fresh search.
 22. The full suite, run as CI runs it (bare `pytest`, and the web client's
@@ -1001,30 +1171,30 @@ means standard output; "warns" means a `tcw validate` finding of severity
 | 1.4 writing the version, edits keep it; `adopt` writes it | 1, 2 |
 | 1.5 reading the version, per store, Jira's version-first check | 3 |
 | 2.1 fixed files per namespace | 5 |
-| 2.2 `resources/`, attachments, composed bodies | 5, 7 |
+| 2.2 `resources/`, attachments, composed bodies, exact spelling; `tcw validate`'s link check reads it, its YAML check skips it | 5, 7; exact spelling: the plan's case-insensitive-disk check |
 | 2.3 organising folders in all three stores | 4, 5 (e), 10 (Jira) |
 | 2.4 reserved names, per store | 5 (c), 6, 6a |
-| 2.5 the walk, steps 1–5; one id-path by the same rule; 3.x override folders | 4 (steps 3, 5), 6a (step 4, and `show` of an id-path below a misplaced folder), 9 (nesting), 21 (one function); step 2's symbolic links: existing `tests/test_store_bounds.py` cases (`test_taxonomy_list_does_not_advertise_a_symlinked_entry`, `:186`; `test_capabilities_list_does_not_advertise_a_symlinked_entry`, `:224`), re-pointed at the walk by the plan; override folders: the existing override tests of `tcw capabilities set` and `list`, which keep passing on the state file (22) |
-| 2.6 a–n | a, b, c, d, e, f, g: 5; b, c below a misplaced folder: 6a; h, i: 5 (files), 10 (Jira); h after a merge: 16a; j: 3; k: 8; l: 13, 15, 16a; m: 12; n: 14 |
+| 2.5 the walk, steps 1–5; one id-path by the same rule; the checks before a removal; 3.x override folders | 4 (steps 3, 5), 6a (step 4, and `show` of an id-path below a misplaced folder), 9 (nesting), 21 (one function); step 2's symbolic links: existing `tests/test_store_bounds.py` cases (`test_taxonomy_list_does_not_advertise_a_symlinked_entry`, `:186`; `test_capabilities_list_does_not_advertise_a_symlinked_entry`, `:224`), re-pointed at the walk by the plan; the checks before a removal: 17a; override folders: the existing override tests of `tcw capabilities set` and `list`, which keep passing on the state file (22) |
+| 2.6 a–n | a, b, c, d, e, f, g: 5; b, c below a misplaced folder: 6a; d's skip of a leftover `config.yaml`: 5; h, i: 5 (files), 10 (Jira); h after a merge: 16a; j: 3; k: 8; l: 13, 15, 16a (work's warning); m: 12; n: 14 (`tcw validate`) |
 | 3.1 `parent` in records | 11, 13 |
 | 3.2 disagreement, offline and `--remote` | 11, 12 |
 | 3.3 where a new child goes; `--nest`; the web option | 9, 11, 18 |
-| 3.4 changing a parent never moves | 11, 12 |
+| 3.4 changing a parent never moves; `set --parent` refused on an inherited capability | 11, 12 |
 | 4.1 id-path of a nested object; flat ones unchanged | 4, 9 |
-| 4.2 the 255 limit, the parser's check, where it is enforced | 14 |
-| 4.3 title words that fit; real prefix for files, allowance for Jira; the project-ID message | 14 |
+| 4.2 the 255 limit, the parser's check, where it is enforced (add, new, adopt, delegation, rename, validate) | 14 |
+| 4.3 title words that fit; real prefix for files, allowance for Jira; the project-ID message; nothing refused after the ticket exists | 14 |
 | 5 rows 1–12 | 1 create: 9, 9a, 18; 2 read: 9, 6a; 3 list: 9, 6a; 4–6, 9, 10: 9; 7 rename: 16; 8 lookup: 9, 10; 11 current user: n/a, unchanged (`tcw/work/fs_backend.py:520-521`); 12 is item folder: 4, 6a, 9, 10, 17 |
 | 6.1 Jira folders, organising folders, the state file now needed | 9, 10 |
 | 6.2 `TCW Item` | 9, 14 |
 | 6.3 renaming one ticket, nested or not | 16 |
-| 6.4 finishing a nested create with `adopt` | 9a |
+| 6.4 finishing a nested create with `adopt`; key-named folders with no state file | 9a, 10 |
 | 6.5 `--remote` at any depth | 10, 12 |
-| 7.1–7.2 files backend | 9, 16 |
+| 7.1–7.2 files backend; `report_mentions` searches the old id-path | 9, 16 |
 | 8 the sweep | 21 |
 | 9.1 `abstraction.md` | 19 |
 | 9.2 docstring | 19 |
 | 9.3 the plan stage prompt (the skills are TCW-117's) | 19 |
-| 9.4 commit hook, both path lists | 20 |
+| 9.4 commit hook, both path lists, the folders its search skips | 20 |
 
 ## Risks
 
@@ -1097,7 +1267,10 @@ spec is accepted:
   capabilities. Also: `prependedDocs` and `appendedDocs` now name files in
   `resources/`, and the walk returns 3.x override folders, which the
   capability listers separate by `overrides:` until TCW-112 replaces them.
-- **TCW-114:** renaming a work item that has items nested in it is refused
+  And `tcw capabilities set --parent` is refused on an inherited capability
+  until TCW-112 decides where an override's `parent` lives (3.4).
+- **TCW-114:** delegation's 255-character fitting (4.2) goes with
+  `tcw work new --project`. Renaming a work item that has items nested in it is refused
   until TCW-114 (Design 5, row 7); its rename must handle the nested items'
   identifiers, their references, and in Jira each nested ticket's
   `TCW Item`, with a rule for stopping halfway. Its move command places items
@@ -1114,7 +1287,9 @@ spec is accepted:
   TCW-112's overrides by path have replaced the pointers that use it. And
   this repository: until TCW-116 runs here, v4's own code finds none of this
   repository's items (Risks), so migrating this repository has to land with
-  the merge of `v4` into `main`.
+  the merge of `v4` into `main`. Until a store is migrated, `tcw taxonomy rm`
+  and `tcw capabilities rm` refuse to remove an object with a 3.x folder
+  below it, naming `tcw migrate` (2.5).
 - **TCW-117:** the guides and skills that name `meta.yaml` and `item.yaml`
   (Non-goals), and `docs/use-cases.md` S-10's wording, which now says "object
   folder". The skill text on nesting (Design 9.3): the `work` skill's "Epics
@@ -1161,6 +1336,48 @@ spec is accepted:
    the path is the identity, and `tcw migrate` (TCW-116) removes it. Then
    `id:` means the folder's name in all three namespaces, as the design says
    (1.3). This answers the question this spec had put to TCW-99.
+
+### Decisions made when the plan review was answered (2026-10-22)
+
+The plan review (round one of the plan) found five defects in this spec and
+three more it had not listed; each is fixed above rather than settled in the
+plan. The decisions taken with those fixes:
+
+- **The user: TCW-111 stays one item, not split.** The review offered a split
+  along four lines. The plan keeps those four parts in separate steps, each
+  ending with the suite green and a commit: state files and the version; the
+  walk and organising folders; nesting, the length limit and rename; parents
+  for terms and capabilities.
+- **Review decision 14, by the dispatching session: `resources/` in
+  `tcw validate`.** The YAML well-formedness check skips `resources/`, and the
+  `tcw://` link check keeps reading it (2.2). The other choice, checking
+  both, would let one broken sample file switch off every taxonomy and
+  capability check (`tcw/validate.py:310-317`, `:418-421`).
+- **Review decision 16, by the dispatching session: removing an object with a
+  3.x folder below it** that is not yet migrated is refused, naming
+  `tcw migrate`; such a folder is never deleted without a word (2.5).
+- **The checks before a removal are not listings** (2.5; the review's defect
+  1): routing them through the walk would let `rm` delete objects the walk
+  cannot see, which an existing test forbids.
+- **A fresh adoption and a delegation keep within 255 characters** (4.2; the
+  review's defect 2, and the same gap in delegation).
+- **`tcw capabilities set --parent` is refused on an inherited capability**
+  until TCW-112 (3.4; the review's defect 3): writing it into an override
+  folder would make data TCW-112 has to migrate, and refusing can be undone
+  later.
+- **A work item's missing parent stays a warning** (2.6 l; the review's
+  defect 5), and the difference from terms and capabilities is intended.
+- **An object in a folder that holds no state file has no folder parent**
+  (3.2; the review's gap b).
+- **Row d skips a leftover store `config.yaml`** that another check already
+  reports (the review's gap c).
+- **Row n has a criterion** (AC 14's `tcw validate` part; the review's gap a).
+- **Nothing is refused for length after a Jira ticket exists** (4.3): a
+  refusal then would leave a ticket with no item.
+- **Adopt still sees key-named folders with no state file** (6.4), so the
+  change of 6.1 removes none of its refusals (the review's item 8; of its two
+  options, deleting the "unfinished" branch would have lost the refusal of a
+  moved-on ticket whose file is gone, so adopt keeps seeing those folders).
 
 ### Decisions the design left to this spec
 

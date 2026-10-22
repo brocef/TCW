@@ -11,13 +11,16 @@ changed:
     - work/rename-a-work-item
     - work/keep-work-items-in-jira
     - work/adopt-a-jira-ticket
+    - work/delegate-a-work-item-to-another-project
     - web/editing
     - taxonomy/add-a-term
     - taxonomy/browse-the-term-forest
     - taxonomy/read-a-term
+    - taxonomy/remove-a-local-term
     - capabilities/add-a-capability
     - capabilities/set-a-capabilitys-status
     - capabilities/read-a-capability
+    - capabilities/remove-a-capability
 taxonomy:
     new:
         - state-file
