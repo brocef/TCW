@@ -211,10 +211,12 @@ Terms used throughout, each in the sense of the specs above:
   item's.
 - **New options for `tcw project new`**, such as naming parents when a
   project is made. It takes `tcw init`'s arguments unchanged.
-- **Guides, skills, `docs/use-cases.md` and the migration guide** (TCW-117).
-  Notes lists every file outside the CLI that names a removed command. Until
-  TCW-117, an agent following a skill on `v4` that runs `tcw init` gets
-  Design 1.2's usage error, which names `tcw project new`.
+- **Rewriting the guides, skills, `docs/use-cases.md` and the migration
+  guide** (TCW-117). This item changes each passage there that names a
+  removed command only as far as naming its replacement (Design 1.6), so
+  the suite's check of documented commands passes; until TCW-117, that prose
+  still describes 3.x behavior under the 4.0 command names. Notes lists every
+  file outside the CLI that names a removed command.
 
 ## Design
 
@@ -300,17 +302,48 @@ comment shown to a person, and file under `tcw/` that TCW ships
 (`tcw/work/procedures/`, `tcw/work/prompts/`), the eval fixture builder and
 the capture script. This sweep is repository-wide for `tcw/`, `evals/`,
 `scripts/` and `tests/` (the tests that run a removed command are changed to
-run its replacement, and the plan lists them). It is narrowed for
-documentation, skills and the ledger: `docs/guide/`, `README.md`,
-`AGENTS.md`, `skills/` and `docs/use-cases.md` are TCW-117's (Non-goals);
-the capability and taxonomy records named in Capability changes are changed
-here, because this item's records stage changes them; `docs/changelogs/`,
+run its replacement, and the plan lists them). For documentation, skills
+and the ledger it is narrowed by Design 1.6: `docs/guide/`, `README.md`,
+`skills/` and `docs/use-cases.md` are changed here only as far as naming the
+replacement, and rewritten by TCW-117 (Non-goals); the capability and
+taxonomy records named in Capability changes are rewritten here, because
+this item's records stage changes them; `docs/changelogs/`,
 `docs/release-notes/` and finished work items record history and are not
 changed. The one exception in shipped code is the table of 1.2.
 
 1.5. **Exit codes do not change.** No new code; Design 5, 6 and 7 use 0, 1,
 2, 5 and TCW-108's 7 with their documented meanings
 (`EXIT_CODES`, `tcw/cli_help.py:38-49`, as TCW-108 Design 8.3 extends it).
+
+1.6. **The passages that name a removed command.** *Corrected after the plan
+review, decided by the dispatching session, 2026-10-22: the suite cannot
+pass otherwise, and TCW-114 Design 9.5 settled the same question the same
+way.* The suite checks every `tcw …` command that a Markdown file git knows
+about writes, outside its list of archives (`tests/test_documented_cli_surface.py:38-53`,
+`_check`; and `tests/test_shipped_text.py`, `command_problem`, for
+`skills/`, `agents/` and `tcw/work/`). Once 1.2 removes the four commands,
+every live document that still writes one fails that check: 43 files at
+`d2d02829` (`README.md`, 18 capability descriptions, two taxonomy
+descriptions, four guides, `docs/use-cases.md`, 15 files under `skills/`,
+`tcw/work/procedures/search.md` and `tests/cli/scenarios/13-release-integrity.md`).
+So this item changes each such passage **only as far as naming the
+replacement command** (`tcw init` becomes `tcw project new`, and so on, with
+the same arguments), and adds nothing else. Two rules keep the check strict
+while doing so:
+
+- **One token per placeholder after `-C`.** TCW-114 makes the checks skip
+  `-C` and exactly one following word, so any passage this item writes that
+  names `tcw -C` writes its target as one token (`tcw -C <folder> project
+  provision <id>`); a target written as a phrase (`<its project's root>`)
+  would leave the rest of the phrase to be read as a command and fail.
+- **The list of changed passages is kept.** Each passage changed this way is
+  listed, with what it now says, in the implement round; that list is the
+  one TCW-117's handoff names, so TCW-117 knows which prose describes 3.x
+  behavior under a 4.0 command name.
+
+Keeping the old commands registered until TCW-117 was weighed and rejected:
+the check would then pass only because the documents name a command that
+still parses, which is what 1.2 removes.
 
 ### 2. `tcw project new`
 
@@ -570,6 +603,18 @@ arises when TCW-112 Design 1.3's third message carries this message into a
 project that inherits from that one; there, `tcw project provision` alone
 would provision the wrong project's stores (Non-goals).
 
+A store that fails does not stop the run: the projects pass follows, as
+3.x's did (`tcw/cli.py:165-191`), and the failure counts in 7.13. A
+configuration that cannot be read still refuses before anything
+(`:106-112`). The store's clone gets the same protection as a project's
+against an address read as an option: `--` before the URL, and `--` after
+the `ref` it checks out (`git -C <staging> checkout --quiet <ref> --`),
+which makes git fail on a `ref` that names no branch, tag or commit rather
+than read it as a file. *Decided by the dispatching session, 2026-10-22,
+after the plan review;* the store keeps its separate checkout, unlike a
+project (7.9), because a store's `ref` may name a commit, which `git clone
+--branch` does not accept.
+
 7.3. **Which projects.** A project is fetched only when the registry records
 it as not on this machine (TCW-107 Design 2.12), never because a manifest
 gives a repository for it:
@@ -595,11 +640,16 @@ gives a repository for it:
 **A round** is the set of projects found not on this machine in one reading
 of the registry, less any project an earlier round of this run attempted.
 The checks of 7.5 to 7.8 are made for the whole round before any remote of
-the round is contacted; then each clone of the round is attempted, one after
-another, in the order the registry found the projects (TCW-107 Design 2.11
-(a): parents before children); then the registry is read again, once
-(7.11). The run ends when a round is empty, or when 7.11 stops it. So each
-project is attempted at most once in a run.
+the round is contacted, so a dry run (7.12) and a round with a conflict
+(7.7) fail before anything is fetched; then each clone of the round is
+attempted, one after another, in the order the registry found the projects
+(TCW-107 Design 2.11 (a): parents before children), and **each is checked
+again immediately before it writes anything** (7.8, "The folder checked is
+the folder written"), because an earlier clone of the same round may have
+added a folder or a symbolic link that one of its paths now passes through;
+then the registry is read again, once (7.11). The run ends when a round is
+empty, or when 7.11 stops it. So each project is attempted at most once in
+a run.
 
 7.4. **A project already here is never fetched.** "Already here" is the
 lookup's `found`, whatever rule found it: a manifest entry (any manifest in
@@ -632,6 +682,19 @@ lookup reads first, to keep it where it is`. Nothing is fetched for it, the
 run makes no further round, and it exits 1. This is TCW-107 Design 2.9's
 "one folder per ID in a command", kept across the readings of one run.
 
+A changed answer is normally decided by a manifest fetched in the run, which
+the message names. One other way to change an answer is stopped before it
+happens: a clone made for a project with a `subfolder` is placed whole at
+its repository folder, next to other projects, and TCW-107 Design 2.4's
+search reads that folder's own `.tcw/`. When the clone's top folder declares
+an ID this run has kept an answer for at another folder, placing it would
+give that ID a second folder, so 7.9 refuses the clone before it is moved.
+*Corrected after the plan review, decided by the dispatching session,
+2026-10-22: the first draft said such a change "cannot arise", and the
+review showed this case.* Should an answer still change with no manifest
+deciding the new one, the message reads `this run's fetches` in place of
+`<file>, fetched in this run,`.
+
 7.5. **What is fetched comes from the deciding manifest entry** (Design 8.1),
 whichever project's manifest holds it: the active project's, an ancestor's
 or a descendant's (TCW-107 Design 2.2), so a declaration is followed from
@@ -648,9 +711,18 @@ repository folder: the entry's `path`, resolved as TCW-107 Design 2.3 resolves
 it (relative to the manifest's project root; in a linked git worktree, a path
 leading outside the repository from the main checkout, TCW-107 Design 4.3),
 with `subfolder` removed (TCW-107 Design 1.6). Before any remote is
-contacted for that project, the repository folder must be absent (for a
-trusted entry, 7.8, its missing parent folders are made) or empty, holding no
-entries at all.
+contacted for that project, the repository folder must be absent or empty,
+holding no entries at all.
+
+For a trusted entry (7.8) whose repository folder's parent folders do not
+all exist, the missing ones are made just before the staging folder (7.9)
+is, one folder at a time, and never in a dry run. *Decided by the
+dispatching session, 2026-10-22: the staging folder sits in that parent, so
+the parent must exist first; and a refusal must leave nothing behind (AC
+25).* When the project is then refused or its clone fails, the folders this
+run made for it are removed again, deepest first, each only while it is
+still empty. A bounded entry never needs this: its repository folder's
+parent is the bound, which exists (7.8).
 
 - **A folder holding only `.git`** (a file or a folder) is refused: `<id>:
   <folder> holds only .git (a clone or a submodule update that stopped);
@@ -703,44 +775,114 @@ bounded, on every run.*
   personal manifest committed into a remote by mistake (personal is a
   file's name, not its git status, TCW-107 Design 4.2), was never checked
   by the person either.
+- **Which manifest is trusted** is decided by the folder that holds it: an
+  entry is trusted when its owner (the project whose `.tcw/` holds the
+  deciding manifest, or, for a personal file a linked worktree borrows, the
+  worktree, TCW-107 Design 4.2) is the active project itself, compared as
+  folders by identity (below), never by how a file's path is written.
 - **The bound** of a bounded manifest is the parent folder of its owner's
-  repository folder. The owner is the project whose `.tcw/` holds the
-  manifest. Its repository folder is the folder it was cloned into, when it
-  was fetched in this run; otherwise the top folder of the git repository
+  repository folder, both resolved (below). The owner's repository folder
+  is the folder this run cloned it into, when it was fetched in this run
+  (recorded resolved); otherwise the top folder of the git repository
   holding the owner's root (`git rev-parse --show-toplevel`, one of the git
   reads TCW already makes to find a repository's root), or the owner's root
   when it is in no git repository. So a package of a monorepo is bounded by
   the folder holding the monorepo, not by the folder holding the package.
+  "In no git repository" means that neither the owner's root nor any folder
+  above it holds a `.git` entry (a file or a folder). When one does and git
+  cannot say which repository it is (git is missing, or refuses with an
+  error such as "dubious ownership" or a broken `.git` file), the bound
+  cannot be known, and every bounded entry of that manifest is refused with
+  the third message below. *Decided by the dispatching session, 2026-10-22,
+  after the plan review:* falling back to the owner's root on such an error
+  would silently move the bound inside a monorepo (`mono/packages`), which
+  is the case this rule exists for; refusing is the safer option, and
+  looking for `.git` does not depend on the words of git's messages.
 - **What a bounded entry may name.** Its repository folder (7.6), resolved,
   must be a direct child of the bound, resolved, whose name does not begin
   with `.`. So `../lib`, and `../mono` with `subfolder: apps/x`, are
   allowed; `../x/lib`, `../../lib`, a folder inside the owner's own clone
-  (`vendor/lib`), `../.config`, an absolute path and a `~` path are
-  refused. A direct child of the bound cannot be inside any other folder
-  there, so a bounded entry can never place a clone inside another project,
-  inside a clone made in this run, or inside a hidden folder.
+  (`vendor/lib`) and `../.config` are refused. A direct child of the bound
+  cannot be inside any other folder there, so a bounded entry can never
+  place a clone inside another project, inside a clone made in this run, or
+  inside a hidden folder.
+- **An absolute path and a `~` path are refused in a bounded entry**, as
+  written, whatever they resolve to. *Corrected after the plan review,
+  decided by the dispatching session, 2026-10-22:* the first draft gave this
+  as a consequence of the direct-child rule, and it is not one, since an
+  absolute path can name a folder directly inside the bound. It is a
+  separate check, made before anything is resolved: a manifest that is not
+  the active project's own may only describe where a project is relative to
+  its own project.
 - **Resolved** means with every symbolic link and every `..` followed, as
-  `os.path.realpath` follows them, and compared by whole path components
-  (`Path.parent ==`, `Path.is_relative_to`), never as text: `<tmp>/repos-x`
-  is not inside `<tmp>/repos`. The bound exists (the owner is in it), so the
-  target's resolution is complete: a symbolic link committed in a fetched
-  repository (`up -> ../../..` with the entry `up/x`), a `..` after such a
-  link, or a target folder that is itself a link, is judged by the folder it
-  really leads to.
-- **A bound at or above the home folder is refused outright.** When the
-  resolved bound is the person's home folder (`Path.home()`, resolved), any
-  folder above it, or the filesystem root, no bounded entry of that
-  manifest may place a clone. Reason: a person who keeps repositories
-  directly in their home folder would otherwise let a fetched manifest create
-  `~/bin` or `~/.local`-style folders that shells and editors read at their
-  next start; no rule about names makes the home folder safe.
+  `os.path.realpath` follows them, and with the folder that would hold the
+  repository folder required to exist: for a bounded entry, the repository
+  folder's path as written (the entry's `path` with `subfolder` removed),
+  less its last part, must resolve completely to an existing folder
+  (`realpath(…, strict=True)`), or the entry is refused with the first
+  message. Without that, `realpath` collapses a `..` after a folder that does
+  not exist yet by text alone, and `../A/l/../../B` would be judged as
+  `<bound>/B` before a clone of `A` commits `l` as a link leading elsewhere.
+  So a symbolic link committed in a fetched repository (`up -> ../../..` with
+  the entry `up/x`), a `..` after such a link, or a target folder that is
+  itself a link, is judged by the folder it really leads to.
+- **Folders are compared by identity**, never as text: two paths name the
+  same folder when they are the same file on disk (`os.stat`'s device and
+  inode numbers, as `os.path.samefile` compares them). "Directly inside the
+  bound" means the repository folder's parent is the same folder as the
+  bound; "at or above the home folder" means the bound is the same folder as
+  the home folder or as one of the folders above it. *Decided by the
+  dispatching session, 2026-10-22, after the plan review:* macOS's file
+  system ignores letter case and treats two Unicode spellings of one name as
+  one, so `/Users/ROBIN` is the home folder `/Users/robin` there while
+  comparing text says it is not; comparing whole path components as text (`<tmp>/repos-x` is not
+  inside `<tmp>/repos`) stays right, but is not enough.
+- **A bound at or above the home folder, or inside a hidden folder below
+  it, is refused outright.** When the bound is the person's home folder
+  (`Path.home()`, resolved), any folder above it, or the filesystem root, or
+  when any folder below the home folder down to the bound, the bound
+  included, has a name beginning with `.` (`~/.local`, `~/.config/x`), no
+  bounded entry of that manifest may place a clone. Reason: a person who
+  keeps repositories directly in their home folder would otherwise let a
+  fetched manifest create `~/bin` or `~/.local`-style folders that shells and
+  editors read at their next start, and a bound inside `~/.local` would let
+  it create `~/.local/bin`, which is often on `PATH`; no rule about names
+  makes those folders safe. *The hidden-folder part was decided by the
+  dispatching session, 2026-10-22, after the plan review:* it costs nothing
+  in the usual layout of projects side by side.
+- **The folder checked is the folder written.** *Decided by the dispatching
+  session, 2026-10-22, after the plan review, which placed a clone outside
+  the bound through a link committed by an earlier clone of the same
+  round.* Every check of 7.6 to 7.8 is made once for the whole round (7.3)
+  and then again for each project immediately before its clone writes
+  anything, on folders resolved again at that moment; the repository folder
+  must then resolve to the same folder it resolved to when the round was
+  checked, or the project is refused (`<id>: <path> led to <folder> when
+  this round was checked, and now leads to <other folder>; nothing was
+  fetched for it`). Every later step uses that one resolved folder, never
+  the path as written: the parent folders made for a trusted entry (7.6),
+  the staging folder (7.9) and the move into place (7.10). The staging
+  folder and the move are made relative to the repository folder's parent,
+  held open from the moment it is checked, so the folder written into is the
+  folder checked even if a path to it changes; folders are made with a call
+  that fails on any existing name, a symbolic link included, and never
+  follows a link at the name it makes. Just before the move (7.10), the
+  entry's path is resolved once more and must still lead to the same
+  folder. What this defends against is anything a fetched repository or a
+  manifest contains, including links committed by earlier clones of the run;
+  another program on this machine changing folders while the run works is
+  outside it, since such a program could as easily change the manifests.
 - **The refusal** is made before the project's remote is contacted, the run
   goes on with the other projects, and the run exits 1. Its message is one
   of `<id>: <file> places it at <folder>, outside <bound>; a manifest that is
   not this project's own may place a clone only in a folder directly inside
-  <bound>` or `<id>: <file> places it at <folder>; '<owner>' sits in <bound>,
-  which is the home folder or above it, so a manifest that is not this
-  project's own may not place a clone there`, followed by the way out. The
+  <bound>`; `<id>: <file> places it at <folder>; '<owner>' sits in <bound>,
+  which is the home folder, a folder above it, or inside a hidden folder
+  below it, so a manifest that is not this project's own may not place a
+  clone there`; or `<id>: <file> places it at <folder>, but git could not
+  say which repository holds '<owner>' (<git's reason>), so the folder a
+  manifest that is not this project's own may use is not known`; each is
+  followed by the way out. The
   way out names a manifest the lookup reads before `<file>` (TCW-107 Design
   2.2 (a): the asking project's own manifests come first, its personal one
   before its committed one; TCW-108 Design 3.4 (b) and (c) put ancestors and
@@ -779,18 +921,26 @@ project, and every other command there already follows them.
 - the remote is printed before it is contacted, as `→ <id>: <url>[ at
   <branch>] → <repository folder>` (as 3.x does, `tcw/cli.py:355`, and as
   the stores pass does, `:182`);
-- the repository is cloned into a staging folder, and, with a branch, that
-  branch is checked out; git runs with its standard input closed and with no
-  way to prompt (`_git` and `_no_prompt_env`, `tcw/store/fs.py:147`, `:164`),
-  so a remote that asks for credentials fails instead of waiting. The
-  staging folder is `<parent>/.tcw-staging-<8 random hex digits>/<folder
+- the repository is cloned into a staging folder, with a branch as the
+  branch to check out (`git clone --quiet --branch <branch> -- <url>
+  <folder>`, one call; a branch the remote does not have fails the clone,
+  and git leaves nothing). *Decided by the dispatching session, 2026-10-22,
+  after the plan review:* a separate `git checkout <branch>` after the clone
+  reads a branch name that matches a file in the repository as that file,
+  exits 0 and stays on the default branch, so a mistyped branch would
+  silently fetch the wrong one. Git runs with its standard input closed and
+  with no way to prompt (`_git` and `_no_prompt_env`, `tcw/store/fs.py:147`,
+  `:164`), so a remote that asks for credentials fails instead of waiting.
+  The staging folder is `<parent>/.tcw-staging-<8 random hex digits>/<folder
   name>`, `<parent>` being the repository folder's parent; the hidden folder
   is made with an exclusive `mkdir`, so an existing name is never reused or
-  written into. Reason: today's staging name (`.<name>.tcw-<hex>`, `_obtain`,
-  `tcw/store/fs.py:3488`) puts the clone's `.tcw/` directly in a folder next
-  to the projects, where TCW-107 Design 2.4's search would match a copy left
-  by a run that was killed; one level deeper, the search never reads it
-  (TCW-107 Design 2.6);
+  written into, and when five random names in a row are taken the project
+  is refused with `<id>: could not make a staging folder in <parent>: five
+  names in a row were already taken`. Reason: today's staging name
+  (`.<name>.tcw-<hex>`, `_obtain`, `tcw/store/fs.py:3488`) puts the clone's
+  `.tcw/` directly in a folder next to the projects, where TCW-107 Design
+  2.4's search would match a copy left by a run that was killed; one level
+  deeper, the search never reads it (TCW-107 Design 2.6);
 - the staging copy must hold, at `subfolder` (or its top), a
   `.tcw/tcw-config.yaml` that `version_problem` accepts (TCW-106 Design 3)
   and that declares `id: <id>`. Otherwise the project is refused and the
@@ -798,8 +948,33 @@ project, and every other command there already follows them.
   `tcw/store/fs.py:3477-3497`), with one of: `<url> has no TCW project at
   '<subfolder or .>'`, `<url> holds project '<other>' at '<subfolder or .>',
   not '<id>'`, TCW-106's message for a 3.x project (`legacy_message`), or
-  `version_problem`'s message;
+  `version_problem`'s message. These checks are new code: the project branch
+  of `FsStoreProvisioner` that 3.x provisioning used checks only that the
+  file exists (`_is_store_layout`, `tcw/store/fs.py:3150-3153`);
+- with a `subfolder`, that folder in the staging copy, resolved, must lie
+  inside the staging copy (compared by identity, 7.8): a committed symbolic
+  link at the `subfolder` leading out of the clone is refused with `<url>
+  has a link at '<subfolder>' that leads outside the clone`, so the check
+  above never reads a project somewhere else on this machine. *Decided by
+  the dispatching session, 2026-10-22, after the plan review;* it applies to
+  trusted and bounded entries alike, since the link comes from the remote,
+  not from the person's manifest;
+- with a `subfolder`, when the staging copy's top folder holds a
+  `.tcw/tcw-config.yaml` declaring an ID that this run has kept an answer
+  for at another folder (7.4), and that is not a project this clone is made
+  for (7.7), the project is refused with `<id>: the clone of <url> holds
+  project '<x>' at its top, but '<x>' is already at <folder>; placing the
+  clone at <repository folder> would give '<x>' a second folder`. A
+  monorepo whose top folder is a project of its own, with an ID nothing else
+  has, is placed as usual;
 - only then is it moved into place (7.10).
+
+When the staging folder cannot be removed afterwards, the run prints a
+warning naming it (`could not remove the staging folder <folder>: <the
+system's reason>; remove it by hand`), and the project's own outcome, a
+success or the refusal that caused the cleanup, is reported unchanged. The
+search never reads that folder (above), so without the warning the person
+would never learn it is there.
 
 Nothing is written into a fetched project beyond the clone itself: no
 configuration, manifest or record of it is changed, and nothing about the
@@ -807,12 +982,18 @@ active project is written into it (UC-7).
 
 7.10. **Moving into place.** The staging copy is renamed to the repository
 folder: an absent one becomes the clone, and an empty one is replaced by it
-(a rename onto an empty folder). Just before, the folder is checked again,
-and anything that appeared in it since 7.6 refuses the project as occupied.
+(a rename onto an empty folder). Just before, the entry's path is resolved
+again and must lead to the same folder (7.8, "The folder checked is the
+folder written"), and the folder is checked again without following a link
+at its own name: anything that appeared in it since 7.6, or a symbolic link
+in its place, refuses the project as occupied. The rename is made within the
+parent folder held open since the check (7.8).
 When the rename fails (the folder is a mount point, or the operating system
 refuses), the project is refused with `<id>: could not move the clone into
 <folder>: <the system's reason>`, the staging folder is removed, and the
-folder is left as it was. The empty staging parent is removed in every case.
+folder is left as it was. The empty staging parent is removed in every case,
+and so are any parent folders made for this project when it is refused
+(7.6).
 
 7.11. **After each round.** The shared registry is dropped
 (`forget_registries()`, TCW-107 Design 2.13): a clone is not written through
@@ -858,12 +1039,14 @@ missing the run ends with `nothing to fetch: every project it names is on
 this machine`. Each fetched project gets `<id>: fetched into <folder>`. When
 anything failed, the last line is `fetched <n>, failed <m>; what was fetched
 stays, and running the command again fetches the rest`, so a run that stopped
-partway says what was done and how to finish (S-8). Exit codes:
+partway says what was done and how to finish (S-8). `<n>` and `<m>` count
+stores and projects together: each store or project fetched, and each that
+failed. Exit codes:
 
 | Exit | When |
 | --- | --- |
 | 0 | nothing failed; projects that cannot be fetched for want of a repository (7.5) do not count as failures, except as below |
-| 1 | a store or project failed: a clone failed, a folder was occupied or held only `.git` (7.6), entries conflicted (7.7), a target was outside the bound or the bound was at or above the home folder (7.8), a repository began with `-` or a clone held no matching project (7.9), the move into place failed (7.10), a kept answer changed (7.4) or a fetched project has a graph problem (7.11); also a graph problem before anything is fetched (7.14), and `<id>` unknown (7.1) |
+| 1 | a store or project failed: a clone failed, a folder was occupied or held only `.git` (7.6), entries conflicted (7.7), a target was outside the bound, the bound was at or above the home folder or inside a hidden folder below it, git could not say which repository holds a manifest's owner, or a path led somewhere else when checked again (7.8), a repository began with `-`, a clone held no matching project, its `subfolder` led outside it, its top folder would give a kept project a second folder, or no staging folder could be made (7.9), the move into place failed (7.10), a kept answer changed (7.4) or a fetched project has a graph problem (7.11); also a graph problem before anything is fetched (7.14), and `<id>` unknown (7.1) |
 | 2 | a usage error (7.1) |
 | 5 | `<id>` itself is still not on this machine at the end because no manifest entry gives its repository, and nothing failed |
 
@@ -881,12 +1064,27 @@ this machine is not a graph problem, which is why the command can run at all
 
 8.1. **The deciding entry of a project that is not on this machine**: one
 deployment-layer method on `FsProjectRegistry`, returning for a project ID and
-the root of the project that names it the deciding manifest entry (its file,
-`path` resolved to a folder, `repository` URL, branch and `subfolder`), or
-none. TCW-107's registry already keeps this in each answer (its plan, Step 3,
-`_Answer`'s "deciding manifest entry"); this item makes it readable. It is not
-on `ProjectRegistry` (`tcw/store/base.py:184`): a store that is not a folder
-of files has no manifest.
+the root of the project that names it:
+
+- `asked_by`: the root of the project whose lookup decided (7.8's way out
+  names it);
+- the folder found, or none;
+- the deciding manifest entry, or none: its file, `path` as written and
+  resolved to a folder, `repository` URL, branch and `subfolder`;
+- `owner`: the root of the project whose `.tcw/` holds that manifest, or,
+  for a personal file a linked worktree borrows (TCW-107 Design 4.2), the
+  worktree's root, since that is the project that reads it (7.8's trust and
+  bound);
+- `repository_folder`: the entry's resolved folder with `subfolder` removed
+  (7.6).
+
+*Corrected after the plan review, decided by the dispatching session,
+2026-10-22:* the first draft named only the entry's fields, while 7.8 needs
+the owner and the asking project. TCW-107's registry already keeps this in
+each answer (its plan, Step 3, `_Answer`'s "deciding manifest entry"); this
+item makes it readable. It is not on `ProjectRegistry`
+(`tcw/store/base.py:184`): a store that is not a folder of files has no
+manifest.
 
 8.2. Used as their items define them: `project_folder`, `found`,
 `forget_registries` (TCW-107 Design 2.12, 6.1, 2.13); `parents`,
@@ -906,13 +1104,16 @@ against what landed and corrects this spec where one differs.
 | `tcw project config` (Design 4) | model, shown by the CLI | Passes: any store can hold a project's configuration and say where each value came from; a file path in an origin is how the files store names its source, as a database would name a row. |
 | `tcw project path` (Design 5) | deployment | Prints a folder, which only the files store has; it asks TCW-107's deployment-layer lookup. |
 | `tcw project info` (Design 6) | model, shown by the CLI | Reads only operations other items have already judged (TCW-108, TCW-109, TCW-112); `path` and `stores` are the files store's folders. |
-| `tcw project provision` (Design 7) | deployment | Clones git repositories into folders; a store that is not a folder of files does not implement it and is not required to (design.md:125-131). TCW makes new clones and changes no existing repository: a folder holding only a `.git` is refused rather than moved (7.6), since `docs/lifecycle/abstraction.md:98-103` says TCW never changes git state. Its one git read beyond cloning, the repository's top folder for the bound (7.8), is of the kind that file allows ("finding the repository's root") in the code that resolves projects; the clone code stays inside the files store (`FsStoreProvisioner`). |
+| `tcw project provision` (Design 7) | deployment | Clones git repositories into folders; a store that is not a folder of files does not implement it and is not required to (design.md:125-131). TCW makes new clones and changes no existing repository: a folder holding only a `.git` is refused rather than moved (7.6), since `docs/lifecycle/abstraction.md:98-103` says TCW never changes git state. Its one git read beyond cloning, the repository's top folder for the bound (7.8), is of the kind that file allows ("finding the repository's root") in the code that resolves projects, and is made only when a `.git` entry shows there is a repository to ask about; the clone code stays inside the files store (`tcw/store/fs.py`, beside `FsStoreProvisioner`). |
 | The deciding-entry method (Design 8.1) | deployment | On `FsProjectRegistry` alone. |
 
 No backend operation is added or changed: the twelve operations in
 `tcw/work/backend.py` are untouched, and the Jira backend behaves the same.
 `ProjectRegistry` (`tcw/store/base.py:184`) keeps the interface the items
-before this one give it.
+before this one give it, less `reached_by_both_sides` (TCW-114's rename of
+`read_only_reason`, kept by TCW-114 for 3.x provisioning alone) when no
+caller is left once this item replaces that provisioning; removing a method
+no code calls changes no store's behavior.
 
 ## Use cases
 
@@ -1013,8 +1214,10 @@ project and its worktree (`tcw/store/project.py:135-157`). "Contacts no
 remote" means the stand-in saw none of those four; "counts `clone` calls"
 means it lets `clone` through to the real git and counts it.
 **`<tmp>`** is the test's temporary folder; it lies below the home folder
-only when a criterion says so, and the bound tests that need the home folder
-set `HOME` for the run.
+only when a criterion says so. Every provisioning test sets `HOME` for the
+run: to a folder outside `<tmp>` unless the criterion names another, so a
+developer whose temporary folder happens to be below their own home folder
+gets the same results as CI.
 
 1. **The group.** `tcw --help` lists `project` and does not list `init`,
    `projects`, `config` or `provision`. `tcw project --help` lists `new`,
@@ -1172,7 +1375,8 @@ set `HOME` for the run.
     `tcw project list --json` in `app` shows `core` with `present: true` and
     `found.file` `app`'s manifest. A second run exits 0, contacts no remote
     (the stand-in `git`), and prints `nothing to fetch`. In the first run
-    the stand-in saw `clone --quiet -- <remote> …` (`--` before the URL);
+    the stand-in saw `clone --quiet --branch main -- <remote> …` (`--`
+    before the URL) and no `checkout`;
     after either run, `<tmp>` holds no `.tcw-staging-…` folder. Nothing in the remote, nor any file of the fetched
     `core` other than the clone itself, has changed (its working tree is
     clean and its `.tcw/tcw-config.yaml` is the remote's).
@@ -1232,22 +1436,32 @@ set `HOME` for the run.
     '.'`); one declaring `id: other` (`holds project 'other'`); one holding a
     3.x root `tcw-config.yaml` (TCW-106's `legacy_message`); one with
     `tcw-version: 99.0.0` (`version_problem`'s message). A remote that
-    `git clone` cannot read (a path that is not a repository) fails with
-    exit 1 and leaves nothing behind.
+    `git clone` cannot read (a path that is not a repository), and an entry
+    naming a branch the remote does not have (`<remote>#nosuch`), each fail
+    with exit 1 and leave nothing behind. With `app`'s entry placing `core`
+    at `../new/core` (trusted, `<tmp>/new` absent), each of those refusals
+    also leaves no `<tmp>/new`. A library test in which removing the staging
+    folder fails prints the warning naming it and reports the project's own
+    outcome unchanged; one in which five staging names in a row are taken
+    refuses with 7.9's message.
 26. **Partial failure.** `app` names two absent parents, `aa` fetchable and
     `bb` whose folder is occupied: the run fetches `aa`, refuses `bb`, ends
     with `fetched 1, failed 1; what was fetched stays, and running the
     command again fetches the rest`, and exits 1; after `bb`'s folder is
-    cleared, a second run fetches only `bb`.
+    cleared, a second run fetches only `bb`. With, in addition, `app`'s work
+    store declaring a repository that cannot be cloned, the store fails, the
+    projects pass still runs, and the last line reads `fetched 1, failed 2`.
 27. **The bound** (TCW-23). `app` is at `<tmp>/app` and its manifest places
     `core` at `../repos/core`, so `core`'s repository folder is
     `<tmp>/repos/core` and the bound for `core`'s manifests is `<tmp>/repos`.
     `core`'s committed manifest places its parent `base`, in turn, at each
     of: `../../base-far` (`<tmp>/base-far`), `../x/base` (not directly inside
     the bound), `vendor/base` (inside `core`'s own clone) and `../.base`
-    (hidden); and, with personal files turned on for the test, at an
-    absolute path in a `.tcw/tcw-manifest.local.yaml` committed into
-    `core`'s remote. Each time `base` is refused before its remote is
+    (hidden); and, with personal files turned on for the test, at the
+    absolute path `<tmp>/repos/base` in a `.tcw/tcw-manifest.local.yaml`
+    committed into `core`'s remote: a folder directly inside the bound, so
+    only the separate rule for absolute paths refuses it (Design 7.8). Each
+    time `base` is refused before its remote is
     contacted (the stand-in `git` saw one `clone`, for `core`), with Design
     7.8's first message naming `<tmp>/repos`, nothing is made for `base`,
     `core` stays, and the run exits 1. At `../base`, `base` is fetched into
@@ -1329,6 +1543,15 @@ set `HOME` for the run.
     `clone`, nothing is made at `<tmp>/repos/lib`, and the run exits 1. With
     `lib: ../lib` added to `app`'s `.tcw/tcw-manifest.local.yaml`, the next
     run exits 0 with `nothing to fetch`.
+    **A clone that would give a kept project a second folder** (Design 7.4,
+    7.9): with `lib` at `<tmp>/lib` as above and found by the search, `app`
+    names a parent `server`, which `app`'s manifest places at
+    `../mono/apps/server` with `subfolder: apps/server`, in a remote whose
+    top folder's `.tcw/tcw-config.yaml` declares `id: lib`. `server` is
+    refused with 7.9's message naming `lib` and `<tmp>/lib`, nothing is made
+    at `<tmp>/mono`, `tcw project path lib` still prints `<tmp>/lib`, and the
+    run exits 1. With the remote's top folder declaring `id: mono` instead,
+    `server` is fetched.
 36. **The bound is judged on resolved folders, and never at the home
     folder** (Design 7.8). In AC 27's setup: (a) `core`'s remote commits a
     symbolic link `up -> ../..` and its manifest places `base` at `up/base`
@@ -1342,7 +1565,45 @@ set `HOME` for the run.
     `core` is fetched (its entry is `app`'s own), and `base` at `../base` is
     refused with 7.8's second message, nothing being made at
     `<tmp>/home/base`. The same with `HOME` set to `<tmp>/home/inner`, a
-    folder below the bound.
+    folder below the bound. With `HOME` set to `<tmp>/home` and `app` at
+    `<tmp>/home/.local/app` instead, `core` is fetched into
+    `<tmp>/home/.local/core` and `base` at `../base` is refused with the
+    same message (a hidden folder below the home folder).
+    (d) **A link committed by an earlier clone of the same round:** `core`'s
+    manifest names two parents of `core`, `aa` at `../aa` and `bb` at
+    `../aa/l/../../bb`, in that order, and `aa`'s remote commits `l ->
+    ../../far/x`. `bb` is refused before its remote is contacted, with 7.8's
+    first message (its path passes through `<tmp>/repos/aa/l`, which does
+    not exist when the round is checked, so it cannot be resolved
+    completely), `aa` is fetched, nothing is made at `<tmp>/bb`,
+    `<tmp>/far` or anywhere outside `<tmp>/repos`, and the run exits 1. This
+    is the layout the plan review used to place a clone outside the bound.
+    Because a clone only fills an absent or empty folder, the complete
+    resolution already refuses every such bounded path when the round is
+    checked;
+    the checks made again before each clone and before each move are
+    pinned by library tests: one in which the repository folder resolves
+    elsewhere when checked again before its clone refuses with 7.8's "now
+    leads to" message and runs no `clone`, and one in which it does so just
+    before the move refuses and leaves nothing at either folder.
+    (e) **Letter case:** where the temporary folder's file system ignores
+    letter case (the test makes `a` and looks for `A`; skipped elsewhere,
+    so CI on Linux skips it and the implement round records a run on
+    macOS), `app`'s personal manifest places `core` at the home folder's
+    path written in other letter case plus `/core`, with `HOME` set to
+    `<tmp>/home` and `<tmp>/home` holding nothing else: `core` is fetched
+    (its entry is `app`'s own), and `core`'s `base` at `../base` is refused
+    with 7.8's second message.
+    (f) **Git cannot say:** in AC 27's `ws` case, with `<tmp>/ws/.git` a
+    file reading `gitdir: <tmp>/nowhere`, `wp` is refused with 7.8's third
+    message and the run exits 1; with no `.git` there, the bound is `<tmp>`
+    as AC 27 says.
+    (g) **A `subfolder` that is a link:** `app`'s manifest places `server`
+    at `../mono/apps/server` with `subfolder: apps/server`, and the remote
+    commits `apps/server` as a link to `../../other`, where `<tmp>/other`
+    holds a project declaring `id: server`. `server` is refused with 7.9's
+    `leads outside the clone`, nothing is made at `<tmp>/mono`, and the run
+    exits 1.
 37. **Staging copies and addresses that look like options** (Design 7.9). A
     folder `<tmp>/.tcw-staging-0123abcd/core` holding a copy of `core`, as a
     killed run leaves it, is never taken for a project: in AC 19,
@@ -1353,9 +1614,14 @@ set `HOME` for the run.
     reporting no second match. An entry in `app`'s
     manifest whose repository is `--template=<tmp>/t`, and one whose branch
     is `<remote>#--orphan`, are each refused with exit 1 and `beginning with
-    '-'`, and the stand-in `git` saw no `clone`. A library test in which the
+    '-'`, and the stand-in `git` saw no `clone`. (If TCW-107 has made such a
+    repository a manifest problem, as its handoff (2) asks, these two exit 1
+    through 7.14 with TCW-107's message instead, still with no `clone`, and
+    7.9's own check is pinned by a library test.) A library test in which the
     move into place raises `OSError` refuses with 7.10's message, and leaves
-    no staging folder and nothing at the repository folder.
+    no staging folder and nothing at the repository folder; one in which a
+    symbolic link appears at the repository folder after the check refuses
+    as occupied and writes nothing through the link.
 38. **Another project's store names the command run there** (Design 7.2).
     `app` inherits `core`'s taxonomy, and `core`'s `taxonomy.repository`
     names a remote that is not fetched. In `app`, `tcw taxonomy list` exits
@@ -1364,6 +1630,13 @@ set `HOME` for the run.
     `core`, the same command's message contains `tcw project provision
     --component taxonomy` and no `-C`.
 39. The full suite, run as CI runs it (bare `pytest`), passes on `v4`.
+40. **The documents** (Design 1.6). `tests/test_documented_cli_surface.py`
+    and `tests/test_shipped_text.py` pass with the four commands removed; no
+    Markdown file outside that test's archives writes `tcw init`,
+    `tcw projects`, `tcw config show` or `tcw provision` as a command; every
+    passage this item writes that names `tcw -C` gives its target as one
+    token; and the implement round lists each passage changed, with what it
+    now says.
 
 ### Coverage
 
@@ -1377,6 +1650,7 @@ rule, or `n/a` with the line that makes it so.
 | 1.3 synonyms before the same word elsewhere; the suggestions that change | 3 |
 | 1.4 the sweep, narrowed for documentation | 4 |
 | 1.5 no new exit code | n/a: no code is added; the codes each criterion asserts (0, 1, 2, 5, 7) are TCW-108 Design 8.3's list, pinned by `tests/test_cli_help_standard.py:151` and `tests/work/test_errors.py:18`, which this item does not change; run by 39 |
+| 1.6 the passages that name a removed command: renamed only, one token after `-C`, listed for TCW-117 | 40 |
 | 2.1 `new` is `init` renamed | 5 |
 | 2.2 its help and refusal text | 4, 5 |
 | 3.1 `list`: `found`, TCW-108's fields, no `read-only` | 6 |
@@ -1397,23 +1671,25 @@ rule, or `n/a` with the line that makes it so.
 | 6.4 JSON | 17 |
 | 6.5 no project argument | 18 |
 | 7.1 forms, scoping, `<id>` with `--component`, unknown `<id>` | 21, 28 |
-| 7.2 stores as today; another project's store names `-C` | 33, 21 (`--component`), 38 |
+| 7.2 stores as today; another project's store names `-C`; a store's failure does not stop the projects pass; `--` around the store's clone | 33, 21 (`--component`), 38, 26 (a failed store) |
 | 7.3 (a) the family round by round; never a sibling | 19, 20 |
 | 7.3 (b) `<id>` and its load order, upward only | 21 |
 | 7.3 rounds: checks for the whole round before contact, one reading per round | 20 (`kk` in the next round), 26, 30 |
 | 7.4 already here by every rule; still read | 22 |
-| 7.4 answers kept for the whole run | 35 |
+| 7.4 answers kept for the whole run; a clone that would give a kept project a second folder | 35 |
 | 7.5 the deciding entry from any manifest; no repository | 20 (an ancestor's manifest), 22, 28 |
-| 7.6 the repository folder; empty; `.git`-only refused; occupied refused before contact | 24, 23 (with `subfolder`), 29 (worktree) |
+| 7.6 the repository folder; empty; `.git`-only refused; occupied refused before contact; a trusted entry's parent folders made, and removed on a refusal | 24, 23 (with `subfolder`), 29 (worktree), 27 (trusted, parents made), 25 (parents removed) |
 | 7.7 one clone per folder; conflicts; a clone missing a subfolder | 23 |
-| 7.8 trusted and bounded manifests; on every run; direct child, not hidden | 27 |
-| 7.8 resolved folders; whole components; the home folder | 36 |
+| 7.8 trusted and bounded manifests; trust by the owner's folder; on every run; direct child, not hidden; absolute and `~` paths refused as written | 27 |
+| 7.8 the owner's repository folder; git cannot say | 27 (`ws` in no repository), 36 (f) |
+| 7.8 resolved folders, completely; compared by identity; the home folder and hidden folders below it | 36 (a)-(e) |
+| 7.8 the folder checked is the folder written: checked again before each clone and before the move | 36 (d) |
 | 7.8 the way out names a manifest read first | 27 |
-| 7.9 the clone: `-` refused, `--`, printed first, no prompt, staging never matched, checked, nothing left | 19, 25, 37 |
-| 7.10 absent, empty; checked again; a failed move | 19, 24, 37 (library test) |
+| 7.9 the clone: `-` refused, `--`, `--branch`, printed first, no prompt, staging never matched, five names taken, checked, a `subfolder` link, a second folder for a kept project, cleanup warning, nothing left | 19, 25, 35, 36 (g), 37 |
+| 7.10 absent, empty; resolved and checked again without following a link; a failed move | 19, 24, 36 (d) and 37 (library tests) |
 | 7.11 one reading per round; a fetched project's problems stop further rounds | 19 (found afterwards), 20 (in turn), 32, 35 |
 | 7.12 dry run, the bound included | 30 |
-| 7.13 output and exit codes | 19, 26, 28, 35 |
+| 7.13 output and exit codes; stores and projects counted together | 19, 26, 28, 35 |
 | 7.14 graph problems before anything | 31 |
 | 8.1 the deciding-entry method | 19, 23, 27 (through the command; the plan adds a library test) |
 | 8.2 the interfaces relied on | 6 (`found`, TCW-108's fields), 7, 8 (TCW-109's origins and states), 9, 10 (`project_folder`), 12-17 (TCW-108's, TCW-109's and TCW-112's reads), 19, 20, 35 (`forget_registries`), 38 (TCW-112's third message) |
@@ -1459,6 +1735,11 @@ rule, or `n/a` with the line that makes it so.
   reads first, and the `tcw -C` command that makes the owner's manifest the
   active project's own. One run in the owner's folder settles each such
   project for good, since a project already here is never placed again.
+  The same holds for a person who keeps repositories inside a hidden
+  folder below their home folder, and for a manifest whose owner git cannot
+  place in a repository (a broken `.git`, a missing `git`, or git's "dubious
+  ownership" refusal): its bounded entries are refused until that is fixed
+  or the `-C` way out is taken.
 - **A bound below the home folder is not checked for what else lives
   there.** A bounded entry may create any new, non-hidden folder directly
   inside the bound, such as a folder beside the person's repositories in
@@ -1539,8 +1820,10 @@ rule, or `n/a` with the line that makes it so.
   always bounded, on every run, not only in the run that fetched it; a
   deeper or wider layout needs an entry in a manifest that is the active
   project's own. This spec makes the bound exact: the folder directly inside
-  the parent of the owner's repository folder, not hidden, judged on resolved
-  folders, and never when that parent is the home folder or above it. The
+  the parent of the owner's repository folder, not hidden, judged on folders
+  resolved completely and compared by identity, checked again before each
+  clone writes, and never when that parent is the home folder, above it, or
+  inside a hidden folder below it. The
   way out is a manifest the lookup reads first (TCW-107 Design 2.2 (a)),
   which for a project another project names is that project's, made the
   active project's own by `tcw -C` (7.8). This **answers TCW-23**, which was
@@ -1584,7 +1867,7 @@ rule, or `n/a` with the line that makes it so.
 | an empty folder, or one holding only `.git`, is a valid target | Narrowed. An empty folder is cloned into (Design 7.6, 7.10; AC 24). A folder holding only `.git` is refused and left untouched (Design 7.6; AC 24): the user's TCW-107 decision covers only the lookup, and moving the `.git` would change git state (Notes, Risks). |
 | `forget_registries()` after cloning | Design 7.11, once per round, with the run's earlier answers kept and compared (7.4); AC 19, 20, 35 |
 | `found` in `tcw project list` | Design 3.1; AC 6 |
-| `FsStoreProvisioner`'s project branch is kept for reuse | Design 7.9 reuses its staging and checks; the plan says how |
+| `FsStoreProvisioner`'s project branch is kept for reuse | Design 7.9 reuses its pattern (clone beside, check, rename in); its checks of the clone are written anew, since that branch checks only that the configuration file exists (`tcw/store/fs.py:3150-3153`); the branch itself is removed once nothing calls it |
 
 ### Other handoffs on this ticket
 
@@ -1634,6 +1917,50 @@ that this item works around and does not settle.
   provision --component <axis>` when the store is not the active project's
   (Design 7.2; AC 38). TCW-112's tests that match that message's text
   change with it.
+- **TCW-113:** its table's rows a and c (TCW-113 spec:319, :321) and its AC
+  29 (:1208) say the store message names `tcw provision`; after this item it
+  names `tcw project provision --component <axis>`, or the `-C` form when the
+  store is another project's (Design 7.2). TCW-113 lands at about the same
+  point, so its row c and AC 29 should say "names the provisioning command",
+  and its test should assert the words `has not been provisioned here` and
+  `provision`, which hold both before and after this item; then this item
+  edits none of TCW-113's tests.
+- **TCW-114:** `reached_by_both_sides`, which TCW-114 keeps for 3.x
+  provisioning alone, is removed by this item with its tests once nothing
+  calls it (Abstraction litmus test). This item relies on TCW-114's `-C`
+  skip in the three document checks taking exactly one token (Design 1.6).
+- **TCW-107:** `git_root` (`tcw/store/fs.py:240-255`) returns `None` for
+  every git failure, so a lookup that uses it reads "dubious ownership" or a
+  missing `git` as "in no repository". This item does not use it for the
+  bound (Design 7.8 asks git only where a `.git` entry exists, and refuses
+  when git cannot answer); whether TCW-107's worktree rules should tell the
+  two apart is TCW-107's question.
+
+### Corrected after the plan review
+
+The plan review of 2026-10-22 found these defects in the first accepted
+spec; each is corrected above, *decided by the dispatching session,
+2026-10-22*, with the reason given where it is corrected:
+
+1. Design 1.4 left the documents that name a removed command to TCW-117,
+   which the suite's document checks cannot allow (now Design 1.6, AC 40).
+2. Design 8.1 named fewer fields than 7.8 needs (now lists `asked_by`,
+   `owner` and `repository_folder`).
+3. Design 7.8 gave refusing an absolute or `~` path as a consequence of the
+   direct-child rule; it is a separate rule.
+4. TCW-113's message text: a handoff above, not a change here.
+5. Design 7.4's changed answer can arise with no deciding manifest: through
+   a clone's top folder placed next to other projects, which 7.9 now
+   refuses before the move, with a fallback text for anything else.
+6. Design 1.4 and the TCW-117 handoff named `AGENTS.md`, which names no
+   removed command; removed from both.
+
+The same review found the folder checked could differ from the folder
+written (7.8's "The folder checked is the folder written", "Resolved" and
+"Folders are compared by identity"), and led to the decisions on a hidden
+bound, a git failure, `git clone --branch`, a `subfolder` link, the
+parent folders of a trusted entry, staging collisions and cleanup, and a
+store's failure; each is marked where it is made.
 
 ### Handoffs to later items
 
@@ -1652,8 +1979,10 @@ These are recorded on each ticket when this spec is accepted.
   project is found rather than fetched again. `tcw migrate` stays a
   top-level command (design.md:699).
 - **TCW-117 (guides and skills):** every file outside the CLI that names a
-  removed command changes to its replacement. At `d2d02829`: `README.md`,
-  `AGENTS.md`, `docs/guide/cli.md`, `docs/guide/configuration.md`,
+  removed command has had its command names changed by this item (Design
+  1.6), and TCW-117 rewrites what each passage says for 4.0; the implement
+  round of this item lists every passage changed, with what it now says. At
+  `d2d02829`: `README.md`, `docs/guide/cli.md`, `docs/guide/configuration.md`,
   `docs/guide/multi-repo.md`, `docs/guide/work.md`, `docs/use-cases.md`
   (UC-6 names `tcw provision`; its known gap "TCW-23 (provision scoping)" is
   closed by this item), `skills/README.md`, `skills/capabilities/SKILL.md`,
@@ -1673,12 +2002,15 @@ These are recorded on each ticket when this spec is accepted.
   `tcw -C <folder> project provision <id>` way out. The guide on related
   projects says a folder holding only `.git` is refused and why (Design
   7.6), and that a `.tcw-staging-<hex>` folder is what a killed run leaves
-  (Design 7.9).
+  (Design 7.9). Every `tcw -C` command TCW-117 writes gives its target as
+  one token (Design 1.6). The bound's explanation also says that a hidden
+  folder below the home folder is refused like the home folder, and that a
+  manifest whose owner git cannot place in a repository is refused (7.8).
 - **TCW-118 (release):** the release notes name the `tcw project` group and
   the four removed commands, and say that provisioning places a clone from a
   manifest other than the active project's own only directly beside that
-  project, never at or above the home folder, and refuses a folder holding
-  only `.git`.
+  project, never at or above the home folder or inside a hidden folder below
+  it, and refuses a folder holding only `.git`.
 
 ### Questions for TCW-99
 
