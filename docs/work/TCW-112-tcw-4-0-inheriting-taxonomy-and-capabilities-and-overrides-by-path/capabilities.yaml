@@ -1,0 +1,30 @@
+new:
+    - taxonomy/override-an-inherited-term
+changed:
+    - taxonomy/federate-shared-vocabulary
+    - capabilities/federate
+    - capabilities/override-inherited
+    - capabilities/set-a-capabilitys-status
+    - capabilities/reset-an-override
+    - capabilities/remove-a-capability
+    - taxonomy/remove-a-local-term
+    - capabilities/add-a-capability
+    - taxonomy/add-a-term
+    - capabilities/read-a-capability
+    - taxonomy/read-a-term
+    - capabilities/browse-capabilities-by-status
+    - taxonomy/browse-the-term-forest
+    - capabilities/search-capabilities
+    - taxonomy/search-terms
+    - capabilities/validate-capabilities
+    - taxonomy/validate-the-taxonomy
+    - cli/validate-a-project
+    - capabilities/detect-capability-drift
+    - capabilities/configure-the-capabilities-store-location
+    - cli/reference-a-tcw-object
+    - cli/read-from-an-upstream-project
+    - work/declare-capability-changes-in-a-child-projects-ledger
+    - web/editing
+taxonomy:
+    new:
+        - override
