@@ -100,8 +100,9 @@ From the earlier items, by name (Step 0 confirms each):
   (`tcw/store/project.py:791`) replaced (P115:897).
 - **Today's code** (at `b2fa5810`): `_atomic_write_all`
   (`tcw/store/fs.py:1157`); `LOCAL_CONFIG_RULE` and `LOCAL_MANIFEST_RULE`
-  (`tcw/store/fs.py:204-205`); `tcw/store/config_edit.py` (`edit_text`,
-  `_verify`, `read_text`, `ConfigEditRefused`, `:47-126`); the Jira backend's `rename`
+  (`tcw/store/fs.py:204-205`); `tcw/store/config_edit.py`
+  (`ConfigEditRefused` `:47`, `read_text` `:95`, `edit_text` `:126`,
+  `_verify` `:542`); the Jira backend's `rename`
   edit (`tcw/work/jira/backend.py:891`), `metadata` (`:248`), `list`
   (`:433-483`); the client's `search` (`tcw/work/jira/client.py:242-267`,
   page size `PAGE = 100`, `:39`), `edit_metadata` (`:370`), `edit_issue`
@@ -137,24 +138,60 @@ Each decided by this plan, preferring the simpler and safer option.
    layering (`_merge` and `PERSONAL_KEYS`), since 4.0's merge now removes a
    value at `null` (TCW-109) and would change what the 3.x layers mean.
 3. **The 3.x behaviour the copies must match is recorded once, from a
-   pinned 3.0.2.** `tests/migrate/record_3x_listings.py` (a script, not a
-   test) makes its own throwaway virtual environment in a new
-   `tempfile.mkdtemp()` folder (`python -m venv <tmp>/venv`, then
-   `<tmp>/venv/bin/pip install tcw-cli==3.0.2`), checks that
-   `<tmp>/venv/bin/tcw --version` prints exactly `tcw 3.0.2`, and runs only
-   that `tcw`, by its full path, never the one on `PATH`. It builds each
-   fixture in another new `mkdtemp()` folder outside every project, and
-   before each command checks that the nearest `tcw-config.yaml` above the
-   command's folder is the fixture's own. Every command runs with an
-   environment the script builds: `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`
-   set to the fixture's own folders (F-single has a user-wide file, F-full's
-   `lib` a 3.x cache clone), every `TCW_*` variable and the two credential
-   variables removed, and `https_proxy` set to `http://127.0.0.1:9`. It runs
-   `tcw taxonomy list --json`, `tcw capabilities list --json`,
-   `tcw capabilities show <path> --json` for each override and each object
-   a reference names, and `tcw validate`, saving
-   `tests/migrate/golden/<fixture>.json` with the `tcw --version` line and
-   the date; it never runs in this repository. Reason: the lifecycle `tcw`
+   pinned 3.0.2, by a script run by hand, whose output is committed.**
+   `tests/migrate/record_3x_listings.py` is a script, not a test: pytest
+   collects only `test_*.py` and `*_test.py` files (`pyproject.toml` sets
+   `testpaths` and no `python_files`), and nothing in the suite imports or
+   runs it. Its output, `tests/migrate/golden/<fixture>.json`, is committed,
+   and the suite reads only those files. The script:
+   - **needs network access, or stops.** Before anything else it fetches
+     `https://pypi.org/pypi/tcw-cli/3.0.2/json` with the environment pip
+     will use, with a 10-second timeout. If that fails, it stops with exit 1
+     and `record_3x_listings: cannot reach PyPI (<error>); run it with
+     network access and with no proxy that points nowhere`, having made
+     nothing. So pip is never run behind a dead proxy: a shell that set
+     `https_proxy=http://127.0.0.1:9` (as Step 14's proof does) stops here
+     rather than at a failed install;
+   - makes its own throwaway virtual environment in a new
+     `tempfile.mkdtemp()` folder (`python -m venv <tmp>/venv`, then
+     `<tmp>/venv/bin/pip install tcw-cli==3.0.2`). pip runs with the
+     caller's environment and never with the dead proxy, which is set only
+     for the `tcw` runs below. It then checks that
+     `<tmp>/venv/bin/tcw --version` prints exactly `tcw 3.0.2`, saves
+     `<tmp>/venv/bin/pip freeze` (PyYAML is not pinned by `tcw-cli`), and
+     runs only that `tcw`, by its full path, never the one on `PATH`;
+   - **records from fixtures only.** It builds each fixture with
+     `tests/migrate/fixtures.py` in another new `mkdtemp()` folder outside
+     every project. Before each command it checks that the nearest
+     `tcw-config.yaml` above the command's folder is the fixture's own, and
+     stops if not. It never runs in this repository;
+   - runs each `tcw` with an environment it builds: `XDG_CONFIG_HOME` and
+     `XDG_CACHE_HOME` set to the fixture's own folders (F-single has a
+     user-wide file, F-full's `lib` a 3.x cache clone), every `TCW_*`
+     variable and the two credential variables removed, and `https_proxy`
+     and `HTTPS_PROXY` set to `http://127.0.0.1:9`;
+   - runs `tcw taxonomy list --json`, `tcw capabilities list --json`,
+     `tcw capabilities show <path> --json` for each override and each
+     object a reference names, and `tcw validate`;
+   - writes each output with the fixture's absolute folder replaced by the
+     placeholder `<fixture>` (and its `XDG_*` folders by `<config>` and
+     `<cache>`), so that no temporary path is saved;
+   - saves, in each golden, the `tcw --version` line, the `pip freeze`
+     lines, the date, and `fixture-digest`: the SHA-256 of the fixture's
+     files, each relative path and its bytes in sorted order, `.git/`
+     left out.
+   A suite test, `tests/migrate/test_goldens_current.py`, builds each
+   fixture in `tmp_path` and checks that its digest, computed the same way,
+   equals its golden's `fixture-digest`. A changed fixture therefore fails
+   with `golden/<fixture>.json was recorded from another fixture; run
+   tests/migrate/record_3x_listings.py`, rather than being compared silently
+   against an old recording. That matters most after TCW-118, when no 3.x
+   `tcw` is on this machine. The digest function lives in
+   `tests/migrate/fixtures.py`, so the script and the test share it.
+   Decided by the dispatching session, 2026-10-22 (the re-check's D2
+   section and S6): a script whose output is committed keeps the suite
+   offline; the network check is the one way to keep pip away from a dead
+   proxy without the script editing a caller's settings. Reason: the lifecycle `tcw`
    becomes 4.0 at TCW-118, after which nothing on this machine could
    re-record a golden when a fixture changes (the review's D2, decided by
    the dispatching session, 2026-10-22), and the shell's own variables
@@ -249,9 +286,18 @@ Each decided by this plan, preferring the simpler and safer option.
     merged by the copied 3.x `_merge` and `PERSONAL_KEYS`, with no parent
     and no environment override. `jira.py` builds `JiraBackend(project,
     work_path, work_config, jira)` with `jira` from
-    `parse_jira_config(<that work.jira>)` and `work_config` from 4.0's
-    `parse_work_config` on the planned (or, in a 4.0 project, the present)
-    `.tcw/tcw-config.yaml`'s `work` section. A missing required key or a
+    `parse_jira_config(<that work.jira>)` and `work_config` the defaults,
+    `parse_work_config({})[0]`. The two methods of Decided 10 read only
+    `self.jira`, `self.project`, `self.client` and the field ids
+    `metadata()` finds from `jira.fields`, never `self.config` or
+    `self.layout`, and their docstrings say so. So no work section is read
+    for them, and a 4.0 project whose `work` keys come from a parent
+    (TCW-109) plans the same tickets as one that sets them itself (decided
+    by the dispatching session, 2026-10-22, the re-check's S7: reading the
+    own `work` section would have been incomplete there, and nothing needs
+    it). Step 9 tests it: the same tickets and edits with `work_config`
+    built from F-single's whole `work` section and from the defaults. A
+    missing required key or a
     refusal of `parse_jira_config` is a Jira failure while planning (spec
     Design 2.3): exit 1, nothing written, the file and key named with
     `--no-jira`. So the re-run after a phase F stop (P11) and the plain run
@@ -272,10 +318,20 @@ Each decided by this plan, preferring the simpler and safer option.
     and each fixture carries a fixed list, written by hand once, of the 4.0
     counterpart of each of those findings; criterion 51 requires the run's
     A12 list to equal it, so a finding a conversion caused fails the test.
-    The findings come from `collect_findings(root, remote=False)`, split
-    out of `_cmd_validate` (`tcw/cli.py:208`) in Step 10 with no change of
-    behaviour; `remote=False` keeps the check off Jira, `--no-jira` or
-    not.
+    The findings come from `collect_findings(root, remote=False, work=…)`,
+    split out of `_cmd_validate` (`tcw/cli.py:208`) in Step 10 with no
+    change of behaviour; `remote=False` keeps the check off Jira, `--no-jira`
+    or not. `work` is `False` exactly when the run was given `--no-jira`
+    and the project's work is kept in Jira. Then `validate`'s work-store
+    checks are skipped: its section (e), `_work_findings`
+    (`tcw/validate.py:455`), calls `open_backend` (`:574`), which builds
+    `JiraBackend` (`tcw/work/open.py:83-84`) and so `JiraClient`
+    (`tcw/work/jira/backend.py:228`). The summary says `work store not
+    checked after the run (--no-jira): run 'tcw validate' to check it`
+    (spec Design 1.1; decided by the dispatching session, 2026-10-22, the
+    re-check's N1: the simplest change that keeps "never builds" true).
+    `validate(project_root, *, work=True)` gains the keyword, and every
+    other caller keeps the default.
 14. **Line forms** (Design 1.5), relative to the active project's root
     (absolute for a path outside it): `write <path>: C9, C10, C16`,
     `move <old> -> <new>: C13`, `delete <path>: C9`,
@@ -325,17 +381,44 @@ Each decided by this plan, preferring the simpler and safer option.
     `id: cap-`); Step 15 for TCW-112's `tcw/` rules (the override match's
     copy names `_apply_override`).
 19. **`--no-jira` never builds a Jira client** (spec Design 1.1, the
-    review's S1). `tcw/migrate/jira.py` is the one module of the package
-    that imports from `tcw.work.jira`; `plan.py` imports it inside the
-    branch that plans tickets, which `--no-jira` and the files backend never
-    enter. Every planning call gets `_ReadOnlyClient(client)`, whose
-    `create_issue`, `edit_issue`, `apply_transition`, `add_comment`,
-    `add_link` and `delete_link` raise `AssertionError("tcw migrate: no
-    write while planning")`; only `apply_tickets` in phase F gets the
-    client itself. The backend already takes its client as an argument
+    review's S1, the re-check's N1, N2 and S8). Three places could build
+    one, and each is closed:
+    - **Planning.** `tcw/migrate/jira.py` is the one module of the package
+      that imports from `tcw.work.jira`. One function imports it:
+      `plan_jira_half(root, project_id, *, jira_backed, no_jira) -> JiraHalf
+      | None` in `tcw/migrate/plan.py`. It returns `None` before the import
+      when `no_jira` is set or `jira_backed` is false. Otherwise it builds
+      the planning backend over `_ReadOnlyClient`, calls `plan_tickets`
+      (the search and B16), and returns `JiraHalf(tickets, blockers,
+      apply)`. Both runs call it, before any write. `make_plan` calls it for
+      a fresh run, with the ID and backend it read. `cli.run` calls it for
+      a run that follows a progress record, with the ID and backend the
+      record holds (Step 3's `project` and `work-backend` fields). That call
+      does not go through `make_plan`, so criterion 60's patch of
+      `make_plan` still shows the record is followed.
+    - **Phase F.** `JiraHalf.apply` is a function `jira.py` returns. When it
+      is called, it builds the phase F backend over the plain client and
+      calls `apply_tickets`. `execute.py` calls `half.apply()` in phase F
+      and imports nothing from Jira. With no half there is no phase F.
+    - **The check after the run.** It is called with `work=False` under
+      `--no-jira` for a Jira-backed project (Decided 13).
+
+    `_ReadOnlyClient(client)` is an allowed list. Its `__getattr__` passes
+    on only `search`, `issue`, `edit_metadata`, `project`,
+    `create_metadata` and `myself`, the reading calls `metadata()`,
+    `item_values()` and B16 make (Step 0 confirms the list against those
+    three as landed). Any other name raises `AssertionError("tcw migrate:
+    <name> is not allowed while planning")`: the six writing calls,
+    `_request`, `_payload`, `_json`, `config`, and any writing call a later
+    item adds. The backend already takes its client as an argument
     (`JiraBackend(..., client=)`, `tcw/work/jira/backend.py:219-228`), so
     planning builds `JiraBackend(..., client=_ReadOnlyClient(JiraClient(jira)))`
-    and phase F a second backend over the plain client.
+    and `JiraHalf.apply` a second backend over the plain client. The static
+    check of criterion 66 reads the package's syntax trees. Of
+    `tcw/migrate/*.py`, only `jira.py` names `tcw.work.jira`. The only
+    import of `tcw.migrate.jira` in the package is inside `plan_jira_half`.
+    Decided by the dispatching session, 2026-10-22: one function at one
+    point serves both kinds of run, so one guard covers both.
 20. **No new test reads this repository's root `tcw-config.yaml`** (spec
     Design 8.4, the review's M6). Step 4 saves
     `tests/migrate/data/repo-tcw-config-3x.yaml`, a byte-for-byte copy of
@@ -352,6 +435,40 @@ Each decided by this plan, preferring the simpler and safer option.
     migrate test composes `rev-parse`, `ls-files`, `status` (only with
     `--no-optional-locks`) and `check-ignore` from the recorded calls
     itself (the review's S5).
+23. **Migration's messages pass `tests/test_static_guards.py`** (spec
+    Design 8.6, the re-check's N3). The stopped run says `do not save these
+    files in version control until 'tcw migrate' finishes`. A6, A7 and B13
+    are worded as Design 8.6 gives them. B5's message is built by one
+    function, `family.absent_project_message(project, folder, repository)`,
+    which `EXEMPT` names: `("migrate/family.py", "absent_project_message")`,
+    with the comment `# TCW-116 Design 6.5, 8.6: B5 names the one command
+    that fetches a project here, since every tcw command is refused in a
+    3.x project`. The entry is added in Step 16, which creates the function.
+    `tests/work/test_git_write_scan.py`'s `SCANNED` gains
+    `*(PACKAGE / "migrate").rglob("*.py")` in Step 1, which creates the
+    package. Decided by the dispatching session, 2026-10-22: the rewording
+    keeps each message's meaning and the guard's strictness, and the one
+    exemption covers a command line that has no other wording.
+24. **Test text that TCW-112's test-file rule forbids is written only under
+    `tests/migrate/`** (the re-check's S3). That text is `overrides:`,
+    `extends:` under `taxonomy:` or `capabilities:`, and `id: cap-`. So
+    Step 4's editor tests of `RemoveTop("id")` and `RemoveTop("overrides")`,
+    and all of Step 23's cases (one is a 3.x reader holding
+    `overrides: M/cap-1`), go in
+    `tests/migrate/`, not in `tests/test_config_edit.py` or
+    `tests/test_rewrite.py`. The editor tests outside `tests/migrate/` use
+    neutral keys and values (`id: x1`, `projects:`). Decided by the
+    dispatching session, 2026-10-22: the rule is TCW-112's, and the
+    exemption Decided 18 gives covers that folder only.
+25. **TCW-114's `tests/test_ownership_sweep.py` may gain entries** (the
+    re-check's S2). Its list holds every function under `tcw/` that calls
+    `add`, `set`, `update`, `remove` or `move` on a receiver it cannot
+    prove to be a builtin container. Each function of `tcw/migrate/` it
+    reports is added in the step that writes it, with the reason `tcw
+    migrate writes files through its executor, never through a backend or
+    store`. `set_item_values` is not one of the interface's operations and
+    carries no `@writes` marker; its ownership rule is Design 5.1's `TCW
+    Project` filter.
 
 ## The conversion safeguards
 
@@ -431,15 +548,20 @@ No code changes.
 2. **Re-find every citation** of the spec and this plan on the merged tree,
    by name, and write the new line numbers into the implement round: every
    name in "What this plan relies on"; in `tcw/cli.py` `build_parser`,
-   `_dispatch`, `_check_here`, `_enter`, `_cmd_validate`, `main`; the 3.x
-   readers (cited at `32c510f0`) that Steps 2 and 15 copy (`tcw/store/project.py:616-667`,
-   `tcw/store/base.py:866-917`, `tcw/store/fs.py:904-933`, `:1763-1769`,
-   `:1816`, `:2211-2213`, `:2255-2256`, `:2301-2309`, `:2344-2389`,
-   `:2425-2440`, `:3182-3318`, `tcw/store/checkouts.py:60-127`,
+   `_dispatch`, `_check_here`, `_enter`, `_cmd_validate`, `main`;
+   `validate`'s section (e) and `_work_findings` (`tcw/validate.py:455`,
+   `:554`), which Step 10's `work` keyword skips; and the 3.x readers that
+   Steps 2 and 15 copy, confirmed at tag `v3.0.2` from the spec's
+   "Citations at `v3.0.2`" table, which is where they are copied from:
+   `tcw/store/project.py:614-668`, `tcw/store/base.py:865`,
+   `tcw/store/fs.py:884` (`_extends_ids`), `:1743` (`_local_slugs`),
+   `:1796`, `:2191`, `:2235`, `:2238`, `:2281`, `:2324` (the match at
+   `:2332`), `:2405-2420`, `:3162-3300`, `tcw/store/checkouts.py:60-127`,
    `tcw/refs.py:59-125`, `tcw/work/gates.py:331-380`, `:430-437`,
-   `tcw/validate.py:49-72`, `tcw/config.py`'s `PERSONAL_KEYS` and `_merge`),
-   each confirmed at tag `v3.0.2` from the spec's "Citations at `v3.0.2`"
-   table, which is where Steps 2 and 15 copy them from.
+   `tcw/validate.py:48-71`, and `tcw/config.py:44` (`PERSONAL_KEYS`) and
+   `:454` (`_merge`). These line numbers are the tag's (the re-check's
+   S5), and the tag does not move, so they need confirming only by
+   `git show v3.0.2:<file>`.
    A name that no longer exists, or behaves otherwise than this plan
    assumes, is reported to the dispatching session before Step 1, and the
    affected step rewritten in the round.
@@ -472,11 +594,19 @@ No code changes.
 9. **The tests that read this repository's root `tcw-config.yaml`**: only
    `tests/test_repo_config_pair.py` at `5a9ca9b7` (Decided 20); any other
    found is listed for Step 12.
+10. **The other guards this item's code meets** (Decided 23-25): the
+    `EXEMPT` set and `GIT_WORDS` of `tests/test_static_guards.py`, the
+    `SCANNED` list of `tests/work/test_git_write_scan.py`, and TCW-114's
+    `tests/test_ownership_sweep.py` and how its list is written. Also the
+    client methods that `metadata()`, `item_values()` and B16 call, for
+    `_ReadOnlyClient`'s allowed list (Decided 19). Each is recorded; a
+    guard shaped differently from what Decided 23-25 assume is reported to
+    the dispatching session before Step 1.
 
 ## Step 1 — the command, and what runs before it
 
-Design 1.1, 1.2, 1.5, 1.6 (codes 0, 1, 2), 8.1; criteria 1, 2 (its refusal
-half), 3.
+Design 1.1, 1.2, 1.5, 1.6 (codes 0, 1, 2), 8.1, 8.6 (the git-write scan);
+criteria 1, 2 (its refusal half), 3, 69 (its scan half).
 
 **Tests first**, new `tests/migrate/test_migrate_command.py`:
 
@@ -506,12 +636,17 @@ which in this step plans nothing and prints `nothing to migrate`.
 `_check_here()` (Step 0, item 3) is skipped when `skips_checks` is set; an
 address `-C` target still checks (Decided 12). `tests/test_cli_help_standard.py`:
 `migrate` joins `SURFACE` (`:22`) and the count (`:70`) grows by one.
+`tests/work/test_git_write_scan.py`: `SCANNED` gains
+`*(PACKAGE / "migrate").rglob("*.py")` (Decided 23, criterion 69), so every
+git call the package makes from here on is held to TCW-70's rule.
 
-**Proves it:** the new tests; the full suite.
+**Proves it:** the new tests; `tests/work/test_git_write_scan.py` and
+`tests/test_static_guards.py` green with the package present; the full
+suite.
 
 ## Step 2 — the 3.x readers part 1 needs, and the fixture builders
 
-Design 4.1, 8.2; Decided 2, 3, 18; criterion 67 (TCW-110's and TCW-111's
+Design 4.1, 8.2; Decided 2, 3, 18, 24; criterion 67 (TCW-110's and TCW-111's
 exemptions, and TCW-112's test-file one).
 
 **Creates** `tcw/migrate/legacy.py`, copied from tag `v3.0.2` (Decided 2;
@@ -550,9 +685,12 @@ exemption is added.
 **Creates** `tests/migrate/fixtures.py`: `build_f_single(root, *,
 backend="jira")`, `seed_tickets(fake)`, `snapshot(*roots, user_file)`
 (path, kind, bytes and modification time of every path), and the pieces
-F-full adds later; `tests/migrate/record_3x_listings.py` and
-`tests/migrate/golden/f-single.json`, `f-single-files.json` (Decided 3; the
-3.0.2 run is recorded in the implement round).
+F-full adds later, and `fixture_digest(root)` (Decided 3);
+`tests/migrate/record_3x_listings.py`, run by hand once with network
+access, and its committed output `tests/migrate/golden/f-single.json` and
+`f-single-files.json` (Decided 3; the run, its `pip freeze` and the
+network check's result are recorded in the implement round);
+`tests/migrate/test_goldens_current.py`, the fixture-digest check.
 
 **Tests first**, `tests/migrate/test_migrate_legacy.py`: `objects_3x` of
 F-single equals the golden listings' id-paths for taxonomy and
@@ -563,7 +701,15 @@ fixture in 3.x form and for the same fixture with its files moved to
 `.tcw/`, and takes the credential names from a 3.x root personal file;
 **mutation check:** with `objects_3x` taxonomy
 counting only folders holding `meta.yaml`, the golden comparison goes red
-naming `customer`. In each of the three guards, the reach test of
+naming `customer`. `test_goldens_current.py`: each golden's
+`fixture-digest` equals the digest of the fixture built today, and no
+golden holds the fixture's temporary path; **mutation check:** with one
+byte of F-single's `cli/x` state file changed in `fixtures.py`, it goes red
+naming `golden/f-single.json` and the script. The script itself, with
+`https_proxy=http://127.0.0.1:9` set in its environment, stops at the
+network check with exit 1 and its message, and has made no virtual
+environment (run by hand once, recorded in the round, since the suite
+never runs the script). In each of the three guards, the reach test of
 criterion 67; **mutation check:** with the exemption matched as a text
 prefix instead of by path parts, the `tcw/migrate_x.py` case goes red.
 
@@ -573,7 +719,8 @@ the fixtures in place; the full suite.
 ## Step 3 — the plan, the writes and the progress record, on hand-made plans
 
 Design 2.2, 2.4 (phases A-E), 2.5, 2.7 (the progress record, following it,
-B17, the stop points), 2.8 (only listed deletions); Decided 4-7. The
+B17, the stop points, the stopped run's message), 2.8 (only listed
+deletions), 8.6; Decided 4-7, 23; criterion 69 (the message). The
 riskiest code of the item, built and tested alone, before any conversion
 exists, on plans written by hand in the tests.
 
@@ -584,13 +731,16 @@ folder holds), `Delete(path, phase, digest, waits_for, waits_digest,
 conversions)` (`digest` the deleted file's own, as planned; `None` only for
 the progress record's own deletion),
 `TicketEdit(key, old, new)`, `Report(code, where, text)`, `Blocker(code,
-where, why, fix)`, `Plan(steps, tickets, reports, blockers, owners,
-resolved, summary)` (`owners` and `resolved` hold Design 2.7's "why each
-byte is what it is").
+where, why, fix)`, `Plan(project, work_backend, steps, tickets, reports,
+blockers, owners, resolved, summary)` (`owners` and `resolved` hold Design
+2.7's "why each byte is what it is"; `project` and `work_backend` are what
+a run following the record needs to decide about the Jira half, Decided
+19).
 
 **Creates** `tcw/migrate/progress.py`: `PROGRESS = ".tcw/tcw-migration-progress.yaml"`,
-`dump(plan) -> str`, `load(root) -> list[step] | None` (a file that is not
-this format is B17 naming it).
+`dump(plan) -> str`, `load(root) -> Progress | None`, where `Progress`
+holds `project`, `work_backend` and the steps (a file that is not this
+format, or lacks either field, is B17 naming it).
 
 **Creates** `tcw/migrate/execute.py`: `_write`, `_move`, `_delete`, `_mkdir`
 (Decided 7); `state(step, root) -> "done" | "todo" | "changed"` (Design
@@ -603,9 +753,9 @@ changed one with B17, and otherwise performs each; `apply(plan, root)`:
 phase A's writes in Decided 5's order, then `progress.dump`, then
 `run_local`, then the progress record deleted last in phase E. A failure
 raises `MigrateStopped(done, not_done)`, which `cli.py` prints with `run
-'tcw migrate' again to finish` and `do not commit until it finishes`,
-exit 1; `run_local` turns every `OSError` from a write into it (Decided
-21). If Step 0 found that `tests/move_stops.py` drives only commands,
+'tcw migrate' again to finish` and `do not save these files in version
+control until 'tcw migrate' finishes` (Decided 23), exit 1; `run_local`
+turns every `OSError` from a write into it (Decided 21). If Step 0 found that `tests/move_stops.py` drives only commands,
 **changes** it to take a callable that performs one run as well, beside
 the command form and with no change to it.
 
@@ -639,6 +789,11 @@ a few hand-written steps in a temporary folder:
   with its edit.
 - A `PermissionError` from `_write` gives `run 'tcw migrate' again to
   finish`, exit 1, not `_dispatch`'s one-line error (Decided 21).
+- The stopped run's two lines are printed exactly, and
+  `tests/test_static_guards.py` passes with them in `tcw/migrate/cli.py`
+  (criterion 69's message half).
+- `progress.load` returns the `project` and `work_backend` that `dump`
+  wrote; a record without either is B17.
 - The progress record round-trips a text with Windows line endings, a
   leading byte-order mark and trailing spaces exactly, and a file read for
   the plan with `\r\n` endings is written back with them on every untouched
@@ -654,8 +809,12 @@ outside the package uses it yet).
 
 Design 2.8; Decided 9.
 
-**Tests first**, in `tests/test_config_edit.py` and new
-`tests/test_rewrite_values.py`:
+**Tests first**, in `tests/test_config_edit.py`, new
+`tests/test_rewrite_values.py`, and new `tests/migrate/test_migrate_editors.py`
+for every case whose text TCW-112's test-file rule forbids elsewhere
+(Decided 24): `RemoveTop("id")` on a state file holding `id: cap-1a2b3c`, and
+`RemoveTop("overrides")`. The cases in `tests/test_config_edit.py` use
+neutral text (`id: x1`, `projects:`):
 
 - `RenameKey(("work", "stages", "spec", "prompt", 4, "when", "not_tags"),
   "not-tags")` on the frozen copy of this repository's configuration
@@ -756,8 +915,12 @@ bound command whose text names `tcw provision`, `tcw projects`, `tcw init`,
 which reads (`legacy.read_3x_layers`, the `.tcw/` files), calls
 `plan_config` and `part_two_forms`, and in later steps the stores and Jira;
 `tcw/migrate/report.py`, the lines of Decided 14 and the summary.
-`cli.run` now: `make_plan`; blockers → print all, exit 3; `--dry-run` →
-print, exit 0; else `execute.apply`.
+`cli.run` now: when `progress.load(root)` finds a record, it follows it
+(`execute.follow(progress, root, dry_run=)`, built on Step 3's `run_local`;
+a dry run lists the steps still to do) and never calls `make_plan`;
+otherwise `make_plan`; blockers → print all, exit 3; `--dry-run` → print,
+exit 0; else `execute.apply`. Step 9 puts the Jira half in front of both
+paths.
 
 **Proves it:** the new tests; the full suite.
 
@@ -880,7 +1043,8 @@ and the edit screen while planning), 2.3, 2.4 (phase F), 2.6 (the offline
 re-run), 5.1-5.4, C17, A10, B16; criteria 12, 14 (offline parts), 43, 44,
 57, 58, 59, 65.
 
-Also criteria 66 and 68; Decided 11, 19.
+Also criteria 66 and 68; Decided 11, 19; spec Design 2.7 (the Jira half
+of a run that follows a progress record).
 
 **Tests first**, `tests/work/jira/test_jira_migrate.py` (the backend
 methods) and `tests/migrate/test_migrate_jira.py` (the command), with the
@@ -925,13 +1089,41 @@ fake (`tests/work/jira/fake.py`); every fixture's `site` is
   tickets could not be checked`, exit 5; `--no-jira`: exit 0, no request.
 - Criterion 66: with `JiraClient.__init__` and `JiraBackend.__init__`
   patched to raise, `--no-jira` and `--dry-run --no-jira` on F-single
-  finish as criterion 57 says; a static check that, of `tcw/migrate/*.py`,
-  only `jira.py` names `tcw.work.jira`, and that `plan.py` imports it only
-  inside a function; with `plan_tickets` patched to call `edit_issue` on the
-  client it is given, a dry run fails with `_ReadOnlyClient`'s error and the
-  fake records no `PUT`. **Mutation check:** with `plan.py` importing
-  `tcw.migrate.jira` at the top and building the backend before the
-  `no_jira` test, the constructor patch makes the `--no-jira` case go red.
+  finish as criterion 57 says. The same two runs, made with a progress
+  record present (a first run stopped by `tests/move_stops.py` at its
+  first write after phase A, with `--no-jira`), finish too: the real one
+  completes the local steps, and the fake records no request in either.
+  A static check reads the syntax trees of `tcw/migrate/*.py`: only
+  `jira.py` names `tcw.work.jira`, and the only import of
+  `tcw.migrate.jira` is inside `plan.plan_jira_half`. With `plan_tickets`
+  patched to call `edit_issue` on the client it is given, a dry run fails
+  with `_ReadOnlyClient`'s error and the fake records no `PUT`, both
+  fresh and with a progress record present. `_ReadOnlyClient` refuses
+  `create_issue`, `edit_issue`, `apply_transition`, `add_comment`,
+  `add_link`, `delete_link`, `_request`, `_payload` and a made-up
+  `new_writer`, and passes on its six allowed calls. In this step the
+  constructor patch covers planning and phase F. Step 10 adds the check
+  after the run, and this test stays green there because of Decided 13's
+  `work=False`; Step 10 runs it again as its own check.
+  **Mutation checks:** with `plan.py` importing `tcw.migrate.jira` at the
+  top and building the backend before the `no_jira` test, the constructor
+  patch makes the `--no-jira` case go red. With `cli.run`'s
+  progress-record path calling `jira.backend_for` directly instead of
+  `plan_jira_half`, the static check and the progress-record case go red.
+- The Jira half of a run that follows a progress record (spec Design 2.7):
+  stopped after phase A on F-single without `--no-jira`, the re-run
+  searches the fake before its first write (the fake's request log and the
+  write counter share one counter). With the fake unreachable at that
+  point, it exits 5, writes nothing more (the snapshot equals the stopped
+  state), and prints `nothing more was written; 'tcw migrate --no-jira'
+  finishes the files without Jira`. With the edit screen lacking the
+  field, it exits 3 with B16 and writes nothing more. `--dry-run` with the
+  record present lists the steps still to do and the planned ticket edits,
+  and records no `PUT`. With `make_plan` patched to raise, all of these
+  still behave so.
+- Decided 11: `item_values()` and `set_item_values()` give the same
+  tickets and edits with `work_config` built from F-single's whole `work`
+  section and from `parse_work_config({})[0]`.
 - Criterion 68: after `--no-jira` on F-single, `fields.item` in
   `.tcw/tcw-config.yaml` changed by hand to `Other Item`: the plain run
   searches and edits `Other Item`; credential names set only in a 3.x root
@@ -947,25 +1139,36 @@ used only by `tcw migrate` and is not one of the twelve operations;
 attempt could not reach Jira, else `BackendError`, each naming the tickets
 left.
 
-**Creates** `tcw/migrate/jira.py`: `backend_for(root)` (Decided 11, from
-`legacy.own_jira_layers`); `_ReadOnlyClient` (Decided 19);
-`plan_tickets(read, backend)` (Design 5.1's filter by `TCW Project`;
+**Creates** `tcw/migrate/jira.py`: `backend_for(root, project_id, client)`
+(Decided 11, from `legacy.own_jira_layers`, with the default
+`work_config`); `_ReadOnlyClient`, an allowed list (Decided 19);
+`plan_tickets(project_id, backend)` (Design 5.1's filter by `TCW Project`;
 Design 5.2's classification; B16 by `client.edit_metadata(<first key>)`
 holding the `TCW Item` field id), given a backend over the read-only
-client; `apply_tickets(plan, backend)` for phase F, given the backend over
-the real client; and `restore_tickets(pairs, client)`, the way back
-(Step 26), which takes the client as an argument. `plan.py` imports this
-module only inside the branch for a Jira-backed project without
-`--no-jira` (Decided 19). `cli.run`: a Jira failure while planning prints the local
-plan and Design 2.3's message and exits with the backend's code; with an
-empty local plan it prints Design 2.6's offline line instead.
+client; `half(root, project_id) -> JiraHalf`, which plans and returns the
+tickets, the blockers, and `apply`, a function that builds the backend over
+the real client and calls `apply_tickets(tickets, backend)` for phase F;
+and `restore_tickets(pairs, client)`, the way back (Step 26), which takes
+the client as an argument. **Changes** `tcw/migrate/plan.py`:
+`plan_jira_half(root, project_id, *, jira_backed, no_jira)` (Decided 19),
+the only place that imports `tcw.migrate.jira`. `make_plan` calls it.
+**Changes** `tcw/migrate/cli.py`: `cli.run` calls it before following a
+progress record, with the record's `project` and `work_backend`.
+**Changes** `tcw/migrate/execute.py`: phase F is `half.apply()` when there
+is a half. `cli.run`: a Jira failure while planning prints the local plan
+and Design 2.3's message and exits with the backend's code; with a
+progress record present, the message is spec Design 2.7's `nothing more
+was written; …`; with an empty local plan it prints Design 2.6's offline
+line instead.
 
 **Proves it:** the new tests; the full suite.
 
 ## Step 10 — the planned files checked, `tcw validate` after, the summary
 
-Design 2.1 (B3; A12), 2.10 (part 1: counts, files left in another
-repository, the `--no-jira` sentence); Decided 8, 13.
+Design 2.1 (B3; A12; the work-store checks left out under `--no-jira`),
+2.10 (part 1: counts, files left in another repository, the `--no-jira`
+sentences); Decided 8, 13; criteria 57 (its summary line) and 66 (the check
+after the run).
 
 **Tests first**, in `tests/migrate/test_migrate_command.py`:
 
@@ -986,19 +1189,37 @@ repository, the `--no-jira` sentence); Decided 8, 13.
   check:** with a conversion made to write a bad `parent:`, the fixed-list
   comparison goes red naming the new finding.
 - The summary: counts of files written, moved and deleted and of tickets
-  edited (or would be), and the `--no-jira` sentence of Design 1.1.
+  edited (or would be), and the `--no-jira` sentences of Design 1.1.
+- The check after the run under `--no-jira` (Decided 13): on F-single (Jira)
+  with `--no-jira`, `collect_findings` is called with `work=False`, the
+  summary prints `work store not checked after the run (--no-jira): run
+  'tcw validate' to check it`, and the A12 list holds every expected
+  finding outside the work store. On F-single-files with `--no-jira`, the
+  work-store checks run and the line is absent, so the flag changes
+  nothing there (criterion 57). Step 9's criterion 66 test, with the
+  constructors patched to raise, is run again and passes with the check in
+  place. **Mutation check:** with `work` always `True`, that test's
+  `--no-jira` case goes red, failing in `JiraBackend.__init__` reached from
+  `_work_findings`.
+- `validate(..., work=False)` skips section (e) and nothing else: on a
+  files-backend fixture, every finding outside the work store is the same
+  with `work=True` and `work=False`.
 
 **Changes** `tcw/config.py`: `parse_project_file_text(text, file, *,
 layer)`, split from `_read` (`:233`) if Step 0 found none; `_read` calls it.
 `tcw/object_folders.py`: `parse_state_text(text, file)`, split from
-`read_state`. `tcw/cli.py`: `collect_findings(project_root, *, remote)`
-split from `_cmd_validate` (`:208`), which calls it and prints as today.
+`read_state`. `tcw/validate.py`: `validate(project_root, *, …, work=True)`,
+whose section (e) runs only when `work` is true. `tcw/cli.py`:
+`collect_findings(project_root, *, remote, work=True)` split from
+`_cmd_validate` (`:208`), which calls it with the defaults and prints as
+today.
 `tcw/migrate/plan.py`: each planned configuration and state file parsed
 from its text (B3). `tcw/migrate/execute.py`: after phase E, ends and
 begins the configuration cache (`layered.end_command()`,
 `begin_command()`, as `_cmd_serve` does, `tcw/cli.py:351-352`) and calls
-`collect_findings(root, remote=False)`, mapping findings to reports by
-each report's predicted finding (Decided 13).
+`collect_findings(root, remote=False, work=not (no_jira and jira_backed))`,
+mapping findings to reports by each report's predicted finding (Decided
+13). `tcw/migrate/report.py`: the summary's work-store line.
 
 **Proves it:** the new tests; `tests/test_validate_command.py` unchanged;
 the full suite.
@@ -1160,7 +1381,8 @@ Every file the steps save goes under `$P/`, never inside a clone.
 2. In `c1`: `T migrate --no-jira`, with the credential variables also unset
    (`env -u TCW_JIRA_EMAIL -u TCW_JIRA_API_KEY`, the names in the root
    `tcw-config.yaml`): exit 0, the summary says the tickets are not
-   converted. The flag is what is tested; the unset variables and the proxy
+   converted and that the work store was not checked after the run
+   (Decided 13); step 6's `T validate` checks it. The flag is what is tested; the unset variables and the proxy
    are further guards, and Decided 19 is the structural one.
 3. In `c1`: `git -C "$P/c1" status --porcelain > "$P/before"`;
    `T migrate --no-jira` again: `nothing to migrate in the files`, exit 0;
@@ -1241,8 +1463,9 @@ the `<alias>/` form, the `core/billing` case goes red.
 
 ## Step 16 — related projects, read in either format
 
-Design 1.3, 6.1, 6.5, 6.6, 2.10 (the family's 3.x projects, parents first),
-B5 narrowed; A7 in a related worktree, A8; criterion 48.
+Design 1.3, 6.1, 6.5, 6.6, 8.6 (B5's fetch line), 2.10 (the family's 3.x
+projects, parents first), B5 narrowed; A7 in a related worktree, A8;
+criteria 48, 69 (the exemption).
 
 **Tests first**, `tests/migrate/test_migrate_family.py`, calling
 `family.read_family` directly, since a fixture with a related project
@@ -1253,7 +1476,11 @@ parent named only for its location is not
 read (a counting spy on `legacy.read_3x_layers` for its folder); a project
 whose content E1 must read and that is not here gives the B5 naming it, its
 folder, a `git clone <repository> <folder>` line when a `repository` is
-declared, and `tcw project provision` for after. The summary's list of
+declared, and `tcw project provision` for after; that message is built
+by `absent_project_message`, and `tests/test_static_guards.py` passes with
+its new `EXEMPT` entry. **Mutation check:** with the entry removed, the
+guard goes red naming `migrate/family.py` and the `git clone` string.
+The summary's list of
 related 3.x projects, parents first, with `tcw -C <folder> migrate`, and A8
 for each, are checked through the command in Step 19, once both forms
 convert.
@@ -1261,11 +1488,15 @@ convert.
 **Creates** `tcw/migrate/family.py`: `read_family(root, layers) -> Family`:
 each related project located the way 3.x located it (a locator, a
 `checkout`, the cache clone) and the way 4.0 would (the planned manifests,
-`_search`); read in either format, never written; for a 3.x one, its
-predicted 4.0 parent links and children computed by the same conversion
-(`config.predict_links`, written in Steps 17-19 and tested there through
-this function). Each needed and absent project is B5 with Design 6.5's
-message.
+`_search`); read in either format, never written. In this step
+`read_family` computes no predicted links: `Family.predicted` is left
+empty, since `config.predict_links` does not exist until Step 19, which
+adds it and fills the field (the re-check's S4). Each needed and absent
+project is B5 with Design 6.5's message, built by
+`absent_project_message(project, folder, repository)` (Decided 23).
+**Changes** `tests/test_static_guards.py`: `EXEMPT` gains
+`("migrate/family.py", "absent_project_message")` with Decided 23's
+comment, in the same commit as the function.
 
 **Proves it:** the new tests; the full suite.
 
@@ -1345,7 +1576,10 @@ deleted.
 target by E1-E5 with `passing` and `find_loop` over the planned links of the
 whole family (Design 2.1), `load_order_of` for D8; `RemoveTop`-style removal
 of `taxonomy.extends` and `capabilities.extends` (the existing `Remove`
-edit, which drops an emptied section); `predict_links` for Step 16. D1 from
+edit, which drops an emptied section); `predict_links`, and
+`family.read_family` now filling `Family.predicted` with it for each
+related 3.x project (Step 16 left it empty), tested through `read_family`
+by Design 6.1's case above. D1 from
 `passing` and `INHERITED_KEYS`. `part_two_forms` loses `extends`.
 
 **Proves it:** the new tests; `compare_outcomes.py`; the full suite.
@@ -1432,8 +1666,10 @@ part_two_forms tcw/ tests/` finds nothing; the full suite.
 
 Design 7 ("It stays correct"), 8.5; criterion 64.
 
-**Tests first**, new cases in `tests/test_rewrite.py` and
-`tests/migrate/test_migrate_overrides.py`: criterion 64 as written (`M`
+**Tests first**, new cases in `tests/migrate/test_migrate_overrides.py`
+only, since a reader's fixture holds `overrides: M/cap-1` and the record's
+cases sit beside it (Decided 24; TCW-114's `tests/test_rewrite.py` gains no
+case and is run as it stands): criterion 64 as written (`M`
 migrated, `cli/x` moved to `cli/y` by `tcw capabilities move`; the record's
 `cap-1` value is `cli/y`; a 3.x reader of `M` with `overrides: M/cap-1`,
 migrated afterwards, moves its override to `cli/y`; `M`'s own
@@ -1487,6 +1723,18 @@ again when part 2 has"), recorded the same way. This repository has no
 `projects:`, no `extends` and no `overrides:`, so the result is expected to
 equal Step 14's; any difference is read and explained in the round.
 
+It also rehearses Design 9.3 step 3 (the re-check's S9), when TCW-117 has
+landed on `v4` by then. In `c1`, after step 2's `T migrate --no-jira`,
+delete `UNMIGRATED_RECORDS` from `tests/test_docs_describe_4_0.py` and run
+`"$P/venv/bin/pytest" tests/test_docs_describe_4_0.py` bare, with the
+credential variables unset and no proxy. Save its output as
+`$P/unmigrated-hits.txt` and record the count of hits and the files they
+are in, in the implement round. Nothing is fixed here, since the hits are
+TCW-118's to fix in the merge clone. Then restore the file with
+`git -C "$P/c1" checkout -- tests/test_docs_describe_4_0.py` before step
+6's suite. If TCW-117 has not landed, the round says the rehearsal could
+not be made, and the TCW-118 comment says so.
+
 ## Step 26 — this repository's migration at the merge (Design 9.3)
 
 What is **code and tests in this item**, already built by the steps above:
@@ -1505,10 +1753,16 @@ What is a **written procedure**, carried out by TCW-118 and proven here only
 in part (Design 9.2 steps 1-6 prove 9.3 steps 2 and 3): Design 9.3 steps 0
 to 8 and the way back. This step writes it, unchanged in substance, as a
 comment on TCW-118 (Step 27), with the concrete commands of Step 14 and
-these additions: step 2 saves the dry run's output outside the repository
-as `tcw116-dry-run.txt`, which is the way back's list; the way back for the
-tickets is a short Python snippet that parses that file's `C17` lines into
-`(key, new, old)` and calls `jira.restore_tickets(pairs, client)`, which
+these additions (spec Design 9.3, revised for the re-check's S9): step 2
+saves the dry run's output outside the repository as
+`tcw116-dry-run.txt`, a cross-check only; step 3 deletes
+`UNMIGRATED_RECORDS` and fixes its hits, with Step 25's count, and runs the
+suite with the credential variables unset; step 6 saves its own output as
+`tcw116-step6.txt`, whose `C17` lines are the edits really made and the
+way back's list. The way back for the tickets is a short Python snippet
+that parses `tcw116-step6.txt`'s `C17` lines into `(key, new, old)`,
+reports any key that is in only one of the two files and stops until a
+person has read it, and calls `jira.restore_tickets(pairs, client)`, which
 takes the client as an argument (spec Design 5.4; the review's S1): the
 implement round runs it once with the fake passed in, never a client
 built from a folder, to show it puts every 3.x value back. The comment for
@@ -1525,8 +1779,11 @@ first):
 - **TCW-117:** the spec's handoff (Notes, "Handoffs to later items" and
   "Handoff to TCW-117") as written, plus: the line forms of Decided 14,
   which the migration guide quotes; that `--no-jira` is the way to keep a
-  run off the live board; and that a run stopped partway names its
-  progress record and says not to commit.
+  run off the live board, and that it leaves the work store out of the
+  check after the run; that a run stopped partway names its progress record
+  and says `do not save these files in version control until 'tcw migrate'
+  finishes`; and that a stopped run re-run while Jira cannot be reached
+  writes nothing more and is finished with `--no-jira`.
 - **TCW-118:** Step 26's procedure, with the way-back snippet, and the
   spec's "Handoff to TCW-118".
 - **TCW-110, TCW-111, TCW-112 and TCW-114:** the spec's handoffs to each,
@@ -1545,7 +1802,7 @@ Each documentation entry, evaluated with the `documentation-sync` skill:
 | `docs/guide/jira.md` [Jira-Change] | yes: `tcw migrate` edits `TCW Item` | Deferred to TCW-117, with the spec's handoff (exit codes, `--no-jira`, the window in which tickets are hidden). |
 | `docs/guide/<topic>.md` [Guide-Topic-Change] | yes: new files TCW writes (`.tcw/tcw-migration.yaml`, the progress record) | Deferred to TCW-117 (the migration guide). |
 | `docs/release-notes/upcoming/TCW-116-tcw-4-0-tcw-migrate-from-3-x.md` [Public-API] | yes | Written: `tcw migrate`, `--dry-run`, `--no-jira`, what it converts, that it can be run again to finish, and the migration record. |
-| `docs/changelogs/upcoming/TCW-116-tcw-4-0-tcw-migrate-from-3-x.md` [Any-Code-Change] | yes | Written, under Added (`tcw/migrate/`, `JiraBackend.item_values` and `set_item_values`, the three editor edits, `parse_project_file_text`, `parse_state_text`, `collect_findings`), Changed (`rewrite_yaml`'s `replace`, `rewrite_references` and the record, `_dispatch` skipping its checks for `migrate`, `config_edit`'s edits at any depth), Internal (`tests/migrate/`, `record_file`, the goldens and their script, the frozen configuration copy, the three guards' `tcw/migrate` exemptions, `move_stops`'s callable form if added). |
+| `docs/changelogs/upcoming/TCW-116-tcw-4-0-tcw-migrate-from-3-x.md` [Any-Code-Change] | yes | Written, under Added (`tcw/migrate/`, `JiraBackend.item_values` and `set_item_values`, the three editor edits, `parse_project_file_text`, `parse_state_text`, `collect_findings`, `validate`'s `work` keyword), Changed (`rewrite_yaml`'s `replace`, `rewrite_references` and the record, `_dispatch` skipping its checks for `migrate`, `config_edit`'s edits at any depth), Internal (`tests/migrate/`, `record_file`, the goldens, their script and the fixture-digest check, the frozen configuration copy, the three guards' `tcw/migrate` exemptions, the git-word guard's one entry and the git-write scan's new folder, `move_stops`'s callable form if added). |
 | `skills/<component>/SKILL.md` [Skill-Driven-Component] | yes: the `setup` and `work` skills name how a 3.x project is upgraded | Deferred to TCW-117. |
 | `skills/configure/references/<document>.md` [Configuration-Key-Change] | no | No configuration key is added, removed or changes meaning. |
 | `docs/use-cases.md` [Project-Setup-Change] | yes: S-8 and S-9 | Deferred to TCW-117, as the spec's handoff says. |
@@ -1588,7 +1845,7 @@ Every criterion and the step that checks it:
 | 5, 6, 7, 10, 11, 14, 16, 17 | 11 (F-single), 24 (F-full); parts in 3, 6, 7, 9 |
 | 8 | 11 (part 1's blockers, B10's "no ledger" form from Step 8, B17 in both forms), 21 (the B5 fixture made true), 24 (B4, B9, B10's other forms, B12, B13 through the command); each blocker's fixture in the step that adds it |
 | 9 | 11 (interim, with a B5), 21 (as written, with B9), 24 |
-| 12, 43, 44, 57, 58, 59, 65, 66, 68 | 9 (65's D1 half: 19; 66 and 68 on F-full: 24) |
+| 12, 43, 44, 57, 58, 59, 65, 66, 68 | 9 (57's and 66's check after the run: 10; 65's D1 half: 19; 66 and 68 on F-full: 24) |
 | 13 | 5 (configuration), 6 (state files) |
 | 15, 18, 19, 20, 29, 30, 31, 63 | 5 (15's and 63's frozen copy: 4; 29's `jira` block half: 17) |
 | 21, 27 | 17 (the conversions), 18 (through the command) |
@@ -1610,6 +1867,7 @@ Every criterion and the step that checks it:
 | 60 | 11 (mechanics, the deletion's own digest and P5's refusal: 3) |
 | 62 | 8 |
 | 64 | 23 |
+| 69 | 1 (the git-write scan), 3 (the stopped run's message), 16 (B5's exemption) |
 
 Design rules with no criterion of their own: where 8.2's readers live is
 Steps 2 and 15 (its exemptions are criterion 67); 8.3 is
@@ -1621,7 +1879,11 @@ requires.
 The suite stays runnable at each boundary: Steps 1 to 10 add code that
 nothing outside `tcw/migrate/` calls except the registered command, whose
 behaviour each step widens with its own tests; the only existing tests
-changed are `tests/test_cli_help_standard.py` (Step 1), the three
+changed are `tests/test_cli_help_standard.py` (Step 1),
+`tests/work/test_git_write_scan.py` (Step 1, `SCANNED` gains the package),
+`tests/test_static_guards.py` (Step 16, one `EXEMPT` entry), TCW-114's
+`tests/test_ownership_sweep.py` (entries for `tcw/migrate/` functions, in
+the step that writes each, Decided 25), the three
 siblings' guards `tests/test_identifier_sweep.py`,
 `tests/test_object_folder_sweep.py` and `tests/test_no_3x_inheritance.py`
 (Steps 2 and 15: an exemption constant and its reach test each, after any
@@ -1629,7 +1891,12 @@ reshaping into a function of a root folder, which the safeguards show
 changes no outcome), `tests/move_stops.py` (Step 3, a callable form added
 beside the command form, only if Step 0 finds none), the editor's and
 rewrite's tests (Step 4, additions), the records tests (Step 12, through
-the safeguards), and TCW-114's rewrite tests (Step 23, additions); each
+the safeguards), and none of TCW-114's rewrite tests (Step 23's cases are
+all under `tests/migrate/`, Decided 24). The one
+change to existing code a step's tests could feel is Step 10's
+`validate(work=True)` keyword, whose default keeps every caller as it is.
+Step 9's criterion 66 test stays green at Step 10 because the check after
+the run is called with `work=False` under `--no-jira` (Decided 13); each
 part-2 step deletes only the part-1 refusal test of the form it now
 converts, and Step 21 changes Step 11's two `overrides:` fixtures, through
 an allowed list.
@@ -1676,6 +1943,33 @@ filesystems it repaired is removed (D1). The decisions: D1 (spec Design
 Its notes: the `OSError` message (Decided 21), `remote=False` (Decided
 13), the fixtures' `site` (the opening rules).
 
+## Revision 3 (2026-10-22): what changed after the plan's re-check
+
+Each decided by the dispatching session, 2026-10-22, for the reason given
+in the decision or step named. The re-check's must-fix items:
+
+- **N1**, the check after the run built the Jira backend: Decided 13
+  (`work=False` under `--no-jira`), Step 10, spec Design 1.1 and 2.1,
+  criteria 57 and 66.
+- **N2**, the Jira half of a run that follows a progress record:
+  Decided 19 (`plan_jira_half`, `JiraHalf.apply`), Steps 3 (the record's
+  `project` and `work_backend`), 5 and 9, spec Design 2.7, criterion 66.
+- **N3**, the git-word guard: Decided 23, Steps 1, 3 and 16, spec Design
+  8.6, criterion 69.
+
+D2, the recording of the goldens: Decided 3 (a script run by hand, with a
+network check before pip, the dead proxy only for the `tcw` runs,
+`pip freeze`, placeholders for temporary paths, and a fixture digest the
+suite checks), Step 2.
+
+The smaller items: S1 (spec Design 8.2, criterion 67), S2 (Decided 25),
+S3 (Decided 24, Steps 4 and 23), S4 (Steps 16 and 19), S5 (the opening
+list's `config_edit` lines, Step 0 item 2), S6 (Decided 3), S7 (Decided
+11, Step 9), S8 (Decided 19, spec Design 1.1, criterion 66), S9 (spec
+Design 9.3, Steps 25 and 26). And the re-check's note on
+`tests/work/test_git_write_scan.py` (Decided 23, Step 1). None is
+deferred.
+
 ### QA plan amendment
 
 Changes to the ticket's QA plan, for the dispatching session to post with
@@ -1694,7 +1988,14 @@ the rest of this revision:
   second run refuses (exit 3), names that file, and the edit is kept.
 - **Scenario 2 (no Jira):** add: runs made with `--no-jira` also have the
   proxy set to an address nothing listens on, and the dry run's requests
-  are logged; the log holds no change to a ticket.
+  are logged; the log holds no change to a ticket. A `--no-jira` run's
+  summary says the work store was not checked after the run; `tcw
+  validate` then checks it.
+- **Scenario 2 (stop and finish), with Jira down:** add: a run stopped
+  partway and run again without `--no-jira` while the proxy points
+  nowhere exits 5, writes nothing more, and names `tcw migrate --no-jira`;
+  that run then finishes the files. The stopped run's message reads `do not
+  save these files in version control until 'tcw migrate' finishes`.
 - **Scenario 3 (refusals):** the examples given (two overrides of one
   capability) need the part of the command that converts related projects;
   until it lands, use a folder named with a dot and an unknown

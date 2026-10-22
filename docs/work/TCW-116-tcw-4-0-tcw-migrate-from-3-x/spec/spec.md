@@ -58,7 +58,7 @@ its ledger, checked at `ebce3fd6`), and TCW-118 needs it migrated, so:
   D5 and D7. Its criteria are 1-7, 8 (for B1-B3, B5-B8, B10's "no
   capabilities ledger" form, B11 and B14-B17), 10-20, 29-31, 33-37, 41 (the
   rows not naming another project), 42-44, 49, 51 (on F-single), 52-60,
-  62, 63 and 65-68.
+  62, 63 and 65-69.
 - **Part 2, related projects**, builds on part 1 and changes none of its
   rules: C3, C4, C5 for a location outside the project, C6, C8, C14, C15,
   C16 for references owned by another project, Design 6, Design 7's
@@ -259,17 +259,46 @@ that folder, as every command (TCW-114 Design 4).
   draft's choice of no flag.
 
   **What makes `--no-jira` safe is structural, not only tested.** With the
-  flag, the run never builds a Jira client or a Jira backend: the one
-  module of migration that builds them is not reached, so no code path in
-  the run holds anything that can send a request. And every run that
-  plans the Jira half hands the planning code a read-only wrapper of the
-  client, whose writing calls (`create_issue`, `edit_issue`,
-  `apply_transition`, `add_comment`, `add_link`, `delete_link`) raise; only
-  phase F is given the client itself. So a dry run cannot edit a ticket
-  even through a mistake in the planning code (decided by the dispatching
-  session, 2026-10-22: the plan review's S1; a guard the code's shape
-  gives costs a few lines, and a mistyped proof command against the live
-  board is the one risk it closes).
+  flag, the run never builds a Jira client or a Jira backend, so no code
+  path in the run holds anything that can send a request. Three places
+  could build one, and each is closed:
+  - **Planning the tickets.** One function plans the Jira half, and it is
+    the only code that imports the one module of migration that builds a
+    Jira client or backend. Every run calls it, whether it plans afresh
+    or follows a progress record (Design 2.7), and with the flag (or for a
+    project whose work is kept in files) it returns before that import.
+  - **Phase F.** Phase F uses only what that function returned, and with
+    the flag it returned nothing, so phase F has nothing to run.
+  - **The check after the run** (Design 2.1). For a project whose work is
+    kept in Jira, 4.0's work-store checks open the Jira backend, which
+    builds a client even though those checks send nothing. So with the
+    flag, the check after the run leaves out the work-store checks. Every
+    other check still runs. The summary says what was left out:
+    `work store not checked after the run (--no-jira): run 'tcw validate'
+    to check it`.
+
+  Decided by the dispatching session, 2026-10-22, after the plan's
+  re-check (its N1 and N2). Before this, 4.0's check after the run built
+  the backend on every Jira-backed run, and a re-run following a progress
+  record searched Jira from code that nothing named. Skipping the
+  work-store checks is the smallest change that keeps "never builds" true.
+  The other choice, a files-only mode inside `tcw validate`, would change
+  a command every user runs, to serve one caller.
+
+  Separately, every run that plans the Jira half hands the planning code
+  a read-only wrapper of the client. The wrapper passes on only the reading calls planning makes
+  (`search`, `issue`, `edit_metadata`, `project`, `create_metadata`,
+  `myself`). Any other attribute raises: every writing call, the
+  client's own request helpers, and any writing call a later item adds.
+  Only phase F is given the client itself. So a dry run cannot edit a
+  ticket even through a mistake in the planning code (decided by the
+  dispatching session, 2026-10-22: the plan review's S1; a guard the
+  code's shape gives costs a few lines, and a mistyped proof command
+  against the live board is the one risk it closes). The wrapper names
+  the calls it allows, not the ones it refuses (decided by the
+  dispatching session, 2026-10-22, the re-check's S8). A list of refused
+  calls would still let through the request helpers and any writing call
+  added later, and naming the allowed calls costs no more.
 
 1.2. **Which project.** The nearest project marker from the current folder
 outwards (`find_marker`, `tcw/project_files.py:96`), 3.x or 4.0. `migrate`
@@ -384,7 +413,10 @@ reader, for findings `tcw validate` gives anyway):
 - **After the local phases, the whole project.** A real run that has
   finished phase E runs 4.0's `tcw validate` checks on the project as now
   written, offline (`remote` off, so this check never contacts Jira), and
-  lists each finding as Design 2.9's A12 defines. A dry run
+  lists each finding as Design 2.9's A12 defines. With `--no-jira`, in a
+  project whose work is kept in Jira, the work-store checks are left out
+  and the summary says so (Design 1.1). That is because they open the Jira
+  backend. A dry run
   says that these findings are known only after a real run. Nothing is
   undone because of them: each is a finding 4.0 gives anyway, and B3 has
   already refused every file 4.0 could not read.
@@ -493,9 +525,15 @@ earlier phases have changed:
 
 It holds personal values (the planned `.tcw/tcw-config.local.yaml` and
 personal manifest), so inside a git repository it is ignored from phase A
-on, and a stopped run's message says not to commit until the run
-finishes. It is deleted at the end of phase E. Its size is about the size
-of the files it rewrites.
+on, and a stopped run's message says `do not save these files in version
+control until 'tcw migrate' finishes`. That wording keeps the meaning of
+"do not commit" while passing TCW-73's guard against git words in
+messages (Design 8.6). It is deleted at the end of phase E. Its size is
+about the size of the files it rewrites. It also records the active
+project's ID and whether its work is kept in Jira or in files. A run that
+follows it then decides about the Jira half from the record, the same way
+the first run did, without reading a configuration that phases D and E may
+have changed.
 
 **A run that finds a progress record** does not plan again. It walks the
 recorded steps in order. A step whose result is already on disk (the file
@@ -513,12 +551,29 @@ made between a stopped run and its re-run, to a 3.x file the plan meant to
 delete, stops the run instead of being deleted with the file (decided by
 the dispatching session, 2026-10-22: the plan review's M3; without the
 deleted file's own digest, a stop at P7 followed by an edit of that
-`meta.yaml` lost the edit silently). Phases D and E follow the same rule. Then the run goes
-on to phase F as any run does (skipped with `--no-jira`): it searches Jira
-for the tickets still holding a 3.x value, and a Jira failure at that
-point is a failure in phase F (Design 5.3), since the local steps are
-already done. `--dry-run` with a progress record present
-lists the steps still to do and changes nothing.
+`meta.yaml` lost the edit silently). Phases D and E follow the same rule.
+
+**The Jira half of a run that follows a progress record** is planned
+before the run follows the record, by the same function a fresh run uses
+(Design 1.1). That function makes the same requests through the same
+read-only wrapper (Design 2.1), and runs the same B16 check. It is
+skipped with `--no-jira`, and for a project whose work is kept in files,
+as the progress record says (above). Its tickets need only the project's
+ID and its own Jira settings (Design 5.1, 5.2), and both read the same
+whether the files are 3.x, 4.0 or halfway. A Jira failure or a B16 at
+that point is handled as in Design 2.3 and 2.2. Nothing more is written
+and no ticket is edited, and the message names the progress record:
+`nothing more was written; 'tcw migrate --no-jira' finishes the files
+without Jira`. The run exits with the backend's code, or 3 for B16. Once
+the record's steps are done, phase F edits the tickets planned.
+`--dry-run` with a progress record present lists the steps still to do
+and, unless `--no-jira`, the ticket edits planned, and changes nothing.
+Decided by the dispatching session, 2026-10-22, the re-check's N2: one
+function at one point in the run, for both kinds of run, so that the
+`--no-jira` guard covers both. Planning before any write also keeps "a
+failure while planning writes nothing" true for a re-run. The cost is
+small: with Jira down, a stopped run is finished with `--no-jira`, which
+the message names, just as a fresh run is.
 
 When a step fails, the run stops there and prints what it did, what it did
 not do, and `run 'tcw migrate' again to finish`, exiting 1 (or the Jira
@@ -615,7 +670,7 @@ folder, says why, and says what to do.
 | B10 | a stored reference 3.x gives no single owner: one 3.x reads as ambiguous (`AmbiguousRef`, `tcw/store/fs.py:2439`, and for taxonomy `:1816`; `route_capability_path`'s refusal, `tcw/work/gates.py:364-371`), or a `capabilities.yaml` entry `route_capability_path` answers with a problem instead of a ledger: the project keeps no capabilities ledger and the entry names no child (`:377-380` at `v3.0.2`), or it names a child but no capability (`:358-359`). The "no capabilities ledger" form needs no related project, so part 1 gives it | its owner would be a guess |
 | B11 | a 3.x file and its 4.0 counterpart both present and different (Design 2.7) | which one is right is the person's decision |
 | B12 | a replaced YAML block that defines an anchor used outside it (Design 2.8) | the rest of the file would lose the value |
-| B13 | a committed manifest path chosen by M5 that already holds something other than the project | the entry would point at the wrong folder |
+| B13 | the shared manifest's path `../<name>` chosen by M5 already holds something other than the project | the entry would point at the wrong folder |
 | B14 | a 3.x file that cannot be read (bad YAML, not a mapping, a duplicate key) | its content is unknown |
 | B15 | a project with no `id` (an empty `.tcw/tcw-config.yaml` and no root file to supply one, or a root file without `id`) | full identifiers need it |
 | B16 | a ticket to be edited whose edit screen does not offer the `TCW Item` field (Design 2.1) | phase F would fail on every ticket after the files were already 4.0 |
@@ -631,8 +686,8 @@ or a later command would say the same):
 | A3 | a mention of a file moved by C13 that C13 does not rewrite, in a Markdown or YAML file of the project's own stores: the text `/<file>` preceded by the object's folder name in full, or by a leading part of it that ends in `-` and is followed by `…` or `...` (for example `TCW-99-…/design.md`), anywhere other than an exact mention C13 rewrote. Files outside the stores are not searched (S-10), and a ticket's text is not read (Non-goals) |
 | A4 | a root `.gitignore` line `/tcw-config.local.yaml`, now ignoring nothing (S106:442-444); the root `.gitignore` is not TCW's file, so it is left as written |
 | A5 | `not_tags` in the user-wide personal file, which 4.0 refuses (S106 Design 5.5), with the line to change; the file is shared with any 3.x TCW on the machine, which needs the 3.x spelling, so migration does not change it |
-| A6 | a project fetched by 3.x into its per-machine cache: when the clone is not on this machine, where `tcw project provision` will now fetch it (M5); when it is, that the personal manifest now points into a cache folder, which cleaning tools may empty, and that moving the clone to the committed `../<name>` path and deleting the personal entry keeps it safe |
-| A7 | in a linked git worktree, a 3.x personal file in the main checkout, which this run does not touch (Design 6.6) |
+| A6 | a project fetched by 3.x into its per-machine cache: when the clone is not on this machine, where `tcw project provision` will now fetch it (M5); when it is, that the personal manifest now points into a cache folder, which cleaning tools may empty, and that moving the clone to the `../<name>` folder the shared manifest names and deleting the personal entry keeps it safe |
+| A7 | in a linked git worktree, a 3.x personal file in the main checkout, which this run does not touch (Design 6.6); its message names only the main checkout and `tcw migrate` there (Design 8.6) |
 | A8 | a related project still in 3.x form, with `tcw -C <its folder> migrate` (Design 2.10) |
 | A9 | a credential variable name (`work.jira.credentials.*`, or a `projects:` entry's `jira` block) that starts with `TCW_` and contains `__`, which 4.0 reads as an override (S109 Design 4.2) |
 | A10 | a ticket of this project whose `TCW Item` is neither a 3.x nor a 4.0 value of this project, or whose 4.0 value would be over 255 characters (Design 5.2) |
@@ -658,7 +713,9 @@ design asks for each to be printed, design.md:727-730, :737-740):
 changed (or would be), lists the files left in another repository (Design
 1.4), and lists every related project found on this machine that is still
 in 3.x form, each with `tcw -C <folder> migrate`, parents first (Design
-6.2). With `--no-jira` it says what the Jira step would do (Design 1.1).
+6.2). With `--no-jira` it says what the Jira step would do and, for a
+project whose work is kept in Jira, that the work store was not checked
+after the run (Design 1.1).
 
 2.11. **A second person or machine.** After one person has migrated and
 committed, another who pulls has a 4.0 project whose tracked files are
@@ -1209,8 +1266,14 @@ contain:
 | TCW-111's `tests/test_object_folder_sweep.py` (P111:1387-1398) | `meta.yaml`, `item.yaml` or `ITEM_FILE` outside `tcw/object_folders.py`, and a folder listing not on its allowlist, under `tcw/` (test files already outside its scope) | `tcw/migrate/` |
 | TCW-112's `tests/test_no_3x_inheritance.py` (P112:1802-1810) | under `tcw/`, defining or calling `_mint_cap_id`, `_apply_override` and the rest of its list (migration's copies are renamed, but each names the 3.x function it was copied from); in test files, writing `extends:`, `overrides:` or `id: cap-` | `tcw/migrate/` for its rules over `tcw/`, `tests/migrate/` for its rule over test files |
 
-Each exemption is one named constant in its guard (`MIGRATION_FOLDERS`),
-matched by whole path parts (so `tcw/migrate/legacy.py` is exempt and
+Each exemption is one named constant in its guard, matched by whole path
+parts. It is `MIGRATION_FOLDERS` in TCW-110's and TCW-111's guards. In
+TCW-112's guard, which has rules over two kinds of file, it is two
+constants: `MIGRATION_CODE` for its rules over `tcw/` and `MIGRATION_TESTS`
+for its rule over test files. These are the names the handoffs below ask
+for (decided by the dispatching session, 2026-10-22, the re-check's S1:
+one guard with two kinds of rule needs two constants, and the handoffs
+already used these names). Each is matched by whole path parts (so `tcw/migrate/legacy.py` is exempt and
 `tcw/migrate_old.py` or `tests/migrate_x/` is not), with a comment naming
 this item and Design 8.2, and with a test in the same guard that the
 exemption covers only those folders: the forbidden text placed in a
@@ -1251,6 +1314,36 @@ everything below it, as one more file among the references they already
 rewrite (S114's litmus test, "Rewriting the backend's own references"). This
 item adds that to TCW-114's code, which is built before it; nothing in
 TCW-114 changes before then.
+
+8.6. **Migration's messages pass TCW-73's guard against git words.**
+`tests/test_static_guards.py::test_no_git_word_outside_the_exempt_functions`
+reads every string holding a space in every `tcw/**/*.py` file. It refuses
+`git`, `commit`, `push`, `pull`, `worktree`, `trunk` and `branch` in any
+of their forms, outside the functions its `EXEMPT` set names. Each message
+of this item is settled case by case. Decided by the dispatching session,
+2026-10-22, the re-check's N3:
+
+| Message | Settled by |
+| --- | --- |
+| the stopped run's warning (Design 2.7) | reworded: `do not save these files in version control until 'tcw migrate' finishes`. Same meaning, no git word |
+| A6's advice about the cache clone | reworded: "moving the clone to the `../<name>` folder the shared manifest names". The folder is named by where it is written, not by its being committed |
+| A7 | reworded: "a 3.x personal file in the main checkout, which this run does not convert; run `tcw migrate` there". `checkout` is not a git word |
+| B13 | reworded: "the shared manifest's path `../<name>` already holds something other than the project" |
+| B17's fix | already free of git words: "restore the project from version control" |
+| B5's fetch line (Design 6.5), `git clone <repository> <folder>` | an exemption. The line is a command the person must type, and every `tcw` command, `tcw project provision` included, is refused in a 3.x project, so no other wording gives them a way to fetch it. `EXEMPT` gains one entry, `("migrate/family.py", "absent_project_message")`: the one function that builds B5's message, and nothing else. Its comment names this item, Design 6.5, and the reason. This is TCW-73 Design 9.2's form, as `FsStoreProvisioner`'s clone is exempted today |
+
+Every other message of this item holds no git word, and the guard checks
+that; `.tcw/.gitignore` does not match, since the guard's words are whole
+words. The exemption is added in the step that creates the function, since
+the guard's own test refuses an entry naming a function that does not
+exist (`test_every_exempt_function_still_exists`).
+
+The same item adds `tcw/migrate/` to the files that
+`tests/work/test_git_write_scan.py` scans (`SCANNED`, TCW-70's guard that
+no git command TCW runs writes anything). So migration's own git reads
+(`rev-parse`, `ls-files`, `status` with `--no-optional-locks`,
+`check-ignore`; criterion 4) are held to that guard as well as to
+criterion 4's test.
 
 ### 9. This repository
 
@@ -1333,13 +1426,22 @@ lifecycle command runs in between (S111:1287-1290):
    `tcw` run by its full path as in Design 9.2, run
    `tcw migrate --dry-run` with the Jira credentials set. It lists every
    ticket with its old and new value, and checks that `TCW Item` can be
-   edited (B16), editing nothing. Save its output outside the repository:
-   it is the list the way back uses. Review it, then run
+   edited (B16), editing nothing. Save its output outside the repository
+   as a cross-check for the way back (step 6's own output is the list the
+   way back uses). Review it, then run
    `tcw migrate --no-jira`: the files only, exit 0. The flag, not unset
    variables, is what keeps this step off the live board.
 3. Delete `tests/test_repo_config_pair.py`, and the root `.gitignore` line
-   `/tcw-config.local.yaml` (A4); run the suite as CI runs it and
-   `tcw validate`.
+   `/tcw-config.local.yaml` (A4). Delete `UNMIGRATED_RECORDS` from
+   `tests/test_docs_describe_4_0.py` (TCW-117's handoff to TCW-118), so
+   that its scan now reads the migrated records, and fix in this step every
+   hit it reports in `docs/taxonomy/` or `docs/capabilities/`. Run the
+   suite as CI runs it, with the Jira credential variables unset as in
+   Design 9.2 step 6, and `tcw validate`. Fixing those hits is editing
+   files only, so it runs no `tcw` command and keeps step 0's rule. Its
+   size is known in advance from TCW-116's second proof (Design 9.2, made
+   again after part 2), which deletes the tuple in a proof clone and
+   records the list of hits, when TCW-117 has landed by then.
 4. Commit the migration after the merge commit, and bring `main` to that
    commit by a fast-forward, so the merge and the migration reach `main`
    together. Pushing `main`, and the plugin marketplace reading `main`
@@ -1358,7 +1460,9 @@ lifecycle command runs in between (S111:1287-1290):
    and the request is one this board already accepts. Then run
    `tcw migrate` in the primary checkout with the Jira credentials set: it
    converts the personal file (Design 2.11) and then every ticket's
-   `TCW Item` (phase F). While it runs, `tcw work list` leaves the
+   `TCW Item` (phase F). Its output is saved outside the repository: its
+   `C17` lines are the edits this run really made, and the way back uses
+   them. While it runs, `tcw work list` leaves the
    remaining tickets out with a warning (Design 5.3), and the board's
    columns, links and statuses are unchanged (Design 5.2).
 7. Run `tcw migrate` once more (`nothing to migrate`) and
@@ -1373,11 +1477,18 @@ lifecycle command runs in between (S111:1287-1290):
 **The way back.** Until step 4's fast-forward, deleting the merge clone
 undoes everything. After it, the files go back by reverting the migration
 commit (and the merge, if 4.0 is withdrawn) and reinstalling 3.0.2. The
-tickets go back with the list saved at step 2: the Jira backend's method
+tickets go back with the edits step 6 reported, from its saved output,
+with step 2's list as a cross-check (a ticket in one and not the other is
+read before anything is put back): the Jira backend's method
 of Design 5.4, given each ticket's pair the other way round, puts every
 3.x value back and edits no other field, so the board is as it was. That
 needs no command of its own; TCW-118 runs it from Python if it is ever
-needed.
+needed. Decided by the dispatching session, 2026-10-22, the re-check's S9.
+The way back undoes what step 6 did, so it reads step 6's own report.
+Step 2's dry run was made earlier, in another checkout, and could differ if
+a ticket changed in between. Step 3 names the tuple's deletion, so that
+TCW-118 does not have to merge this procedure with TCW-117's handoff. And
+step 3's suite runs with the credentials unset, as the proof's does.
 
 So the lifecycle `tcw` switches from 3.0.2 to 4.0 at step 5: after this
 repository's files are migrated (steps 2 to 4), and before its tickets are
@@ -1538,8 +1649,10 @@ to.
 9. A fixture holding B1, B8 and B9 lists all three in one run.
 57. `--no-jira`: on F-full, with a fake Jira client that fails any request,
     `tcw migrate --no-jira` makes every local change the plain run makes,
-    records no request, exits 0, and its summary names the Jira project and
-    says the tickets are not converted; `tcw migrate` afterwards changes no
+    records no request, exits 0, and its summary names the Jira project,
+    says the tickets are not converted, and says the work store was not
+    checked after the run (Design 1.1); its A12 list still holds every
+    finding outside the work store; `tcw migrate` afterwards changes no
     file and edits exactly the tickets the plain run would have edited;
     `tcw migrate --dry-run --no-jira` records no request and exits 0; in a
     project keeping its work in files, `--no-jira` changes nothing about
@@ -1556,10 +1669,16 @@ to.
 66. `--no-jira` is safe by the code's shape (Design 1.1): with the Jira
     client's and the Jira backend's constructors made to fail, `tcw migrate
     --no-jira` and `tcw migrate --dry-run --no-jira` on F-full finish as
-    criterion 57 says; only one module of `tcw/migrate/` imports from
-    `tcw.work.jira`; and a dry run whose planning code is made to call
+    criterion 57 says, the check after the run included; so do the same two
+    runs made with a progress record present (a run stopped after phase A),
+    the real one finishing the local steps and the fake recording no
+    request; only one module of `tcw/migrate/` imports from
+    `tcw.work.jira`, and only the function that plans the Jira half imports
+    that module; a dry run whose planning code is made to call
     `edit_issue` on the client it was given fails with the read-only
-    wrapper's error, with no edit recorded.
+    wrapper's error, with no edit recorded, both on a fresh plan and with a
+    progress record present; and the read-only wrapper refuses every
+    attribute other than its six reading calls.
 
 **Order, stopping and running again**
 
@@ -1865,7 +1984,9 @@ to.
     `tests/test_repo_config_pair.py`.
 67. The guard exemptions (Design 8.2): each of TCW-110's, TCW-111's and
     TCW-112's guard tests exempts exactly the folders Design 8.2's table
-    names, through its `MIGRATION_FOLDERS` constant; in each, a test places
+    names, through its constants (`MIGRATION_FOLDERS` in TCW-110's and
+    TCW-111's, `MIGRATION_CODE` and `MIGRATION_TESTS` in TCW-112's); in
+    each, a test places
     the guard's forbidden text in a temporary file under an exempted folder
     (it passes) and in `tcw/migrate_x.py`, `tcw/store/x.py` and, for
     TCW-112's test-file rule, `tests/migrate_x/test_x.py` (each fails, naming
@@ -1878,6 +1999,13 @@ to.
     search's.
 56. The user's two setups: the qa findings record the dry run's counts,
     reports and blockers for each, without naming either (Design 9.5).
+69. Migration's messages and git calls pass the existing guards (Design
+    8.6): `tests/test_static_guards.py` passes with `tcw/migrate/` present,
+    its `EXEMPT` set gaining only `("migrate/family.py",
+    "absent_project_message")`; a stopped run prints `do not save these
+    files in version control until 'tcw migrate' finishes`; B5's message
+    holds the `git clone <repository> <folder>` line; and
+    `tests/work/test_git_write_scan.py` scans `tcw/migrate/` and passes.
 
 ### Coverage
 
@@ -1888,7 +2016,7 @@ it so.
 | Design rule | Criteria |
 | --- | --- |
 | Build order: part 1 complete on its own, part 2 on top | F-single runs of 5-17, 51 and 60, and 66-68 (part 1 alone); 53 made after part 1 lands |
-| 1.1 form, top level, no argument, `-C`; `--dry-run`; `--no-jira`; the Jira client never built with `--no-jira`, read-only while planning | 1, 3, 57, 66 |
+| 1.1 form, top level, no argument, `-C`; `--dry-run`; `--no-jira`; the Jira client never built with `--no-jira` (planning, phase F, the check after the run); read-only while planning, by an allowed list | 1, 3, 57, 66 |
 | 1.2 nearest marker; exempt from every check before the command; no project | 1, 2, 3 |
 | 1.3 what it reads; the user-wide file never written | 5, 30 |
 | 1.4 only its own files; files left in another repository or a cache clone; the progress record | 47, 46, 60 |
@@ -1901,7 +2029,7 @@ it so.
 | 2.4 phases A to F; each state file written once; progress record deleted after E | 10, 11 |
 | 2.5 each write whole; what a write is; a move across filesystems refused | 11, 13, 16, 60 (P5) |
 | 2.6 never repeats a change; objects in either form are read; offline re-run | 14, 12, 62 |
-| 2.7 progress record; following it; a deletion's own digest; B17; the stop points P1-P12; both-files rule; an operating-system failure stops with the run-again message | 11, 12, 13, 57 (P12), 60, 61, 68 (P11, P12 settings) |
+| 2.7 progress record; following it; a deletion's own digest; B17; the stop points P1-P12; both-files rule; an operating-system failure stops with the run-again message; the Jira half of a re-run planned before it follows the record | 11, 12, 13, 57 (P12), 60, 61, 66 (the re-run's Jira half), 68 (P11, P12 settings), 69 (the message) |
 | 2.8 text edited not regenerated (`config_edit`); moved bytes kept; only listed deletions; values recorded | 15, 16, 17 |
 | 2.9 B1 | 8, 9, 20 |
 | 2.9 B2 | 8, 27 |
@@ -1975,6 +2103,7 @@ it so.
 | 8.3 records name `tcw migrate` | 52 |
 | 8.4 tests reading the repository's records; no new test reads the root configuration | 54, 15, 63 |
 | 8.5 TCW-114's move keeps the record correct | 64 |
+| 8.6 messages pass the git-word guard, one exemption for B5's fetch line; `tcw/migrate/` in the git-write scan | 69, 48 |
 | 9.1 records stay 3.x on `v4` | 55 (the live board), and this item's own records written in 3.x form (Capability changes) |
 | 9.2 the proof | 53, 55 |
 | 9.3 the real migration at the merge | n/a here: TCW-118 carries it out (`docs/work/TCW-99-…/design.md:831-833`, TCW-116 before TCW-118). What 9.2 proves of it: steps 2 and 3 (53); the request of step 6 (65) and step 2's edit-screen check (59). Steps 0, 1, 4, 5, 7 and 8 and the way back are TCW-118's to carry out and check |
@@ -2009,7 +2138,8 @@ it so.
 - **The progress record holds personal values.** It is ignored by git from
   phase A, and deleted at the end of phase E; a person who commits a
   stopped run with `git add -f` commits it. The stopped run's message says
-  not to commit until the run finishes.
+  `do not save these files in version control until 'tcw migrate'
+  finishes` (Design 2.7, 8.6).
 - **A ticket edit refused for some tickets only** (a permission set per
   ticket, which B16's check of one ticket cannot see) leaves those tickets
   hidden from `tcw work list` until a re-run converts them (Design 5.3).
@@ -2166,6 +2296,29 @@ Added when the spec and plan were revised after the plan's review
     (Design 2.9; the review's question 4), including the part 1 case of a
     project that keeps no capabilities ledger.
 
+Added after the re-check of the revised spec and plan (2026-10-22), each
+decided by the dispatching session on that date:
+
+36. **With `--no-jira`, the check after the run leaves out the work-store
+    checks of a Jira-backed project, and says so** (Design 1.1, 2.1; the
+    re-check's N1). Those checks build the Jira backend and client,
+    though they send nothing. This keeps "never builds" true without a new
+    mode in `tcw validate`.
+37. **One function plans the Jira half, for a fresh run and for a run
+    following a progress record, before anything is written** (Design 1.1,
+    2.7; the re-check's N2). The progress record holds the project's ID and
+    backend, so the re-run decides the same way. A Jira failure there
+    writes nothing more.
+38. **The read-only wrapper names the calls it allows** (Design 1.1; the
+    re-check's S8).
+39. **The messages are reworded to avoid git words, except B5's
+    `git clone` line, which is exempted in one function** (Design 8.6; the
+    re-check's N3). `tcw/migrate/` joins the git-write scan.
+40. **The guards' constants are `MIGRATION_FOLDERS`, and `MIGRATION_CODE`
+    with `MIGRATION_TESTS` for TCW-112's** (Design 8.2; the re-check's S1).
+41. **The way back reads step 6's own output, and step 3 deletes
+    `UNMIGRATED_RECORDS`** (Design 9.3; the re-check's S9).
+
 ### Handoffs answered
 
 Every comment on this ticket, newest first, with the rule that answers it.
@@ -2228,8 +2381,9 @@ These are recorded on each ticket when this spec is accepted.
   and which Jira failures give 1 and which 5; the blocker, "needs
   attention" and "reads differently" lists; that a run writes nothing when
   its plan cannot reach Jira; the progress record (what it is, that it is
-  never committed, and that deleting it while a run is unfinished means
-  restoring the project first); migrating a family parents first, each
+  never committed, that a stopped run says `do not save these files in
+  version control until 'tcw migrate' finishes`, and that deleting it while
+  a run is unfinished means restoring the project first); migrating a family parents first, each
   project in its own folder or with `tcw -C`, and what stops in a package
   below a 3.x parent; that everyone working on a project upgrades
   together; how a second person finishes (Design 2.11), and running
@@ -2342,7 +2496,11 @@ entry above, the migration guide says:
   refused with a message, and is finished by moving the folder by hand and
   running `tcw migrate` again (Design 2.5);
 - `--no-jira` never builds a Jira client, so it needs no credentials and
-  cannot reach Jira; a dry run cannot edit a ticket (Design 1.1);
+  cannot reach Jira; a dry run cannot edit a ticket (Design 1.1); with
+  `--no-jira`, the check after the run leaves out the work store, and the
+  person runs `tcw validate` for it;
+- a stopped run, run again while Jira cannot be reached, writes nothing
+  more; `tcw migrate --no-jira` finishes its files (Design 2.7);
 - the Jira settings a run uses are the project's own `work.jira`, in its
   3.x or 4.0 files, never a parent's; a problem elsewhere in the
   configuration does not stop the ticket conversion (Design 5.1);
@@ -2371,7 +2529,13 @@ Design 9.3:
   step 5 (A5 names the line);
 - the way back for the tickets takes the Jira client as an argument
   (Design 5.4); build that client by hand from `.tcw/tcw-config.yaml` only
-  when it is really needed.
+  when it is really needed;
+- save step 6's output outside the repository; the way back undoes the
+  edits it reports, and step 2's dry-run list is only a cross-check
+  (Design 9.3);
+- step 3 also deletes `UNMIGRATED_RECORDS` (TCW-117's handoff) and fixes
+  the hits in that step; TCW-116's second proof records how many there
+  are; step 3's suite runs with the credential variables unset.
 
 ### Citations at `v3.0.2`
 
