@@ -122,7 +122,9 @@ does.
   comes from parent links, and a full identifier names its owner's object as
   its owner sees it.
 - **Changed** `web/editing`: a project's own override is editable in
-  `tcw serve`, and the record says what it overrides.
+  `tcw serve`, and the record says what it overrides; editing a
+  capability's body changes only its own description, never the attached
+  documents or an inherited description shown with it.
 - **Taxonomy:** new `override`.
 
 ## Problem
@@ -781,6 +783,38 @@ request is answered with `503 Service Unavailable` and `{"code":
 (`tcw/serve/server.py:88-89`). Reason: it is the first time a served read
 can raise it, and without a row it falls to the generic `500` (`:90-91`).
 
+**What a web edit of a capability's body writes.** A capability's body, as
+records give it, is the combined body of Design 2.3: the declared
+description of the nearest member that has one with text, with the
+attached documents of `prependedDocs` and `appendedDocs` around it. A web
+edit of the body writes only the active project's **declared description**
+(the files store's `description.md`), never the combined body. So the detail
+answer of `GET /api/capabilities/<key>`, and the answers of the `POST` and
+`PATCH` that return the same shape, carry `declaredDescription` beside
+`capability` and `coreRevision`: the declared description of the object's
+owner (the chain's first member), its text, possibly empty, or `null` when
+the owner declares none. The web editor's body field starts from
+`declaredDescription` (empty when it is `null`), not from the record's
+`body`; a save that leaves the field unchanged sends no `body`, and one that
+changes it sends the field's text, which `update_capability` writes as the
+declared description. When the record's `body` differs from the declared
+description, the editor says, beside the field, that the body shown on the
+page also holds attached documents or an inherited description, which the
+edit leaves unchanged. Clearing the field writes an empty declared
+description, which adds no text (Design 2.3), so the body shown falls back
+to the next member's description. Reason: the editor sends back what it was
+given, and the body it is given today is the combined one
+(`web/client/src/ui/app.tsx:636-639`, saved at `:737-738`), so a save writes
+the attached documents' text into `description.md` and the next read shows
+it twice. This already happens in 3.x to a capability with its own
+`prependedDocs` or `appendedDocs`, and Design 2.3 would extend it to every
+override whose original has attached documents, since an override now keeps
+its original's lists; this item fixes both. A term is not affected: its
+description is never composed with attached text, so the combined
+description is one declared description, and editing it writes the edited
+text as the override's own, which replaces the inherited one rather than
+repeating it.
+
 ### 5. The capability's opaque `id`
 
 5.1. **It is no longer written** by `tcw capabilities add` (`_mint_cap_id`,
@@ -989,6 +1023,7 @@ so the CLI that drives this repository's lifecycle still reads them.
 | The opaque `id` removed (Design 5) | model | Passes: removes an identity that only the files store's 3.x override pointer needed. |
 | `tcw validate`'s findings (Design 6) | model | Passes: each is a question about declarations and paths, and 6.1's "declares a description" is the model's, not a file's (Design 2.3); 6.4's `overrides` key and 6.8's file are about files the files store wrote. |
 | The web API's `503` for `InheritedUnavailable` (Design 4.5) | CLI and web | Not a store operation. |
+| A capability's declared description read apart from its combined body, and a body edit writing only it (Design 4.5) | model | Passes: "declares a description, or none" is already the model's (Design 2.3), so any store answers it for one object of one project; only the files store keeps it as `description.md`. |
 
 No operation of the work backend interface (`tcw/work/backend.py`) changes.
 
@@ -1420,6 +1455,25 @@ exits 0.
     Supported`, the warning is still given, and contains `a complete object
     of its own`. In AC 11's family, `dd`'s own `X` being complete does not
     stop the warning in `ee`, since `cc` does not pass the axis to `dd`.
+44. **A web body edit writes the declared description only.** In AC 7's
+    family, `core`'s `cli/x` also has a `description.md` holding `Core
+    body`, and `app`'s override `cli/x` holds only `Status: Supported`, with
+    no `description.md`. `tcw serve` in `app`: `GET
+    /api/capabilities/cli%2Fx` has a `capability.body` starting with
+    `a.md`'s text and holding `Core body`, and `declaredDescription`
+    `null`; a `PATCH` with `"body": "App body"` and a fresh revision answers
+    200, `app`'s `docs/capabilities/cli/x/description.md` then holds exactly
+    `App body`, and `show cli/x` has a body holding `a.md`'s text exactly
+    once, followed by `App body`. In a project `solo` with no parents, its
+    own `cli/y` with `prependedDocs: [resources/p.md]` and a
+    `description.md` holding `Y body`: `GET` has `declaredDescription` `Y
+    body`, and a `PATCH` with `"body": "Y edited"` leaves `description.md`
+    holding exactly `Y edited` and a body holding `p.md`'s text exactly
+    once. In the web client's tests, the editor opened on a capability whose
+    detail has `declaredDescription` `Own` and a different `body` holds
+    `Own` in its body field and shows the note that the page's body also
+    holds text the edit leaves unchanged; saving after changing only a
+    field sends no `body`.
 
 ### Coverage
 
@@ -1448,7 +1502,7 @@ exits 0.
 | 4.2 `set` writes the active project's object at the same path; a cleared field written as `null` on every own object; an organising folder becomes an object; refused for a project not inherited; `--parent` | 20, 21, 22, 42 |
 | 4.3 `reset` | 24 |
 | 4.4 `rm` of any own object; another project's refused; not found (exit 4) when the view cannot be built | 16, 25 |
-| 4.5 the web app | 33 |
+| 4.5 the web app; a body edit writes the declared description only | 33, 44 |
 | 5.1 `id` not written | 20, 23 |
 | 5.2 `id` not an identity | 28 |
 | 5.3 TCW-111 row k for capabilities | 28 |
@@ -1644,6 +1698,17 @@ exits 0.
   were corrected; the coverage gaps the review listed each gained a line in
   an existing criterion.
 
+### Revised after the plan review
+
+- A web edit of a capability's body writes only the declared description,
+  and the detail answer carries `declaredDescription` apart from the
+  combined body (Design 4.5, AC 44; decided by the dispatching session,
+  2026-10-22, on the plan review's D1). Without it, Design 2.3's inherited
+  attached documents would be written into an override's `description.md`
+  by every web save of its body and shown twice; the same doubling already
+  happens in 3.x to a capability with its own `prependedDocs` or
+  `appendedDocs`, and is fixed by the same rule.
+
 ### Handoffs
 
 Recorded on each ticket by the dispatching session when this spec is
@@ -1678,7 +1743,10 @@ accepted.
   `core`'s). Mixed status reads each project's own object at an id-path as
   that project sees it (`load_order(id)`, TCW-108 Design 4.6, and Design 3.1
   here). The web app's read-only rule replaces Design 4.5's "owner is the
-  served project".
+  served project". The capability detail answer's `declaredDescription`
+  (Design 4.5) is what the editor edits in every scope, so a view that
+  shows another project's capability gives that owner's declared
+  description.
 - **TCW-114:** the operation its Design 10.2 asks for is Design 2.7 (which,
   besides exit 7, stops with the version message, exit 1, at an id-path a
   source's version problem makes unreadable, Design 1.3), and
