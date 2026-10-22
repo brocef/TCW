@@ -41,8 +41,11 @@ links on Jira record it). So when this item starts:
 File and line references to code are to commit `d2d02829` on `v4`, where only
 TCW-106 has landed in `tcw/` and `web/`. TCW-108, TCW-110, TCW-111, TCW-112 and
 TCW-114 rewrite much of what is cited, so the plan re-checks each reference
-against what they land. "TCW-1nn Design n" refers to the numbered rules of
-that item's spec.
+against what they land. TCW-107 has since started landing (steps 1 and 2, up
+to `32c510f0`); the citations into the files it has changed so far
+(`tcw/config.py`, `tcw/store/base.py`, `tcw/store/project.py`,
+`tcw/work/jira/config.py`) were re-checked at `32c510f0` and give the lines
+there. "TCW-1nn Design n" refers to the numbered rules of that item's spec.
 
 Words used throughout:
 
@@ -131,8 +134,8 @@ Words used throughout:
    and `tcw capabilities list` cover the local entries plus those reached
    through `extends` (`list_all`, `tcw/store/fs.py:1785-1793`, `:2409-2423`),
    which TCW-112 replaces with the view. Nothing reads a descendant: the
-   registry has `descendants()` (`tcw/store/base.py:284-286`;
-   `tcw/store/project.py:289-300`), but `descendant_projects`
+   registry has `descendants()` (`tcw/store/base.py:285-286`;
+   `tcw/store/project.py:274-285`), but `descendant_projects`
    (`tcw/store/fs.py:535-542`) has no caller (design.md:92-94). TCW-99 asks for
    `--scope own|up|down|all` on every list and show command (design.md:633-642).
 2. **`--local` is the only coverage control,** and it says the opposite of the
@@ -291,7 +294,7 @@ read raises one of the **unavailability errors**:
   subclasses;
 - the three store errors that are `ValueError`s rather than `TcwError`s:
   `StoreLocationUnusable`, `StoreDeclarationError` and `StoreNotProvisioned`
-  (`tcw/store/base.py:50`, `:72`, `:94`);
+  (`tcw/store/base.py:51`, `:73`, `:95`);
 - `yaml.YAMLError`, a file of `Q`'s that is not valid YAML, which `main`
   reports today as a message rather than as a fault (`tcw/cli.py:679-683`);
 - `OSError`, a file of `Q`'s that cannot be read.
@@ -351,8 +354,12 @@ question. Two more things are never made unavailable:
 
 - **Standard error:** once per unavailable project, before any row,
   `warning: '<Q>' is unavailable, so its <what> are not listed: <reason>`,
-  where `<what>` is `work items`, `taxonomy entries` or `capabilities`. A `show`
-  says `… so its status is not shown: <reason>` instead (Design 4.6).
+  where `<what>` is `work items`, `taxonomy entries` or `capabilities`. A
+  `show` names what it leaves out instead: `tcw capabilities show` says `… so
+  its status is not shown: <reason>` (Design 4.6); `tcw work show` says `… so
+  its items are not counted in children and blocks: <reason>`, since a work
+  `show` reads other projects only for those two keys (3.3, 3.4); `tcw
+  taxonomy show` says `… so its taxonomy entries are not included: <reason>`.
 - **`--json`:** when the scope is not `own`, the document gains `projects`, an
   array in scope order of `{"id": <id>, "relation": <"ancestor" | "current" |
   "descendant">}`, each unavailable project's object adding `"unavailable":
@@ -393,7 +400,12 @@ and its original are separate objects: in `app`, which overrides `core`'s
 `--scope up` alone does not (design.md:459-461; TCW-112's handoff). Likewise
 an ancestor that passes the axis to nobody between it and `P` has no row under
 `up` (4.1), and `--scope up --project <that ancestor>` lists its own objects.
-`--project <P>` gives the same rows as `--scope own`.
+`--project <P>` gives the same rows as `--scope own`. Since `--project` never
+groups, its records carry no `statuses` (4.6) and no `overridden-by` (4.7),
+under any scope: both keys describe a group, and a `--project` row is one
+owner's object alone (decided by the dispatching session, 2026-10-22: the
+rule above already says its rows are never combined, and a group is what
+those two keys describe).
 
 2.2. **It must be covered.** `<id>` must be a valid project ID and one of the
 projects the scope covers (1.3), unavailable ones included; otherwise the
@@ -428,8 +440,11 @@ project:
   project. A project that does not enable a stage named has no item at it.
   So, for each covered project `Q` other than `P`, the caller removes from the
   query's stages those `Q`'s lifecycle does not enable (its `work.stages`,
-  read for itself, 1.5: a fact of its configuration, which needs no network);
-  when none remains, `Q` lists nothing and its backend is not asked. `Q`'s
+  read for itself, 1.5: a fact of its configuration, which needs no network)
+  and, when `Q` keeps its work in Jira, those its configuration maps to no
+  Jira status (the side stage, which takes no `status` key at all,
+  `tcw/work/config.py:44`, and which TCW's check that every enabled stage
+  has a status skips, `:418-426`); when none remains, `Q` lists nothing and its backend is not asked. `Q`'s
   backend therefore never meets the refusal it gives today for a stage it does
   not enable (the Jira backend's "no Jira status is configured for this
   stage", `tcw/work/jira/backend.py:443-447`), and 1.6's rule that a usage
@@ -448,7 +463,12 @@ project:
   person's name is not a fact of the project read, and that project's personal
   files are not read, 1.5); for a Jira project, the account its credentials
   sign in as. A covered project other than `P` that can name nobody is
-  unavailable (1.6 f) with `_me`'s message (`tcw/work/cli.py:78-89`).
+  unavailable (1.6 f) with `_me`'s message (`tcw/work/cli.py:78-89`). A Jira
+  project whose credentials are a shared or bot account therefore matches
+  that account's tickets: it is the only identity that project's
+  configuration can name (decided by the dispatching session, 2026-10-22:
+  any other choice would guess at a mapping from `P`'s person to another
+  site's account, which nothing records).
 - `--all`: as today, in each project.
 
 3.3. **`children` and `blocks` cover the scope.** Every record that `tcw work
@@ -482,9 +502,16 @@ The search key is all of:
 
 - the site;
 - the account the credentials sign in as (the value of the variable
-  `work.jira.credentials.email-env` names, `tcw/work/jira/config.py:34`), so
+  `work.jira.credentials.email-env` names, `tcw/work/jira/config.py:35`), so
   a search is never answered with tickets fetched under another account's
   permissions;
+- a digest (SHA-256) of the token the credentials hold (the value of the
+  variable `token-env` names), kept in memory for the command only and never
+  printed or written, so that a project whose own token is wrong makes its
+  own search, fails it, and is reported unavailable, rather than being
+  answered from another project's search under the same email (decided by
+  the dispatching session, 2026-10-22: "exactly what its own list gives"
+  must hold when its own list would fail, too);
 - the exact search text (`jql.item_query`, `tcw/work/jira/jql.py:38`), which
   holds the Jira project, the custom field id for `TCW Item`, the statuses
   the query's stages map to, and any parent, assignee or labels;
@@ -492,7 +519,7 @@ The search key is all of:
   Project` and `TCW Item`.
 
 So projects that keep their items in one Jira project on one site, sign in
-as the same account, use the same field ids and map their stages to the same
+as the same account with the same token, use the same field ids and map their stages to the same
 statuses, which is the usual UC-5 setup (a child inherits `work.jira` from
 its parent, TCW-109), make one search between them; any difference makes
 another search, which is what that project's own list would make. Each
@@ -502,12 +529,19 @@ each list is exactly what that project's own **list** gives, and a ticket of
 a TCW project outside the scope is never listed.
 
 **How long a search is kept.** From `begin_command` to `end_command`
-(`tcw/config.py:657-665`), the span the CLI already uses to read the active
+(`tcw/config.py:655-662`), the span the CLI already uses to read the active
 project's configuration once (`tcw/cli.py:645`, `:693`); outside a command (a
-library caller, a test) nothing is kept. `tcw serve` makes each request that
-reads more than one project one command for this purpose. Nothing is kept
+library caller, a test) nothing is kept. `tcw serve` makes each request one
+command for this purpose, its kept searches its own. Nothing is kept
 across commands, and nothing is written to disk. Each caller gets the result
-as the search returned it, and none changes it.
+as the search returned it, and none changes it. **A write empties what was
+kept:** every request the Jira backend sends that changes Jira (creating or
+editing a ticket, moving it, commenting, adding or removing a link) first
+drops every search kept in that command or request, so a search made after a
+write in the same command or request asks Jira again and sees the write
+(decided by the dispatching session, 2026-10-22: no command lists, writes and
+lists again today, but nothing would stop one, and a web request that edits
+an item reads it back).
 
 Litmus verdict: no operation is added (abstraction section); any backend may
 make the same saving privately.
@@ -590,7 +624,8 @@ a group when its full identifier (its chain's first member's, TCW-112 Design
 unchanged counts in the group of the object it inherits. So a project counts
 once per capability, and a project that inherits a status without changing it
 counts with that status, marked (design.md:653-655). Under `own` and `up` no
-record has `statuses`: one project's view decides one status.
+record has `statuses`: one project's view decides one status. With
+`--project`, under any scope, no record has `statuses` either (2.1).
 
 The text form of `tcw capabilities show` under `down` or `all` adds, after the
 record's fields:
@@ -617,7 +652,7 @@ the request's "a summary in lists", and was decided by the user on
 4.7. **What overrides an object, in `down` and `all`.** Each taxonomy and
 capability record gains `overridden-by`: the full identifiers of the scope
 objects whose `overrides` is this object, in their owners' scope order (empty
-when none). `show` prints `overridden by: <full ids>` after TCW-112's
+when none); never with `--project` (2.1). `show` prints `overridden by: <full ids>` after TCW-112's
 `overrides:` line when there are any. So a descendant's override grouped into
 another row (4.3) is still marked, as the design asks of every override
 (design.md:467-470).
@@ -733,12 +768,21 @@ message. With no `scope`, the scope is `own`.
   whose backend cannot answer (`:216-226`) applies to `P` alone; any other
   project is unavailable (1.6).
 - `GET /api/taxonomy` and `GET /api/capabilities` answer an object: `{"terms":
-  [...]}` and `{"capabilities": [...]}`, each array exactly the records `tcw
-  <axis> list --scope … --json` prints, plus `projects` when the scope is not
-  `own` (today's bare array, `tcw/serve/records.py:70-71`, `:149-150`, goes).
-- the detail routes answer the records `show --json` prints for the same
-  input and scope, inside today's envelope, plus `projects` when the scope is
-  not `own`.
+  [...]}` and `{"capabilities": [...]}`, each array holding one object per
+  record that `tcw <axis> list --scope … --json` prints, in the same order,
+  each holding that record's keys with its values, plus `projects` when the
+  scope is not `own` (today's bare array, `tcw/serve/records.py:70-71`,
+  `:149-150`, goes). Each object also keeps the server's other fields of
+  that object, which the client's rows and pickers read and the CLI's list
+  record does not carry (`modified` for certain,
+  `web/client/src/ui/shared-components.tsx:409-430`; the pickers' fields,
+  `web/client/src/model/reference-search.ts:90-95`, `:126-129`, `:253-256`);
+  where a key is in both, the CLI record's value is the one answered.
+- the detail routes answer today's envelope object (`term` or `capability`,
+  `coreRevision`, and for a capability `declaredDescription`), whose record
+  holds the keys and values `show --json` prints for the same input and
+  scope, beside the server's other fields of that object, plus `projects`
+  when the scope is not `own`.
 - `GET /api/project` gains `scopes`: `{"own": [...], "up": [...], "down":
   [...], "all": [...]}`, each the IDs 1.3 covers, in scope order, unavailable
   ones included.
@@ -754,9 +798,15 @@ taxonomy and capability entries; here it applies to work items too).
 item in one of two ways, decided by one function, the **work route key**
 rule, used by every work and files route, read or write:
 
-- a full identifier (`<project>.work/<folder>`, percent-encoded) names that
-  project's item at that folder. Its owner is the project the identifier
-  names, read from the identifier alone, without opening anything;
+- a full identifier, percent-encoded, names that project's item: at that
+  folder for `<project>.work/<folder>`, or the item carrying that ticket key
+  for `<project>.work/<KEY>` (the form `tcw work show` accepts, TCW-110
+  Design 3.1). Its owner is the project the identifier names, read from the
+  identifier alone, without opening anything (decided by the dispatching
+  session, 2026-10-22, for the ticket-key form: treating it as the served
+  project's would answer 404 for a key `tcw work show` finds, and would
+  leave one spelling of another project's item outside the write check of
+  6.5);
 - anything else (a folder name or a ticket key) names an item of the served
   project, found as `item_folder` finds it today (`tcw/serve/work.py:237-246`),
   so its owner is the served project.
@@ -766,7 +816,11 @@ Each read route (`GET /api/work/<key>`, `GET /api/work/<key>/files/…`, `GET
 declaration from the owner's store, and its record, request and comments
 through the owner's backend, read for itself (1.5), inside the scope or not,
 as `show` does (3.4). A backend that cannot answer degrades as today
-(`degrading`, `tcw/serve/work.py:85-98`). The taxonomy and capability detail
+(`degrading`, `tcw/serve/work.py:85-98`). A key naming a project TCW cannot
+find at all (no manifest entry, nothing found near the served project)
+answers `404` with `{"code": "not-found"}`, as a mistyped folder name does;
+one declared but not on this machine answers `503` (`unreachable`), as
+today's `Unreachable` does (`tcw/serve/server.py:88-89`). The taxonomy and capability detail
 routes already take a full identifier as their key (TCW-110 Design 4.5,
 `find_tree`) and read the owner's object as `show` does (4.8). `POST
 /api/resolve` answers `{"ok": true, "axis": …, "key": <full id>}` for a link
@@ -810,6 +864,21 @@ and both apply to all three axes. Changing either reloads the lists (today's
 `loadBoard` and `loadRecords`, `web/client/src/ui/app.tsx:257-279`) with the
 same parameters.
 
+**The reference pickers do not follow the scope control.** The pickers that
+offer references (a work item's parent and blockers, a term's relates-to and
+vocabulary, a capability's Subject, the declaration form, and the `tcw://`
+link suggestions; today all fed from the loaded lists, `optionsFor`,
+`web/client/src/ui/content-views.tsx:419-429`, `tcwLinkOptions`,
+`web/client/src/ui/app.tsx:420-423`, and `declaration-form.tsx:229`) offer
+what the served project can reference: its view of taxonomy and
+capabilities, which the client asks for with `scope=up` whatever the control
+shows, and its own work items (today's `GET /api/work?all=1`, unscoped).
+Under the new `own` default the displayed lists hold no inherited entry, and
+under `down` they hold descendants' objects the served project cannot
+reference, so feeding the pickers from them would lose the one and offer the
+other (decided by the dispatching session, 2026-10-22: the pickers ask for
+the scope they need).
+
 6.7. **Read-only display** (client). A record whose `owner` is not the served
 project shows a badge `owned by <owner>`, and no control that would write:
 no Edit button (replacing `EditOrInherited`'s "inherited from" badge,
@@ -832,7 +901,9 @@ its count, in the order of 4.6, as `Missing(1), Supported(1), Omitted(1)`
 projects, those marked `inherited` saying so, and each project that has an own
 object at the path linked to that object's page, which shows it as that
 project sees it (design.md:652-653). An `unavailable` line lists the
-unavailable projects.
+unavailable projects. Choosing one project in the project filter shows that
+project's own objects without the summary or the status lines, since a
+`--project` record carries no `statuses` (2.1).
 
 6.10. **The bundle is rebuilt** (`pnpm build`, into `tcw/serve/dist`) and the
 client's tests cover 6.6-6.9.
@@ -851,6 +922,20 @@ missing blockers) read the whole scope, and read `tcw work list --scope down
 --all` where they read `tcw work list --all` today; a blocker in another
 project is looked up with `tcw work show <its full identifier>`. Its final
 check compares `tcw work list --scope down --all --json` before and after.
+
+**Every item is named by its full identifier.** A descendant's folder name
+given bare exits 4 under the default `own` (3.4), and a write command run in
+`P` on a descendant's item is refused (TCW-114), so the procedure's per-item
+commands (`tcw work show`, `tcw work path`, `tcw work procedure
+audit-backlog`) take the item's full identifier, written `<full-id>`, which
+is the `full-id` of its record in the listing; a recommendation that changes
+another project's item (discarding it, splitting it) is phrased to run in
+the owner, `tcw -C tcw://<owner>.path/ work …` (TCW-114's form). The
+per-item agent's brief (`agents/backlog-auditor.md`, "What you are given")
+says it is given the item's full identifier, and uses it in every command
+it names (decided by the dispatching session, 2026-10-22: the audit now
+lists items the active project does not own, and a bare folder name finds
+none of them).
 
 7.2. **Command help.** Each of the eight commands' `--scope` and `--project`
 help strings say what Design 1.3 and 2.1 say in one line each; their examples
@@ -875,7 +960,7 @@ the release. Notes lists what each must say.
 | Reading another project for itself; an unavailable project (Design 1.5, 1.6) | model | Passes: "declared but not readable here" is a state any registry reaches (TCW-108's verdict for `sources`). Locating its folder is TCW-107's deployment layer. |
 | `--project` (Design 2) | model | Passes: a filter on each row's owner, a fact every object has (TCW-110 Design 1.4). |
 | Work listing and show across projects; `children` and `blocks` across the scope (Design 3.1-3.4) | model | Passes: each project's items come from its own backend's **list**, **read** and **lookup**; nothing reads a folder. |
-| A search kept for one command (Design 3.5) | private to the Jira backend | Not an operation: every project is still read by its own **list**. Keeping a result for one command, keyed by site, account, search text and fields, is a saving any backend can make or skip without changing an answer. |
+| A search kept for one command (Design 3.5) | private to the Jira backend | Not an operation: every project is still read by its own **list**. Keeping a result for one command, keyed by site, account, token digest, search text and fields, and dropped on any write, is a saving any backend can make or skip without changing an answer. |
 | Groups, rows, `statuses`, `overridden-by` (Design 4.1-4.7, 4.10) | model | Passes: computed in `tcw/store/base.py` from declarations, `overrides` and the registry's answers, without reading a file. |
 | `show` by id-path or full identifier in a scope (Design 4.8) | model | Passes: by path and owner, both store-neutral (TCW-110 Design 1). |
 | `--local` refused (Design 5) | CLI | Not a store operation. |
@@ -1122,7 +1207,9 @@ Unless a criterion says otherwise, a command exits 0.
     capabilities list --scope down` lists both `desktop.capabilities/zz` and
     `server.capabilities/zz`; `tcw capabilities show zz --scope down` exits 2
     with a message naming both; `tcw capabilities show zz --scope down
-    --project server --json` has `full-id` `server.capabilities/zz`; `tcw
+    --project server --json` has `full-id` `server.capabilities/zz` and no
+    `statuses` or `overridden-by` key, and so has each record of `tcw
+    capabilities list --scope down --project desktop --json`; `tcw
     capabilities show desktop.capabilities/zz --scope down --project server`
     exits 2 with a message naming `desktop` and `server`.
 19. **What `down` leaves out, `all` puts back.** `docs` passes capabilities
@@ -1221,9 +1308,11 @@ Unless a criterion says otherwise, a command exits 0.
     `server.capabilities/zz`, and every row in id-path order (`abc`, `def`,
     `ghi`, `zz`, `zz`).
 33. **Web: scope and project parameters.** `tcw serve` in `shared`: `GET
-    /api/capabilities?scope=down` answers an object whose `capabilities` equals
-    the `capabilities` of `tcw capabilities list --scope down --json` and whose
-    `projects` names `mobile` as unavailable; `GET /api/capabilities` answers an
+    /api/capabilities?scope=down` answers an object whose `capabilities` has
+    one object per record in the `capabilities` of `tcw capabilities list
+    --scope down --json`, in the same order, each holding that record's keys
+    with its values (Design 6.2), and whose `projects` names `mobile` as
+    unavailable; `GET /api/capabilities` answers an
     object with `capabilities` and no `projects`; `GET /api/work?scope=sideways`
     and `GET /api/work?scope=down&project=other` answer 400 with `code`
     `usage`; `GET /api/project` has `scopes.down` equal to `["shared",
@@ -1244,7 +1333,8 @@ Unless a criterion says otherwise, a command exits 0.
     answers 403 with `code` `read-only` and a message containing `belongs to
     project 'desktop'`, and afterwards every file under `desktop`'s folder is
     byte for byte what it was; so does a `PATCH` of
-    `desktop.work%2Fno-such-item`. `GET
+    `desktop.work%2Fno-such-item`. `GET /api/work/nosuch.work%2Fx`, naming a
+    project TCW cannot find, answers 404 with `code` `not-found`. `GET
     /api/capabilities/desktop.capabilities%2Fabc?scope=down` answers 200 with
     that record. `POST /api/resolve` with
     `tcw://desktop.work/2026-10-01-desktop-item` answers `ok` with that full
@@ -1260,13 +1350,18 @@ Unless a criterion says otherwise, a command exits 0.
     project's notice shows its reason; a
     capability row under `down` shows `Missing(1), Supported(1), Omitted(1)` for
     13's `abc`, and its page lists each status with its projects, `inherited`
-    marked.
+    marked; with the project filter set to one project, no row shows a
+    summary; with the scope control at `own` or at `down`, the term and
+    capability reference pickers offer an entry the served project inherits
+    and no descendant's object, and the client asks for them with `scope=up`.
 36. **The bundle.** `pnpm build` in `web/client` leaves `tcw/serve/dist` equal to
     what is committed, and the client's test suite passes.
 37. **The audit procedure covers the family.** `tcw work procedure
     audit-backlog` prints text containing `tcw work list --scope down --json`,
-    `unavailable` and `tcw work list --scope down --all --json`, and no line
-    telling the agent to start from a bare `tcw work list`.
+    `unavailable`, `tcw work list --scope down --all --json` and `tcw work
+    show <full-id>`, no line telling the agent to start from a bare `tcw work
+    list`, and no `tcw work show <slug>`; `agents/backlog-auditor.md` says the
+    item it is given is named by its full identifier.
 38. **`--tag`, `--assignee` and `--all` across projects.** `desktop`'s item
     carries the tag `ui`, which is in `desktop`'s `work.tags` and not in
     `shared`'s, and is assigned to `ann`; `desktop` also has a completed item
@@ -1313,22 +1408,22 @@ gives the line that makes it so.
 | 1.6 g a record cannot be read | n/a as a separate criterion: `BackendError` (`tcw/work/fs_backend.py:335-339`) is a `TcwError`, caught by the same tuple as 22's |
 | 1.6 h a file not valid YAML or unreadable | 29 (YAML); `OSError`: n/a as a separate criterion, the same tuple |
 | 1.7 the active project never unavailable; a full identifier's object never unavailable; graph problems | 21, 26 (the stage refusal stays in `server` itself), 22 (exit 7 in `server` itself, and for `server`'s item by full identifier); graph problems: n/a here, TCW-108 Design 6.6 and TCW-109's decision 22 define them and their criteria test them |
-| 1.8 standard error, `projects`, only what is left out | 2, 3, 8, 10 (an ancestor needed for nothing gives no warning), 33 |
+| 1.8 standard error, `projects`, only what is left out; each `show`'s wording | 2, 3, 8 (and `tcw capabilities show`'s wording), 10 (an ancestor needed for nothing gives no warning), 33; the `tcw work show` and `tcw taxonomy show` wordings: n/a as separate criteria, the same warning with another noun, which the plan's tests check |
 | 1.9 a single project pays nothing | 2, 7 |
-| 2.1 `--project` keeps one owner's own objects, not grouped; an ancestor that passes nothing | 6, 10, 11, 18, 40 |
+| 2.1 `--project` keeps one owner's own objects, not grouped, with no `statuses` or `overridden-by`; an ancestor that passes nothing | 6, 10, 11, 18 (and no `statuses` or `overridden-by` key), 40 |
 | 2.2 must be covered; refusal | 4, 6 |
 | 2.3 on `show` | 18 (an id-path, and a full identifier of another project) |
 | 3.1 work listing in scope order | 3, 5 |
-| 3.2 filters across projects | 25 (`--parent`), 26 (`--stage`), 27 (`--mine`), 38 (`--tag` and its warning, `--assignee` in both backends, `--all`) |
+| 3.2 filters across projects | 25 (`--parent`), 26 (`--stage`), 27 (`--mine`), 38 (`--tag` and its warning, `--assignee` in both backends, `--all`); a Jira side stage enabled with no status, and a shared or bot account under `--mine`: n/a as separate criteria, the same narrowing as 26's and the same `current_user()` as 27's |
 | 3.3 `children` and `blocks` across the scope | 25 |
 | 3.4 `tcw work show` input forms | 4 (a full identifier outside the scope), 22 (a full identifier is never unavailable), 24 |
-| 3.5 a search kept for one command; its key | 28 (Jira project, account, nothing kept between commands); field ids and stage statuses: n/a as separate criteria, both are part of the search text and the requested fields, so they are the same key as 28's Jira project |
+| 3.5 a search kept for one command; its key; a write empties it | 28 (Jira project, account, nothing kept between commands); field ids and stage statuses: n/a as separate criteria, both are part of the search text and the requested fields, so they are the same key as 28's Jira project; the token digest and a write emptying what was kept: n/a as criteria, no command lists, writes and lists again, and the fake Jira accepts any token, so the plan's unit tests of the key and of the writes check them |
 | 4.1 what each scope lists; scope objects and `V(X)` | 9, 10, 12, 19 |
 | 4.2 groups | 12, 13, 19 |
 | 4.3 rows | 9, 12, 18, 19 |
 | 4.4 order | 10, 12, 32 |
 | 4.5 filters and `search` | 16, 31, 40 |
-| 4.6 `statuses`; the `show` block; plain listings carry no status | 8, 13, 14, 15, 19, 20, 29; plain listings: 12 (exact lines) |
+| 4.6 `statuses`; the `show` block; plain listings carry no status; none with `--project` | 8, 13, 14, 15, 18 (`--project`), 19, 20, 29; plain listings: 12 (exact lines) |
 | 4.7 `overridden-by` | 13, 14 |
 | 4.8 `show` by id-path and full identifier; `up` never ambiguous; the hint; ambiguity; the change to TCW-112 3.1 and 3.5 | 10 (`up`, not found), 14, 17, 18; the readers TCW-112 3.1 keeps: n/a here, TCW-112's and TCW-114's criteria for `set`, `add`, `rm` and the web `PATCH` stay unchanged and pass under 41 |
 | 4.9 which scopes need `P`'s view; why `down` stops | 17 (hint left out, exit 4), 20, 21 |
@@ -1336,16 +1431,16 @@ gives the line that makes it so.
 | 5.1 `--local` refused | 30 |
 | 5.2 passages that name it | 39 |
 | 6.1 query parameters | 33 |
-| 6.2 answers, `scopes`, the fallback for `P` alone, 503 | 33; 503: n/a here, TCW-112 Design 4.5 adds it and its AC 33 checks it |
+| 6.2 answers (each record's keys and values, the server's other fields kept), `scopes`, the fallback for `P` alone, 503 | 33; 503: n/a here, TCW-112 Design 4.5 adds it and its AC 33 checks it |
 | 6.3 route keys | 34 |
-| 6.4 the work route key rule; any locatable object read; `/api/resolve` | 34 |
+| 6.4 the work route key rule (both full-identifier forms); any locatable object read; an unknown project 404; `/api/resolve` | 34; the ticket-key form `<project>.work/<KEY>`: n/a as a separate criterion, AC 34's family keeps its work in files, so the plan's test with a fake Jira checks it |
 | 6.5 every write route names the owner; handlers stay within the served project | 34 (each of the five work and files write routes, and a key naming no item); a handler's own 404: n/a as a criterion, it is reachable only if a route's `writes` were missed, which TCW-114's route-table test (its AC 4) rules out |
-| 6.6 scope control and project filter | 35 |
+| 6.6 scope control and project filter; the reference pickers keep the served project's view | 35 |
 | 6.7 read-only display | 35 |
 | 6.8 unavailable notice | 35 |
-| 6.9 mixed status in the client | 35 |
+| 6.9 mixed status in the client; none under one project | 35 |
 | 6.10 bundle | 36 |
-| 7.1 audit procedure | 37 |
+| 7.1 audit procedure; items named by their full identifier; the auditor's brief | 37 |
 | 7.2 command help | 30 (`--local` absent); the `--scope` help text: n/a as a criterion, `tests/test_cli_help_standard.py` checks every command's help contract for every command `tcw/cli_help.py` registers |
 | 7.3 documentation entries | 39, and the documentation gate when the item leaves implementation |
 
@@ -1376,8 +1471,9 @@ gives the line that makes it so.
   the overview, and `--project` lists one owner's objects. The rule is one
   function with its examples as criteria (12, 18, 19).
 - **A kept search must never answer for another account or another
-  question.** The search key holds the account and the exact search text and
-  fields (3.5), and each project keeps its own filter on `TCW Project`; AC 28
+  question, or after a write.** The search key holds the account, a digest
+  of its token, and the exact search text and fields, and any write the Jira
+  backend sends empties what was kept (3.5), and each project keeps its own filter on `TCW Project`; AC 28
   compares the result with each project's own `list`, checks the account
   case, and checks that nothing is kept between commands.
 - **A missed write route.** If a work or files write route's `writes` kept
@@ -1451,7 +1547,7 @@ gives the line that makes it so.
    Jira project and loosened the search. The review found that the grouping
    could sign in as one project's account to list another's tickets, and
    that projects may configure different field ids. A search kept for one
-   command, keyed by site, account, search text and fields, keeps every
+   command, keyed by site, account, token digest, search text and fields, keeps every
    project's list exactly its own by construction, and needs no change to the
    interface, to `docs/lifecycle/abstraction.md` or to its test. It costs one
    extra search where projects sharing a Jira project map their stages to
@@ -1561,6 +1657,56 @@ Each is stated where it applies; this is the one list.
   /api/work`), 34 (the declaration route), 35 (badges on rows), 38 (`--tag`,
   `--assignee`, `--all`), 40 (`--namespace`, `search`).
 
+### Revised after the plan review (2026-10-22)
+
+The plan's review accepted two defects in this spec and settled five
+questions. Each change is in the rule it touches; this is the list.
+
+- **D1, Design 6.2 and AC 33: the web list answers cannot be exactly the
+  CLI's records.** The client's list rows read `modified`, and its pickers
+  read fields the CLI's list record does not carry
+  (`web/client/src/ui/shared-components.tsx:409-430`,
+  `web/client/src/model/reference-search.ts:90-95`, `:126-129`,
+  `:253-256`); the detail view's fields (`description`, `body`, `fields`,
+  `relates_to`, `vocabulary`) come from the detail answer, not the list.
+  6.2 now says each list object holds the CLI record's keys and values, in
+  the same rows and order, beside the server's other fields, and the detail
+  routes keep today's envelope with `show --json`'s keys; AC 33 checks that
+  (decided by the dispatching session, 2026-10-22: answering exactly the CLI
+  records would break the page's rows and pickers).
+- **D2, Design 1.8: a `show`'s warning.** "So its status is not shown" is
+  true of `tcw capabilities show` only. `tcw work show` now says "so its
+  items are not counted in children and blocks", which is exactly what it
+  reads other projects for, and `tcw taxonomy show` "so its taxonomy entries
+  are not included" (decided by the dispatching session, 2026-10-22: each
+  warning names what is missing from that command's answer).
+- **`--project` never groups** (2.1, 4.6, 4.7, 6.9; AC 18, 35): its records
+  carry no `statuses` and no `overridden-by`, and the web app shows no
+  summary for one project (decided by the dispatching session, 2026-10-22:
+  the review's recommendation, which follows from 2.1).
+- **`--mine` with a shared or bot account** (3.2): matches that account's
+  tickets (decided by the dispatching session, 2026-10-22: the review's
+  recommendation; it keeps 3.2 unchanged). The review's optional extra, one
+  `current_user()` answer kept per command, is not taken: it saves one
+  request per Jira project under `--mine` and adds a second kept value with
+  its own key and its own write rule (decided by the dispatching session,
+  2026-10-22: the simpler option).
+- **The token in the search key** (3.5): taken, as the review offered
+  (decided by the dispatching session, 2026-10-22: without it, a project
+  whose own token is wrong would be listed from another project's search
+  and never reported unavailable).
+- **A write empties the kept searches** (3.5; the review's S3), and the
+  `--stage` narrowing also drops a stage a Jira project maps to no status
+  (3.2; the review's last open question, checked in
+  `tcw/work/config.py:418-426`).
+- **The reference pickers ask for the served project's view** (6.6; AC 35;
+  the review's M5).
+- **The ticket-key form of a full identifier is another project's** in a web
+  route key (6.4; the review's S9), and a key naming a project TCW cannot
+  find answers 404 (6.4; AC 34; the review's S8).
+- **The audit names items by their full identifier** (7.1; AC 37; the
+  review's S6).
+
 ### Handoffs
 
 Recorded on each ticket by the dispatching session when this spec is
@@ -1587,7 +1733,9 @@ accepted.
   work items and to every object another project owns (Design 6.3), and
   `/api/resolve` answers `ok` with a full identifier for an existing object of
   another project on this machine, keeping `other-project` only for a project
-  not on this machine (Design 6.4).
+  not on this machine (Design 6.4). `route_key`'s work branch (`tcw/refs.py`)
+  gives the folder only for the served project's item and the whole full
+  identifier for any other project's, as the client's `itemKey` does.
 - **TCW-111** (landed): nothing further; nested items are listed per project
   as its walk gives them.
 - **TCW-112** (landed): `--scope up` lists its view (Design 4.1), `--scope own`
@@ -1628,3 +1776,38 @@ accepted.
 - **TCW-50:** a listing covering several projects is ordered as Design 3.1 and
   4.4 say; its "one section per node" becomes one section per covered project
   in scope order, and its limits apply per project.
+
+### Handoff to TCW-114
+
+Handoff from TCW-113 (spec and plan, revised). Nothing for TCW-114 to change;
+this records what TCW-113 changes in code TCW-114 lands:
+
+- every work and files write route's `writes` answers the owner's full
+  identifier from the work route key rule (Design 6.4, 6.5), and that rule
+  treats both full-identifier forms, `<project>.work/<folder>` and
+  `<project>.work/<KEY>`, as naming the identifier's project;
+- `tcw/serve/files.py`'s one `_target` is split in two: the read routes
+  (`get_file`, `get_declaration`) resolve the key through its owner, and the
+  write routes (`put_file`, `new_file`, `put_declaration`) stay on the
+  served project only, so a write handler reached without its `writes`
+  answers 404;
+- `tests/serve/test_route_writes.py` is expected to stay green unchanged:
+  no route is added, and the same routes are marked as writes.
+
+### Handoff to TCW-117
+
+Handoff from TCW-113 (spec and plan, revised). In addition to the TCW-117
+entry of Handoffs above:
+
+- `docs/guide/web-viewer.md`: the reference pickers offer what the served
+  project can reference (its view of taxonomy and capabilities, its own work
+  items), whatever the scope control shows (Design 6.6); choosing one
+  project in the project filter shows no status summary (6.9);
+- `docs/guide/jira.md`: projects sharing a search must also share the token,
+  not only the email (3.5), and a write in the same command or request makes
+  the next search ask Jira again;
+- the `work` skill: the backlog audit names every item by its full
+  identifier, and recommends changes to another project's item with `tcw -C`
+  (7.1);
+- the `capabilities` skill: `--project` gives one owner's objects with no
+  `statuses` and no `overridden-by` (2.1).
