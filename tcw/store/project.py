@@ -494,27 +494,52 @@ class FsProjectRegistry(ProjectRegistry):
         the path the config wrote, which on a machine needing this is exactly
         the path that does not exist.
 
-        A project is reached through the edges pointing at it, since a project's
-        own repository is declared by whoever knows about that edge rather than
-        by the project itself. A declared project the graph does not hold answers
-        None: it names a repository but no location here, and sending the store
+        A project's repository is written in the manifest entries that place
+        it (TCW-107 Design 6.4), read in a fixed order so the answer does not
+        depend on which lookups the command made first: `_manifest_order`'s.
+        For the first entry whose repository is `url` and whose project this
+        command has found, the repository's folder is the found folder with the
+        entry's `subfolder` removed. An entry whose project is not found, or
+        whose found folder does not end with its `subfolder`, gives no answer:
+        it names a repository but no location here, and sending the store
         ladder to a path that is not there is worse than sending it nowhere.
         """
         self._load_graph()
         wanted = normalized_url(url)
         if not wanted:
             return None
-        for cfg in list(self._cache.values()):
-            for entry in (*cfg.parent.values(), *cfg.children.values(),
-                          *cfg.upstream.values()):
-                if entry.repository is None:
-                    continue
-                if normalized_url(entry.repository.url) != wanted:
-                    continue
-                target = self._by_id.get(entry.id)
-                if target is not None:
-                    return Path(target.project.locator).resolve()
+        for root in self._manifest_order():
+            for _file, _base, entries in self._manifests_of(root) or []:
+                for entry in entries.values():
+                    if entry.url is None or normalized_url(entry.url) != wanted:
+                        continue
+                    folder = self._known_folder(entry.id)
+                    if folder is None:
+                        continue
+                    folder = Path(folder).resolve()
+                    if entry.subfolder is None:
+                        return folder
+                    tail = Path(entry.subfolder).parts
+                    if folder.parts[-len(tail):] == tail:
+                        return folder.parents[len(tail) - 1]
         return None
+
+    def _manifest_order(self) -> list[Path]:
+        """The roots whose manifests `checkout_of` reads, in Design 2.2's order
+        from the active project: its own, its ancestors' nearest first, its
+        descendants' breadth first. Then every other project the graph follows
+        the connections of (a sibling, say), in the order the walk met them;
+        an upstream-only project's manifests are not read (Design 2.10)."""
+        order, _ = self._family(self.project_root, "")
+        seen = {self._identity(root) for root in order}
+        for path, cfg in list(self._cache.items()):
+            if cfg is None or path in self._upstream_only:
+                continue
+            root = root_of(path)
+            if self._identity(root) not in seen:
+                seen.add(self._identity(root))
+                order.append(root)
+        return order
 
     def check(self) -> list[Finding]:
         return list(self._findings)

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,7 @@ from tcw.store.project import (
     validate_project_id,
     worktree_anchors,
 )
-from tests.projectfiles import write_config
+from tests.projectfiles import write_config, write_manifest
 
 
 def _texts(findings) -> list[str]:
@@ -879,17 +880,9 @@ def _workspace(tmp_path: Path, url: str, *, parent_at: str = "orchestration") ->
     parent = tmp_path / parent_at
     child = tmp_path / "core"
     config(parent, f"id: orchestration\nprojects:\n  children:\n    core: {child}\n")
-    config(
-        child,
-        "id: core\n"
-        "projects:\n"
-        "  parent:\n"
-        "    orchestration:\n"
-        f"      path: {parent}\n"
-        "      repository:\n"
-        f"        url: {url}\n"
-        "        ref: main\n",
-    )
+    config(child, "id: core\nprojects:\n  parent:\n    orchestration:\n")
+    write_manifest(child, {"orchestration": {
+        "path": os.path.relpath(parent, child), "repository": f"{url}#main"}})
     return child, parent
 
 
@@ -949,16 +942,24 @@ def test_checkout_of_ignores_a_project_the_graph_does_not_hold(tmp_path):
     ladder somewhere worse than nowhere."""
     url = "https://github.invalid/acme/orchestration.git"
     child = tmp_path / "core"
-    config(
-        child,
-        "id: core\n"
-        "projects:\n"
-        "  parent:\n"
-        "    orchestration:\n"
-        f"      path: {tmp_path / 'not-here'}\n"
-        "      repository:\n"
-        f"        url: {url}\n"
-        "        ref: main\n",
-    )
+    config(child, "id: core\nprojects:\n  parent:\n    orchestration:\n")
+    write_manifest(child, {"orchestration": {"path": "../not-here",
+                                             "repository": f"{url}#main"}})
 
     assert FsProjectRegistry.open(child).checkout_of(url) is None
+
+
+def test_checkout_of_reads_a_siblings_manifest(tmp_path):
+    """A project the graph follows that is neither an ancestor nor a
+    descendant, here a sibling, is read after them (TCW-107 Design 6.4)."""
+    url = "https://github.invalid/acme/z.git"
+    config(tmp_path / "ws", "id: ws\nprojects:\n  children:\n    a: a\n    b: b\n")
+    config(tmp_path / "ws" / "a", "id: a\nprojects:\n  parent:\n    ws: ..\n"
+                                  "  upstream:\n    z:\n")
+    config(tmp_path / "ws" / "b", "id: b\nprojects:\n  parent:\n    ws: ..\n")
+    config(tmp_path / "ws" / "z", "id: z\n")
+    write_manifest(tmp_path / "ws" / "b", {"z": {"path": "../z",
+                                                 "repository": f"{url}#main"}})
+    registry = FsProjectRegistry.open(tmp_path / "ws" / "a")
+    assert registry.found("z") == {"by": "search"}
+    assert registry.checkout_of(url) == (tmp_path / "ws" / "z").resolve()

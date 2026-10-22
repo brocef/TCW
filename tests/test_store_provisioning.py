@@ -24,6 +24,7 @@ from tcw.store.base import (
 from tcw.cli import main
 from tcw.store import checkouts, fs
 from tcw.store.fs import (STORE_CLASSES, FsCapabilitiesStore, FsStoreProvisioner, FsTaxonomyStore, WorkLocation, init)
+from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
 
 
@@ -31,7 +32,7 @@ WHERE = "work.repository"
 
 
 from nodeconfig import declare_extends, set_component_key
-from tests.projectfiles import config_file, write_config, write_config_file
+from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
 
 
 def _repo(path: Path) -> Path:
@@ -452,13 +453,12 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
         "path": configured_path,
         "repository": {"url": url, "ref": ref, "path": inner},
     })
-    config["projects"] = {
-        "parent": {"orchestration": {
-            "path": "../orchestrator",          # right for the nested layout, wrong here
-            "repository": {"url": url, "ref": ref},
-        }}
-    }
+    config["projects"] = {"parent": {"orchestration": None}}
     write_config(code, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(code, {"orchestration": {
+        "path": "../orchestrator",              # right for the nested layout, wrong here
+        "repository": f"{url}#{ref}",
+    }})
 
     monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(orchestration))
     return code, orchestration, store
@@ -479,6 +479,83 @@ def test_a_ref_mismatch_does_not_stop_the_registry_rung(tmp_path, monkeypatch, c
 
     assert WorkLocation.open(code).root == store.resolve()
     assert "ref" not in capsys.readouterr().err
+
+
+APP_URL = "https://github.invalid/acme/app.git"
+
+
+def _project(root: Path, project_id: str, **relations) -> Path:
+    data: dict = {"id": project_id}
+    if relations:
+        data["projects"] = {name: {i: None for i in ids}
+                            for name, ids in relations.items()}
+    write_config(root, yaml.safe_dump(data, sort_keys=False))
+    return root.resolve()
+
+
+def _store_in_app(tmp_path: Path) -> tuple[Path, Path]:
+    """`core`, whose work store lives in the repository `APP_URL`, and a
+    checkout of that repository at `app-repo` holding the project `server` at
+    `apps/server` and the store at `docs/work/core`."""
+    checkout = tmp_path / "app-repo"
+    server = _project(checkout / "apps" / "server", "server")
+    store = _local_store(checkout / "docs" / "work" / "core")
+    core = _repo(tmp_path / "core")
+    init(["work"], core, "core")
+    _write_config(core, path="../absent",
+                  repository={"url": APP_URL, "path": "docs/work/core"})
+    config = yaml.safe_load(config_file(core).read_text())
+    config["projects"] = {"upstream": {"server": None}}
+    write_config(core, yaml.safe_dump(config, sort_keys=False))
+    write_manifest(core, {"server": {"path": "../app-repo/apps/server",
+                                     "repository": f"{APP_URL}#main",
+                                     "subfolder": "apps/server"}})
+    return core, store
+
+
+def test_ac22_the_subfolder_is_removed_from_the_found_folder(tmp_path):
+    core, store = _store_in_app(tmp_path)
+    assert FsProjectRegistry.open(core).checkout_of(APP_URL) == (tmp_path / "app-repo").resolve()
+    assert WorkLocation.open(core).root == store.resolve()
+
+
+def test_ac22_a_found_folder_not_ending_in_the_subfolder_gives_no_answer(
+        tmp_path, monkeypatch):
+    core, _store = _store_in_app(tmp_path)
+    elsewhere = _project(tmp_path / "elsewhere" / "srv", "server")
+    monkeypatch.setenv("TCW_PROJECT_SERVER", str(elsewhere))
+    registry = FsProjectRegistry.open(core)
+    assert registry.found("server") == {"by": "variable", "name": "TCW_PROJECT_SERVER"}
+    assert registry.checkout_of(APP_URL) is None
+
+
+def test_ac22_the_rung_reads_manifests_in_the_lookups_order(tmp_path):
+    """Design 6.4: the active project's manifests, then its ancestors', then
+    its descendants'; the first matching entry for a found project answers."""
+    top = _project(tmp_path / "top", "top", children=["mid"])
+    mid = _project(tmp_path / "top" / "mid", "mid", parent=["top"], children=["kid"],
+                   upstream=["x", "y"])
+    kid = _project(tmp_path / "top" / "mid" / "kid", "kid", parent=["mid"])
+    x = _project(tmp_path / "x", "x")
+    y = _project(tmp_path / "y", "y")
+    write_manifest(top, {"mid": "mid", "x": {"path": "../x",
+                                             "repository": f"{APP_URL}#main"}})
+    write_manifest(mid, {"kid": "kid"})
+    write_manifest(kid, {"y": {"path": "../../../y", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == x
+    write_manifest(mid, {"y": {"path": "../../y", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == y
+    assert FsProjectRegistry.open(kid).checkout_of(APP_URL) == y
+
+
+def test_ac22_an_entry_for_a_project_not_found_is_passed_over(tmp_path):
+    """An entry matching the URL whose project is not on this machine gives
+    no answer; the next matching entry does."""
+    app = _project(tmp_path / "app", "app", upstream=["gone", "lib"])
+    lib = _project(tmp_path / "lib", "lib")
+    write_manifest(app, {"gone": {"path": "../gone", "repository": f"{APP_URL}#main"},
+                         "lib": {"path": "../lib", "repository": f"{APP_URL}#main"}})
+    assert FsProjectRegistry.open(app).checkout_of(APP_URL) == lib
 
 
 def test_provision_reports_a_registry_resolved_store_as_available(

@@ -9,6 +9,7 @@ code under test branches on."""
 from pathlib import Path
 
 from tcw.store.project import FsProjectRegistry
+from tests.projectfiles import write_manifest
 
 
 def config(root: Path, text: str) -> None:
@@ -103,9 +104,9 @@ def test_an_upstream_reached_through_a_parent_is_found(tmp_path):
 
 def test_checkout_of_finds_an_upstream_by_its_repository(tmp_path):
     url = "https://example.invalid/core.git"
-    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n"
-                              f"    core:\n      path: ../core\n      repository:\n"
-                              f"        url: {url}\n        ref: main\n")
+    config(tmp_path / "app", "id: app\nprojects:\n  upstream:\n    core:\n")
+    write_manifest(tmp_path / "app", {"core": {"path": "../core",
+                                               "repository": f"{url}#main"}})
     config(tmp_path / "core", "id: core\n")
     registry = FsProjectRegistry.open(tmp_path / "app")
     assert registry.checkout_of(url) == (tmp_path / "core").resolve()
