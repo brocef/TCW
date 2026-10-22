@@ -58,7 +58,14 @@ From **TCW-107** (its plan, steps named):
   are the worktree's. Spec AC 33 relies on both.
 - One registry per command: `begin_command`, `end_command`,
   `forget_registries` (Step 5), so the fold of Step 7 reads the command's one
-  registry and adds no walk of its own.
+  registry and adds no walk of its own. Outside a command (a library caller,
+  a test, and every request of `tcw serve`, whose `end_command()` runs once
+  at start, `tcw/cli.py:545`), each `open` builds a new registry.
+- What the registry raises. `current` and `require_valid` still raise
+  `ValueError` (`tcw/store/project.py:241`, `:455`); `tcw/work/open.py:73-74`
+  turns it into `BackendError`. `project_folder` raises `Unreachable`
+  (exit 5), `UnknownProject` or `ProjectGraphError` (both `TcwError`, exit 1,
+  in `tcw/errors.py`), Step 3.
 - `_read_text`, the module-level function every registry read goes through,
   which tests replace to count reads (Step 3); AC 27's test counts with it.
 - `TCW_PROJECT_<ID>` unchanged (spec Design 2.1 of TCW-107); the suite-wide
@@ -84,6 +91,14 @@ From **TCW-108** (its plan, steps named):
   `parents(project_id=None, *, root=None)` and `link_state(project_id)`
   (Step 7b), and `sources(axis, project_id=None)` with its two messages,
   `absent_note(project_id)` and `link_problem(project_id)` (Step 10).
+  `sources` keeps that signature; only `load_order` and `parents` take
+  `root=` (re-check R4).
+- What fails while the order is computed: `load_order_of` raises
+  `ValueError` past its depth limit rather than recursing without end
+  (Step 2), and a loop found for a descendant's order or an outside
+  project's raises `ProjectGraphError` (choice 5). What `load_order()`
+  answers for the active project when its own `parents:` is wrong (an order
+  with no parents, or a raise) is read at Step 0; choice 11 covers both.
 - `InheritedUnavailable` (exit 7) carrying `project`, `axis` and `reason`
   (Step 3).
 - `_read_config`'s roles (`active`, `ancestor`, `descendant`, `outside`) and
@@ -99,8 +114,11 @@ From **TCW-108** (its plan, steps named):
   <after> <allowed.txt>` (Step 7f's last paragraph), both kept in the
   scratchpad. This plan reuses the script unchanged.
 - Its tests of AC 18, 20, 26 and 31 in `tests/test_parent_links_cli.py`
-  (Step 10), which this item must leave passing (spec Design 3.5), and the
-  two-repository fixture of AC 26, which AC 29 here repeats.
+  (Step 10), and of AC 19 with its "what lies above is unknown" sentences
+  (Step 11), which this item must leave passing (spec Design 3.5). Those of
+  AC 19, 20 and 31 gain the suffix of spec 3.6 and are amended at Step 7c if
+  they compare the whole text. Also the two-repository fixture of AC 26,
+  which AC 29 here repeats.
 
 From **TCW-111**: nothing this item calls. It renames `item.yaml` to a state
 file and changes `create`'s signature (its Steps 5 and 9); Step 0 re-reads
@@ -131,13 +149,19 @@ that read `work.tags` on every create and edit.
    only when the project's own shared file declares `parents:`, so a single
    project (UC-1) reads nothing new.
 3. **A project read for itself** (spec Design 5.2) is `load_config(root,
-   personal=False)`, which now folds that project's own configuration sources
-   and applies the variables naming each of them, with no personal file. A
-   caller that holds the command's registry passes it
-   (`load_config(root, personal=False, registry=registry)`), so the project's
-   order comes from TCW-108's `load_order(id, root=...)` on the command's one
-   registry (TCW-108 plan, re-check R4); otherwise the registry opened at
-   `root` is used.
+   personal=False, registry=<the command's registry>)`, which now folds that
+   project's own configuration sources and applies the variables naming each
+   of them, with no personal file. The project's order comes from TCW-108's
+   `load_order(id, root=root)` on that registry (TCW-108 plan, re-check R4).
+   **The registry is required** when `personal=False` and the project's
+   shared file declares `parents:`. Without it, `load_config` raises
+   `TypeError` naming the missing argument. That is a mistake in the call,
+   not a configuration problem, so it does not go into `Config.problems`. A
+   fallback registry opened at `root` would treat that project as the active
+   one. It would then read the project's personal `children` (TCW-108 Step 9)
+   and could place an ancestor in another folder (spec 5.2). Every caller in
+   `tcw/` passes the registry it already holds (Step 7a lists them). A
+   library caller opens one at the active project's root and passes it.
 4. **When a key is undecided.** A key `K` of Design 1.1 is undecided exactly
    when no layer after the last gap in the order declares `K`, or a key above
    it, with a value that replaces it whole (spec 3.1: the latest gap is the
@@ -154,16 +178,19 @@ that read `work.tags` on every create and edit.
    is only read with `backend: jira`" problem is not reported for it. A
    mapping value at `work.jira` without Jira mode still gets it (AC 9).
 7. **An ancestor's unreadable shared file** (spec Design 1.6). Built in the
-   `ancestor` and `outside` roles of TCW-108's `_read_config`, as TCW-108's
-   Design 6.6 splits roles. A descendant's unreadable file stays what TCW-108
-   makes it. The spec's "when it is not the active project" could be read to
-   include descendants; reported below.
-8. **Commands that need no inherited key and open the store today.** The
-   spec's six places (Design 3.4) and three it does not name (spec defect 1):
-   `tcw work path` with no item (`tcw/work/cli.py:318`), and the two readers
-   of a reference into a Jira-mode project, `tcw/refs.py:139` and
-   `reference_resolver` (`tcw/work/open.py:210-241`), which already answer
-   from the item folders and need no Jira setting.
+   `ancestor` and `outside` roles of TCW-108's `_read_config`, as the revised
+   spec says. A descendant's unreadable file stays a graph problem, as the
+   spec now states. A file that reads but has no valid `id` stays a graph
+   problem in every role (`tcw/store/project.py:607-618`).
+8. **Commands that need no inherited key and open the store today** (spec
+   Design 3.4). The seven places in `tcw/work/cli.py`, and the two readers of
+   a reference into a Jira-mode project. Those are `tcw/refs.py:139`, where a
+   gap would give a false `error` finding, since `resolve_tcw_ref` catches
+   every exception (`:123-124`). And `reference_resolver`
+   (`tcw/work/open.py:210-241`), where an `InheritedUnavailable` would escape
+   and stop `tcw validate` with exit 7. Both answer from the item folders,
+   which need no Jira setting. Each place keeps the checks `open_backend`
+   makes before it builds a backend (Step 6's `project_facts`).
 9. **The environment is read once per command.** Every override is decoded
    and checked once while a command runs, kept beside `_EFFECTIVE`
    (`tcw/config.py:654`) and dropped by `end_command`; a library caller reads
@@ -175,12 +202,51 @@ that read `work.tags` on every create and edit.
     (`tcw/config.py:559-571`) to blame a mapping's problem on its highest
     layer, becomes `(position, layer)`, so a later project outranks an earlier
     one.
-11. **A registry that cannot answer.** If opening the registry or computing
-    the order raises (`ProjectGraphError`, TCW-108 plan choice 5, or another
-    `TcwError`), `load_config` folds the project alone and, when it declares
-    `parents:`, withholds every key of Design 1.1 it does not decide, with that
-    error. So no command runs on a half-inherited value, and one that reads
-    no inherited key reaches its own graph check, which reports the problem.
+11. **A registry that cannot answer** (spec Design 1.3, Decision 25). The
+    order cannot be had when one of these raises `ValueError` or any
+    `TcwError`: opening the registry, `current`, or `source_entries`. That
+    covers `require_valid`'s and `current`'s `ValueError`, `load_order_of`'s
+    depth guard, `ProjectGraphError` (TCW-108 choice 5), and TCW-107's
+    `Unreachable` and `UnknownProject`. It also cannot be had when the
+    project's own links are unknown (its `link_state` is `unreadable`, or it
+    is in `LoadOrder.unreadable`). Then `load_config` catches the error and
+    folds the project alone. At Step 7a nothing is withheld (the interim
+    rule). From Step 7c, each key of Design 1.1 that the project does not
+    decide itself is withheld with `BackendError(<the error's text>)`, exit 1.
+    That is the conversion `open_backend` already makes (`tcw/work/open.py:73-74`),
+    so `tcw validate`'s `_work_findings` reports it through its existing
+    `BackendError` branch (`tcw/validate.py:571-575`). `InheritedUnavailable`
+    is never caught here: `source_entries` does not raise it. The error is
+    never put in `Config.problems`. So `tcw validate`, which loads the
+    configuration before its own checks (`own_config`, `tcw/cli.py:592`;
+    `config_findings`, `tcw/validate.py:366`), still runs every check and
+    lists the graph problem as a finding. Every other command that reads no
+    inherited key reaches `open_backend`'s `require_valid`, and fails there
+    as it does today.
+12. **The user-wide file is checked once** (spec 1.6, 2.1; Decision 26). It
+    is read and checked at `P`'s position, against the whole allowed list,
+    and its problems, `refused` and `skipped` records are `P`'s. What passed
+    is kept. At each other source it is applied cut to Design 1.1, with no
+    check, no problem and no `Setting` record.
+13. **Variable problems go into the active project's configuration only**
+    (spec 4.4; Decision 27): `load_config(personal=True)`. A reading with
+    `personal=False` applies only the variables that passed every check, and
+    reports none.
+14. **Guards on `Withheld`** (the review's answer 6). It stores a function
+    that builds its error, and raises a new error at each use, so one
+    exception object never collects traceback frames from many places. It
+    subclasses neither `tuple` nor `list`, so `asdict` and `deepcopy` never
+    iterate it. `isinstance(x, Withheld)` is used only in
+    `work_store_problems` (7b), `tcw/serve/work.py`'s summary (Step 11),
+    `config_cli._show` (Step 9) and `Config.require`. Each of those carries
+    a comment saying that `config.tags or ()` is not a safe test.
+15. **One registry, passed along.** `open_backend` opens the registry first
+    and passes it to `_layered` and on to `load_config`, so a call outside a
+    command builds one registry, not two (the review's answer 7c). A
+    `tcw serve` request runs outside a command, so `context` still builds
+    two: one in `read_work_config` and one in `open_backend`
+    (`tcw/serve/work.py:68-69`). That is 3.x's cost plus nothing for a
+    project with no `parents:`, and it is left as it is.
 
 ## Step 0 — start from what the earlier items left
 
@@ -194,8 +260,16 @@ Checks, before any change:
   `absent_note`, `link_problem`, `availability()`, the role argument of
   `_read_config`, `LOCAL_ONLY_KEYS`, `personal_file`, `Origin.root`,
   `personal_files_skipped`, `resolve_work_input`, `_store_location_problems`,
-  and the six lines of spec Design 3.4 (`tcw/work/cli.py:56`, `:71`, `:318`,
+  and the seven lines of spec Design 3.4 (`tcw/work/cli.py:56`, `:71`, `:318`,
   `:441`, `:455`, `:567`, `:596`).
+- **What the registry raises, as landed** (choice 11): `grep -n "raise "
+  tcw/store/project.py tcw/store/base.py`, each raise on the path from
+  `FsProjectRegistry.open`, `current`, `load_order` and `parents` recorded with
+  its exception class. Also, by a throwaway script in the scratchpad, what
+  `load_order()` answers for an active project whose own file holds
+  `parents: notalist`, and for `app: [lib]`, `lib: [top]`, `top: [lib]`: an
+  order, or which exception. Choice 11's list of caught errors is corrected
+  here if anything else can be raised.
 - **Every reader of an inherited key**, by `grep -rn "\.tags\b"` and
   `grep -rn "\.jira\b\|layered\.jira\|config\.jira"` over `tcw/`, compared
   with this list at `d2d02829`: `tcw/work/fs_backend.py:286`, `:536`;
@@ -205,11 +279,21 @@ Checks, before any change:
 - **Every opener of a work store**, by `grep -rn "open_backend(\|read_work_config("
   tcw`, each recorded as reading an inherited key (spec 3.4 rows a-c) or not.
   At `d2d02829`: `tcw/capabilities/cli.py:201` (`tcw capabilities drift`,
-  which lists completed items, row a: spec defect 2), `tcw/validate.py:496`,
+  which lists completed items, row a of spec 3.4), `tcw/validate.py:496`,
   `:570`, `tcw/refs.py:139`, `tcw/cli.py:518` (`--remote`, row a),
   `tcw/work/jira/tickets.py:339`, `tcw/serve/services.py:26`,
   `tcw/serve/work.py:68-69`, `:559`, `tcw/work/open.py:99`, `:177`, `:183`,
-  `:198`.
+  `:198`. (`--remote` catches every `TcwError` from `open_backend`,
+  `tcw/cli.py:518-519`, so `tcw validate --remote` still never stops on a
+  gap, as spec 3.6 asks.)
+- **Every reading of a project for itself**, by `grep -rn "personal=False"
+  tcw`. At `d2d02829`: `tcw/work/open.py:42` (`_layered`), `:99`
+  (`open_project`), `:178` and `:184` (`delegate`), `:199`
+  (`open_for_update`), `tcw/work/jira/tickets.py:339` (`delegate_to_jira`
+  with `root=`, reached from `delegate`, which holds a registry), and
+  `tcw/serve/work.py:559` (`_other_items`, which holds `registry`). Each is
+  recorded with the registry it will pass at Step 7a (choice 3). One that
+  holds none is given one, never left to fail.
 - **The tests this item changes.** Searched on the merged tree, each file
   read and the list written into the implement round:
   1. Tests that run a tag command (`grep -rlnE "\"tags\", \"(add|rm|list)\"|tags (add|rm|list)|--tag|--untag" tests`),
@@ -222,18 +306,24 @@ Checks, before any change:
      missing, unreadable, or sets `work.tags` or `work.jira`. Such a test sees
      inheritance or a withheld key for the first time and is expected to fail
      at Step 7a or 7c; it is listed there.
-  2. **TCW-108's AC 18, 20, 26 and 31 tests** in
-     `tests/test_parent_links_cli.py`. The `tcw work list` halves run in
-     filesystem projects with no tag option and must pass unchanged (spec
-     3.5). The `tcw validate` halves of AC 20 and AC 31 have a parent that
-     passes `config` missing or unreadable and a child that sets no
-     `work.tags`, so their `unresolved` finding gains `; could not check the
-     configuration inherited from it` at Step 7c (spec 3.6). If either test
-     compares the finding's whole text rather than testing for words in it,
-     it is amended at Step 7c to the new text and listed with Design 3.6
-     (spec Decision 24 makes that this item's). AC 18 (`ws` behind
-     `inherit: none`) and AC 26 (`inherit: none`) have no configuration gap
-     and are unaffected.
+  2. **TCW-108's tests of AC 18, 19, 20, 26 and 31** in
+     `tests/test_parent_links_cli.py` (its Steps 10 and 11). The `tcw work
+     list` sentences run in filesystem projects with no tag option and must
+     pass unchanged (spec 3.5). Some `tcw validate` sentences have a parent
+     that passes `config` missing or unreadable and a child that sets no
+     `work.tags`. Their `unresolved` finding gains `; could not check the
+     configuration inherited from it` at Step 7c (spec 3.6). Those are:
+     - AC 19's, `app: [core]`, `core` missing, with `taxonomy.extends`; its
+       finding already holds row (a)'s and row (c)'s text;
+     - Step 11's "when what lies above is unknown" tests, `lib` missing, and
+       again unreadable;
+     - AC 20's;
+     - AC 31's, and its `projects:` variant.
+     Each one that compares the finding's whole text, or the whole list of
+     findings, rather than testing for words in it, is amended at Step 7c to
+     the new text and listed with Design 3.6 (spec Decision 24). AC 18 (`ws`
+     behind `inherit: none`) and AC 26 (`inherit: none`) have no
+     configuration gap and are unaffected.
   3. Tests that pin a behaviour Design 2.4 or 2.5 changes:
      `grep -rn "allowed only in a stage\|is allowed only" tests` (at
      `d2d02829`, `tests/config/test_personal_merge.py:102-108`, which uses
@@ -243,6 +333,24 @@ Checks, before any change:
      `rank` (`grep -rn "Origin(\|LAYERS\|\.rank\b" tests`; at `d2d02829`
      none outside `tests/config/test_personal_merge.py:180`'s
      `personal_files`, which keeps its signature).
+  5. **Every `tcw validate` test that a parent link can reach.** Tests that
+     run `tcw validate`, call `_cmd_validate` or call `validate(`
+     (`grep -rlnE "\"validate\"|_cmd_validate|validate\(" tests`), and the
+     tests of the unregistered-tag warnings: `work_store_problems`'s, and the
+     `--tag` warning `is not in this project's registry`
+     (`tcw/work/cli.py:244-246`; `grep -rlnE "not in this project's
+     registry|is not registered|unregistered" tests`). Each set is intersected
+     with list 1's files that write a parent link. That includes every
+     3.x-era fixture TCW-108 Step 8a rewrote from `projects.parent` to
+     `parents:`, which passes `config` by default. Each test in the
+     intersection is read and sorted:
+     - **7a**: a parent passes `config` and is here, and its tags now reach
+       the child. The unregistered-tag warnings or `--tag`'s warning change.
+     - **7c**: a parent passes `config` and is missing or unreadable, the
+       child sets no `work.tags`, and the test asserts an `unresolved`
+       finding's text or the whole list of findings.
+     Each is named in that step's list of expected failures in the implement
+     round, before the step's change is made.
 - **Inventories**, taken now and kept in the scratchpad (not the
   repository), by TCW-108 Step 0's method: `pytest --collect-only -q`, and the
   per-function counts of `assert` statements and `pytest.raises` blocks.
@@ -403,6 +511,12 @@ cannot be read at all).
   exits 0 with one `unresolved` finding naming `core`, with row (d)'s text
   (TCW-108 Design 6.5) being the read problem. `sources("taxonomy")` from
   `app` raises with the second message of TCW-108 Design 6.2.
+- **A descendant's unreadable file** (spec 1.6, AC 15): `app` lists `core`,
+  `core: [app]`, `core`'s file not valid YAML. From `app`, `require_valid()`
+  raises naming `core`'s file, as before this item.
+- **`unavailable`**: `unavailable("app", "core", "config", subject="configuration
+  (work.tags)")` has `axis == "config"`, `reason == "missing"` and the
+  message of spec 3.3's first line.
 
 **Changes**
 
@@ -411,18 +525,30 @@ cannot be read at all).
   (choice 2), built from `load_order`, `passing` and `link_state`; `sources`
   rewritten over it. The building of the `InheritedUnavailable` that
   `sources` raises moves into `ProjectRegistry.unavailable(project_id,
-  gap_id, subject) -> InheritedUnavailable`, where `subject` is the words that
-  stand for the axis (`taxonomy`, `capabilities`, or, from this item,
-  `configuration (work.tags)`); `sources` calls it with the axis name, so its
-  messages do not change.
+  gap_id, axis, *, subject=None) -> InheritedUnavailable`. `axis` is the
+  error's `axis` attribute (TCW-108 Step 3): `taxonomy`, `capabilities`, or,
+  from this item, `config`. `subject` is the words that stand for the axis in
+  the message. It defaults to the axis name, and this item passes
+  `configuration (work.tags)` or `configuration (work.jira)`. The `reason`
+  (`missing` or `unreadable`) comes from `link_state(gap_id)`, and the text
+  after the colon from `absent_note` or `link_problem`, as in `sources`.
+  `sources` calls it with the axis alone, so its messages do not change. A
+  test asserts that the configuration error's `axis` is `config`, so no
+  code that checks the axis meets an unknown value. TCW-112's third reason
+  (`store`, with its `detail`, TCW-112 Step 2) is meant to be added here as
+  one more keyword, so that all of an axis's messages are built in one place
+  (handoff to TCW-112).
 - `tcw/store/project.py`, `_read_config` (as TCW-108 Step 7b leaves it): in
   the `ancestor` and `outside` roles, a file whose read gives a problem (the
-  problem `read_project_file` returns, `tcw/config.py:257-270`: not found
-  after it was located, not UTF-8, not YAML, not a mapping, or a version this
-  TCW cannot read) is recorded as `link_problem` with that problem's text and
-  its links as unknown, instead of a graph problem; the `active` and
-  `descendant` roles keep TCW-108's handling (choice 7). If TCW-108 as landed
-  already does this, Step 0 records it and only the tests are added.
+  problem `read_project_file` returns, `tcw/config.py:257-270`: not UTF-8,
+  not YAML, not a mapping, or a version this TCW cannot read) is recorded as
+  `link_problem` with that problem's text and its links as unknown, instead
+  of a graph problem. The `active` and `descendant` roles keep TCW-108's
+  handling (choice 7). A file that is not there is a missing project, as
+  today (`_unreachable_edge`, `tcw/store/project.py:567-587`). A file that
+  reads but has no valid `id` stays a graph problem in every role
+  (`:607-618`). If TCW-108 as landed already does this, Step 0 records it
+  and only the tests are added.
 
 Tests that relied on an ancestor's unreadable file being a graph problem
 (found at Step 0 with `grep -rln "not valid YAML\|tcw-version: 99" tests`,
@@ -503,6 +629,18 @@ opened.
 - **A tag is read only when one is applied**: with `registered_tags` a
   `Withheld`, `validate_changes` with no `add_tags` returns, and with one
   raises the carried error.
+- **The checks the store's opening made are kept** (the review's S3). In a
+  project whose work directory cannot be found, `tcw work path` with no item
+  exits 1 with today's message. In a project whose graph is invalid (a
+  descendant that does not name it back), `tcw work lifecycle`, `tcw work
+  docs` and `tcw work stage prompt spec` with no item each exit 1 with the
+  message they give today. Each is compared with the output recorded at
+  Step 0 for the same fixture.
+- **References into a Jira-mode project** (spec 3.4): `reference_resolver`
+  and `resolve_tcw_ref` answer a reference to an existing folder `found` and
+  to an absent one `missing`, with `open_backend` replaced by a function
+  that raises. `reference_resolver` answers `unresolved` for a project
+  whose opening raises `InheritedUnavailable`.
 
 **Changes**
 
@@ -511,32 +649,55 @@ opened.
   built only when `changes.add_tags` is not empty. The two callers
   (`tcw/work/fs_backend.py:286`, `tcw/work/jira/backend.py:628`) still pass
   `config.tags`, which is no longer read on a create or edit without a tag.
+- `tcw/work/open.py`: `open_backend` (`:54-78`) is split in two.
+  `project_facts(root, *, personal=True, registry=None) -> ProjectFacts`
+  does everything `open_backend` does today before it builds a backend:
+  - the layered configuration, raising `ConfigError` on its problems;
+  - the registry, with `require_valid()` when `personal`;
+  - `current.id`;
+  - `work_path(root)`.
+  Each `ValueError` is turned into `BackendError`, as now (`:73-74`). It
+  returns `ProjectFacts(layered, project, path, registry)`, frozen.
+  `open_backend` calls it and then builds the backend, so its own behaviour
+  does not change. `external_stages_of(config)`, also new, answers
+  `JiraBackend.external_stages` or `FsWorkBackend.external_stages` by
+  `config.backend` (`tcw/work/jira/backend.py:216`, `tcw/work/fs_backend.py:235`).
+  Each of the places below calls `project_facts`, so it fails exactly as it
+  does today when the graph is invalid or the work path cannot be found (the
+  review's S3). It builds no `JiraBackend`, so it never reads `work.jira`.
 - `tcw/work/cli.py`:
-  - `_project_id(root)`: `FsProjectRegistry.open(root).current.id`, as
-    `open_backend` reads it (`tcw/work/open.py:65-71`).
-  - `_own` (`:69-74`) and `_personal_note` (`:449-460`) compare with
-    `_project_id(root)`.
-  - `_lifecycle` (`:567`) and `_docs` (`:596`): `read_work_config(root)`.
-  - `_path` with no item (`:318`): prints `work_path(root)`
-    (`tcw/work/open.py:28-33`).
-  - `_prompt_target` with no item (`:440-441`) returns the configuration and
-    the backend class's fixed `external_stages` (`external_stages_of(config)`,
-    a new function in `tcw/work/open.py` answering
-    `JiraBackend.external_stages` or `FsWorkBackend.external_stages` by
-    `config.backend`, `tcw/work/jira/backend.py:216`,
-    `tcw/work/fs_backend.py:235`) in place of a backend; `_stage_prompt`
-    (`:490-519`) and `_procedure` (`:521-546`) read those two instead of
-    `backend.config` and `backend.external_stages`.
-  - `resolve_item` (`:50-66`, as TCW-110 Step 8 leaves it): the argument is
-    sorted first (`sort_input(arg, "work", KEY)`); a form `a` or `c` naming a
-    project other than `_project_id(root)` opens that project with
-    `open_project` and resolves there, without opening the active project's
-    store; every other form opens `open_backend(root)` as now (a Jira key,
-    form `b`, still needs it, spec 3.4).
+  - `_own` (`:69-74`): compares with `project_facts(root).project`.
+  - `_personal_note(project, root, key_path)` (`:449-460`) takes the ID of
+    the project whose list was composed, in place of a backend, and
+    compares it with `project_facts(root).project`. Its two callers pass
+    `backend.project` with an item, and the facts' `project` without one:
+    `_stage_prompt`, `:507`, and `_procedure`, `:539`.
+  - `_lifecycle` (`:567`) and `_docs` (`:596`): `project_facts(root).layered.work`.
+  - `_path` with no item (`:318`): prints `project_facts(root).path`.
+  - `_prompt_target` with no item (`:440-441`) returns the facts' work
+    configuration and `external_stages_of(config)` in place of a backend.
+    `_stage_prompt` (`:490-519`) and `_procedure` (`:521-546`) read those two
+    instead of `backend.config` and `backend.external_stages`.
+  - `resolve_item` (`:50-66`, as TCW-110 Step 8 leaves it) passes
+    `resolve_work_input` the active backend as a function,
+    `lambda: open_backend(root)`, in place of the backend itself.
+- `tcw/work/open.py`, `resolve_work_input(text, active, root)` (TCW-110
+  Step 8): `active` is a function returning the active project's backend. It
+  is called only for form `b` (a Jira key), form `d`, and a form `a` naming
+  the active project, whose ID comes from `project_facts(root).project`.
+  Forms `a` and `c` naming another project go to `open_project` without
+  calling it. So the input is sorted in one place (the review's S4), and the
+  web's `parse_changes` (`tcw/serve/work.py:332-362`) and the other callers
+  TCW-110 Step 8 lists get the same fix. Callers that already hold a backend
+  pass `lambda: backend`. If TCW-110 as landed already takes a function, as
+  this item's handoff asks, Step 0 records it and only the tests are added.
 - `tcw/refs.py:139` and `reference_resolver` (`tcw/work/open.py:210-241`), for
-  a Jira-mode project: answered from the item folders (`link_exists(work_path(root),
-  folder)`) without building a `JiraBackend`, as they already answer it once
-  built (choice 8).
+  a Jira-mode project: answered from the item folders (`link_exists(<the
+  facts' path>, folder)`) without building a `JiraBackend`, as they already
+  answer it once built (choice 8). `reference_resolver` also turns an
+  `InheritedUnavailable` from opening the referenced project into
+  `UNRESOLVED`, so a reference into a filesystem project read for itself can
+  never stop `tcw validate` (spec 3.6).
 
 **Proves it:** the tests above; `tests/work/` and `tests/config/`
 unchanged; the full suite.
@@ -570,28 +731,63 @@ in the next two steps, before the item completes.
   `core`'s file; a `file:` binding cannot be inherited (Design 1.2), so the
   folder rule is checked through `Origin.folder` on `core`'s origin being
   `core`'s root (1.4).
+- **The user-wide file once** (choice 12, spec AC 12's last sentence):
+  `app: [core]`, the user-wide file setting `work.tags: [u]` and
+  `work.jira.credentials.email-env: MINE`. `app`'s configuration has exactly
+  one problem for `work.tags`, naming the user-wide file. `refused` holds one
+  record. `jira.email_env` reaches `app` as `MINE` (in Jira mode).
+- **When the order cannot be had** (choice 11, spec AC 15's last sentences),
+  7a's half: with `app`'s own `parents: notalist`, and with the loop
+  `app: [lib]`, `lib: [top]`, `top: [lib]`, `load_config(<app>)` returns
+  without raising. Its sources are `[app]`. `tcw validate` in `app` exits 1
+  with TCW-108's graph problem among its findings (the `where` TCW-108's AC 2
+  test checks), and `tcw work list` exits 1 as before.
+- **A project read for itself needs the registry** (choice 3):
+  `load_config(<core>, personal=False)` with `core: [base]` and no registry
+  raises `TypeError`; with no `parents:` it does not. Through each caller
+  Step 0 listed (`tcw work show <core's item>`, `tcw work new --project core`,
+  `tcw work edit --blocks`, the web app's item suggestions), with `core:
+  [base]` and `base` setting `work.tags: [b]`, the command reads `core`'s
+  configuration with `base`'s tags and does not raise `TypeError`.
 
 **Changes** `tcw/config.py`, `load_config` (`:574-645`) and helpers:
 
 - **The order** (choice 2): `P`'s shared file is read first, as now. When it
   declares `parents:`, the sources are `registry.source_entries("config",
-  root=root)` from the passed registry or `FsProjectRegistry.open(root)`
-  (choice 3); otherwise `[P]` and no registry is opened.
+  root=root)`. The registry is the one passed, or, when `personal` is true
+  and none was passed, `FsProjectRegistry.open(root)`. With `personal=False`
+  and none passed, `load_config` raises `TypeError` (choice 3). Without
+  `parents:`, the sources are `[P]` and no registry is opened.
+- **When the order cannot be had** (choice 11): opening the registry,
+  `current` and `source_entries` run inside one `try` that catches
+  `ValueError` and `TcwError`. The same holds when `P`'s own `link_state` is
+  `unreadable` or `P` is in the order's `unreadable`. Then the sources are
+  `[P]`, and the caught error is kept as `Config.order_error`, for Step 7c.
+  At this step nothing is withheld (the interim rule).
 - **P's mode** is `P`'s own `work.backend` from its shared file (spec 1.2,
   5.2): it decides whether an ancestor's `work.jira` is taken (1.5) and
   whether credential names are set aside (`_without_credentials`,
   `:419-438`).
-- **The fold** (2.1): built-in once; then for each source `Q` here, in order,
-  at `position` its index: `Q`'s shared file; when personal files apply
-  (`personal=True` and `personal_files_skipped()` false), the user-wide file
-  (read once, applied at every `Q`) and `personal_file(Q's root,
-  LOCAL_CONFIG_NAME)` (TCW-107 Step 6). For `Q` other than `P`, each layer's
-  mapping is first cut to the keys of Design 1.1 (`_inherited_part`), and
-  `work.jira` is dropped from it when `P` is not in Jira mode (1.5); only
-  then is it checked (naming rule, `_list_problems`, and `_allowed` for a
-  personal layer, as `P`'s own are, spec 1.6) and merged with today's
-  `_merge`. `P`'s layers are read and checked exactly as today. A source not
-  here contributes nothing (the interim rule above).
+- **The fold** (2.1): built-in once. Then, for each source `Q` here, in
+  order, at `position` its index:
+  - `Q`'s shared file;
+  - when personal files apply (`personal=True` and `personal_files_skipped()`
+    false), the user-wide file and `personal_file(Q's root,
+    LOCAL_CONFIG_NAME)` (TCW-107 Step 6).
+  For `Q` other than `P`, each layer's mapping is first cut to the keys of
+  Design 1.1 (`_inherited_part`). `work.jira` is dropped from it when `P` is
+  not in Jira mode (1.5). Only then is it checked (the naming rule,
+  `_list_problems`, and `_allowed` for `Q`'s local file, as `P`'s own are,
+  spec 1.6) and merged with today's `_merge`. `P`'s layers are read and
+  checked exactly as today. A source not here contributes nothing (the
+  interim rule above).
+- **The user-wide file** (choice 12) is read, checked against the whole
+  allowed list and set aside (`_without_credentials`) once, before the fold,
+  as `P`'s own layer. Its problems, `refused` and `skipped` go to `P`'s
+  `Config` once. What remains is kept, and at each `Q` other than `P` it is
+  cut to Design 1.1 and merged with no further check and no record. A value
+  refused in `Q`'s local file is recorded in `Config.inherited_refusals`
+  (shown by Step 7b's warning), not in `refused`.
 - **Origins** (choice 10): every layer's `Origin` carries `project`,
   `position` and TCW-107's `root`; files of another project are shown by
   their whole path, as another project's files are named today (`shown =
@@ -601,17 +797,28 @@ in the next two steps, before the item completes.
 - **A project read for itself** (`personal=False`, spec 5.2): its own sources
   are folded the same way with no personal file. The docstring of
   `load_config` (`:575-583`) says so, and no longer says "an upstream".
-- `tcw/work/open.py`: `_layered` (`:36-45`), `read_work_config` (`:48-51`)
-  and `open_backend` (`:54-78`) take `registry=None` and pass it to
-  `load_config`; `open_project` (`:88-99`), `delegate` (`:162-187`) and
-  `open_for_update` (`:190-199`) pass the registry they hold.
+- `tcw/work/open.py`: `_layered` (`:36-45`), `read_work_config` (`:48-51`),
+  `project_facts` and `open_backend` take `registry=None` and pass it to
+  `load_config`. `project_facts` opens the registry first, when none is
+  passed, and passes it on, so one call builds one registry (choice 15).
+  Every reading of a project for itself that Step 0 listed passes the
+  registry it holds:
+  - `open_project` (`:88-99`, as TCW-110 leaves it);
+  - `delegate` (`:162-187`), in both its `read_work_config` and its
+    `open_backend`;
+  - `open_for_update` (`:190-199`);
+  - `delegate_to_jira(root=…)` (`tcw/work/jira/tickets.py:339`), which gains
+    a `registry` keyword that `delegate` fills;
+  - `_other_items` (`tcw/serve/work.py:559`).
 
 **Reading every failure.** The full suite is run, and every failure is read
 one by one, as TCW-108 Step 7f does. An assertion is changed only where a
 criterion of this spec changes the behaviour it checks, and each change is
-listed in the implement round with its design rule. Expected: only tests from
-Step 0's list 1 whose parent passes `config` and sets `work.tags` or
-`work.jira` (the child now sees them). If more than five test files need the
+listed in the implement round with its design rule. Expected, and named in
+the implement round before the change: only the tests from Step 0's list 1
+and list 5 (its 7a group) whose parent passes `config` and sets `work.tags`
+or `work.jira`. The child now sees them, and the unregistered-tag warnings
+change with them. If more than five test files need the
 same change, the change is made by hand and checked with the safeguards
 below; no test is deleted in this step.
 
@@ -640,14 +847,21 @@ by its whole path and `work.tags`, with no `y`; `tcw work list`,
 the `warning`; in `core` it exits 1; `app` setting `work.tags: [x]` clears
 both; `core`'s `work.hooks.timeout: soon` never reaches `app`). AC 17's last
 sentence (`tcw config show` exits 1) is Step 9's, where `tcw config show`
-learns the rule.
+learns the rule. Also, spec 1.6's refusal: `core`'s `tcw-config.local.yaml`
+setting `work.tags: [x]` (refused by the allowlist), in `app`. `tcw work tags
+list` prints `core`'s committed tags and exits 0, and `tcw validate` exits 0
+with one `warning` at `core`'s local file. The user-wide file's `work.tags`
+of Step 7a's test still gives one error and no warning.
 
 **Changes**
 
 - `tcw/config.py`: a problem found in another project's layer by the checks
   of 7a, and a parser problem whose origin (`_origin_for`, `:559-571`, now
   ranking by `(position, layer)`) is another project's, is not put in
-  `Config.problems`. It is recorded as **broken** at its key of Design 1.1
+  `Config.problems`. The user-wide file is never another project's layer
+  (choice 12). A refusal by `_allowed` in another project's local file is
+  never merged, so it marks nothing broken; it stays in
+  `Config.inherited_refusals`. It is recorded as **broken** at its key of Design 1.1
   (`work.tags`, or `work.jira` for anything under it) with its `position`.
   After the fold, a broken mark stands unless a layer at a later position
   declares the key, or a key above it, with a value that replaces it whole
@@ -665,11 +879,14 @@ learns the rule.
   then `layered.require("work.tags")` before building the `JiraBackend`
   (choice 5).
 - `tcw/validate.py`, `config_findings` (`:361-381`): one `warning` per
-  problem in `Config.inherited_problems` whose key is still broken, `where`
-  the declaring file's whole path (spec 1.6, AC 10).
+  problem in `Config.inherited_problems` whose key is still broken, and one
+  per record in `Config.inherited_refusals`, `where` the declaring file's
+  whole path (spec 1.6, AC 10).
 - `tcw/work/fs_backend.py`, `work_store_problems` (`:527-566`): the
   unregistered-tag check is skipped when `config.tags` is a `Withheld`
-  (spec 1.6: a broken key is handled as an undecided one).
+  (spec 1.6: a broken key is handled as an undecided one). This is one of
+  the places choice 14 allows to test `isinstance(…, Withheld)`, with the
+  comment it asks for.
 - `tcw/validate.py`, `_work_findings` (`:550-600`): a `ConfigError` from
   `open_backend` is already left to `config_findings` (`:571-573`), which now
   reports the broken key as a warning; the code is unchanged, and a test of
@@ -692,13 +909,22 @@ sentences of AC 17.
   `tests/work/jira/conftest.py`'s `fake` fixture (`:78`), which records every
   request: `tcw work list` exits 7 with `(work.jira)` and the fake records
   none; `tcw validate` exits 0 with one `unresolved` finding naming `core`;
-  the six commands of AC 14 exit 0, `tcw work show` printing `lib`'s item.
+  the commands AC 14 lists exit 0, `tcw work show` printing `lib`'s item.
 - AC 15, both files (`parents: notalist`; not valid YAML), and TCW-108's AC
-  31 test passing unchanged.
+  31 test passing, amended only as spec 3.5 says.
 - AC 29, with two real git repositories, as TCW-108's AC 26 test builds them.
 - `tcw capabilities drift` in AC 14's layout exits 7 naming `(work.jira)`
-  (spec defect 2: it lists completed items through the backend), and in AC
+  (spec 3.4 row a: it lists completed items through the backend), and in AC
   13's layout exits 0.
+- AC 14's last sentence: the reference to `lib`'s item and the `tcw://` link
+  to `app`'s own item give no finding.
+- **When the order cannot be had** (choice 11, AC 15's last sentences), 7c's
+  half. With `app`'s own `parents: notalist`, `tcw work tags list` exits 1
+  naming the graph problem, and `tcw work new y --tag t` exits 1 and creates
+  nothing. `tcw validate` still exits 1 with the graph problem as a finding
+  among the others, and no traceback. The same holds for the loop. `app` also
+  setting `work.tags: [t]`: `tcw work tags list` prints `t` (a key the
+  project decides itself is not withheld).
 
 **Changes**
 
@@ -710,7 +936,14 @@ sentences of AC 17.
   when any key under it is undecided. An undecided key is withheld with
   `registry.unavailable(<P>, <the gap>, f"configuration ({key})")` (spec 3.3);
   undecided wins over broken for the same key (spec 1.6). `Config` keeps, for
-  `tcw validate`, the gaps that withheld something (`Config.gaps_withholding`).
+  `tcw validate`, the IDs of the gaps that withheld something, as the
+  attribute `Config.gaps_withholding` (a tuple, in load order).
+- **When the order could not be had** (choice 11): with `Config.order_error`
+  set and `P` declaring `parents:`, each key of Design 1.1 that `P`'s own
+  layers do not decide (choice 4's rule, as if one gap stood before `P`) is
+  withheld with `BackendError(str(order_error))`. `gaps_withholding` is not
+  touched, since no gap is known, and `tcw validate`'s graph check reports the
+  problem itself.
 - **No built-in value and no "required"** (spec 3.2): the built-in layer has
   no value at either key today (`built_in_values`, `:208-221`), so nothing is
   taken from it; `parse_jira_config` (`tcw/work/jira/config.py:175-243`)
@@ -724,23 +957,30 @@ sentences of AC 17.
   (`:496`): an `InheritedUnavailable` from `open_backend` skips the store's
   checks and adds no finding (spec 3.6).
 - `tcw/cli.py`, `_cmd_validate` (as TCW-108 Steps 7d and 11 leave it): the
-  finding made for each project in `effective(root).gaps_withholding()` gains
+  finding made for each project in `effective(root).gaps_withholding` gains
   `; could not check the configuration inherited from it`, after any row (c)
   suffix, once (spec 3.6).
-- TCW-108's tests of AC 20 and AC 31 that compare the finding's whole text, if
-  Step 0 found any, are amended to the new text and listed with Design 3.6.
+- TCW-108's tests of AC 19 (and Step 11's "what lies above is unknown"
+  tests), AC 20 and AC 31 that compare the finding's whole text, if Step 0
+  found any, are amended to the new text and listed with Design 3.6.
 
 **Reading every failure**, as in 7a: the failures expected are the tests of
-Step 0's list 1 whose parent passes `config` and is missing or unreadable, and
-the TCW-108 tests of Step 0's list 2. Each change is listed with its rule.
+Step 0's list 1 whose parent passes `config` and is missing or unreadable,
+the TCW-108 tests of Step 0's list 2 (AC 19, Step 11's "what lies above is
+unknown" tests, AC 20, AC 31), and list 5's 7c group, each named in the
+implement round before the change. Each change is listed with its rule. No
+test is deleted in this step; a test that no longer fits is amended to the
+criterion that changed it.
 
 **Proves it:** the tests above; `tests/test_parent_links_cli.py` and
 `tests/test_parent_links.py`; the full suite; `compare_outcomes.py` against
 Step 7b's record with an empty allowed list; the inventory against Step 0's.
 **Mutation check**, recorded and reverted: with `Withheld` replaced by an
 empty tuple for `work.tags` (an undecided key read as "no tags"), AC 13's
-`tcw work tags list` and `tcw work new y --tag t` tests go red, and the
-reason read is the exit code 0 or 3 in place of 7.
+`tcw work tags list` and `tcw work new y --tag t` tests go red. The reasons
+read are exit 0 for `tcw work tags list`, which prints nothing, and exit 2
+for `tcw work new y --tag t`, whose `UsageError` "is not registered"
+(`tcw/work/model.py:209-211`) exits 2 (`tcw/exit.py:10`), each in place of 7.
 
 ## Step 8 — the environment layer
 
@@ -766,7 +1006,11 @@ fixture has removed `TCW_NO_PERSONAL_CONFIG`:
   `../outside.md` refused with `resolves outside`, `TCW_CONFIG_DIR` written by
   `record.sh` equal to `app`'s root, and the failed `post` naming
   `from TCW_WORK_STAGES_SPEC_POST__APP`.
-- AC 25, AC 28.
+- AC 25, AC 28, both sentences. The second is `TCW_WORK_TAGS__LIB='[a]'`
+  and a reference from an `app` item to a `lib` item: one `environment`
+  error, no reference finding. **Mutation check**, recorded and reverted:
+  with the problems also put into `personal=False` configurations, the second
+  sentence's test goes red on a `broken` reference finding.
 - AC 27: a project with no `parents:`, with `TCW_PROJECT_X`, `TCW_JIRA_EMAIL`
   and `TCW_STDIN_TIMEOUT` set, gives the same standard output, standard error
   and exit code for `tcw work list`, `tcw work tags list`, `tcw config show
@@ -789,8 +1033,14 @@ fixture has removed `TCW_NO_PERSONAL_CONFIG`:
     (spec 5.3; TCW-107's `personal_files_skipped()`), and not read or checked
     when it is `1` or any other value, which keeps today's problem
     (`_personal_layers`, `:678-695`). Its problems go into
-    `Config.problems` of every configuration loaded (spec 4.4), each once per
-    command.
+    `Config.problems` of the active project's configuration only
+    (`personal=True`; choice 13, spec 4.4), once per command. A reading with
+    `personal=False` applies only the overrides that passed every check and
+    adds no problem, so a project read for itself, through
+    `_layered(personal=False)` (`tcw/work/open.py:43-44`), never raises
+    `ConfigError` because of a variable. Without this, `reference_resolver`
+    would answer `broken` (`:226-227`) for every reference into another
+    project.
   - **Who reads variables** (spec 4.4, 5.2): at each source `Q` of the fold,
     after `Q`'s local file, the overrides naming `Q` are merged as one layer
     each, in Step 2's order, with `Origin("environment", variable=<NAME>,
@@ -834,8 +1084,10 @@ holding `core`'s file by its whole path; `TCW_USER_NAME__APP=Robin` printed
 with `environment: TCW_USER_NAME__APP`; exit 7 with nothing on standard
 output in AC 13's first layout, with and without `--origin`; `(work.tags)` in
 AC 14's layout, where both keys are undecided; exit 1 with nothing printed in
-AC 10's first layout (if not already written at Step 7b). Every existing test
-of the file passes unchanged (AC 27).
+AC 10's first layout (if not already written at Step 7b). AC 12's last
+sentence: with `app: [core]` and the user-wide file setting `work.tags: [u]`,
+`--origin`'s set-aside block lists that value once. Every existing test of
+the file passes unchanged (AC 27).
 
 **Changes** `tcw/config_cli.py`:
 
@@ -943,7 +1195,7 @@ Each documentation entry, evaluated with the `documentation-sync` skill:
 | `docs/guide/jira.md` [Jira-Change] | yes: `work.jira` may come from a parent, `work.backend: jira` is always the project's own, a credential name may come from a variable | Deferred to TCW-117 (spec Non-goals and Notes). |
 | `docs/guide/<topic>.md` [Guide-Topic-Change] | yes: `docs/guide/configuration.md` (the inherited keys, `null`, `inherit: true` in `work.tags`, the environment layer, the allowed list, exit 7 for configuration), `docs/guide/multi-repo.md` | Deferred to TCW-117 (spec Notes list). |
 | `docs/release-notes/upcoming/<folder>.md` [Public-API] | yes | Written, in plain language: a project takes its parents' tags and Jira settings, except which backend it uses; how a child changes what it inherits (its own value, `inherit: true` in its tags, `null`); a missing parent stops only a command that needs a setting it could have given, with exit code 7, and `tcw validate` says "could not check"; a mistake in a parent's shared settings stops only what reads them; any setting a personal file may set can be set from an environment variable named `TCW_<KEY>__<PROJECT>`, with examples, and a variable naming a stage changes only what it names; `TCW_NO_PERSONAL_CONFIG=1` turns the variables off too; `tcw work tags add` in a child keeps following its parents. |
-| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Written, under Added (`INHERITED_KEYS`, `tcw/config_keys.py` with `known_keys`, `override_name`, `decode_key`, `read_overrides`; the `environment` layer; `Withheld`, `Config.withheld`, `Config.require`, `Config.inherited_problems`, `Config.gaps_withholding`, `Config.sources`, `Config.personal_variables`; `ProjectRegistry.source_entries`, `SourceEntry`, `ProjectRegistry.unavailable`; `SetList(inherit=)`; `external_stages_of`), Changed (`load_config` folds the configuration sources; `Origin` carries `project`, `variable`, `position`; `inherit: true` accepted in `work.tags`; `null` at `work.tags` and `work.jira` removes; `_allowed`'s voice; `parse_jira_config(undecided=)`; `parse_work_config(withheld=)`; `validate_changes` reads the tags only when one is added; `open_backend` requires the inherited keys in Jira mode; the commands that no longer open the store; `resolve_item` for another project's item; `tcw config show`'s exit codes and labels; `tcw work tags add` and `rm`; `_cmd_validate`'s suffix; an ancestor's unreadable shared file is unreadable, not a graph problem; `/api/project`'s `tags`) and Internal (the suite strips override variables). |
+| `docs/changelogs/upcoming/<folder>.md` [Any-Code-Change] | yes | Written, under Added (`INHERITED_KEYS`, `tcw/config_keys.py` with `known_keys`, `override_name`, `decode_key`, `read_overrides`; the `environment` layer; `Withheld`, `Config.withheld`, `Config.require`, `Config.inherited_problems`, `Config.inherited_refusals`, `Config.gaps_withholding`, `Config.order_error`, `Config.sources`, `Config.personal_variables`; `ProjectRegistry.source_entries`, `SourceEntry`, `ProjectRegistry.unavailable`; `SetList(inherit=)`; `project_facts`, `ProjectFacts`, `external_stages_of`), Changed (`load_config` folds the configuration sources; `Origin` carries `project`, `variable`, `position`; `inherit: true` accepted in `work.tags`; `null` at `work.tags` and `work.jira` removes; `_allowed`'s voice; `parse_jira_config(undecided=)`; `parse_work_config(withheld=)`; `validate_changes` reads the tags only when one is added; `open_backend` requires the inherited keys in Jira mode, and is built on `project_facts`; `load_config(personal=False)` needs the command's registry for a project with `parents:`; `delegate_to_jira(registry=)`; `resolve_work_input` takes the active backend as a function; the commands that no longer open the store; `resolve_item` for another project's item; references into a Jira-mode project answered without opening its store; `tcw config show`'s exit codes and labels; `tcw work tags add` and `rm`; `_cmd_validate`'s suffix; an ancestor's unreadable shared file is unreadable, not a graph problem, while a descendant's stays one; `/api/project`'s `tags`) and Internal (the suite strips override variables). |
 | `skills/<component>/SKILL.md` [Skill-Driven-Component] | yes: `skills/work/SKILL.md` (exit 7 for a configuration setting, `tcw work tags` in a child) | Deferred to TCW-117, as TCW-108 decided for its own skill passages (spec Non-goals); the text is in Step 14's note. |
 | `skills/configure/references/<document>.md` [Configuration-Key-Change] | yes: the inherited keys, `null`, `inherit: true` in `work.tags`, the override variables and the allowed list | Deferred to TCW-117 (spec Notes: "document Design 1.1's list where the configuration keys are documented (`skills/configure/references/`, `docs/guide/configuration.md`)"). |
 | `docs/use-cases.md` [Project-Setup-Change] | yes: S-5, UC-5, UC-6 | Deferred to TCW-117, with the spec Notes' wording. |
@@ -959,13 +1211,25 @@ Comments the dispatching session posts (the text is in the implement round):
 the spec's handoffs (Notes, "Handoffs to later items") plus what planning
 added:
 
-- **TCW-112:** `source_entries` and `unavailable(..., subject)` are the
-  non-raising form of `sources` and the one place its messages are built; an
-  ancestor whose shared file cannot be read is unreadable in the `ancestor`
-  and `outside` roles (Step 4); `taxonomy.extends` and `capabilities.extends`
-  are in `known_keys()` and come out when TCW-112 removes them.
+- The handoff texts are in the revise report of 2026-10-22, one block per
+  ticket; this list is their summary.
+- **TCW-108:** its tests of AC 19, 20 and 31, and Step 11's "what lies above
+  is unknown" tests, gain spec 3.6's suffix; written as "contains" checks,
+  they need no change here.
+- **TCW-110:** `resolve_work_input` takes the active backend as a function
+  (Step 6).
+- **TCW-112:** `source_entries` and `unavailable(project_id, gap_id, axis, *,
+  subject=None)` are the non-raising form of `sources` and the one place its
+  messages are built. Its third reason belongs there too. The configuration's
+  `axis` is `config`. An ancestor whose shared file cannot be read is
+  unreadable in the `ancestor` and `outside` roles (Step 4), and a
+  descendant's stays a graph problem. `taxonomy.extends` and
+  `capabilities.extends` are in `known_keys()` and come out when TCW-112
+  removes them.
 - **TCW-113:** a project read for itself is `load_config(root,
-  personal=False, registry=<the command's registry>)`.
+  personal=False, registry=<the command's registry>)`. The registry is
+  required for a project with `parents:`. Such a reading reports no variable
+  problem.
 - **TCW-115:** `tcw project config` takes `tcw config show`'s rule (Step 9):
   exit 7 for the first undecided key in `INHERITED_KEYS`' order, exit 1 for a
   broken one, nothing printed; each value's origin carries `project`,
@@ -978,8 +1242,8 @@ added:
   project it comes from and its two remedies, fetch the project or leave
   `config` out of that link; do not retry", and that `tcw work tags add` in a
   child writes `inherit: true` first.
-- **TCW-99:** the departures the spec's Notes list, and the two places the
-  plan found the spec's command list incomplete (spec defects 1 and 2 below).
+- **TCW-99:** the departures the spec's Notes list. The four spec defects
+  planning found have been fixed in the spec (below).
 
 ## Step 15 — the suite as CI runs it
 
@@ -1020,10 +1284,10 @@ is fixed in the step it belongs to, not with a skip.
 | 9 | 7a |
 | 10 | 7b |
 | 11 | 7a (files), 8 (variables, `personal=False`) |
-| 12 | 7a |
+| 12 | 7a (the user-wide file once), 9 (`--origin`'s set-aside list) |
 | 13 | 6 (the store is not opened, tags read only when applied), 7c |
-| 14 | 6 (the six commands), 7c (exit 7, no request, `tcw validate`) |
-| 15 | 4 (registry, the unreadable file), 7c (commands, `tcw validate`) |
+| 14 | 6 (the commands that no longer open the store, the two references), 7c (exit 7, no request, `tcw validate`, `tcw capabilities drift`) |
+| 15 | 4 (registry, the unreadable file, the descendant), 7a (the order cannot be had: no raise), 7c (commands, `tcw validate`, withholding when the order cannot be had) |
 | 16 | 7a, 7c |
 | 17 | 9 |
 | 18 | 3 (the editor), 10 |
@@ -1032,7 +1296,7 @@ is fixed in the step it belongs to, not with a skip.
 | 24, 25 | 8 |
 | 26 | 1 |
 | 27 | 8 (commands, the single project), 7a and 8 (`tests/config/` passing, the one listed change from Step 5) |
-| 28 | 8 |
+| 28 | 8 (both sentences) |
 | 29 | 7c |
 | 30 | 12 |
 | 31 | 15 |
@@ -1062,12 +1326,15 @@ depends on:
   problem before and is accepted now, and the one test that pinned the
   refusal moves to `work.documentation` in the same step; `null` at the two
   keys gives the same parsed result in one project (no tags; no `work.jira`).
-- 6→7a: runnable; Step 6 changes only which code opens the store and when the
-  tags are read, and nothing is withheld yet, so every command answers as
-  before.
-- 7a→7b: runnable; 7a's interim rules keep every 3.x outcome for a gap
-  (nothing contributed) and make an inherited problem stricter, not looser;
-  the failures 7a reads are only tests whose parents now pass a value.
+- 6→7a: runnable. Step 6 changes only which code opens the store and when
+  the tags are read. Each changed place keeps the checks the store's opening
+  made (`project_facts`), and nothing is withheld yet, so every command
+  answers as before.
+- 7a→7b: runnable. 7a's interim rules keep every 3.x outcome for a gap
+  (nothing contributed) and make an inherited problem stricter, not looser.
+  A registry that cannot answer is caught from 7a on, so `load_config` never
+  raises for it. The failures 7a reads are only tests whose parents now pass
+  a value.
 - 7b→7c: runnable; 7b only moves inherited problems out of
   `Config.problems`.
 - 7c→8: runnable; `tcw validate` skips rather than stops (7c's own change),
@@ -1079,36 +1346,37 @@ depends on:
 - 9→10, 10→11, 11→12: runnable; each changes one command's output and its own
   tests.
 
-## Spec defects found while planning
+## Spec defects found while planning, and how they were resolved
 
-1. **Design 3.4's list of commands that must stop opening the store is
-   incomplete.** `tcw work path` with no item opens it (`tcw/work/cli.py:318`)
-   to print the work path, which is not inherited; and `tcw/refs.py:139` and
-   `reference_resolver` (`tcw/work/open.py:210-241`) build a Jira-mode backend
-   to answer a reference that they then answer from the item folders. With
-   them unchanged, a Jira-mode project with an undecided `work.jira` would
-   exit 7 on `tcw work path`, on `tcw validate`'s reference check, and on any
-   `tcw taxonomy` or `tcw capabilities` command that checks a `tcw://` work
-   link, which Design 3.4's last paragraph says are never stopped. The plan
-   covers all three in Step 6 (choice 8); the spec's Risks bullet ("six
-   places") and Decision 19's list could name them.
-2. **`tcw capabilities drift` reads `work.jira` in Jira mode.** It lists the
-   completed items through the backend (`tcw/capabilities/cli.py:183-218`),
-   which in Jira mode asks Jira, so it needs every Jira setting and stops
-   with exit 7 when `work.jira` is undecided. Design 3.4 says every
-   `tcw capabilities` command is never stopped. The plan treats it as row (a)
-   and tests it (Step 7c); the spec's sentence needs that exception.
-3. **"No TCW-108 criterion or test changes" (Design 3.5) holds for the `tcw
-   work list` halves only.** TCW-108's AC 20 and AC 31 also run `tcw validate`
-   with a missing or unreadable parent that passes `config` and a child that
-   sets no `work.tags`; by this spec's 3.6, their `unresolved` finding gains
-   `; could not check the configuration inherited from it`. Their criteria
-   ask for "exactly one finding naming `core`" and "containing" a phrase, so
-   they hold; a test that compares the whole text would not. Step 0 checks,
-   and Step 7c amends under Decision 24.
-4. **Design 1.6's unreadable shared file "when it is not the active
-   project"** reads as covering descendants too, while TCW-108 Design 6.6,
-   which it extends, applies its rule to ancestors and projects read only for
-   a lookup and keeps a descendant's committed problems as graph problems.
-   The plan builds it for the `ancestor` and `outside` roles (choice 7); the
-   spec could say which.
+The plan review of 2026-10-22 confirmed the four defects this section first
+listed, and the item went back to spec. Each is now fixed in the spec, and
+this plan follows the fixed text.
+
+1. **Design 3.4's list of commands that must stop opening the store was
+   incomplete.** It missed `tcw work path` with no item
+   (`tcw/work/cli.py:318`) and the two readers of a reference into a
+   Jira-mode project. The first draft of this plan overstated their effect.
+   `tcw/refs.py:139` would not stop anything, because `resolve_tcw_ref`
+   catches every exception (`:123-124`). It would give a false `error`
+   finding in `tcw validate`'s link check and a false answer from
+   `/api/resolve`. No `tcw taxonomy` or `tcw capabilities` command calls it.
+   `reference_resolver` would let an `InheritedUnavailable` escape, so
+   `tcw validate` would exit 7. The spec's 3.4, its Risks bullet and Decision
+   19 now name all three, with these effects. Row (b) no longer lists
+   `--untag`, which reads no tag list in a filesystem project.
+2. **`tcw capabilities drift` reads `work.jira` in Jira mode.** It is now
+   in the spec's row (a), with an exception in 3.4's last paragraph, and in
+   AC 14.
+3. **"No TCW-108 criterion or test changes" (Design 3.5).** It now says that
+   no criterion changes. The `tcw validate` tests of TCW-108's AC 19 (with
+   its "what lies above is unknown" sentences), AC 20 and AC 31 gain the
+   suffix, and Decision 24 says so.
+4. **Design 1.6 and descendants.** The first draft of this plan said that
+   TCW-108 Design 6.6 applies only to ancestors and lookups. That was wrong
+   for `parents:` problems, which 6.6 also takes out of the graph problems
+   for a descendant. What 6.6 keeps as a descendant's graph problems is its
+   `children:` problems and its name-back check. The spec now says that a
+   whole unreadable file is a gap for an ancestor and a project read for a
+   lookup, and stays a graph problem for a descendant. The reason is 6.6's
+   reason for a descendant's `children:` problems (decided by the
+   dispatching session).
