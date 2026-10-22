@@ -1,7 +1,8 @@
 # Plan — TCW 4.0: guides, skills, use cases and the 3.x-to-4.0 migration guide
 
 Child 12 of TCW-99. This plan carries out the spec
-(`spec/spec.md`, revised after review, 43 acceptance criteria) on the `v4`
+(`spec/spec.md`, revised after review and corrected after the plan review,
+43 acceptance criteria) on the `v4`
 branch, in the worktree `/Users/brian/Projects/TCW/.claude/worktrees/v4`.
 
 **When it runs.** Implement starts after TCW-106, 107, 110, 108, 111, 109,
@@ -42,14 +43,32 @@ step names the words it looks for.
   recorded hits are what goes red, and they are seen before the change.
 - **Checked on `v4`**: the method of "How every claim about a command is
   checked", below.
+- **A scratch run** is any command run for this item outside the suite. It
+  runs in `<S>/runs/<step>/`, always through `<S>/scratch-env.sh <command>`
+  (Step 0 item 2), which runs the command with `HOME=<S>/home`,
+  `XDG_CONFIG_HOME=<S>/xdg` and `XDG_CACHE_HOME=<S>/cache`, and with every
+  `TCW_JIRA_*` and `TCW_PROJECT_*` variable of the calling shell removed.
+  `XDG_CONFIG_HOME` is what decides where TCW reads the user-wide file
+  (`$XDG_CONFIG_HOME/tcw/config.yaml`, else `~/.config/tcw/config.yaml`;
+  `tcw/config.py:192-205`, the same in 3.0.2), so a scratch run's user-wide
+  file is `<S>/xdg/tcw/config.yaml` and never the person's own.
+  `XDG_CACHE_HOME` decides where TCW keeps working copies of stores held in
+  another repository (`tcw/store/checkouts.py:60-68`). `HOME` is moved too,
+  so that nothing else under the person's home folder is read or written; git
+  then reads `<S>/home/.gitconfig`, which holds a scratch `user.name` and
+  `user.email` for scratch commits. `TCW_CONFIG_DIR` is not used for any of
+  this: it is only the folder TCW tells a hook its `file:` binding is read
+  from (`tcw/config.py:76`, `tcw/work/hooks.py:54`, `:77`), and it moves no
+  file (decided while planning, 14).
 
 ## How the steps are grouped
 
-The spec's Design 11 fixes three parts, each one commit with the suite as
-CI runs it green after it (criterion 43):
+The spec's Design 11 fixes one formatting-only commit and then three parts,
+each one commit with the suite as CI runs it green after it (criterion 43):
 
 | Part                                                                                    | Steps    | What it holds                                                                                                                                                                                       |
 | --------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0. Formatting only                                                                      | 0b       | `prettier --write` over every Markdown file in scope that the item will change, and nothing else (decided while planning, 13)                                                                       |
 | 1. The migration guide and its test                                                     | 0 to 5   | Step 0's inventory; `THREE_X_PATTERNS`, `scan`'s `flags`, and the scan's own tests; `tests/test_migration_guide_4_0.py`; `docs/migration-guide-3.X-to-4.0.0.md`; the README index line and its test |
 | 2. README, guides, use cases, agent and lifecycle documents, design amendments          | 6 to 18  | spec Design 3 (but 3.6), 4, 6, 7 and 8                                                                                                                                                              |
 | 3. Skills, other shipped text, evals, the ledger, and the scan over every live document | 19 to 30 | spec Design 5, 9.6 (a) and (b), 9.8, the live half of `tests/test_docs_describe_4_0.py`, the upcoming entries, the Documentation Sync                                                               |
@@ -76,25 +95,38 @@ where it applies:
    up there before it is written, and the help text is the source for what a
    command says it prints and writes (`Prints:`, `Writes:`). The dump is
    remade if any sibling commit lands after Step 0 (`git log -1` is
-   compared at the start of each part).
+   compared at the start of each part), and Step 30 checks once more after
+   the last sibling commit (decided while planning, 19).
 2. **The code spans, automatically.** Every `tcw …` in a code span or fenced
    block of a live document is checked by the three command checks in the
    suite; every `tcw …` the migration guide writes outside its two exempt
-   columns is checked by `tests/test_migration_guide_4_0.py` (Step 2).
+   columns is checked by `tests/test_migration_guide_4_0.py` (Step 2)
+   against the surface read from `--help`, so a flag 4.0 hides from `--help`
+   is refused (decided while planning, 16). A command written in plain prose,
+   outside any code span, is checked by no test: the grep of spec 9.3 catches
+   only removed commands and flags there, and the review reads the rest.
 3. **Behavior, by running it.** Every claim about what a command does (an exit
    code, a printed line or heading, a file it writes, a refusal's wording) is
-   run once in a scratch project under `<S>/runs/<step>/` and the command,
+   run once as a scratch run (above), in a scratch project under
+   `<S>/runs/<step>/`, and the command,
    its exit code and the lines quoted are pasted into the implement round's
    table "Checked on v4", one row per claim, named by the document and the
    spec letter it answers. A 4.0 project is made with
    `.venv/bin/tcw project new --id <id>`; a 3.x project, for `tcw migrate`,
-   with the lifecycle CLI's `tcw init --id <id>` (3.0.2), then edited by hand
+   with the lifecycle CLI's `tcw init --id <id>` (3.0.2, called by the
+   absolute path Step 0 item 2 records), then edited by hand
    to the 3.x shape needed. Wording a document quotes is copied from that
    output, never from a spec.
 4. **What cannot be run here** (anything that needs a live Jira site, or a
    network clone) is checked against the test in `tests/` that proves it,
-   and that test's ID is the row's evidence. Nothing in implement contacts
-   Jira or the network.
+   and that test's ID is the row's evidence. A test usually asserts only a
+   fragment of a message, so the wording a document quotes is copied from
+   the message's source in `tcw/` (its file and line in the row), and the
+   test is the evidence that the message is produced. Nothing in implement
+   contacts Jira or the network.
+5. **A claim nothing proves is not written.** A claim that is neither run
+   (layer 3) nor covered by a test (layer 4) is left out of the document,
+   listed in the implement round, and reported to the dispatching session.
 
 A difference found between the code and a sibling's spec is written as the
 code behaves, listed in the implement round under "Departures found", and
@@ -136,18 +168,33 @@ reported to the dispatching session (spec Design 1.1). It is not fixed here.
   `git grep -n '<file name>#'` over the live documents and fixes every
   inbound anchor in the same step, so `link_problems`
   (`tests/test_docs_describe_3_0.py:204-231`) stays green at each boundary.
-- **Formatting.** Each Markdown file a step changes is formatted with
-  `pnpm exec prettier --write <file>` in that step (criterion 39), and the
-  step's diff is read after formatting. At `2adac9c9`, 37 files in scope fail
-  `prettier --check` before any change (`README.md` alone gives 278 changed
-  lines), so the first formatting of a file is part of the step that first
-  changes it.
+- **Formatting.** Every file in scope is formatted once, in Step 0b's
+  formatting-only commit, before any content changes. Each later step runs
+  `pnpm exec prettier --write <file>` on the files it changed, which then
+  changes only what that step wrote, and the step's diff is read after it
+  (criterion 39). At `a9f316a8` prettier alone changes about 108 lines of
+  `README.md`, 131 of the TCW-99 `design.md`, 72 of
+  `skills/configure/references/personal.md` and 39 of `skills/README.md`
+  (the plan review's measurement; the first draft's 278 and 66 were wrong).
+  A file first found to need a change after Step 0b (by the scans of Steps
+  24 and 25, or the grep of decided while planning, 20) and not formatted
+  there is formatted in its content step, and the round names it and gives
+  its `git diff --word-diff -w`, so the review can read its content apart
+  from its formatting.
 - **Starting points** (spec Design 1.2): before a step changes a file, it
   reads that file's rows of Step 0's list 2 (the passages siblings changed
   only partway) and rewrites each for 4.0; the implement round records, per
   row, what the passage now says. A passage a sibling rewrote in full for
-  4.0 (its own prompts and procedures, list 3) is kept, and only the scan
-  reads it.
+  4.0 (its own prompts and procedures, list 3) is kept as written, unless
+  the scan or the grep finds a 3.x form in it, which is then fixed here
+  (decided while planning, 15).
+- **Placeholders.** A 4.0 folder path is never written `<project>/<…>`,
+  which P11 refuses; it uses other names, such as `<parent folder>/<folder>`.
+- **`tcw capabilities add` keeps `--status`.**
+  `test_the_capabilities_skill_changes_records_with_the_code`
+  (`tests/test_shipped_text.py:404-410`) requires `--status` on every line
+  naming that command, so a line about `--parent` on `add` either writes
+  `--status` too or does not name the command.
 
 ## Decided while planning
 
@@ -169,38 +216,45 @@ Each settled here, preferring the simpler and safer option.
 3. **The allowance is found by block, after the scan.** `three_x_problems`
    runs `scan(text, THREE_X_PATTERNS, flags=0)` over the whole file, then
    drops a hit whose block (from `doc_vocabulary.blocks`, the one that holds
-   the hit's line) contains `tcw migrate` or `migration-guide-3.X-to-4.0.0`.
-   Reason: `scan`'s line numbers stay true, and a fenced line, which is a
-   block of its own, can never borrow the allowance from another line.
+   the hit's line) contains `tcw migrate` or `migration-guide-3.X-to-4.0.0`,
+   unless that block is a line of a fenced block, which is never dropped
+   (decided while planning, 17). Reason: `scan`'s line numbers stay true, and
+   a fenced line can borrow the allowance neither from another line nor from
+   its own comment.
 4. **The migration guide links guides by file in Part 1**, and Part 2 adds an
    `#anchor` only once the heading exists (Step 9 adds
    `multi-repo.md#…` for the provisioning bound). Reason: `link_problems`
    checks an anchor into an owned guide against its headings, which Part 2
    writes.
-5. **The removed commands' suggestion lines are given in the migration guide
-   by their shape, not verbatim.** Spec 4.1 (g) puts "the full suggestion
-   lines" in the migration guide, but each line contains `tcw init` (and the
-   rest) in a code span, which 9.4 (d) refuses outside a mapping table's
-   first column. So the mapping table pairs each removed command (first
-   column, exempt) with its replacement, and "Scripts, hooks and agent
-   instructions" says each is refused (exit 2) with one added line of the
-   shape `` `<3.x command>` is now `<4.0 command>` ``. Reason: both rules
-   hold, and a reader still learns the exact line. Reported as a spec defect.
-6. **TCW-116's handoff of 2026-10-22 21:30, which came after the spec's
-   revision (21:23), is answered in the migration guide** as Design 2.4
-   (m) to (q) in Step 3. Reason: it states TCW-116 behavior the guide's
-   reader meets (a move across filesystems, `--no-jira` needing no
-   credentials, whose Jira settings a run uses, a hand edit between runs,
-   what A12 and B10 mean); it adds facts, not decisions. Reported as a spec
-   gap (H19).
+5. **The removed commands' printed lines are given word for word, split at
+   the command.** "Scripts, hooks and agent instructions" holds a mapping
+   table whose header is `3.x command typed | the rest of the line`, one row
+   per removed command, each copied from a scratch run on `v4` (for example
+   `tcw init` | is now `tcw project new`), and says each is refused with the
+   exit code the run shows (2 when planned). Decided by the dispatching
+   session, 2026-10-22 (plan review Q1.2): the header's first cell begins
+   `3.x`, so its first column is exempt from Step 2 (d) and the reader gets
+   the exact line; the first draft's "by their shape" lost the words. The
+   spec now says so (Design 2.10 (d), 4.1 (g)).
+6. **TCW-116's handoffs of 2026-10-22 21:30 and 21:53, which came after the
+   spec's revision (21:23), are answered in the migration guide** as Design
+   2.4 (m) to (s), and the quoted line of (f), in Step 3. Reason: they state
+   TCW-116 behavior the guide's reader meets (a move across filesystems,
+   `--no-jira` needing no credentials, whose Jira settings a run uses, a hand
+   edit between runs, what A12 and B10 mean, and three printed lines to quote
+   as written); they add facts, not decisions. The spec now holds them as
+   rows H19 and H20 and in criterion 3.
 7. **`KEY_PATHS` in `tests/test_configuration_text_home.py` follows the 4.0
    keys.** When `projects.md` loses its `projects.*` headings (Step 22), the
    24 `projects.*` paths leave `KEY_PATHS`, and `parents` and `children`
    join it, each with one heading and a label read from the code's
-   `PERSONAL_KEYS`; the count assertion becomes the new length. `children`,
-   which TCW-108 and TCW-109 put in `LOCAL_ONLY_KEYS` rather than
-   `PERSONAL_KEYS`, is labelled `Shared:` and its section says it may also
-   be listed in `.tcw/tcw-config.local.yaml`. `tcw-version` is not added: the
+   `PERSONAL_KEYS`; the count assertion (`:63`, 57 at `2adac9c9`) becomes 33:
+   57, less TCW-112's two `extends` paths, less the 24 `projects.*` paths,
+   plus `parents` and `children`. `children`, which TCW-108 and TCW-109 put
+   in `LOCAL_ONLY_KEYS` rather than `PERSONAL_KEYS`, is labelled `Shared:`
+   (forced, not chosen: the test's rule is that every label but `Shared`
+   equals `PERSONAL_KEYS`, `tests/test_configuration_text_home.py:8-10`), and
+   its section says it may also be listed in `.tcw/tcw-config.local.yaml`. `tcw-version` is not added: the
    list is hand-kept and need not hold every key (its docstring), and its
    section in `work.md` is enough. Reason: the test's expected text is a 3.x
    key list this item removes (spec Design 9.1 allows such a change, listed
@@ -217,16 +271,23 @@ Each settled here, preferring the simpler and safer option.
    dispatching session, not edited around.
 9. **A mistyped command is written in prose, its suggestions in code spans**
    (rule above). Reason: `_check` fails on `tcw new` in backticks. Spec 4.1
-   (g) writes "`tcw new`" with backticks; reported as a spec defect.
-10. **P12 and `show`'s `overrides:` line.** 4.0's `tcw capabilities show` and
-    `tcw taxonomy show` print an `overrides:` line for an override (TCW-113
-    plan, choice 8), and P12 (`^\s*overrides:`) would flag that line in a
-    fenced example. So no document shows `show` output with that line in a
-    fenced block; the line is described in prose, with `overrides:` in a
-    code span mid-sentence. Reason: the spec's table is not loosened here.
-    Reported as a spec defect, with the narrowing the dispatching session may
-    choose (P12 matching only a value holding `cap-`, which P9 already
-    covers).
+   (g) wrote "`tcw new`" with backticks; the spec now says prose (plan
+   review Q1.3).
+10. **P12 matches only a 3.x pointer.** 4.0's `tcw capabilities show` and
+    `tcw taxonomy show` print `overrides: <full id>` for an override (TCW-112
+    plan, choice 7 and its "Records" step; TCW-113 plan choice 8 only puts
+    `overridden by:` on the line after it), and the first P12,
+    `^\s*overrides:`, refused that line in a fenced example. P12 is now
+    `^\s*overrides:\s*[^\s./]+/` (spec 9.2): a 3.x pointer's first part has
+    no dot (`core/cap-…`, `<alias>/<…>`), and a 4.0 full identifier always
+    has one before its first `/` (`<project>.<namespace>/<id-path>`, TCW-110
+    spec, Goals 1). So a document may show real `show` output, `overrides:`
+    line included, in a fenced block. Step 0 item 8 checks on `v4` that a
+    printed full identifier holds that dot; if one does not, the case is
+    reported and P12 is not loosened. Decided by the dispatching session,
+    2026-10-22 (plan review D1): it keeps the one thing only P12 catches, a
+    placeholder pointer, and drops the first draft's ban on showing real
+    output where readers of the taxonomy guide will look for it.
 11. **No reference file of a skill is renamed or split.** The eval routing
     checks name reference files by path (`tests/test_skill_path_pointers.py`;
     `evals/evals.json`'s `opened` assertions), and the configure router must
@@ -234,15 +295,93 @@ Each settled here, preferring the simpler and safer option.
 12. **`docs/use-cases.md`'s UC-3 gap "TCW-98 and TCW-99 will change how a
     parent sees children" is removed without saying TCW-99 is done**, since
     TCW-99 completes only at TCW-118; the document describes 4.0, where that
-    change has landed. Reason: the spec's "removed: TCW-99 is done" (Design
-    6.4) would be false on `v4` at the time of writing.
-13. **The design amendments are formatted with the rest of `design.md`.**
-    Prettier changes 66 lines of `design.md` at `2adac9c9`; the formatting
-    and the seven amendments land together in Part 2's commit, and the
-    implement round gives `git diff --word-diff` of the seven passages so
-    the review can read the amendments apart from the formatting. Reason:
-    criterion 39 formats every changed Markdown file, and criterion 43 allows
-    one commit per part.
+    change has landed. Reason: the spec's first "removed: TCW-99 is done"
+    (Design 6.4) would be false on `v4` at the time of writing; the spec now
+    says so.
+13. **One formatting-only commit comes before Part 1** (Step 0b). It formats
+    every Markdown file in scope that this item will change, the TCW-99
+    `design.md` included, and changes nothing else; each part's commit then
+    shows only content. Decided by the dispatching session, 2026-10-22 (plan
+    review D2): CI does not run prettier (`.github/workflows/test.yml` runs
+    `pytest` and `pnpm check:build`; `prettify:check` is reached only through
+    `pnpm typecheck`, `package.json:15-17`), so criterion 39 is a local rule,
+    but formatting mixed into the content commits would bury about 30 "the
+    review lists" criteria under table padding. The spec's Design 11 and
+    criterion 43 now say so.
+14. **Every scratch run is isolated from the person's own files** (Words
+    used below, "A scratch run"; Step 0 items 2 and 9). Decided by the
+    dispatching session, 2026-10-22 (plan review M1): the first draft asked
+    for "a user-wide file holding `not_tags`" without saying where, and the
+    only place it could land was the person's real
+    `~/.config/tcw/config.yaml`, which every `tcw` on this machine, 3.0.2
+    included, would then read. Moving `HOME`, `XDG_CONFIG_HOME` and
+    `XDG_CACHE_HOME` into `<S>` is checked, not assumed: the state of the
+    real user-wide file and store cache is recorded before the first run and
+    compared at Steps 5, 18 and 30.
+15. **A 3.x form in a list 3 passage is fixed here.** If a passage a sibling
+    rewrote in full still holds a 3.x form when Steps 16, 24 or 25 reach it,
+    this item fixes it in place with the smallest change of wording, lists
+    the fix under "Departures found" in the implement round with the sibling
+    it came from, and tells the dispatching session; Part 3 then ends with
+    the suite passing. Decided by the dispatching session, 2026-10-22 (plan
+    review M2): Step 28's scan of every live document fails on any hit left
+    unfixed, so "report, do not change" could never end Part 3 green, and
+    every sibling is complete by the time this item is implemented. At
+    `2adac9c9` three list 3 files have such hits (`docs/lifecycle/abstraction.md:92`,
+    `tcw/work/prompts/plan.md:38`, `tcw/work/procedures/audit-backlog.md:27`),
+    which TCW-111 Step 15, TCW-114 Step 20 and TCW-113 Step 17 plan to
+    rewrite.
+16. **The migration guide's command test reads the surface `--help` shows**
+    (Step 2 (d)). Decided by the dispatching session, 2026-10-22 (plan review
+    M3): `command_problem` collects every option the parser registers
+    (`tests/test_shipped_text.py:305`), including those registered with
+    `help=argparse.SUPPRESS`, which TCW-113 and TCW-114 keep (`--local`, and
+    `--project` and `--blocks` on `tcw work`) so that they can print a
+    refusal; so `tcw work new "t" --project app` would pass it. `_check`
+    against the tree `_walk` reads from `--help`
+    (`tests/test_documented_cli_surface.py:173-216`) refuses them, is the
+    check every live document is already held to, and needs no list of
+    removed flags kept by hand, which an explicit list would. (d) runs both,
+    since `command_problem` also checks procedure and stage names.
+17. **A fenced line never carries the allowance.** `three_x_problems` drops
+    a hit only when its block is a paragraph, list item or table row naming
+    `tcw migrate` or the guide; a hit on a fenced line always stays, even
+    when that same line names `tcw migrate`. Decided by the dispatching
+    session, 2026-10-22 (plan review D3): spec Design 1.6 (b) forbids a 3.x
+    example in a fenced block, and the first revision's "one line of a
+    fenced block" let one pass by its own comment; the spec's 9.2 now says
+    so.
+18. **A Markdown file under `tests/` that describes test data is fixed only
+    in its words.** Step 28 scans every tracked Markdown file outside the
+    archival trees, which includes descriptions such as TCW-116's planned
+    `tests/migrate/data/README.md`. If one names a 3.x form, the paragraph
+    holding it gains the words that the data is what `tcw migrate` converts
+    (true of every such file), so the allowance covers it; no data file
+    changes. The fix is listed as in decided 15. Decided by the dispatching
+    session, 2026-10-22 (plan review Q2): it keeps TCW-116's test data
+    byte for byte and keeps the scan whole, with no list of excluded files.
+    At `a9f316a8` the only such file with a hit is
+    `tests/cli/scenarios/13-release-integrity.md`, which Step 25 rewrites.
+19. **Each sibling is past review before Step 0, and the guide is checked
+    again after the last sibling commit.** Step 0 item 1 requires each of
+    TCW-106 to TCW-116 at qa or completed, not merely past implement; and
+    Step 30 runs `git log <base>..HEAD -- tcw/`, leaving out this item's own
+    commits, and, if anything changed, redoes Step 3's dry run and the other
+    runs whose output a document quotes, and compares. Decided by the
+    dispatching session, 2026-10-22 (plan review S2): a review or qa fix to
+    a sibling during Part 3 (TCW-116's plan was still being fixed when this
+    plan was written) would otherwise never reach the guide written in
+    Part 1.
+20. **The root `tcw-config.yaml` wording is found by a grep.** Step 24 runs
+    `git grep -nE '(^|[^/.a-z-])tcw-config(\.local)?\.yaml'` over the live
+    documents and decides each line: a line meaning the project's file says
+    `.tcw/tcw-config.yaml`; a line about a 3.x project names `tcw migrate`.
+    At `2adac9c9` it reaches lines no step names:
+    `skills/documentation-sync/SKILL.md:15`, `:31`,
+    `skills/setup/references/jira.md:33` and `docs/procedures/create-work.md:1`.
+    Decided by the dispatching session, 2026-10-22 (plan review S4): the
+    scan has no pattern for that name, which is still the file's name in
+    4.0, so no other check finds those lines.
 
 ## Step 0 — start from what the earlier items left
 
@@ -250,13 +389,25 @@ No file in the repository changes. Everything goes to `<S>` and into the
 implement round.
 
 1. **Confirm the order.** `git log --oneline` on `v4` shows each of TCW-106
-   to TCW-116 completed (its last implement commit and its ticket at a stage
-   after implement, read with `tcw work show <key>`); if one has not landed,
-   stop and report it.
-2. **Tools.** `.venv/bin/tcw --version` prints `tcw 4.0.0`;
-   `tcw --version` prints `tcw 3.0.2`; `pnpm install --frozen-lockfile`
-   (the worktree has no `node_modules` at `2adac9c9`, so `pnpm exec
-prettier` fails there); `pnpm exec prettier --version` prints 3.9.9.
+   to TCW-116 completed (its last implement commit, and its ticket at qa or
+   completed, read with `tcw work show <key>`, so no review fix is still to
+   come; decided while planning, 19); if one has not, stop and report it.
+2. **Tools**, in this order. First `pnpm install --frozen-lockfile` (the
+   worktree has no `node_modules` at `2adac9c9`, so `pnpm exec prettier`
+   fails there), then `pnpm exec prettier --version` prints 3.9.9;
+   `.venv/bin/tcw --version` prints `tcw 4.0.0`; `tcw --version` prints
+   `tcw 3.0.2`. The lifecycle CLI's absolute path is recorded as
+   `LIFECYCLE_TCW` (`pyenv which tcw` where the `tcw` on the path is a pyenv
+   shim, else `command -v tcw`), because a shim looks for its own files under
+   `$HOME`, which a scratch run moves. The scratch environment is made:
+   `<S>/home/.gitconfig` (a scratch `user.name` and `user.email`), the empty
+   folders `<S>/xdg` and `<S>/cache`, and `<S>/scratch-env.sh`, which runs
+   its arguments under `env` with `HOME`, `XDG_CONFIG_HOME` and
+   `XDG_CACHE_HOME` set as "A scratch run" says and with `-u` for each
+   `TCW_JIRA_*` and `TCW_PROJECT_*` name that `env` lists in the calling
+   shell. It is checked once: `<S>/scratch-env.sh .venv/bin/tcw project
+config --origin` in a scratch project names `<S>/xdg/tcw/config.yaml` as the
+   user-wide file, and `<S>/scratch-env.sh env | grep -c '^TCW_JIRA'` prints 0.
 3. **Record `<base>`**: `git rev-parse HEAD`, the commit before this item's
    first (criterion 42's `<base>`).
 4. **The surface dump** (`<S>/dump_help.py`, above). Also the exit codes:
@@ -268,8 +419,9 @@ prettier` fails there); `pnpm exec prettier --version` prints 3.9.9.
    grep, byte for byte). Baselines: the grep's output (125 lines at
    `2adac9c9`; expected far fewer once TCW-112 to TCW-115 have run) and the
    scan's output over every live document, both saved as
-   `<S>/baseline-grep.txt` and `<S>/baseline-scan.txt`. At `2adac9c9` the
-   scan finds 230 hits in 30 live documents, the most in
+   `<S>/baseline-grep.txt` and `<S>/baseline-scan.txt`. At `a9f316a8` the
+   scan finds about 282 hits in 30 live documents (the plan review's count;
+   the first draft's 230 was a slip in adding them up), the most in
    `skills/configure/references/projects.md` (50), `personal.md` (30),
    `docs/use-cases.md` (25) and `README.md` (22).
 6. **List 1: what each sibling left in live documents, and the tests it
@@ -278,29 +430,31 @@ prettier` fails there); `pnpm exec prettier --version` prints 3.9.9.
    item copies it, one row per passage, with a column for what this item
    makes it say:
 
-    | Sibling | What it changed in live documents (plan step)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Kind                                                                |
-    | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-    | TCW-106 | `.tcw/tcw-config.yaml` and `tests/test_repo_config_pair.py` (Step 5a); records (Step 7); no live document (Step 8 defers all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | records only                                                        |
-    | TCW-107 | `skills/work/SKILL.md:115`, the exit-5 sentence (Documentation Sync); records (Step 11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | partway (D107, H2)                                                  |
-    | TCW-108 | the exit-code tables of `docs/guide/cli.md:140-148`, `skills/work/references/commands.md:33-41` and the record `cli/rely-on-one-output-contract` (Step 3, with row 7 and rows 3 and 5 stripped of `upstream` and the `jira` block); new `tests/test_exit_code_tables.py`; records (Step 14)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | partway (H4)                                                        |
-    | TCW-109 | records only (Step 12); `tcw config show`'s help (Step 9, then renamed by TCW-115)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | records only                                                        |
-    | TCW-110 | records (Step 16); `tests/test_identifier_sweep.py` (code only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | records only                                                        |
-    | TCW-111 | `tcw/work/prompts/plan.md` step 6's `--nest` sentence, `docs/lifecycle/abstraction.md` (interface list, the bounded-folder bullet, one "Abstract spine" sentence) and their tests in `tests/test_shipped_prompts.py` and `tests/test_docs_describe_3_0.py` (Step 15); `docs/guide/examples/commit-item-after-move.sh` (Step 16); records (Step 18)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | its own, in full                                                    |
-    | TCW-112 | Step 5a: `README.md:360`, `:371`, `:421`, `:432`; `skills/taxonomy/SKILL.md:86`, `:111-115`, `:132`; `skills/capabilities/SKILL.md:26`, `:89`, `:94`, `:122-123`, `:130`, `:138`, `:175`; `skills/configure/SKILL.md:4`; `skills/configure/references/stores.md:108-114`, `projects.md:6`, `:55`, `:117`, `:343-371`, `personal.md:145-148`; `skills/setup/references/taxonomy.md:18`; `docs/guide/taxonomy-and-capabilities.md:37-38`, `:57-64`, `:212-213`; `docs/guide/cli.md:14`; `docs/guide/multi-repo.md:257-269`; `docs/guide/linking-and-validation.md:17`, `:139`; `KEY_PATHS` loses the two `extends` keys. Step 19: `skills/capabilities/SKILL.md:29`, `:141-147`; `docs/guide/taxonomy-and-capabilities.md:79`, `:222-227`. Step 23: the command-table rows of the taxonomy and capabilities skills. New `tests/test_no_3x_inheritance.py` (code and tests only) | partway (H12, D112)                                                 |
-    | TCW-113 | Step 12b: `README.md:413`, `skills/capabilities/SKILL.md:176`, `docs/guide/taxonomy-and-capabilities.md:32`, `:98` (as far as `--local`); Step 17: `tcw/work/procedures/audit-backlog.md` and `agents/backlog-auditor.md` (full identifiers, `--scope down`), with `tests/test_shipped_procedures.py`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | partway (H16) for Step 12b; its own, in full, for Step 17           |
-    | TCW-114 | Step 7: `skills/work/SKILL.md:4`, `:93-100`, `:107-110`, `:111-112`; `skills/work/references/commands.md:11`, `:19`; `skills/capabilities/SKILL.md:153`, `:181`; `skills/configure/references/projects.md:170`, `:199`; `docs/guide/cli.md:150`; `docs/guide/jira.md:235`; `docs/guide/multi-repo.md:141`, `:179-184`, `:187`; `docs/guide/work.md:332`, `:351`; `README.md:608`; `docs/use-cases.md:161`, `:213-216`; `tcw/work/procedures/audit-backlog.md:28`; records. Step 20: `tcw/work/prompts/plan.md` step 6 (final form), `docs/lifecycle/abstraction.md` (**move** entry). Step 6: the three command checks skip `-C <one token>`. Removed rows in `tests/test_migration_guide.py` and `tests/doc_vocabulary.py`'s text references (Step 7)                                                                                                                        | partway (H14) for Step 7's documents; its own, in full, for Step 20 |
-    | TCW-115 | Step 3: every live Markdown file naming `tcw init`, `tcw projects list`, `tcw config show` or `tcw provision`, by script, as far as the new name (43 files at `d2d02829`: `README.md`, 18 capability and 2 taxonomy descriptions, 4 guides, `docs/use-cases.md`, 15 files under `skills/`, `tcw/work/procedures/search.md`, `tests/cli/scenarios/13-release-integrity.md`); the list is in its implement round, copied from `rename-report.txt`                                                                                                                                                                                                                                                                                                                                                                                                                               | partway (H15)                                                       |
-    | TCW-116 | records (Step 13); `tests/test_ledger_3_0.py` reads either state-file name (Step 12); no live document (Step 28 defers all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | records only                                                        |
+    | Sibling | What it changed in live documents (plan step)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Kind                                                                |
+    | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+    | TCW-106 | `.tcw/tcw-config.yaml` and `tests/test_repo_config_pair.py` (Step 5a); records (Step 7); no live document (Step 8 defers all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | records only                                                        |
+    | TCW-107 | `skills/work/SKILL.md:115`, the exit-5 sentence (Documentation Sync); records (Step 11)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | partway (D107, H2)                                                  |
+    | TCW-108 | the exit-code tables of `docs/guide/cli.md:140-148`, `skills/work/references/commands.md:33-41` and the record `cli/rely-on-one-output-contract` (Step 3, with row 7 and rows 3 and 5 stripped of `upstream` and the `jira` block); new `tests/test_exit_code_tables.py`; records (Step 14)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | partway (H4)                                                        |
+    | TCW-109 | records only (Step 12); `tcw config show`'s help (Step 9, then renamed by TCW-115)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | records only                                                        |
+    | TCW-110 | records (Step 16); `tests/test_identifier_sweep.py` (code only)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | records only                                                        |
+    | TCW-111 | `tcw/work/prompts/plan.md` step 6's `--nest` sentence, `docs/lifecycle/abstraction.md` (interface list, the bounded-folder bullet, one "Abstract spine" sentence) and their tests in `tests/test_shipped_prompts.py` and `tests/test_docs_describe_3_0.py` (Step 15); `docs/guide/examples/commit-item-after-move.sh` (Step 16); records (Step 18)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | its own, in full                                                    |
+    | TCW-112 | Step 5a: `README.md:360`, `:371`, `:421`, `:432`; `skills/taxonomy/SKILL.md:86`, `:111-115`, `:132`; `skills/capabilities/SKILL.md:26`, `:89`, `:94`, `:122-123`, `:130`, `:138`, `:175`; `skills/configure/SKILL.md:4`; `skills/configure/references/stores.md:108-114`, `projects.md:6`, `:55`, `:117`, `:343-371`, `personal.md:145-148`; `skills/setup/references/taxonomy.md:18`; `docs/guide/taxonomy-and-capabilities.md:37-38`, `:57-64`, `:212-213`; `docs/guide/cli.md:14`; `docs/guide/multi-repo.md:257-269`; `docs/guide/linking-and-validation.md:17`, `:139`; `KEY_PATHS` loses the two `extends` keys. Step 19: `skills/capabilities/SKILL.md:29`, `:141-147`; `docs/guide/taxonomy-and-capabilities.md:79`, `:222-227`. Step 23: the command-table rows of the taxonomy and capabilities skills. New `tests/test_no_3x_inheritance.py` (code and tests only)        | partway (H12, D112)                                                 |
+    | TCW-113 | Step 12b: `README.md:413`, `skills/capabilities/SKILL.md:176`, `docs/guide/taxonomy-and-capabilities.md:32`, `:98` (as far as `--local`); Step 17: `tcw/work/procedures/audit-backlog.md` and `agents/backlog-auditor.md` (full identifiers, `--scope down`), with `tests/test_shipped_procedures.py`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | partway (H16) for Step 12b; its own, in full, for Step 17           |
+    | TCW-114 | Step 7: `skills/work/SKILL.md:4`, `:93-100`, `:107-110`, `:111-112`; `skills/work/references/commands.md:11`, `:19`; `skills/capabilities/SKILL.md:153`, `:181`; `skills/configure/references/projects.md:170`, `:199`; `docs/guide/cli.md:150`; `docs/guide/jira.md:235`; `docs/guide/multi-repo.md:141`, `:179-184`, `:187`; `docs/guide/work.md:332`, `:351`; `README.md:608`; `docs/use-cases.md:161`, `:213-216`; records (its change to `tcw/work/procedures/audit-backlog.md:28` is left out here: TCW-113 Step 17, which lands after it, rewrites those lines in full, so they are list 3 only). Step 20: `tcw/work/prompts/plan.md` step 6 (final form), `docs/lifecycle/abstraction.md` (**move** entry). Step 6: the three command checks skip `-C <one token>`. Removed rows in `tests/test_migration_guide.py` and `tests/doc_vocabulary.py`'s text references (Step 7) | partway (H14) for Step 7's documents; its own, in full, for Step 20 |
+    | TCW-115 | Step 3: every live Markdown file naming `tcw init`, `tcw projects list`, `tcw config show` or `tcw provision`, by script, as far as the new name (43 files at `d2d02829`: `README.md`, 18 capability and 2 taxonomy descriptions, 4 guides, `docs/use-cases.md`, 15 files under `skills/`, `tcw/work/procedures/search.md`, `tests/cli/scenarios/13-release-integrity.md`); the list is in its implement round, copied from `rename-report.txt`                                                                                                                                                                                                                                                                                                                                                                                                                                      | partway (H15)                                                       |
+    | TCW-116 | records (Step 13); `tests/test_ledger_3_0.py` reads either state-file name (Step 12); no live document (Step 28 defers all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | records only                                                        |
 
     For every row marked "partway", the passages are re-found by their words
     on `v4` and listed as **list 2** (file, line on `v4`, the words now
     there). The rows marked "its own, in full" are **list 3**: they are read,
     scanned and left as their sibling wrote them, unless the scan or the grep
-    finds a 3.x form, which is then reported to the dispatching session
-    rather than changed.
+    finds a 3.x form, which is then fixed here with the smallest change of
+    wording, listed under "Departures found" with the sibling it came from,
+    and reported to the dispatching session (decided while planning, 15).
 
 7. **Tests whose expected text this item will change**, read on `v4` and
-   listed: `KEY_PATHS` and its count (`tests/test_configuration_text_home.py:38-61`);
+   listed: `KEY_PATHS` and its count (`tests/test_configuration_text_home.py:38-63`;
+   57 now, 33 after Step 22, decided while planning, 7);
    the index test (`tests/test_docs_describe_3_0.py:438-444`); any test that
    asserts a phrase in a document this item rewrites: at `2adac9c9`,
    `test_the_capabilities_skill_changes_records_with_the_code`
@@ -327,11 +481,50 @@ prettier` fails there); `pnpm exec prettier --version` prints 3.9.9.
    `LOCAL_ONLY_KEYS` in `tcw/config.py`), `INHERITED_KEYS` (TCW-109), the
    exit codes, `REMOVED_COMMANDS` (`tcw/cli_suggest.py`, TCW-115), the
    provisioning bound (`tcw/provision.py`'s `_bound_problem`, TCW-115), the
-   migration headings and line forms (`tcw/migrate/`, TCW-116), and the
-   finding wordings of `tcw validate` (`tcw/validate.py`, `tcw/object_folders.py`).
+   migration headings and line forms (`tcw/migrate/`, TCW-116), the
+   finding wordings of `tcw validate` (`tcw/validate.py`, `tcw/object_folders.py`),
+   and that a full identifier as `show` prints it after `overrides:` holds a
+   dot before its first `/` (a scratch run; decided while planning, 10).
+9. **The person's own files, before any scratch run.** The state of
+   `~/.config/tcw/config.yaml` (its `shasum -a 256`, or that it does not
+   exist, as on 2026-10-22) and `ls -A ~/.cache/tcw/stores`, read with the
+   real `HOME`, saved as `<S>/real-files-before.txt`. Steps 5, 18 and 30
+   read them again and compare; a difference stops the work and is reported
+   (decided while planning, 14).
+10. **The formatting list** for Step 0b: every Markdown file a step of this
+    plan names, every live document with a hit in the two baselines or in the
+    grep of decided while planning, 20, and the TCW-99 `design.md`, less what
+    `.prettierignore` excludes and less the files this item creates; saved
+    as `<S>/format-list.txt`.
 
 **Done when:** the implement round holds lists 1 to 3, the tests list, the
-two baselines, the surface dump's path and `<base>`.
+two baselines, the surface dump's path, `<base>`, the real files' state and
+the formatting list.
+
+## Step 0b — the formatting-only commit
+
+Spec Design 11; criteria 39, 43; decided while planning, 13.
+
+1. `pnpm exec prettier --write $(cat <S>/format-list.txt)`.
+2. `git diff --word-diff -w` is read whole. It must show only Markdown
+   markup: table padding and dividers, list markers and indentation, blank
+   lines, emphasis markers and escapes. A file whose diff changes a word is
+   restored (`git checkout -- <file>`), left out of this commit and
+   formatted in its content step instead, and named in the round.
+3. Bare `.venv/bin/pytest` from the worktree's root. A test that fails
+   because it compares captured text (the prompt fallback capture in
+   `tests/fixtures/prompt_fallback/`, which holds procedure and skill text)
+   is fixed by regenerating that capture with its own script
+   (`tests/fixtures/prompt_fallback/capture.py`), and the difference is read:
+   only formatting. Any other failure: the file that causes it is restored
+   and left out as in 2.
+4. Commit only the formatted files and any regenerated capture, with a
+   message saying the commit formats the documents TCW-117 changes and
+   changes no content.
+
+**Done when:** the round names the commit, the number of files, the files
+left out and why, and the suite's last line; `git diff --word-diff -w` of the
+commit shows only markup (criterion 43).
 
 ## Part 1 — the migration guide and its test
 
@@ -357,19 +550,29 @@ P12` in order; each pattern is exactly the spec's (the 18 strings written
   `extends: [core]`; `an upstream project`; `upstream:`;
   `projects.upstream`; `item.yaml`; `tcw://C/billing`; `tcw://core/T/billing`;
   `cap-1a2b3c`; `not_tags`; `<project>/<folder>`; `tcw/TCW-12-add-export`;
-  and a fenced line `overrides: core/cap-1a2b3c`.
+  and a fenced line `overrides: core/billing`, which no other entry matches.
+  Each case asserts that a problem's reason starts with its own entry's
+  label (`P12:` for the last), not only that some problem is given, so a
+  sample another entry also matches cannot hide a broken pattern (plan
+  review S1).
 - `test_the_same_hit_beside_tcw_migrate_passes`: each sample with
   "Run `tcw migrate` to convert it." in the same paragraph, and each with a
   link to `../migration-guide-3.X-to-4.0.0.md` instead, gives no problem.
+  For P12 the paragraph is unfenced: its first line is
+  `overrides: core/billing` and its second the `tcw migrate` sentence, since
+  `^` matches at the start of a block.
 - `test_a_fenced_line_cannot_borrow_the_allowance`: a fenced block whose
   first line is `item.yaml` and whose second is `tcw migrate` gives one
-  problem (spec Design 1.6 (b)).
+  problem, and so does a fenced block of the one line
+  `item.yaml  # tcw migrate converts this` (spec Design 1.6 (b), 9.2;
+  decided while planning, 17).
 - `test_the_ledgers_are_left_out_while_unmigrated`: a sample under
   `docs/capabilities/x/description.md` and `docs/taxonomy/x/description.md`
   gives no problem.
 - `test_4_0_forms_pass`: `tcw-work-item.yaml`; a fenced manifest with a
   top-level `projects:` line and an entry below it; the prose "the four TCW
-  projects:"; `tcw work list --project app` after a `tcw work new` code span
+  projects:"; the fenced 4.0 `show` lines `overrides: app.capabilities/billing`
+  and `overrides: <full id>`; `tcw work list --project app` after a `tcw work new` code span
   in the same paragraph (P2 stops at a backtick); and
   `.tcw/tcw-config.local.yaml` and `.tcw/tcw-manifest.local.yaml` (P4 needs
   `--` before `local`).
@@ -392,7 +595,8 @@ P12` in order; each pattern is exactly the spec's (the 18 strings written
   document is, the allowance, why the ledgers wait for TCW-118);
   `UNMIGRATED_RECORDS` with the spec's comment, verbatim; `ALLOWANCE =
 ("tcw migrate", "migration-guide-3.X-to-4.0.0")`;
-  `three_x_problems(rel, text) -> list[str]` (decided while planning, 3);
+  `three_x_problems(rel, text) -> list[str]` (decided while planning, 3 and
+  17: a hit on a fenced line is never dropped);
   the tests above. It imports `DOC_FILES`, `REPO` from
   `tests.test_documented_cli_surface` only in Step 28.
 
@@ -410,8 +614,10 @@ Spec Design 9.4; criteria 1, 5, 7 (their tested halves).
 `tests/test_migration_guide.py`, importing its `sections`, `section`,
 `cells` and `tables` (`:36-76`), `link_problems`
 (`tests/test_docs_describe_3_0.py:204`), `command_problem`
-(`tests/test_shipped_text.py:283`), `_invocations`
-(`tests/test_documented_cli_surface.py`) and `THREE_X_PATTERNS`. Its own
+(`tests/test_shipped_text.py:283`), `_invocations`, `_walk` and `_check`
+(`tests/test_documented_cli_surface.py:173-216`) and `THREE_X_PATTERNS`. A
+module-scoped fixture builds the help-derived tree with `_walk([], tree)`,
+as that module's `tree` fixture does (`:186-191`). Its own
 helpers: `mapping_tables()` (tables whose header's first cell, backticks
 removed, begins `3.x`), `first_cells()`, `epic_table()` (the one table in
 `## The epic-parts flow, step by step` whose header is `# | 3.x step | 4.0`),
@@ -440,7 +646,13 @@ v3.0.2:tcw/config_cli.py`, lines 119-137).
 - (c) `test_every_row_says_what_replaces_it`: no mapping row's second cell
   is empty.
 - (d) `test_every_4_0_command_resolves`: every invocation `_invocations`
-  finds in `exempt_blanked(GUIDE)` gives `command_problem(span) is None`.
+  finds in `exempt_blanked(GUIDE)` gives `_check(span, tree) is None` and
+  `command_problem(span) is None` (decided while planning, 16).
+- `test_a_hidden_flag_is_refused`: the (d) check, run on
+  `tcw work new "t" --project app`, `tcw work edit x --blocks y` and
+  `tcw capabilities list --local`, gives a problem for each. A flag the code
+  on `v4` does not hide from `--help` is dropped from the case and reported
+  (Design 1.1).
 - (e) `test_the_epic_table_has_rows_a_to_f`: its first cells are `a` to `f`.
 - (f) `test_the_exit_table_is_0_1_2_3_5`: the one table in
   `## Migrating one project` whose header's first cell is `Exit` has rows
@@ -484,7 +696,7 @@ list` in a 3.x scratch project, exit 1, TCW-106's refusal quoted); (d) the
   change; (e) Jira credentials or `--no-jira`; (f) CI and automation: limit
   to `tcw-cli<4` (`pipx install 'tcw-cli<4'`) until migrated, raise in the
   same change.
-- `## Migrating one project` (2.4 (a) to (l), (k) first, plus (m) to (q) of
+- `## Migrating one project` (2.4 (a) to (s), (k) first; (m) to (s) as
   decided while planning, 6):
     - (k) the opening sentence sends a project with parents or children to
       `## Migrating related projects` before anything is run;
@@ -496,8 +708,11 @@ list` in a 3.x scratch project, exit 1, TCW-106's refusal quoted); (d) the
       `<An|Dn> <where>: <text>`; `<Bn> <where>: <why>; <what to do>`), shown
       in a fenced block copied from a real dry run (run: a scratch 3.x project
       made with the lifecycle CLI's `tcw init --id old`, with a `meta.yaml`,
-      an `item.yaml` and a user-wide file holding `not_tags`, so all three
-      lists print; the output pasted in the round, criterion 3);
+      an `item.yaml` and the scratch user-wide file
+      `<S>/xdg/tcw/config.yaml` holding `not_tags`, never the person's own
+      `~/.config/tcw/config.yaml` (decided while planning, 14), so all three
+      lists print; every command a scratch run; the output pasted in the
+      round, criterion 3);
     - (c) `--no-jira`: files only, never contacts Jira, keeps a run off a live
       board; a later `tcw migrate` converts only the tickets; until then
       4.0's `tcw work list` leaves out tickets still holding a 3.x value with
@@ -511,8 +726,10 @@ list` in a 3.x scratch project, exit 1, TCW-106's refusal quoted); (d) the
     - (f) `.tcw/tcw-migration-progress.yaml`: what it is, never committed
       (ignored inside git), a stopped run is finished by running again,
       deleting it mid-run means restoring from (b) first, and a stopped run
-      names it and says not to commit (run: interrupt a scratch run the way
-      TCW-116's stop tests do, or cite them);
+      names it and prints, quoted as written (H20),
+      `do not save these files in version control until 'tcw migrate' finishes`
+      (run: interrupt a scratch run the way TCW-116's stop tests do, or cite
+      them);
     - (g) a second person runs `tcw migrate` after pulling; anyone runs it
       again after merging a branch made before the migration;
     - (h) `.tcw/tcw-migration.yaml`: what it holds, committed, kept through
@@ -534,7 +751,19 @@ list` in a 3.x scratch project, exit 1, TCW-106's refusal quoted); (d) the
       re-run stops the re-run (B17), whether that file was to be rewritten or
       deleted; (q) A12 lists findings the project already had in 3.x, and a
       `capabilities.yaml` entry 3.x could not route is B10 (H19, each checked
-      against TCW-116's tests).
+      against TCW-116's tests); (r) with `--no-jira` in a project whose work
+      is kept in Jira, the check after the run leaves out the work store, and
+      the summary prints
+      `work store not checked after the run (--no-jira): run 'tcw validate' to check it`;
+      (s) a stopped run run again while Jira cannot be reached writes nothing
+      more, exits with Jira's code, and prints
+      `nothing more was written; 'tcw migrate --no-jira' finishes the files without Jira`
+      (H20; (r) by a scratch run, (s) against TCW-116's
+      test, named, since it needs Jira to fail; each quoted line copied from
+      its source in `tcw/migrate/`, layer 4). The quoted lines are code
+      spans that Step 2 (d) reads; if (d) reports one (a quotation mark can
+      end a command word early), the line is quoted in prose between double
+      quotation marks instead, still word for word, which (d) does not read.
 - `## Migrating related projects` (2.5 (a) to (f)): each run in its own
   project (`tcw migrate` there, or `tcw -C <folder> migrate`), never
   changing another; parents before children and why (exit 7 below a 3.x
@@ -556,7 +785,9 @@ provision` fetches related projects afterwards; `extends` to a sibling
   behavior (`--origin`'s new shape `# <project>, <layer> <file>` from a
   scratch run of `tcw project config --origin`; JSON `"schema": 2` with
   `full-id` and `owner` from `tcw work list --json`). A store's
-  `repository` row says it stays on the store (TCW-116 decision 4). After
+  `repository` row says it stays on the store (TCW-116 decision 4). The
+  `overrides:` row's first cell is a 3.x pointer,
+  `overrides: core/cap-1a2b3c`, so the narrowed P12 matches it (Step 2 (h)). After
   the tables, (h) to (k) in prose: plain `list` shows only the project's own
   entries and `--scope up` adds inherited ones, `show <id-path>` of an
   inherited entry needs `--scope up` (run); no override mark and no status
@@ -604,15 +835,16 @@ Spec Design 3.6, 9.5; criterion 11 (index half).
 (docs/migration-guide-3.X-to-4.0.0.md)` first, before `0.10 → 0.11`.
 Nothing else in the README changes in this step.
 
-**Proves it:** the index test green; the README's prettier run is left to
-Step 14, which rewrites the file (this step's one-cell change is checked
-with `prettier --check` only after Step 14).
+**Proves it:** the index test green; `pnpm exec prettier --check README.md`
+passes after `--write` (Step 0b formatted the rest of the file, so the run
+changes only this cell).
 
 ### Step 5 — Part 1's suite and commit
 
 Bare `.venv/bin/pytest` from the worktree's root (never `python -m pytest`),
 and `pnpm exec prettier --check docs/migration-guide-3.X-to-4.0.0.md`.
-Commit: `tests/doc_vocabulary.py`, `tests/test_docs_describe_4_0.py`,
+The person's own files are compared with `<S>/real-files-before.txt` (Step 0
+item 9). Commit: `tests/doc_vocabulary.py`, `tests/test_docs_describe_4_0.py`,
 `tests/test_migration_guide_4_0.py`, the guide, `README.md`,
 `tests/test_docs_describe_3_0.py`. The round records the commit and the
 suite's last line (criterion 43).
@@ -649,7 +881,9 @@ address>`, as if started there, as that project, its own settings and
   as TCW-108 Step 3 left them), row 7 (as TCW-108 added it), and the
   passage under the table (`:148-150`, as TCW-114 Step 7 left it) say what
   3, 5 and 7 mean in 4.0. `test_cli_guide` keeps one row per `tcw/exit.py`
-  constant.
+  constant. Before row 5 is written, `tests/test_exit_code_tables.py` on
+  `v4` is read for whether its refusal of `jira` in rows 3 and 5 ignores
+  case; if it does, row 5 says "the issue tracker" rather than "Jira".
 - (f) `tcw work new --parent <epic> --nest`.
 - (g) a mistyped or removed command gets a suggestion: a table headed
   "3.x commands 4.0 removed" with `init`, `projects`, `config`,
@@ -789,8 +1023,10 @@ overrides and mixed status.
   what it changes, merges field by field; `tcw capabilities set` and
   `tcw taxonomy add` at an inherited path write one; `reset` and `rm`; an
   override whose original moved is reported as incomplete; two unrelated
-  parents at one path warn (runs, each wording quoted). The `overrides:`
-  line `show` prints is described in prose (decided while planning, 10);
+  parents at one path warn (runs, each wording quoted). Real `show` output
+  for an override, its `overrides: <full id>` line included, may be shown in
+  a fenced block, which the narrowed P12 passes (decided while planning,
+  10);
 - (c) records mark overrides, and plain `list` stays one identifier per line;
 - (d) mixed status under `--scope down` and `all`, from `--json` or `show`
   (run: a scratch family whose projects give one capability different
@@ -904,8 +1140,8 @@ Spec Design 3.1 to 3.5; criterion 11.
 - every link text "Working across repositories" becomes "Related projects";
   the Documentation table's rows for the guides say what each now covers.
 
-The structure tests stay green (Step 0 item 7). Prettier formats the whole
-file here, including Step 4's cell.
+The structure tests stay green (Step 0 item 7). Step 0b formatted the file,
+so `prettier --write` here changes only what this step wrote.
 
 **Proves it:** the red-to-green check (22 scan hits and 15 grep lines at
 `2adac9c9`); `tests/test_docs_describe_3_0.py`'s README tests; the command
@@ -959,8 +1195,10 @@ project config`); `:41-44` names the functions that walk projects as they
 - The comment line at the top of each lifecycle document
   (`implementation.md:1`, and the same line in `abstraction.md`,
   `harness.md`, `review.md` and the templates) names `.tcw/tcw-config.yaml`.
-  `abstraction.md` is TCW-111's and TCW-114's (list 3): only its comment
-  line changes here, and the scan reads the rest.
+  `abstraction.md` is TCW-111's and TCW-114's (list 3): its comment line
+  changes here, and the scan reads the rest; a 3.x form the scan still finds
+  there (at `2adac9c9`, `item.yaml` at `:92`, which TCW-111 Step 15 plans to
+  rewrite) is fixed as decided while planning, 15.
 
 **Proves it:** the red-to-green check; `MOVED_PHRASES` and
 `test_harness_points_at_where_a_subagent_is_never_required` green.
@@ -983,16 +1221,18 @@ each passage re-found by its words (lines at `2adac9c9`):
   two replacement variables run on `v4` first.
 
 Each gets the dated line the spec gives it, naming who decided and where it
-is recorded. Formatting per decided while planning, 13.
+is recorded. Step 0b formatted the file, so this step's diff holds only the
+seven amendments.
 
 **Proves it:** the review reads each amendment (no check reads `docs/work/`);
-the round pastes the word diff and the three variable runs.
+the round pastes the step's diff and the three variable runs.
 
 ### Step 18 — Part 2's suite and commit
 
 Bare `.venv/bin/pytest`; `pnpm exec prettier --check` over every Markdown
 file of Steps 6 to 17. The grep and the scan over the files of Part 2 print
-nothing outside the allowance. Commit; the round records the commit and the
+nothing outside the allowance. The person's own files are compared with
+`<S>/real-files-before.txt`. Commit; the round records the commit and the
 suite result.
 
 ## Part 3 — skills, shipped text, evals, the ledger, the live scan
@@ -1056,7 +1296,9 @@ Spec Design 5.3; criterion 21. `skills/capabilities/SKILL.md`: "Federation"
 wording flow (`:153`, `:181`, as TCW-114 Step 7 left them) becomes `tcw -C`
 into that project when it is on this machine, else that project's own issue
 tracker; TCW-113 Step 12b's `:176` rewritten. Every `tcw capabilities add`
-line keeps `--status` (`tests/test_shipped_text.py:404-410`).
+line keeps `--status` (`tests/test_shipped_text.py:404-410`), so the
+sentence on `--parent` with `add` either writes `--status` too or names the
+option without the command.
 
 **Proves it:** the red-to-green check (19 scan hits at `2adac9c9`);
 `test_the_capabilities_skill_changes_records_with_the_code`.
@@ -1135,7 +1377,11 @@ Spec Design 5.6 (a), (b), (d); criterion 24.
   remaining "slug" wording changes);
 - every other skill, prompt and procedure: `<S>/scan_one.py` over
   `skills/ agents/ tcw/work/prompts/ tcw/work/procedures/`, and each hit
-  outside lists 2 and 3 fixed; a hit in list 3 reported, not fixed;
+  fixed; a hit in a list 3 passage is fixed with the smallest change of
+  wording, listed under "Departures found" with the sibling it came from,
+  and reported to the dispatching session (decided while planning, 15);
+- the grep of decided while planning, 20, over the live documents, each
+  line decided and the decision listed in the round;
 - `tests/fixtures/prompt_fallback/unconfigured.json` regenerated with
   `tests/fixtures/prompt_fallback/capture.py` if its test fails after the
   procedures change, and the difference read (only the changed lines).
@@ -1151,7 +1397,9 @@ re-run) lists what Steps 6 to 24 did not reach:
 TCW-115 Step 3 renames; its walk is re-read for 4.0: `tcw project new --id
 walk` writes `.tcw/`), `docs/releasing.md`, `docs/procedures/`,
 `docs/lifecycle/templates/`, `evals/assets/`, and any other. Each is fixed,
-or named in the round with why its hit names `tcw migrate`.
+or named in the round with why its hit names `tcw migrate`. A Markdown file
+under `tests/` that describes test data is fixed only in its words, never in
+its data (decided while planning, 18).
 
 **Proves it:** the scan prints nothing outside the ledgers.
 
@@ -1239,9 +1487,18 @@ The suite as CI runs it: bare `.venv/bin/pytest` from the worktree's root;
 diffs, pasted: `git diff <base> -- tests/doc_vocabulary.py` (no `PATTERNS`
 entry changed; `scan` gains only `flags`; `THREE_X_PATTERNS` added) and
 `git diff <base> -- tests/test_shipped_text.py` (no `GIT_WORDS` change; one
-`GIT_ALLOWED` entry added). Every fenced YAML block in a live document is
-listed (`<S>/fenced_yaml.py`) for the review, which reads each for a 3.x
-shape. Commit; the round records it and the suite result (criterion 43).
+`GIT_ALLOWED` entry added). Every fenced block in a live document that is
+tagged `yaml`, that has no language tag, or that is tagged `text` and holds a
+line shaped like YAML (a `<key>:` at its start) is listed
+(`<S>/fenced_yaml.py`) for the review, which reads each for a 3.x shape; the
+untagged and `text` blocks are included because `docs/use-cases.md` holds
+3.x keys inside tree diagrams, and the scan no longer has `\bprojects:`.
+Then the re-check of decided while planning, 19: `git log <base>..HEAD --
+tcw/`, this item's own commits left out; if any commit is listed, Step 3's
+dry run and every other run whose output a document quotes are redone, the
+output compared with what the documents quote, and each difference fixed in
+the document before the commit. The person's own files are compared with
+`<S>/real-files-before.txt` a last time. Commit; the round records it and the suite result (criterion 43).
 The records gate is checked with `tcw work advance <item> --dry-run` (the
 lifecycle CLI) before the move to review.
 
@@ -1251,8 +1508,8 @@ lifecycle CLI) before the move to review.
   40 and 41 are "the review lists"; the round gives the reviewer, per
   criterion, the file and line on `v4` of each lettered item, and the
   "Checked on v4" table.
-- **Handoffs answered** (criterion 40): the round marks each row H1 to H18,
-  D106 to D116, and H19 (decided while planning, 6), with the step and line
+- **Handoffs answered** (criterion 40): the round marks each row H1 to H20
+  and D106 to D116 (H19 and H20 as decided while planning, 6), with the step and line
   that answers it.
 - **The cold read** (spec Design 9.7; criterion 35) is **for qa only, never
   run in implement**. The QA plan on the ticket (2026-10-22 21:23,
@@ -1264,10 +1521,17 @@ lifecycle CLI) before the move to review.
   `token-env: TCW_COLDREAD_NO_TOKEN`; a fresh session started in the copy
   with every `TCW_JIRA_*` variable removed (`env -u …`, each name
   `env | grep '^TCW_JIRA'` lists), without `~/.bashrc`, with
-  `TCW_CONFIG_DIR` set to an empty scratch folder and
+  `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` set to two new empty folders in the
+  qa session's scratchpad, and
   `/Users/brian/Projects/TCW/.claude/worktrees/v4/.venv/bin` first on
   `PATH`; and, recorded before handing over, `env | grep -c '^TCW_JIRA'`
-  printing 0 and `tcw --version` printing `tcw 4.0.0`. The one instruction:
+  printing 0, `tcw --version` printing `tcw 4.0.0`, and the state of the
+  person's own `~/.config/tcw/config.yaml` (its checksum, or that it does not
+  exist) and `~/.cache/tcw/stores`, both recorded again after the session
+  and unchanged. `HOME` is not moved for the reader's session, which keeps
+  its own sign-in there (spec 9.7 (c); decided while planning, 14). The
+  corrected QA plan text is posted on the ticket by the dispatching
+  session, replacing the setup of scenario 2. The one instruction:
   "Move this project to TCW 4.0 by following the guide at
   /Users/brian/Projects/TCW/.claude/worktrees/v4/docs/migration-guide-3.X-to-4.0.0.md".
   It must reach `tcw validate` exit 0; every guess and failed command is a
@@ -1281,8 +1545,9 @@ lifecycle CLI) before the move to review.
   measures routing and the single-project flows, not any 4.0 feature.
 - **The web guide's claims** (Step 13) seen in a browser, in the Claude
   Chrome profile only, where a component file alone does not show them.
-- **Prettier on `design.md`**: the word diff of Step 17 read by the
-  reviewer, so the formatting does not hide an amendment.
+- **The formatting commit** (Step 0b): its `git diff --word-diff -w` read
+  by the reviewer, apart from the content commits, so the formatting hides
+  no content change.
 
 ## Self-review against the spec
 
@@ -1323,18 +1588,20 @@ lifecycle CLI) before the move to review.
 | 35        | Verification (qa)                                      |
 | 36        | 27                                                     |
 | 38        | 29                                                     |
-| 39        | every step's prettier run; 30                          |
+| 39        | 0b; every step's prettier run; 30                      |
 | 40, 41    | every document step; Verification                      |
 | 42        | 1, 22, 30                                              |
-| 43        | 5, 18, 30                                              |
+| 43        | 0b, 5, 18, 30                                          |
 
-**Every step traces to the spec**: Step 0 to Design 1.1 and 1.2; Steps 1 and
+**Every step traces to the spec**: Step 0 to Design 1.1 and 1.2; Step 0b to
+Design 11; Steps 1 and
 28 to 9.2 and 9.3; Steps 2 and 3 to 2 and 9.4; Step 4 to 3.6 and 9.5; Steps
 6 to 13 to 4; Step 14 to 3; Step 15 to 6; Step 16 to 7; Step 17 to 8; Steps
 19 to 25 to 5; Step 26 to 9.6; Step 27 to 9.8; Step 29 to 10; Steps 5, 18
 and 30 to 11.
 
-**The suite at every boundary.** Step 1's tests pass when written (red only
+**The suite at every boundary.** Step 0b changes only formatting and runs
+the suite before its commit. Step 1's tests pass when written (red only
 on import). Step 2's test is never committed without Step 3's guide. Step 4's
 test and change are one step. Each Part 2 and Part 3 step fixes the inbound
 anchors of any heading it renames, keeps every test of Step 0 item 7 green
@@ -1350,37 +1617,49 @@ are spelled the same in every step.
 
 ## Spec defects and gaps found while planning
 
-Reported to the dispatching session; the spec is not edited here.
+Reported to the dispatching session, which corrected the spec after the
+plan review (2026-10-22). Each item says what became of it.
 
 1. **Gap: a handoff after the revision.** TCW-116's comment of 2026-10-22
    21:30 came after the spec's revision (21:23) and is not in "Handoffs
    answered". Answered in Step 3 as 2.4 (m) to (q) (decided while planning,
-   6); the spec's table should gain a row H19.
+   6). **Fixed in the spec:** rows H19 and H20 (the 21:53 comment), items
+   2.4 (m) to (s), and criterion 3.
 2. **Defect: the suggestion lines cannot be written verbatim in the
    migration guide.** Design 4.1 (g) puts "the full suggestion lines" there,
    but each holds `tcw init` (and so on) in a code span, which 9.4 (d)
-   refuses outside a mapping table's first column. Settled by decided while
-   planning, 5.
+   refuses outside a mapping table's first column. **Fixed in the spec**
+   (2.10 (d), 4.1 (g)): the lines are given word for word, split at the
+   command (decided while planning, 5).
 3. **Defect: `tcw new` in backticks fails the command check.** Design 4.1 (g)
    and H10 (5) write the mistyped commands in code spans, which `_check`
-   reports as "no such verb". Settled by decided while planning, 9.
-4. **Defect: P12 refuses a 4.0 output line.** `show` prints `overrides:` for
-   an override (TCW-113 plan, choice 8), so P12 (`^\s*overrides:`) flags a
-   fenced example of 4.0 output. Settled by decided while planning, 10; the
-   dispatching session may prefer to narrow P12.
+   reports as "no such verb". **Fixed in the spec** (4.1 (g)): prose
+   (decided while planning, 9).
+4. **Defect: P12 refuses a 4.0 output line.** `show` prints
+   `overrides: <full id>` for an override (TCW-112 plan, choice 7 and its
+   "Records" step; this plan first cited TCW-113 choice 8, which only places
+   `overridden by:` after it), so the first P12 (`^\s*overrides:`) flagged a
+   fenced example of 4.0 output. **Fixed in the spec** (9.2): P12 is
+   narrowed to `^\s*overrides:\s*[^\s./]+/` (decided while planning, 10).
 5. **Defect: "removed: TCW-99 is done"** (Design 6.4, UC-3's third gap) is
-   false on `v4` until TCW-118. Settled by decided while planning, 12.
+   false on `v4` until TCW-118. **Fixed in the spec** (6.4's table; decided
+   while planning, 12).
 6. **Wording: Design 9.3** says "at `b2fa5810` it prints 125 lines at
    `5a9ca9b7`", naming two commits for one count. At `2adac9c9` the grep
-   prints 125 lines.
+   prints 125 lines. **Fixed in the spec.**
 7. **Gap: `KEY_PATHS`.** The spec's Design 9.1 allows a test whose expected
    text is a 3.x passage to change, but does not name
    `tests/test_configuration_text_home.py`'s `KEY_PATHS`, whose 24
-   `projects.*` paths must go when `projects.md` is rewritten. Settled by
-   decided while planning, 7.
+   `projects.*` paths must go when `projects.md` is rewritten. **Already
+   handled:** the plan review found this overstated, since spec 9.1 already
+   allows "a test whose expected text is a 3.x passage this item rewrites"
+   to change. No spec change; the count becomes 33 (decided while planning,
+   7).
 8. **Gap: blockers.** TCW-117 is blocked by TCW-106 to TCW-116 in fact, but
    its ticket records no blocker (`tcw work show TCW-117`, `blocked-by:`
    empty). The plan stage's step 5 asks for them to be recorded with
    `tcw work edit TCW-117 --blocked-by <ref>`; this planning session was
    told not to run `edit`, so the dispatching session records them (at
-   least TCW-116, which itself follows TCW-106 to TCW-115).
+   least TCW-116, which itself follows TCW-106 to TCW-115). **Already
+   handled:** `tcw work show TCW-117` now shows
+   `blocked-by: tcw/TCW-116-tcw-4-0-tcw-migrate-from-3-x`.

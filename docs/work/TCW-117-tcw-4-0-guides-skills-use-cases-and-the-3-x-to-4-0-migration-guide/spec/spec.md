@@ -45,7 +45,7 @@ Terms used throughout:
 - **A 3.x form** is a command, flag, key, file name or name format that TCW
   3.x has and 4.0 removes or renames (the list is Design 9.2's table).
 - **A handoff** is a comment on this ticket, from a sibling, saying what this
-  item must write (H1 to H18 in Notes); **a deferral** is a row of a sibling
+  item must write (H1 to H20 in Notes); **a deferral** is a row of a sibling
   plan's Documentation Sync table that says "deferred to TCW-117" (D106 to
   D116 in Notes).
 
@@ -223,7 +223,13 @@ its own change needed, and left what the passage means to this item. Each
 such passage is rewritten here for 4.0, and the implement round of this item
 lists each with what it now says. The lists, each read from that sibling's
 implement round as landed (or, where the round has no list, from the plan
-step named):
+step named). A passage a sibling rewrote in full for 4.0 (its own prompts and
+procedures) is kept as that sibling wrote it, except that a 3.x form the scan
+or the grep of Design 9 still finds in it is fixed here, with the smallest
+change of wording, and listed in the implement round with the sibling it came
+from (Decided by the dispatching session, 2026-10-22, plan review M2: the
+scan of every live document cannot pass otherwise, and every sibling is
+complete by the time this item is implemented):
 
 - TCW-107: `skills/work/SKILL.md:115`, what to suggest on exit 5 (TCW-107
   plan, Documentation Sync; H2);
@@ -345,7 +351,7 @@ written out.
   `pipx install 'tcw-cli<4'`) until the project is migrated, then raise the
   limit in the same change as the migration (spec review S3).
 
-2.4. **Migrating one project** says, from TCW-116 as landed (H18):
+2.4. **Migrating one project** says, from TCW-116 as landed (H18, H19, H20):
 
 - (a) `tcw migrate --dry-run` first: it lists every file and ticket it would
   change and changes nothing (TCW-116 Design 2.3);
@@ -378,8 +384,9 @@ written out.
   finished by running `tcw migrate` again, and that deleting it while a run is
   unfinished means restoring the project from the commit or backup of
   2.3 (b) first (TCW-116 Design 2.7); and that a run stopped partway names its
-  progress record and says not to commit until a run finishes (TCW-116 plan,
-  Step 27) (M7);
+  progress record and says, quoted as printed,
+  `do not save these files in version control until 'tcw migrate' finishes`
+  (TCW-116 plan, Step 27; H20) (M7);
 - (g) a second person, after pulling the migrated project, runs `tcw migrate`
   too, which converts their own untracked files; anyone runs it again after
   merging a branch made before the migration (TCW-116 Design 2.11);
@@ -398,7 +405,31 @@ written out.
   files back at any time, but not the tickets: once a run has converted them,
   no command puts a ticket's 3.x `TCW Item` back (TCW-116 Design 5.4, 9.3). So a project whose work is kept in Jira runs
   `--no-jira` first, checks the result (`tcw validate`), and converts the
-  tickets last (S3).
+  tickets last (S3);
+- (m) a store with a mount point inside it (a move across filesystems) is
+  refused with a message, and is finished by moving the folder by hand and
+  running `tcw migrate` again (TCW-116 Design 2.5; H19);
+- (n) `--no-jira` never builds a Jira client, so it needs no credentials and
+  cannot reach Jira; a dry run cannot edit a ticket (TCW-116 Design 1.1; H19);
+- (o) the Jira settings a run uses are the project's own `work.jira`, in its
+  3.x or 4.0 files, never a parent's, and a problem elsewhere in the
+  configuration does not stop the ticket conversion (TCW-116 Design 5.1; H19);
+- (p) a hand edit to a file between a stopped run and its re-run stops the
+  re-run (B17), whether that file was to be rewritten or deleted (TCW-116
+  Design 2.7; H19);
+- (q) A12 lists findings the project already had in 3.x, and a
+  `capabilities.yaml` entry that 3.x could not route (no capabilities ledger
+  and no child) is B10 (TCW-116 Design 2.9; H19);
+- (r) with `--no-jira`, in a project whose work is kept in Jira, the check
+  after the run leaves out the work store, and the summary says, quoted as
+  printed,
+  `work store not checked after the run (--no-jira): run 'tcw validate' to check it`
+  (H20);
+- (s) a run stopped partway and run again while Jira cannot be reached writes
+  nothing more, exits with Jira's code (as (e) gives it), and says, quoted as
+  printed,
+  `nothing more was written; 'tcw migrate --no-jira' finishes the files without Jira`
+  (H20).
 
 2.5. **Migrating related projects** says:
 
@@ -535,7 +566,14 @@ H10, H15, H17):
   identifiers; one that reads `--origin` comments reads the new shape;
 - (c) a script that checks exit 5 for a missing related project checks 7;
 - (d) a 3.x command typed into 4.0 is refused with a line naming its
-  replacement (TCW-115 Design 1.2);
+  replacement (TCW-115 Design 1.2), and gives each line word for word as `v4`
+  prints it, split in two in a mapping table whose header's first cell is
+  "3.x command typed" and whose second is "the rest of the line" (for example
+  `tcw init` | is now `tcw project new`). Decided by the dispatching session,
+  2026-10-22 (plan review Q1.2): each printed line starts with the 3.x command
+  in a code span, which 9.4 (d) refuses anywhere but a mapping table's first
+  column; splitting the line at the command keeps its exact words and passes
+  (d);
 - (e) automation that installs `tcw-cli` keeps the version limit of
   2.3 (f) until the project is migrated (S3).
 
@@ -608,12 +646,17 @@ migration guides.
   removed: `init` → `tcw project new`, `projects` → `tcw project list`,
   `config` → `tcw project config`, `provision` → `tcw project provision`.
   The full suggestion lines, which write `tcw <verb>`, are only in the
-  migration guide (Design 1.6 (a); decided by the dispatching session,
+  migration guide, in the table of Design 2.10 (d) (Design 1.6 (a); decided by the dispatching session,
   2026-10-22: `test_documented_cli_surface` fails on `tcw init` in any code
   span of `cli.md` once TCW-115 lands, and the grep of 9.3 forbids it in
-  prose) (M5). The section also says that `tcw new` suggests `tcw work new`
-  or `tcw project new`, and that `tcw list` suggests no project command
-  (TCW-115 Design 1.3; H10 (5)), each checked by running it on `v4`.
+  prose) (M5). The section also says, in prose with the mistyped words
+  outside any code span ("typing new straight after tcw"), that new suggests
+  `tcw work new` or `tcw project new`, and that list alone suggests no
+  project command (TCW-115 Design 1.3; H10 (5)), each checked by running it
+  on `v4`. Decided by the dispatching session, 2026-10-22 (plan review Q1.3):
+  `_check` (`tests/test_documented_cli_surface.py:197-216`) reports a
+  mistyped command in a code span as "no such verb", so only the suggestions
+  go in code spans.
 
 4.2. **`docs/guide/configuration.md`**:
 
@@ -1003,7 +1046,7 @@ yet". Expected, from the siblings' specs:
 | UC-2: a library cannot warn before a breaking rename (TCW-27) | kept; marked TCW-114, whose move lists the changed identifiers |
 | UC-3: `children:` shows only children on its own board (TCW-102) | removed: `--scope down` (TCW-113) |
 | UC-3: `--parent` when filing into another project (TCW-103) | removed: the part is made in its own project with `--parent` (TCW-114) |
-| UC-3: TCW-98 and TCW-99 will change how a parent sees children | removed: TCW-99 is done |
+| UC-3: TCW-98 and TCW-99 will change how a parent sees children | removed: on `v4` a parent sees its children with `--scope down` (TCW-113); the document describes 4.0 and does not say TCW-99 is done, which it is only at TCW-118 |
 | UC-4: two places rebuild a store's path from the project root | removed if TCW-110 Design 7.5's one function serves both; otherwise kept |
 | UC-4: TCW-22, the backlog audit | removed (TCW-113) |
 | UC-4: TCW-23, provision scoping | removed (TCW-115) |
@@ -1129,7 +1172,7 @@ flag, say) knows which row to delete (D3).
 | P9 | `\bcap-[0-9a-f]{6}\b` | removed capability ids (TCW-112) |
 | P10 | `\bnot_tags\b` | renamed key (TCW-106) |
 | P11 | `<project(-id)?>/<`, `\btcw/TCW-[0-9]` | 3.x slug forms (TCW-110) |
-| P12 | `^\s*overrides:` | removed override pointer (TCW-112) |
+| P12 | `^\s*overrides:\s*[^\s./]+/` | removed override pointer (TCW-112) |
 
 Three corrections from the first draft (spec review M1, M2, S6), each checked
 with Python's `re` on 2026-10-22:
@@ -1151,6 +1194,21 @@ with Python's `re` on 2026-10-22:
   naming `tcw work new` and then `tcw work list --project app`, a valid 4.0
   option, does not fail.
 
+A fourth correction, after the plan review (D1), checked with Python's `re`
+on 2026-10-22: P12 matches only an `overrides:` value whose part before the
+first `/` holds no dot (`overrides: core/cap-1a2b3c`,
+`overrides: <alias>/<cap-id>`). 4.0's `show` prints `overrides: <full id>`
+for an override (TCW-112 plan, choice 7 and its "Records" step, which add the
+key and the printed line; TCW-113 plan choice 8 only places `overridden by:`
+after it), and a full identifier always holds a dot before its first `/`
+(`<project>.<namespace>/<id-path>`, TCW-110 spec, Goals 1), so
+`overrides: app.capabilities/billing` passes and real 4.0 output may be shown
+in a fenced block. Decided by the dispatching session, 2026-10-22: the first
+form, `^\s*overrides:`, refused that output; narrowing it to values holding
+`cap-` would only repeat P9 and lose the placeholder pointer, which only P12
+catches. If TCW-110's code on `v4` prints a full identifier with no dot before
+its first `/`, the implement round reports it and P12 is not loosened to fit.
+
 **Case.** The table is matched case-sensitively, so the prose "TCW projects"
 is not the command `tcw projects`. `scan` compiles every pattern with
 `re.IGNORECASE` today (`tests/doc_vocabulary.py:128`), so it gains a keyword
@@ -1162,9 +1220,14 @@ and the new test passes `flags=0` (S5). A test shows that `scan` with the
 **What it reads.** A new `tests/test_docs_describe_4_0.py` scans every live
 document (the files of `test_documented_cli_surface._doc_files`, which
 already exclude `ARCHIVAL`) with `THREE_X_PATTERNS`, over the blocks
-`doc_vocabulary.blocks` gives. A hit fails unless its block (paragraph, list
-item, table row, or one line of a fenced block) also contains `tcw migrate` or
-`migration-guide-3.X-to-4.0.0`. Until TCW-118 migrates this repository, the
+`doc_vocabulary.blocks` gives. A hit fails unless its block (a paragraph, a
+list item or a table row) also contains `tcw migrate` or
+`migration-guide-3.X-to-4.0.0`. A hit on a line of a fenced block always
+fails, even when that same line names `tcw migrate` (Design 1.6 (b)). Decided
+by the dispatching session, 2026-10-22 (plan review D3): the first revision let
+a fenced line carry the allowance by its own comment, which 1.6 (b) forbids,
+and no 4.0 document needs it; dry-run output holding 3.x names belongs in the
+migration guide, which is archival. Until TCW-118 migrates this repository, the
 test leaves out the ledger records, in one named tuple:
 
 ```python
@@ -1186,9 +1249,13 @@ it would test a copy, not the files that ship.
 
 **Its own tests.** Inserting a hit for each pattern into a scratch document
 outside the record trees fails; the same hit in a block naming `tcw migrate`
-passes; a hit inside `docs/capabilities/` is not reported while
-`UNMIGRATED_RECORDS` exists; and `tcw-work-item.yaml`, a manifest's
-`projects:` key and the prose "TCW projects:" each pass.
+passes, except on a line of a fenced block, which fails even when the line
+itself names `tcw migrate`; a hit inside `docs/capabilities/` is not reported
+while `UNMIGRATED_RECORDS` exists; and `tcw-work-item.yaml`, a manifest's
+`projects:` key, the prose "TCW projects:" and a fenced 4.0 line
+`overrides: app.capabilities/billing` each pass. Each failing case asserts
+the label of the row it is for (`P12:` and so on), so a sample that another
+row also matches cannot hide a broken pattern.
 
 Decided by the dispatching session, 2026-10-22: an allowance by paragraph
 rather than a table of exceptions, because 4.0's own documents must say what
@@ -1208,8 +1275,8 @@ git grep -nE 'tcw (init|provision|projects|config)([^a-z-]|$)|tcw work new [^`]*
 ```
 
 prints nothing. It spells each word's end as `([^a-z-]|$)` rather than `\b`,
-which `git grep -E` does not support on every platform; at `b2fa5810` it
-prints 125 lines at `5a9ca9b7`. `docs/guide/cli.md` passes it because
+which `git grep -E` does not support on every platform; at `2adac9c9` it
+prints 125 lines. `docs/guide/cli.md` passes it because
 it names the removed commands by their verbs alone (Design 4.1 (g)). The
 ledgers are left out of this one command, since a record describing
 `tcw migrate` or a mistyped command's suggestion may name a removed command
@@ -1223,14 +1290,26 @@ built like `tests/test_migration_guide.py` and reusing its helpers:
   Design 2.6 (a) to (g)), appears in the first column of a mapping table;
 - (c) every mapping row's second column is non-empty;
 - (d) every `tcw …` command the guide writes, in a code span or a fenced
-  block, resolves in the 4.0 parser (`command_problem`,
-  `tests/test_shipped_text.py:283`), except those in the first column of a
+  block, resolves in the 4.0 CLI's visible surface: `_check`
+  (`tests/test_documented_cli_surface.py:197-216`) against the command tree
+  that module reads from `--help` (its `_walk`), which refuses an option
+  hidden from `--help`, and `command_problem`
+  (`tests/test_shipped_text.py:283`), which adds the procedure and stage
+  names; except those in the first column of a
   mapping table and in the 3.x column of the epic-parts table. The guide's
   path is archival, so `test_documented_cli_surface` skips the whole file, and
   without this the commands a reader copies (`tcw migrate --dry-run`,
   `tcw -C <folder> migrate`, `tcw project provision <id>`) would go unchecked
-  (S4). The guide therefore writes a 3.x command only in those two places;
-  any prose about one points to the table;
+  (S4). Decided by the dispatching session, 2026-10-22 (plan review M3):
+  `command_problem` alone accepts every option the parser registers,
+  including those registered with `help=argparse.SUPPRESS`, which TCW-113
+  and TCW-114 keep (`--local`, and `--project` and `--blocks` on `tcw work`)
+  so that they can print a refusal; the surface read from `--help` is the one
+  live documents are already held to, and it needs no list of removed flags
+  kept up to date by hand. A case of the test proves that
+  `tcw work new "t" --project app` is refused. The guide therefore writes a
+  3.x command only in those two places; any prose about one points to the
+  table;
 - (e) the epic-parts table has rows a to f;
 - (f) the exit-code table under "Migrating one project" has rows 0, 1, 2, 3
   and 5;
@@ -1305,12 +1384,28 @@ starts, the qa runner:
 - (c) starts the session with every `TCW_JIRA_*` variable removed from its
   environment (`env -u TCW_JIRA_EMAIL -u TCW_JIRA_API_KEY …`, every such name
   `env | grep '^TCW_JIRA'` lists), without sourcing `~/.bashrc`, with
-  `TCW_CONFIG_DIR` set to an empty scratch folder (so the person's own
-  user-wide file is neither read, where it could name other credential
-  variables, nor touched by a 4.0 run), and with `<v4 worktree>/.venv/bin`
-  first on its `PATH`; and records, before handing over, that
-  `env | grep -c '^TCW_JIRA'` prints 0 and `tcw --version` in the copy prints
-  4.0.0;
+  `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` set to two new empty folders in the
+  scratch area, and with `<v4 worktree>/.venv/bin` first on its `PATH`.
+  `XDG_CONFIG_HOME` decides where TCW reads the user-wide file
+  (`$XDG_CONFIG_HOME/tcw/config.yaml`, else `~/.config/tcw/config.yaml`;
+  `tcw/config.py:192-205`), so the person's own file is neither read, where
+  it could name other credential variables, nor written by a 4.0 run.
+  `XDG_CACHE_HOME` decides where TCW keeps its working copies of stores held
+  in another repository (`tcw/store/checkouts.py:60-68`, else
+  `~/.cache/tcw/stores`). `HOME` is left as it is, because the reader's agent
+  session keeps its own sign-in and settings there; with both variables set,
+  TCW otherwise reads `HOME` only to expand a `~` a configuration names and
+  for the provisioning bound, which a one-project migration does not reach.
+  Before handing over, the qa runner records that `env | grep -c '^TCW_JIRA'`
+  prints 0, that `tcw --version` in the copy prints 4.0.0, and the state of
+  the person's own user-wide file and store cache
+  (`shasum -a 256 ~/.config/tcw/config.yaml`, or that the file does not
+  exist; `ls -A ~/.cache/tcw/stores`); after the session it records both
+  again, and each must be unchanged. Decided by the dispatching session,
+  2026-10-22 (plan review M1): the first revision named `TCW_CONFIG_DIR`,
+  which is only the folder TCW tells a hook its `file:` binding is read from
+  (`tcw/config.py:76`, `tcw/work/hooks.py:54`, `:77`) and moves no file, so
+  it isolated nothing;
 - (d) gives the instruction "Move this project to TCW 4.0 by following the
   guide at <the absolute path of `docs/migration-guide-3.X-to-4.0.0.md` in the
   `v4` worktree>". The path is absolute because the copy of `main` has no such
@@ -1370,6 +1465,16 @@ with the suite as CI runs it green after it, as TCW-111 did:
    `tests/test_docs_describe_4_0.py` (9.2), which goes in last because it
    fails until every live document is rewritten; and the upcoming entries
    (10).
+
+Before part 1, one commit formats with `prettier` every Markdown file in
+scope that the item will change, and changes nothing else, with the suite
+passing after it; each part's commit then shows only content. Decided by the
+dispatching session, 2026-10-22 (plan review D2): criterion 39 formats every
+changed Markdown file, prettier alone changes over a hundred lines of some of
+them (`README.md`, the TCW-99 design), and mixing that into the content
+commits would bury the changes the review must read. CI does not run
+prettier (`.github/workflows/test.yml` runs `pytest` and `pnpm check:build`),
+so criterion 39 is this repository's own rule, checked locally.
 
 ## Abstraction litmus test
 
@@ -1444,7 +1549,7 @@ item as present or absent, with the line where it is.
    Design 2.2's, in that order (`test_migration_guide_4_0`, 9.4 (a)).
 2. Its "Before you start" holds Design 2.3 (a) to (f), and (a) links
    `migration-guide-2.8-to-3.0.0.md` (the review lists; the link by 9.4 (g)).
-3. Its "Migrating one project" holds Design 2.4 (a) to (l), with (k) first,
+3. Its "Migrating one project" holds Design 2.4 (a) to (s), with (k) first,
    and its exit-code table's rows are exactly 0, 1, 2, 3 and 5 (the review
    lists; the rows by 9.4 (f)). Each meaning, and each line form and heading
    of 2.4 (b), matches `tcw migrate`'s behaviour and output on `v4`
@@ -1532,9 +1637,11 @@ item as present or absent, with the line where it is.
 35. At qa, the cold read of Design 9.7 reaches `tcw validate` exit 0 in the
     scratch copy, and the qa round records, before the session starts, the
     copy's removed remote, its Jira site and credential names as 9.7 (b) sets
-    them, the empty `TCW_CONFIG_DIR`, `env | grep -c '^TCW_JIRA'` printing 0
-    and `tcw --version` printing 4.0.0; and it lists every guess or failed command, each a finding (the qa
-    round).
+    them, the two empty folders `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` name,
+    `env | grep -c '^TCW_JIRA'` printing 0 and `tcw --version` printing
+    4.0.0; it records the person's own user-wide file and store cache as
+    unchanged after the session; and it lists every guess or failed command,
+    each a finding (the qa round).
 36. The five capability records of Capability changes, and any the one-off
     scan of 9.8 led to, describe 4.0 in their prose, are in 3.x form (a
     `meta.yaml` each, their `tcw://` links unchanged), are listed in
@@ -1561,9 +1668,11 @@ item as present or absent, with the line where it is.
     review also reads every fenced block of YAML in a live document, and
     finds none showing a 3.x shape (Design 1.6 (b)) (the review pastes the
     diffs).
-43. The item was built in the three parts of Design 11, each a commit of its
-    own, with the suite as CI runs it passing after each (the implement round
-    names each part's commit and its suite result).
+43. The item was built as Design 11 gives it: one formatting-only commit,
+    then the three parts, each a commit of its own, with the suite as CI runs
+    it passing after each of the four (the implement round names each commit
+    and its suite result, and shows that `git diff --word-diff -w` of the
+    formatting commit changes only Markdown markup).
 
 ### Coverage
 
@@ -1663,7 +1772,8 @@ it and how.
 
 ### Decisions, each decided by the dispatching session, 2026-10-22
 
-Decisions 16 to 25 were added in the revision after the spec review.
+Decisions 16 to 25 were added in the revision after the spec review, and 26
+to 32 after the plan review.
 
 1. **The guide's name and place**, `docs/migration-guide-3.X-to-4.0.0.md`
    (Design 2.1): it follows the earlier guides' names, and the prefix
@@ -1734,6 +1844,24 @@ Decisions 16 to 25 were added in the revision after the spec review.
     8.5 to 8.7 record the user's and TCW-109's corrections (S7).
 25. **The migration guide's commands are checked by its own test, and every
     scan pattern must have a mapping row** (Design 9.4 (d), (h); S4).
+26. **P12 matches only a 3.x pointer, `^\s*overrides:\s*[^\s./]+/`** (Design
+    9.2; plan review D1): 4.0's `show` prints `overrides: <full id>`, whose
+    first part always holds a dot.
+27. **A fenced line never carries the allowance** (Design 9.2, 1.6 (b); plan
+    review D3).
+28. **The migration guide's commands are checked against the surface read
+    from `--help`** (Design 9.4 (d); plan review M3), so a hidden, removed
+    flag fails.
+29. **The removed commands' printed lines are given word for word, split at
+    the command in a two-column table; a mistyped command is written in
+    prose** (Design 2.10 (d), 4.1 (g); plan review Q1.2, Q1.3).
+30. **One formatting-only commit comes before part 1** (Design 11; plan
+    review D2).
+31. **Scratch runs and the cold read set `XDG_CONFIG_HOME` and
+    `XDG_CACHE_HOME`, never `TCW_CONFIG_DIR`** (Design 9.7 (c); plan review
+    M1); the plan also sets `HOME` for its own scratch runs.
+32. **A 3.x form left in a passage a sibling rewrote in full is fixed here**
+    (Design 1.2; plan review M2).
 
 ### Handoffs answered
 
@@ -1761,6 +1889,8 @@ not already in a comment.
 | H16 | TCW-113, 19:50 | web pickers and filter; token sharing and a write; backlog audit and `-C`; `--project` with no `statuses`; plan extras (show warning, web records, never grouping, the README row) | 3.5, 4.1 (c) (never grouping), 4.3 (d), 4.5 (f) (the `show` warning), 4.7 (a) (web records), (b), 5.1 (f), 5.3 | 11, 12, 14, 16, 18, 20, 21 |
 | H17 | TCW-115, 20:18 | the bound in a submodule and a linked worktree | 2.9 (e), (f), 4.5 (j) | 9, 16 |
 | H18 | TCW-116, 20:35 | `tcw migrate`, `--dry-run`, `--no-jira`; exit codes; the three lists; Jira while planning; the progress record; back up; parents first and what stops; everyone upgrades; `not_tags`; the migration record; the term `migration`; S-8, S-9; `repository` on a store | 2.3 (b), (c), 2.4, 2.5, 2.6 (d), 4.2 (b), 4.3 (i), 4.5 (i), 5.4 (b), 6.3, 8.4 | 2, 3, 4, 5, 13, 14, 16, 22, 26, 30 |
+| H19 | TCW-116, 21:30 | a move across filesystems; `--no-jira` needs no credentials, and a dry run edits no ticket; whose `work.jira` a run uses; a hand edit between runs (B17); A12 and B10 | 2.4 (m) to (q) | 3 |
+| H20 | TCW-116, 21:53 | the stopped run's line, quoted; `--no-jira` leaves the work store unchecked, and the summary's line; a re-run while Jira cannot be reached writes nothing more, and its line | 2.4 (f), (r), (s) | 3 |
 | D106 | TCW-106 plan Step 8 | README (configuration location), guides, skills (file location), configure references (`not-tags`, `tcw-version`), UC-1 layout; the eval cases (spec Non-goals) | 2.6 (d), 3.1, 4.2 (a), (i), 5.4 (d), 6.2, 9.6 (a) | 5, 11, 13, 22, 25, 34 |
 | D107 | TCW-107 plan, Documentation Sync | H2's list, and `skills/work/SKILL.md:115` changed partway | as H2, 1.2 | as H2, 40 |
 | D108 | TCW-108 plan Step 15 | README (parent links, no upstream, exit 7); jira.md `:245`; commands.md table already changed | 3.3, 4.3 (g), (h), 5.1 (i) | 11, 14, 20 |
