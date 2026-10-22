@@ -35,7 +35,8 @@ import yaml
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 
 from tcw.project_files import (LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
-                               key_problems, version_problem, without_version)
+                               key_problems, root_of, version_problem,
+                               without_version)
 
 SKIP_VARIABLE = "TCW_NO_PERSONAL_CONFIG"
 
@@ -77,7 +78,7 @@ class Origin:
         if self.file is None:
             return None
         if self.layer in ("project", "local"):
-            return self.file.parent.parent
+            return root_of(self.file)
         return self.file.parent
 
     @property
@@ -274,16 +275,17 @@ def _file_problems(path: Path, data: dict, root: Path | None, *,
     """The version (for a `tcw-*.yaml` file) and naming checks on one file read
     as `data` (TCW-106 Design 3.4 and 5), and the mapping to merge: without its
     `tcw-version`, or None when the version means it cannot be read."""
-    problems = [Problem(path, tuple(key_path), message, root)
-                for key_path, message in key_problems(data)]
     if versioned:
         version = version_problem(data)
         if version:
             # No key path: the message names `tcw-version` itself, with the
-            # file as its subject (Design 3.4's shapes).
-            return None, [Problem(path, (), version, root), *problems]
+            # file as its subject (Design 3.4's shapes). A file this TCW cannot
+            # read is not checked against this version's naming rule: its keys
+            # may follow an older or newer one, and the version is the problem.
+            return None, [Problem(path, (), version, root)]
         data = without_version(data)
-    return data, problems
+    return data, [Problem(path, tuple(key_path), message, root)
+                  for key_path, message in key_problems(data)]
 
 
 # ---------------------------------------------------------------------------

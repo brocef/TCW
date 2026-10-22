@@ -91,9 +91,19 @@ def test_personal_false_reads_only_the_project_file(personal):
     assert config.problems == [] and config.user_name is None
 
 
-def test_an_empty_personal_file_is_an_empty_layer(personal):
+def test_a_personal_file_holding_only_its_version_is_an_empty_layer(personal):
     personal.local("")     # holds only the version line the helper writes
     assert load_config(personal.root).problems == []
+
+
+def test_a_0_byte_personal_file_has_no_version(personal):
+    """An empty file carries no `tcw-version`, so it is refused as a 3.x file
+    is (TCW-106 Design 3.4 row a)."""
+    personal.local_file.parent.mkdir(parents=True, exist_ok=True)
+    personal.local_file.write_bytes(b"")
+    problems = load_config(personal.root).problems
+    assert [(p.file, p.key_path) for p in problems] == [(personal.local_file, ())]
+    assert "has no tcw-version" in problems[0].message
 
 
 def test_a_null_personal_file_has_no_version(personal):

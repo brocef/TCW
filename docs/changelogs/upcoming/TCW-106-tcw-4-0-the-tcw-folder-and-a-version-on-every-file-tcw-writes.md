@@ -30,8 +30,9 @@
   `tcw-version: <version>` and the ignore rule `/tcw-config.local.yaml` in
   `.tcw/.gitignore`; `config_edit.plan_id` puts a new `id:` below a leading
   `tcw-version`. No edit adds, removes or changes the version. (TCW-106)
-- `tcw.config.load_config`, `tcw.store.fs.load_config` (as `ValueError`), the
-  registry's `_read_config` and `_resolve_override` check `tcw-version`; the
+- `tcw.config.load_config`, `tcw.store.fs.load_config` (as `ValueError`) and
+  the registry's `_read_config` check `tcw-version`, and `_resolve_override`
+  recognises a `TCW_PROJECT_<ID>` that names a 3.x folder; the
   key is removed before layers merge, so `tcw config show` does not print it
   and the personal-file allowlist ignores it. A connected project in the 3.x
   layout, or with an unreadable version, is that connection's problem. The
@@ -39,7 +40,10 @@
 - The naming rule is checked on `.tcw/tcw-config.yaml`,
   `.tcw/tcw-config.local.yaml` and the user-wide file. A binding's `when`
   takes `not-tags` (was `not_tags`); `_binding_json` prints `not-tags`.
-  (TCW-106)
+  Each mistake is reported once: a file whose version cannot be read gets
+  only the version problem, a `when` key breaking the naming rule only the
+  naming error, and a `TCW_PROJECT_<ID>` naming a 3.x folder only the
+  variable's message. (TCW-106)
 - The five version fields are `4.0.0`. (TCW-106)
 - Help and error text naming the configuration file name
   `.tcw/tcw-config.yaml`. (TCW-106)

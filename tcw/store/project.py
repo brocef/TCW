@@ -558,8 +558,11 @@ class FsProjectRegistry(ProjectRegistry):
                      ) -> _Config | None:
         if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
             # A 3.x project: present, and in a format this TCW does not read
-            # (TCW-106 Design 4.2). Not "this machine does not have it".
-            self._problem(root_of(path), f"is {LEGACY_PROJECT}")
+            # (TCW-106 Design 4.2). Not "this machine does not have it". A
+            # TCW_PROJECT_<ID> that named it has already said so, naming itself.
+            if not any(o.locator == root_of(path) and o.problem
+                       for o in self._overrides):
+                self._problem(root_of(path), f"is {LEGACY_PROJECT}")
             return None
         if not path.is_file():
             # Not a defect. A locator is a fact about one machine — the same

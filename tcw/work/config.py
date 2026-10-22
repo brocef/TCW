@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from tcw.config import dotted
+from tcw.project_files import KEY_PATTERN
 from tcw.store.base import (MIGRATION_GUIDE, PROCEDURE_IDS, DocEntry, normalize_tag,
                             parse_documentation_entries)
 from tcw.work.model import DOCUMENT, FLOW, SIDE, STAGES, stage as table_stage
@@ -178,10 +179,17 @@ def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
         problems.add(where, "'when.type' is not supported: work items have no "
                             "type in TCW 3.0; condition on tags instead")
         return None
-    unknown = sorted(map(str, set(raw) - {"tags", "not-tags"}))
-    if unknown:
-        problems.add(where, f"unknown 'when' key(s) {', '.join(unknown)}; "
+    unknown = set(raw) - {"tags", "not-tags"}
+    # A key breaking the naming rule (`not_tags`) is already reported by the
+    # check every file gets before it is merged, saying what to write instead.
+    # Reporting it here too would give one mistake two errors.
+    misnamed = {k for k in unknown if not isinstance(k, str) or not KEY_PATTERN.fullmatch(k)}
+    if unknown - misnamed:
+        listed = ", ".join(sorted(map(str, unknown - misnamed)))
+        problems.add(where, f"unknown 'when' key(s) {listed}; "
                             f"expected 'tags' or 'not-tags'")
+        return None
+    if misnamed:
         return None
     lists: dict[str, tuple[str, ...]] = {"tags": (), "not-tags": ()}
     for key in lists:

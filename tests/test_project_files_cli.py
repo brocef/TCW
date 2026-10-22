@@ -477,6 +477,30 @@ def test_ac12_not_tags_with_an_underscore_says_what_to_write(tmp_path):
     assert ran.code == 1, ran
     assert ("work.stages.spec.prompt[0].when.not_tags: key 'not_tags' "
             f"{NAMING}; write 'not-tags'") in ran.err, ran
+    checked = tcw(root, "validate")
+    assert checked.code == 1, checked
+    assert checked.out.splitlines() == [
+        "error: .tcw/tcw-config.yaml: work.stages.spec.prompt[0].when.not_tags: "
+        f"key 'not_tags' {NAMING}; write 'not-tags'"], "one mistake, one error"
+
+
+@pytest.mark.parametrize("local", [False, True], ids=["project", "local"])
+def test_a_file_with_no_version_gets_only_the_version_problem(tmp_path, local):
+    root = tmp_path / "p"
+    (root / "docs" / "work").mkdir(parents=True)
+    body = "work:\n  my_key: 1\n"
+    if local:
+        write_config(root, "id: p\n")
+        local_config_file(root).write_text(body)
+        shown = ".tcw/tcw-config.local.yaml"
+    else:
+        config_file(root).write_text("id: p\n" + body)
+        shown = ".tcw/tcw-config.yaml"
+    ran = tcw(root, "validate", env=personal_env(tmp_path))
+    assert ran.code == 1, ran
+    errors = [line for line in ran.out.splitlines() if line.startswith("error:")]
+    assert len(errors) == 1, ran
+    assert errors[0].startswith(f"error: {shown}: has no tcw-version"), ran
 
 
 def test_ac12_a_key_yaml_reads_as_a_boolean_must_be_text(tmp_path):
@@ -492,7 +516,14 @@ def test_ac12_a_key_yaml_reads_as_a_boolean_must_be_text(tmp_path):
 
 
 def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
+    # The 3.x file connects a child of its own, whose file is from a newer
+    # TCW. Reading the 3.x file at all reports a problem naming it; following
+    # its connections reports the child's. Either one shows it was read.
     old = legacy_project(tmp_path / "old")
+    (old / "tcw-config.yaml").write_text(
+        "id: old\nprojects:\n  children:\n    deeper: ../deeper\n")
+    deeper = tmp_path / "deeper"
+    write_config(deeper, "tcw-version: 99.0.0\nid: deeper\n")
     ws = tmp_path / "ws"
     write_config(ws, "id: ws\nprojects:\n  children:\n    old: ../old\n")
     for argv in (("projects", "list"), ("validate",)):
@@ -501,8 +532,22 @@ def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
         assert f"{old.resolve()}: {LEGACY}" in ran.out + ran.err, ran
         assert f"{old.resolve()}: {old.resolve()}" not in ran.out + ran.err, \
             "the folder is named once"
-    listed = tcw(ws, "projects", "list", "--json")
-    assert "old" not in [p.get("id") for p in _json_projects(listed)]
+        assert str(old.resolve() / "tcw-config.yaml") not in ran.out + ran.err, \
+            "the 3.x file was read"
+        assert str(deeper.resolve()) not in ran.out + ran.err, \
+            "the 3.x file's connections were followed"
+    ran = tcw(ws, "validate")
+    assert ran.out.splitlines() == [f"error: {old.resolve()}: {LEGACY}"], ran
+    assert "1 error, 0 warnings, 0 unresolved" in ran.err, ran
+
+
+def test_ac13_a_variable_naming_a_3x_folder_says_so_once(tmp_path):
+    old = legacy_project(tmp_path / "old")
+    ws = tmp_path / "ws"
+    write_config(ws, "id: ws\nprojects:\n  children:\n    old: ../missing\n")
+    ran = tcw(ws, "validate", env={"TCW_PROJECT_OLD": str(old)})
+    assert ran.code == 1, ran
+    assert ran.out.splitlines() == [f"error: {old.resolve()}: TCW_PROJECT_OLD names {LEGACY.removeprefix('is ')}"], ran
 
 
 def _json_projects(ran: Ran) -> list[dict]:
