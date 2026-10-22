@@ -297,6 +297,18 @@ that are missing or unreadable):
     fallen back (Design 4.4: any merge failing). Checked by hand before this
     plan was revised: it gives AC 10, 11 and 12 exactly and raises for AC 13,
     AC 14 and both orders of AC 14's two-failure graph.
+    **Note for implement: which order is compared, and which errors count**
+    (re-check R3). Design 4.4 makes the fallback depend only on the merges
+    inside one project's own ancestry, so the comparison is made **per
+    project**: for each project `P` of the graph, the test builds, in a
+    fresh set of classes, only `P` and its ancestors, and compares `P`'s
+    `__mro__` with `load_order_of(...)` for `P`. A `TypeError` raised while
+    building that set means `P`'s order must have fallen back; a failure
+    among projects that are not `P`'s ancestors says nothing about `P`.
+    Python also raises `TypeError` for a duplicate base class, so the
+    generator never repeats an ID within one parent list (the parser refuses
+    `[core, core]`, so `load_order_of` never meets one), and asserts that it
+    did not before building any class.
   - **Against a transcription of Design 4.4 and 4.5**, written in the test,
     for the graphs that fall back: the depth-first order, `<Q>` (the first
     merge to fail, each project's merge after its parents', parents in
@@ -393,6 +405,21 @@ function alone on literal mappings (the parsed configuration):
   extending it>]}` after the translated parents (after, so that a sibling
   listed after the shared parent keeps C3's order: `x: [p, y]`, `y: [p]`
   gives `p, y, x`). One already a translated parent adds nothing.
+  **Note for implement: an `extends` the translation cannot place**
+  (re-check R2). One file cannot tell a sibling from a grandparent or from
+  a project below a listed child, so the appended parent could add a second,
+  unneeded path to an ancestor, or make a loop. The rule is to **refuse, with
+  a message, rather than invent a parent link**: the translation marks each
+  link it appends (in memory only, never written), and once the graph is
+  read (Step 7b) the registry checks every marked link. If its ID is also
+  reached from the file's project by its other links, upwards or downwards,
+  the file gets a graph problem, `'<Y>', named by <axis>.extends in '<file>',
+  is already above or below '<X>'; the translation of 'projects:' cannot
+  place it; write '<X>''s parents: by hand`, and no link is added. A test that
+  meets it at Step 7 has its fixture converted by hand there (listed in 7f
+  with this rule) instead of waiting for Step 8a. None is expected today (no
+  grandparent-shaped `extends` fixture was found at `e8c84967`); TCW-107 and
+  TCW-110 may add some.
 - An `extends` naming a project the same file lists under
   `projects.children` adds nothing and changes nothing: at Step 7 that child
   is a descendant, which `get` still finds, so the test keeps working; Step
@@ -513,8 +540,9 @@ each with one possible cause of failure (the review's S1):
   changed (siblings, upstream bookkeeping, the write rule): the 7f table,
   with nothing about conversion mixed in.
 - **Step 8a**: the fixtures are rewritten while the translation still runs,
-  and the set of passing tests must not change: the same reader reads two
-  spellings of the same graph.
+  and no test's outcome may change, apart from a named list of tests the
+  step deletes on purpose: the same reader reads two spellings of the same
+  graph.
 - **Step 8b**: the translation goes and Design 3.5's refusal lands.
 
 Step 7 itself cannot be split further and stay green: the walk, the lookup
@@ -654,6 +682,19 @@ builds, as `tests/test_project_files_cli.py:42-49` does:
   `_outside`, the same upward walk as the 2.12 bullet's. So `passing(axis,
   id, ...)` and the Step 10 `sources(axis, id)` are defined for every project
   TCW-110's `Locator.read` can open, which Step 11 relies on.
+  **Note for implement: where an outside project is found** (re-check R4).
+  TCW-107's `_answers` is keyed by the ID and the naming root, so locating
+  the project again from the active root is a new lookup: it can give a
+  different folder from the one TCW-110's `Locator` opened (which may have
+  been named by some other project), or `UnknownProject` for a store
+  already open. So the folder is taken, in this order: (1) the root of the
+  store the caller already holds, passed as `load_order(id, root=...)` and
+  `parents(id, root=...)` (the store's `project_root`; Step 11's `passing`
+  and `sources` pass it); (2) otherwise the folder `_returned` holds for
+  that ID, when it holds exactly one; (3) only with neither,
+  `project_folder(id, named_by=<the active project's root>)`. Step 11's
+  "A project outside the family" test (`b` opened by `Locator.read` from
+  `b`'s root) covers case (1).
 - `parents(id)`, `declared_child_ids(id)` (the active project's list, a
   descendant's committed list, an ancestor's names), `children(id)` (those of
   `declared_child_ids` the family holds), `ancestors(id)` (the load order
@@ -758,6 +799,7 @@ it. The ones expected, by file:
 | --- | --- |
 | `tests/test_upstream_projects.py` | Upstream bookkeeping (the read-as-upstream warning, the "declared upstream but also connected" problem, an upstream's connections not followed, `tcw projects list`'s upstream rows) has no 4.0 counterpart and is removed (Design 3.5); its read-only tests are kept against Design 7.1's message; a test that an upstream's broken connections do not stop the reader is kept as Design 6.6 (its library's links are now followed, so it now proves the reader is unaffected through `availability()`). |
 | `tests/test_project_registry.py` | Reciprocity: "nonreciprocal connection" (`:141-151`) becomes AC 4 (a parent need not list the child) and AC 6 (a listed child must name the parent), each with its own message; the cycle tests become Design 4.7's loop; the single-parent rule goes. |
+| The test callers of the removed methods (re-check; found with `grep -rn "registry\.parent()\|declared_parent_id\|declared_upstream_ids" tests` at `e8c84967`, re-run at the start of the step): `tests/test_project_registry.py:326` and `:579` (`registry.parent() is None`), `:347` and `:536` (`registry.parent().id == "root-project"`), `:580` (`declared_parent_id() == "away-project"`); `tests/test_upstream_projects.py:29` (`declared_upstream_ids() == ["core"]`) | They fail with `AttributeError` once 7b removes the methods. Each is rewritten on `parents()` (`parents() == []`, `[link.id for link in parents()] == ["root-project"]`, and, for the upstream, `core` among `parents()` with `inherit` `none`), as part of AC 28, and listed with that criterion. |
 | `tests/test_projects_list.py`, `tests/test_multiproject.py` | No upstream rows; a sibling never listed (Design 8.1). |
 | `tests/test_capabilities_federation.py`, `tests/test_multiproject.py`, `tests/test_taxonomy.py` (`:566`), `tests/test_store_editor.py`, and the other users of `extends` | An `extends` of a listed child (`connect_sources`, `connect_many`) is unaffected: the child is a descendant, which `get` still finds (Step 8a inverts it). An `extends` of a sibling goes through the parent the translation appends (Design 3.6's form); a cycle of sibling `extends` becomes a parents loop (Design 4.7). An upstream extended through `extends_add` or the CLI after the relation (`tests/test_upstream_projects.py:294-295`, `:374`, `:591`, `:656`) gets an `inherit` holding that axis, since the translation reads the file's `extends` each time it reads the file. |
 | `tests/test_config_edit_writers.py` (`PARENT`, `:23-24`; `ANNOTATED`, `:121-132`), `tests/test_store_editor.py` | Nothing: the file bytes they compare are not rewritten in Step 7. Converted by hand in Step 8a, never re-dumped, since they compare bytes. |
@@ -768,14 +810,33 @@ it. The ones expected, by file:
 
 **Proves it:** the new test files; the full suite with the translation in the
 reader; `grep -rn "def parent\b\|declared_parent_id\|declared_upstream_ids\|_upstream_only\|_validate_reciprocity\|_validate_cycles" tcw/`
-finds nothing; the inventory against Step 0's, every test ID that
+finds nothing; the inventory, taken again now and kept for Step 8a, against Step 0's, every test ID that
 disappeared or was renamed listed with the design rule that removed it.
+Last, the **outcome record** that Steps 8a and 8b compare against is saved:
+from the worktree's root, `.venv/bin/pytest -q --junitxml=<scratchpad>/outcomes-step7.xml`
+(bare pytest, as CI runs it, `.github/workflows/test.yml:76`; the suite has no
+random-order plugin, `pyproject.toml:27`, so the order is the same each run).
+
+**The outcome comparison** used by Steps 8a and 8b is a one-off script kept
+in the scratchpad, `compare_outcomes.py <before.xml> <after.xml>
+<allowed.txt>`. From each JUnit file it reads one outcome per test case, with
+the test ID being `classname` and `name` joined as pytest prints them, and
+the outcome `failed` (a `failure` element), `error` (an `error` element),
+`skipped` (a `skipped` element, which also covers an expected failure) or
+`passed` (none of these). `allowed.txt` lists one test ID per line. It exits
+non-zero, printing each offending ID, when: an ID in `before` is missing
+from `after` and is not in `allowed.txt`; an ID in both has a different
+outcome; an ID in `allowed.txt` is still present in `after` (the list must be
+exact, not a cover); or any ID in `after` has outcome `failed` or `error`.
+An ID only in `after` (a new test) must have outcome `passed`.
 
 ## Step 8a — the fixtures are rewritten while the translation runs
 
 No production code changes in this step, and the reader still translates
-`projects:`, so a failure here can only come from the rewrite, and the set of
-passing tests must not change.
+`projects:`, so a failure here can only come from the rewrite, and every
+test's outcome must stay what it was at the end of Step 7, apart from the
+tests this step deletes on purpose (Proves it 1 lists them and gives the
+command and the comparison).
 
 **The work list.** Before commit 1, a one-off pytest plugin kept in the
 scratchpad sets `tcw.store.links._on_translate` (Step 4) to record the test
@@ -800,6 +861,44 @@ style, a comment inside it), a call whose text is built (an f-string, a
 variable, a dictionary dumped with `yaml.safe_dump`), and a test on Step 0's
 `extends` list are not touched and are listed for commit 2.
 
+**The calls of TCW-107's `write_connected_config` and
+`write_connected_config_file`** (re-check R1) need one more stage first.
+Their text constants still hold 3.x locations (`ws: ../ws`, `{path: ...}`,
+`{repository: ...}`; TCW-107 plan, Step 2), which that helper moves into a
+manifest only when the test runs, and `translate_projects` refuses an entry
+whose value is not null or `{}`. So for each such call the script works in
+two stages, in this order:
+
+1. **The locations move into a manifest**, by the helper's own rule (TCW-107
+   plan, Step 2): each `projects.<relation>.<id>` that is a string gives the
+   manifest entry `<id>: <that path>`; a mapping with `path` gives `<id>:
+   <path>`; a mapping with `repository: {url, ref, path}` gives `<id>:
+   {repository: "<url>#<ref>", subfolder: <path>}`. The entry in the constant
+   is reduced to `<id>:`. The script imports the helper's move rule from
+   `tests/projectfiles.py` rather than copying it, so the two cannot
+   disagree; if TCW-107 wrote that rule inline in the helper, commit 1 first
+   moves it, unchanged, into its own function there, and the helper calls
+   it.
+2. **The relations are translated**: the block, now holding IDs only, is
+   replaced with the lines `translate_projects` gives, as above.
+
+The call is then rewritten as the plain writer followed by a manifest write
+on the next line, at the same indentation and with the same root expression:
+`write_connected_config(<root>, <text>)` becomes `write_config(<root>,
+<converted text>)` and `write_manifest(<root>, {<the entries of stage 1>})`;
+`write_connected_config_file(<path>, <text>)` becomes
+`write_config_file(<path>, <converted text>)` and `write_manifest(<root>,
+{...})`, but only where `<path>` is written as `<root> / ".tcw" /
+"tcw-config.yaml"` or `<root> / "tcw-config.yaml"`, so the root can be read
+off the call. If the call's result is assigned, the assignment stays on the
+`write_config` line. A call with no location to move becomes the plain
+writer alone. Listed for commit 2 instead: a `<path>` of any other form; an
+absolute location (the helper makes it relative to the root at run time,
+which a constant cannot); an entry the helper itself refuses
+(`repository.checkout`, or a repository with no path); an entry still
+holding a `jira` key (refused from Step 6 on, so such tests should already
+have moved there); and any constant the first paragraph lists.
+
 **Commit 2, by hand**, so a reviewer can read the hand edits on their own:
 
 - The calls commit 1 listed, and every dictionary-built configuration
@@ -815,7 +914,9 @@ variable, a dictionary dumped with `yaml.safe_dump`), and a test on Step 0's
   `projects:`. Each caller on Step 0's list whose test extends the project it
   connects passes `inherit=` with the axes extended; a caller whose test
   extends a project it connects as a child is inverted, as below. TCW-110's
-  tests of the helper itself, if it has any, move with it.
+  plan gives the helper no tests of its own (its Step 3: "imported by Step
+  4's tests"), and changing its body renames no test, so it adds nothing to
+  this step's list of deleted test IDs.
 - **The inversions** (the review's M2), each test on Step 0's `extends` list
   whose `extends` names a listed child: the extended project becomes a
   parent of the extender, with `inherit` holding the axes extended, and the
@@ -843,14 +944,37 @@ variable, a dictionary dumped with `yaml.safe_dump`), and a test on Step 0's
 - The byte-comparison tests (`tests/test_config_edit_writers.py`'s `PARENT`
   and `ANNOTATED`, `:23-24`, `:121-132`; `tests/test_store_editor.py`),
   edited in their text constants only, never re-dumped (the review's S2).
-- TCW-107's `write_connected_config` and `write_connected_config_file`
-  retired with their tests in `tests/test_projectfiles_helper.py` (their
-  callers use `write_config` and `write_manifest`), as TCW-107's plan says
-  this item does.
+- **TCW-107's `write_connected_config` and `write_connected_config_file`
+  retired**, as TCW-107's plan says this item does, as the last change of
+  commit 2. By then commit 1 and the hand edits above have rewritten every
+  call: each caller now uses `write_config` (or `write_config_file`) for the
+  configuration and `write_manifest` for the locations, as commit 1
+  describes, the calls it listed being converted the same way by hand. Then
+  `grep -rn "write_connected_config" tests` must find only the two
+  definitions in `tests/projectfiles.py` and their tests in
+  `tests/test_projectfiles_helper.py`; the two helpers, the move function
+  commit 1 imported, and those tests are deleted; and the same grep must
+  then find nothing. The other tests of that file (`write_manifest`, the
+  `tmp_path` guard) stay.
 
 **Proves it**, each result recorded in the implement round:
 
-1. The full suite passes, and the set of passing test IDs equals Step 7's.
+1. The full suite passes, and the outcomes are Step 7's. Before commit 1,
+   the test IDs this step deletes on purpose are written to
+   `<scratchpad>/allowed-step8a.txt`: exactly the tests in
+   `tests/test_projectfiles_helper.py` that call `write_connected_config` or
+   `write_connected_config_file`, found by walking that file's syntax tree,
+   with their IDs taken from `.venv/bin/pytest --collect-only -q
+   tests/test_projectfiles_helper.py` (TCW-107's Step 2 names them by
+   subject: a bare location, an absolute one, a `path` and `repository`
+   mapping, a `jira` block kept, text that does not parse, an entry the
+   helper refuses). Nothing else is on the list: the inversions and the
+   rewritten helpers keep their test IDs. After commit 2, from the
+   worktree's root, `.venv/bin/pytest -q --junitxml=<scratchpad>/outcomes-step8a.xml`,
+   then `python <scratchpad>/compare_outcomes.py <scratchpad>/outcomes-step7.xml
+   <scratchpad>/outcomes-step8a.xml <scratchpad>/allowed-step8a.txt` must
+   exit 0 (Step 7 defines the script). The list and the script's output are
+   recorded in the implement round.
 2. The plugin of "The work list" records nothing: no test still relies on
    the translation.
 3. **The search turned off**, as in TCW-107 Step 9: a one-off pytest plugin in
@@ -860,9 +984,11 @@ variable, a dictionary dumped with `yaml.safe_dump`), and a test on Step 0's
    of AC 9 and AC 29, each named). Every test must still pass, which shows
    each converted fixture's projects are placed by its manifest. A test that
    fails is fixed by writing the manifest entry its fixture lacked.
-4. **The inventory**: against Step 0's, no test ID disappeared in this step,
-   and no test's count of `assert` statements and `pytest.raises` blocks
-   dropped, except those listed in Steps 5-7 with their reason.
+4. **The inventory**: against the one taken at the end of Step 7, no test ID
+   disappeared in this step except those in `allowed-step8a.txt`, and no
+   test's count of `assert` statements and `pytest.raises` blocks dropped,
+   except the inverted tests whose assertions on a child row changed to a
+   parent row, each listed with Design 3.5.
 
 ## Step 8b — `projects:` is refused, and the translation goes
 
@@ -915,6 +1041,16 @@ Spec Design 3.5 and 6.6 (choice 3), AC 8.
   texts, which never carry `id`), so manifests are left out by that rule.
   Any configuration text or dictionary found fails the test, except in the
   Design 3.5 refusal tests, each named in the test.
+  **Note for implement: texts written straight to a file** (re-check R5).
+  Step 0 expects some configurations written with `write_text` or
+  `write_bytes` rather than a configuration writer, and such a text with no
+  `id:` would pass both rules above. So a text is a configuration text also
+  when it is the argument of a `write_text`, `write_bytes` or
+  `open(...).write` call whose target expression holds the string constant
+  `"tcw-config.yaml"` or `"tcw-config.local.yaml"` (as in `root / ".tcw" /
+  "tcw-config.yaml"`). A target held in a variable cannot be read this way;
+  the files of Step 0's direct-writer list are read by hand once for such
+  calls, and each one found is changed to name the file in the call.
 - `grep -rn "declared_upstream_ids\|_upstream_only\|def entry\|translate_projects" tcw/`
   finds nothing.
 - AC 28: none of the names of spec Problem 7, nor `ProjectRegistry.parent`,
@@ -923,8 +1059,20 @@ Spec Design 3.5 and 6.6 (choice 3), AC 8.
 
 **Proves it**, each result recorded in the implement round:
 
-1. The full suite passes, and the set of passing test IDs equals Step 8a's,
-   apart from the refusal tests rewritten or removed above, each listed.
+1. The full suite passes, and the outcomes are Step 8a's. Before the
+   changes, the test IDs this step deletes on purpose are written to
+   `<scratchpad>/allowed-step8b.txt`: every test ID of
+   `tests/test_projects_translation.py` (from `.venv/bin/pytest
+   --collect-only -q tests/test_projects_translation.py`), and the refusal
+   tests of the last item of "Changes" that are removed as duplicates of
+   AC 8's, each by ID with Design 3.5. A refusal test rewritten in place
+   keeps its ID and is not on the list; it must still pass. After the
+   changes, from the worktree's root, `.venv/bin/pytest -q
+   --junitxml=<scratchpad>/outcomes-step8b.xml`, then `python
+   <scratchpad>/compare_outcomes.py <scratchpad>/outcomes-step8a.xml
+   <scratchpad>/outcomes-step8b.xml <scratchpad>/allowed-step8b.txt` must
+   exit 0; this step's new tests appear only in the after file and must
+   pass. The list and the output are recorded in the implement round.
 2. **Mutation checks**, with the search turned off as in Step 8a, each aimed
    at a choice the rewrite made (the review's S3), each a temporary change to
    production code that is reverted:
