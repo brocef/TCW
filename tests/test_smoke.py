@@ -44,7 +44,8 @@ def test_init_without_work_writes_no_work_ignore_rule(tmp_path, monkeypatch):
     _git_init(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["init", "--id", "test-project", "taxonomy"]) == 0
-    assert (tmp_path / ".gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert (tmp_path / ".tcw/.gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert not (tmp_path / ".gitignore").exists()
 
 
 def test_init_without_an_id_is_a_usage_error(tmp_path, monkeypatch):

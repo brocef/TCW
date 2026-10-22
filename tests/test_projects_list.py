@@ -159,11 +159,11 @@ def test_work_list_runs_with_a_declared_child_that_is_not_here(graph, monkeypatc
 def test_the_2x_key_refusal_names_the_file_from_a_sub_folder(graph, monkeypatch,
                                                              capsys):
     """Pre-freeze clean-up, C8: run from `fx/docs`, the file is
-    `../tcw-config.yaml`."""
+    `../.tcw/tcw-config.yaml`."""
     _rename_key(graph, "projects", "connected-projects")
     code, out, err = run(monkeypatch, capsys, graph / "docs", "taxonomy", "list")
     assert (code, out) == (1, ""), err
-    assert ": ../tcw-config.yaml: the key 'connected-projects'" in err, err
+    assert ": ../.tcw/tcw-config.yaml: the key 'connected-projects'" in err, err
 
 
 def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
@@ -184,4 +184,7 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert (code, out) == (1, ""), (out, err)
-    assert err.startswith("tcw projects list: ") and "children key" in err, err
+    # The naming rule every key follows catches it first (TCW-106 Design 5.1).
+    assert err.startswith("tcw projects list: .tcw/tcw-config.yaml: "
+                          "projects.children.Bad ID: key 'Bad ID' must be lowercase "
+                          "letters and digits joined by single hyphens"), err

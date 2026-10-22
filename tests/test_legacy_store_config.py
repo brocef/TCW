@@ -74,7 +74,7 @@ def _assert_one_leftover(problems, component: str, shown: str,
     assert len(lines) == 1, problems
     line = lines[0]
     assert line.startswith(f"{prefix}{shown}: "), line
-    assert f"{component}.extends" in line and "tcw-config.yaml" in line, line
+    assert f"{component}.extends" in line and ".tcw/tcw-config.yaml" in line, line
     assert "then delete the file" in line, line
     assert "if already migrated, just delete it" in line, line
     return line
@@ -313,7 +313,7 @@ def test_a_moved_store_that_cannot_open_is_reported_once_instead(
 
     problems = validate(consumer)
     failures = [str(p) for p in problems
-                if str(p).startswith("error: tcw-config.yaml: taxonomy: ")]
+                if str(p).startswith("error: .tcw/tcw-config.yaml: taxonomy: ")]
     assert len(failures) == 1, problems
     assert "ghost" in failures[0] and "taxonomy.extends" in failures[0], failures
     assert _leftover_lines(problems) == [], problems

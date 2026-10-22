@@ -63,7 +63,7 @@ def test_a_refused_key_stops_plain_show(personal):
                     "work": {"stages": {"spec": {"prompt": [{"blob": "x"}]}}}})
     result = tcw(root, "config", "show")
     assert (result.code, result.out) == (1, ""), result
-    assert result.err.startswith("tcw config show: tcw-config.local.yaml: id: ")
+    assert result.err.startswith("tcw config show: .tcw/tcw-config.local.yaml: id: ")
 
 
 def test_origin_still_prints_and_marks_the_refused_key(personal):
@@ -76,10 +76,10 @@ def test_origin_still_prints_and_marks_the_refused_key(personal):
     assert yaml.safe_load(result.out)["id"] == "p"
     refused = [l for l in result.out.splitlines() if l.startswith("# refused:")]
     assert len(refused) == 1
-    assert all(w in refused[0] for w in ("id", "other", "tcw-config.local.yaml"))
+    assert all(w in refused[0] for w in ("id", "other", ".tcw/tcw-config.local.yaml"))
     [blob] = [l for l in result.out.splitlines() if "blob: x" in l]
-    assert blob.endswith("  # local: tcw-config.local.yaml"), blob
-    assert "tcw-config.local.yaml: id: " in result.err
+    assert blob.endswith("  # local: .tcw/tcw-config.local.yaml"), blob
+    assert ".tcw/tcw-config.local.yaml: id: " in result.err
 
 
 def test_credential_names_outside_jira_mode_are_listed_as_skipped(personal):
@@ -102,7 +102,7 @@ def test_an_unreadable_personal_file_contributes_nothing(personal):
     result = tcw(root, "config", "show", "--origin")
     assert result.code == 1, result
     assert yaml.safe_load(result.out) == load_config(root).values
-    assert "tcw-config.local.yaml" in result.err
+    assert ".tcw/tcw-config.local.yaml" in result.err
 
 
 def test_an_unreadable_project_file_prints_nothing(personal):

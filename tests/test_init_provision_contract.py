@@ -26,8 +26,8 @@ def test_init_prints_nothing_and_names_every_path(tmp_path, monkeypatch, capsys)
     # Outside a repository `init` also says the personal file needs keeping
     # out of version control by hand, every time it runs (TCW-72 Design 10.2).
     note = ("note: not inside a repository, so no ignore rule was written; keep "
-            "tcw-config.local.yaml out of version control yourself")
-    assert err.splitlines() == ["wrote tcw-config.yaml",
+            ".tcw/tcw-config.local.yaml out of version control yourself")
+    assert err.splitlines() == ["wrote .tcw/tcw-config.yaml",
                                 "created docs/taxonomy/", "wrote docs/taxonomy/.gitkeep",
                                 "created docs/work/", "wrote docs/work/.gitkeep", note]
     # Again: nothing left to do, so nothing to name.

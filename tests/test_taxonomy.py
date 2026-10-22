@@ -10,7 +10,8 @@ from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
 from nodeconfig import declare_extends, set_component_key
 from tcw.errors import TcwError
-from tests.projectfiles import config_file, write_config, write_config_file
+from tests.projectfiles import config_file, write_config_file
+from tests.projectfiles import write_config as write_project_config
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -47,11 +48,11 @@ def write_config(root: Path, text: str):
 
 def connect_sources(consumer: Path, *sources: Path) -> None:
     children = "".join(f"    {source.name}: ../{source.name}\n" for source in sources)
-    write_config(consumer, 
+    write_project_config(consumer,
         f"id: {consumer.name}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
-        write_config(source, 
+        write_project_config(source,
             f"id: {source.name}\nprojects:\n  parent:\n"
             f"    {consumer.name}: ../{consumer.name}\n"
         )
@@ -194,14 +195,14 @@ def transitive_taxonomy(tmp_path):
     a = node(tmp_path, "alpha")
     b = node(tmp_path, "bravo")
     c = node(tmp_path, "charlie")
-    write_config(a, 
+    write_project_config(a,
         "id: alpha\nprojects:\n  children:\n    bravo: ../bravo\n"
     )
-    write_config(b, 
+    write_project_config(b,
         "id: bravo\nprojects:\n  parent:\n    alpha: ../alpha\n"
         "  children:\n    charlie: ../charlie\n"
     )
-    write_config(c, 
+    write_project_config(c,
         "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n")
@@ -256,14 +257,14 @@ def test_transitive_extends_preserves_shadowing_and_ambiguity(tmp_path):
 def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     d = node(tmp_path, "delta")
-    write_config(a, 
+    write_project_config(a,
         "id: alpha\nprojects:\n  children:\n"
         "    bravo: ../bravo\n    delta: ../delta\n"
     )
-    write_config(d, 
+    write_project_config(d,
         "id: delta\nprojects:\n  parent:\n    alpha: ../alpha\n"
     )
-    write_config(c, 
+    write_project_config(c,
         "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n  - delta\n")
@@ -288,7 +289,7 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     (b / "ledger").mkdir()
     for entry in (b / "docs" / "taxonomy").iterdir():
         entry.rename(b / "ledger" / entry.name)
-    write_config(b, 
+    write_project_config(b,
         "id: bravo\ntaxonomy:\n  path: ledger\nprojects:\n"
         "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
     )
@@ -781,13 +782,13 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.move(str(base / "docs" / "taxonomy" / "argument"),
                 str(elsewhere / "argument"))
     shutil.rmtree(base / "docs" / "taxonomy")
-    write_config(base, 
+    write_project_config(base,
         "id: base\ntaxonomy:\n  path: vocabulary\n"
         "projects:\n  children:\n    consumer: ../consumer\n"
     )
 
     cons = node(tmp_path, "consumer")
-    write_config(cons, 
+    write_project_config(cons,
         "id: consumer\nprojects:\n  parent:\n    base: ../base\n"
     )
     write_config(cons, "extends:\n  - base\n")
@@ -849,7 +850,7 @@ def test_extends_add_names_the_config_file_not_a_store_path(tmp_path, capsys):
         os.chdir(cwd)
     out = capsys.readouterr()
     assert out.out == ""
-    assert out.err.splitlines() == ["wrote tcw-config.yaml"]
+    assert out.err.splitlines() == ["wrote .tcw/tcw-config.yaml"]
 
 
 @pytest.mark.parametrize("declared,expected", [

@@ -224,7 +224,7 @@ def test_a_config_finding_names_the_file_relative_to_the_project(project, run, c
     write_config(project, config)
     code, out, _ = run(project / "docs")
     assert code == 1
-    assert out and all(line.startswith("error: tcw-config.yaml: ") for line in out), out
+    assert out and all(line.startswith("error: .tcw/tcw-config.yaml: ") for line in out), out
 
 
 def test_the_former_child_warning_names_its_file_once(tmp_path, run):
@@ -236,4 +236,4 @@ def test_the_former_child_warning_names_its_file_once(tmp_path, run):
     [line] = about(out, "read as an upstream")
     assert code == 0 and line.startswith("warning: "), line
     assert line.count("tcw-config.yaml") == 1, line
-    assert line.split(": ", 2)[1].endswith("kid/tcw-config.yaml"), line
+    assert line.split(": ", 2)[1].endswith("kid/.tcw/tcw-config.yaml"), line

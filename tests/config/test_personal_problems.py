@@ -19,19 +19,19 @@ def test_a_bad_when_is_blamed_on_the_entry_that_holds_it(personal):
     personal.local({"work": {"stages": {"spec": {"prompt": [
         {"blob": "x", "when": {"type": "bug"}}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.local.yaml: "), lines
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.local.yaml: "), lines
 
 
 def test_an_unknown_stage_in_a_personal_file_is_blamed_on_it(personal):
     personal.local({"work": {"stages": {"nonsense": {"prompt": [{"blob": "x"}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert lines and all(l.startswith("tcw-config.local.yaml: ") for l in lines), lines
+    assert lines and all(l.startswith(".tcw/tcw-config.local.yaml: ") for l in lines), lines
 
 
 def test_a_project_problem_is_blamed_on_the_project_file(personal):
     personal.project({"work": {"hooks": {"timeout": -1}}})
     assert problem_lines(load_config(personal.root)) == [
-        "tcw-config.yaml: work.hooks.timeout: must be a positive number of "
+        ".tcw/tcw-config.yaml: work.hooks.timeout: must be a positive number of "
         "seconds, got -1"]
 
 
@@ -65,14 +65,14 @@ def test_a_file_leaving_its_folder_is_a_problem_whether_or_not_it_exists(persona
 def test_a_project_file_leaving_the_project_is_a_problem(personal):
     personal.project({"work": {"stages": {"spec": {"prompt": [{"file": "../x.md"}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: "), lines
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: "), lines
 
 
 def test_a_key_path_is_written_with_dots_and_brackets(personal):
     personal.project({"work": {"stages": {"spec": {"prompt": [{"blob": "a"},
                                                               {"bogus": 1}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert lines[0].startswith("tcw-config.yaml: work.stages.spec.prompt[1]: "), lines
+    assert lines[0].startswith(".tcw/tcw-config.yaml: work.stages.spec.prompt[1]: "), lines
 
 
 def test_an_unreadable_project_file_is_one_problem(personal):
@@ -88,7 +88,7 @@ def test_a_local_file_that_is_not_utf8_is_a_problem_naming_it(personal):
     write_config_file(personal.local_file, b"user:\n  name: Ren\xe9\n")
     config = load_config(personal.root)
     assert problem_lines(config) == [
-        "tcw-config.local.yaml: is not valid UTF-8 text (byte 0xe9 at position 17)"]
+        ".tcw/tcw-config.local.yaml: is not valid UTF-8 text (byte 0xe9 at position 17)"]
 
 
 def test_a_project_file_that_is_not_utf8_is_unreadable(personal):
@@ -96,7 +96,7 @@ def test_a_project_file_that_is_not_utf8_is_unreadable(personal):
     config = load_config(personal.root)
     assert config.unreadable
     assert problem_lines(config) == [
-        "tcw-config.yaml: is not valid UTF-8 text (byte 0xff at position 5)"]
+        ".tcw/tcw-config.yaml: is not valid UTF-8 text (byte 0xff at position 5)"]
 
 
 def test_config_show_origin_names_a_file_that_is_not_utf8(personal):

@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tcw import __version__
+from tcw.project_files import version_line
 from tcw.store import config_edit
 from tcw.store.config_edit import (
     ConfigEditRefused, Remove, SetId, SetList, SetScalar, edit_text,
@@ -184,8 +186,11 @@ def test_a_byte_order_mark_is_kept():
 
 @pytest.mark.parametrize("text", [None, "", "  \n\n"])
 def test_a_missing_or_empty_file_is_written_in_full(text):
+    """Written in full, with the version line first (TCW-106 Design 3.1)."""
     after = edit(text, SetId("p"), SetScalar("work", "path", "w"))
-    assert yaml.safe_load(after) == {"id": "p", "work": {"path": "w"}}
+    assert after.startswith(version_line())
+    assert yaml.safe_load(after) == {"tcw-version": __version__, "id": "p",
+                                     "work": {"path": "w"}}
 
 
 def test_nothing_to_change_returns_none():

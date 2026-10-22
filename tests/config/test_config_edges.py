@@ -38,7 +38,7 @@ def test_an_empty_mapping_written_twice_is_blamed_on_the_higher_layer(personal):
     personal.local({"work": {"procedures": {"custom": {}}}})
     result = tcw(personal.root, "config", "show", "--origin")
     [line] = [l for l in result.out.splitlines() if "custom:" in l]
-    assert line.endswith("custom: {}  # local: tcw-config.local.yaml"), line
+    assert line.endswith("custom: {}  # local: .tcw/tcw-config.local.yaml"), line
 
 
 # -- P5: values only an unknown key can hold ---------------------------------------------

@@ -15,7 +15,10 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
-from tests.projectfiles import write_config
+from tcw.project_files import version_line
+from tests.projectfiles import config_file, write_config
+
+BOM = "\ufeff".encode()
 
 PARENT = ("id: child\nprojects:\n    parent:\n        base: ../base\n"
           "    children:\n        other: ../other\n")
@@ -75,7 +78,14 @@ def run(root: Path, monkeypatch, *argv: str) -> int:
 
 
 def config(root: Path) -> bytes:
-    return (root / ".tcw/tcw-config.yaml").read_bytes()
+    """The project file's bytes without its first line, after checking that
+    the first line is the version line the fixture wrote (TCW-106 Design 3.1
+    and 3.2: no edit moves or changes it). A byte order mark stays in front."""
+    raw = (root / ".tcw/tcw-config.yaml").read_bytes()
+    head = BOM if raw.startswith(BOM) else b""
+    first, _, rest = raw[len(head):].partition(b"\n")
+    assert first.rstrip(b"\r") == version_line().strip().encode(), raw.decode()
+    return head + rest
 
 
 def assert_only_added(before: bytes, after: bytes, *added: bytes) -> None:
@@ -257,6 +267,10 @@ def test_an_unsorted_tag_list_is_sorted_only_when_it_has_no_comments(tmp_path, m
 def test_windows_line_endings_and_a_byte_order_mark_survive(tmp_path, monkeypatch):
     before = "﻿id: node\r\n# tags\r\nwork:\r\n  tags:\r\n  - alpha\r\n".encode()
     root = work_node(tmp_path, before)
+    # The version line goes after the mark and ends as the file's lines do.
+    config_file(root).write_bytes(BOM + version_line().strip().encode() + b"\r\n"
+                                  + before[len(BOM):])
+    commit_all(root)
     assert run(root, monkeypatch, "work", "tags", "add", "beta") == 0
     assert config(root) == before + b"  - beta\r\n"
 
@@ -283,7 +297,7 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
     assert code != 0
     assert config(root) == before
     assert git(root, "status", "--porcelain").stdout == ""
-    assert "work must be a mapping" in err and "tcw-config.yaml" in err
+    assert "work must be a mapping" in err and ".tcw/tcw-config.yaml" in err
 
 
 # ── init and write_sentinel ──────────────────────────────────────────────────
@@ -403,7 +417,7 @@ def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsy
     assert code != 0
     assert config(root) == before
     assert git(root, "status", "--porcelain").stdout == ""
-    assert "work must be a mapping" in err and "tcw-config.yaml" in err
+    assert "work must be a mapping" in err and ".tcw/tcw-config.yaml" in err
     assert not (root / "w").exists()
 
 
@@ -420,7 +434,17 @@ def test_a_tags_change_that_changes_nothing_writes_nothing(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("text", [b"---\n", b"~\n", b"# placeholder\n---\n"])
-def test_write_sentinel_on_a_null_document(tmp_path, text):
+def test_write_sentinel_refuses_a_null_document(tmp_path, text):
+    """A null document has no `tcw-version`, so it is read as a 3.x file and
+    refused before anything is written (TCW-106 Design 3.4 row a, 3.4a)."""
     write_config(tmp_path, text)
+    assert (tmp_path / ".tcw/tcw-config.yaml").read_bytes() == text
+    with pytest.raises(ValueError, match="has no tcw-version"):
+        write_sentinel(tmp_path, "proj")
+    assert (tmp_path / ".tcw/tcw-config.yaml").read_bytes() == text
+
+
+def test_write_sentinel_on_a_file_holding_only_the_version(tmp_path):
+    write_config(tmp_path, b"")
     assert write_sentinel(tmp_path, "proj") is True
-    assert yaml.safe_load(config(tmp_path)) == {"id": "proj"}
+    assert config(tmp_path) == b"id: proj\n"

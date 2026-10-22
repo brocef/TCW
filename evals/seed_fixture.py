@@ -61,7 +61,7 @@ from pathlib import Path
 
 import yaml
 
-from tcw.store.fs import find_project_root
+from tcw.project_files import SENTINEL, find_marker
 
 PROJECT_ID = "demo-app"
 
@@ -496,7 +496,7 @@ def _merge_config(dest: Path, key: str, value) -> None:
     add` has already written a `work:` key, and a second one makes the whole file
     fail to parse with `duplicate key: 'work'`.
     """
-    config = dest / "tcw-config.yaml"
+    config = dest / SENTINEL
     doc = yaml.safe_load(config.read_text()) or {}
     doc.setdefault("work", {})[key] = value
     config.write_text(yaml.safe_dump(doc, sort_keys=False, width=100))
@@ -612,14 +612,16 @@ def refuse_bare_inside_a_project(dest: Path) -> None:
     """Raise `ValueError` when a bare fixture at `dest` would sit inside a TCW
     project.
 
-    `tcw` looks for `tcw-config.yaml` in every parent folder, so such a fixture
-    would quietly become part of the outer project. The runner calls this for
+    `tcw` looks for `.tcw/tcw-config.yaml` (or a 3.x `tcw-config.yaml`, which
+    it refuses) in every parent folder, so such a fixture would quietly become
+    part of the outer project, or be refused with it. The runner calls this for
     every bare arm before spawning anything; `seed()` calls it too.
     """
-    outer = find_project_root(dest.parent)
-    if outer is not None:
+    marker = find_marker(dest.parent)
+    if marker is not None:
+        outer, _ = marker
         raise ValueError(f"a bare fixture at {dest} would sit inside the TCW "
-                         f"project at {outer} (its tcw-config.yaml); seed it "
+                         f"project at {outer} (its {SENTINEL}); seed it "
                          f"outside any TCW project, e.g. `--out /tmp/...`")
 
 

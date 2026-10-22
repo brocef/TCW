@@ -11,11 +11,11 @@ import yaml
 from tests.config.conftest import tcw
 from tests.work.projects import commit_all, connect, make_project
 
-WARNING = ("warning: tcw-config.local.yaml: tracked; personal configuration "
+WARNING = ("warning: .tcw/tcw-config.local.yaml: tracked; personal configuration "
            "should stay out of version control (stop tracking it and list it "
-           "in .gitignore)")
+           "in .tcw/.gitignore)")
 NOTICE = ("note: not inside a repository, so no ignore rule was written; keep "
-          "tcw-config.local.yaml out of version control yourself")
+          ".tcw/tcw-config.local.yaml out of version control yourself")
 
 
 def git(root: Path, *argv: str) -> str:
@@ -39,7 +39,7 @@ def test_validate_names_a_shared_key_in_the_local_file(personal):
     personal.local({"id": "other"})
     result = tcw(personal.root, "validate")
     assert result.code == 1, result
-    assert ("error: tcw-config.local.yaml: id: a shared key; a personal file "
+    assert ("error: .tcw/tcw-config.local.yaml: id: a shared key; a personal file "
             "cannot set it") in result.out.splitlines()
     assert result.out.count("tcw-config.local.yaml") == 1, result.out
 
@@ -98,11 +98,12 @@ def test_init_adds_the_ignore_rule_once(tmp_path):
     root = repository(tmp_path / "p")
     first = tcw(root, "init", "--id", "p")
     assert first.code == 0, first
-    assert "wrote .gitignore" in first.err.splitlines()
-    assert (root / ".gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert "wrote .tcw/.gitignore" in first.err.splitlines()
+    assert (root / ".tcw/.gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert not (root / ".gitignore").exists(), "no root .gitignore (TCW-106 AC 2)"
     again = tcw(root, "init")
     assert again.code == 0, again
-    assert (root / ".gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert (root / ".tcw/.gitignore").read_text() == "/tcw-config.local.yaml\n"
     assert ".gitignore" not in again.err
     staged = [l for l in git(root, "status", "--porcelain").splitlines()
               if l[0] not in " ?"]
@@ -111,16 +112,18 @@ def test_init_adds_the_ignore_rule_once(tmp_path):
 
 def test_init_accepts_the_rule_written_without_a_slash(tmp_path):
     root = repository(tmp_path / "p")
-    (root / ".gitignore").write_text("node_modules\ntcw-config.local.yaml\n")
+    (root / ".tcw").mkdir()
+    (root / ".tcw/.gitignore").write_text("node_modules\ntcw-config.local.yaml\n")
     assert tcw(root, "init", "--id", "p").code == 0
-    assert (root / ".gitignore").read_text() == "node_modules\ntcw-config.local.yaml\n"
+    assert (root / ".tcw/.gitignore").read_text() == "node_modules\ntcw-config.local.yaml\n"
 
 
 def test_init_adds_a_line_end_before_its_rule(tmp_path):
     root = repository(tmp_path / "p")
-    (root / ".gitignore").write_text("node_modules")
+    (root / ".tcw").mkdir()
+    (root / ".tcw/.gitignore").write_text("node_modules")
     assert tcw(root, "init", "--id", "p").code == 0
-    assert (root / ".gitignore").read_text() == \
+    assert (root / ".tcw/.gitignore").read_text() == \
         "node_modules\n/tcw-config.local.yaml\n"
 
 
@@ -130,6 +133,7 @@ def test_init_outside_a_repository_prints_the_notice(tmp_path):
     result = tcw(root, "init", "--id", "p")
     assert result.code == 0, result
     assert not (root / ".gitignore").exists()
+    assert not (root / ".tcw/.gitignore").exists()
     assert NOTICE in result.err.splitlines()
 
 
@@ -143,9 +147,9 @@ def test_validate_warns_when_the_local_file_is_tracked(tmp_path, monkeypatch):
     assert tcw(root, "init", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
-    (root / ".gitignore").write_text("")
+    (root / ".tcw/.gitignore").write_text("")
     assert WARNING not in _validated(root).out           # untracked, not ignored
-    git(root, "add", "-f", "tcw-config.local.yaml")
+    git(root, "add", "-f", ".tcw/tcw-config.local.yaml")
     result = _validated(root)
     assert (result.code, result.out) == (0, WARNING + "\n"), result
 
@@ -159,9 +163,9 @@ def test_validate_ignores_the_setting_that_hides_untracked_files(tmp_path, monke
     assert tcw(root, "init", "--id", "p").code == 0
     write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
-    (root / ".gitignore").write_text("")
+    (root / ".tcw/.gitignore").write_text("")
     assert WARNING not in _validated(root).out           # untracked, not ignored
-    git(root, "add", "-f", "tcw-config.local.yaml")
+    git(root, "add", "-f", ".tcw/tcw-config.local.yaml")
     result = _validated(root)
     assert (result.code, result.out) == (0, WARNING + "\n"), result
 
@@ -191,4 +195,4 @@ def test_a_broken_project_file_is_one_validate_error(personal, text):
     assert result.code == 1, result
     errors = [l for l in result.out.splitlines() if l.startswith("error: ")]
     assert len(errors) == 1, result.out
-    assert errors[0].startswith("error: tcw-config.yaml: "), errors
+    assert errors[0].startswith("error: .tcw/tcw-config.yaml: "), errors

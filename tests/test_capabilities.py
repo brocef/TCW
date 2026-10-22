@@ -674,7 +674,7 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
         "    one: ../one\n    two: ../two\n"
     )
     for name in ("one", "two"):
-        (tmp_path / name / ".tcw/tcw-config.yaml").write_text(
+        write_config(tmp_path / name,
             f"id: {name}\nprojects:\n  parent:\n    child: ../child\n"
         )
     st = FsCapabilitiesStore.open(child)

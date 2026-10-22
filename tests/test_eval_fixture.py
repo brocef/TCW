@@ -87,12 +87,12 @@ def test_the_bare_variant_is_a_repository_that_does_not_use_tcw(bare):
 
 
 def test_a_bare_fixture_inside_a_tcw_project_is_refused(tmp_path):
-    """`tcw` looks for `tcw-config.yaml` in every parent folder. A bare fixture
+    """`tcw` looks for `.tcw/tcw-config.yaml` in every parent folder. A bare fixture
     under a TCW project, such as the runner's default `eval-runs/` inside this
     checkout, would resolve to that project and stop being a repository that
     does not use TCW."""
     write_config(tmp_path, "id: outer\n")
-    with pytest.raises(ValueError, match="tcw-config.yaml"):
+    with pytest.raises(ValueError, match=r"\.tcw/tcw-config\.yaml"):
         seed(tmp_path / "runs" / "fixture", "bare")
     assert not (tmp_path / "runs").exists(), "refused before building anything"
 
@@ -106,7 +106,9 @@ def test_a_folder_that_is_not_empty_is_refused(variant, tmp_path):
     write_config(dest, "id: left-over\n")
     with pytest.raises(ValueError, match="not empty"):
         seed(dest, variant)
-    assert sorted(p.name for p in dest.iterdir()) == ["tcw-config.yaml"], (
+    assert sorted(p.name for p in dest.iterdir()) == [".tcw"], (
+        "refused before writing anything")
+    assert sorted(p.name for p in (dest / ".tcw").iterdir()) == ["tcw-config.yaml"], (
         "refused before writing anything")
 
 

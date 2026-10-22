@@ -28,7 +28,7 @@ def stage_prompt(personal, *, local=None, project_list=None):
     return tcw(personal.root, "work", "stage", "prompt", "spec")
 
 
-NOTE = "note: this prompt was changed by personal configuration: tcw-config.local.yaml"
+NOTE = "note: this prompt was changed by personal configuration: .tcw/tcw-config.local.yaml"
 
 
 # -- AC 10: paths and commands ----------------------------------------------------

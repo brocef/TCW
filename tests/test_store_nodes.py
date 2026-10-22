@@ -53,7 +53,7 @@ def test_find_node_root_none_when_absent(tmp_path):
 
 
 def test_find_node_root_requires_file(tmp_path):
-    (tmp_path / SENTINEL).mkdir()
+    (tmp_path / SENTINEL).mkdir(parents=True)
     assert find_project_root(tmp_path) is None
 
 

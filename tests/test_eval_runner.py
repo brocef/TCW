@@ -85,7 +85,7 @@ def test_a_bare_case_under_a_tcw_project_is_refused_before_anything_runs(
     code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
     out, err = capsys.readouterr()
     assert code != 0
-    assert "tcw-config.yaml" in err and "BX" in err
+    assert ".tcw/tcw-config.yaml" in err and "BX" in err
     assert "command:" not in out, "nothing was listed as if it would run"
 
 

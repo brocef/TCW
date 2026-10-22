@@ -115,7 +115,7 @@ def test_the_plural_aliases_are_gone(tcw, fx, argv):
 def test_tags_add_and_rm_print_nothing_and_name_the_config(tcw, fx):
     r = tcw(["tags", "add", "c", "d"], fx)
     assert (r.code, r.out) == (0, "")
-    assert "wrote tcw-config.yaml" in r.err.splitlines()
+    assert "wrote .tcw/tcw-config.yaml" in r.err.splitlines()
     assert tcw(["tags", "list"], fx).out.split() == ["a", "b", "c", "d"]
     r = tcw(["tags", "rm", "d"], fx)
     assert (r.code, r.out) == (0, "")

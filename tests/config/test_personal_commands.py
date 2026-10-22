@@ -35,9 +35,9 @@ def test_a_shared_key_in_the_local_file_stops_every_command(personal, argv):
     result = tcw(personal.root, *argv)
     assert result.code == 1, result
     assert result.out == ""
-    assert "tcw-config.local.yaml" in result.err and "id" in result.err
+    assert ".tcw/tcw-config.local.yaml" in result.err and "id" in result.err
     words = argv[:3] if argv[1] == "stage" else argv[:2]
-    assert result.err.startswith(f"tcw {' '.join(words)}: tcw-config.local.yaml: id: ")
+    assert result.err.startswith(f"tcw {' '.join(words)}: .tcw/tcw-config.local.yaml: id: ")
 
 
 def test_version_runs_whatever_the_configuration(personal):
@@ -61,7 +61,7 @@ def test_open_backend_refuses_a_shared_key_in_a_personal_file(personal):
     with pytest.raises(ConfigError) as caught:
         open_backend(personal.root)
     assert caught.value.code == 1
-    assert "tcw-config.local.yaml" in str(caught.value) and "id" in str(caught.value)
+    assert ".tcw/tcw-config.local.yaml" in str(caught.value) and "id" in str(caught.value)
 
 
 def test_open_backend_opens_with_personal_files_switched_off(personal, monkeypatch):

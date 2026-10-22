@@ -772,7 +772,7 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     assert main(["provision"]) == 1
     err = capsys.readouterr().err
     assert err.startswith("tcw provision: malformed "), err
-    assert f"{code.name}/tcw-config.yaml: " in err, err
+    assert f"{code.name}/.tcw/tcw-config.yaml: " in err, err
     assert words in err and "Traceback" not in err, err
     assert "Nothing to provision" not in err, err
 
@@ -789,7 +789,7 @@ def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, comm
 
     assert main(command) == 1
     err = capsys.readouterr().err
-    assert err == (f"tcw {command[0]}: {code / 'tcw-config.yaml'}: is not valid "
+    assert err == (f"tcw {command[0]}: {code / '.tcw/tcw-config.yaml'}: is not valid "
                    f"UTF-8 text (byte 0xe9 at position 17)\n"), err
     assert (code / ".tcw/tcw-config.yaml").read_bytes() == broken
 
@@ -1250,7 +1250,7 @@ def test_validate_reports_a_declared_tree_store_rather_than_aborting(
     assert main(["validate"]) == 1
 
     out = capsys.readouterr().out
-    assert f"error: tcw-config.yaml: {component}: " in out, out
+    assert f"error: .tcw/tcw-config.yaml: {component}: " in out, out
     assert "has not been provisioned here" in out, out
     assert "tcw provision" in out, out
 
@@ -1978,7 +1978,7 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
                        "path": "trees/taxonomy"})
 
     problems = [p for p in map(str, validate(code))
-                if p.startswith("error: tcw-config.yaml: taxonomy: ")]
+                if p.startswith("error: .tcw/tcw-config.yaml: taxonomy: ")]
     assert len(problems) == 1, problems
     assert "tcw provision" in problems[0], problems
 

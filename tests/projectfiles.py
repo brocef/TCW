@@ -5,7 +5,8 @@ file `<root>/.tcw/tcw-config.local.yaml`, and each starts with the version of
 the TCW that wrote it. A fixture that wrote `<root>/tcw-config.yaml` now calls
 one of these.
 
-**The version line is added only to text that is a mapping** (or empty): a
+**The version line is added only to text that is a mapping** (or empty, or
+only comments): a
 test writing a deliberately broken file, a list, or bytes that are not UTF-8
 gets exactly what it wrote, so it still tests the failure it names. A text
 that already holds a `tcw-version` line is written unchanged, so a test of a
@@ -52,7 +53,13 @@ def _versioned(data):
     except yaml.YAMLError:
         return data
     if parsed is None or (isinstance(parsed, dict) and VERSION_KEY not in parsed):
-        return version_line() + data
+        # A null document such as `---` or `~` cannot take a line in front and
+        # stay one mapping; it is written as it is, a file with no version.
+        try:
+            joined = yaml.safe_load(version_line() + data)
+        except yaml.YAMLError:
+            return data
+        return version_line() + data if isinstance(joined, dict) else data
     return data
 
 

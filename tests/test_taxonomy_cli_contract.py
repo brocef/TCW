@@ -85,7 +85,7 @@ def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):
     connect(project, base, "upstream")
     code, out, err = run(project, "taxonomy", "extends", "add", "base")
     assert (code, out) == (0, ""), err
-    assert err.splitlines() == ["wrote tcw-config.yaml"]
+    assert err.splitlines() == ["wrote .tcw/tcw-config.yaml"]
 
 
 def test_list_and_search_print_one_path_per_line(project, run):

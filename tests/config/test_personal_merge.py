@@ -89,7 +89,7 @@ def test_a_bad_inherit_entry_is_one_problem(personal, entry, words):
     personal.local({"work": {"stages": {"spec": {"prompt": [entry]}}}})
     lines = problem_lines(load_config(personal.root))
     assert len(lines) == 1, lines
-    assert lines[0].startswith("tcw-config.local.yaml: work.stages.spec.prompt[0]: ")
+    assert lines[0].startswith(".tcw/tcw-config.local.yaml: work.stages.spec.prompt[0]: ")
     assert words in lines[0]
 
 
@@ -105,7 +105,7 @@ def test_inherit_outside_a_chain_list_is_one_problem(personal):
     # problem about `inherit` itself.
     lines = [line for line in problem_lines(load_config(personal.root))
              if "'inherit' is allowed only" in line]
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: work.tags[0]: ")
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: work.tags[0]: ")
 
 
 @pytest.mark.parametrize("layer", ["project", "user", "local"])
@@ -122,7 +122,7 @@ def test_a_repeated_entry_in_one_file_is_one_problem(personal):
     personal.project({"work": {"stages": {"spec": {"prompt": [{"file": "a.md"},
                                                               {"file": "a.md"}]}}}})
     lines = problem_lines(load_config(personal.root))
-    assert len(lines) == 1 and lines[0].startswith("tcw-config.yaml: ")
+    assert len(lines) == 1 and lines[0].startswith(".tcw/tcw-config.yaml: ")
 
 
 def test_the_same_entry_in_two_layers_is_no_problem(personal):
@@ -192,7 +192,7 @@ def test_an_empty_mapping_is_blamed_on_the_file_that_wrote_it(personal):
     assert problem.file == personal.local_file
     from tcw.config_cli import render
     [line] = [l for l in render(config, origin=True).splitlines() if "custom:" in l]
-    assert line.endswith("custom: {}  # local: tcw-config.local.yaml"), line
+    assert line.endswith("custom: {}  # local: .tcw/tcw-config.local.yaml"), line
 
 
 def test_a_mapping_problem_is_blamed_on_the_highest_layer_under_it(personal):

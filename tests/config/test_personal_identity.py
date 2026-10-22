@@ -77,7 +77,7 @@ def no_identity(personal, monkeypatch):
 
 
 def _says_how_to_fix_it(personal, err: str) -> None:
-    for words in ("user.name", str(personal.user_file), "tcw-config.local.yaml",
+    for words in ("user.name", str(personal.user_file), ".tcw/tcw-config.local.yaml",
                   "work.jira.credentials"):
         assert words in err, (words, err)
 

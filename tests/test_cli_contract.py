@@ -691,10 +691,10 @@ def test_the_writing_work_commands_in_a_project(fx):
     checked(fx, "work", "discard", slug, "--reason", "r", out="discarded\n")
 
     added = checked(fx, "work", "tags", "add", "c", out="")
-    assert added.err == "wrote tcw-config.yaml\n", added.err
+    assert added.err == "wrote .tcw/tcw-config.yaml\n", added.err
     assert checked(fx, "work", "tags", "add", "c", out="").err == ""
     removed = checked(fx, "work", "tags", "rm", "c", out="")
-    assert removed.err == "wrote tcw-config.yaml\n", removed.err
+    assert removed.err == "wrote .tcw/tcw-config.yaml\n", removed.err
 
 
 def test_the_identity_flags_in_a_project(fx, monkeypatch):
@@ -745,9 +745,9 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     write_config(fx, yaml.safe_dump(document))
 
     assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
-        "wrote tcw-config.yaml\n"
+        "wrote .tcw/tcw-config.yaml\n"
     assert checked(fx, "taxonomy", "extends", "rm", "up", out="").err == \
-        "wrote tcw-config.yaml\n"
+        "wrote .tcw/tcw-config.yaml\n"
     checked(fx, "capabilities", "extends", "add", "up", out="")
     checked(fx, "capabilities", "set", "auth/login", "--status", "Missing", out="")
     reset = checked(fx, "capabilities", "reset", "auth/login", out="")
