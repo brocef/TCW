@@ -90,7 +90,8 @@ def _problem(text: str) -> str | None:
 def test_a_missing_version_is_read_as_3_x():
     problem = _problem("id: x\n")
     assert problem and "has no tcw-version" in problem and "tcw migrate" in problem
-    assert f"tcw-version: {tcw.__version__}" in problem
+    # The line to add comes first, before the command for a TCW 3.x file.
+    assert problem.startswith(f"has no tcw-version: add 'tcw-version: {tcw.__version__}'")
 
 
 @pytest.mark.parametrize("value", ["4.0", "4", "true", "four", "4.0.0-rc1", "v4.0.0"])

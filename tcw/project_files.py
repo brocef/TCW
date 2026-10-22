@@ -114,9 +114,8 @@ def version_problem(mapping: Any) -> str | None:
     newer than this TCW (major and minor compared as a pair; the patch number
     never changes a format)."""
     if not isinstance(mapping, dict) or VERSION_KEY not in mapping:
-        return (f"has no {VERSION_KEY}, so it is read as a TCW 3.x file; run "
-                f"'tcw migrate' in this project (a file written by hand for TCW 4 "
-                f"starts with '{version_line().strip()}')")
+        return (f"has no {VERSION_KEY}: add '{version_line().strip()}' as its first "
+                f"line, or, for a TCW 3.x file, run 'tcw migrate' in this project")
     value = mapping[VERSION_KEY]
     if not isinstance(value, str) or not _VERSION.fullmatch(value):
         return f"{VERSION_KEY} must be a TCW version written as text, such as '{__version__}'"
@@ -138,6 +137,14 @@ def without_version(mapping: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # The naming rule
+
+
+def follows_naming_rule(key: Any) -> bool:
+    """Whether `key` is text that follows the naming rule. A key that does not
+    is reported by `key_problems`, the check every file gets before it is
+    merged, so a section's own unknown-key check skips it: one mistake, one
+    error."""
+    return isinstance(key, str) and KEY_PATTERN.fullmatch(key) is not None
 
 
 def key_problems(value: Any, path: tuple = ()) -> list[tuple[tuple, str]]:

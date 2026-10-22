@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from tcw.project_files import follows_naming_rule
 from tcw.work.config import ConfigProblem, KeyPath
 from tcw.work.model import PRIORITIES
 
@@ -94,7 +95,7 @@ def _mapping(raw: Any, where: KeyPath, problems: _Problems) -> dict | None:
 
 def _unknown(raw: dict, known: tuple[str, ...], where: KeyPath,
              problems: _Problems) -> None:
-    for key in sorted(map(str, set(raw) - set(known))):
+    for key in sorted(k for k in set(raw) - set(known) if follows_naming_rule(k)):
         problems.add((*where, key), f"unknown key; expected one of {', '.join(known)}")
 
 

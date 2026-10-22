@@ -21,6 +21,7 @@ from typing import Any
 
 from tcw.errors import NotFound, UsageError
 from tcw.findings import Finding
+from tcw.project_files import follows_naming_rule
 
 
 class RefError(NotFound):
@@ -815,7 +816,7 @@ def parse_repository_declaration(
         return None, [f"{where}: expected a mapping, got {type(raw).__name__}"]
 
     known = {"url", "ref", "path", "checkout"}
-    unknown = set(raw) - known
+    unknown = {k for k in set(raw) - known if follows_naming_rule(k)}
     if unknown:
         problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected {', '.join(repr(k) for k in sorted(known))}")
@@ -892,7 +893,7 @@ def parse_connected_entry(
                       f"got {type(raw).__name__}"]
 
     known = {"path", "repository", "jira"}
-    unknown = set(raw) - known
+    unknown = {k for k in set(raw) - known if follows_naming_rule(k)}
     if unknown:
         problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                         f"expected {', '.join(repr(k) for k in sorted(known))}")
@@ -955,7 +956,8 @@ def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:
                             f"got {type(item).__name__}")
             continue
 
-        unknown = set(item) - {"path", "trigger", "description"}
+        unknown = {k for k in set(item) - {"path", "trigger", "description"}
+                   if follows_naming_rule(k)}
         if unknown:
             problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
                             f"expected 'path', 'trigger', 'description'")

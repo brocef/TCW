@@ -231,9 +231,9 @@ def test_ac14_a_leftover_root_file_is_not_read_and_validate_warns(tmp_path):
 # -- AC 7: the version each file records ---------------------------------------------
 
 ROWS = {
-    "a-missing": (None, "has no tcw-version, so it is read as a TCW 3.x file; run "
-                        "'tcw migrate' in this project (a file written by hand for "
-                        f"TCW 4 starts with 'tcw-version: {__version__}')"),
+    "a-missing": (None, f"has no tcw-version: add 'tcw-version: {__version__}' as "
+                        "its first line, or, for a TCW 3.x file, run 'tcw migrate' "
+                        "in this project"),
     "b-a-number": ("4.0", "tcw-version must be a TCW version written as text, such "
                           f"as '{__version__}'"),
     "b-not-a-version": ("'four'", "tcw-version must be a TCW version written as "
@@ -482,6 +482,42 @@ def test_ac12_not_tags_with_an_underscore_says_what_to_write(tmp_path):
     assert checked.out.splitlines() == [
         "error: .tcw/tcw-config.yaml: work.stages.spec.prompt[0].when.not_tags: "
         f"key 'not_tags' {NAMING}; write 'not-tags'"], "one mistake, one error"
+
+
+MISNAMED = {
+    "work": ("work:\n  %s: 1\n", "work.%s"),
+    "hooks": ("work:\n  hooks:\n    %s: 1\n", "work.hooks.%s"),
+    "stage": ("work:\n  stages:\n    spec:\n      %s: 1\n", "work.stages.spec.%s"),
+    "documentation": ("work:\n  documentation:\n    - path: README.md\n"
+                      "      trigger: t\n      description: d\n      %s: 1\n",
+                      "work.documentation[0].%s"),
+}
+
+
+def _validate_errors(tmp_path: Path, body: str) -> list[str]:
+    root = tmp_path / "p"
+    (root / "docs" / "work").mkdir(parents=True)
+    write_config(root, "id: p\n" + body)
+    ran = tcw(root, "validate")
+    assert ran.code == 1, ran
+    return [line for line in ran.out.splitlines() if line.startswith("error:")]
+
+
+@pytest.mark.parametrize("where", MISNAMED)
+def test_ac11_a_misnamed_key_is_reported_once_not_also_as_unknown(tmp_path, where):
+    body, path = MISNAMED[where]
+    assert _validate_errors(tmp_path, body % "my_key") == [
+        f"error: .tcw/tcw-config.yaml: {path % 'my_key'}: key 'my_key' {NAMING}"], \
+        "one mistake, one error"
+
+
+@pytest.mark.parametrize("where", MISNAMED)
+def test_ac11_a_well_named_unknown_key_is_still_unknown(tmp_path, where):
+    body, _ = MISNAMED[where]
+    errors = _validate_errors(tmp_path, body % "my-key")
+    assert len(errors) == 1, errors
+    assert "my-key" in errors[0] and "unknown key" in errors[0], errors
+    assert NAMING not in errors[0], errors
 
 
 @pytest.mark.parametrize("local", [False, True], ids=["project", "local"])

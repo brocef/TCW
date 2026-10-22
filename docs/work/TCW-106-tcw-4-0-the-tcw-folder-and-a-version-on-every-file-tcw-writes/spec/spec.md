@@ -191,7 +191,7 @@ applies is a configuration problem naming the file and `tcw-version`:
 
 | # | The file's `tcw-version` | Message (shape) |
 | - | ------------------------ | --------------- |
-| a | missing | `has no tcw-version, so it is read as a TCW 3.x file; run 'tcw migrate' in this project (a file written by hand for TCW 4 starts with 'tcw-version: <running version>')` |
+| a | missing | `has no tcw-version: add 'tcw-version: <running version>' as its first line, or, for a TCW 3.x file, run 'tcw migrate' in this project`. The file is still read as a TCW 3.x file. This wording was changed at qa, at the user's request, on 2026-10-22: it used to say first that the file is read as a TCW 3.x file and only at the end what line to add, and a person reading it should see the line to add first |
 | b | not a YAML string matching `^[0-9]+\.[0-9]+(\.[0-9]+)?$`. An unquoted `4.0` is a YAML number and is refused by this row; `"4.0"` and `4.0.0` are accepted | `must be a TCW version written as text, such as '4.0.0'` |
 | c | major version below 4 | `is in the format of TCW <X.Y>; run 'tcw migrate' in this project` |
 | d | the pair (major, minor) compares greater than the running TCW's pair, compared as a pair (major first); the patch number is ignored, so a `4.0.5` file is read by 4.0.3 | `was written by TCW <X.Y>, newer than this TCW (<running>); upgrade TCW` |
