@@ -65,7 +65,12 @@ commit or tag is made.
 `root/.tcw/` and returns the path), `local_config_file(root)`,
 `write_config(root, text="")` and `write_local_config(root, text="")`, which
 put `version_line()` first unless the text already holds a `tcw-version`
-line, and `write_config_data(root, mapping)` for tests that dump YAML.
+line, and `write_config_file(path, text)` for tests that hold a path or dump
+YAML. (Corrected at implement: `write_config_data` was never needed, since the
+tests that dump YAML already hold the path. The version line goes only in front
+of text that stays one mapping with it; a null document such as `---` or `~`,
+a list, or bytes that are not UTF-8 are written as given, so a test of a broken
+file still tests that file.)
 
 **Changes** every test that writes or reads a project's configuration
 (75 files; the list is `grep -rln 'tcw-config' tests`), mechanically by a
@@ -131,8 +136,10 @@ fixture), 4, 10, 13a (relative locator and `TCW_PROJECT_<ID>`), 14a, 14b,
 **Changes** `tcw/config.py`:
 
 - `load_config` (`:541-605`): after `_read` of the project file and of the
-  local file, `version_problem` adds a `Problem(file, ("tcw-version",), …)`
-  for rows a–d; the key is then removed from the mapping before
+  local file, `version_problem` adds a `Problem(file, (), …)` for rows a–d
+  (corrected at implement: with the key path `("tcw-version",)` the line read
+  `tcw-version: tcw-version must be…`, since every row's message already
+  names the key, with the file as its subject); the key is then removed from the mapping before
   `_list_problems`, `_allowed` and `_merge` (Design 3.3).
 - `key_problems` runs on all three files' mappings (project, user, local)
   before merging, each as a `Problem` naming the file.
@@ -183,8 +190,11 @@ leave the 4.0 copy behind unnoticed.
 - `tcw/store/project.py`: where a connection's folder has no
   `.tcw/tcw-config.yaml` (`_read_config`, the `"no tcw-config.yaml here"`
   problem at `:574`, and `_resolve_override` at `:758-760`), a folder
-  holding a root `tcw-config.yaml` is reported with `legacy_message` and not
-  read (Design 4.2). `_read_config` (`:552-640`) reads a connected project's
+  holding a root `tcw-config.yaml` is reported with Design 4.1's wording and
+  not read (Design 4.2): as `<folder>: is a TCW 3.x project …`, or
+  `TCW_PROJECT_<ID> names a TCW 3.x project …` for a variable (corrected at
+  implement: `legacy_message` after the folder the problem is printed under
+  named the folder twice). `_read_config` (`:552-640`) reads a connected project's
   file itself, outside `tcw.config`, so it also calls `version_problem` on
   the mapping it read and records a problem for rows a–d (Design 3.4 holds
   for every reader).

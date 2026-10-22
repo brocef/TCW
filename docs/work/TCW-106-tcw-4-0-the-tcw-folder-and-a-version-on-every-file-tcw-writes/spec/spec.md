@@ -233,7 +233,8 @@ with exit 1 and one line naming the folder:
 
 4.2. A project reached through a 3.x `projects:` connection whose folder is
 a 3.x project is reported as that connection's problem with the same
-wording, and is not read. (`projects:` itself is replaced in TCW-107 and
+wording, printed after the folder it is about (`<folder>: is a TCW 3.x
+project …`), and is not read. (`projects:` itself is replaced in TCW-107 and
 TCW-108; until then connections are followed to `<folder>/.tcw/tcw-config.yaml`.)
 
 4.3. A 4.0 project that still holds a root `tcw-config.yaml` (for example a
