@@ -445,7 +445,7 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
     init([component], code, "core")
     url = url if url is not None else "https://github.invalid/acme/orchestration.git"
 
-    write_config(orchestration, 
+    write_config(orchestration,
         f"id: orchestration\nprojects:\n  children:\n    core: {code}\n")
     config = yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text()) or {}
     config.setdefault(component, {}).update({
@@ -1872,7 +1872,7 @@ def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path
     (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
     (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
     (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
-    write_config(source, 
+    write_config(source,
         "id: source\nprojects:\n  parent:\n    consumer: ../consumer\n")
 
     consumer = _repo(tmp_path / "consumer")
@@ -2143,14 +2143,14 @@ def test_with_real_git_a_local_ssh_command_is_not_read(monkeypatch, tmp_path):
     subprocess.run(["git", "-C", str(repo), "config", "core.sshCommand", "ssh -i mine"],
                    check=True, stdin=subprocess.DEVNULL)
     empty = tmp_path / "gitconfig"
-    write_config_file(empty, "")
+    empty.write_text("")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for name in ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(repo)
     assert fs._no_prompt_env()["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
-    write_config_file(empty, "[core]\n\tsshCommand = ssh -i global\n")
+    empty.write_text("[core]\n\tsshCommand = ssh -i global\n")
     assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()
 
 
@@ -2158,7 +2158,7 @@ def test_with_real_git_a_command_line_ssh_command_is_kept(monkeypatch, tmp_path)
     """A `core.sshCommand` given on the command line, here through
     `GIT_CONFIG_COUNT`, is what the clone uses, so it is the user's own."""
     empty = tmp_path / "gitconfig"
-    write_config_file(empty, "")
+    empty.write_text("")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for name in ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_DIR", "GIT_CONFIG_PARAMETERS"):

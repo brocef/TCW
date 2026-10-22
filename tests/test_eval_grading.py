@@ -436,7 +436,7 @@ def test_an_item_folder_placeholder_expands_to_the_minted_folder(control):
     args = {"paths": ["{item:inbox}/request/request.md"]}
     assert not _check("files_changed_exactly", run, **args)["passed"]
     request = _path(root, manifest["items"]["inbox"], "request")
-    write_config_file(request, request.read_text() + "\n## Added\n\nTuesday's import.\n")
+    request.write_text(request.read_text() + "\n## Added\n\nTuesday's import.\n")
     verdict = _check("files_changed_exactly", run, **args)
     assert verdict["passed"], verdict["evidence"]
     assert "docs/work/" in verdict["evidence"]
@@ -756,7 +756,7 @@ def test_grade_exits_non_zero_for_a_run_with_an_isolation_problem(
     assert grade.main([str(tmp_path / "run-A6-control")]) == 0
     timing = json.loads(timing_path.read_text())
     timing["isolation_problems"] = ["the agent's `tcw` imports from /elsewhere"]
-    write_config_file(timing_path, json.dumps(timing))
+    timing_path.write_text(json.dumps(timing))
     assert grade.main([str(tmp_path / "run-A6-control")]) == 1
     assert "ISOLATION the agent's `tcw`" in capsys.readouterr().out
 

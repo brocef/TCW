@@ -13,7 +13,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import connect, make_project, write_item
-from tests.projectfiles import write_config, write_config_file
+from tests.projectfiles import write_config
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_an_older_invalid_round_is_history(project, run):
 def test_a_retired_capability_field_is_an_error(project, run):
     FsCapabilitiesStore.open(project).add("ns/thing")
     meta = project / "docs" / "capabilities" / "ns" / "thing" / "meta.yaml"
-    write_config_file(meta, meta.read_text() + "Planning doc: x\n")
+    meta.write_text(meta.read_text() + "Planning doc: x\n")
     code, out, _ = run(project)
     [line] = about(out, "Planning doc")
     assert line.startswith("error: docs/capabilities/ns/thing: ")
@@ -169,7 +169,7 @@ def test_an_unparsable_item_does_not_stop_the_other_checks(project, run):
 def test_a_dangling_relates_to_is_an_error(project, run):
     FsTaxonomyStore.open(project).add("Payment")
     meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    write_config_file(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
+    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
     code, out, _ = run(project)
     [line] = about(out, "invoice")
     assert line.startswith("error: ") and code == 1
@@ -178,7 +178,7 @@ def test_a_dangling_relates_to_is_an_error(project, run):
 def test_an_unresolvable_subject_is_an_error(project, run):
     FsCapabilitiesStore.open(project).add("ns/thing")
     meta = project / "docs" / "capabilities" / "ns" / "thing" / "meta.yaml"
-    write_config_file(meta, meta.read_text() + "Subject: nosuch\n")
+    meta.write_text(meta.read_text() + "Subject: nosuch\n")
     code, out, _ = run(project)
     [line] = about(out, "nosuch")
     assert line.startswith("error: ") and code == 1

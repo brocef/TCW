@@ -22,7 +22,7 @@ import pytest
 
 from evals import grade
 from evals.seed_fixture import QA_SCENARIOS, REVIEW_SKILL, seed
-from tests.projectfiles import write_config, write_config_file
+from tests.projectfiles import write_config
 
 TCW_ENV = {**os.environ, "TCW_NO_PERSONAL_CONFIG": "1"}
 
@@ -221,7 +221,7 @@ def test_the_qa_item_carries_a_qa_plan_and_waits_for_a_verdict(control_copy):
     qa_round = Path(_tcw(root, "work", "path", slug, "qa", "--next")
                     .stdout.strip())
     qa_round.parent.mkdir(parents=True, exist_ok=True)
-    write_config_file(qa_round, "---\nverdict: accepted\njudges: 1\n---\n\nQA-1 passed\n")
+    qa_round.write_text("---\nverdict: accepted\njudges: 1\n---\n\nQA-1 passed\n")
     allowed = _tcw(root, "work", "advance", slug, "--dry-run")
     assert allowed.returncode == 0, allowed.stderr
 
@@ -266,7 +266,7 @@ def test_a_freshly_seeded_project_shows_no_changes(variant, request):
               root / ".pytest_cache/v/cache/lastfailed"]
     for cache in caches:
         cache.parent.mkdir(parents=True, exist_ok=True)
-        write_config_file(cache, b"\0cache")
+        cache.write_bytes(b"\0cache")
     try:
         verdict = grade.p_files_changed_exactly(
             {"fixture": root, "seeded_head": manifest["seeded_head"]}, paths=[])

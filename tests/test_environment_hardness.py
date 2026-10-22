@@ -371,10 +371,10 @@ class TestNestedMonorepo:
         child_cfg.setdefault("projects", {}).setdefault("children", {})[
             "deep"
         ] = "deep"
-        write_config(child_a, 
+        write_config(child_a,
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
-        write_config(deep, 
+        write_config(deep,
             "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
         )
         _commit_all(deep)

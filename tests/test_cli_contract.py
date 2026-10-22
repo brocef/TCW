@@ -405,7 +405,7 @@ def test_tree_exit_codes(fx):
     assert run(fx, "capabilities", "show", "nosuch").code == 4
     ok(fx, "taxonomy", "add", "Gadget")
     meta = fx / "docs" / "taxonomy" / "gadget" / "meta.yaml"
-    write_config_file(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
+    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
     assert run(fx, "taxonomy", "rm", "widget").code == 3
 
     ok(fx, "capabilities", "add", "ns/do-a-thing")

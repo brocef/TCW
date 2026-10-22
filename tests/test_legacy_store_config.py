@@ -182,7 +182,7 @@ def test_a_check_scoped_to_one_object_leaves_the_leftover_out(
 def test_following_the_message_makes_check_clean(tmp_path, component, inherited):
     consumer = _federated(tmp_path)
     leftover = consumer / "docs" / component / LEFTOVER[component]
-    write_config_file(leftover, "extends:\n  - shared\n")
+    leftover.write_text("extends:\n  - shared\n")
     assert STORE[component].open(consumer).check() != []
 
     declare_extends(consumer, component, leftover.read_text())

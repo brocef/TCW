@@ -20,11 +20,11 @@ def _monorepo(tmp_path: Path) -> Path:
         root = tmp_path / name
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
-    write_config(tmp_path / "project-b", 
+    write_config(tmp_path / "project-b",
         "id: project-b\nprojects:\n  children:\n"
         "    project-a: ../project-a\n"
     )
-    write_config(tmp_path / "project-a", 
+    write_config(tmp_path / "project-a",
         "id: project-a\nprojects:\n  parent:\n"
         "    project-b: ../project-b\n"
     )

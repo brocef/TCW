@@ -336,10 +336,10 @@ def _two_bases(tmp_path):
         bases.append(base)
     child = node(tmp_path, "child")
     children = "".join(f"    {b.name}: ../{b.name}\n" for b in bases)
-    write_config(child, 
+    write_config(child,
         f"id: child\nprojects:\n  children:\n{children}")
     for base in bases:
-        write_config(base, 
+        write_config(base,
             f"id: {base.name}\nprojects:\n  parent:\n"
             f"    child: ../child\n")
     for name in ("alpha", "beta"):

@@ -120,10 +120,10 @@ def connect(anchor: Path, *others: Path) -> None:
         other_cfg["projects"] = {
             "parent": {anchor_cfg["id"]: str(anchor.resolve())}
         }
-        write_config(other, 
+        write_config(other,
             yaml.safe_dump(other_cfg, sort_keys=False)
         )
-    write_config(anchor, 
+    write_config(anchor,
         yaml.safe_dump(anchor_cfg, sort_keys=False)
     )
 

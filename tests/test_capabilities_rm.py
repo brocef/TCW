@@ -43,12 +43,12 @@ def connect(anchor, *sources):
         f"    {source.name.replace('_', '-')}: ../{source.name}\n"
         for source in sources
     )
-    write_config(anchor, 
+    write_config(anchor,
         f"id: {anchor_id}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
         source_id = source.name.replace("_", "-")
-        write_config(source, 
+        write_config(source,
             f"id: {source_id}\nprojects:\n  parent:\n"
             f"    {anchor_id}: ../{anchor.name}\n"
         )

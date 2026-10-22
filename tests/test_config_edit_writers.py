@@ -53,9 +53,9 @@ def federated(tmp_path: Path, child_config: bytes) -> Path:
         for tree in ("taxonomy", "capabilities"):
             (root / "docs" / tree).mkdir(parents=True)
             (root / "docs" / tree / ".gitkeep").touch()
-    write_config(base, 
+    write_config(base,
         "id: base\nprojects:\n  children:\n    child: ../child\n")
-    write_config(other, 
+    write_config(other,
         "id: other\nprojects:\n  parent:\n    child: ../child\n")
     write_config(child, child_config)
     commit_all(other)
@@ -205,7 +205,7 @@ def test_a_refused_extends_add_leaves_the_store_object_unchanged(tmp_path):
     with pytest.raises(ValueError, match="would lose its comments"):
         store.extends_add("base")
     assert "extends" not in store.config
-    write_config(child, 
+    write_config(child,
         (PARENT + "taxonomy:\n    path: docs/taxonomy\n").encode())
     store.extends_add("base")
     assert store.config["extends"] == ["base"]

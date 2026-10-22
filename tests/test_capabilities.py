@@ -9,7 +9,7 @@ import yaml
 from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
-from tests.projectfiles import write_config, write_config_file
+from tests.projectfiles import write_config
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -23,11 +23,11 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
 
 
 def connect(parent: Path, child: Path) -> None:
-    write_config(parent, 
+    write_config(parent,
         f"id: {parent.name}\nprojects:\n  children:\n"
         f"    {child.name}: ../{child.name}\n"
     )
-    write_config(child, 
+    write_config(child,
         f"id: {child.name}\nprojects:\n  parent:\n"
         f"    {parent.name}: ../{parent.name}\n"
     )
@@ -119,9 +119,9 @@ def test_modified_timestamp_includes_declared_capability_docs(tmp_path):
     meta_path = folder / "meta.yaml"
     meta = yaml.safe_load(meta_path.read_text())
     meta["appendedDocs"] = ["guide.md"]
-    write_config_file(meta_path, yaml.safe_dump(meta, sort_keys=False))
+    meta_path.write_text(yaml.safe_dump(meta, sort_keys=False))
     guide = folder / "guide.md"
-    write_config_file(guide, "Extra context\n")
+    guide.write_text("Extra context\n")
     os.utime(meta_path, (100, 100))
     os.utime(folder / "description.md", (200, 200))
     os.utime(guide, (300, 300))
@@ -293,7 +293,7 @@ def test_check_duplicate_id(tmp_path):
     mb = root / "docs/capabilities/b/meta.yaml"
     m = yaml.safe_load(mb.read_text())
     m["id"] = yaml.safe_load((root / "docs/capabilities/a/meta.yaml").read_text())["id"]
-    write_config_file(mb, yaml.safe_dump(m))
+    mb.write_text(yaml.safe_dump(m))
     assert any("duplicate id" in p for p in map(str, FsCapabilitiesStore.open(root).check()))
 
 
@@ -669,7 +669,7 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
         FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
     child = node(tmp_path, "child")
     st = FsCapabilitiesStore.open(child)
-    write_config(child, 
+    write_config(child,
         "id: child\nprojects:\n  children:\n"
         "    one: ../one\n    two: ../two\n"
     )
@@ -720,7 +720,7 @@ def test_the_capabilities_store_has_no_attachment_surface_to_regress(tmp_path):
     yaml_path = d / "meta.yaml"
     meta = yaml.safe_load(yaml_path.read_text())
     meta["appendedDocs"] = ["extra.md"]
-    write_config_file(yaml_path, yaml.safe_dump(meta, sort_keys=False))
+    yaml_path.write_text(yaml.safe_dump(meta, sort_keys=False))
 
     cap = FsCapabilitiesStore.open(root).get("billing/refund")
     assert cap is not None

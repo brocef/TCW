@@ -206,7 +206,7 @@ def test_a_hostile_string_reads_back_as_itself(personal, value):
 def test_values_of_unknown_keys_keep_their_type(personal):
     import datetime
     root = project(personal)
-    write_config_file(personal.project_file, 
+    write_config_file(personal.project_file,
         "id: p\nx-extra:\n  inf: .inf\n  ninf: -.inf\n  day: 2026-10-13\n"
         "  when: 2026-10-13 01:02:03\n  big: 100000000000000000000\n  f: 1.5\n"
         "  list: [.inf, 2026-10-13, '...']\n")

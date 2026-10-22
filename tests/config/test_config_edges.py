@@ -54,7 +54,7 @@ def test_a_binary_or_set_value_is_one_line_that_reads_back(value):
 
 
 def test_config_show_writes_an_unknown_keys_binary_and_set_on_one_line(personal):
-    write_config_file(personal.project_file, 
+    write_config_file(personal.project_file,
         "id: p\nextra:\n  blob: !!binary AGJpbmFyef8=\n"
         "  members: !!set {1: null, a: null}\n")
     result = tcw(personal.root, "config", "show")

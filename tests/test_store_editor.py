@@ -209,10 +209,10 @@ def test_update_term_refuses_inherited(tmp_path):
     subprocess.run(["git", "-C", str(cons), "config", "user.name", "t"],
                    check=True)
     write_sentinel(cons, "consumer")
-    write_config(cons, 
+    write_config(cons,
         "id: consumer\nprojects:\n  children:\n    shared: ../shared\n"
     )
-    write_config(shared, 
+    write_config(shared,
         "id: shared\nprojects:\n  parent:\n    consumer: ../consumer\n"
     )
     FsTaxonomyStore.open(cons).extends_add("shared")
@@ -343,11 +343,11 @@ def _federated(tmp_path) -> tuple[Path, Path]:
     FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
-    write_config(child, 
+    write_config(child,
         f"id: child-project\nprojects:\n  children:\n"
         f"    base-project: {base}\n"
     )
-    write_config(base, 
+    write_config(base,
         f"id: base-project\nprojects:\n  parent:\n"
         f"    child-project: {child}\n"
     )

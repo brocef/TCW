@@ -82,7 +82,7 @@ def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
     os.utime(folder / "meta.yaml", (100, 100))
     os.utime(folder / "description.md", (200, 200))
     attachment = folder / "notes.txt"
-    write_config_file(attachment, "not a core taxonomy resource\n")
+    attachment.write_text("not a core taxonomy resource\n")
     os.utime(attachment, (300, 300))
 
     assert st.get("user").modified == "1970-01-01T00:03:20Z"
@@ -964,7 +964,7 @@ def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
     connect_sources(cons, shared)
     stale = cons / "docs" / "taxonomy" / "config.yaml"
     original = "extends:\n  - shared\n"
-    write_config_file(stale, original)
+    stale.write_text(original)
 
     st = FsTaxonomyStore.open(cons)
     assert st.list_all() == []
