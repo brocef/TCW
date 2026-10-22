@@ -153,6 +153,10 @@ def _check_target(registry: FsProjectRegistry, project_id: str) -> Path:
         if entry is not None and entry.jira is not None:
             raise Refused(f"project '{project_id}' is not on this machine, and "
                           f"--blocks never creates a ticket")
+        absent = registry.unreachable_project(project_id)
+        if absent is not None and absent.message:
+            # TCW-107 Design 6.2, as `open_project` reports it.
+            raise Refused(absent.message)
         raise Refused(f"project '{project_id}' is declared but is not on this "
                       f"machine")
     try:
