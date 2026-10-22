@@ -27,6 +27,7 @@ from tcw.store.base import AmbiguousRef, Term
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def node(tmp_path, name="repo"):
@@ -336,10 +337,10 @@ def _two_bases(tmp_path):
         bases.append(base)
     child = node(tmp_path, "child")
     children = "".join(f"    {b.name}: ../{b.name}\n" for b in bases)
-    write_config(child,
+    write_connected_config(child,
         f"id: child\nprojects:\n  children:\n{children}")
     for base in bases:
-        write_config(base,
+        write_connected_config(base,
             f"id: {base.name}\nprojects:\n  parent:\n"
             f"    child: ../child\n")
     for name in ("alpha", "beta"):

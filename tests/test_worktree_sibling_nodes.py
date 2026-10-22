@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from tests.projectfiles import config_file, write_config, write_config_file
+from tests.projectfiles import write_connected_config, write_connected_config_file
 
 
 def git(path: Path, *args: str) -> None:
@@ -31,7 +32,7 @@ def config(path: Path, pid: str, *, parent: dict | None = None,
         for key, links in (("parent", parent), ("children", children)):
             if links:
                 text += f"  {key}:\n" + "".join(f"    {k}: {v}\n" for k, v in links.items())
-    write_config(path, text)
+    write_connected_config(path, text)
 
 
 def validate(cwd: Path) -> subprocess.CompletedProcess:
@@ -107,7 +108,7 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     git(app, "commit", "-qm", "ignore vendor")
     config(repo(app / "vendor"), "vendor", parent={"workspace": "../.."})
     ws_cfg = config_file(workspace)
-    write_config_file(ws_cfg, ws_cfg.read_text() + "    vendor: app/vendor\n")
+    write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    vendor: app/vendor\n")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     config(repo(workspace / "app-wt" / "vendor"), "vendor-fork", parent={"workspace": "../.."})
     done = validate(workspace / "app-wt" / "pkg-a")
@@ -129,12 +130,12 @@ def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool)
     app = workspace / "app"
     git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
     app_cfg = config_file(app)
-    write_config_file(app_cfg, app_cfg.read_text() + "    lib: lib\n")
+    write_connected_config_file(app_cfg, app_cfg.read_text() + "    lib: lib\n")
     git(app, "add", "-A")
     git(app, "commit", "-qm", "lib submodule")
     if named_by_workspace:
         ws_cfg = config_file(workspace)
-        write_config_file(ws_cfg, ws_cfg.read_text() + "    lib-too: app/lib\n")
+        write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    lib-too: app/lib\n")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
         "--init", "-q")
@@ -155,7 +156,7 @@ def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):
     other = repo(workspace / "other")
     config(other, "pkg-b", parent={"workspace": ".."})
     ws_cfg = config_file(workspace)
-    write_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b-again: other\n")
+    write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b-again: other\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 1 and "duplicate project id 'pkg-b'" in done.stdout + done.stderr, \

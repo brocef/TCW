@@ -13,6 +13,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, init
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 pytestmark = pytest.mark.skipif(
     hasattr(os, "geteuid") and os.geteuid() == 0,
@@ -96,7 +97,7 @@ def test_capabilities_rm_stopped_partway(tmp_path, monkeypatch, capsys):
 
 def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     base = project(tmp_path)
-    write_config(base,
+    write_connected_config(base,
         "id: base\nprojects:\n  parent:\n    child: ../child\n")
     d = base / "docs" / "capabilities" / "login"
     d.mkdir()
@@ -106,7 +107,7 @@ def test_capabilities_reset_stopped_partway(tmp_path, monkeypatch, capsys):
     child = tmp_path / "child"
     child.mkdir()
     init(["taxonomy", "capabilities"], child, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  children:\n    base: ../solo\n")
     FsCapabilitiesStore.open(child).extends_add("base")
     FsCapabilitiesStore.open(child).set("login", {"Status": "Missing"})

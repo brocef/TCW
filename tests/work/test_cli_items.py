@@ -16,6 +16,7 @@ from tcw.cli import main
 from tests.work.jira.fake import SITE, FakeJira
 from tests.work.projects import commit_all, connect, git, make_project, write_item
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 TODAY = date.today().isoformat()
 
@@ -380,7 +381,7 @@ def test_jira_block_delegation_and_blocks(tcw, pq, monkeypatch):
         "site": SITE, "project": "TCW", "inbox-status": "To Do",
         "credentials": {"email-env": "Q_EMAIL", "token-env": "Q_TOKEN"},
         "fields": {"project": "TCW Project"}}}
-    write_config(root, yaml.safe_dump(doc))
+    write_connected_config(root, yaml.safe_dump(doc))
     r = tcw(["new", "T", "--project", "q"], root)
     assert (r.code, r.out.strip()) == (0, "TCW-1")
     write_item(root, "2026-10-01-a", {"title": "a", "stage": "spec"})

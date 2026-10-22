@@ -17,6 +17,7 @@ from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
 from tcw.project_files import version_line
 from tests.projectfiles import config_file, write_config
+from tests.projectfiles import write_connected_config
 
 BOM = "\ufeff".encode()
 
@@ -53,11 +54,11 @@ def federated(tmp_path: Path, child_config: bytes) -> Path:
         for tree in ("taxonomy", "capabilities"):
             (root / "docs" / tree).mkdir(parents=True)
             (root / "docs" / tree / ".gitkeep").touch()
-    write_config(base,
+    write_connected_config(base,
         "id: base\nprojects:\n  children:\n    child: ../child\n")
-    write_config(other,
+    write_connected_config(other,
         "id: other\nprojects:\n  parent:\n    child: ../child\n")
-    write_config(child, child_config)
+    write_connected_config(child, child_config)
     commit_all(other)
     commit_all(base)
     commit_all(child)
@@ -67,7 +68,7 @@ def federated(tmp_path: Path, child_config: bytes) -> Path:
 def work_node(tmp_path: Path, config: bytes) -> Path:
     root = repository(tmp_path / "node")
     init(["work"], root, "node")
-    write_config(root, config)
+    write_connected_config(root, config)
     commit_all(root)
     return root
 
@@ -205,7 +206,7 @@ def test_a_refused_extends_add_leaves_the_store_object_unchanged(tmp_path):
     with pytest.raises(ValueError, match="would lose its comments"):
         store.extends_add("base")
     assert "extends" not in store.config
-    write_config(child,
+    write_connected_config(child,
         (PARENT + "taxonomy:\n    path: docs/taxonomy\n").encode())
     store.extends_add("base")
     assert store.config["extends"] == ["base"]
@@ -257,7 +258,7 @@ def test_an_unsorted_tag_list_is_sorted_only_when_it_has_no_comments(tmp_path, m
     assert config(root) == (b"id: node\nwork:\n  tags:\n  - alpha\n  - beta\n  - gamma\n"
                             b"  path: docs/work\n")
     commented = b"id: node\nwork:\n  tags:\n  - gamma  # why\n  - alpha\n  path: docs/work\n"
-    write_config(root, commented)
+    write_connected_config(root, commented)
     commit_all(root)
     code = run(root, monkeypatch, "work", "tags", "add", "beta")
     assert_refused_leaving_everything(root, commented, code, capsys,
@@ -305,7 +306,7 @@ def test_tags_add_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, c
 def test_init_writes_only_the_id_and_path_lines(tmp_path):
     root = repository(tmp_path / "node")
     before = b"# my node\nwork:\n    tags: [a]  # registered by hand\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     target = root / "planning" / "work"
     init(["work"], root, "node", work_path=target)
     assert_only_added(before, config(root), b"id: node\n", f"    path: {target}\n".encode())
@@ -314,7 +315,7 @@ def test_init_writes_only_the_id_and_path_lines(tmp_path):
 def test_init_replacing_a_path_keeps_the_comment_after_it(tmp_path):
     root = repository(tmp_path / "node")
     before = b"id: node\ntaxonomy:\n    path: docs/old   # moved in 2.3\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
     assert config(root) == b"id: node\ntaxonomy:\n    path: docs/new   # moved in 2.3\n"
 
@@ -323,7 +324,7 @@ def test_init_rerun_without_a_path_keeps_a_relative_work_path_as_written(tmp_pat
     root = repository(tmp_path / "node")
     init(["work"], root, "node", work_path=Path("store"))
     before = b"id: node\nwork:\n    path: ./store\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     init(["work"], root)
     assert config(root) == before
 
@@ -334,7 +335,7 @@ def test_init_rerun_without_a_path_does_not_expand_a_tilde(tmp_path, monkeypatch
     root = repository(tmp_path / "node")
     init(["work"], root, "node", work_path=home / "store")
     before = b"id: node\nwork:\n    path: ~/store\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     init(["work"], root)
     assert config(root) == before
 
@@ -342,7 +343,7 @@ def test_init_rerun_without_a_path_does_not_expand_a_tilde(tmp_path, monkeypatch
 def test_init_with_an_explicit_path_still_writes_it(tmp_path):
     root = repository(tmp_path / "node")
     init(["work"], root, "node", work_path=Path("store"))
-    write_config(root, b"id: node\nwork:\n    path: ./store\n")
+    write_connected_config(root, b"id: node\nwork:\n    path: ./store\n")
     init(["work"], root, work_path=Path("other"))
     assert config(root) == b"id: node\nwork:\n    path: other\n"
 
@@ -350,7 +351,7 @@ def test_init_with_an_explicit_path_still_writes_it(tmp_path):
 def test_init_reports_a_work_path_naming_no_user(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     before = b"id: node\nwork:\n    path: ~no-such-user-tcw/store\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     assert run(root, monkeypatch, "init", "work") == 1
     assert "tcw init:" in capsys.readouterr().err
     assert config(root) == before
@@ -360,7 +361,7 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
     root = repository(tmp_path / "node")
     init(["work"], root, "node")                      # a pristine default store
     before = b"# no id yet\nwork: {tags: [a]}\n"      # braces: `path` cannot be added
-    write_config(root, before)
+    write_connected_config(root, before)
     commit_all(root)
     status = git(root, "status", "--porcelain").stdout
     target = root / "planning" / "work"
@@ -377,21 +378,21 @@ def test_a_refused_init_leaves_config_index_and_folders_alone(tmp_path, monkeypa
 def test_a_fresh_init_writes_the_whole_file(tmp_path, monkeypatch, existing):
     root = repository(tmp_path / "node")
     if existing is not None:
-        write_config(root, existing)
+        write_connected_config(root, existing)
     assert run(root, monkeypatch, "init", "work", "--id", "fresh") == 0
     assert yaml.safe_load(config(root))["id"] == "fresh"
 
 
 def test_write_sentinel_adds_id_below_the_leading_comments(tmp_path):
     before = b"# header\n# more\nwork:\n  tags: [a]  # keep\n"
-    write_config(tmp_path, before)
+    write_connected_config(tmp_path, before)
     assert write_sentinel(tmp_path, "proj") is True
     assert config(tmp_path) == b"# header\n# more\nid: proj\nwork:\n  tags: [a]  # keep\n"
     assert write_sentinel(tmp_path, "proj") is False
 
 
 def test_write_sentinel_fills_a_null_id(tmp_path):
-    write_config(tmp_path, b"id: null\n# keep me\nwork: {}\n")
+    write_connected_config(tmp_path, b"id: null\n# keep me\nwork: {}\n")
     assert write_sentinel(tmp_path, "proj") is True
     assert config(tmp_path) == b"id: proj\n# keep me\nwork: {}\n"
     assert yaml.safe_load(config(tmp_path))["id"] == "proj"
@@ -400,7 +401,7 @@ def test_write_sentinel_fills_a_null_id(tmp_path):
 def test_init_over_a_block_scalar_path_is_refused(tmp_path):
     root = repository(tmp_path / "node")
     before = b"id: node\ntaxonomy:\n  path: |\n    docs/old\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     with pytest.raises(ValueError, match="spans more than one line"):
         init(["taxonomy"], root, paths={"taxonomy": Path("docs/new")})
     assert config(root) == before
@@ -410,7 +411,7 @@ def test_init_over_a_block_scalar_path_is_refused(tmp_path):
 def test_init_with_a_scalar_work_section_is_refused(tmp_path, monkeypatch, capsys):
     root = repository(tmp_path / "node")
     before = b"id: node\nwork: docs/work\n"
-    write_config(root, before)
+    write_connected_config(root, before)
     commit_all(root)
     code = run(root, monkeypatch, "init", "work", "--work-path", str(root / "w"))
     err = capsys.readouterr().err
@@ -437,7 +438,7 @@ def test_a_tags_change_that_changes_nothing_writes_nothing(tmp_path, monkeypatch
 def test_write_sentinel_refuses_a_null_document(tmp_path, text):
     """A null document has no `tcw-version`, so it is read as a 3.x file and
     refused before anything is written (TCW-106 Design 3.4 row a, 3.4a)."""
-    write_config(tmp_path, text)
+    write_connected_config(tmp_path, text)
     assert (tmp_path / ".tcw/tcw-config.yaml").read_bytes() == text
     with pytest.raises(ValueError, match="has no tcw-version"):
         write_sentinel(tmp_path, "proj")
@@ -445,6 +446,6 @@ def test_write_sentinel_refuses_a_null_document(tmp_path, text):
 
 
 def test_write_sentinel_on_a_file_holding_only_the_version(tmp_path):
-    write_config(tmp_path, b"")
+    write_connected_config(tmp_path, b"")
     assert write_sentinel(tmp_path, "proj") is True
     assert config(tmp_path) == b"id: proj\n"

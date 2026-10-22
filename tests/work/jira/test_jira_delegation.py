@@ -10,6 +10,7 @@ from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV, jira_config
 from tests.work.jira.fake import FIELDS, SITE
 from tests.work.projects import commit_all, connect, make_project
 from tests.projectfiles import config_file, write_config_file, write_local_config
+from tests.projectfiles import write_connected_config_file
 
 ITEM, PROJECT = FIELDS["TCW Item"], FIELDS["TCW Project"]
 
@@ -69,7 +70,7 @@ def block_for(p, block):
     doc = yaml.safe_load(path.read_text())
     entry = doc["projects"]["children"]["tcw"]
     doc["projects"]["children"]["tcw"] = {"path": entry, "jira": block}
-    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(doc, sort_keys=False))
 
 
 BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",

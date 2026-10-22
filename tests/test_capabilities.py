@@ -10,6 +10,7 @@ from tcw.store.base import AmbiguousRef, RefError, Term
 from tcw.store.fs import FsCapabilitiesStore, heading_slug, write_sentinel
 from tcw.errors import TcwError
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def node(tmp_path: Path, name: str = "repo") -> Path:
@@ -23,11 +24,11 @@ def node(tmp_path: Path, name: str = "repo") -> Path:
 
 
 def connect(parent: Path, child: Path) -> None:
-    write_config(parent,
+    write_connected_config(parent,
         f"id: {parent.name}\nprojects:\n  children:\n"
         f"    {child.name}: ../{child.name}\n"
     )
-    write_config(child,
+    write_connected_config(child,
         f"id: {child.name}\nprojects:\n  parent:\n"
         f"    {parent.name}: ../{parent.name}\n"
     )
@@ -669,12 +670,12 @@ def test_cli_set_ambiguous_ref_reports_ambiguity(tmp_path, monkeypatch, capsys):
         FsCapabilitiesStore.open(node(tmp_path, name)).add("x/thing", name="Thing")
     child = node(tmp_path, "child")
     st = FsCapabilitiesStore.open(child)
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  children:\n"
         "    one: ../one\n    two: ../two\n"
     )
     for name in ("one", "two"):
-        write_config(tmp_path / name,
+        write_connected_config(tmp_path / name,
             f"id: {name}\nprojects:\n  parent:\n    child: ../child\n"
         )
     st = FsCapabilitiesStore.open(child)

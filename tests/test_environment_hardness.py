@@ -47,6 +47,7 @@ from tcw.store.fs import (
 
 from nodeconfig import declare_extends
 from tests.projectfiles import config_file, write_config, write_config_file
+from tests.projectfiles import write_connected_config, write_connected_config_file
 
 
 def _git_init(path: Path) -> None:
@@ -104,14 +105,14 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     init(["taxonomy", "capabilities", "work"], child_a, "child-a")
     init(["taxonomy", "capabilities", "work"], child_b, "child-b")
 
-    write_config(root, yaml.safe_dump({
+    write_connected_config(root, yaml.safe_dump({
         "id": "root",
         "projects": {
             "children": {"child-a": "a", "child-b": "b"}
         },
     }, sort_keys=False))
     for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
-        write_config(child, yaml.safe_dump({
+        write_connected_config(child, yaml.safe_dump({
             "id": child_id,
             "projects": {"parent": {"root": ".."}},
         }, sort_keys=False))
@@ -151,14 +152,14 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git_init(right)
     init(["taxonomy", "capabilities", "work"], right, "right")
 
-    write_config(parent, yaml.safe_dump({
+    write_connected_config(parent, yaml.safe_dump({
         "id": "parent",
         "projects": {
             "children": {"left": str(left.resolve()), "right": str(right.resolve())}
         },
     }, sort_keys=False))
     for child, child_id in ((left, "left"), (right, "right")):
-        write_config(child, yaml.safe_dump({
+        write_connected_config(child, yaml.safe_dump({
             "id": child_id,
             "projects": {"parent": {"parent": str(parent.resolve())}},
         }, sort_keys=False))
@@ -188,11 +189,11 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     init(["taxonomy", "capabilities", "work"], server, "example-server")
     up = str(workspace.resolve()) if absolute else ".."
     down = str(server.resolve()) if absolute else "example-server"
-    write_config(workspace, yaml.safe_dump({
+    write_connected_config(workspace, yaml.safe_dump({
         "id": "example-app",
         "projects": {"children": {"example-server": down}},
     }, sort_keys=False))
-    write_config(server, yaml.safe_dump({
+    write_connected_config(server, yaml.safe_dump({
         "id": "example-server",
         "projects": {"parent": {"example-app": up}},
     }, sort_keys=False))
@@ -371,10 +372,10 @@ class TestNestedMonorepo:
         child_cfg.setdefault("projects", {}).setdefault("children", {})[
             "deep"
         ] = "deep"
-        write_config(child_a,
+        write_connected_config(child_a,
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
-        write_config(deep,
+        write_connected_config(deep,
             "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
         )
         _commit_all(deep)
@@ -656,7 +657,7 @@ def test_init_refuses_a_malformed_config_and_leaves_it_alone(
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     config = config_file(root)
-    write_config_file(config, text, encoding="utf-8")
+    write_connected_config_file(config, text, encoding="utf-8")
     before = hashlib.sha256(config.read_bytes()).hexdigest()
     monkeypatch.chdir(root)
 

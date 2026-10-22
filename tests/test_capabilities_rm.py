@@ -12,6 +12,7 @@ from tcw.store.base import AmbiguousRef
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.errors import TcwError
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -43,12 +44,12 @@ def connect(anchor, *sources):
         f"    {source.name.replace('_', '-')}: ../{source.name}\n"
         for source in sources
     )
-    write_config(anchor,
+    write_connected_config(anchor,
         f"id: {anchor_id}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
         source_id = source.name.replace("_", "-")
-        write_config(source,
+        write_connected_config(source,
             f"id: {source_id}\nprojects:\n  parent:\n"
             f"    {anchor_id}: ../{anchor.name}\n"
         )

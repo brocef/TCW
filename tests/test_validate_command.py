@@ -14,6 +14,7 @@ from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import connect, make_project, write_item
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 @pytest.fixture
@@ -104,7 +105,7 @@ def test_an_absent_declared_project_is_unresolved_not_exit_5(tmp_path, run):
     p = make_project(tmp_path, "p")
     config = yaml.safe_load((p / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"gone": "../gone"}}
-    write_config(p, yaml.safe_dump(config))
+    write_connected_config(p, yaml.safe_dump(config))
     code, out, _ = run(p)
     [line] = about(out, "'gone'")
     assert line.startswith("unresolved: ") and code == 0
@@ -221,7 +222,7 @@ def test_the_removed_spellings(project, monkeypatch, argv):
 @pytest.mark.parametrize("config", ["id: p\nwork: [\n", "id: p\nconnected-projects: {}\n",
                                     "id: p\nwork:\n  stages: 5\n"])
 def test_a_config_finding_names_the_file_relative_to_the_project(project, run, config):
-    write_config(project, config)
+    write_connected_config(project, config)
     code, out, _ = run(project / "docs")
     assert code == 1
     assert out and all(line.startswith("error: .tcw/tcw-config.yaml: ") for line in out), out
@@ -230,8 +231,8 @@ def test_a_config_finding_names_the_file_relative_to_the_project(project, run, c
 def test_the_former_child_warning_names_its_file_once(tmp_path, run):
     top = make_project(tmp_path, "top")
     kid = make_project(tmp_path, "kid")
-    write_config(top, "id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
-    write_config(kid, "id: kid\nprojects:\n  parent:\n    top: ../top\n")
+    write_connected_config(top, "id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
+    write_connected_config(kid, "id: kid\nprojects:\n  parent:\n    top: ../top\n")
     code, out, _ = run(top)
     [line] = about(out, "read as an upstream")
     assert code == 0 and line.startswith("warning: "), line

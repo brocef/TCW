@@ -12,6 +12,7 @@ from tcw.store.project import (
     worktree_anchors,
 )
 from tests.projectfiles import write_config, write_manifest
+from tests.projectfiles import write_connected_config
 
 
 def _texts(findings) -> list[str]:
@@ -22,6 +23,13 @@ def _texts(findings) -> list[str]:
 
 
 def config(root: Path, text: str) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    write_connected_config(root, text, encoding="utf-8")
+
+
+def config_3x(root: Path, text: str) -> None:
+    """`config`, leaving 3.x locations under `projects:`, for the tests whose
+    subject is 3.x behaviour that TCW-107's step 10 removes."""
     root.mkdir(parents=True, exist_ok=True)
     write_config(root, text, encoding="utf-8")
 
@@ -185,7 +193,7 @@ def test_unregistered_node_is_never_loaded(tmp_path, monkeypatch):
 def test_init_backfills_and_preserves_config(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
-    write_config(root, "work:\n  tags:\n    - docs\n")
+    write_connected_config(root, "work:\n  tags:\n    - docs\n")
     init(["work"], root, "repo-project")
     text = (root / ".tcw/tcw-config.yaml").read_text()
     assert "id: repo-project" in text
@@ -352,13 +360,13 @@ def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
     parent = tmp_path / "orchestrator"
     child = tmp_path / "child"
     decoy = tmp_path / "decoy"
-    config(decoy, "id: decoy-project\n")
-    config(
+    config_3x(decoy, "id: decoy-project\n")
+    config_3x(
         parent,
         f"id: root-project\nprojects:\n  children:\n"
         f"    child-project: {decoy}\n",
     )
-    config(
+    config_3x(
         child,
         f"id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
@@ -425,12 +433,12 @@ def test_a_declaration_answers_when_the_locator_does_not(tmp_path, monkeypatch):
     declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
                                         ref="main")
     obtained = provisioned_root(parent, declaration)
-    config(
+    config_3x(
         obtained,
         "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
-    config(
+    config_3x(
         parent,
         "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
@@ -471,7 +479,7 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
 )
 def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
     parent = tmp_path / "orchestrator"
-    config(
+    config_3x(
         parent,
         "id: root-project\nprojects:\n  children:\n"
         f"    child-project:\n{entry}",
@@ -497,7 +505,7 @@ def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     parent = tmp_path / "orchestrator"
-    config(
+    config_3x(
         parent,
         "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n"
@@ -513,7 +521,7 @@ def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
     from tcw.store.fs import unreachable_project_note
 
     parent = tmp_path / "orchestrator"
-    config(
+    config_3x(
         parent,
         "id: root-project\nprojects:\n  children:\n"
         "    child-project: ../child\n",
@@ -608,9 +616,9 @@ def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
     another machine, so it is reported and not called a problem."""
     parent = tmp_path / "parent"
     child = tmp_path / "child"
-    config(parent, "id: parent-project\nprojects:\n  children:\n"
+    config_3x(parent, "id: parent-project\nprojects:\n  children:\n"
                    f"    child-project: {child}\n")
-    config(child, "id: child-project\nprojects:\n  parent:\n"
+    config_3x(child, "id: child-project\nprojects:\n  parent:\n"
                   f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
 
     registry = FsProjectRegistry.open(parent)
@@ -719,12 +727,12 @@ def test_an_override_at_an_absent_path_falls_through_to_the_declaration(
     declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
                                         ref="main")
     obtained = provisioned_root(parent, declaration)
-    config(
+    config_3x(
         obtained,
         "id: child-project\nprojects:\n  parent:\n"
         f"    root-project: {parent}\n",
     )
-    config(
+    config_3x(
         parent,
         "id: root-project\nprojects:\n  children:\n"
         "    child-project:\n      path: ../child\n      repository:\n"

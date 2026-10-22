@@ -13,6 +13,7 @@ from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from nodeconfig import declare_extends
 from tcw.errors import TcwError
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def repo(tmp_path: Path, name: str) -> Path:
@@ -45,10 +46,10 @@ def child_of(tmp_path, base_caps: dict) -> tuple[Path, Path]:
     for path, kw in base_caps.items():
         write_cap(base, path, **kw)
     child = repo(tmp_path, "child")
-    write_config(base,
+    write_connected_config(base,
         "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     FsCapabilitiesStore.open(child).extends_add("base")
@@ -61,11 +62,11 @@ def store(root: Path) -> FsCapabilitiesStore:
 
 def connect_many(anchor: Path, *sources: Path) -> None:
     children = "".join(f"    {p.name}: ../{p.name}\n" for p in sources)
-    write_config(anchor,
+    write_connected_config(anchor,
         f"id: {anchor.name}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
-        write_config(source,
+        write_connected_config(source,
             f"id: {source.name}\nprojects:\n  parent:\n"
             f"    {anchor.name}: ../{anchor.name}\n"
         )
@@ -470,7 +471,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
     read path against a declaration no command on this machine could produce.
     """
     child = repo(tmp_path, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities",
@@ -485,7 +486,7 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
 
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
     child = repo(tmp_path, "child")
-    write_config(child, "id: child\n")
+    write_connected_config(child, "id: child\n")
     declare_extends(child, "capabilities",
         "extends:\n  - nowhere\n"
     )
@@ -496,7 +497,7 @@ def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
 
 def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     child = repo(tmp_path, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     with pytest.raises(TcwError) as excinfo:
@@ -518,7 +519,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     elsewhere = tmp_path / "base" / "ledger"
     elsewhere.mkdir(parents=True)
     (base / "docs" / "capabilities").rmdir()
-    write_config(base,
+    write_connected_config(base,
         "id: base\ncapabilities:\n  path: ledger\n"
         "projects:\n  children:\n    child: ../child\n"
     )
@@ -529,7 +530,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.rmtree(base / "docs" / "capabilities")
 
     child = repo(tmp_path, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
@@ -541,11 +542,11 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
 def test_a_sibling_with_no_component_names_the_project(tmp_path):
     base = repo(tmp_path, "base")
     (base / "docs" / "capabilities").rmdir()
-    write_config(base,
+    write_connected_config(base,
         "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
     child = repo(tmp_path, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
@@ -558,14 +559,14 @@ def test_a_sibling_whose_tree_is_declared_but_absent_says_to_provision(tmp_path,
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     base = repo(tmp_path, "base")
     (base / "docs" / "capabilities").rmdir()
-    write_config(base,
+    write_connected_config(base,
         "id: base\ncapabilities:\n"
         "  path: ledger\n"
         "  repository:\n    url: https://example.invalid/ledger.git\n"
         "projects:\n  children:\n    child: ../child\n"
     )
     child = repo(tmp_path, "child")
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
@@ -598,7 +599,7 @@ def _chain(tmp_path, depth: int, moved: set[int] = frozenset()):
             doc["projects"]["children"] = {f"n{i+1}": f"../n{i+1}"}
         if i:
             doc["projects"]["parent"] = {f"n{i-1}": f"../n{i-1}"}
-        write_config(d, yaml.safe_dump(doc, sort_keys=False))
+        write_connected_config(d, yaml.safe_dump(doc, sort_keys=False))
         if i + 1 < depth:
             # On the node, not the store dir: a moved node's `capabilities.path`
             # is already in this section and must survive the merge.
@@ -666,14 +667,14 @@ def _diamond(tmp_path, levels: int):
         (d / "docs" / "capabilities").mkdir(parents=True)
         subprocess.run(["git", "init", "-q", str(d)], check=True)
         write_sentinel(d, name)
-    write_config(tmp_path / "hub", yaml.safe_dump(
+    write_connected_config(tmp_path / "hub", yaml.safe_dump(
         {"id": "hub",
          "projects": {"children": {n: f"../{n}" for n in names}}},
         sort_keys=False))
     for level in range(levels):
         for side in (0, 1):
             d = tmp_path / f"n{level}x{side}"
-            write_config(d, yaml.safe_dump(
+            write_connected_config(d, yaml.safe_dump(
                 {"id": f"n{level}x{side}",
                  "projects": {"parent": {"hub": "../hub"}}},
                 sort_keys=False))
@@ -723,10 +724,10 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
     base = repo(tmp_path, "base")
     write_cap(base, "billing/refund", body="Refund a charge.")
     child = repo(tmp_path, "child")
-    write_config(base,
+    write_connected_config(base,
         "id: base\nprojects:\n  children:\n    child: ../child\n"
     )
-    write_config(child,
+    write_connected_config(child,
         "id: child\nprojects:\n  parent:\n    base: ../base\n"
         "capabilities:\n  extends:\n    - base\n"
     )

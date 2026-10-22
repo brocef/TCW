@@ -10,11 +10,12 @@ from pathlib import Path
 
 from tcw.store.project import FsProjectRegistry
 from tests.projectfiles import write_manifest
+from tests.projectfiles import write_connected_config
 
 
 def config(root: Path, text: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    write_config(root, text, encoding="utf-8")
+    write_connected_config(root, text, encoding="utf-8")
 
 
 # ── loading ──────────────────────────────────────────────────────────────────
@@ -287,7 +288,7 @@ def _reader(path: Path, project_id: str, connected: dict) -> Path:
     init(["taxonomy", "capabilities", "work"], path, project_id)
     cfg = yaml.safe_load((path / ".tcw/tcw-config.yaml").read_text())
     cfg["projects"] = connected
-    write_config(path, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(path, yaml.safe_dump(cfg, sort_keys=False))
     return path
 
 
@@ -323,7 +324,7 @@ def test_the_cli_reads_an_upstream_through_a_parent(tmp_path):
     init(["taxonomy", "capabilities", "work"], pkg, "pkg")
     cfg = yaml.safe_load((pkg / ".tcw/tcw-config.yaml").read_text())
     cfg["projects"] = {"parent": {"repo": ".."}}
-    write_config(pkg, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(pkg, yaml.safe_dump(cfg, sort_keys=False))
     _assert_reads_core(pkg)
 
 
@@ -358,7 +359,7 @@ def _cli_family(tmp_path: Path) -> tuple[Path, str]:
         init(["taxonomy", "capabilities", "work"], node, child)
         cfg = yaml.safe_load((node / ".tcw/tcw-config.yaml").read_text())
         cfg["projects"] = {"parent": {"r": ".."}, **extra}
-        write_config(node, yaml.safe_dump(cfg, sort_keys=False))
+        write_connected_config(node, yaml.safe_dump(cfg, sort_keys=False))
     _git(root, "add", "-A")
     _git(root, "commit", "-qm", "family")
     return root, slug
@@ -415,13 +416,13 @@ def _with_package(root: Path) -> Path:
     a = root / "a"
     cfg = yaml.safe_load((a / ".tcw/tcw-config.yaml").read_text())
     cfg["projects"]["children"] = {"pkg": "pkg"}
-    write_config(a, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(a, yaml.safe_dump(cfg, sort_keys=False))
     pkg = a / "pkg"
     pkg.mkdir()
     init(["taxonomy", "capabilities", "work"], pkg, "pkg")
     cfg = yaml.safe_load((pkg / ".tcw/tcw-config.yaml").read_text())
     cfg["projects"] = {"parent": {"a": ".."}}
-    write_config(pkg, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(pkg, yaml.safe_dump(cfg, sort_keys=False))
     return pkg
 
 
@@ -486,7 +487,7 @@ _NO_PARENT = "has no parent to inherit work.tracker settings from"
 def _set_tracker(node: Path, tracker: dict) -> None:
     cfg = yaml.safe_load((node / ".tcw/tcw-config.yaml").read_text())
     cfg.setdefault("work", {})["tracker"] = tracker
-    write_config(node, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(node, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def test_an_incomplete_tracker_with_no_parent_says_so(tmp_path):
@@ -519,7 +520,7 @@ _ROOT_TRACKER = {
 def _edit(node: Path, change) -> None:
     cfg = yaml.safe_load((node / ".tcw/tcw-config.yaml").read_text())
     change(cfg)
-    write_config(node, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(node, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def _workspace(tmp_path: Path) -> dict[str, Path]:

@@ -13,6 +13,7 @@ import yaml
 from tcw.cli import main
 from tests.work.projects import make_project
 from tests.projectfiles import config_file, write_config_file
+from tests.projectfiles import write_connected_config_file
 
 
 def declare(root, relation, project_id, target):
@@ -20,7 +21,7 @@ def declare(root, relation, project_id, target):
     document = yaml.safe_load(path.read_text())
     section = document.setdefault("projects", {}).setdefault(relation, {})
     section[project_id] = os.path.relpath(target, root)
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 @pytest.fixture
@@ -92,7 +93,7 @@ def _rename_key(root, old, new):
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document[new] = document.pop(old)
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
@@ -164,7 +165,7 @@ def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, 
     path = config_file(up)
     document = yaml.safe_load(path.read_text())
     document["connected-projects"] = {"children": {"zz": "../zz"}}
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert code == 0, err
 
@@ -174,7 +175,7 @@ def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     path = config_file(graph)
     document = yaml.safe_load(path.read_text())
     document["projects"]["children"]["Bad ID"] = "../c1"
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert (code, out) == (1, ""), (out, err)
     # The naming rule every key follows catches it first (TCW-106 Design 5.1).

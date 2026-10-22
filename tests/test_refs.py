@@ -12,6 +12,7 @@ from pathlib import Path
 from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 # ── parse: grammar round-trips ────────────────────────────────────────────────
@@ -120,10 +121,10 @@ def connect(anchor: Path, *others: Path) -> None:
         other_cfg["projects"] = {
             "parent": {anchor_cfg["id"]: str(anchor.resolve())}
         }
-        write_config(other,
+        write_connected_config(other,
             yaml.safe_dump(other_cfg, sort_keys=False)
         )
-    write_config(anchor,
+    write_connected_config(anchor,
         yaml.safe_dump(anchor_cfg, sort_keys=False)
     )
 

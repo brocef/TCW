@@ -33,6 +33,7 @@ WHERE = "work.repository"
 
 from nodeconfig import declare_extends, set_component_key
 from tests.projectfiles import config_file, write_config, write_config_file, write_manifest
+from tests.projectfiles import write_connected_config, write_connected_config_file
 
 
 def _repo(path: Path) -> Path:
@@ -51,7 +52,7 @@ def _write_config(project_root: Path, **work: object) -> None:
     path = config_file(project_root)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault("work", {}).update(work)
-    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(config, sort_keys=False))
 
 
 # ── the declaration parser ───────────────────────────────────────────────────
@@ -446,7 +447,7 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
     init([component], code, "core")
     url = url if url is not None else "https://github.invalid/acme/orchestration.git"
 
-    write_config(orchestration,
+    write_connected_config(orchestration,
         f"id: orchestration\nprojects:\n  children:\n    core: {code}\n")
     config = yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text()) or {}
     config.setdefault(component, {}).update({
@@ -454,7 +455,7 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
         "repository": {"url": url, "ref": ref, "path": inner},
     })
     config["projects"] = {"parent": {"orchestration": None}}
-    write_config(code, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config(code, yaml.safe_dump(config, sort_keys=False))
     write_manifest(code, {"orchestration": {
         "path": "../orchestrator",              # right for the nested layout, wrong here
         "repository": f"{url}#{ref}",
@@ -489,7 +490,7 @@ def _project(root: Path, project_id: str, **relations) -> Path:
     if relations:
         data["projects"] = {name: {i: None for i in ids}
                             for name, ids in relations.items()}
-    write_config(root, yaml.safe_dump(data, sort_keys=False))
+    write_connected_config(root, yaml.safe_dump(data, sort_keys=False))
     return root.resolve()
 
 
@@ -506,7 +507,7 @@ def _store_in_app(tmp_path: Path) -> tuple[Path, Path]:
                   repository={"url": APP_URL, "path": "docs/work/core"})
     config = yaml.safe_load(config_file(core).read_text())
     config["projects"] = {"upstream": {"server": None}}
-    write_config(core, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config(core, yaml.safe_dump(config, sort_keys=False))
     write_manifest(core, {"server": {"path": "../app-repo/apps/server",
                                      "repository": f"{APP_URL}#main",
                                      "subfolder": "apps/server"}})
@@ -731,7 +732,7 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
         path = config_file(root)
         config = yaml.safe_load(path.read_text())
         config["projects"] = {key: {other: f"../{other.split('-')[0]}"}}
-        write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+        write_connected_config_file(path, yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.chdir(parent)
     assert main(["projects", "list"]) == 0
@@ -850,7 +851,7 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     provision" and succeeded."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    write_config(code, broken)
+    write_connected_config(code, broken)
     monkeypatch.chdir(code)
 
     assert main(["provision"]) == 1
@@ -868,7 +869,7 @@ def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, comm
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     broken = b"id: corelib\n# caf\xe9\n"
-    write_config(code, broken)
+    write_connected_config(code, broken)
     monkeypatch.chdir(code)
 
     assert main(command) == 1
@@ -1023,7 +1024,7 @@ def test_every_component_is_exposed_now_that_its_adapter_exists(
         "repository": {"url": str(remote), "path": "trees/taxonomy",
                        "checkout": str(tmp_path / "co")}
     }
-    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(["provision", "--component", "taxonomy"]) == 0
@@ -1128,7 +1129,7 @@ def _tree_node(tmp_path: Path, component: str = "taxonomy", **section) -> Path:
     path = config_file(code)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault(component, {}).update(section)
-    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(config, sort_keys=False))
     return code
 
 
@@ -1306,7 +1307,7 @@ def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
     config = yaml.safe_load(path.read_text()) or {}
     config[component] = {"repository": {"url": "https://example.invalid/orchestrator.git",
                                         "path": f"trees/{component}"}}
-    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
@@ -1407,7 +1408,7 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
         "path": "../nowhere/capabilities",
         "repository": {"url": str(good), "path": "trees/not-here",
                        "checkout": str(tmp_path / "co-bad")}}
-    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(["provision"]) == 1
@@ -1461,7 +1462,7 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
     config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = section
-    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
@@ -1483,7 +1484,7 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
     config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = {"repository": {"ref": "main"}}
-    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main([component, "list"]) == 0
@@ -1503,7 +1504,7 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     config["capabilities"] = {
         "repository": {"url": "https://example.invalid/ledger.git"},
     }
-    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     # A store that is right here, and whose own config is wrong.
     declare_extends(node, "capabilities",
         "extends:\n  nope: ../somewhere\n")               # the legacy map form
@@ -1556,14 +1557,14 @@ def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path
     (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
     (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
     (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
-    write_config(source,
+    write_connected_config(source,
         "id: source\nprojects:\n  parent:\n    consumer: ../consumer\n")
 
     consumer = _repo(tmp_path / "consumer")
     config = "id: consumer\nprojects:\n  children:\n    source: ../source\n"
     if taxonomy_path is not None:
         config += f"taxonomy:\n  path: {taxonomy_path}\n"
-    write_config(consumer, config)
+    write_connected_config(consumer, config)
     if taxonomy_path is None:
         (consumer / "docs" / "taxonomy").mkdir(parents=True)
     return consumer, source
@@ -1674,7 +1675,7 @@ def _broken_extends(tmp_path: Path, component: str, extends: str) -> Path:
     node = _repo(tmp_path / "node")
     init([component], node, "node")
     config = config_file(node)
-    write_config_file(config, config.read_text() + f"{component}:\n  extends: [{extends}]\n")
+    write_connected_config_file(config, config.read_text() + f"{component}:\n  extends: [{extends}]\n")
     return node
 
 
@@ -1722,7 +1723,7 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
     reason to fall back to the built-in text."""
     node = _repo(tmp_path / "node")
     init(["taxonomy"], node, "node")
-    write_config(node, "id: node\nwork:\n  path: ''\n")
+    write_connected_config(node, "id: node\nwork:\n  path: ''\n")
     monkeypatch.chdir(node)
     assert main(["work", "procedure", "unattended-work"]) == 1
     out = capsys.readouterr()
