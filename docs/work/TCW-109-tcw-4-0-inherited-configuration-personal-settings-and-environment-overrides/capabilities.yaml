@@ -1,0 +1,15 @@
+new:
+    - cli/inherit-configuration-from-parents
+    - cli/override-configuration-from-the-environment
+changed:
+    - cli/override-the-team-configuration-for-myself
+    - cli/show-the-effective-configuration
+    - cli/validate-a-project
+    - work/tag-a-work-item
+    - work/keep-work-items-in-jira
+taxonomy:
+    new:
+        - environment-override
+    changed:
+        - config-layer
+        - personal-configuration
