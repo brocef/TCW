@@ -44,12 +44,13 @@ from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
-from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_MANIFEST, LOCAL_MANIFEST_NAME,
-                               LOCAL_SENTINEL, SENTINEL, TCW_FOLDER, V3, V4,
+from tcw.project_files import (CONFIG_NAME, LOCAL_CONFIG_NAME, LOCAL_MANIFEST,
+                               LOCAL_MANIFEST_NAME, LOCAL_SENTINEL, MANIFEST_NAME,
+                               SENTINEL, TCW_FOLDER, V3, V4,
                                find_marker, legacy_message, version_problem,
                                without_version)
-from tcw.store.project import (FsProjectRegistry, _below, validate_project_id,
-                               worktree_anchors)
+from tcw.store.project import (FsProjectRegistry, _below, forget_registries,
+                               validate_project_id, worktree_anchors)
 
 # Component trees `tcw init` scaffolds. `work` gets a status-folder skeleton;
 # `taxonomy` and `capabilities` are flat trees that fill in per their phases.
@@ -1155,6 +1156,10 @@ def _umask() -> int:
     return current
 
 
+#: The files the project registry reads: a change to one drops it.
+_GRAPH_FILES = (CONFIG_NAME, MANIFEST_NAME, LOCAL_MANIFEST_NAME)
+
+
 def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
     """Write several files as one unit: stage every temp, then promote each.
 
@@ -1199,6 +1204,11 @@ def _atomic_write_all(pairs: list[tuple[Path, str]]) -> None:
         for tmp, _, _ in staged:
             tmp.unlink(missing_ok=True)
         raise
+    finally:
+        # A configuration or a manifest changed under this command's project
+        # registry (TCW-107 Design 2.13); also when a promote failed part way.
+        if any(path.name in _GRAPH_FILES for _, path, _ in staged):
+            forget_registries()
 
 
 # ── Shared tree-store core (Phase 4) ─────────────────────────────────────────

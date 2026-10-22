@@ -653,13 +653,21 @@ _EFFECTIVE: dict | None = None
 
 
 def begin_command() -> None:
+    """Start one command: the configuration, and the project registry
+    (TCW-107 Design 2.13), are each read once until `end_command`. The
+    registry is dropped after the command writes a configuration or a
+    manifest; this configuration cache is still not, as in 3.x."""
     global _EFFECTIVE
     _EFFECTIVE = {}
+    from tcw.store import project
+    project.begin_command()
 
 
 def end_command() -> None:
     global _EFFECTIVE
     _EFFECTIVE = None
+    from tcw.store import project
+    project.end_command()
 
 
 def effective(project_root: Path) -> Config:

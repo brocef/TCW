@@ -598,3 +598,89 @@ def test_the_note_for_a_project_not_here_is_design_6_2s_message(tmp_path):
                     f"../gone, from https://h/lib.git; fetch it with "
                     f"'tcw project provision lib'")
     assert "tcw provision`" not in note
+
+
+# ---------------------------------------------------------------------------
+# Design 2.13: one registry per command
+
+
+@pytest.fixture
+def command():
+    """One command's span, as `tcw.cli._dispatch` makes it."""
+    from tcw import config as layered
+    layered.begin_command()
+    yield
+    layered.end_command()
+
+
+def test_ac27_each_candidate_is_read_once_by_the_registry(tmp_path, monkeypatch, reads):
+    from tcw.cli import main
+    app = proj(tmp_path / "app", "app", children=["shared"])
+    shared = proj(tmp_path / "app" / "packages" / "shared", "shared", parent=["app"])
+    proj(tmp_path / "app" / "packages" / "neighbour", "neighbour")
+    write_manifest(app, {"shared": "packages/shared"})
+    opened: dict[Path, list] = {}
+    real_open = FsProjectRegistry.open.__func__
+
+    def counting_open(cls, root):
+        registry = real_open(cls, root)
+        opened.setdefault(Path(root).resolve(), []).append(registry)
+        return registry
+
+    monkeypatch.setattr(FsProjectRegistry, "open", classmethod(counting_open))
+    monkeypatch.chdir(shared)
+    assert main(["validate"]) == 0
+    assert reads["list"].count(shared.parent) == 1
+    for folder in (shared.parent / "neighbour", shared.parent, app, app.parent):
+        for name in (".tcw/tcw-config.yaml", "tcw-config.yaml"):
+            assert reads["read"].count(folder / name) <= 1, (folder, name)
+    assert len(opened[shared]) >= 2, "the command opens the registry more than once"
+    assert all(r is opened[shared][0] for r in opened[shared])
+
+
+def test_a_write_drops_the_registry_within_the_command(tmp_path, command):
+    from tcw.store.fs import _atomic_write_all, write_sentinel
+    root = tmp_path / "p"
+    write_config(root, "projects:\n  upstream:\n    lib:\n")
+    first = FsProjectRegistry.open(root)
+    assert FsProjectRegistry.open(root) is first
+    assert write_sentinel(root, "fresh")
+    second = FsProjectRegistry.open(root)
+    assert second is not first and second.current.id == "fresh"
+    assert second.declared_upstream_ids() == ["lib"]
+    _atomic_write_all([(root / ".tcw" / "tcw-manifest.yaml",
+                        "tcw-version: 4.0.0\nprojects: {lib: ../lib}\n")])
+    third = FsProjectRegistry.open(root)
+    assert third is not second
+    assert third.unreachable_project("lib").decided_by == root.resolve() / ".tcw/tcw-manifest.yaml"
+
+
+def test_a_write_of_another_file_keeps_the_registry(tmp_path, command):
+    from tcw.store.fs import _atomic_write_all
+    root = proj(tmp_path / "p", "p")
+    first = FsProjectRegistry.open(root)
+    _atomic_write_all([(root / "notes.md", "x\n")])
+    assert FsProjectRegistry.open(root) is first
+
+
+def test_outside_a_command_every_open_reads_afresh(tmp_path):
+    root = proj(tmp_path / "p", "p")
+    assert FsProjectRegistry.open(root) is not FsProjectRegistry.open(root)
+
+
+def test_a_registry_whose_load_raised_is_not_kept(tmp_path, monkeypatch, command):
+    root = proj(tmp_path / "p", "p")
+    real = FsProjectRegistry._load_graph
+    calls = []
+
+    def once(self):
+        calls.append(self)
+        if len(calls) == 1:
+            raise RuntimeError("load failed")
+        return real(self)
+
+    monkeypatch.setattr(FsProjectRegistry, "_load_graph", once)
+    with pytest.raises(RuntimeError):
+        FsProjectRegistry.open(root)
+    kept = FsProjectRegistry.open(root)
+    assert kept is calls[1] and FsProjectRegistry.open(root) is kept

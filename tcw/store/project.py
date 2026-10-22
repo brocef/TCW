@@ -54,6 +54,30 @@ def override_variable(project_id: str) -> str:
 _ANCHOR_CACHE: dict[Path, tuple[Path, Path] | None] = {}
 
 
+#: The registry opened for each project root while a command runs; None
+#: outside a command, so a library caller and a test always read afresh.
+_OPEN: "dict[Path, FsProjectRegistry] | None" = None
+
+
+def begin_command() -> None:
+    global _OPEN
+    _OPEN = {}
+
+
+def end_command() -> None:
+    global _OPEN
+    _OPEN = None
+
+
+def forget_registries() -> None:
+    """Drop the registries this command has opened, after it wrote a
+    `tcw-config.yaml` or a manifest, so the next `open` reads the files as
+    they are now. It cannot refresh a registry a caller already holds in a
+    variable: such a caller opens the registry again after writing."""
+    if _OPEN is not None:
+        _OPEN.clear()
+
+
 def worktree_anchors(directory: Path) -> tuple[Path, Path] | None:
     """`(current worktree top, main worktree root)` when `directory` sits inside a
     *linked* git worktree, else None — None for git absent, not a repository, the
@@ -340,9 +364,22 @@ class FsProjectRegistry(ProjectRegistry):
 
     @classmethod
     def open(cls, project_root: Path) -> "FsProjectRegistry":
-        registry = cls(project_root)
-        registry._load_graph()
-        return registry
+        """The registry of the project at `project_root`, its graph loaded.
+        While a command runs, the same registry for the same root, so the
+        graph, every lookup's answer and every folder the search reads are
+        read once (TCW-107 Design 2.13); outside a command, a new one."""
+        if _OPEN is None:
+            registry = cls(project_root)
+            registry._load_graph()
+            return registry
+        key = Path(project_root).resolve()
+        if key not in _OPEN:
+            registry = cls(project_root)
+            registry._load_graph()
+            # Kept only once the load has finished, so a load that raised is
+            # never handed out half-built.
+            _OPEN[key] = registry
+        return _OPEN[key]
 
     @property
     def current(self) -> Project:
