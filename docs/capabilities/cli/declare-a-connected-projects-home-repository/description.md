@@ -10,7 +10,8 @@ A project that is already here always wins: the repository is consulted only
 when the entry's folder holds nothing, so nothing about a machine that has the
 project changes, and nothing is contacted on its behalf. Where the project is
 absent, TCW says it is not on this machine, where the entry places it, the
-repository, and the command that fetches it, `tcw project provision <id>`,
+repository, and the command that fetches it (a `project provision` command,
+which TCW-115 adds),
 rather than reporting that the project was never declared.
 
 `tcw provision` does not fetch connected projects; it fetches the component

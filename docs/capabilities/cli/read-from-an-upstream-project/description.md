@@ -9,7 +9,8 @@ show its work items as `<project-id>/<folder>`, and link to them with `tcw://`.
 Where it is on this machine is said the same way as for a child: by a manifest
 entry, by `TCW_PROJECT_<ID>`, or found from the ID. When it is not here, TCW
 names the repository its manifest entry gives and the command that fetches it,
-`tcw project provision <id>`; `tcw provision` does not fetch it.
+a `project provision` command, which TCW-115 adds; `tcw provision` does not
+fetch it.
 
 Nothing writes into it from here. Every command that would change one of its
 items — `tcw work edit`, `advance`, `discard`, `comment` and `rename` —

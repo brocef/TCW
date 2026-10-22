@@ -8,7 +8,8 @@ standard output.
 It serves the three component stores, `work`, `taxonomy` and `capabilities`.
 It does not fetch connected projects: a project not on this machine is
 reported with where its manifest entry places it, the repository the entry
-gives, and the command that fetches it, `tcw project provision <id>`.
+gives, and the command that fetches it (a `project provision` command, which
+TCW-115 adds).
 `--component` limits it to one store (repeat it for more than one). With no
 component named, every store that declares a home repository is provisioned.
 Each is resolved, reported, and failed on its own, so one store's bad
