@@ -93,6 +93,32 @@ def worktree_anchors(directory: Path) -> tuple[Path, Path] | None:
     return _ANCHOR_CACHE[key]
 
 
+def personal_file(root: Path, name: str,
+                  anchors: "tuple[Path, Path] | None | bool" = True) -> Path:
+    """Where to read the personal file `name` (`tcw-config.local.yaml` or
+    `tcw-manifest.local.yaml`) of the project at `root` (TCW-107 Design 4.2):
+    its own `.tcw/<name>` when that is a file; otherwise, when `root` lies
+    inside a linked git worktree, the same file below the main checkout when
+    that one is a file; otherwise its own. A file is personal by its name: git
+    is asked only where the worktree is, never whether the file is tracked.
+
+    `anchors` is the worktree's `(top, main)` when the caller already holds
+    them (None for none), or True to probe `root`."""
+    own = Path(root) / TCW_FOLDER / name
+    if own.is_file():
+        return own
+    if anchors is True:
+        anchors = worktree_anchors(Path(root))
+    if not anchors:
+        return own
+    top, main = anchors
+    inside = _below(Path(root).resolve(), top)
+    if inside is None:
+        return own
+    borrowed = main / inside / TCW_FOLDER / name
+    return borrowed if borrowed.is_file() else own
+
+
 def _below(path: Path, root: Path) -> Path | None:
     """The part of `path` below `root` when `path` is `root` or inside it, else
     None — deciding "inside" by folder identity, not by text.
@@ -1517,7 +1543,8 @@ class FsProjectRegistry(ProjectRegistry):
         root = self._root_key(root)
         if root in self._manifests:
             return self._manifests[root]
-        files = [] if personal_files_skipped() else [(root / LOCAL_MANIFEST, True)]
+        files = [] if personal_files_skipped() else [
+            (personal_file(root, LOCAL_MANIFEST_NAME, self._anchors), True)]
         files.append((root / MANIFEST, False))
         result: list[tuple[Any, Path, dict]] | None = []
         for path, personal in files:
@@ -1733,16 +1760,29 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _search_candidates(self, named_by: Path):
         """The folders the search tests, in order: each folder next to
-        `named_by` (Design 2.4), then each folder enclosing it (2.5)."""
-        holder = named_by.parent
+        `named_by` (Design 2.4), then each folder enclosing it (2.5).
+
+        Inside the active project's linked worktree (Design 4.3), what lies
+        outside the repository is read from the main checkout: when `named_by`
+        is the worktree's top folder, the folders next to it are those next to
+        the main checkout; the enclosing folders are the worktree's own up to
+        its top, then those enclosing the main checkout, whose own root is not
+        tested again."""
+        holder, own, enclosing = named_by.parent, named_by, list(named_by.parents)
+        if self._anchors is not None and _below(named_by, self._anchors[0]) is not None:
+            top, main = self._anchors
+            if named_by == top:
+                holder, own = main.parent, main
+            enclosing = [p for p in named_by.parents if _below(p, top) is not None]
+            enclosing += list(main.parents)
         listing = self._listing(holder)
         if isinstance(listing, list):
             for name, is_dir in listing:
                 folder = holder / name
-                if (is_dir and name != TCW_FOLDER and folder != named_by
+                if (is_dir and name != TCW_FOLDER and folder != own
                         and not self._protected(folder)):
                     yield folder
-        yield from named_by.parents
+        yield from enclosing
 
     @staticmethod
     def _protected(folder: Path) -> bool:

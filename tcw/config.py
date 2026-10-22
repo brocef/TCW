@@ -34,7 +34,7 @@ import yaml
 
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 
-from tcw.project_files import (LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
+from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
                                SKIP_VARIABLE, key_problems, personal_files_skipped,
                                root_of, version_problem, without_version)
 
@@ -66,13 +66,20 @@ class Origin:
 
     layer: str
     file: Path | None = None
+    # The project root a personal file is read for, when that is not the root
+    # of the folder holding it: a linked worktree borrowing its main checkout's
+    # file (TCW-107 Design 4.2).
+    root: Path | None = field(default=None, compare=False)
 
     @property
     def folder(self) -> Path | None:
         """The folder a `file:` binding is read from and `TCW_CONFIG_DIR`
         names: the declaring file's folder, except that a file in a project's
         `.tcw/` folder is read as though it sat at the project root (TCW-106
-        Design 1.4)."""
+        Design 1.4), and a borrowed personal file as though it sat in the
+        worktree that borrowed it."""
+        if self.root is not None:
+            return self.root
         if self.file is None:
             return None
         if self.layer in ("project", "local"):
@@ -696,5 +703,10 @@ def _personal_layers(root: Path, problems: list) -> list[Origin]:
     user = user_config_path()
     if user is not None:
         layers.append(Origin("user", user))
-    layers.append(Origin("local", root / LOCAL_FILE))  # `.tcw/tcw-config.local.yaml`
+    # `.tcw/tcw-config.local.yaml`, or a linked worktree's main checkout's
+    # when the worktree has none of its own (TCW-107 Design 4.2).
+    from tcw.store.project import personal_file
+    local = personal_file(root, LOCAL_CONFIG_NAME)
+    layers.append(Origin("local", local,
+                         root=Path(root) if local != Path(root) / LOCAL_FILE else None))
     return layers
