@@ -74,7 +74,36 @@ class NotFound(TcwError):
 
 
 class Unreachable(TcwError):
+    """A project something names is not on this machine.
+
+    `project` is its ID and `repository` the one its deciding manifest entry
+    gives, when the failure is about a project and that entry gives one
+    (TCW-107 Design 6.2), so a caller can name it without parsing the
+    message."""
+
     code = codes.UNREACHABLE
+
+    def __init__(self, message: str = "", *, name: str | None = None,
+                 project: str | None = None, repository: str | None = None):
+        super().__init__(message, name=name)
+        self.project = project
+        self.repository = repository
+
+
+class ProjectGraphError(TcwError):
+    """Finding a project's folder met a problem in the project graph: two
+    folders for one ID, a manifest entry pointing at a folder that is not that
+    project, a manifest TCW cannot read (TCW-107 Design 2.12)."""
+
+    code = codes.ERROR
+
+
+class UnknownProject(ProjectGraphError):
+    """No manifest, no `projects:` entry and no folder nearby knows the
+    project ID: probably a misspelling. A subclass of `ProjectGraphError`, so
+    a caller handling both catches this one first."""
+
+    code = codes.ERROR
 
 
 class MovedWithoutNote(TcwError):

@@ -141,6 +141,11 @@ class UnreachableProject:
     locator: Any
     declared_in: Any = ""
     declaration: "RepositoryDeclaration | None" = None
+    # The rendered "not on this machine" message (TCW-107 Design 6.2), and the
+    # manifest holding the entry that decided where the project is (None when
+    # no entry decided). Presentation only, like `declared_in`.
+    message: str = ""
+    decided_by: Any = None
 
 
 @dataclass(frozen=True)
@@ -868,7 +873,10 @@ def parse_connected_entry(
 ) -> tuple["ConnectedProject | None", list[str]]:
     """Parse one `projects` entry into a `ConnectedProject` plus problems.
 
-    Two accepted forms, and the first must never stop working:
+    An entry naming the project by its ID alone, with no location, is empty
+    (`lib:`), an empty mapping, or a mapping holding only `jira` (TCW-107
+    Design 3.1): where it is, is a manifest's to say. The two 3.x forms below
+    are still read until TCW-107 refuses them:
 
         child-id: ../child                      # a bare locator, as always
         child-id:
@@ -880,10 +888,10 @@ def parse_connected_entry(
     declaration reads the same here as it does under `work.repository` rather
     than growing a second vocabulary of error messages.
 
-    An entry naming neither is refused. It would be a project that cannot be
-    found and cannot be obtained, which is not a state worth representing.
     """
     problems: list[str] = []
+    if raw is None:
+        return ConnectedProject(id=project_id), problems
     if isinstance(raw, str):
         if not raw.strip():
             return None, [f"{where}: locator must be a nonempty string"]
@@ -909,8 +917,6 @@ def parse_connected_entry(
             raw.get("repository"), f"{where}.repository")
         problems.extend(declaration_problems)
 
-    if locator is None and declaration is None and not problems:
-        problems.append(f"{where}: needs 'path', 'repository', or both")
     if problems:
         return None, problems
     return ConnectedProject(id=project_id, locator=locator,

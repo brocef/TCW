@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import subprocess
-from dataclasses import dataclass, replace
+import sys
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -16,9 +17,13 @@ from tcw.store.base import (
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
     parse_connected_entry, retired_key_problem,
 )
-from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, PROJECT_ID_PATTERN,
-                               RESERVED_PROJECT_IDS, SENTINEL, root_of,
+from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
+from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
+                               LOCAL_MANIFEST_NAME, MANIFEST, PROJECT_ID_PATTERN,
+                               RESERVED_PROJECT_IDS, SENTINEL, TCW_FOLDER,
+                               legacy_message, personal_files_skipped, root_of,
                                validate_project_id, version_problem)
+from tcw.store.manifest import ManifestEntry, parse_manifest
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
@@ -143,6 +148,108 @@ def _probe_worktree(directory: Path) -> tuple[Path, Path] | None:
     return worktree_anchors(Path(outer[0])) if outer else None
 
 
+# ---------------------------------------------------------------------------
+# Finding a project's folder from its ID (TCW-107 Design 2)
+
+
+def _read_text(path: Path) -> str:
+    """A file's text. Every file the registry reads is read here, so a test
+    can count the reads (TCW-107 AC 24, AC 27)."""
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _list_folder(path: Path) -> list[tuple[str, bool]]:
+    """Each entry in a folder, by name, and whether it is a folder. Every
+    folder the registry lists is listed here, for the same reason. Raises the
+    `OSError` listing it raised."""
+    result = []
+    with os.scandir(path) as entries:
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                is_dir = False
+            result.append((entry.name, is_dir))
+    return sorted(result)
+
+
+#: The folders macOS asks a person's permission to read, directly in the home
+#: folder. The search never tests one next to a project (see `_protected`).
+_PROTECTED_NAMES = ("Desktop", "Documents", "Downloads")
+_ON_MACOS = sys.platform == "darwin"
+
+
+def _holds_only_git(path: str) -> str:
+    """The words for an entry folder holding nothing but `.git`: what a
+    clone or a submodule update leaves when it stopped before checking out a
+    file. The fetching command refuses such a folder (TCW-115), so the person
+    is told to deal with it first."""
+    return f"{path} holds only .git; finish or remove it with git"
+
+
+@dataclass(frozen=True)
+class _Probe:
+    """What a folder's two files say (Design 2.6): `none` (neither file),
+    `project` (a 4.0 project declaring `id`), `version` (a 4.0 file whose
+    version this TCW cannot read; `id` when it declares one), `legacy` (a 3.x
+    root file; `id` when it declares one) or `unreadable`."""
+
+    kind: str
+    id: str | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class _Answer:
+    """One answer to "where is `X`, asked by `P`" (Design 2.11 b).
+
+    `folder` is the project's root when found, and `by` the rule that found
+    it: `manifest` (with the deciding `entry`), `variable` or `search`.
+    Otherwise `problem` is the graph problem, rendered as recorded, or the
+    project is not here: `named` says whether anything the walk consulted
+    names the ID, and `message` is Design 6.2's text."""
+
+    folder: Path | None = None
+    by: str | None = None
+    entry: ManifestEntry | None = None
+    entry_folder: Path | None = None
+    problem: str | None = None
+    named: bool = False
+    message: str = ""
+
+
+def _holds_only_id(entry: ConnectedProject) -> bool:
+    """A `projects:` entry naming its project by ID alone, which the lookup
+    resolves (TCW-107 Design 3.1); one with a 3.x location is still resolved
+    by `_target_path` until those are refused."""
+    return entry.locator is None and entry.repository is None
+
+
+def _search(registry: "FsProjectRegistry", project_id: str,
+            named_by: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """Design 2.4-2.8: the folders next to `named_by` and enclosing it that
+    declare `project_id`, and the problems of candidates that are
+    `project_id` but cannot be read as 4.0. Every match is collected; the
+    registry decides. Never reads below a folder it tests (Design 2.6).
+
+    A module-level function, so a test run can replace it with one that finds
+    nothing, and so show that each test's projects are placed by its
+    manifests rather than found by accident."""
+    matches: list[Path] = []
+    problems: list[tuple[Path, str]] = []
+    for folder in registry._search_candidates(named_by):
+        probe = registry._probe(folder)
+        if probe.id != project_id:
+            continue
+        if probe.kind == "project":
+            matches.append(folder)
+        elif probe.kind == "version":
+            problems.append((folder / SENTINEL, probe.detail))
+        elif probe.kind == "legacy":
+            problems.append((folder, f"is {LEGACY_PROJECT}"))
+    return matches, problems
+
+
 @dataclass(frozen=True)
 class _Config:
     project: Project
@@ -212,6 +319,24 @@ class FsProjectRegistry(ProjectRegistry):
         self._current_path = self.project_root / SENTINEL
         # Probed once per registry, not once per locator (~8 ms a call).
         self._anchors = worktree_anchors(self.project_root)
+        # The lookup's reads, each made at most once (TCW-107 Design 2.13): a
+        # file's text or the error reading it, a folder's listing or the error
+        # listing it, what a folder's two files say, and each project root's
+        # manifests (None when one has a problem, which makes it unusable).
+        self._texts: dict[Path, str | Exception] = {}
+        self._listings: dict[Path, list[tuple[str, bool]] | OSError] = {}
+        self._probes: dict[Path, _Probe] = {}
+        self._manifests: dict[Path, list[tuple[Any, Path, dict]] | None] = {}
+        self._manifest_problem: dict[Path, str] = {}
+        # One answer per question, "where is `X`, asked by `P`", keyed by the
+        # ID and `P`'s root (Design 2.11 b), and the answer that placed each
+        # configuration in the graph, for `found`.
+        self._answers: dict[tuple[str, Path], _Answer] = {}
+        self._placed: dict[Path, _Answer] = {}
+        # Configurations read only to learn a project's family, outside the
+        # walk, and the folders `project_folder` returned, by ID.
+        self._peeked: dict[Path, _Config | None] = {}
+        self._found: dict[str, Path] = {}
 
     @classmethod
     def open(cls, project_root: Path) -> "FsProjectRegistry":
@@ -433,7 +558,9 @@ class FsProjectRegistry(ProjectRegistry):
         # from the branch that could not read a config file, and `cfg.path` is by
         # construction a file that was read, so they can never be equal. A guard
         # that cannot fire tells the next reader a state exists when it does not.
-        return [entry for entry in self._unreachable if entry.id in self._by_id]
+        # An edge naming its project by ID alone wrote no locator to report.
+        return [entry for entry in self._unreachable
+                if entry.id in self._by_id and not entry.message]
 
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:
@@ -454,6 +581,10 @@ class FsProjectRegistry(ProjectRegistry):
             return
         self._loaded = True
         self._visit(self._current_path, declared_id=None)
+        if self._canonical(self._current_path) in self._cache:
+            # Read whether or not anything is looked up, so their problems are
+            # reported (Design 1.8); a missing file costs one failed read.
+            self._manifests_of(self.project_root)
         self._validate_reciprocity()
         self._validate_upstreams()
         self._validate_cycles()
@@ -526,15 +657,34 @@ class FsProjectRegistry(ProjectRegistry):
         return cfg
 
     def _follow_edges(self, config_path: Path, cfg: _Config) -> None:
-        for child_id, entry in cfg.children.items():
-            self._visit(self._target_path(config_path, entry), child_id,
-                        config_path, entry.repository)
-        for parent_id, entry in cfg.parent.items():
-            self._visit(self._target_path(config_path, entry), parent_id,
-                        config_path, entry.repository)
-        for upstream_id, entry in cfg.upstream.items():
-            self._visit(self._target_path(config_path, entry), upstream_id,
-                        config_path, entry.repository, via_upstream=True)
+        """The parent first, then the children in the order the configuration
+        lists them, then the upstreams (TCW-107 Design 2.11 a), so a project's
+        parent chain has been found by the time its children are looked up."""
+        for relation in (cfg.parent, cfg.children, cfg.upstream):
+            via_upstream = relation is cfg.upstream
+            for target_id, entry in relation.items():
+                if _holds_only_id(entry):
+                    self._follow_id(config_path, target_id, via_upstream)
+                else:
+                    self._visit(self._target_path(config_path, entry), target_id,
+                                config_path, entry.repository,
+                                via_upstream=via_upstream)
+
+    def _follow_id(self, config_path: Path, target_id: str,
+                   via_upstream: bool) -> None:
+        """One edge naming its project by ID alone, resolved by the lookup.
+        A problem is already recorded, and the edge is not followed."""
+        answer = self._locate(target_id, root_of(config_path))
+        if answer.problem is not None:
+            return
+        if answer.folder is None:
+            self._unreachable_edge(
+                config_path, target_id, answer.entry_folder, message=answer.message,
+                decided_by=answer.entry.file if answer.entry else None)
+            return
+        target = self._canonical(answer.folder / SENTINEL)
+        self._placed.setdefault(target, answer)
+        self._visit(target, target_id, config_path, via_upstream=via_upstream)
 
     def _read_config(self, path: Path, declared_id: str | None,
                      declared_in: Path | None = None,
@@ -570,16 +720,16 @@ class FsProjectRegistry(ProjectRegistry):
             self._unreachable_edge(declared_in or path, declared_id, root_of(path),
                                    declaration)
             return None
+        text = self._text(path)
+        if isinstance(text, UnicodeDecodeError):
+            self._problem(path, _not_utf8(text))
+            return None
         try:
-            raw = _load_named_yaml(path.read_text(encoding="utf-8"), path,
-                                   _UniqueKeyLoader) or {}
+            if isinstance(text, Exception):
+                raise text
+            raw = _load_named_yaml(text, path, _UniqueKeyLoader) or {}
         except (OSError, yaml.YAMLError) as error:
             self._problem(path, f"invalid YAML: {error}")
-            return None
-        except UnicodeDecodeError as error:
-            self._problem(path, f"is not valid UTF-8 text (byte "
-                                f"0x{error.object[error.start:error.start + 1].hex()} "
-                                f"at position {error.start})")
             return None
         if not isinstance(raw, dict):
             self._problem(path, "config must be a mapping")
@@ -870,14 +1020,19 @@ class FsProjectRegistry(ProjectRegistry):
                 # saying is the migration's leftover: a parent claim its parent
                 # now answers by reading it as an upstream.
                 for parent_id, entry in cfg.parent.items():
-                    parent = self._cache.get(self._target_path(cfg.path, entry))
+                    target = self._edge_target(cfg.path, parent_id, entry)
+                    if target is None and _holds_only_id(entry):
+                        # Its edges were not followed, so nothing looked its
+                        # parent up; by ID, as reciprocity is (Design 3.2).
+                        found = self._by_id.get(parent_id)
+                        target = found.path if found is not None else None
+                    parent = self._cache.get(target)
                     if (parent is not None and cfg.project.id not in parent.children
                             and (reader := self._upstream_reader(cfg.project.id))):
                         self._read_as_upstream(cfg, parent_id, reader)
                 continue
             for child_id, entry in cfg.children.items():
-                child_path = self._target_path(cfg.path, entry)
-                child = self._cache.get(child_path)
+                child = self._cache.get(self._edge_target(cfg.path, child_id, entry))
                 if child is None:
                     continue
                 reciprocal = child.parent.get(cfg.project.id)
@@ -897,8 +1052,7 @@ class FsProjectRegistry(ProjectRegistry):
                         f"registered key '{child_id}' does not match target id '{child.project.id}'",
                     )
             for parent_id, entry in cfg.parent.items():
-                parent_path = self._target_path(cfg.path, entry)
-                parent = self._cache.get(parent_path)
+                parent = self._cache.get(self._edge_target(cfg.path, parent_id, entry))
                 if parent is None:
                     continue
                 reciprocal = parent.children.get(cfg.project.id)
@@ -961,7 +1115,13 @@ class FsProjectRegistry(ProjectRegistry):
 
         Where both are present the comparison is real and the check is unchanged;
         the ids already agreed, or the caller would not have got this far.
+
+        An entry holding only its ID has no locator to compare; two projects
+        finding one ID at two folders is the duplicate ID instead (TCW-107
+        Design 2.9, 3.2).
         """
+        if _holds_only_id(locator):
+            return False
         target = self._target_path(source_config, locator)
         if not target.is_file():
             return False
@@ -1077,8 +1237,9 @@ class FsProjectRegistry(ProjectRegistry):
             self._findings.append(Finding("error", str(path), message))
 
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
-                          locator: Path,
-                          declaration: RepositoryDeclaration | None = None) -> None:
+                          locator: Path | None,
+                          declaration: RepositoryDeclaration | None = None, *,
+                          message: str = "", decided_by: Any = None) -> None:
         """Record a declared project that is not here, rather than a problem.
 
         `project_id` is the key the declaring config used. It can be None only
@@ -1094,7 +1255,8 @@ class FsProjectRegistry(ProjectRegistry):
             return
         entry = UnreachableProject(id=project_id, locator=locator,
                                    declared_in=config_path,
-                                   declaration=declaration)
+                                   declaration=declaration, message=message,
+                                   decided_by=decided_by)
         if entry not in self._unreachable:
             self._unreachable.append(entry)
 
@@ -1110,3 +1272,407 @@ class FsProjectRegistry(ProjectRegistry):
         # resolved is not missing, and a message telling the user to obtain a
         # repository they already have is worse than no message.
         return next((u for u in self.unreachable() if u.id == project_id), None)
+
+    # -----------------------------------------------------------------------
+    # Finding a project's folder from its ID (TCW-107 Design 2)
+
+    def project_folder(self, project_id: str, named_by: Path) -> Path:
+        """The root folder of project `project_id`, asked by the project at
+        `named_by`, the one whose configuration, manifest or record names the
+        ID (Design 2.12). Any valid ID: it need not appear under `projects:`.
+
+        `named_by` must be a folder this registry has found: the active
+        project's root, a project in its graph, or a folder an earlier call
+        returned; anything else is a `ValueError`. Raises `Unreachable` for a
+        project something names that is not on this machine, `UnknownProject`
+        for an ID nothing names or holds, and `ProjectGraphError` for a graph
+        problem, which is also added to `check()`.
+
+        A method, because its answer depends on the active project's worktree
+        and on what this command has already found (Design 2.9, 2.11 b)."""
+        self._load_graph()
+        root = self._root_key(named_by)
+        if root not in self._found_roots():
+            raise ValueError(f"{named_by} is not a project this registry has found")
+        cfg = self._config_at(root)
+        if cfg is not None and cfg.project.id == project_id:
+            return root
+        if cfg is not None and self._canonical(root / SENTINEL) not in self._cache:
+            # Not in the graph: its family is located from it, so the walk of
+            # Design 2.2 can read their manifests.
+            for family_id in (*cfg.parent, *cfg.children):
+                if family_id != project_id and self._known_folder(family_id) is None:
+                    answer = self._locate(family_id, root)
+                    if answer.folder is not None and self._checked(
+                            family_id, answer) is None:
+                        self._found.setdefault(family_id, answer.folder)
+        answer = self._locate(project_id, root)
+        if answer.problem is not None:
+            raise ProjectGraphError(answer.problem)
+        if answer.folder is None:
+            if not answer.named:
+                raise UnknownProject(f"no project with ID '{project_id}' is known or "
+                                     f"found near this one; check the spelling")
+            raise Unreachable(answer.message, project=project_id,
+                              repository=answer.entry.repository if answer.entry
+                              else None)
+        problem = self._checked(project_id, answer)
+        if problem is not None:
+            raise ProjectGraphError(problem)
+        self._found.setdefault(project_id, answer.folder)
+        return answer.folder
+
+    def found(self, project_id: str) -> dict | None:
+        """How the lookup placed a project in the graph (Design 6.1): by a
+        manifest, naming its file; by `TCW_PROJECT_<ID>`, naming it; or by the
+        search. None for the current project and for one not here."""
+        self._load_graph()
+        cfg = self._by_id.get(project_id)
+        if cfg is None or cfg.path == self._canonical(self._current_path):
+            return None
+        answer = self._placed.get(cfg.path)
+        if answer is None:
+            return None
+        if answer.by == "manifest":
+            return {"by": "manifest", "file": str(answer.entry.file)}
+        if answer.by == "variable":
+            return {"by": "variable", "name": override_variable(project_id)}
+        return {"by": "search"}
+
+    def _found_roots(self) -> set[Path]:
+        return {self.project_root, *(root_of(path) for path in self._cache),
+                *self._found.values()}
+
+    def _checked(self, project_id: str, answer: _Answer) -> str | None:
+        """The problem, recorded, with a found folder: one that does not hold
+        `project_id` (only a variable can place one there), or another folder
+        than the one this command already holds for the ID (Design 2.9)."""
+        probe = self._probe(answer.folder)
+        if probe.kind != "project" or probe.id != project_id:
+            return self._recorded(
+                answer.folder / SENTINEL,
+                f"{override_variable(project_id)} names {answer.folder}, which does "
+                f"not declare '{project_id}'")
+        known = self._known_folder(project_id)
+        if known is not None and self._identity(known) != self._identity(answer.folder):
+            return self._recorded(
+                answer.folder / SENTINEL,
+                f"duplicate project id '{project_id}' also used by {known / SENTINEL}")
+        return None
+
+    def _recorded(self, path: Path, message: str) -> str:
+        self._problem(path, message)
+        return f"{path}: {message}"
+
+    def _edge_target(self, source_config: Path, target_id: str,
+                     entry: ConnectedProject) -> Path | None:
+        """Where an edge's configuration is: for an entry holding only its ID,
+        the answer the walk got (never looked up again, Design 2.11 b)."""
+        if not _holds_only_id(entry):
+            return self._target_path(source_config, entry)
+        answer = self._answers.get((target_id, self._root_key(root_of(source_config))))
+        if answer is None or answer.folder is None:
+            return None
+        return self._canonical(answer.folder / SENTINEL)
+
+    def _root_key(self, root: Path) -> Path:
+        """A project root under the first spelling met of its folder."""
+        return root_of(self._canonical(Path(root) / SENTINEL))
+
+    def _identity(self, root: Path) -> Any:
+        try:
+            found = root.stat()
+        except OSError:
+            return root
+        return (found.st_dev, found.st_ino) if found.st_ino else root
+
+    def _known_folder(self, project_id: str) -> Path | None:
+        """The folder this command has found for `project_id`, if any."""
+        cfg = self._by_id.get(project_id)
+        if cfg is not None:
+            return root_of(cfg.path)
+        return self._found.get(project_id)
+
+    def _config_at(self, root: Path) -> _Config | None:
+        """The configuration of the project at `root`: the walk's, or read
+        quietly to learn the project's family, its problems left to the walk
+        or to `tcw validate` in that project."""
+        path = self._canonical(root / SENTINEL)
+        if path in self._cache:
+            return self._cache[path]
+        if path not in self._peeked:
+            marks = (len(self._problems), len(self._findings), len(self._unreachable))
+            cfg = self._read_config(path, None, root, quiet_connections=True)
+            del self._problems[marks[0]:]
+            del self._findings[marks[1]:]
+            del self._unreachable[marks[2]:]
+            self._peeked[path] = cfg
+        return self._peeked[path]
+
+    def _text(self, path: Path) -> str | Exception:
+        """A file's text, or the error reading it, read at most once."""
+        path = Path(path)
+        if path not in self._texts:
+            try:
+                self._texts[path] = _read_text(path)
+            except (OSError, UnicodeDecodeError) as error:
+                self._texts[path] = error
+        return self._texts[path]
+
+    def _listing(self, folder: Path) -> list[tuple[str, bool]] | OSError:
+        if folder not in self._listings:
+            try:
+                self._listings[folder] = _list_folder(folder)
+            except OSError as error:
+                self._listings[folder] = error
+        return self._listings[folder]
+
+    def _probe(self, folder: Path) -> _Probe:
+        """What `folder`'s `.tcw/tcw-config.yaml` and root `tcw-config.yaml`
+        say, the only two files the search reads in a folder (Design 2.6)."""
+        if folder in self._probes:
+            return self._probes[folder]
+        text = self._text(folder / SENTINEL)
+        if isinstance(text, str):
+            probe = self._probe_text(text, folder / SENTINEL, legacy=False)
+        elif isinstance(text, (FileNotFoundError, NotADirectoryError)):
+            legacy = self._text(folder / LEGACY_SENTINEL)
+            if isinstance(legacy, str):
+                probe = self._probe_text(legacy, folder / LEGACY_SENTINEL, legacy=True)
+            elif isinstance(legacy, (FileNotFoundError, NotADirectoryError)):
+                probe = _Probe("none")
+            else:
+                probe = _Probe("unreadable", detail=str(legacy))
+        else:
+            probe = _Probe("unreadable", detail=str(text))
+        self._probes[folder] = probe
+        return probe
+
+    @staticmethod
+    def _probe_text(text: str, path: Path, *, legacy: bool) -> _Probe:
+        try:
+            raw = _load_named_yaml(text, path, _UniqueKeyLoader)
+        except yaml.YAMLError as error:
+            return _Probe("unreadable", detail=f"invalid YAML: {error}")
+        if not isinstance(raw, dict):
+            return _Probe("unreadable", detail="config must be a mapping")
+        try:
+            project_id = validate_project_id(str(raw.get("id") or ""))
+        except ValueError:
+            project_id = None
+        if legacy:
+            return _Probe("legacy", project_id)
+        version = version_problem(raw)
+        if version is not None:
+            return _Probe("version", project_id, version)
+        if project_id is None:
+            return _Probe("unreadable", detail="missing or invalid project id")
+        return _Probe("project", project_id)
+
+    def _manifests_of(self, root: Path) -> list[tuple[Any, Path, dict]] | None:
+        """`root`'s manifests, each as `(file as TCW names it, the root its
+        paths are read from, entries)`, the personal one first, unless
+        personal files are skipped (Design 1.10). None when one has a problem:
+        it is recorded against its file, and a lookup that would consult it
+        fails (Design 1.8)."""
+        root = self._root_key(root)
+        if root in self._manifests:
+            return self._manifests[root]
+        files = [] if personal_files_skipped() else [(root / LOCAL_MANIFEST, True)]
+        files.append((root / MANIFEST, False))
+        result: list[tuple[Any, Path, dict]] | None = []
+        for path, personal in files:
+            text = self._text(path)
+            if isinstance(text, (FileNotFoundError, NotADirectoryError)):
+                continue
+            problems: list[str] = []
+            if isinstance(text, UnicodeDecodeError):
+                problems.append(_not_utf8(text))
+            elif isinstance(text, Exception):
+                problems.append(f"cannot be read: {text}")
+            else:
+                try:
+                    mapping = _load_named_yaml(text, path, _UniqueKeyLoader)
+                except yaml.YAMLError as error:
+                    problems.append(f"invalid YAML: {error}")
+                else:
+                    entries, problems = parse_manifest(mapping, path, personal=personal)
+                    if not problems and result is not None:
+                        result.append((path, root, entries))
+            for problem in problems:
+                self._problem(path, problem)
+            if problems:
+                self._manifest_problem.setdefault(root, f"{path}: {problems[0]}")
+                result = None
+        self._manifests[root] = result
+        return result
+
+    def _family(self, named_by: Path, project_id: str) -> tuple[list[Path], set[str]]:
+        """The roots whose manifests the lookup of `project_id` from
+        `named_by` consults, in Design 2.2's order, and every ID their
+        `projects:` entries name.
+
+        `named_by`, then each ancestor nearest first, then each descendant
+        breadth first, children in the order the configuration lists them. A
+        project is consulted only once this command has found its folder. One
+        whose folder is the one being looked up is skipped; when its folder is
+        known the walk carries on through its configuration, and otherwise it
+        stops there. A record of the folders visited ends a cycle."""
+        cfg = self._config_at(named_by)
+        order = [named_by]
+        named = _named_ids(cfg)
+        seen = {self._identity(named_by)}
+
+        def member(member_id: str) -> tuple[Path | None, _Config | None]:
+            folder = self._known_folder(member_id)
+            if folder is None or self._identity(folder) in seen:
+                return None, None
+            seen.add(self._identity(folder))
+            here = self._config_at(folder)
+            if member_id != project_id:
+                order.append(folder)
+                named.update(_named_ids(here))
+            return folder, here
+
+        current = cfg
+        while current is not None and current.parent:
+            _, current = member(next(iter(current.parent)))
+        queue = [cfg] if cfg is not None else []
+        while queue:
+            for child_id in queue.pop(0).children:
+                folder, child = member(child_id)
+                if child is not None:
+                    queue.append(child)
+        return order, named
+
+    def _locate(self, project_id: str, named_by: Path) -> _Answer:
+        """Design 2.1-2.8, answered once per question for the whole command."""
+        key = (project_id, self._root_key(named_by))
+        if key not in self._answers:
+            self._answers[key] = self._answer(project_id, key[1])
+        return self._answers[key]
+
+    def _answer(self, project_id: str, named_by: Path) -> _Answer:
+        override = self._override_path(project_id)
+        if override is not None:
+            if project_id in self._override_refused:
+                return _Answer(problem=next(o.problem for o in self._overrides
+                                            if o.id == project_id and o.problem))
+            return _Answer(folder=root_of(override), by="variable")
+        roots, named = self._family(named_by, project_id)
+        for root in roots:
+            manifests = self._manifests_of(root)
+            if manifests is None:
+                return _Answer(problem=self._manifest_problem[self._root_key(root)])
+            for _, base, entries in manifests:
+                if project_id in entries:
+                    return self._entry_answer(entries[project_id], base)
+        matches, problems = _search(self, project_id, named_by)
+        if problems:
+            rendered = [self._recorded(path, message) for path, message in problems]
+            return _Answer(problem=rendered[0], named=True)
+        distinct: dict[Any, Path] = {}
+        for match in matches:
+            folder = root_of(self._worktree_copy(_config_file(match / SENTINEL)))
+            distinct.setdefault(self._identity(folder), folder)
+        if len(distinct) > 1:
+            folders = " and ".join(str(f) for f in distinct.values())
+            return _Answer(problem=self._recorded(
+                named_by / SENTINEL,
+                f"project '{project_id}' is declared by more than one folder near "
+                f"this one: {folders}; add an entry for '{project_id}' to "
+                f"{LOCAL_MANIFEST} (this machine) or {MANIFEST} (everyone)"))
+        if distinct:
+            return _Answer(folder=next(iter(distinct.values())), by="search")
+        return _Answer(named=project_id in named, message=(
+            f"project '{project_id}' is not on this machine: no manifest lists it, "
+            f"and no folder next to {named_by} or enclosing it declares it; add it "
+            f"to {MANIFEST} or {LOCAL_MANIFEST}"))
+
+    def _entry_answer(self, entry: ManifestEntry, base: Path) -> _Answer:
+        """Design 2.3: the deciding entry decides, whatever is on disk."""
+        named = f"entry for '{entry.id}' in {entry.file}"
+        try:
+            written = str(Path(entry.path).expanduser())
+        except RuntimeError as error:       # `~name` naming no user
+            return _Answer(problem=self._recorded(entry.file, f"{named}: {error}"))
+        folder = root_of(self._locator_path(base / SENTINEL, written))
+        probe = self._probe(folder)
+        if probe.kind == "project" and probe.id == entry.id:
+            return _Answer(folder=folder, by="manifest", entry=entry)
+        if probe.kind == "project":
+            wrong = f"places it at {folder}, which declares '{probe.id}', not '{entry.id}'"
+        elif probe.kind == "version":
+            wrong = f"places it at {folder}, whose {SENTINEL} {probe.detail}"
+        elif probe.kind == "legacy":
+            wrong = f"places it at {legacy_message(folder)}"
+        elif probe.kind == "unreadable":
+            wrong = f"places it at {folder}, whose {SENTINEL} cannot be read: {probe.detail}"
+        else:
+            listing = self._listing(folder)
+            if isinstance(listing, FileNotFoundError) or (
+                    isinstance(listing, list) and [n for n, _ in listing] in ([], [".git"])):
+                only_git = isinstance(listing, list) and bool(listing)
+                return _Answer(entry=entry, entry_folder=folder, named=True,
+                               message=self._not_here(entry, only_git))
+            if isinstance(listing, OSError):
+                wrong = (f"places it at {folder}, which cannot be listed, so whether "
+                         f"it is empty is not known: {listing.strerror or listing}")
+            else:
+                wrong = (f"places it at {folder}, which is not a TCW project: it "
+                         f"holds files and no {SENTINEL}")
+        return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named} {wrong}"))
+
+    @staticmethod
+    def _not_here(entry: ManifestEntry, only_git: bool) -> str:
+        """Design 6.2's message for a project its deciding entry places in a
+        folder that is not here, or empty."""
+        message = (f"project '{entry.id}' is not on this machine: {entry.file} places "
+                   f"it at {entry.path}")
+        if entry.repository is None:
+            return message + (f"; {_holds_only_git(entry.path)}" if only_git else "")
+        fetch = f"fetch it with 'tcw project provision {entry.id}'"
+        if only_git:
+            fetch = f"{_holds_only_git(entry.path)}, then {fetch}"
+        return f"{message}, from {entry.repository}; {fetch}"
+
+    def _search_candidates(self, named_by: Path):
+        """The folders the search tests, in order: each folder next to
+        `named_by` (Design 2.4), then each folder enclosing it (2.5)."""
+        holder = named_by.parent
+        listing = self._listing(holder)
+        if isinstance(listing, list):
+            for name, is_dir in listing:
+                folder = holder / name
+                if (is_dir and name != TCW_FOLDER and folder != named_by
+                        and not self._protected(folder)):
+                    yield folder
+        yield from named_by.parents
+
+    @staticmethod
+    def _protected(folder: Path) -> bool:
+        """Whether `folder` is one macOS asks a person's permission to read:
+        Desktop, Documents or Downloads, directly in the home folder. Never
+        tested as a folder next to a project, so a project kept directly in
+        the home folder does not make the search read inside one the person
+        never passed through. The search still tests such a folder as one
+        enclosing a project, which the person is already working inside."""
+        if not _ON_MACOS or folder.name not in _PROTECTED_NAMES:
+            return False
+        try:
+            home = Path.home().resolve()
+        except (RuntimeError, KeyError, OSError):
+            return False
+        return folder.parent == home
+
+
+def _named_ids(cfg: _Config | None) -> set[str]:
+    if cfg is None:
+        return set()
+    return {*cfg.parent, *cfg.children, *cfg.upstream}
+
+
+def _not_utf8(error: UnicodeDecodeError) -> str:
+    return (f"is not valid UTF-8 text (byte "
+            f"0x{error.object[error.start:error.start + 1].hex()} "
+            f"at position {error.start})")

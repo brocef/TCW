@@ -466,7 +466,6 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
         ("      repository:\n        ref: main\n", "url: expected a non-empty string"),
         ("      repository:\n        url: u\n        path: /abs\n",
          "must be relative to the repository root"),
-        ("      {}\n", "needs 'path', 'repository', or both"),
     ],
 )
 def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
@@ -479,6 +478,17 @@ def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected
     problems = _texts(FsProjectRegistry.open(parent).check())
     assert any(expected in problem for problem in problems), problems
     assert FsProjectRegistry.open(parent).unreachable() == []
+
+
+def test_an_entry_holding_an_empty_mapping_is_accepted(tmp_path):
+    """TCW-107 Design 3.1: `{}` names the project by its ID alone, and with
+    nothing finding it the project is not on this machine."""
+    parent = tmp_path / "orchestrator"
+    config(parent, "id: root-project\nprojects:\n  children:\n"
+                   "    child-project: {}\n")
+    registry = FsProjectRegistry.open(parent)
+    assert registry.check() == []
+    assert [u.id for u in registry.unreachable()] == ["child-project"]
 
 
 def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
