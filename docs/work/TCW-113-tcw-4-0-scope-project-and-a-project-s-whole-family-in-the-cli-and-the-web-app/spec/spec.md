@@ -38,14 +38,14 @@ links on Jira record it). So when this item starts:
   owns, and the web router makes that check for every route its table marks
   as a write (TCW-114 Design 1.1-1.4).
 
-File and line references to code are to commit `d2d02829` on `v4`, where only
-TCW-106 has landed in `tcw/` and `web/`. TCW-108, TCW-110, TCW-111, TCW-112 and
-TCW-114 rewrite much of what is cited, so the plan re-checks each reference
-against what they land. TCW-107 has since started landing (steps 1 and 2, up
-to `32c510f0`); the citations into the files it has changed so far
-(`tcw/config.py`, `tcw/store/base.py`, `tcw/store/project.py`,
-`tcw/work/jira/config.py`) were re-checked at `32c510f0` and give the lines
-there. "TCW-1nn Design n" refers to the numbered rules of that item's spec.
+File and line references to code are to commit `89ba8247` on `v4`, where
+TCW-106 and TCW-107's steps 1 to 6 have landed in `tcw/` and `web/`; every
+citation was re-checked there. (The spec was first written against
+`d2d02829`, and the plan against `62e41ec5`; the two hold the same `tcw/`
+and `web/`.) TCW-107's remaining steps, TCW-108, TCW-110, TCW-111, TCW-112
+and TCW-114 rewrite much of what is cited, so the plan re-checks each
+reference against what they land. "TCW-1nn Design n" refers to the
+numbered rules of that item's spec.
 
 Words used throughout:
 
@@ -132,11 +132,11 @@ Words used throughout:
    `backend.list(query)` at `:251`); `tcw work show` opens another project only
    when the argument names it (`resolve_item`, `:50-66`). `tcw taxonomy list`
    and `tcw capabilities list` cover the local entries plus those reached
-   through `extends` (`list_all`, `tcw/store/fs.py:1785-1793`, `:2409-2423`),
+   through `extends` (`list_all`, `tcw/store/fs.py:1804-1812`, `:2428-2442`),
    which TCW-112 replaces with the view. Nothing reads a descendant: the
-   registry has `descendants()` (`tcw/store/base.py:285-286`;
-   `tcw/store/project.py:274-285`), but `descendant_projects`
-   (`tcw/store/fs.py:535-542`) has no caller (design.md:92-94). TCW-99 asks for
+   registry has `descendants()` (`tcw/store/base.py:291-293`;
+   `tcw/store/project.py:462-473`), but `descendant_projects`
+   (`tcw/store/fs.py:543-550`) has no caller (design.md:92-94). TCW-99 asks for
    `--scope own|up|down|all` on every list and show command (design.md:633-642).
 2. **`--local` is the only coverage control,** and it says the opposite of the
    design's default: today's listings include inherited entries unless
@@ -296,13 +296,13 @@ read raises one of the **unavailability errors**:
   `StoreLocationUnusable`, `StoreDeclarationError` and `StoreNotProvisioned`
   (`tcw/store/base.py:51`, `:73`, `:95`);
 - `yaml.YAMLError`, a file of `Q`'s that is not valid YAML, which `main`
-  reports today as a message rather than as a fault (`tcw/cli.py:679-683`);
+  reports today as a message rather than as a fault (`tcw/cli.py:688-693`);
 - `OSError`, a file of `Q`'s that cannot be read.
 
 The plan keeps these as one tuple in the model, beside the function of 4.10,
 so the CLI and the web app catch the same set. Any other exception, a plain
 `ValueError` among them, is not a reason: it ends the command as it does today
-(`tcw/cli.py:675-678`, exit 1), because an error nobody classified may be a
+(`tcw/cli.py:684-687`, exit 1), because an error nobody classified may be a
 fault in TCW rather than a fact about `Q`. A `UsageError` is not a reason
 either: the command's options are the same for every project, so a usage
 error raised while reading `Q` is an error in the command. Design 3.2 says how
@@ -321,7 +321,7 @@ The cases this item expects, each with its reason:
 | - | --- | --- |
 | a | is not on this machine | TCW-107 Design 6.2's sentence, which names `tcw project provision <Q>` when its manifest entry gives a repository |
 | b | has parent links that cannot be read (TCW-108 Design 6.6) | the problem, naming `Q`'s `.tcw/tcw-config.yaml`, raised as `InheritedUnavailable` by `sources(axis, Q)` when the link's project passes the axis |
-| c | has its own store for the axis declared but not provisioned here, declared wrongly, or at a location that holds no usable store (`StoreNotProvisioned`, `StoreDeclarationError`, `StoreLocationUnusable`) | the store's own message, which for a store not provisioned names `tcw provision` |
+| c | has its own store for the axis declared but not provisioned here, declared wrongly, or at a location that holds no usable store (`StoreNotProvisioned`, `StoreDeclarationError`, `StoreLocationUnusable`) | the store's own message, which for a store not provisioned names the provisioning command |
 | d | has a configuration key the command reads that is undecided or broken (TCW-109 Design 3, 5.2) | TCW-109's exit-7 or exit-1 message, naming `Q` |
 | e | (taxonomy, capabilities) has a view that cannot be built: `sources(axis, Q)` raises, including for a source's store (TCW-112 Design 1.3's third case) | the `InheritedUnavailable` message, naming `Q` as the project inheriting |
 | f | (work) has a backend that cannot answer (`Unreachable`, exit 5) or cannot name the person for `--mine` (Design 3.2, `ConfigError`) | the backend's message |
@@ -529,8 +529,8 @@ each list is exactly what that project's own **list** gives, and a ticket of
 a TCW project outside the scope is never listed.
 
 **How long a search is kept.** From `begin_command` to `end_command`
-(`tcw/config.py:655-662`), the span the CLI already uses to read the active
-project's configuration once (`tcw/cli.py:645`, `:693`); outside a command (a
+(`tcw/config.py:662-677`), the span the CLI already uses to read the active
+project's configuration once (`tcw/cli.py:654`, `:702`); outside a command (a
 library caller, a test) nothing is kept. `tcw serve` makes each request one
 command for this purpose, its kept searches its own. Nothing is kept
 across commands, and nothing is written to disk. Each caller gets the result
@@ -1292,10 +1292,11 @@ Unless a criterion says otherwise, a command exits 0.
     on this machine. In `shared`, `tcw capabilities list --scope down` exits
     0, prints exactly `shared.capabilities/abc`, `desktop.capabilities/def`,
     `shared.capabilities/ghi`, and warns `'server' is unavailable` with a
-    reason containing `tcw provision`; the `abc` record's `statuses` has no
-    `server` entry. Separately, with `desktop`'s `def` folder holding a
-    `meta.yaml` that is not valid YAML, the same command exits 0 and warns
-    `'desktop' is unavailable` with a reason naming that file.
+    reason containing `has not been provisioned here` and `provision`; the
+    `abc` record's `statuses` has no `server` entry. Separately, with
+    `desktop`'s `def` folder holding a state file (`tcw-capability.yaml`,
+    TCW-111 Design 2.1) that is not valid YAML, the same command exits 0
+    and warns `'desktop' is unavailable` with a reason naming that file.
 30. **`--local` is removed.** `tcw taxonomy list --local` and `tcw capabilities
     list --local` exit 2 with a message containing `--scope own` and `drop
     --local`; `tcw taxonomy list --help` and `tcw capabilities list --help` do
@@ -1397,7 +1398,7 @@ gives the line that makes it so.
 | 1.3 projects covered: ancestors whatever `inherit`, descendants breadth-first with missing listed children, never siblings, personal children | 3, 4, 5, 10; personal children: n/a as a separate criterion, they reach the scope only through `declared_child_ids()`, whose meaning TCW-108 Design 3.2 fixes and TCW-108's own criteria test (its Design 2.1) |
 | 1.4 scope order | 3, 10, 13, 19, 32 |
 | 1.5 another project read for itself | 22, 23 |
-| 1.6 the unavailability errors; a usage error is never a reason | 20, 22, 29 (the store errors and `yaml.YAMLError`), 26 (no `--stage` refusal reaches `Q`); a plain `ValueError` ending the command: n/a as a criterion, it is today's behavior of `main` (`tcw/cli.py:675-678`), unchanged |
+| 1.6 the unavailability errors; a usage error is never a reason | 20, 22, 29 (the store errors and `yaml.YAMLError`), 26 (no `--stage` refusal reaches `Q`); a plain `ValueError` ending the command: n/a as a criterion, it is today's behavior of `main` (`tcw/cli.py:684-687`), unchanged |
 | 1.6 the catch surrounds only reads of `Q` | 20 (a second parent of `Q` is `Q`'s), 21 (a failure on `P`'s side names no descendant) |
 | 1.6 a not on this machine | 3, 6, 8, 10 |
 | 1.6 b links unreadable | n/a as a criterion: it raises through the same `sources(axis, Q)` as 1.6 e (TCW-108 Design 6.6), which 20 checks |

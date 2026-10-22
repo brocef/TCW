@@ -10,21 +10,25 @@ its own virtual environment (`.venv/bin/pytest`, `.venv/bin/tcw`).
 
 **Landing order and where the references point.** TCW-106, TCW-107, TCW-110,
 TCW-108, TCW-111, TCW-109, TCW-112, TCW-114, then this item, then TCW-115.
-File and line references to code are to commit `62e41ec5` on `v4`, where
-only TCW-106's code has landed in `tcw/` and `web/` (the uncommitted edits in
-the worktree belong to another session and are not cited). Every other item
+File and line references to code are to commit `89ba8247` on `v4`, where
+TCW-106's code and TCW-107's steps 1 to 6 have landed in `tcw/` and `web/`
+(the uncommitted edits in the worktree belong to another session and are
+not cited). A citation marked `at 62e41ec5` points into a file TCW-107 has
+not changed, so it holds at `89ba8247` too. Every other item
 before this one rewrites much of what is cited, so each step names the code
 by function as well as by line, and names what an earlier item adds by the
 name that item's plan gives it. **Step 0 re-finds every citation** on the
 tree those items leave, and a citation that cannot be found is corrected in
 this plan before Step 1, never worked around in the code. TCW-114's spec and
 plan are final at `b03a4758`, and the names cited from them match it.
-TCW-107 has started landing (steps 1 and 2, up to `32c510f0`); citations into
-the files it has changed so far (`tcw/config.py`, `tcw/store/base.py`,
-`tcw/store/project.py`, `tcw/work/jira/config.py`) were re-checked at
-`32c510f0` and give the lines there, for example `unreachable_project` at
-`tcw/store/project.py:1101-1111` and `begin_command`, `end_command` at
-`tcw/config.py:655-662`.
+TCW-107 has started landing (steps 1 to 6, up to `89ba8247`), and every
+citation into a file it has changed (`tcw/cli.py`, `tcw/config.py`,
+`tcw/errors.py`, `tcw/store/base.py`, `tcw/store/fs.py`,
+`tcw/store/project.py`, `tcw/work/config.py`, `tcw/work/jira/config.py`,
+`tcw/work/open.py`) was re-checked at `89ba8247` and gives the line there,
+for example `unreachable_project` at `tcw/store/project.py:1328-1339` and
+`begin_command`, `end_command` at `tcw/config.py:662-677`. The spec names
+the same base.
 
 **The gate at every step boundary.** Every step writes its tests first and
 sees them fail for the reason they name, then makes the change, and ends
@@ -194,17 +198,35 @@ Each is "decided while planning", with its reason.
 3. **How another project is located and named when it is missing.** A
    covered project other than `P` is found with `registry.get(id)` (TCW-108:
    family members on this machine). When `get` answers `None`, the reason is
-   `registry.unreachable_project(id).message` (TCW-107's Design 6.2
-   sentence, kept once per ID by TCW-108 Step 7b), raised as `Unreachable`
-   inside the catch, so it takes the same path as any other reason.
+   the recorded entry's TCW-107 Design 6.2 sentence
+   (`registry.unreachable_project(id)`, kept once per ID by TCW-108 Step
+   7b), raised as `Unreachable`
+   inside the catch, so it takes the same path as any other reason. The
+   reason is read through the one renderer that already exists for this,
+   `unreachable_project_note(registry, id)` (`tcw/store/fs.py:572-591` at
+   `89ba8247`, already used by `tcw/work/gates.py:474`): it answers the
+   entry's `message` when it has one, and otherwise a sentence built from
+   the entry's declaration or its declaring file, so an entry recorded
+   with an empty `message` never gives an empty reason or a warning
+   ending in `: `. One caller does record such an entry today: a declared
+   locator path that is not on this machine (`_unreachable_edge` called
+   from `_read_config`, `tcw/store/project.py:784-785` at `89ba8247`,
+   with no `message`); `UnreachableProject.message` defaults to `""`
+   (`tcw/store/base.py:148`). (The re-check's F1; reusing the renderer is
+   simpler than a second rule for an empty message, and is what every
+   other "declared but not here" site does. It reads only the registry's
+   answer, so no folder rule enters `tcw/scope.py`; it lives in
+   `tcw/store/fs.py` today and `tcw/work/gates.py` already imports it from
+   there.)
    `unreachable_project` answers `UnreachableProject | None`
-   (`tcw/store/project.py:1101-1111` at `32c510f0`; `open_project` already
-   tests it for truth, `tcw/work/open.py:93-95`), so when it answers `None`
+   (`tcw/store/project.py:1328-1339` at `89ba8247`; `open_project` already
+   tests it, `tcw/work/open.py:94-100`), and the renderer answers `None`
+   in the same case, so when it does
    (a child listed in `children:` that no manifest entry names and nothing
    finds) the reason is the fixed sentence `project '<id>' is not on this
    machine, and no manifest entry says where it would be`, raised as
    `Unreachable` the same way, never `None.message`, whose `AttributeError`
-   no catch and no handler of `main` (`tcw/cli.py:660-693`) would turn into
+   no catch and no handler of `main` (`tcw/cli.py:672-702`) would turn into
    a message. No new lookup is made, so a project with no family opens
    nothing (Design 1.9) (decided by the dispatching session, 2026-10-22: a
    fixed sentence asks the registry nothing more, where `project_folder`'s
@@ -217,7 +239,7 @@ Each is "decided while planning", with its reason.
    `Covered` as `covered.locator`, whose store cache opens each store once
    (TCW-112 choice 4); `covered.registry` is that `Locator`'s registry.
    Holding it matters in `tcw serve`, which runs outside a command
-   (`tcw/cli.py:541-545` ends it before serving), where `Locator.of` gives a
+   (`tcw/cli.py:550-554` ends it before serving), where `Locator.of` gives a
    fresh `Locator` on every call (TCW-110 Step 7); `scope_of` (Step 13)
    takes one per request. The count test of Step 9 asserts that each pair
    (project, axis, opened as another project's or not) is opened at most
@@ -267,7 +289,7 @@ Each is "decided while planning", with its reason.
     (so a span opened inside a command, or inside another span, never drops
     its caller's state). `tcw serve`'s `_api` wraps each request in
     `command_span()`. Reason: `ThreadingHTTPServer` answers requests on
-    several threads, and `_EFFECTIVE` (`tcw/config.py:652-662` at `32c510f0`) is one
+    several threads, and `_EFFECTIVE` (`tcw/config.py:659` at `89ba8247`) is one
     global; making each request a full `begin_command()` would let one
     request's `end_command()` drop another's cache. The server's promise
     that each request reads the configuration again (`WorkContext`'s
@@ -325,7 +347,18 @@ Each is "decided while planning", with its reason.
 17. **The token digest in the search key** (Design 3.5, revised; the
     review's Dc5): `hashlib.sha256(<the token value>.encode()).hexdigest()`,
     computed when the key is built and held only inside the kept-search
-    dictionary of the command.
+    dictionary of the command. The credential part of the key is computed
+    by the client, not by the backend: a new `JiraClient.account_key() ->
+    tuple[str, str, str]` answers the site, the email and the token's
+    digest, each value read and stripped exactly as `_request` reads them
+    (`tcw/work/jira/client.py:152-153`), so the key names the account a
+    search would sign in as. `JiraClient`'s docstring
+    (`client.py:130-136`), which promises that the secret values are read
+    "in `_request` and nowhere else", is updated to name `account_key`
+    too, which keeps only a digest of the token (decided by the
+    dispatching session, 2026-10-22, the re-check's F4: secrets stay read
+    in one class, and a token with stray spaces gives the key of the
+    account it signs in as).
 18. **Runs with a change that must not land are made in a throwaway
     worktree** (Step 10; the review's M2). The `v4` worktree is shared with
     agents that commit into it, so no step writes a temporary change into
@@ -494,7 +527,7 @@ directly (`FsProjectRegistry.open(<root>)`) on `build_family`:
 - `@dataclass(frozen=True) class ScopeMember: id: str; relation: str`.
 - Concrete `ProjectRegistry.scope_members(scope, project_id=None) ->
   list[ScopeMember]` beside `ancestors` and `descendants`
-  (`tcw/store/base.py:281-290` at `62e41ec5`): `own` is the project alone,
+  (`tcw/store/base.py:287-293` at `89ba8247`): `own` is the project alone,
   asking the registry nothing; `up` and `all` take the ancestors from
   `load_order(project_id).ids` without the project itself (missing ones
   included); `down` and `all` take the descendants breadth first over
@@ -556,6 +589,13 @@ calling `tcw.scope` directly:
   `covered.read("mobile", fn)` returns `UNAVAILABLE`, does not call `fn`,
   and records the reason `project 'mobile' is not on this machine, and no
   manifest entry says where it would be`; no `AttributeError` is raised.
+- A covered project whose entry has an empty `message` (choice 3; the
+  re-check's F1): with the registry's `unreachable_project` wrapped to
+  answer an `UnreachableProject` for `mobile` with `message=""`, once with
+  a `declaration` and once without, `covered.read("mobile", fn)` returns
+  `UNAVAILABLE` and records a reason that is not empty and names `mobile`
+  (the declaration's URL in the first case, the declaring file in the
+  second); `covered.warn(...)`'s line does not end in `: `.
 - `cover` takes one `Locator` and every later read uses it: a wrapped
   `Locator.of` records one call per `cover`.
 
@@ -575,9 +615,9 @@ calling `tcw.scope` directly:
 - `Covered.wanted() -> list[ScopeMember]`: the members `--project` keeps
   (all of them without it).
 - `Covered.root_of(project_id) -> Path`: `P`'s root, or `registry.get(id)`'s
-  folder, or raises `Unreachable` with `registry.unreachable_project(id)`'s
-  `message` when it answers an entry, and with choice 3's fixed sentence
-  when it answers `None`. Called only inside `Covered.read`, so either
+  folder, or raises `Unreachable` with `unreachable_project_note(registry,
+  id)` when it answers a sentence (never empty, choice 3), and with choice
+  3's fixed sentence when it answers `None`. Called only inside `Covered.read`, so either
   reason makes the project unavailable.
 - `Covered.read(project_id, fn)`: calls `fn(self.root_of(project_id))`
   inside `try`/`except UNAVAILABILITY_ERRORS`, re-raising when
@@ -771,7 +811,9 @@ Design 3.5; AC 28, and AC 26's "one search".
   another token value: choice 17), text or field list each calls again;
   outside a span it always calls; the kept dictionary's keys hold no token
   text (each key's token part is 64 hexadecimal characters and differs
-  from the token).
+  from the token); a token variable holding the same token with spaces
+  around it gives the same key (`account_key` strips as `_request`
+  does).
 - Writes empty what was kept (choice 16): inside a span, a search, then
   each of `JiraClient`'s six writing methods against the fake, then the same
   search: two searches recorded for each method; with no span, a write
@@ -779,7 +821,7 @@ Design 3.5; AC 28, and AC 26's "one search".
 
 **Changes**
 
-- `tcw/config.py` (`:655-662` at `32c510f0`): `_COMMAND =
+- `tcw/config.py` (`:659-677` at `89ba8247`): `_COMMAND =
   threading.local()`; `begin_command()` also sets `_COMMAND.state = {}`;
   `end_command()` sets it to `None`; new `command_state()` and
   `command_span()`, which saves `getattr(_COMMAND, "state", None)`, sets a
@@ -788,9 +830,8 @@ Design 3.5; AC 28, and AC 26's "one search".
   `issues = self.client.search(text, read_fields(meta.field_ids))`
   (`:466`) becomes `issues = _kept_search(self, text,
   read_fields(meta.field_ids))`. `_kept_search(backend, text, fields)`:
-  the key is `(backend.jira.site, os.environ.get(backend.jira.email_env,
-  "").strip(), <the SHA-256 digest of os.environ.get(backend.jira.token_env,
-  "")>, text, tuple(fields))` (choice 17), its result kept under
+  the key is `(*backend.client.account_key(), text, tuple(fields))`
+  (choice 17), its result kept under
   `command_state()["jira-searches"]` and answered with `copy.deepcopy`
   (choice 11); with no command state it calls the search. The `TCW
   Project` filter that follows (`:470`) is unchanged, so each project keeps
@@ -798,7 +839,8 @@ Design 3.5; AC 28, and AC 26's "one search".
   are untouched.
 - `tcw/work/jira/client.py`: new module-level `forget_kept_searches()`
   (choice 16), and the six writing methods (`:394-442`) each call it
-  first.
+  first; new `JiraClient.account_key()` and the class docstring's
+  sentence on where secrets are read (choice 17).
 - `tcw/work/jira/jql.py`'s module docstring (`:1-10`) gains one sentence:
   the same search text in one command is sent once, until a write (Design
   3.5).
@@ -866,7 +908,7 @@ data (no files):
   folder, then the shown object's owner's place in `order`).
 - `text_matches(name, body, query) -> bool`: today's rule, a
   case-insensitive substring of the name or the body
-  (`tcw/store/fs.py:1823-1826`, `:2465-2468`), moved here so the rows of a
+  (`tcw/store/fs.py:1842-1845`, `:2484-2487`, at `89ba8247`), moved here so the rows of a
   scope and the stores' own `search` use one rule; both stores' `search`
   call it.
 
@@ -899,8 +941,12 @@ test per criterion and sentence named above, with these notes:
   exit 7 in `shared` under `down`, no line containing `is unavailable`).
 - AC 29: `server`'s capabilities store declared at
   `https://example.invalid/server-caps.git` and not provisioned (TCW-107's
-  provisioning declaration, the form Step 0 confirms); then `desktop`'s
-  `def` state file holding text that is not valid YAML.
+  provisioning declaration, the form Step 0 confirms): the warning names
+  `'server' is unavailable` and its reason contains both `has not been
+  provisioned here` and `provision`, never the whole command, so the test
+  holds before and after TCW-115 renames it (TCW-115's handoff); then
+  `desktop`'s `def` state file (`tcw-capability.yaml`) holding text that
+  is not valid YAML, with a reason naming that file.
 - A count, in AC 12's command, that each pair (project, axis, opened as
   another project's or not) is opened at most once (`FsTreeStore.__init__`
   wrapped, recording the store's project and its `as_other` flag; choice
@@ -1026,14 +1072,42 @@ this step runs `git apply`, `git apply -R` or `git stash` on `<v4>`.
    the failing test IDs are saved to `<scratchpad>/step10-fails.txt`. Since
    an explicit `own` already has its final meaning from Step 9 (choice 12),
    this one run fails every test that Step 11 would fail. The groups
-   expected, each read rather than assumed: a `list` or `search` of a
-   taxonomy or capabilities command that relies on inherited content; a
-   `show <id-path>` of an inherited object, in text or `--json` (now exit 4
-   with the hint); a `show <id-path>` that today exits 7 because the view
-   cannot be built, at a path where `P` has no own object (now exit 4,
-   since under `own` the view is built only for the hint); and any test of another command that calls one of those three to check
-   its own effect (for example a `set` or `rm` test that reads the result
-   back with `show <id-path>`).
+   expected, each read rather than assumed. They are every way in which an
+   absent `--scope` read as `own` answers differently from today's view
+   (Design 4.1, 4.8, 4.9; TCW-112 Design 3.2-3.4):
+   - (a) a `list` or `search` of a taxonomy or capabilities command that
+     relies on inherited content: an inherited row is missing, or a
+     warning of TCW-112 Design 2.5 about an inherited id-path is no longer
+     printed;
+   - (b) a `show <id-path>` of an inherited object, in text or `--json`
+     (now exit 4 with the hint);
+   - (c) a `list`, `search` or `show <id-path>` of `P`'s own objects that
+     today exits 7 because `P`'s view cannot be built. Under `own` it
+     exits 0: each JSON record has `"partial": true` and no `overrides`
+     key, the text `show` prints `partial: inherited content could not be
+     read`, and standard error has the warning `showing only '<P>''s own
+     declarations` (TCW-112 Design 3.4; AC 21's first sentence; the
+     re-check's MF2);
+   - (d) a `show <id-path>` that today exits 7 because the view cannot be
+     built, at a path where `P` has no own object (now exit 4, since under
+     `own` the view is built only for the hint);
+   - (e) a `list` or `search` in which an id-path is unreadable because a
+     member of its chain other than `P` has a version problem (TCW-112
+     Design 1.3, its paragraph on a source's object with a version
+     problem): it still exits 1 with the message, but under
+     `own` `P`'s own object at that id-path is printed, as its own
+     declaration alone and marked as TCW-112 Design 3.4 marks it, where
+     today it is left out (TCW-112's rule for `list --local`);
+   - (f) any test of another command that calls one of those three to
+     check its own effect (for example a `set` or `rm` test that reads the
+     result back with `show <id-path>`).
+
+   Nothing else differs: under `own` the document gains no `projects` key
+   (Design 1.8), and a record of `P`'s own object read with its view is
+   the record today's view gives for it (TCW-112 Design 3.1: "as the
+   active project sees it"). Adding `--scope up` gives back today's answer
+   in every group, exit 7 and exit 1 included (Design 4.9: `up` needs the
+   view), so each group converts the same way.
 2. **Every failure is read.** For each, the round records why it failed. A
    failure in one of the groups above is converted; any other cause is a
    defect of Step 9 or of the default change, fixed in Step 9's code (a new
@@ -1256,12 +1330,20 @@ Design 3.5 (a request is one command), 6.1, 6.2; AC 33; TCW-112's handoff
   added for the pickers' requests (the review's S5). Any other client test
   file that mocks those routes, found with `grep -rn "api/taxonomy\|api/capabilities"
   web/client/src --include=*.test.ts*`, changes the same way.
-- The serve tests that read inherited entries from `GET /api/taxonomy` or
-  `GET /api/capabilities` (found by running the suite; expected in
-  `tests/serve/test_records.py`, TCW-110's `tests/serve/test_full_identifiers.py`
-  and TCW-112's `tests/serve/test_overrides.py`) gain `?scope=up` and read
-  the object answer; each is listed in `allowed-step13.txt` with Design 6.1
-  and 6.2. `pnpm build`.
+- Every serve test that reads either list answer, `GET /api/taxonomy` or
+  `GET /api/capabilities` with no key (found by running the suite, with
+  `grep -rn "api/taxonomy\|api/capabilities" tests/` as the starting
+  list; expected in `tests/serve/test_records.py`, TCW-110's
+  `tests/serve/test_full_identifiers.py` and TCW-112's
+  `tests/serve/test_overrides.py`), reads the object answer (`["terms"]`,
+  `["capabilities"]`) instead of an array: both answers change shape
+  whatever the scope, so a test that reads only the served project's own
+  entries fails too (the re-check's F3). Only those that read inherited
+  entries also gain `?scope=up`. Each is listed `assertion: <id>` in
+  `allowed-step13.txt`, with Design 6.2 (the shape) and, for those that
+  gain `?scope=up`, Design 6.1; the one difference in each is read to be
+  the shape or the query string. The detail routes keep today's envelope,
+  so no test of them is listed. `pnpm build`.
 
 **Proves it:** the tests above; `tests/serve/` green; `compare_outcomes.py
 outcomes-step12b.xml outcomes-step13.xml allowed-step13.txt`; the web gate;
@@ -1306,6 +1388,23 @@ step changes only what the work and files write routes name.
   change pointed at `_read_target` goes red on its own.
 - TCW-114's `tests/serve/test_route_writes.py` stays green: the same routes
   are marked writes.
+- **Existing tests whose answer this step changes on purpose** (the
+  re-check's F2), each listed `assertion: <id>` in
+  `<scratchpad>/allowed-step14.txt` with Design 6.4 as the reason, and its
+  one assertion rewritten, nothing else:
+  - `test_a_link_to_another_projects_item_is_other_project`
+    (`tests/serve/test_records.py:415-426` at `89ba8247`, in the form
+    TCW-110 rewrites it to) resolves a link to an item a connected project
+    holds and finds; it now expects the `ok` answer this step's
+    `resolve` change gives, with the item's full identifier as `key`, and
+    is renamed to say the link resolves;
+  - any test that expects `unresolved` for a link whose owner is not on
+    this machine now expects `other-project` with `project`; found by
+    running the suite after the change, with `grep -rn "unresolved"
+    tests/serve/` as the starting list.
+
+  A failure outside these two groups is a defect of this step, fixed in
+  its code, never by editing the test.
 
 **Changes**
 
@@ -1369,7 +1468,10 @@ step changes only what the work and files write routes name.
 
 **Proves it:** the tests above; `tests/serve/test_route_writes.py`,
 `tests/serve/test_work_write.py`, `tests/serve/test_files.py`,
-`tests/serve/test_no_process.py`; the full suite.
+`tests/serve/test_no_process.py`; `compare_outcomes.py outcomes-step13.xml
+outcomes-step14.xml allowed-step14.txt` exits 0, with the listed tests'
+rewritten assertions checked against the inventory's dumps; the full
+suite.
 
 ## Step 15 — the client: the scope control and the project filter
 
@@ -1762,7 +1864,8 @@ the rule each one changes.
   with exactly the appended pairs removed, and a converted `--json` test
   that gains `projects` is a listed hand change that only adds.
 - **M3** (`unreachable_project` answering `None`): accepted, confirmed at
-  `tcw/store/project.py:1101-1111`. Choice 3's fixed sentence; Step 4's test.
+  `tcw/store/project.py:1101-1111` at `32c510f0` (`:1328-1339` at
+  `89ba8247`). Choice 3's fixed sentence; Step 4's test.
 - **M4** (`_target` serves reads and writes): accepted, confirmed at
   `tcw/serve/files.py:168-172` and its five callers. Step 14 splits it and
   tests each of the five write handlers.
@@ -1833,3 +1936,31 @@ session to post with the rest of this revision:
   each per-item command the procedure prints names the item by its full
   identifier, and that an item of a descendant is audited from the parent
   without an exit 4.
+- **Scenario 10 (a child whose capabilities live in a repository not
+  fetched):** the expected result's "suggests `tcw provision`" becomes
+  "suggests the command that fetches it: the reason contains `has not been
+  provisioned here` and names a provisioning command (`tcw provision`
+  until TCW-115 lands; after it, `tcw -C <server's folder> project
+  provision --component capabilities`)". (TCW-115's handoff.)
+
+## Revised after the re-check (2026-10-22)
+
+Each finding of the re-check, verified against `89ba8247` and the sibling
+specs, and where it is handled:
+
+- **MF1** (TCW-115's handoff): spec Design 1.6 row c and AC 29 say "the
+  provisioning command" and assert `has not been provisioned here` and
+  `provision`; Step 9's AC 29 bullet; the QA plan amendment above.
+- **MF2** (Step 10's groups): Step 10 item 1 lists every way `own` answers
+  differently from today's view, the exit 7 that becomes exit 0 with
+  `partial` included.
+- **F1** (an empty `message`): choice 3 and `Covered.root_of` read the
+  reason through `unreachable_project_note`; Step 4's test.
+- **F2** (Step 14's boundary): Step 14 lists the tests it changes on
+  purpose and compares outcomes.
+- **F3** (Step 13's allowed list): every serve test of either list answer.
+- **F4** (where the token is read): choice 17, `JiraClient.account_key`;
+  Step 7.
+- **F5** (`meta.yaml`): spec AC 29 names the state file.
+- **F6** (citations): spec and plan re-cited at `89ba8247`; the spec and
+  the plan name the same base.
