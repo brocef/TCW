@@ -792,7 +792,8 @@ edit of the body writes only the active project's **declared description**
 answer of `GET /api/capabilities/<key>`, and the answers of the `POST` and
 `PATCH` that return the same shape, carry `declaredDescription` beside
 `capability` and `coreRevision`: the declared description of the object's
-owner (the chain's first member), its text, possibly empty, or `null` when
+owner (the chain's first member), its text with leading and trailing white
+space removed (as the combined body uses it), possibly empty, or `null` when
 the owner declares none. The web editor's body field starts from
 `declaredDescription` (empty when it is `null`), not from the record's
 `body`; a save that leaves the field unchanged sends no `body`, and one that
@@ -1708,6 +1709,11 @@ exits 0.
   by every web save of its body and shown twice; the same doubling already
   happens in 3.x to a capability with its own `prependedDocs` or
   `appendedDocs`, and is fixed by the same rule.
+- `declaredDescription` is the declared text with leading and trailing white
+  space removed, the form the combined body uses (Design 4.5; the plan
+  re-check's I6), so that a `description.md` ending in a newline does not
+  make the editor's note appear for a capability whose body is only that
+  text.
 
 ### Handoffs
 

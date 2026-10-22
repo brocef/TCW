@@ -9,8 +9,8 @@ n" is a step of that item's plan.
 **Landing order.** TCW-106, TCW-107, TCW-110, TCW-108, TCW-111, TCW-109,
 then this item, then TCW-114, TCW-113, TCW-115. This plan starts from the
 state the six earlier items leave, as their plans describe them. TCW-109's
-plan is being revised alongside this one, so this plan takes from it only
-names (`known_keys()` in `tcw/config_keys.py`,
+plan was revised alongside this one (`62d9eaba`), so this plan takes from it
+only names and signatures (`known_keys()` in `tcw/config_keys.py`,
 `ProjectRegistry.source_entries`, `ProjectRegistry.unavailable`), never
 line numbers. Code citations are to commit `d2d02829` on `v4`, whose
 `tcw/store/fs.py`, `tcw/store/base.py`, `tcw/work/gates.py`, the two axis
@@ -178,14 +178,17 @@ through `folder_parent` and `disagreement` (Step 14); taxonomy row k, an
 `id` equal to the folder's name, with capabilities exempt (Step 5, its
 plan.md:483-486).
 
-**From TCW-109 (its plan, being revised; names only).**
+**From TCW-109 (its plan as revised at `62d9eaba`; names and signatures).**
 `tcw/config_keys.py`'s `known_keys()`, the table of keys TCW knows, which
 lists `extends` under `taxonomy` and `capabilities`; the messages `no
 configuration key is written` and `is a shared key`;
 `ProjectRegistry.source_entries(axis, project_id=None, *, root=None)`, the
 non-raising form of `sources` returning each gap's state;
-`ProjectRegistry.unavailable(project_id, gap_id, subject)`, the one place
-an `InheritedUnavailable` message is built; and an ancestor whose shared
+`ProjectRegistry.unavailable(project_id, gap_id, axis, *, subject=None)`,
+the one place an `InheritedUnavailable` message is built, which takes the
+error's `reason` from `link_state(gap_id)` and the words standing for the
+axis from `subject` (the axis name by default); a configuration
+`InheritedUnavailable` having `axis == "config"`; and an ancestor whose shared
 file cannot be read being unreadable in the `ancestor` role. TCW-109's
 handoff to this item says the two `extends` entries come out of
 `known_keys()` here.
@@ -262,7 +265,11 @@ handoff to this item says the two `extends` entries come out of
    list, so a source store is asked only for its own declarations
    (`_declarations()`). Its own view is built only if a caller asks it for
    one, as `Locator.read` does for `show <owner's full id>` (Design 3.1,
-   third row).
+   third row). Building that view needs the owner's own sources, so from
+   Step 7 an `as_other` store's `_sources` is built on first use, from
+   `_source_stores(axis)` over `registry.sources(axis, <its own project>)`;
+   before Step 7 it has none (Step 3). The active project's store builds its
+   sources when it is opened until Step 13 makes that lazy too.
 5. **A body set to empty by the web app** (`update_capability`,
    `tcw/store/fs.py:3031-3074`). Today an override's cleared body deletes
    its `description.md` and a standalone object's is written empty
@@ -303,26 +310,46 @@ handoff to this item says the two `extends` entries come out of
    pass (AC 20, AC 24) while AC 21's and AC 25's must not. So from Step 8:
    - `FsCapabilitiesStore.override_target(target: FullId | str) -> FullId`
      answers, for `set` and `reset`, the active project's own full
-     identifier at the id-path the input names: for an id-path, the active
-     project's full identifier, or the full identifier of any object in
-     that id-path's `chain()`; it raises `Refused` with Design 4.2's
-     message for another project's full identifier not in that chain, and
-     `NotFound` (exit 4) for an id-path nothing has an object at. It asks
-     `has_own` first and builds the view only when the active project has
-     no object of its own at the id-path or the input names another project
-     (Design 3.5).
+     identifier at the id-path the input names, which may be an id-path,
+     the active project's full identifier, or the full identifier of any
+     object in that id-path's `chain()`. It decides in this order:
+     1. the active project's own full identifier: accepted when the project
+        has an object of its own there (`has_own`), else `NotFound` (exit
+        4), as `show` of that identifier is (AC 26; spec 4.2 accepts only
+        an own object, an id-path or a member of the chain);
+     2. another project's full identifier naming a project that is not one
+        of the active project's sources for the axis at all (TCW-109's
+        non-raising `source_entries(axis)`, gaps included): `Refused` with
+        Design 4.2's message, before any view or other store is read, so
+        `set zz.capabilities/cli/x` exits 3 even when one of the active
+        project's ancestors is missing (TCW-114 spec 1.1);
+     3. an id-path at which the active project has an object of its own:
+        that object, with no view (Design 3.5);
+     4. otherwise the view is built: another project's full identifier
+        not in the id-path's chain is `Refused` with Design 4.2's message,
+        and an id-path nothing has an object at is `NotFound` (exit 4). With
+        a source missing, this case is TCW-108's exit 7, which TCW-114 spec
+        1.1 and 1.5 accept: whether the object is in the chain cannot be
+        known without the view.
    - `removal_target(target: FullId | str) -> FullId` (both stores) answers,
      for `rm`, the active project's own full identifier when it has an
-     object there (`has_own`, no view); raises `Refused` with Design 4.4's
-     message for another project's full identifier, and for an id-path the
-     view shows as another project's; and `NotFound` for an id-path nothing
-     has, or one the active project has no object at when the view cannot
-     be built (Design 4.4).
-   - `find_tree_writable(store, namespace, text, *, removing=False) ->
+     object there (`has_own`, no view). Another project's full identifier
+     is refused with Design 4.4's message **first, before any view or store
+     is read**, so `rm core.capabilities/cli/x` exits 3 even when `core` is
+     not on this machine (TCW-114's handoff of 2026-10-22 relies on this
+     order; Step 13 tests it). The active project's own full identifier at
+     a path where it has no object is `NotFound`, as in
+     `override_target`. An id-path the view shows as another project's is
+     refused with Design 4.4's message, and an id-path nothing has, or one
+     the active project has no object at when the view cannot be built, is
+     `NotFound` (Design 4.4).
+   - `find_tree_writable(store, namespace, text, *, removing: bool) ->
      FullId` (`tcw/locate.py`) is `sort_input`, then `removal_target` when
      `removing`, else `override_target`; it no longer refuses anything
      itself, and what it returns is always the active project's own full
-     identifier. The stores' `set`, `reset`, `remove` and `_write_target`
+     identifier. `removing` has no default, so every caller says which rule
+     it means; `removing=False` needs a capabilities store, since a taxonomy
+     store has no `override_target` (the taxonomy's one caller is `rm`). The stores' `set`, `reset`, `remove` and `_write_target`
      call the same two methods, so the CLI, the web app and a test calling
      the store directly meet one rule and one message each.
    - `reset` of another project's full identifier that is not in the
@@ -511,6 +538,12 @@ No code changes.
      whether each writes `name` and a `description.md` (Step 11's input).
      `tests/test_capabilities_federation.py:28-39`'s `write_cap` already
      writes both.
+   - **Every branch on `InheritedUnavailable.reason` or `.axis`**
+     (`grep -rn "\.reason\b\|\.axis\b" tcw/`, each hit read to keep only
+     those on this error): Step 2 adds the reason `"store"`, and TCW-109 has
+     added the axis `"config"`, so each branch must say what it does with
+     both. `_cmd_validate`'s row (c) is one (Step 3); any other is listed,
+     and Step 3 handles it in the same commit.
    - The nested command groups the help walk sees
      (`tests/test_cli_help_standard.py:160` uses `"taxonomy extends"` as its
      proof that the walk sees one; Step 5b's input).
@@ -606,8 +639,9 @@ The message is built where TCW-108 and TCW-109 build the other two:
 `InheritedUnavailable` message is built.
 
 **Tests first**, beside TCW-109's tests of `unavailable` (Step 0 names the
-file): `registry.unavailable("app", "core", "taxonomy",
-store_message="<msg>")` returns an `InheritedUnavailable` with code 7,
+file), with `core` present and readable: `registry.unavailable("app",
+"core", "taxonomy", store_message="<msg>")` (the third argument is
+`axis`) returns an `InheritedUnavailable` with code 7,
 `project == "core"`, `axis == "taxonomy"`, `reason == "store"`, `detail ==
 "<msg>"`, and the message `'app' inherits its taxonomy from project 'core',
 whose taxonomy store cannot be read here: <msg>`; the two existing reasons
@@ -615,7 +649,10 @@ keep their messages, and their `detail` is None.
 
 **Changes.** `tcw/store/base.py`, `ProjectRegistry.unavailable`: a
 keyword-only `store_message: str | None = None`; when given, the reason is
-`"store"` and the message Design 1.3's third. `tcw/errors.py`,
+`"store"`, set in place of the one `link_state(gap_id)` gives (the gap is
+present and readable, so `link_state` would give none of its own), and the
+message is Design 1.3's third, with `subject` standing for the axis as in
+the other two. `tcw/errors.py`,
 `InheritedUnavailable`: the reason `"store"` and a `detail` attribute
 holding the store's own message, as data for `tcw validate` (Step 3), never
 used to build the message. Nothing raises it yet.
@@ -671,7 +708,8 @@ built with `write_config`, `connect_projects(..., inherit=...)` and
   `InheritedUnavailable` passes through.
 - Both stores' `__init__` (`:1713-1727`, `:2237-2253`) set
   `self.extends = self._source_stores(axis)` when not opened with
-  `as_other=True`, and `{}` when they are: the dictionary keeps its name
+  `as_other=True`, and `{}` when they are (until Step 7, which builds an
+  `as_other` store's sources on first use): the dictionary keeps its name
   and shape for this step and the next, so every 3.x reader of it is
   unchanged. `extends_cycles` is always empty, since `sources` never loops
   (TCW-108 Design 4.7). The taxonomy store's `_inherited_stores`
@@ -903,6 +941,13 @@ Design 1.5 (the key), 6.8; AC 15 (the key and the variables), 36.
 - `_legacy_config_problems` (`:1619-1640`): Design 6.8's message.
 - `tcw/config_keys.py`, `known_keys()`: the `extends` entries of the
   `taxonomy` and `capabilities` sections.
+- **Not changed:** `taxonomy.extends` or `capabilities.extends` in the
+  active project's *personal* file keeps the personal file's own refusal,
+  `a shared key; a personal file cannot set it` (`tcw/config.py:402` at
+  `d2d02829`, re-found in Step 0), not Design 1.5's message, because the
+  personal file's allow-list is checked before any store is opened. The key
+  is refused either way, and `tests/config/test_personal_allowlist.py:31-32`
+  stays green as it is.
 
 **Changes the tests**: `tests/test_legacy_store_config.py`'s `extends`
 messages, rewritten to Design 6.8, and any test of the key still standing
@@ -933,6 +978,16 @@ the capability its pointer resolved to, and the child's own object paths at
 that moment. Each record, keyed by test ID, says which fixture call must
 move where.
 
+The hook sees only overrides that 3.x still applies, and from Step 3 a
+middle project's override is not applied in a lower project's view (choice
+8). So the tests on Step 3's `xfail:` list are added to the work list by
+hand: for each, its override fixtures are taken from Step 0's static list
+of 3.x override fixtures, the original's id-path is found by resolving the
+pointer by hand (a bare id against the state files of the middle project's
+sources, `<alias>/<id>` against that alias's store), and the move goes to
+commit 2. The 3.x capabilities store never flattened, so this list may be
+empty; the round says whether it is.
+
 **Commit 1, mechanical.** A script rewrites, in each recorded test, the
 folder argument of the call that writes that override (`write_state_data`,
 `write_state`, the `write_cap` helpers, matched by its literal folder and
@@ -957,9 +1012,13 @@ choosing `<alias>/<path>` when the mirror path is taken,
 `<alias>/<path>` is never used").
 
 **Proves it:** `compare_outcomes.py outcomes-step5c.xml outcomes-step6.xml
-allowed-step6.txt` exits 0 with an empty list; the plugin, run again,
-records no override whose `override_path` differs from its
-`original_path`, apart from the pointer-subject tests, listed by ID;
+allowed-step6.txt` exits 0 with an empty list (the `xfail:` tests stay
+`xfailed`, since their overrides are still not applied until Step 7; one
+that passes after its move has its mark removed in this step and is listed
+in `allowed-step6.txt` with choice 8); the plugin, run again, records no
+override whose `override_path` differs from its `original_path`, apart
+from the pointer-subject tests, listed by ID; each `xfail:` test's override
+fixture is at its original's path, checked against the hand list;
 **mutation check**: with `_override_index` returning nothing, every moved
 test that asserts an override's effect goes red, each exception listed; the
 inventory, with commit 1's assertion dumps unchanged.
@@ -1003,6 +1062,20 @@ deleted.
   state file `_state` refuses), and each `check()` keeps clearing it before
   its full listing (TCW-111 plan.md:472-477). `has_own` and `declaration`
   are added (choice 1).
+- **Another owner's sources** (choice 4; the plan re-check's M1). A store
+  opened with `as_other=True` gets `_sources` as a property built on first
+  use, from `_source_stores(axis)` over `registry.sources(axis, <its own
+  project>)` (TCW-108 Step 7b's load order of any located project), and
+  cached on the instance; from Step 3 to here it was `{}`. Its `_view()`
+  combines with its own project's load order and choice 3's relation for
+  that project. Nothing builds it while that store serves only as another
+  store's source, since the active project's `_view()` reads each source's
+  `_declarations()`, never its `_sources`; only `Locator.read`, `find_tree`
+  and `_found` of another owner (below) do. So AC 26's owner-view sentences
+  hold from this step, and an owner's missing ancestor already gives exit 7
+  there (`show cc.capabilities/X` in `ee` with `bb` gone, tested in Step
+  13). The active project's own store keeps opening its sources eagerly
+  until Step 13.
 - **The view.** `FsTreeStore._view()`: built once per store instance from
   `self._sources` (each source's `_declarations()`) and its own, in load
   order; for each id-path any of them declares, `combine` (Step 1), with
@@ -1038,16 +1111,31 @@ deleted.
 - **Deleted**: `_apply_override` (`:2344-2389`), `_override_index`
   (`:2301-2309`), `get_inherited` (both stores, and from the abstract
   classes, choice 1), the taxonomy's `_term_via` (`:1796-1797`) and
-  `_inherited_stores`. **Not yet deleted**: `_override_fields` and
-  `_set_fields` (`:2279-2299`), which `check`'s override loop
-  (`:2870-2882`) and the taxonomy's `_capability_referrers` (`:1915`) still
-  call; `_override_fields` is rewritten to list the own objects whose state
-  file holds an `overrides:` key (the walk, `_state`), and both go in Step
-  15, which folds those callers into one list of own objects. `get_by_id`
-  matches the `id` in each own object's **own state file** only (not the
+  `_inherited_stores`.
+- **`get_by_id`** matches the `id` in each own object's **own state file** only (not the
   interim combined id above), so `_override_problem`'s `targets a local
   capability` check (`:2925`) does not fire on an override that carries its
   original's id; `get_by_id` goes in Step 10.
+- **Each own object's references are checked once** (the plan re-check's
+  I1). From this step `list_all(local_only=True)` returns the project's
+  overrides too, since an override's chain starts with the project, so the
+  second passes 3.x needed for override folders would check each override
+  twice (the comment at `:2871-2875` names exactly that). So `check`'s
+  per-object pass reads each own object's references from its own
+  declaration (`declaration()`), which for an object that overrides nothing
+  is its combined value and for an override is what `_set_fields` gave 3.x;
+  the override loop's reference pass (`:2870-2882`, the `target and
+  selected is None` branch) is deleted, while the loop's attachment checks
+  and its `_override_problem` call stay until Step 9. The taxonomy's
+  `_capability_referrers` (`:1899-1935`) reads the declared references of
+  each own capability and drops its `overrides` list (`:1915-1920`), so an
+  override is named `capability <path>`, not `capability override <path>`
+  (Design 7.3: it is an own capability). With no caller left,
+  `_override_fields` and `_set_fields` (`:2279-2299`) are deleted in this
+  step. This brings the reference half of Design 6.2 and Design 7.3 (AC
+  41's last sentence, AC 40) forward from Step 15, so that no step reports
+  an override twice; Step 15 keeps the field checks on the combined object
+  and tests AC 40 and 41.
 - **The 3.x writers, re-keyed by path** (each keeping its 3.x outcome,
   through a private `_is_override(id_path)`: the active project has its own
   object there and its chain has more than one member):
@@ -1074,7 +1162,8 @@ deleted.
   `get_local(id_path)` is the view's entry when its chain's first member is
   this project, else None; `chain(id_path)` is the entry's chain as full
   identifiers; `declaration(id_path)` is the own declaration alone (used
-  from Step 13). `list_all(local_only=False)` lists the view, one entry per
+  by `check`'s reference checks from this step, and by the view-less
+  routes from Step 13). `list_all(local_only=False)` lists the view, one entry per
   id-path, or with `local_only` the entries this project owns (Design 3.2).
   `search` matches the combined name and body.
 - **Reading another owner** (Design 3.1, third row): `_found` (TCW-110 Step
@@ -1113,15 +1202,21 @@ a test calling `get_inherited` (Step 0's list), moved to the owner's store's
 `get_local` (Design 3.1); a test asserting `get_local` of an override
 returns the raw own entry, now the combined object (choice 1); a test that
 called `tcw taxonomy add` at an inherited path and now finds an override
-(Design 3.2), until Step 8 changes what `add` writes. Step 3's `xfail:` IDs
-must now pass; `compare_outcomes.py outcomes-step2.xml outcomes-step7.xml`
-restricted to those IDs shows each back to its Step 2 outcome, or the ID is
-listed with its rule.
+(Design 3.2), until Step 8 changes what `add` writes; a `tcw validate`
+scoped to one override that reported a problem in a reference only its
+original sets (3.x checked a selected override's composed fields), now
+silent (Design 6.2, AC 41); a `tcw taxonomy rm` refusal naming `capability
+override <path>`, now `capability <path>` (Design 7.3). Step 3's `xfail:`
+IDs must now pass, and each is listed in `allowed-step7.txt`, its outcome
+going from `xfailed` to `passed` (choice 8); `compare_outcomes.py
+outcomes-step2.xml outcomes-step7.xml` restricted to those IDs shows each
+back to its Step 2 outcome, or the ID is listed with its rule.
 
 **Proves it:** the new tests; `compare_outcomes.py outcomes-step6.xml
 outcomes-step7.xml allowed-step7.txt` exits 0; `grep -n
 "_apply_override\|_override_index\|get_inherited\|_inherited_stores" tcw/`
-finds nothing; `grep -rn "TCW-112 Step 7" tests/` finds nothing; the full
+finds nothing; `grep -n "_override_fields\|_set_fields" tcw/` finds
+nothing; `grep -rn "TCW-112 Step 7" tests/` finds nothing; the full
 suite.
 
 ## Step 8 — writing by path
@@ -1151,6 +1246,11 @@ store and CLI half; the web half is Step 17a).
   directly with each input form give the active project's own full
   identifier or the refusal, and `find_tree_writable` returns what they
   return.
+- Choice 9's `NotFound` and early refusal: `set app.capabilities/cli/z`,
+  `reset app.capabilities/cli/z` and `rm app.capabilities/cli/z` in `app`,
+  which only inherits `cli/z`, exit 4 and write nothing, as `show` of that
+  identifier does (AC 26); `set zz.capabilities/cli/x`, `zz` not one of
+  `app`'s sources, exits 3 with Design 4.2's message.
 
 **Changes** (`tcw/store/fs.py`, `tcw/store/base.py`, `tcw/locate.py`, both
 CLIs):
@@ -1207,8 +1307,9 @@ CLIs):
   chain member's full id>` on standard error.
 - **`set`'s re-read** (`:2714`) reads `get_view`.
 - `tcw/taxonomy/cli.py`'s `_rm` and `tcw/capabilities/cli.py`'s `_set`,
-  `_reset`, `_rm` call `find_tree_writable` (with `removing=True` for `rm`)
-  and pass its `FullId` on.
+  `_reset`, `_rm` call `find_tree_writable`, each passing `removing`
+  (`True` for `rm`, `False` for `set` and `reset`; it has no default,
+  choice 9), and pass its `FullId` on.
 - The CLI help of `reset` (`prst`, `tcw/capabilities/cli.py:280-281`) says
   it accepts the overridden object's full identifier.
 
@@ -1244,8 +1345,7 @@ Design 2.5's paragraph "3.x override folders" and its row exceptions k-n
 (TCW-111 Step 6's separation and any exemption in `shape_problems`, found in
 Step 0) go. The pointer-subject tests (`dangling id`, `unknown project`,
 `targets a local capability`, `ambiguous id`) are deleted in this commit,
-listed with Design 6.6. `_override_fields` (Step 7's rewrite) now finds
-only AC 29's kind of fixture, and goes in Step 15.
+listed with Design 6.6.
 
 **Proves it:** AC 29; `compare_outcomes.py outcomes-step8.xml
 outcomes-step9.xml allowed-step9.txt` exits 0, and every commit of the step
@@ -1381,6 +1481,14 @@ Design 1.3 (when the view cannot be built), 1.4, 3.1 (existence checks),
   reporting no finding naming `cc.capabilities/X`.
 - A `tcw://cc.capabilities/X` link in `zz`'s description, with `bb`'s
   folder removed: `tcw validate` in `zz` reports no finding for the link.
+- **The refusal order of choice 9** (TCW-114 relies on it), in AC 5's
+  family with `core`'s folder removed: `tcw capabilities rm
+  core.capabilities/cli/x` and `tcw taxonomy rm core.taxonomy/<its term>`
+  in `app` exit 3 with Design 4.4's message, not 7; `tcw capabilities set
+  zz.capabilities/cli/x --status Supported`, `zz` not one of `app`'s
+  sources, exits 3 with Design 4.2's message, not 7; and `tcw capabilities
+  set core.capabilities/cli/x --status Supported` exits 7 (whether it is in
+  the chain needs the view).
 - AC 35: a test that wraps `FsTreeStore.__init__` and `project_folder`
   (TCW-107 Step 3) to record each store root opened and each project ID
   looked up, while each of `tcw taxonomy list`, `tcw capabilities list` and
@@ -1393,7 +1501,9 @@ Design 1.3 (when the view cannot be built), 1.4, 3.1 (existence checks),
 
 - Both stores' `__init__` no longer open sources: `self._sources` becomes a
   property built on first use (Design 1.4), from `_source_stores` (Step 3),
-  cached on the instance. Every lookup that needs the view (Design 3.5's
+  cached on the instance, for the active project's store as for an
+  `as_other` store since Step 7 (one property for both from here).
+  Every lookup that needs the view (Design 3.5's
   table) goes through `_view()`, which reads `_sources`; `own_paths`,
   `has_own`, `declaration`, `list_all(local_only=True)`'s fallback and `rm`
   of an own object do not.
@@ -1404,8 +1514,8 @@ Design 1.3 (when the view cannot be built), 1.4, 3.1 (existence checks),
   | Route | Used by | Calls from this step |
   | --- | --- | --- |
   | `find_tree` form a of the active project, and form d with an own object (`tcw/locate.py`) | `show` | `get_local`; on `InheritedUnavailable`, `declaration` marked partial (below) |
-  | `find_tree_writable` → `override_target` | `set`, `reset` | `has_own` first; the view only when there is no own object or the input names another project (choice 9) |
-  | `find_tree_writable` → `removal_target` | `rm` | `has_own`; the view only for an id-path with no own object, and its `InheritedUnavailable` becomes not found (Design 4.4) |
+  | `find_tree_writable` → `override_target` | `set`, `reset` | `has_own` first; a project that is not a source is refused before anything is read; the view only when there is no own object or the input names a source (choice 9) |
+  | `find_tree_writable` → `removal_target` | `rm` | another project's full identifier refused before anything is read; `has_own`; the view only for an id-path with no own object, and its `InheritedUnavailable` becomes not found (Design 4.4) |
   | `_found(FullId of the active project)` | `remove`, `reset`, `_write_target`, `get_term_detail`, `get_capability_detail`, `update_term`, `update_capability` | `has_own` and `declaration` for the writers; `get_local` for the two detail reads (the web app needs the view, and 503s without it, Step 17a) |
   | `set`'s re-read after the write (`:2714`) | `set` | `get_view`; on `InheritedUnavailable`, `declaration` marked partial, and `set` still exits 0 |
   | `Locator.read(full_id)` for the active project | `resolve_address` (validate's link check, the web app's `/api/resolve`), `_stored_ref` | not used for existence any more: see `Locator.exists` |
@@ -1493,16 +1603,17 @@ and AC 42's `tcw validate` sentence.
   requires Gaps", "Blocked requires Blocked by", a Feature's vocabulary,
   `:2070-2084`, `:2821-2840`) read each own object's combined fields
   (`get_local`), where `null` leaves no field (AC 42); the reference checks
-  read the references the own declaration sets (`declaration()`), never an
-  inherited value (AC 41's last sentence). One list of own objects; the
-  override-folder loop (`:2846-2881`) folds into it, and `_override_fields`
-  and `_set_fields` are deleted.
+  read the references the own declaration sets (`declaration()`, from Step
+  7), never an inherited value (AC 41's last sentence). One list of own
+  objects: what is left of the override-folder loop (`:2846-2881`), its
+  attachment checks, folds into it (its reference pass went in Step 7 and
+  its pointer check in Step 9).
 - **Design 6.7**: row m (TCW-111 Step 14) does not warn when the object's
   combined `parent` names an object at the same id-path as its folder
   parent, owned by a project that passes the axis to the active project.
-- **Design 7.3**: `_capability_referrers` (`:1899-1935`) reads the active
-  project's own capabilities' declared references only (`declaration()` of
-  each own path); its use of `_override_fields` (`:1915`) goes.
+- **Design 7.3**: done in Step 7 (`_capability_referrers` reads the active
+  project's own capabilities' declared references only); AC 40 is tested
+  here.
 
 **Proves it:** the tests; `grep -n "_override_fields\|_set_fields"
 tcw/` finds nothing; the full suite.
@@ -1592,15 +1703,19 @@ saved at `:737-738`; `_compose_body`, `tcw/store/fs.py:2311-2326`).
 **Tests first**:
 
 - In `tests/serve/test_overrides.py`: AC 44's two server families, every
-  sentence; and `declaredDescription` is `""` for an own capability whose
+  sentence; `declaredDescription` is `""` for an own capability whose
   `description.md` is empty, and is present in the answers of `POST
-  /api/capabilities` and `PATCH /api/capabilities/<key>`.
+  /api/capabilities` and `PATCH /api/capabilities/<key>`; and a capability
+  in `solo` with no attached documents whose `description.md` holds `Y
+  body` followed by a newline has `declaredDescription` `Y body`, equal to
+  its `capability.body`.
 - In `web/client/src/ui/app.test.tsx`: AC 44's client sentence (the body
   field holds `declaredDescription`, the note is shown, a save that changes
   only a field sends no `body`); a detail with `declaredDescription` `null`
   opens an empty body field; a save after editing the body sends the
   field's text as `body`; a detail whose `body` equals its
-  `declaredDescription` shows no note.
+  `declaredDescription` shows no note (the server test above shows the two
+  are equal for a file ending in a newline).
 
 **Changes**
 
@@ -1609,7 +1724,12 @@ saved at `:737-738`; `_compose_body`, `tcw/store/fs.py:2311-2326`).
 - `tcw/store/fs.py`, `get_capability_detail`: fills it from the
   description of the owner's own declaration (`declaration(id_path)` of the
   chain's first member's store; the active store's for an own object),
-  `None` when the owner declares none.
+  `None` when the owner declares none, with leading and trailing white
+  space removed, as `_compose_body` uses it (`raw_desc.strip()`,
+  `:2320-2321`; `_load_entry` reads the file untrimmed, `:1657`). So a
+  `description.md` ending in a newline does not make `body` and
+  `declaredDescription` differ, and the editor shows no false note
+  (Design 4.5; the plan re-check's I6).
 - `tcw/serve/records.py`, `get_capability`, `create_capability` and
   `update_capability`: each answer gains `"declaredDescription":
   detail.declared_description` beside `capability` and `coreRevision`.
@@ -1740,7 +1860,11 @@ changed):
   app (Step 17a), not TCW-108's 500; the web app's read-only rule is "owner
   is the served project" (Step 17a); the capability detail answer carries
   `declaredDescription`, which the editor edits (Step 17b); existence
-  without the view is `Locator.exists` (Step 13).
+  without the view is `Locator.exists` (Step 13). TCW-113's handoff of
+  2026-10-22 (`--scope`, `show` by id-path under `own`, its Design 4.8
+  replacing two rows of Design 3.5's table, this item's tests gaining
+  `--scope up`) changes nothing in this plan: each of those lands in
+  TCW-113, after this item.
 - **TCW-114:** Design 2.7 is `inherited_at(id_path)` on both tree stores;
   the chain is `chain(id_path)`; the two refusal sites its Design 1.3
   rewords are `override_target` (Design 4.2's message, for `set` and
@@ -1750,6 +1874,14 @@ changed):
   always passes, and the refusals must be reworded inside those two
   methods; the object handed to its ownership check by `set`, `reset` and
   `tcw taxonomy add` is the active project's own object at the id-path.
+  `find_tree_writable`'s `removing` keyword has no default. `removal_target`
+  refuses every other project's full identifier before anything is read,
+  and `override_target` refuses a project that is not one of the active
+  project's sources before anything is read (both tested in Step 13), so
+  the `check_owned` calls placed in those branches keep that order; a
+  source's identifier not in the chain still needs the view (exit 7 with a
+  source missing). The active project's own full identifier at a path
+  where it has no object is `NotFound` (exit 4) in both.
 - **TCW-115:** Step 18's outcome; Design 3.7's inputs are `list_all(local_only=True)`
   records with `overrides` set, and `view_warnings()`.
 - **TCW-116:** the spec's handoff, plus: a 3.x override is moved to the
@@ -1895,9 +2027,9 @@ A failure is fixed in the step it belongs to, not with a skip.
 Step 7 (3.1's existence checks Step 13); 3.2's warnings Step 12; 3.4-3.5
 Step 13; 3.7 Step 18; 4.1-4.4 Step 8 (4.4's view-less cases Step 13); 4.5
 Steps 17a, 17b; 5 Step 10 (5.1 for `set` in Step 8, which writes no pointer
-and no `id`); 6.1 Step 11; 6.2 Step 15; 6.3 Step 12; 6.4 Step 9; 6.5 Steps
+and no `id`); 6.1 Step 11; 6.2 Steps 7 (references), 15; 6.3 Step 12; 6.4 Step 9; 6.5 Steps
 3, 13; 6.6 Steps 5b, 9, 10; 6.7 Step 15; 6.8 Step 5c; 7.1-7.2 Step 16; 7.3
-Step 15; 8.1 Steps 5a, 19; 8.2 Step 21. Every step traces back to one of
+Step 7 (tested in Step 15); 8.1 Steps 5a, 19; 8.2 Step 21. Every step traces back to one of
 these or to the lifecycle (Steps 0, 20, 22-24).
 
 **The suite at each step boundary.** Green after every commit, not only
@@ -1906,10 +2038,14 @@ Steps 9, 10 and 11 commit the conversion before the check; Step 5a's
 documents change before Step 5b removes the commands, and
 `tests/test_configuration_text_home.py`'s keys change with the documents;
 Step 5b moves every reader of `self.extends` and keeps `_extends_label`
-until Step 5c rewrites its last caller; Step 7 keeps `_override_fields`
-and `_set_fields` until Step 15 and re-keys every caller of
-`_override_index` by path before deleting it; Step 3's tests that Step 7
-puts right are `xfail(strict=True)` between them. Each outcome comparison
+until Step 5c rewrites its last caller; Step 7 checks each own object's
+references once, from its declaration, deletes `_override_fields` and
+`_set_fields` with their last callers, and re-keys every caller of
+`_override_index` by path before deleting it; Step 7 builds an `as_other`
+store's sources on first use, so the owner views its own tests read exist
+in that step (the re-check's M1); Step 3's tests that Step 7 puts right are
+`xfail(strict=True)` between them, Step 6 moves their fixtures by hand
+(its hook cannot see them), and `allowed-step7.txt` lists them. Each outcome comparison
 is against the previous step's record, so a change of outcome is always
 attributable to one step.
 
