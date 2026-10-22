@@ -59,7 +59,7 @@ rejection.
   `not_tags` written as `not-tags`. `.tcw/.gitignore` was added. The root
   `tcw-config.yaml` is kept. `tests/test_repo_config_pair.py` was
   mutation-checked: it went red for a changed value in the copy and for
-  `not_tags` left in it. Commit `d6efa7d7`.
+  `not_tags` left in it. Commit `5dc09dd6`.
 - **Step 6 — refusing a 3.x project.** In commit `66673deb`, with the message
   fix above.
 - **New CLI tests.** `tests/test_project_files_cli.py` has 62 tests, each
