@@ -23,7 +23,7 @@ import yaml
 
 from tcw import __version__
 from tests.projectfiles import config_file, local_config_file, write_config, write_local_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_connected_config, write_manifest
 
 SOURCE = str(Path(__file__).resolve().parent.parent)
 
@@ -564,19 +564,22 @@ def test_ac13_a_3x_connection_is_reported_and_not_read(tmp_path):
     deeper = tmp_path / "deeper"
     write_connected_config(deeper, "tcw-version: 99.0.0\nid: deeper\n")
     ws = tmp_path / "ws"
-    write_connected_config(ws, "id: ws\nprojects:\n  children:\n    old: ../old\n")
+    write_config(ws, "id: ws\nprojects:\n  children:\n    old:\n")
+    manifest = write_manifest(ws, {"old": "../old"})
+    # TCW-107 Design 2.6: the problem is the entry's, naming its file.
+    entry = f"entry for 'old' in {manifest.resolve()} places it at {old.resolve()}, which {LEGACY}"
     for argv in (("projects", "list"), ("validate",)):
         ran = tcw(ws, *argv)
         assert ran.code == 1, ran
-        assert f"{old.resolve()}: {LEGACY}" in ran.out + ran.err, ran
-        assert f"{old.resolve()}: {old.resolve()}" not in ran.out + ran.err, \
+        assert entry in ran.out + ran.err, ran
+        assert (ran.out + ran.err).count(str(old.resolve())) == 1, \
             "the folder is named once"
         assert str(old.resolve() / "tcw-config.yaml") not in ran.out + ran.err, \
             "the 3.x file was read"
         assert str(deeper.resolve()) not in ran.out + ran.err, \
             "the 3.x file's connections were followed"
     ran = tcw(ws, "validate")
-    assert ran.out.splitlines() == [f"error: {old.resolve()}: {LEGACY}"], ran
+    assert ran.out.splitlines() == [f"error: .tcw/tcw-manifest.yaml: {entry}"], ran
     assert "1 error, 0 warnings, 0 unresolved" in ran.err, ran
 
 
@@ -632,7 +635,10 @@ def test_ac13a_a_connected_project_from_a_newer_tcw_is_that_connections_problem(
                                              "tcw-version: 99.0.0"))
     ran = tcw(ws, "validate")
     assert ran.code == 1, ran
-    assert (f"error: {path.resolve()}: was written by TCW 99.0 (tcw-version 99.0.0), "
+    # TCW-107 Design 2.6: the problem is the entry's that placed `app` there.
+    assert (f"error: .tcw/tcw-manifest.yaml: entry for 'app' in "
+            f"{(ws / '.tcw' / 'tcw-manifest.yaml').resolve()} places it at {app.resolve()}, "
+            f"whose .tcw/tcw-config.yaml was written by TCW 99.0 (tcw-version 99.0.0), "
             f"newer than this TCW ({__version__}); upgrade TCW") in ran.out.splitlines(), ran
 
 

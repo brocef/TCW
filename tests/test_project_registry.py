@@ -129,8 +129,10 @@ def test_relative_layout_and_transitive_descendants(tmp_path):
 @pytest.mark.parametrize(
     "target, expected",
     [
-        ("id: child-wrong\n", "does not match target id"),
-        ("", "missing project id"),
+        # TCW-107 Design 2.6: the deciding entry's folder holding another ID,
+        # or none, is a problem naming the entry.
+        ("id: child-wrong\n", "which declares 'child-wrong', not 'child-project'"),
+        ("", "cannot be read: missing or invalid project id"),
         ("id: child-project\nprojects: []\n", "must be a mapping"),
     ],
 )
@@ -324,10 +326,13 @@ def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
 
 def test_an_absent_parent_leaves_the_child_usable(tmp_path):
     child = tmp_path / "a" / "b" / "child"
+    # A folder that is not there: `../../..` is `tmp_path`, which holds `a`,
+    # and a deciding entry's folder with contents but no project is an error
+    # (TCW-107 Design 2.6).
     config(
         child,
         "id: child-project\nprojects:\n  parent:\n"
-        "    root-project: ../../..\n",
+        "    root-project: ../../../gone\n",
     )
     registry = FsProjectRegistry.open(child)
     registry.require_valid()
@@ -687,7 +692,7 @@ def test_without_an_override_a_locator_on_the_wrong_node_is_an_error(tmp_path):
     cannot pass by resolving something that was never broken."""
     parent, _real, _decoy = _decoy_layout(tmp_path)
     registry = FsProjectRegistry.open(parent)
-    assert any("does not match target id 'decoy-project'" in p
+    assert any("which declares 'decoy-project', not 'child-project'" in p
                for p in _texts(registry.check()))
     assert registry.get("child-project") is None
 
@@ -825,7 +830,7 @@ def test_an_empty_override_variable_does_not_adopt_the_working_directory(
     monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", value)
     registry = FsProjectRegistry.open(parent)
     assert registry.overrides() == []
-    assert any("does not match target id 'decoy-project'" in p
+    assert any("which declares 'decoy-project', not 'child-project'" in p
                for p in _texts(registry.check()))
 
 
@@ -966,8 +971,9 @@ def test_checkout_of_reads_a_siblings_manifest(tmp_path):
                                   "  upstream:\n    z:\n")
     config(tmp_path / "ws" / "b", "id: b\nprojects:\n  parent:\n    ws: ..\n")
     config(tmp_path / "ws" / "z", "id: z\n")
+    write_manifest(tmp_path / "ws", {"a": "a", "b": "b"})
+    write_manifest(tmp_path / "ws" / "a", {"ws": "..", "z": "../z"})
     write_manifest(tmp_path / "ws" / "b", {"z": {"path": "../z",
                                                  "repository": f"{url}#main"}})
     registry = FsProjectRegistry.open(tmp_path / "ws" / "a")
-    assert registry.found("z") == {"by": "search"}
     assert registry.checkout_of(url) == (tmp_path / "ws" / "z").resolve()

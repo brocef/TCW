@@ -8,6 +8,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.findings import Finding
 from tcw.validate import ValidationTarget, validate
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def _node(tmp_path: Path) -> Path:
@@ -32,12 +33,15 @@ def test_graph_problems_precede_target_resolution(tmp_path):
     root = _node(tmp_path)
     broken = tmp_path / "broken-node"
     broken.mkdir()
-    write_config(broken, "id: broken-node\nid: dupe\n")
+    write_connected_config(broken, "id: broken-node\nid: dupe\n")
     config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"broken-node": str(broken)}}
-    write_config(root, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config(root, yaml.safe_dump(config, sort_keys=False))
     problems = validate(root, target=ValidationTarget("taxonomy", "missing"))
-    assert problems and all(p.where.endswith("tcw-config.yaml") for p in problems)
+    # TCW-107 Design 2.6: a problem of the folder an entry places is the
+    # entry's, recorded against its manifest.
+    assert problems and all(p.where.endswith(("tcw-config.yaml", "tcw-manifest.yaml"))
+                            for p in problems)
 
 
 def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
@@ -50,7 +54,7 @@ def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
     root = _node(tmp_path)
     config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"missing": "missing-node"}}
-    write_config(root, yaml.safe_dump(config, sort_keys=False))
+    write_connected_config(root, yaml.safe_dump(config, sort_keys=False))
     assert validate(root, target=ValidationTarget("taxonomy", "missing")) == [
         Finding("error", "missing", "no such taxonomy object")
     ]

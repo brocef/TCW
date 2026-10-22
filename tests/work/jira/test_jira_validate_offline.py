@@ -85,8 +85,8 @@ def test_a_malformed_connected_jira_block_is_an_error(offline, tmp_path, monkeyp
     connect(other, offline.root, "parent")
     path = config_file(offline.root)
     doc = yaml.safe_load(path.read_text())
-    doc["projects"]["children"]["web"] = {
-        "path": doc["projects"]["children"]["web"], "jira": {"site": "x"}}
+    # The entry's location is in the manifest `connect` wrote (TCW-107).
+    doc["projects"]["children"]["web"] = {"jira": {"site": "x"}}
     write_connected_config_file(path, yaml.safe_dump(doc, sort_keys=False))
     code, text = validate(offline, monkeypatch, capsys)
     assert code == 1 and "projects.children.web.jira.site" in text, text

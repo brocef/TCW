@@ -60,10 +60,14 @@ def workspace(tmp_path, monkeypatch):
         "id: root-project\nprojects:\n  children:\n"
         "    core-project: ./core\n",
     )
+    # `core` places its parent where it is on this machine. In TCW 4 a
+    # manifest entry naming a folder that holds files and no project is an
+    # error (TCW-107 Design 2.6), and the entry under test here is the
+    # orchestrator's.
     core = _node(
         tmp_path / "core",
         "id: core-project\nprojects:\n  parent:\n"
-        "    root-project: ..\n",
+        "    root-project: ../orchestrator\n",
     )
     monkeypatch.chdir(orchestrator)
     return tmp_path, orchestrator, core
@@ -124,7 +128,7 @@ def test_validate_with_no_override_says_nothing_about_one(workspace, capsys):
     """
     assert main(["validate"]) == 0
     printed = capsys.readouterr()
-    assert "declared but not reachable" in printed.out       # an `unresolved` line
+    assert "is not on this machine" in printed.out           # an `unresolved` line
     assert "TCW_PROJECT" not in printed.out + printed.err
     assert "overridden" not in printed.out + printed.err
 

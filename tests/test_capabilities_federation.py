@@ -481,7 +481,9 @@ def test_extending_a_declared_but_absent_project_says_so(tmp_path):
         store(child).list_all()
     message = str(excinfo.value)
     assert "'base'" in message
-    assert "not reachable in this checkout" in message
+    # TCW-107 Design 6.2: a project not on this machine.
+    assert "project 'base' is not on this machine" in message
+    assert "places it at ../base" in message
 
 
 def test_extending_a_project_that_was_never_declared_is_unchanged(tmp_path):
@@ -502,7 +504,8 @@ def test_extends_add_names_a_declared_but_absent_project(tmp_path):
     )
     with pytest.raises(TcwError) as excinfo:
         FsCapabilitiesStore.open(child).extends_add("base")
-    assert "not reachable in this checkout" in str(excinfo.value)
+    # TCW-107 Design 6.2: a project not on this machine.
+    assert "project 'base' is not on this machine" in str(excinfo.value)
 
 
 # ── the extended store is resolved, not composed ─────────────────────────────

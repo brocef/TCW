@@ -10,6 +10,7 @@ from tcw.store.fs import (
     parent_project,
     write_sentinel,
 )
+from tests.projectfiles import write_connected_config_file
 
 
 def work_node(path, project_id):
@@ -23,12 +24,12 @@ def connect(parent, child, parent_id, child_id, locator=None):
     parent_cfg.setdefault("projects", {}).setdefault("children", {})[
         child_id
     ] = locator or str(child)
-    (parent / SENTINEL).write_text(yaml.safe_dump(parent_cfg, sort_keys=False))
+    write_connected_config_file(parent / SENTINEL, yaml.safe_dump(parent_cfg, sort_keys=False))
     child_cfg = yaml.safe_load((child / SENTINEL).read_text()) or {}
     child_cfg["projects"] = {
         "parent": {parent_id: str(parent)}
     }
-    (child / SENTINEL).write_text(yaml.safe_dump(child_cfg, sort_keys=False))
+    write_connected_config_file(child / SENTINEL, yaml.safe_dump(child_cfg, sort_keys=False))
 
 
 def test_find_node_root_nearest(tmp_path):

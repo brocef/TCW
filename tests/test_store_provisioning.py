@@ -541,8 +541,9 @@ def test_ac22_the_rung_reads_manifests_in_the_lookups_order(tmp_path):
     y = _project(tmp_path / "y", "y")
     write_manifest(top, {"mid": "mid", "x": {"path": "../x",
                                              "repository": f"{APP_URL}#main"}})
-    write_manifest(mid, {"kid": "kid"})
-    write_manifest(kid, {"y": {"path": "../../../y", "repository": f"{APP_URL}#main"}})
+    write_manifest(mid, {"kid": "kid", "top": ".."})
+    write_manifest(kid, {"mid": "..",
+                         "y": {"path": "../../../y", "repository": f"{APP_URL}#main"}})
     assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == x
     write_manifest(mid, {"y": {"path": "../../y", "repository": f"{APP_URL}#main"}})
     assert FsProjectRegistry.open(mid).checkout_of(APP_URL) == y
@@ -1587,7 +1588,10 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
     assert config["taxonomy"]["extends"] == ["source"]
     assert config["id"] == "consumer"
     assert config["work"]["tags"] == ["demo"]
-    assert config["projects"] == {"children": {"source": "../source"}}
+    # The location is in the manifest since TCW-107; `projects:` names the ID.
+    assert config["projects"] == {"children": {"source": None}}
+    assert yaml.safe_load((consumer / ".tcw/tcw-manifest.yaml").read_text())[
+        "projects"] == {"source": "../source"}
     assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
 
     FsTaxonomyStore.open(consumer).extends_remove("source")

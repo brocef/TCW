@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from tests.projectfiles import config_file, write_config, write_config_file
-from tests.projectfiles import write_connected_config, write_connected_config_file
+from tests.projectfiles import write_connected_config, write_connected_config_file, write_manifest
 
 
 def git(path: Path, *args: str) -> None:
@@ -78,7 +78,8 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     config(app / "pkg-c", "pkg-c", parent={"app-repo": ".."})
     wt_cfg = config_file(workspace / "app-wt")
     wt_cfg.write_text(wt_cfg.read_text().replace(
-        "    pkg-b: pkg-b\n", "    pkg-b: pkg-b\n    pkg-c: ../app/pkg-c\n"))
+        "    pkg-b: null\n", "    pkg-b: null\n    pkg-c: null\n"))
+    write_manifest(workspace / "app-wt", {"pkg-c": "../app/pkg-c"})
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 0, done.stdout + done.stderr
     from tcw.store.project import FsProjectRegistry
@@ -153,10 +154,13 @@ def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path)
 
 
 def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):
+    """Since TCW-107 an entry cannot place a project under another ID, so the
+    workspace's manifest places `pkg-b` itself in a second repository, and the
+    two lookups find it in two folders (Design 2.9)."""
     other = repo(workspace / "other")
     config(other, "pkg-b", parent={"workspace": ".."})
     ws_cfg = config_file(workspace)
-    write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b-again: other\n")
+    write_connected_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b: other\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 1 and "duplicate project id 'pkg-b'" in done.stdout + done.stderr, \

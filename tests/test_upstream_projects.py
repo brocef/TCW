@@ -616,7 +616,8 @@ def test_an_absent_upstream_is_a_warning_and_extends_says_unreachable(tmp_path):
     assert "core" in out.stdout + out.stderr, out.stdout
     added = _tcw(app, "taxonomy", "extends", "add", "core")
     assert added.returncode != 0
-    assert "not reachable" in added.stderr, added.stderr
+    # TCW-107 Design 6.2: a project not on this machine.
+    assert "project 'core' is not on this machine" in added.stderr, added.stderr
 
 
 def test_a_project_beyond_an_upstream_cannot_be_named(tmp_path):

@@ -269,7 +269,8 @@ def test_an_absent_connected_project_is_reported_and_not_fatal(tmp_path, monkeyp
     assert main(["validate"]) == 0
     [line] = capsys.readouterr().out.splitlines()
     assert line.startswith("unresolved: ")
-    assert "gone-project" in line and "not reachable in this checkout" in line
+    # TCW-107 Design 6.2: a project not on this machine.
+    assert "project 'gone-project' is not on this machine" in line
 
 
 def test_a_real_graph_error_still_fails(tmp_path, monkeypatch, capsys):

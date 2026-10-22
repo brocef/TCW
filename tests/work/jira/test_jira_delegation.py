@@ -68,8 +68,8 @@ def test_no_route_to_request_keeps_it_in_the_inbox(pair, fake, tcw):
 def block_for(p, block):
     path = config_file(p)
     doc = yaml.safe_load(path.read_text())
-    entry = doc["projects"]["children"]["tcw"]
-    doc["projects"]["children"]["tcw"] = {"path": entry, "jira": block}
+    # The entry's location is in the manifest `connect` wrote (TCW-107).
+    doc["projects"]["children"]["tcw"] = {"jira": block}
     write_connected_config_file(path, yaml.safe_dump(doc, sort_keys=False))
 
 

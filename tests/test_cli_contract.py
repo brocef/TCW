@@ -38,6 +38,7 @@ from tcw.work.model import Item, Slug
 from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV, fake, jira_config  # noqa: F401
 from tests.work.jira.fake import SITE
 from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
+from tests.projectfiles import write_connected_config, write_connected_config_file
 
 TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
@@ -200,7 +201,7 @@ def configure(root: Path, **work) -> None:
     path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document.setdefault("work", {}).update(work)
-    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_connected_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def new(root: Path, title: str = "A b", *flags: str, stdin: str = "") -> str:
@@ -335,7 +336,7 @@ def test_extends_add_prints_nothing(tmp_path, fx):
     ok(up, "init", "--id", "up")
     document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {"upstream": {"up": "../up"}}
-    write_config(fx, yaml.safe_dump(document))
+    write_connected_config(fx, yaml.safe_dump(document))
     assert written(fx, "taxonomy", "extends", "add", "up").out == ""
 
 
@@ -552,13 +553,13 @@ def graph(tmp_path, fake):  # noqa: F811
         "children": {"other": "../other", "absent": "../absent",
                      "absentj": {"path": "../absentj", "jira": block}},
         "upstream": {"up": "../up"}}
-    write_config(roots["fx"], yaml.safe_dump(document))
+    write_connected_config(roots["fx"], yaml.safe_dump(document))
     for name in ("other", "up"):
         path = config_file(roots[name])
         child = yaml.safe_load(path.read_text())
         if name == "other":
             child["projects"] = {"parent": {"fx": "../fx"}}
-        write_config_file(path, yaml.safe_dump(child))
+        write_connected_config_file(path, yaml.safe_dump(child))
     return roots
 
 
@@ -572,7 +573,9 @@ def test_another_projects_item_reads_but_does_not_write(graph):
 def test_naming_projects_that_are_not_here(graph):
     assert run(graph["fx"], "work", "show", "ghost/x").code == 4
     absent = run(graph["fx"], "work", "show", "absent/x")
-    assert absent.code == 5 and "tcw provision" in absent.err
+    # TCW-107 Design 6.2: where its manifest entry places it.
+    assert absent.code == 5 and "project 'absent' is not on this machine" in absent.err
+    assert "places it at ../absent" in absent.err
 
 
 @pytest.mark.parametrize("target, says", [("ghost", None), ("absent", None),
@@ -742,7 +745,7 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     ok(up, "capabilities", "add", "auth/login")
     document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {"upstream": {"up": "../up"}}
-    write_config(fx, yaml.safe_dump(document))
+    write_connected_config(fx, yaml.safe_dump(document))
 
     assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
         "wrote .tcw/tcw-config.yaml\n"

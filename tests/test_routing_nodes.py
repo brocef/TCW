@@ -10,6 +10,7 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import init
 from tests.projectfiles import write_config
+from tests.projectfiles import write_connected_config
 
 
 def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
@@ -22,7 +23,7 @@ def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
     if board:
         init(["work"], path, pid)
     else:
-        write_config(path, f"id: {pid}\n")
+        write_connected_config(path, f"id: {pid}\n")
     import yaml
     cfg = yaml.safe_load((path / ".tcw/tcw-config.yaml").read_text()) or {}
     links = {}
@@ -32,7 +33,7 @@ def node(path: Path, pid: str, *, board: bool, parent: str | None = None,
         links["children"] = children
     if links:
         cfg["projects"] = links
-    write_config(path, yaml.safe_dump(cfg, sort_keys=False))
+    write_connected_config(path, yaml.safe_dump(cfg, sort_keys=False))
     return path
 
 

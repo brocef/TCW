@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import init
-from tests.projectfiles import config_file, write_config_file
+from tests.projectfiles import config_file, write_config_file, write_manifest
 
 WORK_PATH = Path("docs") / "work"
 
@@ -44,14 +44,16 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
 
 def connect(a: Path, b: Path, relation: str) -> None:
     """Declare `b` in `a`'s projects under `relation` (parent or
-    children), by a path relative to `a`."""
+    children), by its ID, and place it in `a`'s manifest by a path relative
+    to `a` (TCW-107)."""
     import os
     path = config_file(a)
     document = yaml.safe_load(path.read_text())
     b_id = yaml.safe_load((b / ".tcw/tcw-config.yaml").read_text())["id"]
     section = document.setdefault("projects", {}).setdefault(relation, {})
-    section[b_id] = os.path.relpath(b, a)
+    section[b_id] = None
     write_config_file(path, yaml.safe_dump(document, sort_keys=False))
+    write_manifest(a, {b_id: os.path.relpath(b, a)})
 
 
 def commit_all(root: Path, message: str = "fixture") -> None:

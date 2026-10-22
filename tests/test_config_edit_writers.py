@@ -17,12 +17,14 @@ from tcw.cli import main
 from tcw.store.fs import FsTaxonomyStore, init, write_sentinel
 from tcw.project_files import version_line
 from tests.projectfiles import config_file, write_config
-from tests.projectfiles import write_connected_config
+from tests.projectfiles import write_connected_config, write_manifest
 
 BOM = "\ufeff".encode()
 
-PARENT = ("id: child\nprojects:\n    parent:\n        base: ../base\n"
-          "    children:\n        other: ../other\n")
+# The connections name IDs; `federated` places them in the child's manifest
+# (TCW-107), so the text compared here is the configuration's alone.
+PARENT = ("id: child\nprojects:\n    parent:\n        base:\n"
+          "    children:\n        other:\n")
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess:
@@ -59,6 +61,7 @@ def federated(tmp_path: Path, child_config: bytes) -> Path:
     write_connected_config(other,
         "id: other\nprojects:\n  parent:\n    child: ../child\n")
     write_connected_config(child, child_config)
+    write_manifest(child, {"base": "../base", "other": "../other"})
     commit_all(other)
     commit_all(base)
     commit_all(child)
