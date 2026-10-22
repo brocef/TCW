@@ -12,10 +12,11 @@ line, which no edit changes.
 `init` prints nothing on standard output. Every file it writes and every folder
 it creates is named on standard error (`wrote <path>`, `created <path>/`), and it
 stages and commits nothing: committing the result is mine to do. Inside a
-repository it adds `/tcw-config.local.yaml` to `.tcw/.gitignore`, beside the
-personal file it names, unless that rule is already there with or without the
-`/`, so a person's own configuration stays out of version control. Outside one it
-says, in a `note:` line, that keeping that file out is mine to do.
+repository it adds `/tcw-config.local.yaml` and `/tcw-manifest.local.yaml` to
+`.tcw/.gitignore`, beside the personal files they name, each unless its rule is
+already there with or without the `/`, so a person's own configuration and
+manifest stay out of version control. Outside one it says, in a `note:` line,
+that keeping those two files out is mine to do. It writes no manifest.
 
 Each store is one folder, with an empty `.gitkeep` so git keeps it while it is
 empty. The work store is one folder of item folders: there are no status folders

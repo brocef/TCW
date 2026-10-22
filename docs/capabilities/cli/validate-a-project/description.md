@@ -21,8 +21,11 @@ There are three severities, and only one fails the run:
   written as text, is older than TCW 4 or is newer than the running TCW, and
   a key or project ID that is not lowercase letters and digits joined by
   single hyphens. Any error makes `tcw validate` exit 1.
-- `warning` — for example a `.tcw/tcw-config.local.yaml` that version control
-  is tracking, which should stay personal; a TCW 3.x `tcw-config.yaml` left at
+- `warning` — for example a `.tcw/tcw-config.local.yaml` or
+  `.tcw/tcw-manifest.local.yaml` that version control is tracking, which should
+  stay personal; a committed manifest entry overridden on this machine by the
+  personal manifest or a `TCW_PROJECT_<ID>`, whose problem would otherwise be
+  an error; a TCW 3.x `tcw-config.yaml` left at
   the root of a TCW 4 project, which is not read; a parent or blocker that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
@@ -30,8 +33,15 @@ There are three severities, and only one fails the run:
   that is not on this machine, or a reference into one. The run still exits 0.
 
 **Connections between projects.** Missing or invalid IDs, malformed entries
-under `projects:`, mismatched IDs, a parent and child that do not name each
-other, and cycles are errors, with guidance on how to fix them. A parent/child
+under `projects:` (including one that still holds a location, which belongs in
+the manifest), a manifest entry placing a folder that holds another project or
+none, one ID found in two folders, a parent and child that do not name each
+other, and cycles are errors, with guidance on how to fix them. Every entry of
+this project's two manifests is checked, whether or not `projects:` names it:
+an entry whose folder is not here, or is empty, is `unresolved`, and one whose
+folder is wrong is an error. A project not on this machine is reported with
+where its manifest entry places it and, when the entry gives a repository, the
+command that fetches it. A parent/child
 connection is declared on both sides; an `upstream` connection is declared only
 by the reader and needs no counterpart. An upstream is never validated as part
 of the reader: only its own config is read, and problems in its connections are

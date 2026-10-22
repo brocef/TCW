@@ -6,3 +6,4 @@ vocabulary:
     - namespace
     - reference
     - upstream-project
+    - manifest

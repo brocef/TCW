@@ -1,0 +1,4 @@
+name: Manifest
+kind: Vocabulary
+relatesTo:
+- project

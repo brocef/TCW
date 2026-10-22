@@ -22,9 +22,12 @@ exit 1 when it cannot read it, naming the file and saying what to do:
   message names both versions and says to upgrade TCW. A newer patch number
   alone never changes a format, so a `4.0.5` file is read by TCW 4.0.3.
 
-The same check applies to the project's personal file, and to the configuration
-of a connected project, where a version this TCW cannot read is a problem with
-that connection and the project is not read. `tcw validate` reports each as an
+The same check applies to the project's personal file, to its two manifests,
+`.tcw/tcw-manifest.yaml` and `.tcw/tcw-manifest.local.yaml`, and to the
+configuration of a connected project, where a version this TCW cannot read is a
+problem with the manifest entry that placed it, and the project is not read. A
+manifest with no `tcw-version` is not read as a 3.x file, since TCW 3 had no
+manifests: the message gives the line to add. `tcw validate` reports each as an
 error.
 
 **A TCW 3.x project is recognised, not misread.** A folder with

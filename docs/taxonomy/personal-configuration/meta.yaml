@@ -8,3 +8,4 @@ vocabulary:
 - user-identity
 - work-item/lifecycle-stage
 - work-item/lifecycle-hook
+- manifest
