@@ -153,8 +153,11 @@ project that connects to it, beside the relationship itself.
 - **Converting a 3.x `projects:` entry's locators into manifest entries**
   (`tcw migrate`, TCW-116). Notes lists the mapping it must follow.
 - **Guides, skills and the use-case document's wording** (TCW-117), except
-  this repository's own `.tcw/.gitignore` (AC 22). Notes lists what they
-  must change.
+  this repository's own `.tcw/.gitignore` (AC 22) and the one line of
+  `skills/work/SKILL.md` (`:115`) that tells an agent to suggest
+  `tcw provision` on exit 5, which would send every agent on `v4` to a
+  command that no longer fetches the project; it is changed to pass on the
+  message's own instruction. Notes lists what the rest must change.
 
 ## Design
 
@@ -287,12 +290,44 @@ for `X` in a manifest consulted later is not read, not even for a
 The personal manifest is read for every project in the walk, not only the
 active one, because it describes this machine, which is the machine running
 the command (Use cases, S-5; Questions for TCW-99).
+**Walking past the project being looked up.** "Skipped" means only that the
+skipped project's own manifests are not read. When the command already knows
+that project's folder, by any earlier lookup, the walk carries on through its
+configuration to its parent (for 2.2 b) or its children (for 2.2 c). When its
+folder is not known, its configuration cannot be read and the walk stops
+there. Run in `k` (Design 2.11 c), `a`'s folder is not known and the walk stops
+at `a`. Run in `a` (AC 25), `k`'s lookup of its parent `a` goes on past `a` to
+`app`'s manifest, so the reciprocity check between `a` and `k` is made from
+both sides. One consequence: a stale entry for `a` in `app`'s manifest that
+points at a real second copy of `a` is reported as a duplicate ID (2.9) when
+the command runs in `a`, and so refuses every command there until the entry is
+corrected. That is 2.9 doing its job: two folders for one ID in one command.
+The walk keeps a record of the projects it has visited, in both directions, so
+a cycle among `children` or `parent` entries, which `_validate_cycles` reports
+only after the walk, never makes it loop.
 
-2.3. **An entry decides, whatever is on disk.** When the entry's folder holds
-no project, `X` is not on this machine (Design 6.2), and the search is not
-made. When it holds a project with another ID, a 3.x project, or a
-configuration whose version this TCW cannot read, that is a graph problem
-naming the entry's manifest and the folder.
+2.3. **An entry decides, whatever is on disk.** When the entry's folder does
+not exist, or exists and is **empty**, `X` is not on this machine (Design
+6.2), and the search is not made. When the folder has contents but holds no
+`.tcw/tcw-config.yaml` and no 3.x root `tcw-config.yaml`, or holds a project
+with another ID, a 3.x project, or a configuration whose version this TCW
+cannot read, that is a graph problem naming the entry's manifest and the
+folder. A folder TCW cannot list is a graph problem too, naming the reason,
+since TCW cannot tell whether it is empty.
+**Empty** means the folder holds no entries at all, or holds only one entry
+named `.git` (a file or a folder). Both are what git leaves when a project was
+never fetched into the folder: a submodule that was never initialised is an
+empty folder (`git clone` without `--recurse-submodules`, and `git submodule
+deinit`, both leave one; checked with git on 2026-10-22), and a clone or a
+submodule update that stopped before checking out any file leaves only its
+`.git`. No other name is ignored: a folder holding anything else, even a file
+a desktop program left there, has contents.
+*Decided by the user on 2026-10-22* (option b of the plan review's U1): the
+commonest real cause of an existing folder with nothing in it is a submodule
+that CI did not initialise, and an entry whose folder is not on this machine
+must never fail the run (Design 5.1). A folder with real contents and no
+project is still an error, which keeps the catch for a manifest entry pointing
+at the wrong folder (AC 8).
 
 2.4. **Folders next to `P`'s root**: every folder directly inside the folder
 that holds `P`'s root, except `P`'s root itself and any folder named `.tcw`.
@@ -408,9 +443,9 @@ Its outcomes:
 | Outcome | When | What the call does |
 | --- | --- | --- |
 | found | a rule answers with a folder holding a 4.0 project that declares `project_id` | returns that folder, the project's root, after Design 4.4 |
-| not on this machine | `project_id` is named by an entry in a manifest the walk of 2.2 consulted, or by a `projects:` entry of a project in that walk, and no rule found it: the deciding entry's folder holds no project (2.3), or no entry has it and the search found nothing (2.7) | raises `Unreachable` (exit 5, `tcw/errors.py:76-77`) with Design 6.2's message; when the deciding entry gives a repository, the message names it and `tcw project provision <id>` |
+| not on this machine | `project_id` is named by an entry in a manifest the walk of 2.2 consulted, or by a `projects:` entry of a project in that walk, and no rule found it: the deciding entry's folder does not exist or is empty (2.3), or no entry has it and the search found nothing (2.7) | raises `Unreachable` (exit 5, `tcw/errors.py:76-77`) with Design 6.2's message; when the deciding entry gives a repository, the message names it and `tcw project provision <id>` |
 | unknown | no manifest the walk consulted and no `projects:` entry of a project in the walk names `project_id`, and the search did not find it | raises `UnknownProject` (exit 1) with `no project with ID '<id>' is known or found near this one; check the spelling` |
-| graph problem | two matches (2.7); the deciding entry's folder holds a project with another ID, a 3.x project, or a version this TCW cannot read (2.3); a search candidate that is `X` but cannot be read as 4.0 (2.8); a manifest the lookup would consult has a format problem (1.8); `TCW_PROJECT_<ID>` names a folder that is not a project (2.1); the answer differs from the folder an earlier lookup in this command found for `project_id` (2.9) | raises `ProjectGraphError` (exit 1) whose message names the file or folders, and adds the problem to the registry's problems, so a later `check()` lists it |
+| graph problem | two matches (2.7); the deciding entry's folder has contents but holds no project, cannot be listed, or holds a project with another ID, a 3.x project, or a version this TCW cannot read (2.3); a search candidate that is `X` but cannot be read as 4.0 (2.8); a manifest the lookup would consult has a format problem (1.8); `TCW_PROJECT_<ID>` names a folder that is not a project (2.1); the answer differs from the folder an earlier lookup in this command found for `project_id` (2.9) | raises `ProjectGraphError` (exit 1) whose message names the file or folders, and adds the problem to the registry's problems, so a later `check()` lists it |
 
 The "unknown" row narrows the design's rule that a reference into a missing
 project is "could not check": that rule is kept for a project something names
@@ -506,8 +541,8 @@ not `projects:` names that ID:
 
 | # | The entry's folder | Finding |
 | - | ------------------ | ------- |
-| a | not on this machine | `unresolved`, naming the ID, the path, and, when the entry gives one, the repository and `tcw project provision <id>` |
-| b | there, but holds no `.tcw/tcw-config.yaml` and no 3.x `tcw-config.yaml` | `error`: not a TCW project |
+| a | not on this machine: no such folder, or an empty one (Design 2.3) | `unresolved`, naming the ID, the path, and, when the entry gives one, the repository and `tcw project provision <id>` |
+| b | there and not empty, but holds no `.tcw/tcw-config.yaml` and no 3.x `tcw-config.yaml`; or cannot be listed | `error`: not a TCW project (or the reason it cannot be read) |
 | c | a 3.x project | `error`, TCW-106's `legacy_message` |
 | d | its configuration's version cannot be read | `error`, `version_problem`'s message |
 | e | declares another ID | `error`, naming both IDs |
@@ -567,8 +602,15 @@ rebuild.
 6.4. **A store whose repository is a project already here** (`resolve_store`
 rung 1.5, `_registry_checkout_root`, `tcw/store/fs.py:3157-3179`, asking
 `checkout_of`, `tcw/store/project.py:306-344`) is matched against the
-`repository` of the entries in every manifest the command has read, instead
-of against `projects:` entries. For a matching entry whose ID this machine
+`repository` of the entries in the manifests of every project in the graph
+whose connections are followed (every project but an upstream-only one,
+Design 2.10), instead of against `projects:` entries. Once the graph is
+loaded, `checkout_of` reads those manifests (through the registry's cache, so a
+manifest already read is not read again) in a fixed order: the active
+project's, then its ancestors' nearest first, then its descendants' breadth
+first, each personal file before the shared one, as in 2.2. So the answer does
+not depend on which lookups the command happened to make before it. For a
+matching entry whose ID this machine
 has found, by whatever rule, the repository's folder is the found project's
 folder with that entry's `subfolder` removed (the folder itself when the
 entry has none). When the found folder does not end with the entry's
@@ -736,11 +778,22 @@ on `FsProjectRegistry.open(<the active project's root>)`.
    `no manifest lists it, and no folder next to <app> or enclosing it
    declares it`.
 8. **An entry that is wrong.** `tcw validate` in `app` reports an error naming
-   the entry for each of: a folder that exists and is not a project; a folder
-   holding only a 3.x root `tcw-config.yaml` (TCW-106's `legacy_message`); a
-   folder whose `.tcw/tcw-config.yaml` has `tcw-version: 99.0.0`; a folder
-   declaring `id: other` (both IDs named). The same holds for an entry no
-   `projects:` relation names.
+   the entry for each of: a folder that exists, holds a file `README.md` and
+   is not a project; a folder holding only a 3.x root `tcw-config.yaml`
+   (TCW-106's `legacy_message`); a folder whose `.tcw/tcw-config.yaml` has
+   `tcw-version: 99.0.0`; a folder declaring `id: other` (both IDs named). The
+   same holds for an entry no `projects:` relation names.
+   **An empty folder is not on this machine** (Design 2.3, decided by the user
+   on 2026-10-22). With the entry's folder existing and empty, and again with
+   it holding only a `.git` file (as a submodule fetch that stopped leaves) and
+   only a `.git` folder: `tcw validate` reports one `unresolved` finding naming
+   `lib` and the path, and no error, and exits 0 when nothing else is wrong;
+   `tcw projects list --json` shows `lib` with `present: false`; and
+   `tcw work show lib/<slug>` exits 5. The same with a real uninitialised git
+   submodule: `app`'s repository holds `lib` as a submodule at `lib`, cloned
+   without `--recurse-submodules`, and `app`'s manifest lists `lib: lib`.
+   With a `.DS_Store` file added to the empty folder, it is the first case's
+   error.
 8a. **An overridden entry is a warning.** In AC 8's first case, with a
    personal manifest entry placing `lib` at a real `lib`, `tcw validate`
    reports the committed entry as a `warning` containing `overridden on this
@@ -870,11 +923,17 @@ on `FsProjectRegistry.open(<the active project's root>)`.
     AC 16's setup with the worktree made inside the main checkout's folder
     (`<main>/.worktrees/feature`), and `ws` enclosing the main checkout as in
     AC 18, `tcw validate` in the worktree reports no duplicate ID for `app`.
-27. **Each candidate read once.** In AC 9's monorepo, during one `tcw
-    validate` in `app/packages/shared`, the folder holding its root is listed
-    once and each candidate's `.tcw/tcw-config.yaml` is opened at most once
-    (the test counts the reads), and two `FsProjectRegistry.open(<root>)`
-    calls in that command return the same registry.
+27. **Each candidate read once by the registry.** In AC 9's monorepo, during
+    one `tcw validate` in `app/packages/shared`, the registry lists the folder
+    holding `shared`'s root once, and reads each candidate's two files of
+    Design 2.6 (`.tcw/tcw-config.yaml` and the root `tcw-config.yaml`) at most
+    once; and two `FsProjectRegistry.open(<root>)` calls in that command
+    return the same registry. The test counts the reads the registry makes,
+    through the functions every registry read goes through. Reads made outside
+    the registry are not counted: `tcw validate` loads an ancestor's layered
+    configuration itself (`_shared_work_paths`, `tcw/validate.py:677-703`), and
+    sending those reads through the registry is not part of this item
+    (Problem 6 is about how often the registry is opened).
 
 ### Coverage
 
@@ -891,8 +950,8 @@ on `FsProjectRegistry.open(<the active project's root>)`.
 | 1.9 `tcw init` ignore line, only in a git repository; tracked warning | 20 |
 | 1.10 `TCW_NO_PERSONAL_CONFIG`, and an invalid value | 3, 8a |
 | 2.1 `TCW_PROJECT_<ID>` first | 14, 8a |
-| 2.2 manifest order (a) own, (b) ancestors, (c) descendants; a project being looked up is skipped; entries never merge; personal manifests of the walk | 1, 3 (a); 5, 25 (b); 6 (c, and a before c); 5 (locating `shared` from `desktop` reaches `shared` as `desktop`'s ancestor, and the walk ends); 7 (no merge) |
-| 2.3 an entry decides; a wrong one is a problem | 7, 8 |
+| 2.2 manifest order (a) own, (b) ancestors, (c) descendants; a project being looked up is skipped; entries never merge; personal manifests of the walk | 1, 3 (a); 5, 25 (b); 6 (c, and a before c); 5 (locating `shared` from `desktop` reaches `shared` as `desktop`'s ancestor, and the walk ends); 25 (walking past a project whose folder is known); 7 (no merge); the cycle guard by the plan's library test of a `children` cycle |
+| 2.3 an entry decides; an absent or empty folder is not here; a wrong one is a problem | 7, 8 (including the empty folder and the uninitialised submodule) |
 | 2.4 folders next to the root, `.tcw` excluded | 5, 9, 13 |
 | 2.5 enclosing folders, the folder itself only | 9 |
 | 2.6 never downwards | 10 |
@@ -910,13 +969,13 @@ on `FsProjectRegistry.open(<the active project's root>)`.
 | 4.2 personal files fall back, read as the worktree's, named as the main checkout's | 17 |
 | 4.3 outside the repository from the main checkout; an absolute path as written | 16, 18 (relative and the search); 17 (absolute) |
 | 4.4 one project | 19, 26 |
-| 5.1 a–f, and an overridden entry | 7 (a), 8 (b–e), 1 (f), 8a (overridden) |
+| 5.1 a–f, and an overridden entry | 7, 8 (a, the empty folder), 8 (b–e), 1 (f), 8a (overridden) |
 | 5.2 errors for format, duplicates, candidates | 2, 11, 12, 13 |
 | 5.3 tracked personal manifest | 20 |
 | 6.1 `found`, including `null` | 1, 3, 7, 9, 14, 17 |
 | 6.2 not-on-this-machine messages, with and without an entry; exit 5 | 7, 22 |
 | 6.3 `tcw provision` fetches no project | 22 |
-| 6.4 store rung 1.5 from the manifest, and no answer when the subfolder does not fit | 22 |
+| 6.4 store rung 1.5 from the graph's manifests in a fixed order, and no answer when the subfolder does not fit | 22 |
 
 ## Risks
 
@@ -942,6 +1001,11 @@ on `FsProjectRegistry.open(<the active project's root>)`.
   not verified. The implement stage checks it on a Mac. If it does ask, that
   is raised on TCW-99 before the search is changed, since skipping folders is
   a change to "Locating a project".
+- **A project kept directly in a crowded folder** (the home folder, `/tmp`)
+  has every folder next to it tested by the search (Design 2.4): one listing
+  and two file reads per folder, once per command. The test suite meets the
+  same thing, because pytest makes every test's folder inside one shared
+  folder; the plan keeps test folders apart.
 - **A worktree of a dependency next to it is a second match** (Design 2.7).
   `git worktree add ../lib-feature` is a common layout; the error names the
   personal manifest as the way to choose.
@@ -980,6 +1044,12 @@ Decisions the design left to the spec, each with its reason:
 - **An entry pointing at a missing folder does not fall back to the search**
   (Design 2.3): what a person reads in the first manifest is what TCW uses,
   and the personal manifest exists to correct it.
+- **An empty folder is not on this machine; a folder with contents and no
+  project is an error** (Design 2.3, 5.1): decided by the user on 2026-10-22,
+  so that an uninitialised submodule in CI passes `tcw validate` while a
+  manifest entry pointing at the wrong folder is still caught.
+- **The store rung reads the graph's manifests in a fixed order** (Design
+  6.4), so its answer does not depend on which lookups came first (Goal 4).
 - **Search matches are all collected** before deciding (Design 2.7), so a
   second clone is caught whether it sits beside the project or encloses it.
 - **The lookup is a registry method** (Design 2.12), because its answer
@@ -1011,7 +1081,19 @@ is accepted:
   connected projects in turn, the rule that a project already here is not
   fetched again (`tcw/cli.py:256-275`), and the `--dry-run` listing. It
   clones into the deciding entry's folder with `subfolder` removed (Design
-  1.6), and carries `found` (Design 6.1) into `tcw project list`.
+  1.6), and carries `found` (Design 6.1) into `tcw project list`. The tests
+  this item removes also covered: a project placed by `TCW_PROJECT_<ID>` is
+  never fetched, and a variable naming a folder that is not here falls
+  through to the declared repository; an upstream's own connections are not
+  followed; two entries naming one repository share one working copy; an
+  occupied folder is refused before anything is fetched; a malformed
+  declaration refuses and names the line; a project already here is still
+  read for its own declarations. A clone is not written through
+  `_atomic_write_all`, so `tcw project provision` must call
+  `forget_registries()` (Design 2.13) after cloning, or the rest of that
+  command will not see the new project. An empty folder, or one holding only
+  `.git`, counts as not on this machine (Design 2.3), and is where a clone may
+  go. The plan's step 7 lists every removed test by name.
 - **TCW-116:** converts each 3.x `projects:` entry into a manifest entry: the
   locator becomes `path`; `repository.url` and `repository.ref` become
   `repository: <url>#<ref>`; `repository.path` (the folder within the
@@ -1028,7 +1110,18 @@ is accepted:
   6.1 narrows), S-5 (the personal-file requirement means configuration, as
   the user accepted on 2026-10-22), S-10 (the search never looks inside
   a project); `docs/guide/multi-repo.md` and
-  `skills/configure/references/projects.md` (locators under `projects:`).
+  `skills/configure/references/projects.md` (locators under `projects:`, and
+  `tcw provision` obtaining a project, `:157-163`, `:380`). Also wrong on `v4`
+  once `tcw provision` fetches no project: `README.md:232`, `:263` (the
+  command table) and `:299`; `docs/guide/cli.md:147` (exit 5, "`tcw
+  provision` obtains it"); `docs/guide/work.md:383` and `:414`;
+  `docs/guide/multi-repo.md:123` and its `tcw provision` section (`:223`
+  onwards); `docs/use-cases.md:349` and `:358`;
+  `skills/setup/references/project.md:51-70` and
+  `skills/setup/references/install.md:59`;
+  `skills/configure/references/stores.md:88`;
+  `skills/work/references/commands.md:28`. (`skills/work/SKILL.md:115` is
+  changed in this item, step 11 of the plan.) Line numbers are at `05d42988`.
 
 Questions for TCW-99:
 
