@@ -320,8 +320,10 @@ review, decided by the dispatching session, 2026-10-22: the suite cannot
 pass otherwise, and TCW-114 Design 9.5 settled the same question the same
 way.* The suite checks every `tcw …` command that a Markdown file git knows
 about writes, outside its list of archives (`tests/test_documented_cli_surface.py:38-53`,
-`_check`; and `tests/test_shipped_text.py`, `command_problem`, for
-`skills/`, `agents/` and `tcw/work/`). Once 1.2 removes the four commands,
+`_check`; `tests/test_shipped_text.py`, `command_problem`, for
+`skills/`, `agents/` and `tcw/work/`; and `tests/test_docs_describe_3_0.py`,
+`command_problems`, for the command spans of `README.md`, `docs/guide/*.md`
+and `skills/configure/**`, its `owned_paths`). Once 1.2 removes the four commands,
 every live document that still writes one fails that check: 43 files at
 `d2d02829` (`README.md`, 18 capability descriptions, two taxonomy
 descriptions, four guides, `docs/use-cases.md`, 15 files under `skills/`,
@@ -331,8 +333,8 @@ replacement command** (`tcw init` becomes `tcw project new`, and so on, with
 the same arguments), and adds nothing else. Two rules keep the check strict
 while doing so:
 
-- **One token per placeholder after `-C`.** TCW-114 makes the checks skip
-  `-C` and exactly one following word, so any passage this item writes that
+- **One token per placeholder after `-C`.** TCW-114 makes the three checks
+  skip `-C` and exactly one following word, so any passage this item writes that
   names `tcw -C` writes its target as one token (`tcw -C <folder> project
   provision <id>`); a target written as a phrase (`<its project's root>`)
   would leave the rest of the phrase to be read as a command and fail.
@@ -613,7 +615,14 @@ which makes git fail on a `ref` that names no branch, tag or commit rather
 than read it as a file. *Decided by the dispatching session, 2026-10-22,
 after the plan review;* the store keeps its separate checkout, unlike a
 project (7.9), because a store's `ref` may name a commit, which `git clone
---branch` does not accept.
+--branch` does not accept. The store's clone and checkout, like every git
+call TCW makes, run without git's repository-location variables (7.8, "Git
+answers about the folder named"), so a run from inside a git hook neither
+switches the hook's repository to the store's `ref` nor writes into its
+index. Checked with git 2.54 while fixing the plan re-check: with `GIT_DIR`
+inherited, `git -C <staging> checkout --quiet <ref> --` moved the other
+repository's `HEAD`, and with `GIT_INDEX_FILE` inherited a clone wrote its
+files into that repository's index.
 
 7.3. **Which projects.** A project is fetched only when the registry records
 it as not on this machine (TCW-107 Design 2.12), never because a manifest
@@ -759,6 +768,18 @@ for one project holds no project at another's `subfolder`, that other
 project is refused with `<id>: the clone of <url> made for '<first>' at
 <folder> has no TCW project at <subfolder>`.
 
+Two repository folders are the same when the folders that would hold them
+are the same folder by identity (7.8) and their names are the same text.
+*Decided by the dispatching session, 2026-10-22, after the plan re-check:*
+the repository folders do not exist yet, so nothing on disk can say that
+`../Core` and `../core` will be one folder on a file system that ignores
+letter case (macOS's), and TCW does not imitate a file system's rules for
+names. Such entries are not grouped: the first is cloned, and the second is
+refused as occupied by the check made again before its clone (7.8, "The
+folder checked is the folder written"), before its remote is contacted. That
+is a refusal naming the folder, never a second clone in one folder; the
+promise "none is fetched" holds only for entries this rule groups.
+
 7.8. **How far a clone may be placed** (TCW-23). *Decided by the user on
 2026-10-22: a manifest that is not the active project's own is always
 bounded, on every run.*
@@ -798,6 +819,61 @@ bounded, on every run.*
   would silently move the bound inside a monorepo (`mono/packages`), which
   is the case this rule exists for; refusing is the safer option, and
   looking for `.git` does not depend on the words of git's messages.
+- **An owner in the active project's linked worktree.** When the active
+  project's root lies inside a linked git worktree (TCW-107 Design 4) and
+  the owner's root lies inside that same worktree, the owner's repository
+  folder is the main checkout's root, not the worktree's top folder.
+  *Decided by the dispatching session, 2026-10-22, after the plan re-check:*
+  TCW-107 Design 4.3 resolves the owner's paths that lead outside the
+  repository from the main checkout, so a bound taken from the worktree
+  disagreed with where every such entry resolves and refused all of them,
+  with the hidden-folder message when the worktree sits under
+  `.claude/worktrees/`. With the main checkout's root, `../lib` written
+  beside the main checkout is allowed, as it is when the same project is not
+  in a worktree. A bounded entry of such an owner that stays inside the
+  worktree is refused by the direct-child rule, which is a refusal and never
+  a clone in the wrong place. This rule is applied before the others (the
+  folder this run cloned the owner into, git's answer, the owner's root),
+  because it follows exactly the condition under which TCW-107 Design 4.3
+  resolves from the main checkout: an owner's root inside the active
+  project's worktree, whatever repository holds it.
+- **An owner inside a git submodule.** Its repository folder is the
+  submodule's own top folder, which `git rev-parse --show-toplevel` gives
+  there, not the superproject's. *Decided by the dispatching session,
+  2026-10-22, after the plan re-check, which proposed following
+  `--show-superproject-working-tree` out to the outermost superproject:*
+  the submodule's own top is the narrower and more predictable choice (it is
+  the repository the manifest came in, and asking git one question less is
+  one way less to be wrong), and the submodule's siblings inside the
+  superproject can still be cloned beside it. So a bounded entry of a
+  manifest in `sup/vendor/core` may place a clone at `sup/vendor/x`, inside
+  the superproject's working tree, where git shows it as an untracked
+  folder; it may not place one beside `sup`.
+- **Git answers about the folder named.** Every git call TCW makes, the
+  bound's included, runs with git's repository-location variables removed
+  from its environment: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+  `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
+  `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_IMPLICIT_WORK_TREE`,
+  `GIT_GRAFT_FILE`, `GIT_NO_REPLACE_OBJECTS`, `GIT_REPLACE_REF_BASE`,
+  `GIT_PREFIX` and `GIT_SHALLOW_FILE` (every name `git rev-parse
+  --local-env-vars` prints at git 2.54 except the three configuration
+  variables `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`),
+  and `GIT_CEILING_DIRECTORIES` and `GIT_DISCOVERY_ACROSS_FILESYSTEM`, which
+  change where git looks for a repository and are not on that list. Then
+  `git -C <folder>` answers about `<folder>`, even inside a git hook, where
+  git sets `GIT_DIR` and often `GIT_WORK_TREE` and `GIT_INDEX_FILE`.
+  *Decided by the dispatching session, 2026-10-22, after the plan re-check:*
+  with `GIT_DIR=<w>/.git` set, `git -C <w>/packages/p rev-parse
+  --show-toplevel` prints `<w>/packages/p`, not `<w>` (checked with git
+  2.54), which moves the bound inside the monorepo; with
+  `GIT_CEILING_DIRECTORIES` set at or below `<w>` git finds no repository at
+  all. Removing the variables from every call, not only the bound's, is the
+  simpler rule and closes worse cases found while checking this one (7.2:
+  the store's checkout moved the hook repository's `HEAD`, and a clone wrote
+  into its index); no TCW command means a git call to act on any repository
+  but the folder it names. The configuration variables are kept, because a
+  person's `git -c` settings (`safe.directory`, `core.sshCommand`) are
+  theirs, and `_no_prompt_env` already reads them on purpose.
 - **What a bounded entry may name.** Its repository folder (7.6), resolved,
   must be a direct child of the bound, resolved, whose name does not begin
   with `.`. So `../lib`, and `../mono` with `subfolder: apps/x`, are
@@ -828,7 +904,15 @@ bounded, on every run.*
   itself a link, is judged by the folder it really leads to.
 - **Folders are compared by identity**, never as text: two paths name the
   same folder when they are the same file on disk (`os.stat`'s device and
-  inode numbers, as `os.path.samefile` compares them). "Directly inside the
+  inode numbers, as `os.path.samefile` compares them, and as TCW-107's
+  `_below` already compares folders). This holds for every comparison of
+  two folders in 7.4 to 7.10, not only the bound's: a kept answer against a
+  new one (7.4), the grouping (7.7, which compares the holding folders), the
+  "now leads to" check below, and the checks before the move (7.10). Where
+  a folder does not exist yet, the comparison is of the resolved paths'
+  whole components as text, and every such comparison fails by refusing,
+  never by letting a clone through. *Decided by the dispatching session,
+  2026-10-22, after the plan re-check.* "Directly inside the
   bound" means the repository folder's parent is the same folder as the
   bound; "at or above the home folder" means the bound is the same folder as
   the home folder or as one of the folders above it. *Decided by the
@@ -951,14 +1035,21 @@ project, and every other command there already follows them.
   `version_problem`'s message. These checks are new code: the project branch
   of `FsStoreProvisioner` that 3.x provisioning used checks only that the
   file exists (`_is_store_layout`, `tcw/store/fs.py:3150-3153`);
-- with a `subfolder`, that folder in the staging copy, resolved, must lie
-  inside the staging copy (compared by identity, 7.8): a committed symbolic
-  link at the `subfolder` leading out of the clone is refused with `<url>
-  has a link at '<subfolder>' that leads outside the clone`, so the check
-  above never reads a project somewhere else on this machine. *Decided by
-  the dispatching session, 2026-10-22, after the plan review;* it applies to
-  trusted and bounded entries alike, since the link comes from the remote,
-  not from the person's manifest;
+- every path the checks of this rule read in the staging copy, resolved,
+  must lie inside the staging copy (compared by identity, 7.8): the
+  `subfolder` when there is one, and, at the `subfolder` (or the top) and at
+  the top, the `.tcw` folder and its `tcw-config.yaml`. A committed symbolic
+  link at any of them leading out of the clone is refused with `<url> has a
+  link at '<path>' that leads outside the clone`, `<path>` being the one
+  written in the clone (`apps/server`, `apps/server/.tcw`, `.tcw/tcw-config.yaml`),
+  so these checks never read a file somewhere else on this machine. A link
+  that stays inside the clone is followed. *Decided by the dispatching
+  session, 2026-10-22, after the plan review;* it applies to trusted and
+  bounded entries alike, since the link comes from the remote, not from the
+  person's manifest. *Extended to the `.tcw` folder and the configuration
+  file by the dispatching session, 2026-10-22, after the plan re-check,*
+  which showed that a committed `.tcw` link led the ID and version checks to
+  another project's file while the `subfolder` itself was a real folder;
 - with a `subfolder`, when the staging copy's top folder holds a
   `.tcw/tcw-config.yaml` declaring an ID that this run has kept an answer
   for at another folder (7.4), and that is not a project this clone is made
@@ -1603,7 +1694,50 @@ gets the same results as CI.
     commits `apps/server` as a link to `../../other`, where `<tmp>/other`
     holds a project declaring `id: server`. `server` is refused with 7.9's
     `leads outside the clone`, nothing is made at `<tmp>/mono`, and the run
-    exits 1.
+    exits 1. The same with `apps/server` a real folder whose `.tcw` is a
+    committed link to `../../../other/.tcw`: refused, the message naming
+    `apps/server/.tcw`, and `<tmp>/other`'s configuration never read (a
+    library test whose reader fails if called with that file).
+    (h) **Git's location variables are ignored** (7.8, "Git answers about
+    the folder named"). `app` at `<tmp>/app`, in no git repository, has the
+    parent `ws` at `<tmp>/mono/packages/ws`, inside the git repository
+    `<tmp>/mono`, placed by `app`'s manifest (`ws: ../mono/packages/ws`);
+    `ws`'s committed manifest places `wp` at `../../../wp` (`<tmp>/wp`) and
+    `wq` at `../wq` (`<tmp>/mono/packages/wq`), each with a repository. The
+    run is made with `GIT_DIR=<tmp>/mono/.git` and
+    `GIT_INDEX_FILE=<tmp>/mono/.git/index` set, as git sets them for a hook:
+    `wp` is fetched into `<tmp>/wp`, `wq` is refused with 7.8's first message
+    naming `<tmp>`, the run exits 1, and `<tmp>/mono/.git/index` and
+    `<tmp>/mono/.git/HEAD` are byte for byte as before. Without the
+    variables, the same outcome. Library tests: `repository_top` of
+    `<tmp>/mono/packages/ws` with `GIT_DIR` set alone, and with
+    `GIT_CEILING_DIRECTORIES=<tmp>/mono` set, is `<tmp>/mono`; the store's
+    clone and checkout of a `ref`, run with `GIT_DIR` and `GIT_INDEX_FILE`
+    naming another repository, leave that repository's `HEAD` and index as
+    they were; and the list of removed names holds every name `git rev-parse
+    --local-env-vars` prints on the machine running the test, less the three
+    configuration variables, so a newer git that adds one turns it red.
+    (i) **A submodule's own top** (7.8). In a superproject `<tmp>/sup` with a
+    submodule at `vendor/ws` (added with `git -c protocol.file.allow=always
+    submodule add`), a library test: `repository_top(<tmp>/sup/vendor/ws)`
+    is `<tmp>/sup/vendor/ws`; an entry of `ws`'s manifest at `../x` is
+    allowed (`<tmp>/sup/vendor/x`), and one at `../../x` is refused with
+    7.8's first message naming `<tmp>/sup/vendor`.
+    (j) **An owner in the active project's linked worktree** (7.8). A git
+    repository `<tmp>/mono` holds the projects `packages/app` and
+    `packages/ws`, `ws` a parent of `app`; a linked worktree of it is made at
+    `<tmp>/mono/.claude/worktrees/w`, and the command runs in
+    `<tmp>/mono/.claude/worktrees/w/packages/app`, where the search finds
+    `ws` next to `app`. `ws`'s committed manifest places `wp` at
+    `../../../wp`, which TCW-107 Design 4.3 resolves from the main checkout
+    to `<tmp>/wp`: `wp` is fetched into `<tmp>/wp`, its bound being `<tmp>`,
+    the folder holding the main checkout. (With the worktree's top as the
+    owner's repository folder, the bound would be
+    `<tmp>/mono/.claude/worktrees` and `wp` would be refused.)
+    (e), continued: on such a file system, `core`'s manifest placing parents
+    `aa` at `../Aa` and `bb` at `../aa`, with different remotes, fetches `aa`
+    and refuses `bb` as occupied before `bb`'s remote is contacted (7.7's
+    rule for names that differ only in letter case).
 37. **Staging copies and addresses that look like options** (Design 7.9). A
     folder `<tmp>/.tcw-staging-0123abcd/core` holding a copy of `core`, as a
     killed run leaves it, is never taken for a project: in AC 19,
@@ -1630,8 +1764,9 @@ gets the same results as CI.
     `core`, the same command's message contains `tcw project provision
     --component taxonomy` and no `-C`.
 39. The full suite, run as CI runs it (bare `pytest`), passes on `v4`.
-40. **The documents** (Design 1.6). `tests/test_documented_cli_surface.py`
-    and `tests/test_shipped_text.py` pass with the four commands removed; no
+40. **The documents** (Design 1.6). `tests/test_documented_cli_surface.py`,
+    `tests/test_shipped_text.py` and `tests/test_docs_describe_3_0.py` pass
+    with the four commands removed; no
     Markdown file outside that test's archives writes `tcw init`,
     `tcw projects`, `tcw config show` or `tcw provision` as a command; every
     passage this item writes that names `tcw -C` gives its target as one
@@ -1671,7 +1806,7 @@ rule, or `n/a` with the line that makes it so.
 | 6.4 JSON | 17 |
 | 6.5 no project argument | 18 |
 | 7.1 forms, scoping, `<id>` with `--component`, unknown `<id>` | 21, 28 |
-| 7.2 stores as today; another project's store names `-C`; a store's failure does not stop the projects pass; `--` around the store's clone | 33, 21 (`--component`), 38, 26 (a failed store) |
+| 7.2 stores as today; another project's store names `-C`; a store's failure does not stop the projects pass; `--` around the store's clone; no git location variable reaches its clone or checkout | 33, 21 (`--component`), 38, 26 (a failed store), 36 (h) (library tests) |
 | 7.3 (a) the family round by round; never a sibling | 19, 20 |
 | 7.3 (b) `<id>` and its load order, upward only | 21 |
 | 7.3 rounds: checks for the whole round before contact, one reading per round | 20 (`kk` in the next round), 26, 30 |
@@ -1679,13 +1814,13 @@ rule, or `n/a` with the line that makes it so.
 | 7.4 answers kept for the whole run; a clone that would give a kept project a second folder | 35 |
 | 7.5 the deciding entry from any manifest; no repository | 20 (an ancestor's manifest), 22, 28 |
 | 7.6 the repository folder; empty; `.git`-only refused; occupied refused before contact; a trusted entry's parent folders made, and removed on a refusal | 24, 23 (with `subfolder`), 29 (worktree), 27 (trusted, parents made), 25 (parents removed) |
-| 7.7 one clone per folder; conflicts; a clone missing a subfolder | 23 |
+| 7.7 one clone per folder; conflicts; a clone missing a subfolder; names differing only in letter case not grouped | 23, 36 (e) (macOS) |
 | 7.8 trusted and bounded manifests; trust by the owner's folder; on every run; direct child, not hidden; absolute and `~` paths refused as written | 27 |
-| 7.8 the owner's repository folder; git cannot say | 27 (`ws` in no repository), 36 (f) |
+| 7.8 the owner's repository folder; git cannot say; an owner in the active project's linked worktree; a submodule's own top; git's location variables removed | 27 (`ws` in no repository), 36 (f), 36 (j), 36 (i), 36 (h) |
 | 7.8 resolved folders, completely; compared by identity; the home folder and hidden folders below it | 36 (a)-(e) |
 | 7.8 the folder checked is the folder written: checked again before each clone and before the move | 36 (d) |
 | 7.8 the way out names a manifest read first | 27 |
-| 7.9 the clone: `-` refused, `--`, `--branch`, printed first, no prompt, staging never matched, five names taken, checked, a `subfolder` link, a second folder for a kept project, cleanup warning, nothing left | 19, 25, 35, 36 (g), 37 |
+| 7.9 the clone: `-` refused, `--`, `--branch`, printed first, no prompt, staging never matched, five names taken, checked, a link at the `subfolder`, `.tcw` or configuration file, a second folder for a kept project, cleanup warning, nothing left | 19, 25, 35, 36 (g), 37 |
 | 7.10 absent, empty; resolved and checked again without following a link; a failed move | 19, 24, 36 (d) and 37 (library tests) |
 | 7.11 one reading per round; a fetched project's problems stop further rounds | 19 (found afterwards), 20 (in turn), 32, 35 |
 | 7.12 dry run, the bound included | 30 |
@@ -1935,6 +2070,14 @@ that this item works around and does not settle.
   bound (Design 7.8 asks git only where a `.git` entry exists, and refuses
   when git cannot answer); whether TCW-107's worktree rules should tell the
   two apart is TCW-107's question.
+- **TCW-107 (after the plan re-check):** TCW-107's own git reads
+  (`_git_lines`, which `worktree_anchors` uses, and `git_root`) inherit git's
+  repository-location variables, so inside a git hook, with `GIT_DIR` set to
+  the hook's repository, a project in no repository can be read as a linked
+  worktree of that repository. This item removes those variables from every
+  git call TCW makes (Design 7.8, "Git answers about the folder named"),
+  TCW-107's reads included, so TCW-107 has nothing to change; it should not
+  add a git call of its own that bypasses `_git` or `_git_lines`.
 
 ### Corrected after the plan review
 
@@ -1961,6 +2104,31 @@ written (7.8's "The folder checked is the folder written", "Resolved" and
 bound, a git failure, `git clone --branch`, a `subfolder` link, the
 parent folders of a trusted entry, staging collisions and cleanup, and a
 store's failure; each is marked where it is made.
+
+### Corrected after the plan re-check
+
+The re-check of the revised spec and plan (2026-10-22) found these; each is
+corrected above, *decided by the dispatching session, 2026-10-22*:
+
+1. The bound trusted git's environment: inside a git hook, `GIT_DIR` made
+   `--show-toplevel` answer for the folder asked, moving the bound inside a
+   monorepo. Every git call TCW makes now runs without git's
+   repository-location variables (7.8, "Git answers about the folder
+   named"; 7.2; AC 36 (h)).
+2. An owner inside a git submodule: the submodule's own top stays the
+   owner's repository folder, recorded as a decision (7.8; AC 36 (i)).
+3. An owner in the active project's linked worktree had a bound that
+   disagreed with where its entries resolve; it now uses the main checkout's
+   root (7.8; AC 36 (j)).
+4. Comparisons outside the bound were by text; every comparison of two
+   folders in 7.4 to 7.10 is now by identity, and two repository folders
+   whose names differ only in letter case are not grouped, which ends in a
+   refusal (7.7, 7.8).
+5. 7.9's inside-the-clone check covered only the `subfolder`; it now covers
+   the `.tcw` folders and configuration files the checks read (7.9; AC 36
+   (g)).
+6. Design 1.6 and AC 40 named two of the three document checks; the third,
+   `tests/test_docs_describe_3_0.py`, is named.
 
 ### Handoffs to later items
 
@@ -2005,7 +2173,10 @@ These are recorded on each ticket when this spec is accepted.
   (Design 7.9). Every `tcw -C` command TCW-117 writes gives its target as
   one token (Design 1.6). The bound's explanation also says that a hidden
   folder below the home folder is refused like the home folder, and that a
-  manifest whose owner git cannot place in a repository is refused (7.8).
+  manifest whose owner git cannot place in a repository is refused, that a
+  manifest inside a git submodule may place a clone beside the submodule,
+  inside the superproject, and that in a linked worktree the bound is beside
+  the main checkout (7.8).
 - **TCW-118 (release):** the release notes name the `tcw project` group and
   the four removed commands, and say that provisioning places a clone from a
   manifest other than the active project's own only directly beside that

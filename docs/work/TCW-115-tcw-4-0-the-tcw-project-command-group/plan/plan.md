@@ -4,10 +4,15 @@ All work is on the `v4` branch, in the worktree `.claude/worktrees/v4`, with
 its own virtual environment (`.venv/bin/pytest`, `.venv/bin/tcw`).
 
 **Where the references point.** File and line references are to commit
-`62e41ec5` on `v4`. Its committed `tcw/`, `tests/`, `evals/` and `scripts/`
-are identical to `d2d02829`, the commit the spec cites, so the spec's line
-numbers and this plan's agree. At that commit only TCW-106's code has
-landed. This item lands tenth and last of the code items, after TCW-106,
+`28224a47` on `v4`, where TCW-106 and TCW-107's Steps 1 to 7 have landed
+(TCW-107's Step 7 removed 3.x project fetching from `tcw/cli.py`). They were
+re-cited there after the plan re-check, *decided by the dispatching session,
+2026-10-22: the earlier citations, at `62e41ec5`, had shifted with TCW-107's
+code*. The spec still cites `d2d02829`, whose `tcw/`, `tests/`, `evals/` and
+`scripts/` are identical to `62e41ec5`; where a step says "at `62e41ec5`",
+it gives a count or a fact as it was there, for comparison. TCW-107's Steps
+8 to 13 and every later item still change these files. This item lands
+tenth and last of the code items, after TCW-106,
 TCW-107, TCW-110, TCW-108, TCW-111, TCW-109, TCW-112, TCW-114 and TCW-113
 (the spec's Notes and the epic's order), so almost every piece of code it
 changes will look different by the time it starts. Where a step uses code an
@@ -52,7 +57,8 @@ These are choices the spec leaves to the plan. Each is the simpler or safer
 option of those the TCW-99 design and the sibling specs allow. Choices 2, 3, 5, 7-10, 12, 18 and 20-22 were revised, and 23-27 added,
 after the plan review of 2026-10-22 (its finding is named in each); each of
 those was decided by the dispatching session, 2026-10-22, for the reason it
-gives.
+gives. Choices 7-9, 20, 21, 23-25 were revised, and 28 added, after the plan
+re-check of the same day, decided the same way.
 
 1. **Where the code goes.** The group is registered from a new module,
    `tcw/project_cli.py`, which owns `add_subparser` for `tcw project` and its
@@ -65,13 +71,13 @@ gives.
    `tests/config/test_config_edges.py:9`,
    `tests/config/test_personal_merge.py:193`) and the web app imports
    `connected` (`tcw/serve/work.py:146`, `:549`); TCW-114's guard on reads of
-   the current folder lists `tcw/projects_cli.py:56` and
+   the current folder lists `tcw/projects_cli.py:59` and
    `tcw/config_cli.py:254` (TCW-114 plan, Step 5's list of ten reads, kept
    by its Step 21). Moving the code would change all of those for no gain.
    The project rounds of provisioning go in a new `tcw/provision.py`; the
    clone, staging and move go in `tcw/store/fs.py`, beside
-   `FsStoreProvisioner` (`:3389`), reusing `_git` (`:147`),
-   `_no_prompt_env` (`:164`) and `_git_reason` (`:3094`).
+   `FsStoreProvisioner` (`:3362`), reusing `_git` (`:149`),
+   `_no_prompt_env` (`:166`) and `_git_reason` (`:3113`).
 2. **The old commands stay registered until the tests have moved.** Step 2
    adds the group beside the old commands, Step 3 moves every test and
    document to the new names mechanically (with an inventory, an outcome
@@ -130,13 +136,22 @@ gives.
    failure (7.5); (2) a URL or branch beginning with `-` (7.9); (3) the bound
    (7.8, choice 8); (4) the repository folder's state, `.git`-only then
    occupied (7.6); then, across the round, (5) grouping by repository folder
-   (7.7). *Reason:* each check needs only what the earlier ones passed, and
+   (7.7), the key of a group being the holding folder's identity (device and
+   inode of `realpath(W.parent)`, which exists for every bounded entry that
+   passed check (3); for a trusted entry whose parent folders are still to
+   be made, the resolved text of that parent) and the folder's name as text,
+   so `../Core` and `../core` are two groups (spec 7.7, after the plan
+   re-check). *Reason:* each check needs only what the earlier ones passed, and
    the cheapest come first; the first that fails names the project's
    refusal. Checks (2) to (4) are made **again for each project immediately
    before its clone writes anything** (spec 7.3, 7.8 "The folder checked is
    the folder written"), on folders resolved again, and the repository
-   folder must resolve to the same folder as at the round's check, or the
-   project is refused with 7.8's "now leads to" message.
+   folder must resolve to the same folder as at the round's check
+   (`same_folder`, choice 8), or the project is refused with 7.8's "now
+   leads to" message. Because check (4) is made again there, the second of
+   two entries whose names differ only in letter case, on a file system that
+   ignores it, finds the first one's clone and is refused as occupied before
+   its remote is contacted.
 8. **The bound, exactly** (spec 7.8, as corrected after the plan review).
    All of it is one function, `tcw/provision.py`
    `_bound_problem(placement, active_root, cloned, home) -> str | None`,
@@ -146,10 +161,24 @@ gives.
    - **As written:** a bounded entry's `path` that is absolute or begins
      with `~` is refused with 7.8's first message, before anything is
      resolved.
-   - **The owner's repository folder** `R`: `cloned[owner_id]` when this run
-     fetched the owner (recorded resolved); otherwise `repository_top(owner)`
-     (choice 24); otherwise the owner's root. `R` is resolved. **The bound**
-     is `B = Path(os.path.realpath(R)).parent`.
+   - **The owner's repository folder** `R`, the first that applies:
+     1. **The active project's linked worktree** (spec 7.8, after the plan
+        re-check): when `worktree_anchors(active_root)`
+        (`tcw/store/project.py:81`, the same call, and so the same cached
+        answer, that the registry makes for the active root at `:371`) is
+        `(top, main)` and `_below(owner, top)` is not `None`, `R = main`,
+        the main checkout's root, because TCW-107 Design 4.3 resolves the
+        owner's paths leading outside the repository from there
+        (`_entry_answer` through `_locator_path`, `tcw/store/project.py:1683`, `:1019-1042`).
+     2. `cloned[owner_id]` when this run fetched the owner (recorded
+        resolved).
+     3. `repository_top(owner)` (choice 24); for an owner inside a git
+        submodule this is the submodule's own top folder, and no
+        `--show-superproject-working-tree` call is made (spec 7.8, decided
+        after the plan re-check).
+     4. The owner's root.
+
+     `R` is resolved. **The bound** is `B = Path(os.path.realpath(R)).parent`.
    - **The target** `T`: with `W = placement.repository_path`, `W.name`
      must be a plain name (not `.` or `..`), and
      `P = realpath(W.parent, strict=True)` must succeed; an `OSError` (a
@@ -163,22 +192,33 @@ gives.
      or `B` is the filesystem root, or `B` lies below `H` (some ancestor of
      `B` is the same folder as `H`) and any folder from just below `H` down
      to `B`, `B` included, has a name beginning with `.`.
-   - `same_folder(a, b)` (new, `tcw/provision.py`) is `os.path.samefile`
-     when both exist, and comparison of `realpath` texts, by whole
-     components, when either does not; `Path.home()` is read through the
-     `home` argument so tests set it.
+   - `same_folder(a, b)` (new, `tcw/provision.py`) is
+     `_below(Path(os.path.realpath(a)), Path(os.path.realpath(b))) ==
+     Path(".")`, built on TCW-107's `_below` (`tcw/store/project.py:122-148`),
+     which compares whole components as text first and then each folder by
+     device and inode, as `_canonical` (`:1076`) does; "below `H`" is
+     `_below(B, H) is not None`. No second identity helper is written
+     (review re-check C2). So two folders are the same by identity when both
+     exist, and by whole components of their resolved text when either does
+     not. Every comparison of two folders in `tcw/provision.py` and
+     `fetch_project` uses `same_folder` or `_below`, never `==` on paths:
+     the kept answers of choice 18 and 19, the "now leads to" check of
+     choice 7, the checks of choice 9's steps 1, 5 and 6, and 7.11's "found
+     at its entry's folder". `Path.home()` is read through the `home`
+     argument so tests set it.
    *Reason:* this is spec 7.8 word for word; identity closes the
    letter-case and Unicode bypass on macOS (review S2), the strict
    resolution closes the review's reproduced escape at the round's check
-   (M1), and the definitions of `R` and `B` are the review's S1.
+   (M1), the definitions of `R` and `B` are the review's S1, and the
+   worktree and submodule rules are the re-check's C1 and M2.
 9. **The git calls, staging, and the move** (spec 7.6, 7.9, 7.10). For each
    project, after choice 7's checks pass again (immediately before it
    writes), in `tcw/store/fs.py` `fetch_project`:
    1. For a trusted entry whose `T.parent` does not exist: each missing
       folder from the deepest existing ancestor down is made with
       `os.mkdir` (never `makedirs`, never `exist_ok`), recorded in `made`,
-      and `realpath(T.parent, strict=True)` is then required to be `T.parent`
-      (a link appearing would change it).
+      and `realpath(T.parent, strict=True)` is then required to be
+      `same_folder` as `T.parent` (a link appearing would change it).
    2. `parent_fd = os.open(T.parent, os.O_RDONLY | os.O_DIRECTORY)`; its
       `os.fstat` is recorded, and for a bounded entry must be the same file
       as `B` (device and inode).
@@ -187,14 +227,18 @@ gives.
       link included, and never follows one; on `FileExistsError` a new name,
       up to five in all, then 7.9's "five names" refusal.
    4. `git clone --quiet [--branch <branch>] -- <url> <T.parent>/<staging>/<T.name>`
-      through `_git` with `_no_prompt_env`; no separate `checkout`.
-   5. The clone's checks (7.9): the `subfolder`, resolved, is inside the
-      staging clone (`same_folder` on its ancestors); the configuration at
+      through `_git` with `_no_prompt_env`, so without git's location
+      variables (choice 28); no separate `checkout`.
+   5. The clone's checks (7.9): each path they read, resolved, is inside the
+      staging clone (`_below(realpath(x), staging_clone) is not None`): the
+      `subfolder`, and at the `subfolder` (or the top) and at the top the
+      `.tcw` folder and `.tcw/tcw-config.yaml`, each checked before it is
+      read (spec 7.9, extended after the plan re-check); the configuration at
       `subfolder` or the top (`version_problem`, `legacy_message`, the
       declared `id`); with a `subfolder`, the top folder's declared ID
       against the run's kept answers (choice 18).
    6. Just before the move: the entry's path is resolved again (as in
-      choice 8) and must give `T`; `os.stat(T.parent)` must be the same file
+      choice 8) and must give a folder `same_folder` as `T`; `os.stat(T.parent)` must be the same file
       as `os.fstat(parent_fd)`; `os.lstat(T)` must raise `FileNotFoundError`
       or show a real folder (not a link) with no entries; otherwise refused
       as occupied (7.10).
@@ -220,7 +264,7 @@ gives.
    this project supports (`pyproject.toml:10`), has `dir_fd` for `mkdir` and
    `rename` on Linux and macOS.
 10. **The store clone gets `--` too** (spec 7.2). `_obtain`
-    (`tcw/store/fs.py:3477-3497`) runs `git clone --quiet <url> <staging>`
+    (`tcw/store/fs.py:3455-3475`) runs `git clone --quiet <url> <staging>`
     and `git -C <staging> checkout --quiet <ref>`; this item adds `--` before
     the URL and after the `ref` (`checkout --quiet <ref> --`), since the
     reason is the same; the store keeps its separate checkout, because a
@@ -230,33 +274,33 @@ gives.
     which TCW-107's handoff (2) may tighten); recorded as a possible
     follow-up, not done.
 11. **Graph validity is checked first** for the no-argument and `<id>` forms
-    (`require_valid`, `tcw/store/project.py:453`), before the stores pass.
+    (`require_valid`, `tcw/store/project.py:628`), before the stores pass.
     The `--component` form keeps exactly today's checks, so the store tests
     of AC 33 run unchanged. The stores pass's early return when no store
-    declares a repository (`tcw/cli.py:160-163`) no longer ends the command:
+    declares a repository (`tcw/cli.py:156-159`) no longer ends the command:
     the projects pass follows it.
 12. **Design 7.2's message.** `StoreNotProvisioned`'s text
-    (`tcw/store/fs.py:3314-3318`) names `tcw -C <project root> project
+    (`tcw/store/fs.py:3333-3337`) names `tcw -C <project root> project
     provision --component <axis>` when the store's project root resolves to
     a folder other than `find_project_root()`'s answer for the current
     folder, and `tcw project provision --component <axis>` otherwise.
-    `resolve_store` (`:3182`) already has the store's project root.
+    `resolve_store` (`:3201`) already has the store's project root.
     *Kept after the review's note:* `find_project_root()` is how every
     command finds the active project, and after `-C` it reads the folder
     `-C` entered, so it is the active root; passing the root into
     `resolve_store` would change every one of its callers for no difference
     in behavior.
 13. **`tcw project path`** calls `require_valid()` first (as `list` does,
-    `tcw/projects_cli.py:28`), prints the folder as `print`-ed text of the
+    `tcw/projects_cli.py:30`), prints the folder as `print`-ed text of the
     resolved absolute path (the same form `list --json`'s `path` holds), and
     turns `validate_project_id`'s `ValueError` into `UsageError` (exit 2).
     *Reason:* without the graph check a sibling found by the search could be
     answered while two folders claim it.
 14. **`tcw project info` does not set `own_config`**, so the configuration
-    check every command makes first (`tcw/cli.py:655-661`) stops it on a
+    check every command makes first (`tcw/cli.py:473-479`) stops it on a
     problem in the active project's own files (Design 6.2). `config`
     keeps `own_config=True` as `config show` has it (`tcw/config_cli.py:272-287`),
-    and `new` as `init` has it (`tcw/cli.py:557-568`).
+    and `new` as `init` has it (`tcw/cli.py:375-386`).
 15. **`info`'s settings when `work.jira` is withheld.** When
     `Config.withheld["work.jira"]` is set (TCW-109 plan, Step 7b), both
     `work.jira.site` and `work.jira.project` read `undecided: <message>` or
@@ -291,22 +335,45 @@ gives.
     cannot vanish in a run that only adds folders, but a race could), with
     `placement(id)` from the active root.
 20. **The static guards.** `tests/test_static_guards.py`'s `EXEMPT`
-    (`:33-42`) gains the new functions whose messages name git or `.git`
-    (`("provision.py", …)` for 7.6's `.git` message and the round runner,
-    `("store/fs.py", "fetch_project")`, and `repository_top` for 7.8's third
-    message). TCW-107 Step 7 already removes `("cli.py",
-    "_provision_projects")` from it (TCW-107 plan:550); Step 0 confirms, and
-    removes it here only if it is still there (its existence test, `:108`,
-    fails otherwise). `tests/test_subprocess_stdin.py` passes
-    because every new git call goes through `_git`.
+    (`:33-44`) gains every new function that holds, in a string a person can
+    see, a word `GIT_WORDS` (`:27-29`) matches: `git`, `.git`, `branch`,
+    `worktree` and the rest. Each entry names the message it permits, and
+    the list expected is:
+    - `("provision.py", "_folder_problem")`: 7.6's `holds only .git (a clone
+      or a submodule update that stopped); finish or remove it with git`;
+    - `("provision.py", "_group_round")`: 7.7's conflict message, when it
+      names a branch;
+    - `("provision.py", "_bound_problem")`: 7.8's third message, `git could
+      not say which repository holds '<owner>'`, which `_bound_problem`
+      builds from `RepositoryUnknown`'s reason;
+    - `("provision.py", "repository_top")`: the reasons it gives
+      `RepositoryUnknown` (`git is not installed`, git's own words);
+    - `("store/fs.py", "fetch_project")`: git's failure text, given through
+      `_git_reason`, and `<url> has a link at …`.
+    A function named here that ends up holding no such word is left out
+    rather than exempted, and any other function the guard reports is added
+    with its message named, or its message reworded; Steps 12 to 14 run the
+    guard, so a wrong list fails there, not later. TCW-107 Step 7 removed
+    `("cli.py", "_provision_projects")` from `EXEMPT` (absent at
+    `28224a47`), so nothing is removed here. `tests/test_subprocess_stdin.py`
+    passes because every new git call goes through `_git`.
 21. **The help-standard and contract lists** change in the step that
     changes the leaves, so each step ends green:
     - `tests/test_cli_help_standard.py`: `SURFACE` (`:22`) and its count
-      (`assert len(SURFACE) == 43`, `:70`; the review cited `:84`) go to 47 in
-      Step 2 (the four new leaves), 43 in Step 4 (the four old ones out, into
-      `REMOVED`, `:35`), 44 in Step 8 (`project path`) and 45 in Step 9
-      (`project info`); the choices check names `project provision` from
-      Step 4.
+      (`assert len(SURFACE) == …`, `:70`) change by a difference, never to a
+      number written here, because the items that land before this one
+      change it too: TCW-112 removes the four `extends` leaves (TCW-112
+      plan:897-898) and TCW-114 adds `work move`, `taxonomy rename`,
+      `taxonomy move`, `capabilities rename` and `capabilities move`
+      (TCW-114 spec:680-682), so the count is no longer 43 when this item
+      starts. *Decided by the dispatching session, 2026-10-22, after the plan
+      re-check.* Step 0 records the count it finds as `N` (43 at `28224a47`;
+      `N` = 43 − 4 + 5 = 44 if both land as planned, which Step 0 confirms
+      by reading the assertion, not by this sum). Then: `N + 4` in Step 2
+      (the four new leaves), `N` in Step 4 (the four old ones out, into
+      `REMOVED`, `:35`), `N + 1` in Step 8 (`project path`) and `N + 2` in
+      Step 9 (`project info`); the choices check names `project provision`
+      from Step 4.
     - `tests/test_cli_contract.py`: `ROWS` (`:48-54`), which
       `test_every_leaf_command_has_a_row` (`:214`) requires to name every
       leaf, gains `"project new": (["project", "new", "--id", "fx"], 0)`,
@@ -317,7 +384,11 @@ gives.
       leaves out `init`; Step 4 removes the four old rows and `"init"` from
       that set; Step 8 adds `"project path": (["project", "path"], 1)` and
       Step 9 `"project info": (["project", "info"], 1)`, each exiting 1
-      outside a project.
+      outside a project. `ROWS` has no count of its own: `:214` compares its
+      keys with the leaves, so whatever TCW-112 and TCW-114 left in it, the
+      same four in, four out and two in keep it equal to them. Step 0
+      records the number of rows it finds (`R`) for the implement round,
+      which reports `R + 4`, `R`, `R + 1` and `R + 2` at the four steps.
 22. **TCW-114's note on `check_owned`.** If TCW-114's refusal for a project
     not on this machine (`tcw/ownership.py`, `check_owned`) does not already
     name `tcw project provision <id>`, Step 11 adds it, with a test. If any
@@ -332,10 +403,11 @@ gives.
 23. **An error line's prefix follows the command typed** (review M2). The
     dispatcher prints `<command>: ` from the parser path that was typed
     (`parser.set_defaults(_command=…)`, `tcw/cli_suggest.py:195`; printed at
-    `tcw/cli.py:672`, `:676`, `:683`, `:689`). Five lines of `run_provision`
-    (`tcw/cli.py:111`, `:134`, `:150`, `:158`, `:186`) and one of `_show`
+    `tcw/cli.py:491`, `:495`, `:501`, `:508`). Four lines of `run_provision`
+    (`tcw/cli.py:111`, `:134`, `:150`, `:182`; five at `62e41ec5`, before
+    TCW-107 Step 7) and one of `_show`
     (`tcw/config_cli.py:267`) instead write `tcw provision:` and
-    `tcw config show:` as fixed text. Step 2 makes those six take the typed
+    `tcw config show:` as fixed text. Step 2 makes those five take the typed
     command (`args._command`, passed down as `prefix`), so the old names
     print exactly what they print today and the new names print
     `tcw project provision:` and `tcw project config:`. Then an assertion
@@ -347,17 +419,65 @@ gives.
     `repository_top(root) -> Path | None`, in `tcw/provision.py`. When
     neither `root` nor any folder above it holds a `.git` entry
     (`os.path.lexists`), `None` (the owner's root is used). Otherwise
-    `git -C <root> rev-parse --show-toplevel` through `_git`; its answer,
+    `git -C <root> rev-parse --show-toplevel` through `_git`, and so without
+    git's repository-location variables (choice 28); its answer,
     resolved; any failure (a non-zero exit, `FileNotFoundError` for a
     missing `git`) raises `RepositoryUnknown(reason)`, which
     `_bound_problem` turns into 7.8's third message for every bounded entry
-    of that manifest. `git_root` (`tcw/store/fs.py:240-255`) is not used:
-    it returns `None` for every failure.
+    of that manifest. `git_root` (`tcw/store/fs.py:248-263`) is not used:
+    it returns `None` for every failure. Inside a git submodule the answer
+    is the submodule's own top folder, and `repository_top` asks nothing
+    more (spec 7.8, *decided by the dispatching session, 2026-10-22, after
+    the plan re-check: the narrower and more predictable bound, and the
+    submodule's siblings can still be cloned beside it*). The linked-worktree
+    rule of choice 8 is applied by `_bound_problem` before `repository_top`
+    is called, so `repository_top` never needs to tell a worktree from a
+    main checkout.
+28. **Git's location variables never reach a git call** (spec 7.8, "Git
+    answers about the folder named", and 7.2; re-check M1). A new
+    `git_environment(base=None) -> dict[str, str]` in `tcw/store/project.py`
+    (beside `_git_lines`, `:159-171`, since `tcw/store/fs.py` imports that
+    module and not the reverse) returns `base` (default `os.environ`) less
+    every name in the new tuple `GIT_LOCATION_VARIABLES`: `GIT_DIR`,
+    `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+    `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`,
+    `GIT_IMPLICIT_WORK_TREE`, `GIT_GRAFT_FILE`, `GIT_NO_REPLACE_OBJECTS`,
+    `GIT_REPLACE_REF_BASE`, `GIT_PREFIX`, `GIT_SHALLOW_FILE`,
+    `GIT_CEILING_DIRECTORIES` and `GIT_DISCOVERY_ACROSS_FILESYSTEM`. It is
+    applied in three places, which between them are every git call in
+    `tcw/`:
+    - `_git` (`tcw/store/fs.py:149-163`): `env=git_environment(kwargs.get("env"))`,
+      so every git call of `tcw/store/fs.py` (the bound's `repository_top`,
+      the project clone of `fetch_project`, the store's clone and checkout
+      in `_obtain` through `_run`, `git_root`, `personal_file_tracked`,
+      `_require_declared_checkout` and `_no_prompt_env`'s own read) gets it;
+    - `_git_lines` (`tcw/store/project.py:159-171`), which
+      `worktree_anchors` uses, so the anchors the linked-worktree rule of
+      choice 8 reads are the folder's own;
+    - `uncommitted_changes`'s status call (`tcw/work/open.py:126-129`), the
+      one git call outside those two modules.
+    The configuration variables (`GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`,
+    `GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n`)
+    are kept, so `_no_prompt_env`'s reading of a command-line
+    `core.sshCommand` (`:166-196`) and its tests (`tests/test_store_provisioning.py`,
+    `test_with_real_git_a_command_line_ssh_command_is_kept`) are
+    unchanged. *Reason, decided by the dispatching session, 2026-10-22:*
+    one rule for every call is simpler than choosing which calls need it,
+    and checking M1 found two worse cases than the bound's (with git 2.54,
+    an inherited `GIT_DIR` made the store's `git -C <staging> checkout`
+    move the hook repository's `HEAD`, and an inherited `GIT_INDEX_FILE`
+    made a clone write its files into that repository's index); no TCW
+    command means a git call to act anywhere but the folder it names with
+    `-C`. A guard test in `tests/test_subprocess_stdin.py`'s manner is not
+    added: the three call sites are named here and each has a test (Steps
+    11 and 14).
 25. **A failed store does not stop the projects pass** (spec 7.2, 7.13;
-    review S12), as in 3.x (`tcw/cli.py:165-191` at `62e41ec5`): the stores
+    review S12), as in 3.x (`tcw/cli.py:165-191` at `62e41ec5`; at
+    `28224a47` the stores loop, `:161-185`, records a failure and goes on to
+    the next store): the stores
     pass returns its counts (`fetched`, `failed`) and the projects pass
     adds its own; the last line counts both. A configuration that cannot
-    be read still returns 1 before either pass (`:106-112`).
+    be read still returns 1 before either pass (`:107-112`).
 26. **A dry run never fetches, from the step that builds the projects
     pass** (review S13). Step 12's `provision_projects` takes `dry_run`
     from its first version: the first round is planned with the checks that
@@ -390,7 +510,12 @@ No code changes. Results go in the implement round.
      `personal_file`, `validate_project_id` in `tcw/project_files.py`, and
      that `_declared_projects_in_graph`, `_provision_projects` and
      `declared_connected_projects` are gone while the `PROJECT_TARGET`
-     branch of `FsStoreProvisioner` remains (TCW-107 plan, Step 7).
+     branch of `FsStoreProvisioner` remains (TCW-107 plan, Step 7; so at
+     `28224a47`). For choices 8 and 28: `worktree_anchors` and the registry's
+     one call of it for the active root, `_below`, `_git_lines`, and
+     `_entry_answer` resolving an entry's path through `_locator_path`
+     (TCW-107 Design 4.3); and that no git call TCW-107 added bypasses
+     `_git` and `_git_lines` (`git grep -n '"git"' tcw/`).
    - TCW-108: `ParentLink`, `LoadOrder(ids, missing, unreadable, warning)`,
      `parents()`, `declared_child_ids()`, `children()`, `load_order(id=None,
      root=…)`, `availability()`, `unreachable()`'s walk order, exit 7 in
@@ -422,7 +547,7 @@ No code changes. Results go in the implement round.
      not `tcw provision`); if not, Step 5 changes that one assertion and the
      implement round says so. Any other test it added that matches the
      `StoreNotProvisioned` text or runs a removed command.
-   - This repository at `62e41ec5`: every `file:line` in this plan.
+   - This repository at `28224a47`: every `file:line` in this plan.
 2. **The inventories**, saved in the scratchpad:
    - `tests-before.txt`: `.venv/bin/pytest --collect-only -q` (every test ID).
    - `sites-before.txt`: every line under `tests/`, `evals/`, `scripts/` and
@@ -444,15 +569,43 @@ No code changes. Results go in the implement round.
      `evals/` that holds a removed command's words outside a call the script
      of Step 3 recognises, from `git grep -nE` for `[(\[] *["'](init|provision)["']`,
      `["']projects["'], *["']list` and `["']config["'], *["']show` less the
-     `git` lines. At `62e41ec5` these are
-     `tests/test_project_files_cli.py:186-187` (`("init", "--id", "x")`,
-     `("config", "show")`), `tests/test_cli_handler.py:109`
-     (`["projects", "list"]`, `:108-109`), `tests/test_store_provisioning.py:780`
-     (`[["provision"], ["init"]]`, whose expected text at `:792` is built
-     from `command[0]`), `tests/test_projects_list.py:118` (`("provision",)`,
-     with the prefix built from it at `:128`), and `ROWS` in
-     `tests/test_cli_contract.py:48-54`; `tests/work/test_cli_surface.py:138`
-     (`["init"]`, the removed `tcw work init`) is not a site.
+     `git` lines. **This grep's output, not a list written in this plan, is
+     the inventory** (re-check C4): Step 3 changes by hand exactly the lines
+     it lists that the script did not change, and nothing else. For
+     comparison, at `28224a47` it finds at least these, which an earlier
+     version of this plan undercounted:
+     `tests/test_project_files_cli.py:188-189` (`("init", "--id", "x")`,
+     `("config", "show")`) and `:567` (`("projects", "list")`),
+     `tests/test_cli_handler.py:109` (`["projects", "list"]`),
+     `tests/test_store_provisioning.py:787` (`[["provision"], ["init"]]`,
+     whose expected text at `:799` is built from `command[0]`) and `:826`
+     (`["projects", "list"]`), `tests/test_projects_list.py:118`
+     (`("provision",)`, with the prefix built from it at `:128`),
+     `tests/config/test_personal_commands.py:29`,
+     `tests/test_cli_contract.py:353`,
+     `tests/test_environment_hardness.py:458`, `tests/test_stdin_cli.py:35`
+     (`_run(tmp_path, ["init", …])`), and `ROWS` in
+     `tests/test_cli_contract.py:48-54`. Also recorded here, though not an
+     argument list: `tests/test_smoke.py:93` (`for group in ("init",
+     *COMPONENTS)`, which checks `tcw --help` lists `init`), which Step 4
+     changes to `project` and lists in `step4-changes.txt`.
+     `tests/work/test_cli_surface.py:138` (`["init"]`, the removed
+     `tcw work init`) is not a site.
+   - `negatives-before.txt`: every assertion that an old command's name is
+     **absent** from a message (re-check C5), from `git grep -nE` for
+     `tcw (init|projects|config show|provision)[^"']*["'] not in` under
+     `tests/`. Once the messages name the new commands these pass whatever
+     the message says, so Step 5 rewrites each to the new name (`"tcw init"
+     not in err` becomes `"tcw project new" not in err`), keeping the old
+     name only where the test strips the new one first, as
+     `tests/test_manifest_cli.py:221` does. At `28224a47`:
+     `tests/test_store_provisioning.py:580`, `:601`, `:1180`, `:1199`,
+     `:1239`, `:1394`, `:1438`, `:1606`;
+     `tests/test_init_configured_tree_path.py:53`, `:119`;
+     `tests/test_manifest_cli.py:221`; `tests/test_project_lookup.py:600`;
+     `tests/test_project_registry.py:522`.
+   - `counts-before.txt`: `len(SURFACE)` as `tests/test_cli_help_standard.py:70`
+     asserts it (`N`), and the number of keys of `ROWS` (`R`), for choice 21.
 3. **The comparison script:** the scratchpad's `compare_outcomes.py
    <before.xml> <after.xml> <allowed.txt>` is TCW-108's (its plan, the
    paragraph "The outcome comparison", before its Step 8a), rebuilt if the
@@ -463,7 +616,7 @@ No code changes. Results go in the implement round.
    own changes are never blamed on the rename.
 
 **Proves it:** the implement round lists each citation with its file and
-line on `v4` and "as planned" or the correction; the four inventories
+line on `v4` and "as planned" or the correction; the six inventories
 exist.
 
 ## Step 1 — the deciding entry, readable (Design 8.1)
@@ -494,7 +647,7 @@ CLI):
 **Changes:** `tcw/store/project.py`: the frozen dataclass `Placement` and
 `FsProjectRegistry.placement` (choice 5), reading `_answers`; the owner is
 recorded in `_Answer` by `_locate` if TCW-107 did not already keep it.
-Nothing on `ProjectRegistry` (`tcw/store/base.py:184`).
+Nothing on `ProjectRegistry` (`tcw/store/base.py:192`).
 
 **Proves it:** the new file; the full suite.
 
@@ -502,9 +655,10 @@ Nothing on `ProjectRegistry` (`tcw/store/base.py:184`).
 
 **Tests first**, new `tests/test_project_group.py`:
 
-- `tcw project --help` lists `new`, `list`, `config`, `provision`, `path`,
-  `info`; `tcw project` alone exits 2; `tcw --help` lists `project` after
-  `work`.
+- `tcw project --help` lists `new`, `list`, `config` and `provision`, the
+  four verbs this step registers (re-check C7); `tcw project` alone exits 2;
+  `tcw --help` lists `project` after `work`. Step 8 adds `path` to this
+  test's list and Step 9 `info`, so AC 1's six are asserted from Step 9.
 - `tcw project new --id demo`, `tcw project list`, `tcw project config` and
   `tcw project provision --dry-run` each give the same exit code, standard
   output and files as `tcw init --id demo`, `tcw projects list`,
@@ -516,7 +670,7 @@ This step registers only the four verbs that replace a command; `path` and
 list is extended there.
 
 `tests/test_cli_help_standard.py`: `SURFACE` gains the four new leaves and
-its count goes to 47 (choice 21); the existing walk then checks each has
+its count goes to `N + 4` (choice 21); the existing walk then checks each has
 `Prints:`, `Writes:` and an example. `tests/test_cli_contract.py`: `ROWS`
 gains the four rows of choice 21, and the outside-a-project run leaves out
 `project new`.
@@ -531,18 +685,18 @@ project's own file.
 
 - New `tcw/project_cli.py`: `add_subparser(sub)` registering `project` with
   the help of Design 1.1, and under it `new` (the arguments of
-  `tcw/cli.py:557-568`, help of Design 2.2, `own_config=True`, handler
+  `tcw/cli.py:375-386`, help of Design 2.2, `own_config=True`, handler
   `_cmd_init`), `list` (the arguments and handler of
-  `tcw/projects_cli.py:68-77`), `config` (those of
+  `tcw/projects_cli.py:71-81`), `config` (those of
   `tcw/config_cli.py:272-287`, `own_config=True`), `provision` (those of
-  `tcw/cli.py:570-581`, handler `_cmd_provision`). Each verb's help through
+  `tcw/cli.py:388-399`, handler `_cmd_provision`). Each verb's help through
   `cli_help.command` (`tcw/cli_help.py:15-27`) and the group's through
   `cli_help.group` (`:30-35`).
-- `tcw/cli.py` `build_parser` (`:549-613`): `project_cli.add_subparser(sub)`
-  after the loop over `_BUILT` (`:606-607`), so `project` is registered
+- `tcw/cli.py` `build_parser` (`:367-431`): `project_cli.add_subparser(sub)`
+  after the loop over `_BUILT` (`:424-425`), so `project` is registered
   after `work`.
-- The six fixed prefixes of choice 23 (`tcw/cli.py:111`, `:134`, `:150`,
-  `:158`, `:186`; `tcw/config_cli.py:267`) take the typed command, passed
+- The five fixed prefixes of choice 23 (`tcw/cli.py:111`, `:134`, `:150`,
+  `:182`; `tcw/config_cli.py:267`) take the typed command, passed
   from each handler as `prefix=args._command`. The messages' texts are
   unchanged in this step ("run `tcw provision`" and the like), so Step 3's
   outcome comparison is exact; Step 5 changes them.
@@ -557,7 +711,7 @@ project's own file.
 
 No behavior changes. Every change in this step is made by one script, kept
 in the scratchpad as `rename_commands.py`, and nothing by hand except the
-sites listed below.
+lines of `argv-sites.txt` (Step 0) the script did not change.
 
 **The script**, over the files of `sites-before.txt` and `docs-before.txt`:
 
@@ -565,7 +719,10 @@ sites listed below.
   `tests/fixtures/prompt_fallback/capture.py`: the string literal `"init"`
   (or `'init'`) as the first command word of a call that runs TCW
   (`main([…`, `cli(capsys, …`, `run(…, `, `_tcw(…, `, `tcw(…, `,
-  `_run(dest, …`, and `["tcw", "init", …]`) becomes `"project", "new"`;
+  `_run(<any first argument>, …` with or without a list, `ok(<cwd>, …`,
+  `written(<cwd>, …` and `checked(…` (the helpers of
+  `tests/test_cli_contract.py:135`, `:250` and the like, re-check C4), and
+  `["tcw", "init", …]`) becomes `"project", "new"`;
   `"provision"` becomes `"project", "provision"`; `"projects", "list"`
   becomes `"project", "list"`; `"config", "show"` becomes `"project",
   "config"`. A literal preceded by `"git", `, or inside a call of `git(`,
@@ -597,13 +754,16 @@ sites listed below.
   `docs-before.txt` that already writes one keeps a one-token target (spec
   Design 1.6), checked by reading `rename-report.txt`.
 
-**Changed by hand**, each listed in the report, because the script's
-patterns do not reach them (`argv-sites.txt`, Step 0):
-`tests/test_project_files_cli.py:186-187`; `tests/test_cli_handler.py:108-109`;
-`tests/test_store_provisioning.py:780` and the expected text built from
-`command[0]` at `:792` (it becomes `" ".join(command)`, with the
-parametrized lists `["project", "provision"]` and `["project", "new"]`);
-`tests/test_projects_list.py:118` and the prefix built from it at `:128`.
+**Changed by hand**, each listed in the report: every line of
+`argv-sites.txt` (Step 0) that the script did not change, and only those.
+The ones known at `28224a47` are listed in Step 0; of them, two need more
+than renaming the words: `tests/test_store_provisioning.py:787`, whose
+expected text is built from `command[0]` at `:799` (it becomes
+`" ".join(command)`, with the parametrized lists `["project", "provision"]`
+and `["project", "new"]`), and `tests/test_projects_list.py:118`, whose
+prefix is built from it at `:128`. A site the grep did not find is caught
+by check 4 below, which runs every test with the old commands
+unregistered.
 `ROWS` and `SURFACE` are not changed here: they list the old leaves, which
 still exist until Step 4 removes them. Left as they are on purpose:
 `tests/work/test_cli_surface.py:138` (`tcw work init`, a removed `work` verb
@@ -635,13 +795,14 @@ that still exits 2) and every `git init`.
    suite is run, and the failing IDs must be exactly the list Step 4 says it
    changes (`step4-changes.txt`: the side-by-side tests of Step 2, the
    `SURFACE` count and walk, `ROWS`'s four old rows and the IDs keyed by
-   them, the suggestion cases that name a removed command); the change is
-   then reverted. A failure outside that list is a test still running an
+   them, the suggestion cases that name a removed command, and
+   `tests/test_smoke.py:93`'s check that `tcw --help` lists `init`); the
+   change is then reverted. A failure outside that list is a test still running an
    old command, which is renamed here and the check run again. This is the
    check the mutation check cannot make: that no test still runs an old
    name.
-5. `tests/test_documented_cli_surface.py` and `tests/test_shipped_text.py`
-   pass with the documents now naming `tcw project …`.
+5. `tests/test_documented_cli_surface.py`, `tests/test_shipped_text.py`
+   and `tests/test_docs_describe_3_0.py` pass with the documents now naming `tcw project …`.
 
 **Proves it:** the five checks above; the full suite.
 
@@ -671,9 +832,11 @@ that still exits 2) and every `git init`.
   exits 2, which still holds, since the table applies at the top level
   only and `init` is then a subcommand nowhere).
 - `tests/test_cli_help_standard.py` and `tests/test_cli_contract.py`
-  (choice 21): `SURFACE` loses the four and its count goes to 43, `REMOVED`
+  (choice 21): `SURFACE` loses the four and its count goes back to `N`, `REMOVED`
   gains them, the choices check names `project provision`; `ROWS` loses the
   four old rows and the outside-a-project run no longer names `init`. The
+  `tests/test_smoke.py:93`'s loop over `("init", *COMPONENTS)` names
+  `project` in place of `init`. The
   IDs this removes (`test_every_command_outside_a_project[provision]`,
   `[projects list]`, `[config show]`, and the side-by-side tests) are the
   ones `step4-changes.txt` (Step 3, check 4) listed, and Step 18 lists them
@@ -682,8 +845,8 @@ that still exits 2) and every `git init`.
 **Changes:**
 
 - `tcw/cli.py` `build_parser`: the `init` and `provision` subparsers
-  (`:557-581`) and the calls `projects_cli.add_subparser(sub)` and
-  `config_cli.add_subparser(sub)` (`:604-605`) are removed; `_cmd_init` and
+  (`:375-399`) and the calls `projects_cli.add_subparser(sub)` and
+  `config_cli.add_subparser(sub)` (`:422-423`) are removed; `_cmd_init` and
   `_cmd_provision` stay as the new verbs' handlers.
 - `tcw/projects_cli.py` and `tcw/config_cli.py`: `add_subparser` removed
   (choice 1); module docstrings name `tcw project list` and
@@ -711,8 +874,8 @@ that still exits 2) and every `git init`.
   outside a project names `tcw project new --id <id>` (`NO_PROJECT`,
   `tcw/errors.py:13`); `tcw taxonomy list` in a project with no taxonomy
   store names `tcw project new taxonomy` (`tcw/taxonomy/cli.py:24-28`, and
-  `tcw/capabilities/cli.py:26-30` likewise); the init refusal for a store
-  with a repository (`tcw/store/fs.py:712-731`) names
+  `tcw/capabilities/cli.py:26-30` likewise, at `28224a47`); the init refusal for a store
+  with a repository (`tcw/store/fs.py:722-741`, the message at `:737`) names
   `tcw project provision` and `tcw project new <axes>`.
 - Every assertion Step 3 left (its report) is changed to the new text here,
   each listed in the implement round with the message it matches; the
@@ -722,25 +885,34 @@ that still exits 2) and every `git init`.
 
 **Changes**, each a message, help text or comment naming a removed command:
 
-- `tcw/cli.py`: `_cmd_validate`'s "run `tcw provision`" (`:432`). The
+- `tcw/cli.py`: `_cmd_validate`'s "run `tcw provision`" (`:249`). The
   error prefixes already follow the typed command since Step 2 (choice
   23).
-- `tcw/errors.py:13`; `tcw/taxonomy/cli.py:24-28`;
-  `tcw/capabilities/cli.py:26-30`; `tcw/store/project.py:611` (`tcw init
-  --id` becomes `tcw project new --id`) and comments at `:219`, `:704`,
-  `:1108`; `tcw/store/fs.py` messages at `:712-731`, `:3314-3318` (the
-  plain form only here; Step 11 adds the `-C` form), `:3444`, `:3410`'s
-  "thing" sentence if it names a command, and the comments at `:53`,
-  `:200`, `:362`, `:373`, `:471`, `:486`, `:497`, `:509`, `:636`, `:647`,
-  `:718`, `:3207`, `:3272`, `:3506`; `tcw/store/base.py:59`, `:90`;
-  `tcw/config.py:18`; `tcw/serve/work.py:144`; `tcw/work/open.py:97` (as
-  TCW-107 left it); `tcw/work/procedures/search.md:27`.
+- Every line of `sites-before.txt` under `tcw/` that is a message, help
+  text, docstring or comment (Step 0's grep is the inventory, not this
+  list). At `28224a47` that grep finds: `tcw/errors.py:13`;
+  `tcw/taxonomy/cli.py:26`; `tcw/capabilities/cli.py:28`;
+  `tcw/cli.py:118` (a comment); `tcw/config_cli.py:1` and
+  `tcw/projects_cli.py:1`, `:3` (module docstrings, also changed by Step 4);
+  `tcw/store/project.py:810` (`tcw init --id` becomes `tcw project new
+  --id`) and comments at `:361`, `:903`, `:1319`; `tcw/store/fs.py`
+  messages at `:588`, `:728-737` (the init refusal), `:3336` (the plain
+  form only here; Step 11 adds the `-C` form) and `:3422`, and comments or
+  docstrings at `:55`, `:202`, `:370`, `:381`, `:479`, `:494`, `:505`,
+  `:517`, `:646`, `:657`, `:3226`, `:3291`, `:3369`, `:3484`;
+  `tcw/store/base.py:59`, `:90`; `tcw/config.py:18`;
+  `tcw/serve/work.py:144`; `tcw/work/open.py:103`;
+  `tcw/work/procedures/search.md:27` (Markdown, renamed by Step 3).
+- Every assertion of `negatives-before.txt` (Step 0) is rewritten to the
+  new name, as Step 0 says, and listed in the implement round with the
+  message it checks; the AC 4 test makes the old name impossible in those
+  messages, so an assertion left on the old name would check nothing.
 - `evals/seed_fixture.py:17` (text) and `:761` (the argument list, changed
   by Step 3's script if it matched `_run(dest, "init", …)`; confirmed here
   by reading it); `tests/fixtures/prompt_fallback/capture.py:64`, `:67`
   likewise. `python evals/seed_fixture.py --customized <scratchpad>/probe`
   is run once to show the builder still builds (Verification).
-- `tests/conftest.py:66`, `:84`, `:113` (comments).
+- `tests/conftest.py:84`, `:102`, `:131` (comments).
 
 **Proves it:** the AC 4 test; the three message tests; the full suite.
 
@@ -755,7 +927,7 @@ row with a `read-only` key; with `k` absent, `present: false`, `path:
 null`, `found: null`, exit 0. AC 18's half for `list` (a graph problem,
 exit 1). AC 34's `list` prints only the ID.
 
-**Changes:** `tcw/projects_cli.py` `connected` (`:21-51`): `found` on every
+**Changes:** `tcw/projects_cli.py` `connected` (`:21-54`): `found` on every
 row if TCW-107 did not add it (TCW-107 Design 6.1), and no `read-only` if
 TCW-114 did not remove it (TCW-114 plan, Step 7). **Design 3.3:** Step 0
 records whether `_projects` (`tcw/serve/work.py:143-148`) survived TCW-114
@@ -781,7 +953,7 @@ existing assertion on a label changes to the new shape and is listed.
 
 **Changes:** `tcw/config_cli.py` `_Writer.comment` (`:119-137`, as TCW-109's
 Step 9 left it): one shape, `<project>, <layer> <file>` with `<file>` from
-`shown_in` (`tcw/config.py:112-120`) against the active root,
+`shown_in` (`tcw/config.py:117-125`) against the active root,
 `<project>, environment <NAME>`, or `built-in`, then `_packaged`'s file
 after a comma (`:104-110`). The project ID comes from `Origin.project`
 (TCW-109); a layer applied at the active project's layers with no project
@@ -820,7 +992,7 @@ TCW-107) with `ValueError` → `UsageError`; the command's registry
 prints `find_project_root()`.
 
 **Proves it:** the new file; `tests/test_cli_help_standard.py` (`SURFACE`
-gains `project path`, count 44) and `tests/test_cli_contract.py` (`ROWS`
+gains `project path`, count `N + 1`) and `tests/test_cli_contract.py` (`ROWS`
 gains `project path`, exit 1 outside a project), choice 21; the full
 suite.
 
@@ -855,7 +1027,7 @@ when unset; the stores (choice 17); the overrides (choice 16) — and a
 Step 7. Every missing or unavailable part is a field of the record, never an
 exception past the handler, so the exit code is 0 for all of them.
 
-**Proves it:** the new file; `SURFACE` gains `project info` (count 45) and
+**Proves it:** the new file; `SURFACE` gains `project info` (count `N + 2`) and
 `ROWS` gains `project info` (exit 1 outside a project), choice 21; AC 3's
 two rows; the full suite.
 
@@ -902,15 +1074,32 @@ using `origin_json` (Step 7) and `print_json("project", …)`
   `app` exits 7 with `tcw -C <core's root> project provision --component
   taxonomy`; in `core`, without `-C`).
 - AC 33: `tests/test_init_provision_contract.py`,
-  `tests/work/test_init_provision.py` and the store sections of
-  `tests/test_store_provisioning.py` (`:125-1407`, `:1775-2100` at
-  `62e41ec5`) pass, running `project provision` since Step 3, their messages
+  `tests/work/test_init_provision.py` and `tests/test_store_provisioning.py`
+  (whose project cases TCW-107 Step 7 removed, so at `28224a47` all of it
+  is about stores) pass, running `project provision` since Step 3, their messages
   naming `tcw project provision` since Step 5.
-- `tests/test_store_provisioning.py:2071-2072`'s argv check: the store
-  clone's argv is `["git", "clone", "--quiet", "--", url, staging]`, and
-  with a `ref` the checkout's is `["git", "-C", staging, "checkout",
-  "--quiet", ref, "--"]` (choice 10); a store `ref` naming a file of the
+- A new test in `tests/test_store_provisioning.py` that records the argv
+  `_obtain` passes to `_run` (`_run` patched to record and then call the
+  real one): the store clone's argv is `["git", "clone", "--quiet", "--",
+  url, staging]`, and with a `ref` the checkout's is `["git", "-C",
+  staging, "checkout", "--quiet", ref, "--"]` (choice 10). The existing
+  environment tests at `:1678` and `:1701` call `_run` with an argv of
+  their own (`["git", "clone", "u", "d"]`) and never see `_obtain`'s, so
+  they cannot pin this (re-check C10). A store `ref` naming a file of the
   repository and no branch fails, where it passed before.
+- Git's location variables (choice 28; spec AC 36 (h)'s library tests for
+  the store): `_obtain` with a `ref`, run with `GIT_DIR` and
+  `GIT_INDEX_FILE` naming another repository `other` (its `HEAD` on a
+  branch `side`), clones and checks out the store, and afterwards
+  `other`'s `HEAD` still reads `ref: refs/heads/side` and its index is byte
+  for byte as before; `fs._git` given `env={"GIT_DIR": "x", "KEEP": "1"}`
+  passes `KEEP` and not `GIT_DIR`; `worktree_anchors` of a folder in no
+  repository, with `GIT_DIR` naming a repository elsewhere, is `None`; and
+  `GIT_LOCATION_VARIABLES` holds every name `git rev-parse
+  --local-env-vars` prints on the machine running the test, less
+  `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`. Each is
+  also mutation-checked by making `git_environment` return its argument
+  unchanged and seeing it red.
 - AC 26's store part (choice 25): a store that fails, then the projects
   pass still runs (here, with nothing to fetch, `nothing to fetch` is still
   printed), and the run exits 1; the counts are completed in Step 12.
@@ -919,11 +1108,11 @@ using `origin_json` (Step 7) and `print_json("project", …)`
 
 **Changes:**
 
-- `tcw/cli.py` `run_provision` (`:86-192`): takes `project_id` and the
+- `tcw/cli.py` `run_provision` (`:86-185`): takes `project_id` and the
   components; `<id>` with components → `UsageError`; for the no-argument and
   `<id>` forms, `registry.require_valid()` first (choice 11); the stores
   pass only for the no-argument and `--component` forms; the early return
-  at `:160-163` becomes "continue to the projects pass" for the no-argument
+  at `:156-159` becomes "continue to the projects pass" for the no-argument
   form; then `tcw.provision.provision_projects(…)` (Step 12) for the
   no-argument and `<id>` forms. The `TCW_PROJECT_<ID>` refusal (`:127-135`)
   is what TCW-107 Step 7 kept (its choice 6); unchanged. A store that fails
@@ -934,9 +1123,15 @@ using `origin_json` (Step 7) and `print_json("project", …)`
   `ProjectRegistry` (`tcw/store/base.py`), when Step 0 found no other
   caller (choice 22).
 - `tcw/project_cli.py`: `provision` gains the optional positional `<id>`.
-- `tcw/store/fs.py` `_obtain` (`:3477-3497`): `--` before the URL and
+- `tcw/store/fs.py` `_obtain` (`:3455-3475`): `--` before the URL and
   after the `ref` (choice 10).
-- `tcw/store/fs.py` `resolve_store`'s `StoreNotProvisioned` (`:3314-3318`):
+- `tcw/store/project.py`: `GIT_LOCATION_VARIABLES` and `git_environment`,
+  and `_git_lines` passing `env=git_environment()`; `tcw/store/fs.py`
+  `_git` applying it to every call; `tcw/work/open.py`
+  `uncommitted_changes`'s status call passing it (choice 28). Done here,
+  in the first provisioning step, so that every clone this item adds runs
+  without them from the start.
+- `tcw/store/fs.py` `resolve_store`'s `StoreNotProvisioned` (`:3333-3337`):
   the `-C` form when the store's project root is not the active one (choice
   12).
 - `tcw/ownership.py` `check_owned`: `tcw project provision <id>` in the
@@ -998,8 +1193,24 @@ store counted with the projects: `fetched 1, failed 2`).
 - `tcw/store/fs.py`: `fetch_project(url, branch, target, *, project_id,
   subfolder) -> None`, raising `FetchRefused(message)` (a `TcwError`),
   first version: `git clone --quiet [--branch <branch>] -- <url>` into a
-  staging folder beside `target`, then `os.rename`; `target` is already
-  resolved (choice 8). Step 13 completes it to choice 9.
+  staging folder beside `target`, then `os.rename`. Step 13 completes it to
+  choice 9.
+- **Until Step 14 builds `_bound_problem`, every entry is treated as
+  trusted** (re-check C8): `_plan_round` computes the target as a trusted
+  entry's is computed in choice 8, `T = Path(os.path.realpath(W))` with
+  `W = placement.repository_path`, without `strict`, and records it as the
+  planned project's resolved folder; the parent folders choice 9's step 1
+  makes for a trusted entry are made for every entry, and choice 9's
+  step 2 compares the held parent with `B` only from Step 14. The tests of
+  Steps 12 and 13 are written so that every clone placed from a manifest
+  that is not `app`'s own lands directly beside its owner (AC 20's `base`
+  and `kk`, AC 22's `base`), where the bound will allow it; so none of them
+  should change outcome when Step 14 adds the bound, and one that does is a
+  finding for the implement round, not a test to rewrite. Step 14's tests
+  are the first that need a refusal by the bound. *Decided by the dispatching session, 2026-10-22, after the
+  plan re-check:* the rounds need a resolved target before the bound
+  exists, and treating every entry as trusted is the one rule that needs no
+  part of Step 14.
 - `tests/test_static_guards.py` `EXEMPT` (choice 20).
 
 **Proves it:** the tests above (AC 26's second half after Step 13); the
@@ -1053,7 +1264,10 @@ choice 9 it pins:
   no `checkout` call is made;
 - step 5: a `subfolder` link leading outside the staging clone is refused
   without reading the configuration it leads to (the reader patched to
-  fail if called); 7.9's `-` check, unit-tested here whatever TCW-107 does
+  fail if called); the same for a `.tcw` link at a real `subfolder`, for a
+  `.tcw/tcw-config.yaml` link at the top, and for a `.tcw` link at the top
+  read by the second-folder check (spec AC 36 (g), re-check C3); a link
+  that stays inside the clone is followed; 7.9's `-` check, unit-tested here whatever TCW-107 does
   (spec AC 37).
 
 **Changes:**
@@ -1062,8 +1276,10 @@ choice 9 it pins:
   the `-` check (`<id>: <file> gives a repository beginning with '-'`), the
   folder state (`_folder_state(folder) -> "absent" | "empty" | "git-only" |
   "occupied"`, read with `os.lstat` and `os.scandir`, so a link at the
-  folder's name is occupied, with 7.6's two messages), and the grouping by
-  resolved repository folder with `normalized_url`
+  folder's name is occupied, with 7.6's two messages; its message-building
+  in `_folder_problem`, choice 20), and the grouping of choice 7's check (5)
+  (the holding folder's identity and the name; in `_group_round`) with
+  `normalized_url`
   (`tcw/store/checkouts.py:21-57`) and branch (7.7's conflict message; the
   second and later projects of a group are `Comes-with(first)`).
 - `tcw/provision.py` `_run_round`: before each project's `fetch_project`,
@@ -1072,11 +1288,11 @@ choice 9 it pins:
 - `tcw/store/fs.py` `fetch_project`, full: steps 1 to 8 of choice 9. Its
   checks of the clone are new code, each tested by AC 25 (review S9): the
   `PROJECT_TARGET` branch of `_is_store_layout` checks only that the
-  configuration file exists (`:3150-3153`), so nothing of it is reused but
+  configuration file exists (`:3169-3172`), so nothing of it is reused but
   the pattern of cloning beside the target and renaming in. `git`'s failure
   text goes through `_git_reason`.
 - `tcw/store/fs.py`: the `PROJECT_TARGET` branch of `FsStoreProvisioner`
-  and `_is_store_layout` (`:3121`, `:3150`, `:3467`), now unused by any
+  and `_is_store_layout` (`:3140`, `:3169`, `:3445`), now unused by any
   caller (Step 0 confirms), is removed. If something still calls it, it
   stays and the implement round says why.
 - After a round, Design 7.11's first rule: each fetched project must be
@@ -1115,13 +1331,34 @@ the fixture outside `<tmp>` unless the case sets its own (choice 27):
   `aa` committing `l -> ../../far/x`: `bb` refused at the round's check,
   `aa` fetched, nothing outside `<tmp>/repos`; (e) letter case, skipped
   where the file system tells `a` from `A`, and run on macOS in the
-  implement round; (f) `<tmp>/ws/.git` reading `gitdir: <tmp>/nowhere`:
-  7.8's third message.
+  implement round, together with (e)'s second case, `../Aa` and `../aa`
+  (7.7: `aa` fetched, `bb` refused as occupied with no `clone` of its
+  remote); (f) `<tmp>/ws/.git` reading `gitdir: <tmp>/nowhere`: 7.8's third
+  message; (h) git's location variables: the `mono` layout run with
+  `GIT_DIR=<tmp>/mono/.git` and `GIT_INDEX_FILE=<tmp>/mono/.git/index`
+  set, `wp` fetched into `<tmp>/wp`, `wq` refused naming `<tmp>`, exit 1,
+  `<tmp>/mono/.git/index` and `.git/HEAD` hashed before and after and
+  unchanged; the same run without the variables, the same outcome;
+  mutation-checked by making `git_environment` return its argument
+  unchanged and seeing it red (re-check M1); (j) an owner in the active project's linked worktree: the
+  repository `<tmp>/mono` with `packages/app` and `packages/ws`, the
+  worktree at `<tmp>/mono/.claude/worktrees/w`, the command run in its
+  `packages/app`, and `wp` at `../../../wp` fetched into `<tmp>/wp`; seen
+  red first with choice 8's first rule for `R` removed (re-check C1).
 - Library tests of `_bound_problem` in `tests/test_fetch_project.py`, each
   part of choice 8 with a mutation check (the part removed, the test seen
   red, restored): the as-written rule; the strict resolution; the hidden
-  folders below home; `repository_top`'s three outcomes (no `.git` above;
-  git answers; git fails, including `git` missing from `PATH`). For
+  folders below home; the linked-worktree rule for `R`; `repository_top`'s
+  three outcomes (no `.git` above; git answers; git fails, including `git`
+  missing from `PATH`); `repository_top` with `GIT_DIR=<w>/.git` set
+  alone, and with `GIT_CEILING_DIRECTORIES=<w>` set, for `<w>/packages/p`:
+  `<w>` both times (spec AC 36 (h)); and AC 36 (i), the submodule: in a
+  superproject `<tmp>/sup` with a submodule at `vendor/ws` (made with
+  `git -c protocol.file.allow=always submodule add`, the test's own remote
+  being a local path), `repository_top(<tmp>/sup/vendor/ws)` is
+  `<tmp>/sup/vendor/ws`, `ws`'s entry `../x` is allowed and `../../x` is
+  refused naming `<tmp>/sup/vendor` (the decision of re-check M2, so a
+  change to follow the superproject turns it red). For
   `same_folder`, the mutation (identity replaced by comparing text) is seen
   red only by AC 36 (e), since only a file system that ignores letter case
   or Unicode spelling has two spellings for one folder: the implement round
@@ -1132,7 +1369,9 @@ the fixture outside `<tmp>` unless the case sets its own (choice 27):
   refuses with 7.8's "now leads to" message and runs no `clone`.
 
 **Changes:** `tcw/provision.py`: `_bound_problem` and `same_folder`
-(choice 8), `repository_top` and `RepositoryUnknown` (choice 24), check (3)
+(choice 8, `same_folder` built on `_below`, with the linked-worktree rule
+for `R` read from `worktree_anchors(active_root)`), `repository_top` and
+`RepositoryUnknown` (choice 24), check (3)
 of choice 7, with the three messages and the way out of 7.8 (the asking
 project is the active one, or not; the `-C` sentence only when `<file>` is
 the asking project's own manifest); `cloned` maps each project fetched in
@@ -1302,6 +1541,15 @@ the implement round:
 7. On macOS, AC 36 (e) (letter case) run, and run again with
    `same_folder` replaced by a comparison of text, to see it go red for
    that reason; both results recorded, since CI on Linux skips it.
+8. Inside a real git hook: in a scratch monorepo `<scratchpad>/hook/mono`
+   holding a project `packages/ws` whose committed manifest places `wp` at
+   `../../../wp` with a local remote, and a project `app` beside the
+   monorepo naming `ws` as its parent and placing it at
+   `../mono/packages/ws` in its manifest, a `post-checkout` hook in `mono`
+   runs `.venv/bin/tcw -C <scratchpad>/hook/app project provision
+   --dry-run`; `git -C mono checkout -b x` triggers it, and the dry run
+   prints `wp: would fetch into <scratchpad>/hook/wp`, not a refusal. Git
+   sets the hook's own variables here, which AC 36 (h) only imitates.
 
 ## Self-review
 
@@ -1322,7 +1570,7 @@ the implement round:
 | 19, 20, 21 (first part), 22, 26, 28 | 12 (26's store part begun in 11, its occupied case completed in 13) |
 | 21 (`--component`, exit 2) | 11 |
 | 23, 24, 25, 37 | 13 (37's `path` half in 8) |
-| 27, 36 (a)-(f) | 14 |
+| 27, 36 (a)-(f), (h)-(j) | 14 (36 (h)'s store and `worktree_anchors` library tests in 11) |
 | 36 (g) | 13 |
 | 29, 30 | 16 |
 | 31, 33, 38 | 11 |
@@ -1343,7 +1591,7 @@ removed — 1, 13; empty folder and `.git`-only — 13; `forget_registries()` �
 reused and the branch removed — 13.
 
 **The suite at every boundary.** Step 2 adds verbs beside the old ones,
-with their `ROWS` and `SURFACE` entries (choice 21), and makes six fixed
+with their `ROWS` and `SURFACE` entries (choice 21), and makes five fixed
 error prefixes follow the typed command, which leaves every old command's
 output as it was (choice 23). Step 3 changes only arguments, error
 prefixes and text, checked by an exact outcome comparison against Step 2's
@@ -1357,9 +1605,13 @@ Steps 8 and 9 add their `ROWS` and `SURFACE` entries and the AC 3 rows that
 need their verbs. Step 11 changes the stores pass under its existing tests.
 Steps 12-16 add the projects pass one rule at a time; each test needs only
 the steps before it, and the dry run never clones at any of them (choice
-26).
+26). Step 11 also makes every git call drop git's location variables
+(choice 28), which no existing test sets (Step 0's grep for `GIT_DIR`
+under `tests/` finds only two tests that remove it), so no existing outcome
+changes.
 
-**Citations.** Every `file:line` is at `62e41ec5`, re-checked while writing
+**Citations.** Every `file:line` is at `28224a47` (re-cited after the plan
+re-check; before it, at `62e41ec5`), re-checked while writing
 this plan; every earlier item's code is named, not numbered, and Step 0
 re-checks both.
 
@@ -1381,3 +1633,22 @@ with its Design 9.5 (spec Notes, "Corrected after the plan review"):
    through a clone's top folder; spec 7.9 now refuses it before the move
    (choice 18, AC 35's last case), with the fallback text kept.
 6. `AGENTS.md` names no removed command: dropped from the spec.
+
+The plan re-check of the same day found six more, each also folded into the
+spec (spec Notes, "Corrected after the plan re-check"), *decided by the
+dispatching session, 2026-10-22*:
+
+7. Git's repository-location variables reached the bound's git call, and
+   every other: spec 7.8 "Git answers about the folder named", 7.2, AC 36
+   (h) (choice 28).
+8. An owner inside a git submodule keeps the submodule's own top as its
+   repository folder, now recorded as a decision: spec 7.8, AC 36 (i)
+   (choice 24).
+9. An owner in the active project's linked worktree takes the main
+   checkout's root: spec 7.8, AC 36 (j) (choice 8).
+10. Every comparison of two folders is by identity, and names that differ
+    only in letter case are not grouped: spec 7.7, 7.8 (choices 7, 8).
+11. The inside-the-clone check covers the `.tcw` folders and configuration
+    files read: spec 7.9, AC 36 (g) (choice 9).
+12. The third document check, `tests/test_docs_describe_3_0.py`: spec 1.6,
+    AC 40 (Step 3's check 5).
