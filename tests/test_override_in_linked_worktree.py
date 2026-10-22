@@ -3,6 +3,7 @@ primary checkout's copy of a project while running in a linked worktree (spec:
 2026-09-29-warn-when-a-project-override-names-the-primary-checkout-s-copy-from-a-linked-worktree)."""
 
 from test_worktree_sibling_nodes import git, validate, workspace  # noqa: F401
+from tests.projectfiles import config_file
 
 
 def linked(workspace):  # noqa: F811
@@ -38,7 +39,7 @@ def test_no_warning_for_the_worktree_s_own_copy(workspace, monkeypatch):  # noqa
 def test_no_warning_when_the_copy_holds_another_project(workspace, monkeypatch):  # noqa: F811
     """The branch renamed the node: the copy is not the same project."""
     app, wt = linked(workspace)
-    cfg = wt / "pkg-b" / "tcw-config.yaml"
+    cfg = config_file(wt / "pkg-b")
     cfg.write_text(cfg.read_text().replace("id: pkg-b", "id: pkg-z"))
     monkeypatch.setenv("TCW_PROJECT_PKG_B", str(app / "pkg-b"))
     done = validate(wt / "pkg-a")

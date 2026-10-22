@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.projectfiles import config_file, write_config, write_config_file
 
 
 def git(path: Path, *args: str) -> None:
@@ -30,7 +31,7 @@ def config(path: Path, pid: str, *, parent: dict | None = None,
         for key, links in (("parent", parent), ("children", children)):
             if links:
                 text += f"  {key}:\n" + "".join(f"    {k}: {v}\n" for k, v in links.items())
-    (path / "tcw-config.yaml").write_text(text)
+    write_config(path, text)
 
 
 def validate(cwd: Path) -> subprocess.CompletedProcess:
@@ -74,7 +75,7 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     # Added on the primary checkout's branch after the worktree was made.
     config(app / "pkg-c", "pkg-c", parent={"app-repo": ".."})
-    wt_cfg = workspace / "app-wt" / "tcw-config.yaml"
+    wt_cfg = config_file(workspace / "app-wt")
     wt_cfg.write_text(wt_cfg.read_text().replace(
         "    pkg-b: pkg-b\n", "    pkg-b: pkg-b\n    pkg-c: ../app/pkg-c\n"))
     done = validate(workspace / "app-wt" / "pkg-a")
@@ -88,8 +89,8 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
 
 
 def test_a_child_declared_only_by_repository_resolves_to_the_worktree(workspace):
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text("id: workspace\nprojects:\n  children:\n    app-repo:\n"
+    ws_cfg = config_file(workspace)
+    write_config_file(ws_cfg, "id: workspace\nprojects:\n  children:\n    app-repo:\n"
                       "      repository:\n        url: https://example.com/app.git\n"
                       "        checkout: app\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
@@ -105,8 +106,8 @@ def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     git(app, "add", ".gitignore")
     git(app, "commit", "-qm", "ignore vendor")
     config(repo(app / "vendor"), "vendor", parent={"workspace": "../.."})
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    vendor: app/vendor\n")
+    ws_cfg = config_file(workspace)
+    write_config_file(ws_cfg, ws_cfg.read_text() + "    vendor: app/vendor\n")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     config(repo(workspace / "app-wt" / "vendor"), "vendor-fork", parent={"workspace": "../.."})
     done = validate(workspace / "app-wt" / "pkg-a")
@@ -127,13 +128,13 @@ def with_submodule(workspace: Path, tmp_path: Path, *, named_by_workspace: bool)
     git(lib, "commit", "-qm", "lib")
     app = workspace / "app"
     git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(lib), "lib")
-    app_cfg = app / "tcw-config.yaml"
-    app_cfg.write_text(app_cfg.read_text() + "    lib: lib\n")
+    app_cfg = config_file(app)
+    write_config_file(app_cfg, app_cfg.read_text() + "    lib: lib\n")
     git(app, "add", "-A")
     git(app, "commit", "-qm", "lib submodule")
     if named_by_workspace:
-        ws_cfg = workspace / "tcw-config.yaml"
-        ws_cfg.write_text(ws_cfg.read_text() + "    lib-too: app/lib\n")
+        ws_cfg = config_file(workspace)
+        write_config_file(ws_cfg, ws_cfg.read_text() + "    lib-too: app/lib\n")
     git(app, "worktree", "add", "-q", "../app-wt", "-b", "feature")
     git(workspace / "app-wt", "-c", "protocol.file.allow=always", "submodule", "update",
         "--init", "-q")
@@ -153,8 +154,8 @@ def test_a_submodule_of_the_repository_is_its_worktree_copy(workspace, tmp_path)
 def test_one_id_in_two_repositories_is_still_a_duplicate(workspace):
     other = repo(workspace / "other")
     config(other, "pkg-b", parent={"workspace": ".."})
-    ws_cfg = workspace / "tcw-config.yaml"
-    ws_cfg.write_text(ws_cfg.read_text() + "    pkg-b-again: other\n")
+    ws_cfg = config_file(workspace)
+    write_config_file(ws_cfg, ws_cfg.read_text() + "    pkg-b-again: other\n")
     git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
     done = validate(workspace / "app-wt" / "pkg-a")
     assert done.returncode == 1 and "duplicate project id 'pkg-b'" in done.stdout + done.stderr, \

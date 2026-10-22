@@ -13,6 +13,7 @@ import yaml
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import connect, make_project, write_item
+from tests.projectfiles import write_config, write_config_file
 
 
 @pytest.fixture
@@ -101,9 +102,9 @@ def test_malformed_records_on_a_completed_item_come_from_the_file_scan(project, 
 
 def test_an_absent_declared_project_is_unresolved_not_exit_5(tmp_path, run):
     p = make_project(tmp_path, "p")
-    config = yaml.safe_load((p / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((p / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"gone": "../gone"}}
-    (p / "tcw-config.yaml").write_text(yaml.safe_dump(config))
+    write_config(p, yaml.safe_dump(config))
     code, out, _ = run(p)
     [line] = about(out, "'gone'")
     assert line.startswith("unresolved: ") and code == 0
@@ -146,7 +147,7 @@ def test_an_older_invalid_round_is_history(project, run):
 def test_a_retired_capability_field_is_an_error(project, run):
     FsCapabilitiesStore.open(project).add("ns/thing")
     meta = project / "docs" / "capabilities" / "ns" / "thing" / "meta.yaml"
-    meta.write_text(meta.read_text() + "Planning doc: x\n")
+    write_config_file(meta, meta.read_text() + "Planning doc: x\n")
     code, out, _ = run(project)
     [line] = about(out, "Planning doc")
     assert line.startswith("error: docs/capabilities/ns/thing: ")
@@ -168,7 +169,7 @@ def test_an_unparsable_item_does_not_stop_the_other_checks(project, run):
 def test_a_dangling_relates_to_is_an_error(project, run):
     FsTaxonomyStore.open(project).add("Payment")
     meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
+    write_config_file(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
     code, out, _ = run(project)
     [line] = about(out, "invoice")
     assert line.startswith("error: ") and code == 1
@@ -177,7 +178,7 @@ def test_a_dangling_relates_to_is_an_error(project, run):
 def test_an_unresolvable_subject_is_an_error(project, run):
     FsCapabilitiesStore.open(project).add("ns/thing")
     meta = project / "docs" / "capabilities" / "ns" / "thing" / "meta.yaml"
-    meta.write_text(meta.read_text() + "Subject: nosuch\n")
+    write_config_file(meta, meta.read_text() + "Subject: nosuch\n")
     code, out, _ = run(project)
     [line] = about(out, "nosuch")
     assert line.startswith("error: ") and code == 1
@@ -220,7 +221,7 @@ def test_the_removed_spellings(project, monkeypatch, argv):
 @pytest.mark.parametrize("config", ["id: p\nwork: [\n", "id: p\nconnected-projects: {}\n",
                                     "id: p\nwork:\n  stages: 5\n"])
 def test_a_config_finding_names_the_file_relative_to_the_project(project, run, config):
-    (project / "tcw-config.yaml").write_text(config)
+    write_config(project, config)
     code, out, _ = run(project / "docs")
     assert code == 1
     assert out and all(line.startswith("error: tcw-config.yaml: ") for line in out), out
@@ -229,8 +230,8 @@ def test_a_config_finding_names_the_file_relative_to_the_project(project, run, c
 def test_the_former_child_warning_names_its_file_once(tmp_path, run):
     top = make_project(tmp_path, "top")
     kid = make_project(tmp_path, "kid")
-    (top / "tcw-config.yaml").write_text("id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
-    (kid / "tcw-config.yaml").write_text("id: kid\nprojects:\n  parent:\n    top: ../top\n")
+    write_config(top, "id: top\nprojects:\n  upstream:\n    kid: ../kid\n")
+    write_config(kid, "id: kid\nprojects:\n  parent:\n    top: ../top\n")
     code, out, _ = run(top)
     [line] = about(out, "read as an upstream")
     assert code == 0 and line.startswith("warning: "), line

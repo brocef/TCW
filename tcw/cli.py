@@ -19,12 +19,12 @@ from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
     LOCAL_CONFIG, declared_repository, find_project_root, git_root,
-    ignore_personal_file, init, load_config, read_yaml_text, refuse_retired_config,
+    ignore_personal_file, init, load_config, refuse_legacy_project,
+    refuse_retired_config,
     provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
-from tcw.store.yaml_source import load as _load_named_yaml
 import yaml
 from tcw.taxonomy import cli as taxonomy_cli
 from tcw.work import cli as work_cli
@@ -57,8 +57,7 @@ def run_init(components: list[str], project_id: str | None = None,
                          f"choose from {', '.join(COMPONENTS)}")
     sentinel = root / SENTINEL
     if project_id is None:
-        configured = (_load_named_yaml(read_yaml_text(sentinel), sentinel)
-                      if sentinel.exists() else {})
+        configured = load_config(sentinel) if sentinel.exists() else {}
         if not isinstance(configured, dict) or not configured.get("id"):
             raise UsageError("a new project needs `--id <project-id>`; IDs are not "
                              "inferred")
@@ -645,6 +644,9 @@ def _dispatch(args: argparse.Namespace, command: str) -> int:
     from tcw import config as layered
     layered.begin_command()
     try:
+        # Before anything else, for every command: a TCW 3.x project is refused,
+        # naming `tcw migrate` (TCW-106 Design 4.1).
+        refuse_legacy_project()
         # One place for every command: a config still holding the 2.x key is
         # refused before anything reads it (Design 9.3). `validate` reports it
         # as one of its findings instead.

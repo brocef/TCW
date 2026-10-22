@@ -14,6 +14,7 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import init
 from tests.work.projects import make_project
+from tests.projectfiles import write_config_file
 
 
 @pytest.fixture
@@ -61,7 +62,7 @@ def test_rm_of_a_referenced_term_is_refused(project, run):
     run(project, "taxonomy", "add", "Invoice")
     run(project, "taxonomy", "add", "Payment")
     meta = project / "docs" / "taxonomy" / "payment" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
+    write_config_file(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [invoice]"))
     code, out, err = run(project, "taxonomy", "rm", "invoice")
     assert (code, out) == (3, "")
     assert "payment" in err

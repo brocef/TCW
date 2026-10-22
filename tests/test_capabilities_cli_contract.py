@@ -15,6 +15,7 @@ import pytest
 from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tests.work.projects import make_project
+from tests.projectfiles import config_file, write_config_file
 
 
 @pytest.fixture
@@ -144,10 +145,10 @@ def overridden(tmp_path, project, run):
     up = make_project(tmp_path, "up")
     init(["taxonomy", "capabilities"], up, "up")
     assert run(up, "capabilities", "add", "auth/login")[0] == 0
-    path = project / "tcw-config.yaml"
+    path = config_file(project)
     document = yaml.safe_load(path.read_text())
     document["projects"] = {"upstream": {"up": "../up"}}
-    path.write_text(yaml.safe_dump(document))
+    write_config_file(path, yaml.safe_dump(document))
     assert run(project, "capabilities", "extends", "add", "up")[0] == 0
     assert run(project, "capabilities", "set", "auth/login", "--status", "Missing")[0] == 0
     store = FsCapabilitiesStore.open(project)

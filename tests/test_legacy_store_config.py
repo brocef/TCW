@@ -19,6 +19,7 @@ from tcw.validate import ValidationTarget, validate
 
 from nodeconfig import declare_extends, set_component_key
 from test_validate import connect, node
+from tests.projectfiles import write_config_file
 
 LEFTOVER = {"taxonomy": "config.yaml", "capabilities": ".config.yaml"}
 STORE = {"taxonomy": FsTaxonomyStore, "capabilities": FsCapabilitiesStore}
@@ -181,7 +182,7 @@ def test_a_check_scoped_to_one_object_leaves_the_leftover_out(
 def test_following_the_message_makes_check_clean(tmp_path, component, inherited):
     consumer = _federated(tmp_path)
     leftover = consumer / "docs" / component / LEFTOVER[component]
-    leftover.write_text("extends:\n  - shared\n")
+    write_config_file(leftover, "extends:\n  - shared\n")
     assert STORE[component].open(consumer).check() != []
 
     declare_extends(consumer, component, leftover.read_text())
@@ -344,7 +345,7 @@ def test_no_command_touches_the_leftover(tmp_path, monkeypatch, capsys):
     before = {}
     for component, name in LEFTOVER.items():
         path = consumer / "docs" / component / name
-        path.write_bytes(b"# kept by hand\nextends:\n  - shared\n")
+        write_config_file(path, b"# kept by hand\nextends:\n  - shared\n")
         before[path] = path.read_bytes()
 
     monkeypatch.chdir(consumer)

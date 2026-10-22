@@ -19,6 +19,7 @@ from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.store.project import FsProjectRegistry
 from tcw.validate import validate
 from tests.serve.conftest import Served, start
+from tests.projectfiles import write_config
 
 RENDERED = re.compile(r"(error|warning|unresolved): \S.*: \S.*")
 
@@ -62,9 +63,9 @@ def test_the_capabilities_check(tmp_path):
 
 def test_the_registry_check(tmp_path):
     root = _node(tmp_path)
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"cousins": {}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config))
+    write_config(root, yaml.safe_dump(config))
     [finding] = only_findings(FsProjectRegistry.open(root).check())
     assert finding.where.endswith("tcw-config.yaml")
     assert "cousins" in finding.message

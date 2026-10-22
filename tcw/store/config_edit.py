@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from tcw.project_files import VERSION_KEY, version_line
 from tcw.store.yaml_source import load as _load_named_yaml
 
 
@@ -131,7 +132,10 @@ def edit_text(path: Path, text: str | None, edits: list[Edit]) -> str | None:
         target = intended({}, edits)
         if not target:
             return None
-        return yaml.safe_dump(target, sort_keys=False, allow_unicode=True)
+        # A file TCW creates records the version that wrote it, first
+        # (TCW-106 Design 3.1).
+        return version_line() + yaml.safe_dump(target, sort_keys=False,
+                                               allow_unicode=True)
     mapping = _load(text, path)
     if not isinstance(mapping, dict):
         mapping = {}
@@ -421,8 +425,12 @@ class _Document:
             return [_Replacement(v.start_mark.index, v.end_mark.index,
                                  self.scalar(edit.value))]
         line = f"id: {self.scalar(edit.value)}"
-        if pairs:
-            at = self.line_start(pairs[0][0].start_mark.index)
+        # Above the first key, except that `tcw-version` stays the first line
+        # (TCW-106 Design 3.1): the id then goes above the key after it.
+        rest = [pair for pair in pairs if pair[0].value != VERSION_KEY] \
+            if pairs and pairs[0][0].value == VERSION_KEY else pairs
+        if rest:
+            at = self.line_start(rest[0][0].start_mark.index)
             return [_Replacement(at, at, line + self.nl)]
         at, lead = self.document_end()
         return [_Replacement(at, at, lead + line + self.nl)]

@@ -10,6 +10,7 @@ import yaml
 
 from tcw.cli import main
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 
 @pytest.fixture
@@ -25,10 +26,10 @@ def root(tmp_path, monkeypatch, capsys):
 
 
 def configure(root: Path, **sections) -> None:
-    p = root / "tcw-config.yaml"
+    p = config_file(root)
     cfg = yaml.safe_load(p.read_text()) or {}
     cfg.update(sections)
-    p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    write_config_file(p, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def cli(capsys, *argv):
@@ -47,7 +48,7 @@ def test_init_scaffolds_at_the_configured_path(root, capsys, component, where):
     assert code == 0, err
     assert (root / where).is_dir()
     assert not (root / "docs" / component).exists()
-    assert yaml.safe_load((root / "tcw-config.yaml").read_text())[component] == {"path": where}
+    assert yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())[component] == {"path": where}
     code, _out, err = cli(capsys, component, "list")
     assert code == 0 and "run `tcw init`" not in err, err
 

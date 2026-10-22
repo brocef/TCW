@@ -9,6 +9,7 @@ import pytest
 from tcw.cli import main
 
 from test_lifecycle_config_tags import node
+from tests.projectfiles import config_file
 
 
 def run(root: Path, monkeypatch, capsys, *argv: str) -> tuple[int, str, str]:
@@ -36,7 +37,7 @@ def run(root: Path, monkeypatch, capsys, *argv: str) -> tuple[int, str, str]:
 def test_tags_add_and_rm_refuse_while_the_registry_holds_a_non_tag(
         tmp_path, monkeypatch, capsys, entry, named, verb):
     root = node(tmp_path, {"tags": ["cli", entry]})
-    config = root / "tcw-config.yaml"
+    config = config_file(root)
     before = config.read_bytes()
     code, _out, err = run(root, monkeypatch, capsys, "work", "tags", verb,
                           "docs" if verb == "add" else "cli")

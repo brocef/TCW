@@ -334,7 +334,7 @@ def test_a_pre_whose_when_does_not_match_does_not_run(tmp_path):
 
 
 def test_not_tags_excludes(tmp_path):
-    w = World(tmp_path, stages(review={"pre": pre("false", when={"not_tags": ["docs"]})}))
+    w = World(tmp_path, stages(review={"pre": pre("false", when={"not-tags": ["docs"]})}))
     assert w.advance(w.item("implement", tags=["docs"])).code == codes.OK
     refused(w.advance(w.item("implement")))
 

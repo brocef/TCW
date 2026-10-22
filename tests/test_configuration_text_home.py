@@ -26,6 +26,7 @@ from tcw.config import PERSONAL_KEYS, load_config
 from tcw.work.layout import front_matter
 from tests.doc_vocabulary import PATTERNS, scan
 from tests.test_docs_describe_3_0 import FENCE, HEADING, links
+from tests.projectfiles import write_config
 
 REPO = Path(__file__).resolve().parent.parent
 ROUTER = REPO / "skills/configure/SKILL.md"
@@ -226,7 +227,7 @@ def test_each_work_key_path_is_accepted(key, tmp_path, monkeypatch):
     jira = key.startswith("work.jira.") or key == "work.stages.*.status"
     config = {"id": "x", "work": copy.deepcopy(JIRA_BASE) if jira else {}}
     _set(config, key, _sample(key))
-    (tmp_path / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False),
+    write_config(tmp_path, yaml.safe_dump(config, sort_keys=False),
                                               encoding="utf-8")
     problems = [str(p) for p in load_config(tmp_path).problems]
     assert not problems, f"{key} set to {_sample(key)!r}: {problems}"

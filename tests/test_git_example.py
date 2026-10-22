@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from tcw.config import load_config
+from tests.projectfiles import write_config
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "docs/guide/examples/commit-item-after-move.sh"
@@ -172,7 +173,7 @@ def _example_config(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True,
                    env=_environment())
-    (tmp_path / "tcw-config.yaml").write_text("id: x\n" + _first_block("yaml"),
+    write_config(tmp_path, "id: x\n" + _first_block("yaml"),
                                               encoding="utf-8")
     return load_config(tmp_path)
 

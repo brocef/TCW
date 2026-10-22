@@ -94,7 +94,8 @@ class ConfigProblem:
 @dataclass(frozen=True)
 class When:
     """A binding applies to an item carrying any of `tags` and none of
-    `not_tags`. Both are normalized tags; an empty `tags` matches every item."""
+    `not_tags` (written `not-tags` in a file). Both are normalized tags; an
+    empty `tags` matches every item."""
 
     tags: tuple[str, ...] = ()
     not_tags: tuple[str, ...] = ()
@@ -171,18 +172,18 @@ def _describe(value: Any) -> str:
 def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
     if not isinstance(raw, dict) or not raw:
         problems.add(where, "'when' must be a non-empty mapping with 'tags' "
-                            "and/or 'not_tags'")
+                            "and/or 'not-tags'")
         return None
     if "type" in raw:
         problems.add(where, "'when.type' is not supported: work items have no "
                             "type in TCW 3.0; condition on tags instead")
         return None
-    unknown = sorted(map(str, set(raw) - {"tags", "not_tags"}))
+    unknown = sorted(map(str, set(raw) - {"tags", "not-tags"}))
     if unknown:
         problems.add(where, f"unknown 'when' key(s) {', '.join(unknown)}; "
-                            f"expected 'tags' or 'not_tags'")
+                            f"expected 'tags' or 'not-tags'")
         return None
-    lists: dict[str, tuple[str, ...]] = {"tags": (), "not_tags": ()}
+    lists: dict[str, tuple[str, ...]] = {"tags": (), "not-tags": ()}
     for key in lists:
         if key not in raw:
             continue
@@ -209,7 +210,7 @@ def _parse_when(raw: Any, where: KeyPath, problems: _Problems) -> When | None:
                 problems.add(where, f"'when.{key}' element: {error}")
                 return None
         lists[key] = tuple(tags)
-    return When(lists["tags"], lists["not_tags"])
+    return When(lists["tags"], lists["not-tags"])
 
 
 def _parse_binding(raw: Any, where: KeyPath, role: str, origin: Any,

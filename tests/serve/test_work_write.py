@@ -18,6 +18,7 @@ from tests.serve.memory import ME
 from tests.serve.test_work_read import new, ok
 from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV
 from tests.work.projects import commit_all, connect, git, make_project
+from tests.projectfiles import config_file, write_config_file
 
 
 def item_yaml(root: Path, folder: str) -> dict:
@@ -103,10 +104,10 @@ def test_an_unregistered_tag_is_refused(fs, two):
 def test_a_tag_since_unregistered_does_not_block_other_edits(fs, two, tcw):
     a, _ = two
     ok(patch(fs, a, {"tags": {"add": ["ui"]}}, {"tags": []}))
-    config = fs.root / "tcw-config.yaml"
+    config = config_file(fs.root)
     document = yaml.safe_load(config.read_text())
     document["work"]["tags"] = ["api"]
-    config.write_text(yaml.safe_dump(document))
+    write_config_file(config, yaml.safe_dump(document))
     ok(patch(fs, a, {"priority": "low"}, {"priority": "medium"}))
     assert item_yaml(fs.root, a)["tags"] == ["ui"]
 

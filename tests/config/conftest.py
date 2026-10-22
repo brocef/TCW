@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from tests.projectfiles import write_config, write_config_file
 
 
 @dataclass
@@ -26,23 +27,23 @@ class Personal:
 
     @property
     def local_file(self) -> Path:
-        return self.root / "tcw-config.local.yaml"
+        return self.root / ".tcw/tcw-config.local.yaml"
 
     @property
     def project_file(self) -> Path:
-        return self.root / "tcw-config.yaml"
+        return self.root / ".tcw/tcw-config.yaml"
 
     def project(self, mapping: dict) -> None:
-        self.project_file.write_text(yaml.safe_dump({"id": "p", **mapping},
+        write_config_file(self.project_file, yaml.safe_dump({"id": "p", **mapping},
                                                      sort_keys=False))
 
     def user(self, mapping) -> None:
         self.user_file.parent.mkdir(parents=True, exist_ok=True)
-        self.user_file.write_text(mapping if isinstance(mapping, str)
+        write_config_file(self.user_file, mapping if isinstance(mapping, str)
                                   else yaml.safe_dump(mapping, sort_keys=False))
 
     def local(self, mapping) -> None:
-        self.local_file.write_text(mapping if isinstance(mapping, str)
+        write_config_file(self.local_file, mapping if isinstance(mapping, str)
                                    else yaml.safe_dump(mapping, sort_keys=False))
 
 
@@ -50,7 +51,7 @@ class Personal:
 def personal(tmp_path, monkeypatch) -> Personal:
     root = tmp_path / "p"
     root.mkdir()
-    (root / "tcw-config.yaml").write_text("id: p\n")
+    write_config(root, "id: p\n")
     xdg, home = tmp_path / "xdg", tmp_path / "home"
     home.mkdir()
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG", raising=False)

@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 
 def _node(tmp_path: Path, name: str = "repo") -> Path:
@@ -21,10 +22,10 @@ def _node(tmp_path: Path, name: str = "repo") -> Path:
 
 
 def _configure(root: Path, lifecycle: dict) -> None:
-    cfg_path = root / "tcw-config.yaml"
+    cfg_path = config_file(root)
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
     cfg.setdefault("work", {})["lifecycle"] = lifecycle
-    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    write_config_file(cfg_path, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def _cli(root: Path, *args: str):

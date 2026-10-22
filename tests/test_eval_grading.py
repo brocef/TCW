@@ -19,6 +19,7 @@ import pytest
 
 from evals import grade
 from evals.seed_fixture import seed
+from tests.projectfiles import write_config_file
 
 TCW_ENV = {**os.environ, "TCW_NO_PERSONAL_CONFIG": "1"}
 
@@ -72,7 +73,7 @@ def _path(root, *args) -> Path:
 
 def _write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    write_config_file(path, text)
     return path
 
 
@@ -163,7 +164,7 @@ def test_the_check_agrees_with_tcw_about_the_judges_value(control):
     slug = manifest["items"]["qa"]
     path = _qa_round(root, manifest, GOOD_QA)
     assert _tcw(root, "work", "advance", slug, "--dry-run").returncode == 0
-    path.write_text(GOOD_QA.replace("judges: 1", "judges: 0"))
+    write_config_file(path, GOOD_QA.replace("judges: 1", "judges: 0"))
     assert _tcw(root, "work", "advance", slug, "--dry-run").returncode == 3
 
 
@@ -192,7 +193,7 @@ def test_the_person_s_verdict_passes_and_an_invented_one_fails(control):
     path = _qa_round(root, manifest, PERSON_QA)
     run = _run(root, manifest)
     assert _check("round_verdict_is", run, verdict="rejected", **QA)["passed"]
-    path.write_text(PERSON_QA.replace("verdict: rejected", "verdict: accepted"))
+    write_config_file(path, PERSON_QA.replace("verdict: rejected", "verdict: accepted"))
     failed = _check("round_verdict_is", run, verdict="rejected", **QA)
     assert not failed["passed"]
     assert "'accepted'" in failed["evidence"]
@@ -274,7 +275,7 @@ def test_artifact_exists_reads_a_round_stage_s_newest_round(control):
 
     path = _write(_path(root, slug, "implement", "--next"), "   \n")
     assert not _check("artifact_exists", run, **args)["passed"], "empty passed"
-    path.write_text("# Implement round 1\n\nWrote the exporter.\n")
+    write_config_file(path, "# Implement round 1\n\nWrote the exporter.\n")
     verdict = _check("artifact_exists", run, **args)
     assert verdict["passed"], verdict["evidence"]
     assert "round-1.md" in verdict["evidence"]
@@ -323,7 +324,7 @@ def test_a_nonce_in_the_spec_document(customized):
     args = {"kind": "file", "item": "spec", "stage": "spec"}
     path = _write(_path(root, manifest["items"]["spec"], "spec"), "# Spec\n")
     assert "absent" in _check("nonce_in_artifact", run, **args)["evidence"]
-    path.write_text(f"# Spec\n\n## Blast radius ({manifest['nonces']['file']})\n")
+    write_config_file(path, f"# Spec\n\n## Blast radius ({manifest['nonces']['file']})\n")
     assert _check("nonce_in_artifact", run, **args)["passed"]
 
 
@@ -337,7 +338,7 @@ def test_silence_invents_nothing_reads_the_postmortem(customized):
     path = _write(_path(root, manifest["items"]["completed"], "postmortem"),
                   "# Postmortem\n\nSpec.\n")
     assert _check("nonce_absent_from_artifact", run, **args)["passed"]
-    path.write_text(f"# Postmortem\n\n{manifest['nonces']['blob']}\n")
+    write_config_file(path, f"# Postmortem\n\n{manifest['nonces']['blob']}\n")
     assert not _check("nonce_absent_from_artifact", run, **args)["passed"]
 
 
@@ -435,7 +436,7 @@ def test_an_item_folder_placeholder_expands_to_the_minted_folder(control):
     args = {"paths": ["{item:inbox}/request/request.md"]}
     assert not _check("files_changed_exactly", run, **args)["passed"]
     request = _path(root, manifest["items"]["inbox"], "request")
-    request.write_text(request.read_text() + "\n## Added\n\nTuesday's import.\n")
+    write_config_file(request, request.read_text() + "\n## Added\n\nTuesday's import.\n")
     verdict = _check("files_changed_exactly", run, **args)
     assert verdict["passed"], verdict["evidence"]
     assert "docs/work/" in verdict["evidence"]
@@ -755,7 +756,7 @@ def test_grade_exits_non_zero_for_a_run_with_an_isolation_problem(
     assert grade.main([str(tmp_path / "run-A6-control")]) == 0
     timing = json.loads(timing_path.read_text())
     timing["isolation_problems"] = ["the agent's `tcw` imports from /elsewhere"]
-    timing_path.write_text(json.dumps(timing))
+    write_config_file(timing_path, json.dumps(timing))
     assert grade.main([str(tmp_path / "run-A6-control")]) == 1
     assert "ISOLATION the agent's `tcw`" in capsys.readouterr().out
 

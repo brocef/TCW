@@ -17,11 +17,12 @@ unreachable by construction.
 from pathlib import Path
 
 import yaml
+from tests.projectfiles import config_file, write_config_file
 
 
 def set_component_key(project_root: Path, component: str, key: str, value) -> None:
     """Merge `<component>.<key> = value` into the node's config, keeping the rest."""
-    config_path = Path(project_root) / "tcw-config.yaml"
+    config_path = config_file(Path(project_root))
     raw = yaml.safe_load(config_path.read_text()) if config_path.exists() else {}
     if not isinstance(raw, dict):
         raw = {}
@@ -30,7 +31,7 @@ def set_component_key(project_root: Path, component: str, key: str, value) -> No
         section = {}
     section[key] = value
     raw[component] = section
-    config_path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True))
+    write_config_file(config_path, yaml.safe_dump(raw, sort_keys=False, allow_unicode=True))
 
 
 def declare_extends(project_root: Path, component: str, text: str) -> None:

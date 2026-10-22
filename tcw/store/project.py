@@ -17,10 +17,11 @@ from tcw.store.base import (
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
     parse_connected_entry, retired_key_problem,
 )
+from tcw.project_files import (LEGACY_SENTINEL, SENTINEL, legacy_message, root_of,
+                               version_problem)
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
-SENTINEL = "tcw-config.yaml"
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 RESERVED_PROJECT_IDS = {"t", "c", "w", "local"}
 
@@ -108,11 +109,11 @@ def _below(path: Path, root: Path) -> Path | None:
 
 
 def _config_file(path: Path) -> Path:
-    """A `tcw-config.yaml` path with its folder resolved and the file itself not
-    followed. A symlinked config belongs to the folder it sits in: that folder
-    is the project, and its relative locators are read from there — resolving the
-    file took them from wherever the link pointed."""
-    return path.parent.resolve() / path.name
+    """A `.tcw/tcw-config.yaml` path with its project root resolved and the file
+    itself not followed. A symlinked config belongs to the project it sits in:
+    that folder is the project, and its relative locators are read from there —
+    resolving the file took them from wherever the link pointed."""
+    return root_of(path).resolve() / SENTINEL
 
 
 def _git_lines(directory: Path, *args: str) -> list[str] | None:
@@ -555,6 +556,11 @@ class FsProjectRegistry(ProjectRegistry):
                      declaration: RepositoryDeclaration | None = None,
                      quiet_connections: bool = False,
                      ) -> _Config | None:
+        if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
+            # A 3.x project: present, and in a format this TCW does not read
+            # (TCW-106 Design 4.2). Not "this machine does not have it".
+            self._problem(root_of(path), legacy_message(root_of(path)))
+            return None
         if not path.is_file():
             # Not a defect. A locator is a fact about one machine — the same
             # thing `work.path` is — so a target that is not here means this
@@ -571,9 +577,9 @@ class FsProjectRegistry(ProjectRegistry):
                 # made `require_valid()` accept any directory on the disk, and
                 # every helper built on it answer "no parent, no children,
                 # valid".
-                self._problem(path, "no tcw-config.yaml here")
+                self._problem(path, f"no {SENTINEL} here")
                 return None
-            self._unreachable_edge(declared_in or path, declared_id, path.parent,
+            self._unreachable_edge(declared_in or path, declared_id, root_of(path),
                                    declaration)
             return None
         try:
@@ -589,6 +595,11 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         if not isinstance(raw, dict):
             self._problem(path, "config must be a mapping")
+            return None
+        version = version_problem(raw)
+        if version:
+            # Read by every reader of a `tcw-*.yaml` file (TCW-106 Design 3.4a).
+            self._problem(path, version)
             return None
         project_id = raw.get("id")
         if not isinstance(project_id, str) or not project_id.strip():
@@ -632,7 +643,7 @@ class FsProjectRegistry(ProjectRegistry):
             del self._problems[before_connections:]
             del self._findings[before_connections:]
         return _Config(
-            project=Project(project_id, path.parent),
+            project=Project(project_id, root_of(path)),
             path=path,
             parent=parent,
             children=children,
@@ -698,7 +709,7 @@ class FsProjectRegistry(ProjectRegistry):
         if entry.repository is not None:
             try:
                 candidates.append(self._worktree_copy(_config_file(
-                    provisioned_root(source_config.parent, entry.repository)
+                    provisioned_root(root_of(source_config), entry.repository)
                     / SENTINEL)))
             except StoreDeclarationError as error:
                 # A declaration this machine cannot turn into a path — a `~name`
@@ -710,7 +721,7 @@ class FsProjectRegistry(ProjectRegistry):
         for candidate in candidates:
             if candidate.is_file():
                 return self._canonical(candidate)
-        return candidates[0] if candidates else (source_config.parent / SENTINEL)
+        return candidates[0] if candidates else (root_of(source_config) / SENTINEL)
 
     def _override_path(self, project_id: str) -> Path | None:
         """Rule 0: where `TCW_PROJECT_<ID>` says this project is, or None.
@@ -757,7 +768,8 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         config_path = root / SENTINEL
         if not config_path.is_file():
-            problem = f"{name} names a directory with no {SENTINEL}"
+            problem = (legacy_message(root) if (root / LEGACY_SENTINEL).is_file()
+                       else f"{name} names a directory with no {SENTINEL}")
             self._problem(root, problem)
             self._override_refused.add(project_id)
             # Recorded as an override too, not only as a problem. It stopped the
@@ -778,7 +790,7 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _locator_path(self, source_config: Path, locator: str) -> Path:
         target = Path(locator)
-        source_dir = source_config.parent.resolve()
+        source_dir = root_of(source_config).resolve()
         resolved = _config_file(
             (target if target.is_absolute() else source_dir / target) / SENTINEL)
         if self._anchors is None:
@@ -795,7 +807,7 @@ class FsProjectRegistry(ProjectRegistry):
         if (
             not target.is_absolute()
             and inside is not None
-            and _below(resolved.parent, top) is None
+            and _below(root_of(resolved), top) is None
         ):
             counterpart = main / inside
             resolved = _config_file(counterpart / target / SENTINEL)
@@ -826,7 +838,7 @@ class FsProjectRegistry(ProjectRegistry):
         copy = top / under_main
         if not copy.is_file():
             return resolved
-        between = copy.parent
+        between = root_of(copy)
         while between != top and between.is_relative_to(top):
             if not _same_repository(between / ".git", main):
                 return resolved                  # another repository's project
@@ -837,14 +849,15 @@ class FsProjectRegistry(ProjectRegistry):
         """`config_path` (see `_config_file`) under the first spelling seen of its
         folder; as given when the folder cannot be read."""
         config_path = _config_file(config_path)
+        root = root_of(config_path)
         try:
-            found = config_path.parent.stat()
+            found = root.stat()
         except OSError:
             return config_path
         if not found.st_ino:
             return config_path    # a filesystem with no inode numbers: text only
-        folder = self._spellings.setdefault((found.st_dev, found.st_ino), config_path.parent)
-        return folder / config_path.name
+        folder = self._spellings.setdefault((found.st_dev, found.st_ino), root)
+        return folder / SENTINEL
 
     def _upstream_reader(self, project_id: str) -> str | None:
         """A project in this graph declaring `project_id` as its upstream."""
@@ -887,7 +900,7 @@ class FsProjectRegistry(ProjectRegistry):
                 elif self._points_elsewhere(child.path, reciprocal, cfg.path):
                     self._problem(
                         child.path,
-                        f"parent locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
+                        f"parent locator for '{cfg.project.id}' does not point back to {root_of(cfg.path)}",
                     )
                 if child.project.id != child_id:
                     self._problem(
@@ -915,7 +928,7 @@ class FsProjectRegistry(ProjectRegistry):
                 elif self._points_elsewhere(parent.path, reciprocal, cfg.path):
                     self._problem(
                         parent.path,
-                        f"child locator for '{cfg.project.id}' does not point back to {cfg.path.parent}",
+                        f"child locator for '{cfg.project.id}' does not point back to {root_of(cfg.path)}",
                     )
                 if parent.project.id != parent_id:
                     self._problem(
@@ -1065,7 +1078,7 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         return (f"{override.source} names {override.locator}, the primary "
                 f"checkout's copy, while this worktree has its own at "
-                f"{copy.parent}; '{override.id}' is read from another branch "
+                f"{root_of(copy)}; '{override.id}' is read from another branch "
                 f"than the rest of the graph")
 
     def _problem(self, path: Path, message: str) -> None:

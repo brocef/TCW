@@ -11,6 +11,7 @@ from tcw.cli import main
 from tcw.store.fs import FsCapabilitiesStore, write_sentinel
 from tcw.validate import validate
 from nodeconfig import set_component_key
+from tests.projectfiles import write_config
 
 
 def repo(root: Path, name: str = "node") -> Path:
@@ -140,9 +141,9 @@ def test_a_store_shared_by_two_projects_is_reported_by_each(tmp_path, monkeypatc
     Design 6: `validate` checks the current project only)."""
     parent = repo(tmp_path / "parent", "parent")
     child = repo(tmp_path / "child", "child")
-    (parent / "tcw-config.yaml").write_text(
+    write_config(parent, 
         "id: parent\nprojects:\n  children:\n    child: ../child\n")
-    (child / "tcw-config.yaml").write_text(
+    write_config(child, 
         "id: child\nprojects:\n  parent:\n    parent: ../parent\n")
     shared = tmp_path / "shared"
     shared.mkdir()

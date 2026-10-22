@@ -9,6 +9,7 @@ import tcw.cli
 from tcw.cli import main
 from tcw.serve.records import RESOLVE_MAX_URIS
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
+from tests.projectfiles import config_file, write_config_file
 
 
 def detail(served, axis: str, ref: str) -> dict:
@@ -261,8 +262,8 @@ def test_the_configuration_is_read_again_while_serving(records_root, monkeypatch
 
     def fake_serve(root, **_):
         seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
-        config = root / "tcw-config.yaml"
-        config.write_text(config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
+        config = config_file(root)
+        write_config_file(config, config.read_text() + "work:\n  hooks:\n    timeout: -1\n")
         seen.append(resolve_tcw_ref(root, "tcw://W/2026-01-01-x").reason)
         return 0
 

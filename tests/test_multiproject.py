@@ -9,6 +9,7 @@ from tcw.store.fs import (
 
 
 from nodeconfig import declare_extends
+from tests.projectfiles import write_config
 
 
 def _monorepo(tmp_path: Path) -> Path:
@@ -19,11 +20,11 @@ def _monorepo(tmp_path: Path) -> Path:
         root = tmp_path / name
         root.mkdir()
         init(["taxonomy", "capabilities"], root, name)
-    (tmp_path / "project-b" / "tcw-config.yaml").write_text(
+    write_config(tmp_path / "project-b", 
         "id: project-b\nprojects:\n  children:\n"
         "    project-a: ../project-a\n"
     )
-    (tmp_path / "project-a" / "tcw-config.yaml").write_text(
+    write_config(tmp_path / "project-a", 
         "id: project-a\nprojects:\n  parent:\n"
         "    project-b: ../project-b\n"
     )
@@ -87,15 +88,15 @@ def _routing_graph(tmp_path):
     init(["work"], c, "c-project")
 
     def config(path, doc):
-        (path / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+        write_config(path, yaml.safe_dump(doc, sort_keys=False))
 
-    a_doc = yaml.safe_load((a / "tcw-config.yaml").read_text())
+    a_doc = yaml.safe_load((a / ".tcw/tcw-config.yaml").read_text())
     a_doc["projects"] = {"children": {"b-project": "b"}}
     config(a, a_doc)
     config(b, {"id": "b-project",
                "projects": {"parent": {"a-project": ".."},
                                       "children": {"c-project": "c"}}})
-    c_doc = yaml.safe_load((c / "tcw-config.yaml").read_text())
+    c_doc = yaml.safe_load((c / ".tcw/tcw-config.yaml").read_text())
     c_doc["projects"] = {"parent": {"b-project": ".."}}
     config(c, c_doc)
     return a, b, c
@@ -147,9 +148,9 @@ def _child_missing_its_parent(tmp_path):
     subprocess.run(["git", "-C", str(child), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(child), "config", "user.name", "t"], check=True)
     init(["work"], child, "child-project")
-    doc = yaml.safe_load((child / "tcw-config.yaml").read_text())
+    doc = yaml.safe_load((child / ".tcw/tcw-config.yaml").read_text())
     doc["projects"] = {"parent": {"away-project": str(tmp_path / "away")}}
-    (child / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    write_config(child, yaml.safe_dump(doc, sort_keys=False))
     return child
 
 
@@ -176,9 +177,9 @@ def test_nodes_names_a_child_this_checkout_does_not_have(tmp_path, monkeypatch,
     subprocess.run(["git", "-C", str(parent), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(parent), "config", "user.name", "t"], check=True)
     init(["work"], parent, "parent-project")
-    doc = yaml.safe_load((parent / "tcw-config.yaml").read_text())
+    doc = yaml.safe_load((parent / ".tcw/tcw-config.yaml").read_text())
     doc["projects"] = {"children": {"away-project": str(tmp_path / "away")}}
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump(doc, sort_keys=False))
+    write_config(parent, yaml.safe_dump(doc, sort_keys=False))
 
     assert _projects(monkeypatch, capsys, parent)["away-project"] == "child"
 

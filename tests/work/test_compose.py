@@ -19,6 +19,7 @@ from tcw.work.resolve import (
     generate_payload, packaged_text, procedure_prompt, stage_header,
     stage_prompt, substitute_request,
 )
+from tests.projectfiles import write_config
 
 
 def config(**work):
@@ -32,7 +33,7 @@ def loaded(root: Path):
     the layered loader, which is what puts TCW's own text in each list
     (TCW-72 Design 3.3)."""
     from tcw.config import load_config
-    (root / "tcw-config.yaml").write_text("id: p\n")
+    write_config(root, "id: p\n")
     layered = load_config(root)
     assert layered.problems == [], layered.problems
     return layered.work
@@ -119,7 +120,7 @@ def make_item(tmp_path, tags=()):
 def test_when_filters_by_tags(tmp_path):
     cfg = config(tags=["ui", "api"], stages={"spec": {"prompt": [
         {"blob": "UI only.", "when": {"tags": ["ui"]}},
-        {"blob": "Not API.", "when": {"not_tags": ["api"]}}]}})
+        {"blob": "Not API.", "when": {"not-tags": ["api"]}}]}})
     _, ui_item, _ = make_item(tmp_path / "a", tags=("ui",))
     _, api_item, _ = make_item(tmp_path / "b", tags=("api",))
     assert compose(cfg, "spec", tmp_path, item=ui_item) == "UI only.\n\nNot API."

@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 WORK_PATH = Path("docs") / "work"
 
@@ -34,10 +35,10 @@ def make_project(tmp_path: Path, project_id: str, *, config: dict | None = None,
     git(root, "config", "user.name", "t")
     init(["work"], root, project_id)                 # the branch's own init
     if config is not None:
-        path = root / "tcw-config.yaml"
+        path = config_file(root)
         document = yaml.safe_load(path.read_text())
         document["work"] = config
-        path.write_text(yaml.safe_dump(document, sort_keys=False))
+        write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     return root
 
 
@@ -45,12 +46,12 @@ def connect(a: Path, b: Path, relation: str) -> None:
     """Declare `b` in `a`'s projects under `relation` (parent or
     children), by a path relative to `a`."""
     import os
-    path = a / "tcw-config.yaml"
+    path = config_file(a)
     document = yaml.safe_load(path.read_text())
-    b_id = yaml.safe_load((b / "tcw-config.yaml").read_text())["id"]
+    b_id = yaml.safe_load((b / ".tcw/tcw-config.yaml").read_text())["id"]
     section = document.setdefault("projects", {}).setdefault(relation, {})
     section[b_id] = os.path.relpath(b, a)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def commit_all(root: Path, message: str = "fixture") -> None:

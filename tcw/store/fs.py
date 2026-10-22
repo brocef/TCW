@@ -44,6 +44,9 @@ from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
+from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_SENTINEL, SENTINEL, TCW_FOLDER, V3, V4,
+                               find_marker, legacy_message, version_problem,
+                               without_version)
 from tcw.store.project import (FsProjectRegistry, _below, validate_project_id,
                                worktree_anchors)
 
@@ -191,12 +194,12 @@ def _no_prompt_env() -> dict[str, str]:
     return env
 
 
-#: The personal file beside `tcw-config.yaml` (TCW-72 Design 1). Named here
-#: as well as in `tcw.config`, which imports this module.
-LOCAL_CONFIG = "tcw-config.local.yaml"
-#: The `.gitignore` line `tcw init` writes for it; the leading `/` limits the
-#: rule to the folder holding the file.
-LOCAL_CONFIG_RULE = "/" + LOCAL_CONFIG
+#: The personal file beside `.tcw/tcw-config.yaml` (TCW-72 Design 1; TCW-106),
+#: relative to the project root.
+LOCAL_CONFIG = LOCAL_SENTINEL
+#: The line `tcw init` writes for it in `.tcw/.gitignore`; the leading `/`
+#: limits the rule to that folder.
+LOCAL_CONFIG_RULE = "/" + LOCAL_CONFIG_NAME
 
 
 def personal_file_tracked(root: Path) -> bool:
@@ -220,13 +223,13 @@ def personal_file_tracked(root: Path) -> bool:
 
 
 def ignore_personal_file(root: Path) -> list[tuple[str, Path]]:
-    """Add `/tcw-config.local.yaml` to the `.gitignore` in `root`, unless a
-    line already reads exactly that or `tcw-config.local.yaml` (TCW-72 Design
-    10.2). Returns what it wrote, for the caller to name. Writes the file
-    only; nothing is staged."""
-    ignore = root / ".gitignore"
+    """Add `/tcw-config.local.yaml` to `.tcw/.gitignore` in `root`, unless a
+    line there already reads exactly that or `tcw-config.local.yaml` (TCW-72
+    Design 10.2; TCW-106 Design 1.5). Returns what it wrote, for the caller to
+    name. Writes the file only; nothing is staged."""
+    ignore = root / TCW_FOLDER / ".gitignore"
     text = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
-    if {LOCAL_CONFIG, LOCAL_CONFIG_RULE} & {line.strip() for line in text.splitlines()}:
+    if {LOCAL_CONFIG_NAME, LOCAL_CONFIG_RULE} & {line.strip() for line in text.splitlines()}:
         return []
     if text and not text.endswith("\n"):
         text += "\n"
@@ -251,7 +254,6 @@ def git_root(start: Path | None = None) -> Path | None:
     return Path(out)
 
 
-SENTINEL = "tcw-config.yaml"
 def write_sentinel(root: Path, project_id: str | None = None) -> bool:
     """Create or backfill the project sentinel without discarding configuration.
 
@@ -264,6 +266,7 @@ def write_sentinel(root: Path, project_id: str | None = None) -> bool:
                                  _sentinel_edits(p, existing, project_id))
     if text is None:
         return False
+    p.parent.mkdir(exist_ok=True)
     _atomic_write_all([(p, text)])
     return True
 
@@ -291,16 +294,25 @@ def _sentinel_edits(p: Path, existing: dict, project_id: str | None) -> list:
 
 
 def find_project_root(start: Path | None = None) -> Path | None:
-    """The nearest ancestor of `start` (cwd by default) holding a `tcw-config.yaml`
-    *file* — the project root, or None. FS-adapter-local: realizes 'locate the project'.
-    Resolves `start` (like `git_root`) so a symlinked cwd chains identically."""
-    d = (start or Path.cwd()).resolve()
-    while True:
-        if (d / SENTINEL).is_file():
-            return d
-        if d == d.parent:                  # filesystem-root fixpoint
-            return None
-        d = d.parent
+    """The nearest ancestor of `start` (cwd by default) holding a
+    `.tcw/tcw-config.yaml` *file* — the project root, or None. FS-adapter-local:
+    realizes 'locate the project'. Resolves `start` (like `git_root`) so a
+    symlinked cwd chains identically.
+
+    None, too, when the nearest marker is a TCW 3.x project's root
+    `tcw-config.yaml`: the walk never passes a 3.x project to reach an outer
+    4.0 one, which would act on the wrong project. Every command refuses a 3.x
+    project first (`refuse_legacy_project`), naming `tcw migrate`."""
+    found = find_marker(start)
+    return found[0] if found is not None and found[1] == V4 else None
+
+
+def refuse_legacy_project(start: Path | None = None) -> None:
+    """Refuse, exit 1, when the nearest project marker above `start` is a TCW
+    3.x project (TCW-106 Design 4.1). Run once for every command, first."""
+    found = find_marker(start)
+    if found is not None and found[1] == V3:
+        raise BackendError(legacy_message(found[0]))
 
 
 def refuse_retired_config(start: Path | None = None) -> None:
@@ -750,6 +762,7 @@ def init(components: list[str], root: Path, project_id: str | None = None,
            for c, location in configured.items() if c not in read_from_config])
     changed: list[tuple[str, Path]] = []
     if config_text is not None:
+        config_path.parent.mkdir(exist_ok=True)
         _atomic_write_all([(config_path, config_text)])
         changed.append(("wrote", config_path))
     if replacing_default_store:
@@ -874,11 +887,18 @@ def load_config(path: Path) -> dict:
     be fully loaded — deliberately do not use this.
     """
     try:
-        return load_yaml(path, unique=True)
+        data = load_yaml(path, unique=True)
     except NotAMapping as error:
         raise ValueError(f"malformed {path}: config must be a mapping") from error
     except yaml.YAMLError as error:
         raise ValueError(f"malformed {path}: {error}") from error
+    # A file whose format this TCW cannot read is refused before anything
+    # reads or edits it (TCW-106 Design 3.4a). An absent file reads as `{}`.
+    if path.exists():
+        version = version_problem(data)
+        if version:
+            raise ValueError(f"{path}: {version}")
+    return without_version(data)
 
 
 def _extends_ids(config: dict, label: str) -> list[str]:

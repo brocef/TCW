@@ -18,6 +18,7 @@ from tcw.work.open import open_backend
 from tests.config.conftest import tcw
 from tests.work.memory_backend import MemoryBackend
 from tests.work.projects import commit_all, connect, make_project
+from tests.projectfiles import write_local_config
 
 PACKAGE = Path(__file__).resolve().parents[2] / "tcw"
 
@@ -205,7 +206,7 @@ def test_assign_me_with_another_project_is_a_usage_error(tmp_path, monkeypatch):
     commit_all(parent)
     commit_all(child)
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (parent / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(parent, "user:\n  name: Brian\n")
     before = sorted((child / "docs" / "work").rglob("*"))
     result = tcw(parent, "work", "new", "--project", "child", "--assign-me", "x")
     assert (result.code, result.out) == (2, ""), result

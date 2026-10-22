@@ -9,6 +9,7 @@ import pytest
 
 from tcw.store import fs, project
 from tcw.store.yaml_source import UniqueKeyLoader
+from tests.projectfiles import write_config
 
 
 def test_every_test_runs_with_personal_files_switched_off(tmp_path):
@@ -22,8 +23,8 @@ def test_one_duplicate_key_loader_serves_both_readers():
 
 
 def test_a_duplicate_key_is_still_refused_by_both_readers(tmp_path):
-    (tmp_path / "tcw-config.yaml").write_text("id: p\nid: q\n")
+    write_config(tmp_path, "id: p\nid: q\n")
     with pytest.raises(ValueError, match="duplicate key"):
-        fs.load_config(tmp_path / "tcw-config.yaml")
+        fs.load_config(tmp_path / ".tcw/tcw-config.yaml")
     problems = [str(p) for p in project.FsProjectRegistry.open(tmp_path).check()]
     assert any("duplicate key" in p for p in problems), problems

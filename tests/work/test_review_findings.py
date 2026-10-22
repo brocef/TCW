@@ -14,6 +14,7 @@ from tcw.cli import main
 from tcw.errors import Refused
 from tcw.work.open import delegate
 from tests.work.projects import commit_all, connect, git, make_project, write_item
+from tests.projectfiles import write_config
 
 TODAY = date.today().isoformat()
 
@@ -198,9 +199,9 @@ def test_delegation_names_the_repository_holding_the_store(tmp_path, monkeypatch
     (store / "work" / ".gitkeep").write_text("")
     git(store, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
     git(store, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "s")
-    doc = yaml.safe_load((q / "tcw-config.yaml").read_text())
+    doc = yaml.safe_load((q / ".tcw/tcw-config.yaml").read_text())
     doc.setdefault("work", {})["path"] = str(store / "work")
-    (q / "tcw-config.yaml").write_text(yaml.safe_dump(doc))
+    write_config(q, yaml.safe_dump(doc))
     connect(p, q, "children")
     connect(q, p, "parent")
     commit_all(p)

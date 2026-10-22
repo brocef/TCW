@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 
 from tcw.findings import Finding
+from tcw.project_files import LEGACY_SENTINEL, SENTINEL, VERSION_KEY
 from tcw.refs import resolve_tcw_ref
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
@@ -143,7 +144,7 @@ def _claims_work(project_root: Path) -> bool:
     second, worse message.
     """
     try:
-        config = load_yaml(project_root / "tcw-config.yaml", unique=True)
+        config = load_yaml(project_root / SENTINEL, unique=True)
     except Exception:
         return False
     section = config.get("work") if isinstance(config, dict) else None
@@ -199,7 +200,7 @@ def _configured_path_problem(project_root: Path, comp: str) -> str | None:
     looks like. A third spelling of the store layout is exactly the drift the
     shared ladder exists to prevent.
     """
-    config_path = project_root / "tcw-config.yaml"
+    config_path = project_root / SENTINEL
     try:
         config = load_yaml(config_path, unique=True)
     except Exception:
@@ -226,14 +227,14 @@ def _configured_path_problem(project_root: Path, comp: str) -> str | None:
 
 
 def _config_file(project_root: Path) -> str:
-    return _rel(project_root / "tcw-config.yaml", project_root)
+    return _rel(project_root / SENTINEL, project_root)
 
 
 def _config_message(error: Exception, project_root: Path) -> str:
     """An error about the config file, without the path its finding already
     gives as `where`."""
     text = str(error)
-    prefix = f"{project_root / 'tcw-config.yaml'}: "
+    prefix = f"{project_root / SENTINEL}: "
     return text[len(prefix):] if text.startswith(prefix) else text
 
 
@@ -350,26 +351,34 @@ def _file_findings(project_root: Path, roots: list[Path]) -> tuple[list[Finding]
 
 TRACKED_PERSONAL_FILE = ("tracked; personal configuration should stay out of "
                          "version control (stop tracking it and list it in "
-                         ".gitignore)")
+                         ".tcw/.gitignore)")
+#: Spec Design 4.3: a 4.0 project still holding a 3.x root file.
+LEFTOVER_LEGACY_FILE = ("a TCW 3.x configuration file at the root of a TCW 4 "
+                        "project; TCW 4 reads .tcw/tcw-config.yaml only, so delete "
+                        "this one")
 
 
 def config_findings(project_root: Path) -> list[Finding]:
     """The layered configuration's problems, each an error naming its file
     with the message starting at the key path, and a warning when the local
     personal file is tracked (TCW-72 Design 5.5, 10.3)."""
-    from tcw.config import LOCAL_FILE, SENTINEL, effective
+    from tcw.config import LOCAL_FILE, effective
     from tcw.store.fs import personal_file_tracked
     config = effective(project_root)
     problems = config.problems
     if config.unreadable:
         # The project graph's check, which every `validate` run makes, already
-        # reports a tcw-config.yaml that cannot be read; say it once.
+        # reports a .tcw/tcw-config.yaml that cannot be read, or whose version
+        # this TCW cannot read; say it once.
         problems = [p for p in problems
-                    if p.key_path or p.file != config.root / SENTINEL]
+                    if p.key_path not in ((), (VERSION_KEY,))
+                    or p.file != config.root / SENTINEL]
     findings = [Finding("error", p.where or "environment", p.detail)
                 for p in problems]
     if personal_file_tracked(project_root):
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
+    if (project_root / LEGACY_SENTINEL).is_file():
+        findings.append(Finding("warning", LEGACY_SENTINEL, LEFTOVER_LEGACY_FILE))
     return findings
 
 

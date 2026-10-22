@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tcw.config import load_config, user_config_path
+from tests.projectfiles import write_local_config
 
 
 def test_an_absolute_xdg_config_home_names_the_user_file(monkeypatch, tmp_path):
@@ -54,7 +55,7 @@ def test_a_local_file_beside_the_project_file_is_read(personal):
 
 
 def test_a_local_file_in_the_parent_folder_is_not_read(personal):
-    (personal.root.parent / "tcw-config.local.yaml").write_text("id: wrong\n")
+    write_local_config(personal.root.parent, "id: wrong\n")
     config = load_config(personal.root)
     assert config.problems == []
     assert config.values["id"] == "p"

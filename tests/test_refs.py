@@ -11,6 +11,7 @@ from pathlib import Path
 
 from tcw.refs import TcwRef, parse_tcw_uri, resolve_tcw_ref
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
+from tests.projectfiles import write_config
 
 
 # ── parse: grammar round-trips ────────────────────────────────────────────────
@@ -109,20 +110,20 @@ def subnode(parent: Path, rel: str) -> Path:
 
 
 def connect(anchor: Path, *others: Path) -> None:
-    anchor_cfg = yaml.safe_load((anchor / "tcw-config.yaml").read_text()) or {}
+    anchor_cfg = yaml.safe_load((anchor / ".tcw/tcw-config.yaml").read_text()) or {}
     for other in others:
-        other_id = (yaml.safe_load((other / "tcw-config.yaml").read_text()) or {})["id"]
+        other_id = (yaml.safe_load((other / ".tcw/tcw-config.yaml").read_text()) or {})["id"]
         anchor_cfg.setdefault("projects", {}).setdefault("children", {})[
             other_id
         ] = str(other.resolve())
-        other_cfg = yaml.safe_load((other / "tcw-config.yaml").read_text()) or {}
+        other_cfg = yaml.safe_load((other / ".tcw/tcw-config.yaml").read_text()) or {}
         other_cfg["projects"] = {
             "parent": {anchor_cfg["id"]: str(anchor.resolve())}
         }
-        (other / "tcw-config.yaml").write_text(
+        write_config(other, 
             yaml.safe_dump(other_cfg, sort_keys=False)
         )
-    (anchor / "tcw-config.yaml").write_text(
+    write_config(anchor, 
         yaml.safe_dump(anchor_cfg, sort_keys=False)
     )
 

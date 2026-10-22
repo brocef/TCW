@@ -17,6 +17,7 @@ from tcw.store.base import DocEntry
 from tcw.work.resolve import (
     load_builtins, render_documentation, substitute_documentation,
 )
+from tests.projectfiles import config_file, write_config_file
 
 ENTRIES = [
     DocEntry("README.md", "Public-API", "Public-facing overview and CLI usage."),
@@ -104,10 +105,10 @@ def _node(tmp_path: Path, documentation=None) -> tuple[Path, str]:
     subprocess.run(["tcw", "init", "--id", "docs-node", "work"], cwd=tmp_path,
                    capture_output=True, check=True, stdin=subprocess.DEVNULL)
     if documentation is not None:
-        cfg = tmp_path / "tcw-config.yaml"
+        cfg = config_file(tmp_path)
         conf = yaml.safe_load(cfg.read_text()) or {}
         conf.setdefault("work", {})["documentation"] = documentation
-        cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+        write_config_file(cfg, yaml.safe_dump(conf, sort_keys=False))
     slug = subprocess.run(["tcw", "work", "new", "An item"], cwd=tmp_path,
                           capture_output=True, text=True, check=True,
                           stdin=subprocess.DEVNULL).stdout.strip()
@@ -233,11 +234,11 @@ def test_a_span_in_an_artifact_template_is_left_verbatim(tmp_path):
     must not be rewritten — and the two scaffold paths must agree, since
     `tcw work scaffold`'s implicit built-in fallback bypasses `_resolve_one`."""
     root, slug = _node(tmp_path, CONFIGURED)
-    cfg = root / "tcw-config.yaml"
+    cfg = config_file(root)
     conf = yaml.safe_load(cfg.read_text()) or {}
     conf["work"]["lifecycle"] = {"artifacts": {"spec": [
         {"blob": "template with {{tcw:documentation}}kept{{/tcw:documentation}}"}]}}
-    cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+    write_config_file(cfg, yaml.safe_dump(conf, sort_keys=False))
 
     r = _cli(root, "work", "scaffold", "spec", slug)
     assert r.returncode == 0, r.stderr
@@ -250,11 +251,11 @@ def test_a_span_in_a_project_prompt_binding_is_substituted(tmp_path):
     `blob:`/`file:` prompt gets it too — that is what makes this prompt
     generation rather than a built-in-only special case."""
     root, slug = _node(tmp_path, CONFIGURED)
-    cfg = root / "tcw-config.yaml"
+    cfg = config_file(root)
     conf = yaml.safe_load(cfg.read_text()) or {}
     conf["work"]["lifecycle"] = {"stages": {"spec": {"prompt": [
         {"blob": "ours: {{tcw:documentation}}fallback{{/tcw:documentation}}"}]}}}
-    cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+    write_config_file(cfg, yaml.safe_dump(conf, sort_keys=False))
 
     r = _cli(root, "work", "stage", "prompt", "spec", slug)
     assert r.returncode == 0, r.stderr

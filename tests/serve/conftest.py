@@ -17,6 +17,7 @@ import yaml
 from tcw.serve.server import HOST, TcwServer
 from tcw.serve.services import Services
 from tests.work.projects import commit_all, make_project
+from tests.projectfiles import write_local_config
 
 UNSET = object()
 
@@ -126,7 +127,7 @@ def fs_project(tmp_path: Path, project_id: str = "p", *, tags=("ui", "api"),
     work = {"tags": list(tags)} if config is None else config
     root = make_project(tmp_path, project_id, config=work)
     if user is not None:
-        (root / "tcw-config.local.yaml").write_text(
+        write_local_config(root, 
             yaml.safe_dump({"user": {"name": user}}))
     commit_all(root)
     return root

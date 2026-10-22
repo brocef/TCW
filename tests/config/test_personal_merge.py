@@ -6,6 +6,7 @@ import pytest
 
 from tcw.config import load_config
 from tests.config.conftest import problem_lines
+from tests.projectfiles import write_config_file
 
 B = {"builtin": True}
 SPEC = ("work", "stages", "spec")
@@ -144,7 +145,7 @@ def test_with_nothing_set_a_stage_prompt_is_the_built_in_entry(personal):
 
 
 def test_an_empty_work_key_keeps_the_built_in_prompts(personal):
-    personal.project_file.write_text("id: p\nwork:\n")
+    write_config_file(personal.project_file, "id: p\nwork:\n")
     config = load_config(personal.root)
     assert config.problems == []
     assert config.values["work"]["stages"]["spec"]["prompt"] == [{"builtin": True}]

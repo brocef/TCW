@@ -10,6 +10,7 @@ from tcw.store.fs import FsTaxonomyStore, write_sentinel
 
 from nodeconfig import declare_extends, set_component_key
 from tcw.errors import TcwError
+from tests.projectfiles import config_file, write_config, write_config_file
 
 
 def node(tmp_path: Path, name: str) -> Path:
@@ -46,11 +47,11 @@ def write_config(root: Path, text: str):
 
 def connect_sources(consumer: Path, *sources: Path) -> None:
     children = "".join(f"    {source.name}: ../{source.name}\n" for source in sources)
-    (consumer / "tcw-config.yaml").write_text(
+    write_config(consumer, 
         f"id: {consumer.name}\nprojects:\n  children:\n{children}"
     )
     for source in sources:
-        (source / "tcw-config.yaml").write_text(
+        write_config(source, 
             f"id: {source.name}\nprojects:\n  parent:\n"
             f"    {consumer.name}: ../{consumer.name}\n"
         )
@@ -80,7 +81,7 @@ def test_modified_timestamp_uses_bounded_taxonomy_resources(tmp_path):
     os.utime(folder / "meta.yaml", (100, 100))
     os.utime(folder / "description.md", (200, 200))
     attachment = folder / "notes.txt"
-    attachment.write_text("not a core taxonomy resource\n")
+    write_config_file(attachment, "not a core taxonomy resource\n")
     os.utime(attachment, (300, 300))
 
     assert st.get("user").modified == "1970-01-01T00:03:20Z"
@@ -193,14 +194,14 @@ def transitive_taxonomy(tmp_path):
     a = node(tmp_path, "alpha")
     b = node(tmp_path, "bravo")
     c = node(tmp_path, "charlie")
-    (a / "tcw-config.yaml").write_text(
+    write_config(a, 
         "id: alpha\nprojects:\n  children:\n    bravo: ../bravo\n"
     )
-    (b / "tcw-config.yaml").write_text(
+    write_config(b, 
         "id: bravo\nprojects:\n  parent:\n    alpha: ../alpha\n"
         "  children:\n    charlie: ../charlie\n"
     )
-    (c / "tcw-config.yaml").write_text(
+    write_config(c, 
         "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n")
@@ -255,14 +256,14 @@ def test_transitive_extends_preserves_shadowing_and_ambiguity(tmp_path):
 def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     d = node(tmp_path, "delta")
-    (a / "tcw-config.yaml").write_text(
+    write_config(a, 
         "id: alpha\nprojects:\n  children:\n"
         "    bravo: ../bravo\n    delta: ../delta\n"
     )
-    (d / "tcw-config.yaml").write_text(
+    write_config(d, 
         "id: delta\nprojects:\n  parent:\n    alpha: ../alpha\n"
     )
-    (c / "tcw-config.yaml").write_text(
+    write_config(c, 
         "id: charlie\nprojects:\n  parent:\n    bravo: ../bravo\n"
     )
     write_config(a, "extends:\n  - bravo\n  - delta\n")
@@ -287,7 +288,7 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     (b / "ledger").mkdir()
     for entry in (b / "docs" / "taxonomy").iterdir():
         entry.rename(b / "ledger" / entry.name)
-    (b / "tcw-config.yaml").write_text(
+    write_config(b, 
         "id: bravo\ntaxonomy:\n  path: ledger\nprojects:\n"
         "  parent:\n    alpha: ../alpha\n  children:\n    charlie: ../charlie\n"
     )
@@ -745,7 +746,7 @@ def test_cli_extends_add_and_rm(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert not (consumer / "docs/taxonomy/config.yaml").exists()
     import yaml as _yaml
-    _cfg = _yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    _cfg = _yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
     assert _cfg["taxonomy"]["extends"] == ["base"]
     assert main(["taxonomy", "extends", "add", "base"]) == 3
     assert "already exists" in capsys.readouterr().err
@@ -780,13 +781,13 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     shutil.move(str(base / "docs" / "taxonomy" / "argument"),
                 str(elsewhere / "argument"))
     shutil.rmtree(base / "docs" / "taxonomy")
-    (base / "tcw-config.yaml").write_text(
+    write_config(base, 
         "id: base\ntaxonomy:\n  path: vocabulary\n"
         "projects:\n  children:\n    consumer: ../consumer\n"
     )
 
     cons = node(tmp_path, "consumer")
-    (cons / "tcw-config.yaml").write_text(
+    write_config(cons, 
         "id: consumer\nprojects:\n  parent:\n    base: ../base\n"
     )
     write_config(cons, "extends:\n  - base\n")
@@ -807,10 +808,10 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
     import yaml
-    cfg = cons / "tcw-config.yaml"
+    cfg = config_file(cons)
     raw = yaml.safe_load(cfg.read_text())
     raw["taxonomy"] = {"extends": ["shared"]}
-    cfg.write_text(yaml.safe_dump(raw, sort_keys=False))
+    write_config_file(cfg, yaml.safe_dump(raw, sort_keys=False))
 
     assert not (cons / "docs" / "taxonomy" / "config.yaml").exists()
     st = FsTaxonomyStore.open(cons)
@@ -823,7 +824,7 @@ def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path
     reading `extends` in the constructor has to agree, or `taxonomy: docs/tax`
     becomes an AttributeError on a path resolve_store answers calmly."""
     root = node(tmp_path, "scalar")
-    (root / "tcw-config.yaml").write_text("id: scalar\ntaxonomy: docs/taxonomy\n")
+    write_config(root, "id: scalar\ntaxonomy: docs/taxonomy\n")
     write_term(root, "local", name="Local")
     assert [t.slug for t in FsTaxonomyStore.open(root).list_all()] == ["local"]
 
@@ -962,7 +963,7 @@ def test_a_leftover_store_config_is_reported_and_left_alone(tmp_path):
     connect_sources(cons, shared)
     stale = cons / "docs" / "taxonomy" / "config.yaml"
     original = "extends:\n  - shared\n"
-    stale.write_text(original)
+    write_config_file(stale, original)
 
     st = FsTaxonomyStore.open(cons)
     assert st.list_all() == []
@@ -1007,12 +1008,12 @@ def test_writing_extends_refuses_a_non_mapping_section_rather_than_replacing_it(
     shared = node(tmp_path, "shared")
     cons = node(tmp_path, "consumer")
     connect_sources(cons, shared)
-    cfg = cons / "tcw-config.yaml"
+    cfg = config_file(cons)
     import yaml as _yaml
     raw = _yaml.safe_load(cfg.read_text())
     raw["taxonomy"] = "docs/taxonomy"
     original = _yaml.safe_dump(raw, sort_keys=False)
-    cfg.write_text(original)
+    write_config_file(cfg, original)
 
     with pytest.raises(TcwError) as excinfo:
         FsTaxonomyStore.open(cons).extends_add("shared")

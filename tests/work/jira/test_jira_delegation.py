@@ -9,6 +9,7 @@ import yaml
 from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV, jira_config
 from tests.work.jira.fake import FIELDS, SITE
 from tests.work.projects import commit_all, connect, make_project
+from tests.projectfiles import config_file, write_config_file, write_local_config
 
 ITEM, PROJECT = FIELDS["TCW Item"], FIELDS["TCW Project"]
 
@@ -64,11 +65,11 @@ def test_no_route_to_request_keeps_it_in_the_inbox(pair, fake, tcw):
 
 
 def block_for(p, block):
-    path = p / "tcw-config.yaml"
+    path = config_file(p)
     doc = yaml.safe_load(path.read_text())
     entry = doc["projects"]["children"]["tcw"]
     doc["projects"]["children"]["tcw"] = {"path": entry, "jira": block}
-    path.write_text(yaml.safe_dump(doc, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
 
 
 BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
@@ -127,7 +128,7 @@ def test_a_refused_inbox_move_prints_the_created_key(pair, fake, tcw):
 def test_the_targets_local_file_is_not_read(pair, fake, tcw, monkeypatch):
     p, target, _ = pair
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (target / "tcw-config.local.yaml").write_text("id: wrong\n")
+    write_local_config(target, "id: wrong\n")
     commit_all(target)
     result = tcw(["new", "Add export", "--project", "tcw"], p)
     assert result.code == 0, result.err

@@ -34,8 +34,9 @@ import yaml
 
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 
-SENTINEL = "tcw-config.yaml"
-LOCAL_FILE = "tcw-config.local.yaml"
+from tcw.project_files import (LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
+                               key_problems, version_problem, without_version)
+
 SKIP_VARIABLE = "TCW_NO_PERSONAL_CONFIG"
 
 #: The key paths a personal file may set; `*` stands for exactly one key.
@@ -69,9 +70,15 @@ class Origin:
 
     @property
     def folder(self) -> Path | None:
-        """The declaring file's folder: what a `file:` binding is read from
-        and what `TCW_CONFIG_DIR` names."""
-        return None if self.file is None else self.file.parent
+        """The folder a `file:` binding is read from and `TCW_CONFIG_DIR`
+        names: the declaring file's folder, except that a file in a project's
+        `.tcw/` folder is read as though it sat at the project root (TCW-106
+        Design 1.4)."""
+        if self.file is None:
+            return None
+        if self.layer in ("project", "local"):
+            return self.file.parent.parent
+        return self.file.parent
 
     @property
     def personal(self) -> bool:
@@ -247,12 +254,34 @@ def _read(path: Path, required: bool, root: Path) -> tuple[dict | None, list[Pro
 
 
 def read_project_file(project_root: Path) -> tuple[dict | None, list[Problem]]:
-    """The single read of one `tcw-config.yaml`, refusing a duplicate key, and
-    nothing else: no layers, no allowlist, no parsing of `work:`. For readers
-    that look only at the shared graph keys and must still answer for a graph
-    that cannot be fully loaded."""
+    """The single read of one `.tcw/tcw-config.yaml`, refusing a duplicate key
+    and a version this TCW cannot read, and nothing else: no layers, no
+    allowlist, no parsing of `work:`. For readers that look only at the shared
+    graph keys and must still answer for a graph that cannot be fully loaded."""
     root = Path(project_root)
-    return _read(root / SENTINEL, True, root)
+    path = root / SENTINEL
+    data, problems = _read(path, True, root)
+    if data is not None:
+        version = version_problem(data)
+        if version:
+            return None, [*problems, Problem(path, ("tcw-version",), version, root)]
+        data = without_version(data)
+    return data, problems
+
+
+def _file_problems(path: Path, data: dict, root: Path | None, *,
+                   versioned: bool) -> tuple[dict | None, list[Problem]]:
+    """The version (for a `tcw-*.yaml` file) and naming checks on one file read
+    as `data` (TCW-106 Design 3.4 and 5), and the mapping to merge: without its
+    `tcw-version`, or None when the version means it cannot be read."""
+    problems = [Problem(path, tuple(key_path), message, root)
+                for key_path, message in key_problems(data)]
+    if versioned:
+        version = version_problem(data)
+        if version:
+            return None, [Problem(path, ("tcw-version",), version, root), *problems]
+        data = without_version(data)
+    return data, problems
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +594,9 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
 
     raw, problems = _read(project.file, True, shown)
     config.problems += problems
+    if raw is not None:
+        raw, problems = _file_problems(project.file, raw, shown, versioned=True)
+        config.problems += problems
     if raw is None:
         config.unreadable = True
         config.work, _ = parse_work_config(values.get("work"), origins)
@@ -581,6 +613,10 @@ def load_config(project_root: Path, *, personal: bool = True) -> Config:
     for origin in _personal_layers(root, config.problems) if personal else ():
         mapping, problems = _read(origin.file, False, root)
         config.problems += problems
+        if mapping is not None and origin.file.exists():
+            mapping, problems = _file_problems(origin.file, mapping, root,
+                                               versioned=origin.layer == "local")
+            config.problems += problems
         if not mapping:
             continue
         mapping, problems = _allowed(mapping, origin, root, config.refused)
@@ -651,5 +687,5 @@ def _personal_layers(root: Path, problems: list) -> list[Origin]:
     user = user_config_path()
     if user is not None:
         layers.append(Origin("user", user))
-    layers.append(Origin("local", root / LOCAL_FILE))
+    layers.append(Origin("local", root / LOCAL_FILE))  # `.tcw/tcw-config.local.yaml`
     return layers

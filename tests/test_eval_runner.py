@@ -17,6 +17,7 @@ import subprocess
 import pytest
 
 from evals import run_evals
+from tests.projectfiles import write_config
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +81,7 @@ def test_a_bare_case_under_a_tcw_project_is_refused_before_anything_runs(
     monkeypatch.setattr(run_evals, "load_cases",
                         lambda: [{**BARE_CASE, "id": "B0", "fixture": None},
                                  BARE_CASE])
-    (tmp_path / "tcw-config.yaml").write_text("id: outer\n")
+    write_config(tmp_path, "id: outer\n")
     code = run_evals.main(["--dry-run", "--out", str(tmp_path / "runs")])
     out, err = capsys.readouterr()
     assert code != 0

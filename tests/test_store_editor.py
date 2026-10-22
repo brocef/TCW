@@ -21,6 +21,7 @@ from tcw.store.fs import (FsCapabilitiesStore, FsTaxonomyStore, _revision, _revi
 # test that needs it belongs in this file, with the other fault-injection tests.
 from test_capabilities_federation import child_of
 from tcw.errors import TcwError
+from tests.projectfiles import write_config
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -208,10 +209,10 @@ def test_update_term_refuses_inherited(tmp_path):
     subprocess.run(["git", "-C", str(cons), "config", "user.name", "t"],
                    check=True)
     write_sentinel(cons, "consumer")
-    (cons / "tcw-config.yaml").write_text(
+    write_config(cons, 
         "id: consumer\nprojects:\n  children:\n    shared: ../shared\n"
     )
-    (shared / "tcw-config.yaml").write_text(
+    write_config(shared, 
         "id: shared\nprojects:\n  parent:\n    consumer: ../consumer\n"
     )
     FsTaxonomyStore.open(cons).extends_add("shared")
@@ -342,11 +343,11 @@ def _federated(tmp_path) -> tuple[Path, Path]:
     FsCapabilitiesStore.open(base).add("routes/login", name="Sign in",
                                        status="Supported", body="UPSTREAM.")
     child = _cap_node(tmp_path / "c")
-    (child / "tcw-config.yaml").write_text(
+    write_config(child, 
         f"id: child-project\nprojects:\n  children:\n"
         f"    base-project: {base}\n"
     )
-    (base / "tcw-config.yaml").write_text(
+    write_config(base, 
         f"id: base-project\nprojects:\n  parent:\n"
         f"    child-project: {child}\n"
     )

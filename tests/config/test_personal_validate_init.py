@@ -65,7 +65,7 @@ def test_validate_in_the_parent_ignores_the_childs_local_file(tmp_path, monkeypa
     commit_all(parent)
     commit_all(child)
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (child / "tcw-config.local.yaml").write_text("id: wrong\n")
+    write_local_config(child, "id: wrong\n")
     result = tcw(parent, "validate")
     assert result.code == 0, result
     assert "tcw-config.local.yaml" not in result.out + result.err
@@ -141,7 +141,7 @@ def test_validate_warns_when_the_local_file_is_tracked(tmp_path, monkeypatch):
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
     root = repository(tmp_path / "p")
     assert tcw(root, "init", "--id", "p").code == 0
-    (root / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
     (root / ".gitignore").write_text("")
     assert WARNING not in _validated(root).out           # untracked, not ignored
@@ -157,7 +157,7 @@ def test_validate_ignores_the_setting_that_hides_untracked_files(tmp_path, monke
     root = repository(tmp_path / "p")
     git(root, "config", "status.showUntrackedFiles", "no")
     assert tcw(root, "init", "--id", "p").code == 0
-    (root / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(root, "user:\n  name: Brian\n")
     assert WARNING not in _validated(root).out           # untracked and ignored
     (root / ".gitignore").write_text("")
     assert WARNING not in _validated(root).out           # untracked, not ignored
@@ -171,7 +171,7 @@ def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
     root = tmp_path / "p"
     root.mkdir()
     assert tcw(root, "init", "--id", "p").code == 0
-    (root / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(root, "user:\n  name: Brian\n")
     result = _validated(root)
     assert (result.code, result.out) == (0, ""), result
 
@@ -180,12 +180,13 @@ def test_validate_outside_a_repository_does_not_warn(tmp_path, monkeypatch):
 
 
 import pytest
+from tests.projectfiles import write_config_file, write_local_config
 
 
 @pytest.mark.parametrize("text", [b"id: p\nid: q\n", b"id: [p\n", b"- p\n", b"id: p\xff\n"])
 def test_a_broken_project_file_is_one_validate_error(personal, text):
     (personal.root / "docs" / "work").mkdir(parents=True)
-    personal.project_file.write_bytes(text)
+    write_config_file(personal.project_file, text)
     result = tcw(personal.root, "validate")
     assert result.code == 1, result
     errors = [l for l in result.out.splitlines() if l.startswith("error: ")]

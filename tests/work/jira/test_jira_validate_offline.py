@@ -10,6 +10,7 @@ from tcw.work.jira.backend import link_exists
 from tests.work.jira.conftest import EMAIL_ENV, TOKEN_ENV
 from tests.work.jira.fake import SITE
 from tests.work.projects import connect, make_project, write_item
+from tests.projectfiles import config_file, write_config_file
 
 
 @pytest.fixture
@@ -68,10 +69,10 @@ def test_a_stage_folder_jira_keeps_is_a_warning(offline, monkeypatch, capsys, st
 
 
 def test_a_malformed_work_jira_is_an_error(offline, monkeypatch, capsys):
-    path = offline.root / "tcw-config.yaml"
+    path = config_file(offline.root)
     doc = yaml.safe_load(path.read_text())
     doc["work"]["jira"]["project"] = "tcw"
-    path.write_text(yaml.safe_dump(doc, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
     code, text = validate(offline, monkeypatch, capsys)
     assert code == 1 and "work.jira.project" in text, text
 
@@ -81,11 +82,11 @@ def test_a_malformed_connected_jira_block_is_an_error(offline, tmp_path, monkeyp
     other = make_project(tmp_path, "web")
     connect(offline.root, other, "children")
     connect(other, offline.root, "parent")
-    path = offline.root / "tcw-config.yaml"
+    path = config_file(offline.root)
     doc = yaml.safe_load(path.read_text())
     doc["projects"]["children"]["web"] = {
         "path": doc["projects"]["children"]["web"], "jira": {"site": "x"}}
-    path.write_text(yaml.safe_dump(doc, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(doc, sort_keys=False))
     code, text = validate(offline, monkeypatch, capsys)
     assert code == 1 and "projects.children.web.jira.site" in text, text
 
@@ -167,7 +168,7 @@ def test_one_item_without_its_item_still_reports_a_malformed_declaration(offline
     _, name = offline.item("At spec", "spec")
     _, other = offline.item("Other", "spec")
     path = offline.work / name / "capabilities.yaml"
-    path.write_text("added: [x/y]\n")
+    write_config_file(path, "added: [x/y]\n")
     (offline.work / other / "capabilities.yaml").write_text("added: [x/y]\n")
     found = validate_one(offline.root, target=ValidationTarget("work", name))
     assert [(f.severity, f.where, f.message) for f in found] == [
@@ -183,7 +184,7 @@ def test_a_malformed_declaration_is_one_error_naming_the_file(offline, monkeypat
     """T5: read offline, in every key-named folder, with the same words as
     filesystem mode."""
     path = folder(offline, "TCW-1-x") / "capabilities.yaml"
-    path.write_text("no-such-key: 1\n")
+    write_config_file(path, "no-such-key: 1\n")
     code, text = validate(offline, monkeypatch, capsys)
     where = path.relative_to(offline.root).as_posix()
     assert code == 1, text
@@ -240,7 +241,7 @@ def test_one_finished_item_given_its_item_still_reports_a_malformed_declaration(
     from tcw.work.model import Item, Slug
     _, name = offline.item("Done", "done", status="Done")
     path = offline.work / name / "capabilities.yaml"
-    path.write_text("- a list\n")
+    write_config_file(path, "- a list\n")
     item = Item(slug=Slug(offline.id, name), title="Done", stage="completed",
                 created=date(2026, 10, 1), priority=None, effort=None,
                 complexity=None, tags=(), assignee=None, parent=None, blocked_by=())

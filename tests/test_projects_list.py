@@ -12,14 +12,15 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import make_project
+from tests.projectfiles import config_file, write_config_file
 
 
 def declare(root, relation, project_id, target):
-    path = root / "tcw-config.yaml"
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
     section = document.setdefault("projects", {}).setdefault(relation, {})
     section[project_id] = os.path.relpath(target, root)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 @pytest.fixture
@@ -88,10 +89,10 @@ def test_work_nodes_is_gone(graph, monkeypatch, capsys):
 
 
 def _rename_key(root, old, new):
-    path = root / "tcw-config.yaml"
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document[new] = document.pop(old)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def test_the_graph_under_projects_validates(graph, monkeypatch, capsys):
@@ -167,20 +168,20 @@ def test_the_2x_key_refusal_names_the_file_from_a_sub_folder(graph, monkeypatch,
 
 def test_an_upstreams_own_2x_key_is_not_its_readers_problem(graph, monkeypatch, capsys):
     up = graph.parent / "up"
-    path = up / "tcw-config.yaml"
+    path = config_file(up)
     document = yaml.safe_load(path.read_text())
     document["connected-projects"] = {"children": {"zz": "../zz"}}
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert code == 0, err
 
 
 def test_projects_list_reports_a_registry_problem(graph, monkeypatch, capsys):
     """An invalid child ID is an error, not a project left off the list."""
-    path = graph / "tcw-config.yaml"
+    path = config_file(graph)
     document = yaml.safe_load(path.read_text())
     document["projects"]["children"]["Bad ID"] = "../c1"
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
     code, out, err = run(monkeypatch, capsys, graph, "projects", "list")
     assert (code, out) == (1, ""), (out, err)
     assert err.startswith("tcw projects list: ") and "children key" in err, err

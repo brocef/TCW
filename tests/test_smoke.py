@@ -64,7 +64,7 @@ def test_init_scaffolds_in_current_subfolder(tmp_path, monkeypatch):
     proj.mkdir()
     monkeypatch.chdir(proj)                   # cwd is a subfolder, not the git root
     assert main(["init", "--id", "project-b", "work"]) == 0
-    assert (proj / "tcw-config.yaml").is_file()
+    assert (proj / ".tcw/tcw-config.yaml").is_file()
     assert (proj / "docs" / "work").is_dir()
     assert not (tmp_path / "docs").exists()   # scaffolded at cwd, not the git root
 

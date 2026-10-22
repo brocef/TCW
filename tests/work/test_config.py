@@ -109,7 +109,7 @@ def test_when_type_is_refused_because_items_have_no_type():
 
 def test_when_tags_are_normalized():
     config, _ = parse_work_config({"stages": {"spec": {"prompt": [
-        {"file": "bug.md", "when": {"tags": ["Bug"], "not_tags": ["Docs"]}}]}}})
+        {"file": "bug.md", "when": {"tags": ["Bug"], "not-tags": ["Docs"]}}]}}})
     assert config.stages["spec"].prompt[0].when == When(("bug",), ("docs",))
 
 

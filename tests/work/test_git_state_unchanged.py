@@ -78,6 +78,6 @@ def test_tags_outside_git(tmp_path, monkeypatch, capsys):
     import shutil
     shutil.rmtree(p / ".git")
     tcw(monkeypatch, capsys, p, "tags", "add", "x")
-    assert "x" in yaml.safe_load((p / "tcw-config.yaml").read_text())["work"]["tags"]
+    assert "x" in yaml.safe_load((p / ".tcw/tcw-config.yaml").read_text())["work"]["tags"]
     tcw(monkeypatch, capsys, p, "tags", "rm", "x")
-    assert "x" not in yaml.safe_load((p / "tcw-config.yaml").read_text())["work"]["tags"]
+    assert "x" not in yaml.safe_load((p / ".tcw/tcw-config.yaml").read_text())["work"]["tags"]

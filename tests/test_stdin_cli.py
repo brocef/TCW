@@ -10,6 +10,7 @@ import subprocess
 import time
 
 import pytest
+from tests.projectfiles import config_file, write_config_file
 
 TIMEOUT = "0.4"                 # the bound these tests run the CLI with
 DEADLINE = 30                   # hang tripwire only — not a performance assertion
@@ -133,13 +134,13 @@ def test_a_command_hook_does_not_inherit_stdin(node):
     pytest's `/dev/null`, hits EOF at once, and would pass either way.
     """
     import yaml
-    cfg = node / "tcw-config.yaml"
+    cfg = config_file(node)
     conf = yaml.safe_load(cfg.read_text()) or {}
     conf.setdefault("work", {})["lifecycle"] = {
         "timeout": 5,                       # pre-fix, `cat` stalls out to here
         "transitions": {"start": {"pre": [{"command": "cat"}]}},
     }
-    cfg.write_text(yaml.safe_dump(conf, sort_keys=False))
+    write_config_file(cfg, yaml.safe_dump(conf, sort_keys=False))
 
     slug = _run(node, ["work", "new", "hooked"],
                 stdin=subprocess.DEVNULL).stdout.strip()

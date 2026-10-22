@@ -37,6 +37,7 @@ from tcw.work.jira.backend import JiraBackend
 from tcw.work.model import Item, Slug
 from tests.work.jira.conftest import EMAIL_ENV, ME, TOKEN_ENV, fake, jira_config  # noqa: F401
 from tests.work.jira.fake import SITE
+from tests.projectfiles import config_file, write_config, write_config_file, write_local_config
 
 TODAY = date.today().isoformat()
 SOURCE = str(Path(tcw.__file__).resolve().parent.parent)
@@ -196,10 +197,10 @@ def fx(tmp_path):
 
 
 def configure(root: Path, **work) -> None:
-    path = root / "tcw-config.yaml"
+    path = config_file(root)
     document = yaml.safe_load(path.read_text())
     document.setdefault("work", {}).update(work)
-    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(document, sort_keys=False))
 
 
 def new(root: Path, title: str = "A b", *flags: str, stdin: str = "") -> str:
@@ -332,9 +333,9 @@ def test_extends_add_prints_nothing(tmp_path, fx):
     up = tmp_path / "up"
     up.mkdir()
     ok(up, "init", "--id", "up")
-    document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
+    document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {"upstream": {"up": "../up"}}
-    (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+    write_config(fx, yaml.safe_dump(document))
     assert written(fx, "taxonomy", "extends", "add", "up").out == ""
 
 
@@ -404,7 +405,7 @@ def test_tree_exit_codes(fx):
     assert run(fx, "capabilities", "show", "nosuch").code == 4
     ok(fx, "taxonomy", "add", "Gadget")
     meta = fx / "docs" / "taxonomy" / "gadget" / "meta.yaml"
-    meta.write_text(meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
+    write_config_file(meta, meta.read_text().replace("relatesTo: []", "relatesTo: [widget]"))
     assert run(fx, "taxonomy", "rm", "widget").code == 3
 
     ok(fx, "capabilities", "add", "ns/do-a-thing")
@@ -546,18 +547,18 @@ def graph(tmp_path, fake):  # noqa: F811
     block = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
              "credentials": {"email-env": EMAIL_ENV, "token-env": TOKEN_ENV},
              "fields": {"project": "TCW Project"}}
-    document = yaml.safe_load((roots["fx"] / "tcw-config.yaml").read_text())
+    document = yaml.safe_load((roots["fx"] / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {
         "children": {"other": "../other", "absent": "../absent",
                      "absentj": {"path": "../absentj", "jira": block}},
         "upstream": {"up": "../up"}}
-    (roots["fx"] / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+    write_config(roots["fx"], yaml.safe_dump(document))
     for name in ("other", "up"):
-        path = roots[name] / "tcw-config.yaml"
+        path = config_file(roots[name])
         child = yaml.safe_load(path.read_text())
         if name == "other":
             child["projects"] = {"parent": {"fx": "../fx"}}
-        path.write_text(yaml.safe_dump(child))
+        write_config_file(path, yaml.safe_dump(child))
     return roots
 
 
@@ -699,7 +700,7 @@ def test_the_writing_work_commands_in_a_project(fx):
 def test_the_identity_flags_in_a_project(fx, monkeypatch):
     """`--mine` and `--assign-me` with `user.name` in the local file (TCW-72)."""
     monkeypatch.delenv("TCW_NO_PERSONAL_CONFIG")
-    (fx / "tcw-config.local.yaml").write_text("user:\n  name: Brian\n")
+    write_local_config(fx, "user:\n  name: Brian\n")
     mine = checked(fx, "work", "new", "Mine", "--assign-me",
                    out=lambda o: re.fullmatch(rf"fx/{TODAY}-mine\n", o)).out.strip()
     new(fx, "Theirs", "--assignee", "brian")
@@ -739,9 +740,9 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     ok(up, "init", "--id", "up")
     ok(up, "taxonomy", "add", "Gear")
     ok(up, "capabilities", "add", "auth/login")
-    document = yaml.safe_load((fx / "tcw-config.yaml").read_text())
+    document = yaml.safe_load((fx / ".tcw/tcw-config.yaml").read_text())
     document["projects"] = {"upstream": {"up": "../up"}}
-    (fx / "tcw-config.yaml").write_text(yaml.safe_dump(document))
+    write_config(fx, yaml.safe_dump(document))
 
     assert checked(fx, "taxonomy", "extends", "add", "up", out="").err == \
         "wrote tcw-config.yaml\n"

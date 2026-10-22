@@ -31,6 +31,7 @@ WHERE = "work.repository"
 
 
 from nodeconfig import declare_extends, set_component_key
+from tests.projectfiles import config_file, write_config, write_config_file
 
 
 def _repo(path: Path) -> Path:
@@ -46,10 +47,10 @@ def _repo(path: Path) -> Path:
 
 
 def _write_config(project_root: Path, **work: object) -> None:
-    path = project_root / "tcw-config.yaml"
+    path = config_file(project_root)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault("work", {}).update(work)
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
 
 
 # ── the declaration parser ───────────────────────────────────────────────────
@@ -444,9 +445,9 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
     init([component], code, "core")
     url = url if url is not None else "https://github.invalid/acme/orchestration.git"
 
-    (orchestration / "tcw-config.yaml").write_text(
+    write_config(orchestration, 
         f"id: orchestration\nprojects:\n  children:\n    core: {code}\n")
-    config = yaml.safe_load((code / "tcw-config.yaml").read_text()) or {}
+    config = yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text()) or {}
     config.setdefault(component, {}).update({
         "path": configured_path,
         "repository": {"url": url, "ref": ref, "path": inner},
@@ -457,7 +458,7 @@ def _flat_workspace(tmp_path, monkeypatch, *, component="work",
             "repository": {"url": url, "ref": ref},
         }}
     }
-    (code / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config(code, yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.setenv("TCW_PROJECT_ORCHESTRATION", str(orchestration))
     return code, orchestration, store
@@ -650,10 +651,10 @@ def test_a_parent_still_lists_its_topology_when_a_child_is_unprovisioned(tmp_pat
 
     for root, key, other in ((parent, "children", "child-project"),
                              (child, "parent", "parent-project")):
-        path = root / "tcw-config.yaml"
+        path = config_file(root)
         config = yaml.safe_load(path.read_text())
         config["projects"] = {key: {other: f"../{other.split('-')[0]}"}}
-        path.write_text(yaml.safe_dump(config, sort_keys=False))
+        write_config_file(path, yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.chdir(parent)
     assert main(["projects", "list"]) == 0
@@ -765,7 +766,7 @@ def test_a_config_that_cannot_be_parsed_is_an_error_not_nothing(tmp_path, monkey
     provision" and succeeded."""
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    (code / "tcw-config.yaml").write_text(broken)
+    write_config(code, broken)
     monkeypatch.chdir(code)
 
     assert main(["provision"]) == 1
@@ -783,14 +784,14 @@ def test_a_config_that_is_not_utf_8_is_named(tmp_path, monkeypatch, capsys, comm
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
     broken = b"id: corelib\n# caf\xe9\n"
-    (code / "tcw-config.yaml").write_bytes(broken)
+    write_config(code, broken)
     monkeypatch.chdir(code)
 
     assert main(command) == 1
     err = capsys.readouterr().err
     assert err == (f"tcw {command[0]}: {code / 'tcw-config.yaml'}: is not valid "
                    f"UTF-8 text (byte 0xe9 at position 17)\n"), err
-    assert (code / "tcw-config.yaml").read_bytes() == broken
+    assert (code / ".tcw/tcw-config.yaml").read_bytes() == broken
 
 
 def test_a_failure_exits_non_zero_and_names_the_cause(tmp_path, monkeypatch, capsys):
@@ -932,13 +933,13 @@ def test_every_component_is_exposed_now_that_its_adapter_exists(
     remote = _remote_with_tree(tmp_path, inner="trees/taxonomy")
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text())
     config["taxonomy"] = {
         "repository": {"url": str(remote), "path": "trees/taxonomy",
                        "checkout": str(tmp_path / "co")}
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(["provision", "--component", "taxonomy"]) == 0
@@ -1040,10 +1041,10 @@ def _tree_node(tmp_path: Path, component: str = "taxonomy", **section) -> Path:
     """A node with `component` configured however the case needs."""
     code = _repo(tmp_path / "code")
     init([component], code, "corelib")
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text()) or {}
     config.setdefault(component, {}).update(section)
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     return code
 
 
@@ -1217,11 +1218,11 @@ def test_a_declared_tree_store_is_found_even_with_no_local_component_folder(
     component = _tree_component(argv)
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")            # the component is deliberately absent
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text()) or {}
     config[component] = {"repository": {"url": "https://example.invalid/orchestrator.git",
                                         "path": f"trees/{component}"}}
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
@@ -1316,13 +1317,13 @@ def test_each_declared_component_is_provisioned_independently(tmp_path, monkeypa
                       path="../nowhere/taxonomy",
                       repository={"url": str(good), "path": "trees/taxonomy",
                                   "checkout": str(tmp_path / "co-good")})
-    path = code / "tcw-config.yaml"
+    path = config_file(code)
     config = yaml.safe_load(path.read_text())
     config["capabilities"] = {
         "path": "../nowhere/capabilities",
         "repository": {"url": str(good), "path": "trees/not-here",
                        "checkout": str(tmp_path / "co-bad")}}
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(["provision"]) == 1
@@ -1347,7 +1348,7 @@ def test_init_scaffolds_a_tree_store_at_a_configured_location(tmp_path, monkeypa
                  component]) == 0
 
     assert elsewhere.is_dir()
-    assert yaml.safe_load((code / "tcw-config.yaml").read_text())[component]["path"] \
+    assert yaml.safe_load((code / ".tcw/tcw-config.yaml").read_text())[component]["path"] \
         == str(elsewhere)
     assert STORE_CLASSES[component].open(code).root == elsewhere.resolve()
 
@@ -1373,10 +1374,10 @@ def test_a_malformed_tree_declaration_is_named_with_or_without_a_configured_path
         section["path"] = f"../orchestrator/trees/{component}"
     code = _repo(tmp_path / "code")
     init(["work"], code, "corelib")
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = section
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main(argv) == 1
@@ -1395,10 +1396,10 @@ def test_a_usable_local_tree_still_masks_an_unused_malformed_declaration(
     nobody needs is malformed — the contract the work store already holds."""
     code = _repo(tmp_path / "code")
     init([component], code, "corelib")          # the default tree exists
-    config_path = code / "tcw-config.yaml"
+    config_path = config_file(code)
     config = yaml.safe_load(config_path.read_text()) or {}
     config[component] = {"repository": {"ref": "main"}}
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     monkeypatch.chdir(code)
 
     assert main([component, "list"]) == 0
@@ -1412,10 +1413,10 @@ def _node_repo(path: Path, project_id: str, connected: dict | None = None) -> Pa
     _repo(path)
     init(["work"], path, project_id)
     if connected:
-        config_path = path / "tcw-config.yaml"
+        config_path = config_file(path)
         config = yaml.safe_load(config_path.read_text()) or {}
         config["projects"] = connected
-        config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+        write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(path), "commit", "-qm", "node"], check=True)
     return path
@@ -1559,7 +1560,7 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
     standing.mkdir(parents=True)
     init(["work"], knower, "knower-project")
     init(["work"], standing, "standing-project")
-    (knower / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(knower, yaml.safe_dump({
         "id": "knower-project",
         "projects": {
             "parent": {"away-project": {"path": "../../away-not-here",
@@ -1567,7 +1568,7 @@ def test_a_declaration_on_a_sibling_is_followed_from_anywhere_in_the_graph(
             "children": {"standing-project": "../standing"},
         },
     }, sort_keys=False))
-    (standing / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(standing, yaml.safe_dump({
         "id": "standing-project",
         "projects": {"parent": {"knower-project": "../knower"}},
     }, sort_keys=False))
@@ -1603,12 +1604,12 @@ def test_a_project_the_checkout_already_has_is_not_fetched(tmp_path, monkeypatch
         }},
     )
     # Point `here` at the real `away` remote now that it exists.
-    cfg = yaml.safe_load((here / "tcw-config.yaml").read_text())
+    cfg = yaml.safe_load((here / ".tcw/tcw-config.yaml").read_text())
     cfg["projects"]["parent"]["away-project"] = {
         "path": "../away-not-here",
         "repository": {"url": str(away), "ref": "main"},
     }
-    (here / "tcw-config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+    write_config(here, yaml.safe_dump(cfg, sort_keys=False))
     subprocess.run(["git", "-C", str(here), "commit", "-aqm", "declare"], check=True)
 
     monkeypatch.chdir(here)
@@ -1657,7 +1658,7 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
     absent = _node_repo(tmp_path / "absent", "absent-project",
                         {"parent": {"top-project": "../ws"}})
 
-    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(workspace, yaml.safe_dump({
         "id": "top-project",
         "projects": {"children": {
             # Both declared with a repository, as a workspace root would be.
@@ -1677,9 +1678,9 @@ def test_a_sibling_of_an_ancestor_is_recognised_as_already_here(tmp_path, monkey
         (sibling, {"id": "sibling-project", "projects": {
             "parent": {"top-project": ".."}}}),
     ):
-        existing = yaml.safe_load((path / "tcw-config.yaml").read_text()) or {}
+        existing = yaml.safe_load((path / ".tcw/tcw-config.yaml").read_text()) or {}
         existing.update(doc)
-        (path / "tcw-config.yaml").write_text(yaml.safe_dump(existing, sort_keys=False))
+        write_config(path, yaml.safe_dump(existing, sort_keys=False))
 
     monkeypatch.chdir(leaf)
     assert main(["provision", "--dry-run"]) == 0
@@ -1729,7 +1730,7 @@ def test_a_present_project_is_still_read_for_its_own_declarations(tmp_path,
     )
     top = _repo(tmp_path / "top")
     init(["work"], top, "top-project")
-    (top / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(top, yaml.safe_dump({
         "id": "top-project",
         "projects": {"children": {
             # `middle` is present on disk *and* declared. It used to be skipped
@@ -1780,12 +1781,12 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     node = _repo(tmp_path / "node")
     init(["capabilities"], node, "node-project")
     _write_config(node, retain={"completed": True})     # unrelated; keeps shape
-    config_path = node / "tcw-config.yaml"
+    config_path = config_file(node)
     config = yaml.safe_load(config_path.read_text())
     config["capabilities"] = {
         "repository": {"url": "https://example.invalid/ledger.git"},
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     # A store that is right here, and whose own config is wrong.
     declare_extends(node, "capabilities",
         "extends:\n  nope: ../somewhere\n")               # the legacy map form
@@ -1809,7 +1810,7 @@ def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
 
     node = _repo(tmp_path / "node")
     init(["work"], node, "node-project")
-    config_path = node / "tcw-config.yaml"
+    config_path = config_file(node)
     config = yaml.safe_load(config_path.read_text())
     config["projects"] = {
         "children": {
@@ -1820,7 +1821,7 @@ def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
             }
         }
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
 
     problems = [str(f) for f in FsProjectRegistry.open(node).check()]          # must not raise
     assert any("repository.checkout" in problem for problem in problems), problems
@@ -1836,25 +1837,25 @@ def test_a_declaration_error_on_an_obtained_node_fails_the_run(tmp_path,
     gated on `tcw provision` read the second as success."""
     remote = _repo(tmp_path / "remote")
     init(["work"], remote, "remote-project")
-    config_path = remote / "tcw-config.yaml"
+    config_path = config_file(remote)
     config = yaml.safe_load(config_path.read_text())
     config["projects"] = {
         "children": {"far-project": {"path": "../far",
                                      "repository": {"path": "docs/work"}}}
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
     subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "graph"], check=True)
 
     node = _repo(tmp_path / "node")
     init(["work"], node, "node-project")
-    config_path = node / "tcw-config.yaml"
+    config_path = config_file(node)
     config = yaml.safe_load(config_path.read_text())
     config["projects"] = {
         "parent": {"remote-project": {"path": "../absent",
                                       "repository": {"url": str(remote)}}}
     }
-    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
 
     monkeypatch.chdir(node)
     assert main(["provision"]) == 1
@@ -1871,14 +1872,14 @@ def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path
     (source / "docs" / "taxonomy" / "argument").mkdir(parents=True)
     (source / "docs" / "taxonomy" / "argument" / "meta.yaml").write_text("name: Argument\n")
     (source / "docs" / "taxonomy" / "argument" / "description.md").write_text("")
-    (source / "tcw-config.yaml").write_text(
+    write_config(source, 
         "id: source\nprojects:\n  parent:\n    consumer: ../consumer\n")
 
     consumer = _repo(tmp_path / "consumer")
     config = "id: consumer\nprojects:\n  children:\n    source: ../source\n"
     if taxonomy_path is not None:
         config += f"taxonomy:\n  path: {taxonomy_path}\n"
-    (consumer / "tcw-config.yaml").write_text(config)
+    write_config(consumer, config)
     if taxonomy_path is None:
         (consumer / "docs" / "taxonomy").mkdir(parents=True)
     return consumer, source
@@ -1897,7 +1898,7 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
 
     FsTaxonomyStore.open(consumer).extends_add("source")
 
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
     assert config["taxonomy"]["extends"] == ["source"]
     assert config["id"] == "consumer"
     assert config["work"]["tags"] == ["demo"]
@@ -1905,7 +1906,7 @@ def test_extends_add_writes_the_key_and_no_file_inside_the_store(tmp_path):
     assert not (consumer / "docs" / "taxonomy" / "config.yaml").exists()
 
     FsTaxonomyStore.open(consumer).extends_remove("source")
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
     # The whole section goes, not just the key: this node configured nothing
     # else under `taxonomy`, so removing the last `extends` must leave the file
     # as it was rather than growing an empty `taxonomy: {}`. Asserting only
@@ -1935,7 +1936,7 @@ def test_extends_add_writes_the_nodes_config_and_touches_neither_repository(tmp_
     # user's tree appears to vanish on an unrelated command. Spec criterion 3
     # names this key, and the sibling-key half of that criterion is asserted in
     # the test above, whose fixture deliberately has no `taxonomy.path` at all.
-    config = yaml.safe_load((consumer / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((consumer / ".tcw/tcw-config.yaml").read_text())
     assert config["taxonomy"]["path"] == str(store_repo / "taxonomy")
     assert config["taxonomy"]["extends"] == ["source"]
 
@@ -1988,8 +1989,8 @@ def test_an_unprovisioned_declared_tree_now_fails_validate(tmp_path):
 def _broken_extends(tmp_path: Path, component: str, extends: str) -> Path:
     node = _repo(tmp_path / "node")
     init([component], node, "node")
-    config = node / "tcw-config.yaml"
-    config.write_text(config.read_text() + f"{component}:\n  extends: [{extends}]\n")
+    config = config_file(node)
+    write_config_file(config, config.read_text() + f"{component}:\n  extends: [{extends}]\n")
     return node
 
 
@@ -2037,7 +2038,7 @@ def test_procedure_prompt_reports_an_empty_work_path(tmp_path, monkeypatch, caps
     reason to fall back to the built-in text."""
     node = _repo(tmp_path / "node")
     init(["taxonomy"], node, "node")
-    (node / "tcw-config.yaml").write_text("id: node\nwork:\n  path: ''\n")
+    write_config(node, "id: node\nwork:\n  path: ''\n")
     monkeypatch.chdir(node)
     assert main(["work", "procedure", "unattended-work"]) == 1
     out = capsys.readouterr()
@@ -2142,14 +2143,14 @@ def test_with_real_git_a_local_ssh_command_is_not_read(monkeypatch, tmp_path):
     subprocess.run(["git", "-C", str(repo), "config", "core.sshCommand", "ssh -i mine"],
                    check=True, stdin=subprocess.DEVNULL)
     empty = tmp_path / "gitconfig"
-    empty.write_text("")
+    write_config_file(empty, "")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for name in ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_DIR"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.chdir(repo)
     assert fs._no_prompt_env()["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
-    empty.write_text("[core]\n\tsshCommand = ssh -i global\n")
+    write_config_file(empty, "[core]\n\tsshCommand = ssh -i global\n")
     assert "GIT_SSH_COMMAND" not in fs._no_prompt_env()
 
 
@@ -2157,7 +2158,7 @@ def test_with_real_git_a_command_line_ssh_command_is_kept(monkeypatch, tmp_path)
     """A `core.sshCommand` given on the command line, here through
     `GIT_CONFIG_COUNT`, is what the clone uses, so it is the user's own."""
     empty = tmp_path / "gitconfig"
-    empty.write_text("")
+    write_config_file(empty, "")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     for name in ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_DIR", "GIT_CONFIG_PARAMETERS"):

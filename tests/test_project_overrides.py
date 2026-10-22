@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from tcw.cli import main
+from tests.projectfiles import write_config
 
 
 def _node(root: Path, body: str) -> Path:
@@ -31,7 +32,7 @@ def _node(root: Path, body: str) -> Path:
     these tests exist to vary.
     """
     root.mkdir(parents=True, exist_ok=True)
-    (root / "tcw-config.yaml").write_text(body, encoding="utf-8")
+    write_config(root, body, encoding="utf-8")
     return root
 
 
@@ -137,7 +138,7 @@ def _node_remote(tmp_path: Path, name: str, body: str) -> Path:
     inside the "no network, ever" rule while doing a real clone.
     """
     remote = _git_repo(tmp_path / name)
-    (remote / "tcw-config.yaml").write_text(body, encoding="utf-8")
+    write_config(remote, body, encoding="utf-8")
     subprocess.run(["git", "-C", str(remote), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(remote), "commit", "-qm", "seed node"], check=True)
     return remote

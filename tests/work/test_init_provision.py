@@ -4,6 +4,7 @@ import yaml
 
 from tcw.cli import main
 from tests.work.projects import git, write_item
+from tests.projectfiles import write_config
 
 
 def run(capsys, monkeypatch, cwd, *argv):
@@ -61,7 +62,7 @@ def test_provision_accepts_a_store_of_item_folders(tmp_path, capsys, monkeypatch
     git(remote, "add", "-A")
     git(remote, "commit", "-qm", "seed")
     root = repository(tmp_path / "p")
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(root, yaml.safe_dump({
         "id": "p",
         "work": {"repository": {"url": str(remote), "path": "docs/work",
                                 "checkout": str(tmp_path / "co")}}}))

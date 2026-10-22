@@ -7,6 +7,7 @@ import yaml
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore, init
 from tcw.findings import Finding
 from tcw.validate import ValidationTarget, validate
+from tests.projectfiles import write_config
 
 
 def _node(tmp_path: Path) -> Path:
@@ -31,10 +32,10 @@ def test_graph_problems_precede_target_resolution(tmp_path):
     root = _node(tmp_path)
     broken = tmp_path / "broken-node"
     broken.mkdir()
-    (broken / "tcw-config.yaml").write_text("id: broken-node\nid: dupe\n")
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    write_config(broken, "id: broken-node\nid: dupe\n")
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"broken-node": str(broken)}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config(root, yaml.safe_dump(config, sort_keys=False))
     problems = validate(root, target=ValidationTarget("taxonomy", "missing"))
     assert problems and all(p.where.endswith("tcw-config.yaml") for p in problems)
 
@@ -47,9 +48,9 @@ def test_an_absent_connected_project_does_not_block_target_resolution(tmp_path):
     of refusing before it.
     """
     root = _node(tmp_path)
-    config = yaml.safe_load((root / "tcw-config.yaml").read_text())
+    config = yaml.safe_load((root / ".tcw/tcw-config.yaml").read_text())
     config["projects"] = {"children": {"missing": "missing-node"}}
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
+    write_config(root, yaml.safe_dump(config, sort_keys=False))
     assert validate(root, target=ValidationTarget("taxonomy", "missing")) == [
         Finding("error", "missing", "no such taxonomy object")
     ]

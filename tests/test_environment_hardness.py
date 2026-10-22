@@ -46,6 +46,7 @@ from tcw.store.fs import (
 
 
 from nodeconfig import declare_extends
+from tests.projectfiles import config_file, write_config, write_config_file
 
 
 def _git_init(path: Path) -> None:
@@ -103,14 +104,14 @@ def nested_monorepo(tmp_path: Path) -> tuple[Path, Path, Path]:
     init(["taxonomy", "capabilities", "work"], child_a, "child-a")
     init(["taxonomy", "capabilities", "work"], child_b, "child-b")
 
-    (root / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(root, yaml.safe_dump({
         "id": "root",
         "projects": {
             "children": {"child-a": "a", "child-b": "b"}
         },
     }, sort_keys=False))
     for child, child_id in ((child_a, "child-a"), (child_b, "child-b")):
-        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
             "projects": {"parent": {"root": ".."}},
         }, sort_keys=False))
@@ -150,14 +151,14 @@ def sibling_nodes(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git_init(right)
     init(["taxonomy", "capabilities", "work"], right, "right")
 
-    (parent / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(parent, yaml.safe_dump({
         "id": "parent",
         "projects": {
             "children": {"left": str(left.resolve()), "right": str(right.resolve())}
         },
     }, sort_keys=False))
     for child, child_id in ((left, "left"), (right, "right")):
-        (child / "tcw-config.yaml").write_text(yaml.safe_dump({
+        write_config(child, yaml.safe_dump({
             "id": child_id,
             "projects": {"parent": {"parent": str(parent.resolve())}},
         }, sort_keys=False))
@@ -187,11 +188,11 @@ def two_node_graph(tmp_path: Path, absolute: bool = False) -> tuple[Path, Path]:
     init(["taxonomy", "capabilities", "work"], server, "example-server")
     up = str(workspace.resolve()) if absolute else ".."
     down = str(server.resolve()) if absolute else "example-server"
-    (workspace / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(workspace, yaml.safe_dump({
         "id": "example-app",
         "projects": {"children": {"example-server": down}},
     }, sort_keys=False))
-    (server / "tcw-config.yaml").write_text(yaml.safe_dump({
+    write_config(server, yaml.safe_dump({
         "id": "example-server",
         "projects": {"parent": {"example-app": up}},
     }, sort_keys=False))
@@ -366,14 +367,14 @@ class TestNestedMonorepo:
         _git_init(deep)
         init(["work"], deep, "deep")
         child_a = root / "a"
-        child_cfg = yaml.safe_load((child_a / "tcw-config.yaml").read_text()) or {}
+        child_cfg = yaml.safe_load((child_a / ".tcw/tcw-config.yaml").read_text()) or {}
         child_cfg.setdefault("projects", {}).setdefault("children", {})[
             "deep"
         ] = "deep"
-        (child_a / "tcw-config.yaml").write_text(
+        write_config(child_a, 
             yaml.safe_dump(child_cfg, sort_keys=False)
         )
-        (deep / "tcw-config.yaml").write_text(
+        write_config(deep, 
             "id: deep\nprojects:\n  parent:\n    child-a: ..\n"
         )
         _commit_all(deep)
@@ -654,8 +655,8 @@ def test_init_refuses_a_malformed_config_and_leaves_it_alone(
     root = tmp_path / "repo"
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    config = root / "tcw-config.yaml"
-    config.write_text(text, encoding="utf-8")
+    config = config_file(root)
+    write_config_file(config, text, encoding="utf-8")
     before = hashlib.sha256(config.read_bytes()).hexdigest()
     monkeypatch.chdir(root)
 

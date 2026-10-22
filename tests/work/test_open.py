@@ -18,6 +18,7 @@ from tcw.work.open import (
 from tcw.work.model import Changes
 from tests.work.jira.fake import SITE, FakeJira
 from tests.work.projects import commit_all, connect, git, make_project
+from tests.projectfiles import config_file, write_config_file
 
 
 #: A connected-project `jira` block for project q, answered by the fake.
@@ -26,10 +27,10 @@ JIRA_BLOCK = {"site": SITE, "project": "TCW", "inbox-status": "To Do",
               "fields": {"project": "TCW Project"}}
 
 def write_config(root, **document):
-    path = root / "tcw-config.yaml"
+    path = config_file(root)
     data = yaml.safe_load(path.read_text())
     data.update(document)
-    path.write_text(yaml.safe_dump(data, sort_keys=False))
+    write_config_file(path, yaml.safe_dump(data, sort_keys=False))
 
 
 # -- open_backend (AC 20, library) ---------------------------------------------------

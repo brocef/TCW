@@ -10,6 +10,7 @@ from tcw.store.project import (
     validate_project_id,
     worktree_anchors,
 )
+from tests.projectfiles import write_config
 
 
 def _texts(findings) -> list[str]:
@@ -21,7 +22,7 @@ def _texts(findings) -> list[str]:
 
 def config(root: Path, text: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
-    (root / "tcw-config.yaml").write_text(text, encoding="utf-8")
+    write_config(root, text, encoding="utf-8")
 
 
 def reciprocal(parent: Path, parent_id: str, child: Path, child_id: str) -> None:
@@ -175,17 +176,17 @@ def test_unregistered_node_is_never_loaded(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "read_text", tracked)
     registry = FsProjectRegistry.open(root).require_valid()
     assert [p.id for p in registry.descendants()] == ["child-project"]
-    assert decoy.resolve() / "tcw-config.yaml" not in reads
-    assert reads.count(root.resolve() / "tcw-config.yaml") == 1
-    assert reads.count(child.resolve() / "tcw-config.yaml") == 1
+    assert decoy.resolve() / ".tcw/tcw-config.yaml" not in reads
+    assert reads.count(root.resolve() / ".tcw/tcw-config.yaml") == 1
+    assert reads.count(child.resolve() / ".tcw/tcw-config.yaml") == 1
 
 
 def test_init_backfills_and_preserves_config(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
-    (root / "tcw-config.yaml").write_text("work:\n  tags:\n    - docs\n")
+    write_config(root, "work:\n  tags:\n    - docs\n")
     init(["work"], root, "repo-project")
-    text = (root / "tcw-config.yaml").read_text()
+    text = (root / ".tcw/tcw-config.yaml").read_text()
     assert "id: repo-project" in text
     assert "tags:" in text and "- docs" in text
 
@@ -307,7 +308,7 @@ def test_an_absent_target_is_unreachable_not_a_problem(tmp_path):
     assert _texts(registry.check()) == []
     assert [u.id for u in registry.unreachable()] == ["child-project"]
     assert registry.unreachable()[0].locator == (tmp_path / "child").resolve()
-    assert registry.unreachable()[0].declared_in == (root / "tcw-config.yaml").resolve()
+    assert registry.unreachable()[0].declared_in == (root / ".tcw/tcw-config.yaml").resolve()
     assert registry.get("child-project") is None
     assert registry.children() == []
 

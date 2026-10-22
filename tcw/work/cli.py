@@ -550,7 +550,7 @@ def _binding_json(b) -> dict:
     out: dict = {b.kind: True if b.kind == "builtin" else b.value}
     if b.when is not None:
         out["when"] = {k: list(v) for k, v in
-                       (("tags", b.when.tags), ("not_tags", b.when.not_tags)) if v}
+                       (("tags", b.when.tags), ("not-tags", b.when.not_tags)) if v}
     return out
 
 

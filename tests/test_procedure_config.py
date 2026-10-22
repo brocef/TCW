@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from tcw.store.fs import init
+from tests.projectfiles import config_file, write_config_file
 
 
 # ── on disk ──────────────────────────────────────────────────────────────────
@@ -24,10 +25,10 @@ def _node(tmp_path: Path) -> Path:
 
 
 def _configure(root: Path, procedures) -> None:
-    cfg_path = root / "tcw-config.yaml"
+    cfg_path = config_file(root)
     cfg = yaml.safe_load(cfg_path.read_text()) or {}
     cfg.setdefault("work", {})["procedures"] = procedures
-    cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    write_config_file(cfg_path, yaml.safe_dump(cfg, sort_keys=False))
 
 
 def test_tcw_validate_fails_on_a_bad_block(tmp_path):

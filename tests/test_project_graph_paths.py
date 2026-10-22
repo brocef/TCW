@@ -45,7 +45,7 @@ def test_a_symlinked_config_belongs_to_the_folder_it_sits_in(tmp_path):
     node = repo(tmp_path / "node")
     store = tmp_path / "store"
     config(store, "nd", children={"kid": "kid"})
-    (node / "tcw-config.yaml").symlink_to(store / "tcw-config.yaml")
+    (node / ".tcw/tcw-config.yaml").symlink_to(store / ".tcw/tcw-config.yaml")
     config(node / "kid", "kid", parent={"nd": ".."})
     done = validate(node)
     assert done.returncode == 0, done.stdout + done.stderr

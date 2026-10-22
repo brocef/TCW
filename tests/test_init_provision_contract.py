@@ -39,7 +39,7 @@ def test_init_of_an_unknown_axis_lists_the_valid_ones(tmp_path, monkeypatch, cap
     code, out, err = run(tmp_path, monkeypatch, capsys, "init", "--id", "x", "nosuch")
     assert (code, out) == (2, "")
     assert "taxonomy, capabilities, work" in err
-    assert not (tmp_path / "tcw-config.yaml").exists()
+    assert not (tmp_path / ".tcw/tcw-config.yaml").exists()
 
 
 def test_provision_of_a_store_already_here_says_so_on_stderr_and_contacts_nothing(

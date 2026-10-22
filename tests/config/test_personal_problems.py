@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from tcw.config import load_config
 from tests.config.conftest import problem_lines
+from tests.projectfiles import write_config_file
 
 
 def test_a_bad_binding_in_a_personal_file_is_blamed_on_that_file(personal):
@@ -75,7 +76,7 @@ def test_a_key_path_is_written_with_dots_and_brackets(personal):
 
 
 def test_an_unreadable_project_file_is_one_problem(personal):
-    personal.project_file.write_text("id: [unclosed\n")
+    write_config_file(personal.project_file, "id: [unclosed\n")
     config = load_config(personal.root)
     assert config.unreadable and len(config.problems) == 1
 
@@ -84,14 +85,14 @@ def test_an_unreadable_project_file_is_one_problem(personal):
 
 
 def test_a_local_file_that_is_not_utf8_is_a_problem_naming_it(personal):
-    personal.local_file.write_bytes(b"user:\n  name: Ren\xe9\n")
+    write_config_file(personal.local_file, b"user:\n  name: Ren\xe9\n")
     config = load_config(personal.root)
     assert problem_lines(config) == [
         "tcw-config.local.yaml: is not valid UTF-8 text (byte 0xe9 at position 17)"]
 
 
 def test_a_project_file_that_is_not_utf8_is_unreadable(personal):
-    personal.project_file.write_bytes(b"id: p\xff\n")
+    write_config_file(personal.project_file, b"id: p\xff\n")
     config = load_config(personal.root)
     assert config.unreadable
     assert problem_lines(config) == [
@@ -102,7 +103,7 @@ def test_config_show_origin_names_a_file_that_is_not_utf8(personal):
     from tests.config.conftest import tcw
     (personal.root / "docs" / "work").mkdir(parents=True)
     personal.user_file.parent.mkdir(parents=True)
-    personal.user_file.write_bytes(b"\xff\xfe")
+    write_config_file(personal.user_file, b"\xff\xfe")
     result = tcw(personal.root, "config", "show", "--origin")
     assert result.code == 1, result
     assert "builtin: true" in result.out
