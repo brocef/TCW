@@ -190,12 +190,12 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pe = group(g, "extends", help="inherit other projects' taxonomies")
     eg = pe.add_subparsers(dest="ecmd", required=True)
     pea = command(eg, "add", help="inherit a connected project's taxonomy",
-                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
                   examples=["taxonomy extends add shared"])
     pea.add_argument("project_id", help="registered project ID whose taxonomy to inherit")
     pea.set_defaults(func=_extends_add)
     per = command(eg, "rm", help="stop inheriting a project's taxonomy",
-                  prints="nothing", writes="tcw-config.yaml, named on stderr",
+                  prints="nothing", writes=".tcw/tcw-config.yaml, named on stderr",
                   examples=["taxonomy extends rm shared"])
     per.add_argument("project_id", help="registered project ID to stop inheriting")
     per.set_defaults(func=_extends_rm)

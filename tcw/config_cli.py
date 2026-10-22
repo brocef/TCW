@@ -275,7 +275,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     verbs = p.add_subparsers(dest="config_verb", required=True)
     p = command(verbs, "show",
                 help="the effective configuration: TCW's defaults, "
-                     "tcw-config.yaml and your personal files, merged",
+                     ".tcw/tcw-config.yaml and your personal files, merged",
                 prints="the effective configuration as YAML; with --origin, where "
                        "each value came from",
                 writes="nothing",

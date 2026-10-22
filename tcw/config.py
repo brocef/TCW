@@ -326,7 +326,7 @@ def _list_problems(mapping: dict, origin: Origin, root: Path) -> list[Problem]:
             if isinstance(entry, dict) and "builtin" in entry:
                 add(here, f"'builtin' is not written in a file; write "
                           f"'inherit: true' to include the list the layer below "
-                          f"resolved (in tcw-config.yaml, TCW's own text). See "
+                          f"resolved (in .tcw/tcw-config.yaml, TCW's own text). See "
                           f"{MIGRATION_GUIDE}")
                 continue
             if isinstance(entry, dict) and "inherit" in entry:

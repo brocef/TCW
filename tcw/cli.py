@@ -556,8 +556,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_init = command(
         sub, "init", help="make this folder a TCW project, with the named stores",
-        prints="nothing", writes="tcw-config.yaml and each store's folder, each "
-        "named on stderr",
+        prints="nothing", writes=".tcw/tcw-config.yaml, .tcw/.gitignore and each store's "
+        "folder, each named on stderr",
         examples=["init --id my-app", "init work --id my-app --work-path ../board"])
     p_init.add_argument("components", nargs="*", metavar="axis",
                         help=f"any of: {', '.join(COMPONENTS)} (default: all)")

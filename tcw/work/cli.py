@@ -858,7 +858,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     for verb, func, what in (("add", _tags_add, "register"),
                              ("rm", _tags_rm, "unregister")):
         p = command(verbs, verb, help=f"{what} one or more tags", prints="nothing",
-                    writes="tcw-config.yaml, named on stderr",
+                    writes=".tcw/tcw-config.yaml, named on stderr",
                     examples=[f"tags {verb} billing", f"tags {verb} billing auth"])
         p.add_argument("tag", nargs="+", type=_tag, help="a tag; one per argument")
         p.set_defaults(func=func)

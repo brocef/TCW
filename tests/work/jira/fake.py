@@ -770,7 +770,7 @@ def install_sites(monkeypatch, *fakes: FakeJira) -> None:
         if missing:
             raise jira.TrackerAuthError(
                 f"Jira credentials are not set: {', '.join(missing)}. "
-                f"Export them, or correct work.jira.credentials in tcw-config.yaml.")
+                f"Export them, or correct work.jira.credentials in .tcw/tcw-config.yaml.")
         fake = by_site.get(client.config.site)
         if fake is None:
             raise jira.TrackerUnavailable(f"could not reach the tracker at "

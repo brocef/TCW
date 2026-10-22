@@ -157,7 +157,7 @@ class JiraClient:
         if missing:
             raise TrackerAuthError(
                 f"Jira credentials are not set: {', '.join(missing)}. "
-                f"Export them, or correct work.jira.credentials in tcw-config.yaml.")
+                f"Export them, or correct work.jira.credentials in .tcw/tcw-config.yaml.")
 
         payload = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(
