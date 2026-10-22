@@ -140,7 +140,6 @@ class UnreachableProject:
     id: str
     locator: Any
     declared_in: Any = ""
-    declaration: "RepositoryDeclaration | None" = None
     # The rendered "not on this machine" message (TCW-107 Design 6.2), the
     # manifest holding the entry that decided where the project is (None when
     # no entry decided), and the repository that entry gives. Presentation
@@ -706,22 +705,10 @@ class RepositoryDeclaration:
 
 @dataclass(frozen=True)
 class ConnectedProject:
-    """One `projects` entry: where a project is, and where it comes from.
-
-    Both halves are optional individually and one of them is required. `locator`
-    is the adapter locator the entry has always been — a path, for the filesystem
-    adapter. `repository` says how a machine that does not have the project can
-    obtain it, and is exactly the declaration a component store takes, because
-    "where does this come from" is the same question either way.
-
-    The two are a ladder, not alternatives: the locator answers when it can, and
-    the declaration answers only when it cannot. A project already here is never
-    fetched.
-    """
+    """One `projects` entry: the ID of a connected project. Where it is, is a
+    manifest's to say (TCW-107 Design 3.1)."""
 
     id: str
-    locator: str | None = None
-    repository: "RepositoryDeclaration | None" = None
     # The entry's optional `jira` block, kept unparsed: the store layer imports
     # nothing from `tcw.work`, and the Jira backend checks its shape when
     # delegation reads it (TCW-71).
@@ -875,54 +862,45 @@ def parse_connected_entry(
 ) -> tuple["ConnectedProject | None", list[str]]:
     """Parse one `projects` entry into a `ConnectedProject` plus problems.
 
-    An entry naming the project by its ID alone, with no location, is empty
-    (`lib:`), an empty mapping, or a mapping holding only `jira` (TCW-107
-    Design 3.1): where it is, is a manifest's to say. The two 3.x forms below
-    are still read until TCW-107 refuses them:
-
-        child-id: ../child                      # a bare locator, as always
-        child-id:
-            path: ../child                      # optional
-            repository: {url: ..., ref: ...}    # optional
-
-    Pure, filesystem-free, and fails closed like `parse_repository_declaration`
-    — which it delegates the `repository` half to wholesale, so a malformed
-    declaration reads the same here as it does under `work.repository` rather
-    than growing a second vocabulary of error messages.
-
+    An entry names its project by ID alone (TCW-107 Design 3.1): it is empty
+    (`lib:`), an empty mapping, or a mapping holding only `jira`, the
+    delegation block. Where the project is, is a manifest's to say, so a
+    location here is refused with the entry to write in
+    `.tcw/tcw-manifest.yaml` instead. Pure and filesystem-free.
     """
-    problems: list[str] = []
     if raw is None:
-        return ConnectedProject(id=project_id), problems
-    if isinstance(raw, str):
-        if not raw.strip():
-            return None, [f"{where}: locator must be a nonempty string"]
-        return ConnectedProject(id=project_id, locator=raw), problems
+        return ConnectedProject(id=project_id), []
+    if isinstance(raw, str) or (isinstance(raw, dict)
+                                and ("path" in raw or "repository" in raw)):
+        return None, [f"{where}: a location goes in .tcw/tcw-manifest.yaml, not "
+                      f"here: write '{project_id}:' here and "
+                      f"'{_manifest_entry(project_id, raw)}' under projects: there"]
     if not isinstance(raw, dict):
-        return None, [f"{where}: expected a locator string or a mapping, "
-                      f"got {type(raw).__name__}"]
-
-    known = {"path", "repository", "jira"}
-    unknown = {k for k in set(raw) - known if follows_naming_rule(k)}
+        return None, [f"{where}: expected nothing after the ID, or a mapping holding "
+                      f"only 'jira', got {type(raw).__name__}"]
+    unknown = {k for k in set(raw) - {"jira"} if follows_naming_rule(k)}
     if unknown:
-        problems.append(f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
-                        f"expected {', '.join(repr(k) for k in sorted(known))}")
+        return None, [f"{where}: unknown key(s) {', '.join(sorted(map(str, unknown)))}; "
+                      f"expected 'jira'"]
+    return ConnectedProject(id=project_id, jira=raw.get("jira")), []
 
-    locator = raw.get("path")
-    if locator is not None and (not isinstance(locator, str) or not locator.strip()):
-        problems.append(f"{where}.path: expected a non-empty string")
-        locator = None
 
-    declaration = None
-    if "repository" in raw:
-        declaration, declaration_problems = parse_repository_declaration(
-            raw.get("repository"), f"{where}.repository")
-        problems.extend(declaration_problems)
-
-    if problems:
-        return None, problems
-    return ConnectedProject(id=project_id, locator=locator,
-                            repository=declaration, jira=raw.get("jira")), problems
+def _manifest_entry(project_id: str, raw: Any) -> str:
+    """The manifest entry a 3.x `projects:` location becomes, as text."""
+    if isinstance(raw, str):
+        return f"{project_id}: {raw}"
+    path = raw.get("path")
+    path = path if isinstance(path, str) and path.strip() else None
+    repository = raw.get("repository")
+    if not isinstance(repository, dict):
+        return f"{project_id}: {path or '<a folder>'}"
+    url = repository.get("url") or "<url>"
+    ref = repository.get("ref")
+    parts = [f"path: {path or '<a folder>'}",
+             f"repository: {url}{'#' + ref if ref else ''}"]
+    if repository.get("path"):
+        parts.append(f"subfolder: {repository['path']}")
+    return f"{project_id}: {{{', '.join(parts)}}}"
 
 
 def parse_documentation_entries(raw: Any) -> tuple[list["DocEntry"], list[str]]:

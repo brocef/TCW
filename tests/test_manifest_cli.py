@@ -543,3 +543,27 @@ def test_delegating_to_a_project_not_on_this_machine_says_where(tmp_path, entry)
     ran = tcw(app, "work", "new", "x", "--project", "lib")
     assert ran.code == 3, ran
     assert ran.err == f"tcw work new: {expected}\n", ran
+
+
+@pytest.mark.parametrize("raw, shown", [
+    ("../lib", "lib: ../lib"),
+    ({"path": "../lib"}, "lib: ../lib"),
+    ({"repository": {"url": "x"}}, "lib: {path: <a folder>, repository: x}"),
+    ({"path": "../lib", "repository": {"url": "https://h/app.git", "ref": "main",
+                                       "path": "libs/lib"}},
+     "lib: {path: ../lib, repository: https://h/app.git#main, subfolder: libs/lib}"),
+])
+def test_ac15_a_location_in_projects_is_refused(tmp_path, raw, shown):
+    app = proj(tmp_path / "app", "app", upstream={"lib": raw})
+    proj(tmp_path / "lib", "lib")
+    ran, lines = validated(app)
+    assert ran.code == 1, ran
+    assert lines == [
+        f"error: .tcw/tcw-config.yaml: projects.upstream.lib: a location goes in "
+        f".tcw/tcw-manifest.yaml, not here: write 'lib:' here and '{shown}' under "
+        f"projects: there"], ran
+    listed = tcw(app, "projects", "list")
+    assert listed.code == 1 and ".tcw/tcw-manifest.yaml" in listed.err, listed
+    for output in (ran.out + ran.err, listed.err):
+        assert "does not point back" not in output
+        assert "which is not in this checkout" not in output

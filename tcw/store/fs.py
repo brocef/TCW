@@ -581,12 +581,6 @@ def unreachable_project_note(registry, project_id: str) -> str | None:
         return None
     if absent.message:
         return absent.message                # TCW-107 Design 6.2
-    if absent.declaration is not None:
-        # A declared project has a remedy, so the message names it rather than
-        # only the symptom — the same shape `StoreNotProvisioned` uses.
-        return (f"project '{project_id}' is declared in {absent.declaration.url} "
-                f"but has not been provisioned here; run `tcw provision` to "
-                f"obtain it")
     return (f"project '{project_id}' is declared in {absent.declared_in} but is "
             f"not reachable in this checkout ({absent.locator})")
 
@@ -1232,8 +1226,8 @@ def anchor_configured_path(project_root: Path, value: Path) -> Path:
     """The directory a relative `<component>.path` is resolved against.
 
     Inside a *linked worktree* this follows the same rule
-    `FsProjectRegistry._target_path` applies to `projects` locators
-    (`tcw/store/project.py:322-334`), and for the same reasons:
+    `FsProjectRegistry._locator_path` applies to a manifest entry's path, and
+    for the same reasons:
 
     - **Re-anchor only on escape.** A relative path that stays inside the
       worktree is this project's store on this branch and belongs to the worktree,
@@ -3204,8 +3198,8 @@ def resolve_store(store_cls, project_root: Path, _walk=None):
     1. the local store (`<component>.path`, else `docs/<component>`) when it is
        usable;
     1.5. else inside a project the registry has already located here, when one
-       is a checkout of the declared repository — local before remote, the same
-       rule `ConnectedProject` states for a project's own location. Numbered as
+       is a checkout of the declared repository, matched against the manifest
+       entries that place it (TCW-107 Design 6.4) — local before remote. Numbered as
        a half because it was added after the others and renumbering them would
        silently rewrite what every message and comment elsewhere calls "rule 2";
     2. else the declared home repository's provisioned location, if usable;

@@ -221,7 +221,7 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     which the suite cannot run. The stronger evidence is the whole suite: the
     conftest fixture guarantees no `TCW_PROJECT_*` variable is set, so all 2379
     other tests exercise this path. This one names the criterion so a later
-    change to `_target_path` that breaks the no-override case fails on a test
+    change to the lookup that breaks the no-override case fails on a test
     that says what it broke.
     """
     cache = tmp_path / "cache"
@@ -241,7 +241,6 @@ def test_with_no_variable_set_the_nested_layout_is_untouched(tmp_path, monkeypat
     registry.require_valid()
     assert registry.check() == []
     assert registry.unreachable() == []
-    assert registry.misdirected() == []
     assert registry.overrides() == []
     assert [c.id for c in registry.children()] == ["core-project"]
     assert not (cache / "tcw").exists(), "a resolved graph must fetch nothing"

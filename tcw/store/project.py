@@ -14,8 +14,7 @@ import yaml
 from tcw.findings import Finding
 from tcw.store.base import (
     ConnectedProject, Project, ProjectOverride, ProjectRegistry,
-    RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
-    parse_connected_entry, retired_key_problem,
+    UnreachableProject, parse_connected_entry, retired_key_problem,
 )
 from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
 from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
@@ -24,7 +23,7 @@ from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
                                personal_files_skipped, root_of,
                                validate_project_id, version_problem)
 from tcw.store.manifest import ManifestEntry, parse_manifest
-from tcw.store.checkouts import normalized_url, provisioned_root
+from tcw.store.checkouts import normalized_url
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
 
 def override_variable(project_id: str) -> str:
@@ -268,13 +267,6 @@ class _Answer:
     message: str = ""
 
 
-def _holds_only_id(entry: ConnectedProject) -> bool:
-    """A `projects:` entry naming its project by ID alone, which the lookup
-    resolves (TCW-107 Design 3.1); one with a 3.x location is still resolved
-    by `_target_path` until those are refused."""
-    return entry.locator is None and entry.repository is None
-
-
 def _search(registry: "FsProjectRegistry", project_id: str,
             named_by: Path) -> tuple[list[Path], list[tuple[Path, str]]]:
     """Design 2.4-2.8: the folders next to `named_by` and enclosing it that
@@ -351,9 +343,8 @@ class FsProjectRegistry(ProjectRegistry):
         self._upstream_declarers: dict[Path, list[str]] = {}
         self._warnings: list[str] = []
         self._warning_findings: list[Finding] = []
-        # Rule 0's answer per project id, memoised. `_target_path` runs again for
-        # every edge during the reciprocity walk, so without this the disk is
-        # re-probed and `_overrides` grows with the graph's edge count.
+        # Rule 0's answer per project id, memoised, so the disk is probed once
+        # and `_overrides` holds one record per variable.
         self._override_cache: dict[str, Path | None] = {}
         self._overrides: list[ProjectOverride] = []
         # Ids whose override was present and wrong. They are not "not obtained
@@ -482,17 +473,15 @@ class FsProjectRegistry(ProjectRegistry):
         **Filesystem-adapter private, deliberately not on `ProjectRegistry`.**
         The question itself is storage-neutral — a tracker-backed registry could
         answer "which of your projects comes from this source" perfectly well —
-        but answering it here means comparing `RepositoryDeclaration.url` and
-        returning a `Project.locator`, and both are documented as things nothing
-        above the adapter may read. The one caller is `resolve_store` in
+        but answering it here means comparing a manifest entry's repository and
+        returning a `Project.locator`, and both are things nothing above the
+        adapter may read. The one caller is `resolve_store` in
         `fs.py`, which is the same adapter reading its own values.
 
-        Asks the *resolved* project rather than the declaration that named it.
-        That is the entire point: a declaration says where a project comes from,
-        and only the graph knows where it landed here, `TCW_PROJECT_<ID>`
-        included. A lookup that returned the declared locator would answer with
-        the path the config wrote, which on a machine needing this is exactly
-        the path that does not exist.
+        Asks the *found* project rather than the entry that names its
+        repository. That is the entire point: an entry says where a project
+        comes from, and only the lookup knows where it is here,
+        `TCW_PROJECT_<ID>` included.
 
         A project's repository is written in the manifest entries that place
         it (TCW-107 Design 6.4), read in a fixed order so the answer does not
@@ -626,30 +615,6 @@ class FsProjectRegistry(ProjectRegistry):
         """
         return [entry for entry in self._unreachable if entry.id not in self._by_id]
 
-    def misdirected(self) -> list[UnreachableProject]:
-        """Declared locators that do not resolve here, for projects that do.
-
-        The other half of `unreachable()`, and the reason it cannot be one list.
-        `unreachable()` means "obtain this"; these entries name a project the
-        checkout already has, so that message would be wrong. What is left is
-        still worth saying: the locator written here does not point at it.
-
-        Two readings, and nothing on disk distinguishes them. It may be a typo —
-        which nothing reported at all, because reciprocity abstains on an absent
-        target and this project is filtered out of `unreachable()`. Or it may be
-        a locator that is simply right for another machine, which is routine in a
-        workspace whose repositories sit differently on different disks, and is
-        exactly why this is *not* a problem. So the wording states both facts and
-        draws no conclusion: declared there, found here.
-        """
-        # No comparison of the two paths: an entry reaches `_unreachable` only
-        # from the branch that could not read a config file, and `cfg.path` is by
-        # construction a file that was read, so they can never be equal. A guard
-        # that cannot fire tells the next reader a state exists when it does not.
-        # An edge naming its project by ID alone wrote no locator to report.
-        return [entry for entry in self._unreachable
-                if entry.id in self._by_id and not entry.message]
-
     def require_valid(self) -> "FsProjectRegistry":
         if self._problems:
             raise ValueError("; ".join(self._problems))
@@ -680,7 +645,6 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _visit(self, config_path: Path, declared_id: str | None,
                declared_in: Path | None = None,
-               declaration: RepositoryDeclaration | None = None,
                via_upstream: bool = False) -> _Config | None:
         """Load one config and, unless it was reached across an `upstream` edge,
         every config its connections name.
@@ -702,8 +666,7 @@ class FsProjectRegistry(ProjectRegistry):
                 self._upstream_only.discard(config_path)
                 # Read again with its connection problems recorded this time:
                 # they were not the reader's to check, and now they are.
-                cfg = self._read_config(config_path, declared_id, declared_in,
-                                        declaration) or cfg
+                cfg = self._read_config(config_path, declared_id, declared_in) or cfg
                 self._cache[config_path] = cfg
                 if self._by_id.get(cfg.project.id, cfg).path == config_path:
                     self._by_id[cfg.project.id] = cfg
@@ -716,7 +679,7 @@ class FsProjectRegistry(ProjectRegistry):
         # only thing making it look as though something caught a cycle at load
         # time. `_validate_cycles` is what reports one.
         cfg = self._read_config(config_path, declared_id, declared_in,
-                                declaration, quiet_connections=via_upstream)
+                                quiet_connections=via_upstream)
         if cfg is None:
             return None
         self._cache[config_path] = cfg
@@ -750,13 +713,8 @@ class FsProjectRegistry(ProjectRegistry):
         parent chain has been found by the time its children are looked up."""
         for relation in (cfg.parent, cfg.children, cfg.upstream):
             via_upstream = relation is cfg.upstream
-            for target_id, entry in relation.items():
-                if _holds_only_id(entry):
-                    self._follow_id(config_path, target_id, via_upstream)
-                else:
-                    self._visit(self._target_path(config_path, entry), target_id,
-                                config_path, entry.repository,
-                                via_upstream=via_upstream)
+            for target_id in relation:
+                self._follow_id(config_path, target_id, via_upstream)
 
     def _follow_id(self, config_path: Path, target_id: str,
                    via_upstream: bool) -> None:
@@ -777,7 +735,6 @@ class FsProjectRegistry(ProjectRegistry):
 
     def _read_config(self, path: Path, declared_id: str | None,
                      declared_in: Path | None = None,
-                     declaration: RepositoryDeclaration | None = None,
                      quiet_connections: bool = False,
                      ) -> _Config | None:
         if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
@@ -806,8 +763,7 @@ class FsProjectRegistry(ProjectRegistry):
                 # valid".
                 self._problem(path, f"no {SENTINEL} here")
                 return None
-            self._unreachable_edge(declared_in or path, declared_id, root_of(path),
-                                   declaration)
+            self._unreachable_edge(declared_in or path, declared_id, root_of(path))
             return None
         text = self._text(path)
         if isinstance(text, UnicodeDecodeError):
@@ -904,51 +860,6 @@ class FsProjectRegistry(ProjectRegistry):
                 continue
             result[valid_id] = entry
         return result
-
-    def _target_path(self, source_config: Path,
-                     entry: ConnectedProject) -> Path:
-        """Where `entry`'s `tcw-config.yaml` is, on this machine.
-
-        The same ladder a component store resolves through, for the same reason:
-        **a locator that is here always wins, and a declaration answers only when
-        it cannot.** One configuration then serves the machine that has the
-        project nested beside its siblings and the machine that cloned one
-        repository, without either being told about the other.
-
-        Above both sits rule 0, the environment's own statement — see
-        `_override_path`. It is first, not last, and that is load-bearing: the
-        case it exists for is a declared locator that resolves to the *wrong*
-        existing project, which no rung below rule 1 can reach. It is also the
-        honest ordering, since the ladder's standing rule is that the more
-        specific answer wins, and *I am telling you where this is on this
-        machine* is as specific as an answer gets.
-
-        Falls back to the locator when neither rung answers, so the unreachable
-        record names the place the user actually wrote — the declaration is what
-        `tcw provision` acts on, not what the reader should be sent to check.
-        """
-        override = self._override_path(entry.id)
-        if override is not None:
-            return self._canonical(override)
-        candidates: list[Path] = []
-        if entry.locator is not None:
-            candidates.append(self._locator_path(source_config, entry.locator))
-        if entry.repository is not None:
-            try:
-                candidates.append(self._worktree_copy(_config_file(
-                    provisioned_root(root_of(source_config), entry.repository)
-                    / SENTINEL)))
-            except StoreDeclarationError as error:
-                # A declaration this machine cannot turn into a path — a `~name`
-                # naming no user. Recorded against the config that carried it,
-                # because this runs during the graph load on every command, and
-                # letting it propagate put a raw traceback out of `tcw validate`
-                # and `tcw work list` from a value the parser accepted.
-                self._problem(source_config, str(error))
-        for candidate in candidates:
-            if candidate.is_file():
-                return self._canonical(candidate)
-        return candidates[0] if candidates else (root_of(source_config) / SENTINEL)
 
     def _override_path(self, project_id: str) -> Path | None:
         """Rule 0: where `TCW_PROJECT_<ID>` says this project is, or None.
@@ -1109,8 +1020,8 @@ class FsProjectRegistry(ProjectRegistry):
                 # saying is the migration's leftover: a parent claim its parent
                 # now answers by reading it as an upstream.
                 for parent_id, entry in cfg.parent.items():
-                    target = self._edge_target(cfg.path, parent_id, entry)
-                    if target is None and _holds_only_id(entry):
+                    target = self._edge_target(cfg.path, parent_id)
+                    if target is None:
                         # Its edges were not followed, so nothing looked its
                         # parent up; by ID, as reciprocity is (Design 3.2).
                         found = self._by_id.get(parent_id)
@@ -1121,7 +1032,7 @@ class FsProjectRegistry(ProjectRegistry):
                         self._read_as_upstream(cfg, parent_id, reader)
                 continue
             for child_id, entry in cfg.children.items():
-                child = self._cache.get(self._edge_target(cfg.path, child_id, entry))
+                child = self._cache.get(self._edge_target(cfg.path, child_id))
                 if child is None:
                     continue
                 reciprocal = child.parent.get(cfg.project.id)
@@ -1130,18 +1041,13 @@ class FsProjectRegistry(ProjectRegistry):
                         child.path,
                         f"nonreciprocal connection: parent '{cfg.project.id}' is not declared",
                     )
-                elif self._points_elsewhere(child.path, reciprocal, cfg.path):
-                    self._problem(
-                        child.path,
-                        f"parent locator for '{cfg.project.id}' does not point back to {root_of(cfg.path)}",
-                    )
                 if child.project.id != child_id:
                     self._problem(
                         child.path,
                         f"registered key '{child_id}' does not match target id '{child.project.id}'",
                     )
             for parent_id, entry in cfg.parent.items():
-                parent = self._cache.get(self._edge_target(cfg.path, parent_id, entry))
+                parent = self._cache.get(self._edge_target(cfg.path, parent_id))
                 if parent is None:
                     continue
                 reciprocal = parent.children.get(cfg.project.id)
@@ -1156,11 +1062,6 @@ class FsProjectRegistry(ProjectRegistry):
                     self._problem(
                         parent.path,
                         f"nonreciprocal connection: child '{cfg.project.id}' is not declared",
-                    )
-                elif self._points_elsewhere(parent.path, reciprocal, cfg.path):
-                    self._problem(
-                        parent.path,
-                        f"child locator for '{cfg.project.id}' does not point back to {root_of(cfg.path)}",
                     )
                 if parent.project.id != parent_id:
                     self._problem(
@@ -1188,33 +1089,6 @@ class FsProjectRegistry(ProjectRegistry):
                         f"'{cfg.project.id}', but '{cfg.project.id}' is also "
                         f"connected to it as a parent or child; declare one or the "
                         f"other")
-
-    def _points_elsewhere(self, source_config: Path, locator: ConnectedProject,
-                          expected: Path) -> bool:
-        """Whether `locator`, read from `source_config`, names a project other than
-        `expected` — as far as this machine can tell.
-
-        An **absent** target cannot answer the question and must not be read as
-        "no". Two projects routinely name each other at paths that exist only on the
-        machine whose author wrote them: a monorepo nested inside an orchestrator
-        on one disk and cloned beside it on another. Comparing a path that is
-        here against a path that is not decides nothing, and deciding it against
-        the declaration made every such pair non-reciprocal — the failure that
-        made a provisioned parent unusable.
-
-        Where both are present the comparison is real and the check is unchanged;
-        the ids already agreed, or the caller would not have got this far.
-
-        An entry holding only its ID has no locator to compare; two projects
-        finding one ID at two folders is the duplicate ID instead (TCW-107
-        Design 2.9, 3.2).
-        """
-        if _holds_only_id(locator):
-            return False
-        target = self._target_path(source_config, locator)
-        if not target.is_file():
-            return False
-        return target != expected
 
     def _validate_cycles(self) -> None:
         """Report a cycle among the loaded projects. The only thing that does.
@@ -1326,8 +1200,7 @@ class FsProjectRegistry(ProjectRegistry):
             self._findings.append(Finding("error", str(path), message))
 
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
-                          locator: Path | None,
-                          declaration: RepositoryDeclaration | None = None, *,
+                          locator: Path | None, *,
                           message: str = "", decided_by: Any = None,
                           repository: str | None = None) -> None:
         """Record a declared project that is not here, rather than a problem.
@@ -1344,8 +1217,7 @@ class FsProjectRegistry(ProjectRegistry):
             # thing to obtain, and `run tcw provision` would contradict it.
             return
         entry = UnreachableProject(id=project_id, locator=locator,
-                                   declared_in=config_path,
-                                   declaration=declaration, message=message,
+                                   declared_in=config_path, message=message,
                                    decided_by=decided_by, repository=repository)
         if entry not in self._unreachable:
             self._unreachable.append(entry)
@@ -1454,12 +1326,9 @@ class FsProjectRegistry(ProjectRegistry):
         self._problem(path, message)
         return f"{path}: {message}"
 
-    def _edge_target(self, source_config: Path, target_id: str,
-                     entry: ConnectedProject) -> Path | None:
-        """Where an edge's configuration is: for an entry holding only its ID,
-        the answer the walk got (never looked up again, Design 2.11 b)."""
-        if not _holds_only_id(entry):
-            return self._target_path(source_config, entry)
+    def _edge_target(self, source_config: Path, target_id: str) -> Path | None:
+        """Where an edge's configuration is: the answer the walk got (never
+        looked up again, Design 2.11 b)."""
         answer = self._answers.get((target_id, self._root_key(root_of(source_config))))
         if answer is None or answer.folder is None:
             return None

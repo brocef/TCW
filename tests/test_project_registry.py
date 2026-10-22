@@ -28,8 +28,8 @@ def config(root: Path, text: str) -> None:
 
 
 def config_3x(root: Path, text: str) -> None:
-    """`config`, leaving 3.x locations under `projects:`, for the tests whose
-    subject is 3.x behaviour that TCW-107's step 10 removes."""
+    """`config`, leaving 3.x locations under `projects:` as written, for the
+    tests of what the entry parser refuses (TCW-107 Design 3.1)."""
     root.mkdir(parents=True, exist_ok=True)
     write_config(root, text, encoding="utf-8")
 
@@ -361,25 +361,6 @@ def test_an_absent_counterpart_does_not_disprove_reciprocity(tmp_path):
     assert registry.parent().id == "root-project"
 
 
-def test_a_present_counterpart_pointing_elsewhere_still_fails(tmp_path):
-    parent = tmp_path / "orchestrator"
-    child = tmp_path / "child"
-    decoy = tmp_path / "decoy"
-    config_3x(decoy, "id: decoy-project\n")
-    config_3x(
-        parent,
-        f"id: root-project\nprojects:\n  children:\n"
-        f"    child-project: {decoy}\n",
-    )
-    config_3x(
-        child,
-        f"id: child-project\nprojects:\n  parent:\n"
-        f"    root-project: {parent}\n",
-    )
-    problems = _texts(FsProjectRegistry.open(child).check())
-    assert any("does not point back to" in p for p in problems)
-
-
 def test_a_correct_pair_still_validates(tmp_path):
     parent = tmp_path / "orchestrator"
     child = tmp_path / "child"
@@ -429,33 +410,6 @@ def test_a_present_locator_wins_over_a_declaration(tmp_path, monkeypatch):
     assert [c.id for c in registry.children()] == ["child-project"]
 
 
-def test_a_declaration_answers_when_the_locator_does_not(tmp_path, monkeypatch):
-    from tcw.store.base import RepositoryDeclaration
-    from tcw.store.checkouts import provisioned_root
-
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    parent = tmp_path / "orchestrator"
-    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
-                                        ref="main")
-    obtained = provisioned_root(parent, declaration)
-    config_3x(
-        obtained,
-        "id: child-project\nprojects:\n  parent:\n"
-        f"    root-project: {parent}\n",
-    )
-    config_3x(
-        parent,
-        "id: root-project\nprojects:\n  children:\n"
-        "    child-project:\n      path: ../child\n"
-        "      repository:\n"
-        "        url: https://example.invalid/child.git\n        ref: main\n",
-    )
-    registry = FsProjectRegistry.open(parent)
-    registry.require_valid()
-    assert [c.id for c in registry.children()] == ["child-project"]
-    assert registry.unreachable() == []
-
-
 def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     parent = tmp_path / "orchestrator"
@@ -475,11 +429,12 @@ def test_an_unprovisioned_declaration_is_unreachable_at_its_locator(tmp_path, mo
 @pytest.mark.parametrize(
     "entry, expected",
     [
-        ("      nonsense: 1\n", "unknown key"),
-        ("      path: ''\n", "expected a non-empty string"),
-        ("      repository:\n        ref: main\n", "url: expected a non-empty string"),
+        ("      nonsense: 1\n", "unknown key(s) nonsense; expected 'jira'"),
+        # TCW-107 Design 3.1: a location goes in the manifest.
+        ("      path: ''\n", "a location goes in .tcw/tcw-manifest.yaml"),
+        ("      repository:\n        ref: main\n", "a location goes in .tcw/tcw-manifest.yaml"),
         ("      repository:\n        url: u\n        path: /abs\n",
-         "must be relative to the repository root"),
+         "a location goes in .tcw/tcw-manifest.yaml"),
     ],
 )
 def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected):
@@ -490,7 +445,8 @@ def test_a_malformed_entry_is_an_error_naming_the_line(tmp_path, entry, expected
         f"    child-project:\n{entry}",
     )
     problems = _texts(FsProjectRegistry.open(parent).check())
-    assert any(expected in problem for problem in problems), problems
+    assert any(f"projects.children.child-project: {expected}" in problem
+               for problem in problems), problems
     assert FsProjectRegistry.open(parent).unreachable() == []
 
 
@@ -505,35 +461,29 @@ def test_an_entry_holding_an_empty_mapping_is_accepted(tmp_path):
     assert [u.id for u in registry.unreachable()] == ["child-project"]
 
 
-def test_a_declared_project_says_to_provision_it(tmp_path, monkeypatch):
-    from tcw.store.fs import unreachable_project_note
-
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
-    parent = tmp_path / "orchestrator"
-    config_3x(
-        parent,
-        "id: root-project\nprojects:\n  children:\n"
-        "    child-project:\n      path: ../child\n"
-        "      repository:\n        url: https://example.invalid/child.git\n",
-    )
-    registry = FsProjectRegistry.open(parent)
-    note = unreachable_project_note(registry, "child-project")
-    assert "https://example.invalid/child.git" in note
-    assert "tcw provision" in note
-
-
-def test_an_undeclared_absent_project_does_not_say_to_provision(tmp_path):
+def test_a_project_placed_with_a_repository_names_the_command_that_fetches_it(tmp_path):
     from tcw.store.fs import unreachable_project_note
 
     parent = tmp_path / "orchestrator"
-    config_3x(
-        parent,
-        "id: root-project\nprojects:\n  children:\n"
-        "    child-project: ../child\n",
-    )
+    config(parent, "id: root-project\nprojects:\n  children:\n    child-project:\n")
+    manifest = write_manifest(parent, {"child-project": {
+        "path": "../child", "repository": "https://example.invalid/child.git"}})
     note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
-    assert "not reachable in this checkout" in note
-    assert "tcw provision" not in note
+    # TCW-107 Design 6.2.
+    assert note == (f"project 'child-project' is not on this machine: {manifest.resolve()} "
+                    f"places it at ../child, from https://example.invalid/child.git; "
+                    f"fetch it with 'tcw project provision child-project'")
+
+
+def test_a_project_placed_with_no_repository_does_not_say_to_provision(tmp_path):
+    from tcw.store.fs import unreachable_project_note
+
+    parent = tmp_path / "orchestrator"
+    config(parent, "id: root-project\nprojects:\n  children:\n"
+                   "    child-project: ../child\n")
+    note = unreachable_project_note(FsProjectRegistry.open(parent), "child-project")
+    assert note.endswith("places it at ../child"), note
+    assert "provision" not in note
 
 
 def test_a_project_another_route_resolved_is_not_reported_unreachable(tmp_path):
@@ -614,34 +564,6 @@ def test_a_declared_child_that_is_absent_is_still_a_declared_child(tmp_path):
     assert registry.declared_child_ids() == ["away-project"]
 
 
-def test_a_locator_that_misses_a_project_the_graph_has_is_reported(tmp_path):
-    """The typo nothing reported: reciprocity abstains on an absent target, and
-    `unreachable()` filters the entry out because the project is in the graph
-    via the other route. It is equally the shape of a locator that is right for
-    another machine, so it is reported and not called a problem."""
-    parent = tmp_path / "parent"
-    child = tmp_path / "child"
-    config_3x(parent, "id: parent-project\nprojects:\n  children:\n"
-                   f"    child-project: {child}\n")
-    config_3x(child, "id: child-project\nprojects:\n  parent:\n"
-                  f"    parent-project: {tmp_path / 'TYPO-parent'}\n")
-
-    registry = FsProjectRegistry.open(parent)
-    assert _texts(registry.check()) == []                 # not a problem, deliberately
-    assert registry.unreachable() == []           # the project is here
-    misdirected = registry.misdirected()
-    assert [entry.id for entry in misdirected] == ["parent-project"]
-    assert str(misdirected[0].locator).endswith("TYPO-parent")
-
-
-def test_a_locator_that_resolves_is_never_misdirected(tmp_path):
-    parent = tmp_path / "parent"
-    child = tmp_path / "child"
-    reciprocal(parent, "parent-project", child, "child-project")
-    assert FsProjectRegistry.open(parent).misdirected() == []
-    assert FsProjectRegistry.open(child).misdirected() == []
-
-
 def test_a_graph_with_no_override_reports_none(tmp_path):
     """`overrides()` answers, and answers empty, without any adapter opting in.
 
@@ -715,43 +637,24 @@ def test_an_override_beats_a_locator_that_resolves_elsewhere(tmp_path, monkeypat
     ]
 
 
-def test_an_override_at_an_absent_path_falls_through_to_the_declaration(
+def test_an_override_at_an_absent_path_falls_through_to_the_manifest(
         tmp_path, monkeypatch):
     """Absent is not wrong (criterion 4).
 
     This is what lets one set of variables be configured once for an
     environment and used by sessions holding different subsets of the graph: a
     variable naming a project this machine does not have must behave exactly as
-    no variable at all.
+    no variable at all, which since TCW-107 means the manifest decides.
     """
-    from tcw.store.base import RepositoryDeclaration
-    from tcw.store.checkouts import provisioned_root
-
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     parent = tmp_path / "orchestrator"
-    declaration = RepositoryDeclaration(url="https://example.invalid/child.git",
-                                        ref="main")
-    obtained = provisioned_root(parent, declaration)
-    config_3x(
-        obtained,
-        "id: child-project\nprojects:\n  parent:\n"
-        f"    root-project: {parent}\n",
-    )
-    config_3x(
-        parent,
-        "id: root-project\nprojects:\n  children:\n"
-        "    child-project:\n      path: ../child\n      repository:\n"
-        "        url: https://example.invalid/child.git\n        ref: main\n",
-    )
+    child = tmp_path / "child"
+    config(parent, "id: root-project\nprojects:\n  children:\n    child-project: ../child\n")
+    config(child, "id: child-project\nprojects:\n  parent:\n    root-project: ../orchestrator\n")
     monkeypatch.setenv("TCW_PROJECT_CHILD_PROJECT", str(tmp_path / "not-here"))
     registry = FsProjectRegistry.open(parent)
     registry.require_valid()
-    assert _texts(registry.check()) == []
     assert [c.id for c in registry.children()] == ["child-project"]
-    assert registry.unreachable() == []
-    # Nothing took effect, so nothing is listed — which is what makes a
-    # mistyped variable conspicuous by its absence from `tcw validate`.
-    assert registry.overrides() == []
+    assert registry.found("child-project")["by"] == "manifest"
 
 
 def test_an_override_at_a_directory_that_is_not_a_node_is_a_problem(

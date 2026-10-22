@@ -1518,36 +1518,6 @@ def test_a_federation_error_is_not_reported_as_unprovisioned(tmp_path):
     assert not isinstance(excinfo.value, StoreNotProvisioned)
 
 
-# ── a declaration this machine cannot turn into a path ──────────────────────
-
-def test_an_unresolvable_checkout_is_a_declaration_error_not_a_crash(tmp_path):
-    """`Path.expanduser()` raises `RuntimeError` — not `ValueError`, not
-    `OSError` — for a `~name` naming no user, and this runs during the graph
-    load on every command. A single such value put a raw traceback out of
-    `tcw validate` and `tcw work list`, from a value the parser accepted."""
-    from tcw.store.project import FsProjectRegistry
-
-    node = _repo(tmp_path / "node")
-    init(["work"], node, "node-project")
-    config_path = config_file(node)
-    config = yaml.safe_load(config_path.read_text())
-    config["projects"] = {
-        "children": {
-            "away-project": {
-                "path": "../away",
-                "repository": {"url": "https://example.invalid/a.git",
-                               "checkout": "~nosuchuser12345/away"},
-            }
-        }
-    }
-    write_config_file(config_path, yaml.safe_dump(config, sort_keys=False))
-
-    problems = [str(f) for f in FsProjectRegistry.open(node).check()]          # must not raise
-    assert any("repository.checkout" in problem for problem in problems), problems
-    assert any("nosuchuser12345" in problem for problem in problems), problems
-    assert validate(node)                                    # reported, not a traceback
-
-
 # ── `extends` is written to the node's config, in the node's repository ──────
 
 def _federation_pair(tmp_path: Path, *, taxonomy_path: str | None) -> tuple[Path, Path]:

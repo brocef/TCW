@@ -100,8 +100,7 @@ def open_project(project_id: str, here: Path) -> WorkBackend:
                               repository=absent.repository)
         if absent or registry.entry(project_id):
             raise Unreachable(f"project '{project_id}' is declared but is not on "
-                              f"this machine; `tcw provision` obtains it",
-                              project=project_id)
+                              f"this machine", project=project_id)
         raise NotFound(f"no project '{project_id}' is declared here")
     return open_backend(Path(project.locator), personal=False)
 

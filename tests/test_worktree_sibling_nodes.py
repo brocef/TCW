@@ -90,16 +90,6 @@ def test_a_node_only_the_primary_checkout_has_still_resolves_there(workspace):
     assert registry.unreachable() == []
 
 
-def test_a_child_declared_only_by_repository_resolves_to_the_worktree(workspace):
-    ws_cfg = config_file(workspace)
-    write_config_file(ws_cfg, "id: workspace\nprojects:\n  children:\n    app-repo:\n"
-                      "      repository:\n        url: https://example.com/app.git\n"
-                      "        checkout: app\n")
-    git(workspace / "app", "worktree", "add", "-q", "../app-wt", "-b", "feature")
-    done = validate(workspace / "app-wt" / "pkg-a")
-    assert done.returncode == 0, done.stdout + done.stderr
-
-
 def test_a_nested_repository_is_not_taken_for_the_worktree_copy(workspace):
     """A separate clone at the same place in the worktree is another repository,
     not this node on the checked-out branch."""

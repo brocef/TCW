@@ -243,21 +243,10 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             continue
         if absent.message:
             message = absent.message                     # TCW-107 Design 6.2
-        elif absent.declaration is not None:
-            message = (f"connected project '{absent.id}' is declared in "
-                       f"{absent.declaration.url} but has not been provisioned "
-                       f"here; run `tcw provision` to obtain it")
         else:
             message = (f"connected project '{absent.id}' is declared but not "
                        f"reachable in this checkout ({absent.locator})")
         findings.append(Finding("unresolved", str(absent.declared_in), message))
-    # A locator that does not resolve here, for a project that is here: a typo,
-    # or a locator right for another machine. Both facts, no conclusion.
-    for entry in registry.misdirected():
-        findings.append(Finding(
-            "warning", str(entry.declared_in),
-            f"connected project '{entry.id}' is declared at {entry.locator}, which "
-            f"is not in this checkout; it was found at {registry.get(entry.id).locator}"))
     findings += registry.manifest_findings()
     findings += registry.warning_findings()
     notes: list[str] = []
