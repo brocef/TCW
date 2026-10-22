@@ -96,9 +96,12 @@ From **TCW-108** (its plan, steps named):
 - What fails while the order is computed: `load_order_of` raises
   `ValueError` past its depth limit rather than recursing without end
   (Step 2), and a loop found for a descendant's order or an outside
-  project's raises `ProjectGraphError` (choice 5). What `load_order()`
-  answers for the active project when its own `parents:` is wrong (an order
-  with no parents, or a raise) is read at Step 0; choice 11 covers both.
+  project's raises `ProjectGraphError` (choice 5). In the `active` role a
+  `parents:` problem is a graph problem and `link_state` stays `here`
+  (TCW-108 Step 7b), so `load_order()` may answer an order holding the
+  project alone without raising; choice 11 therefore reads the project's own
+  `parents:` itself, with TCW-108's `parse_parents` (Step 1), and looks for a
+  loop with its `find_loop` (Step 2).
 - `InheritedUnavailable` (exit 7) carrying `project`, `axis` and `reason`
   (Step 3).
 - `_read_config`'s roles (`active`, `ancestor`, `descendant`, `outside`) and
@@ -120,7 +123,12 @@ From **TCW-108** (its plan, steps named):
   they compare the whole text. Also the two-repository fixture of AC 26,
   which AC 29 here repeats.
 
-From **TCW-111**: nothing this item calls. It renames `item.yaml` to a state
+From **TCW-111**: `link_exists`, which Step 6 calls to answer a reference
+into a Jira-mode project from its folders, and which TCW-111 changes to take
+an id-path (TCW-111 spec, the `link_exists` paragraph of its Design; its
+plan's change to `tcw/work/jira/backend.py:104-109`). Step 6 passes whatever
+form TCW-111 leaves, as the existing callers in `tcw/refs.py` and
+`reference_resolver` already do. TCW-111 also renames `item.yaml` to a state
 file and changes `create`'s signature (its Steps 5 and 9); Step 0 re-reads
 `tcw/work/fs_backend.py` and `tcw/work/jira/backend.py` for the two places
 that read `work.tags` on every create and edit.
@@ -202,22 +210,50 @@ that read `work.tags` on every create and edit.
     (`tcw/config.py:559-571`) to blame a mapping's problem on its highest
     layer, becomes `(position, layer)`, so a later project outranks an earlier
     one.
-11. **A registry that cannot answer** (spec Design 1.3, Decision 25). The
-    order cannot be had when one of these raises `ValueError` or any
-    `TcwError`: opening the registry, `current`, or `source_entries`. That
-    covers `require_valid`'s and `current`'s `ValueError`, `load_order_of`'s
-    depth guard, `ProjectGraphError` (TCW-108 choice 5), and TCW-107's
-    `Unreachable` and `UnknownProject`. It also cannot be had when the
-    project's own links are unknown (its `link_state` is `unreadable`, or it
-    is in `LoadOrder.unreadable`). Then `load_config` catches the error and
-    folds the project alone. At Step 7a nothing is withheld (the interim
-    rule). From Step 7c, each key of Design 1.1 that the project does not
-    decide itself is withheld with `BackendError(<the error's text>)`, exit 1.
-    That is the conversion `open_backend` already makes (`tcw/work/open.py:73-74`),
-    so `tcw validate`'s `_work_findings` reports it through its existing
-    `BackendError` branch (`tcw/validate.py:571-575`). `InheritedUnavailable`
-    is never caught here: `source_entries` does not raise it. The error is
-    never put in `Config.problems`. So `tcw validate`, which loads the
+11. **A registry that cannot answer** (spec Design 1.3, Decisions 25 and
+    30). The order cannot be had in any of three cases, checked in this
+    order once `P`'s shared file declares `parents:`:
+    - **`P`'s own `parents:` is refused**: TCW-108's `parse_parents(<P's
+      value>, <P's file>)` returns no links. The loader reads the value from
+      the shared file it has already read. This is needed because in the
+      `active` role TCW-108 makes the problem a graph problem and leaves
+      `link_state` at `here`, so the registry may answer `[P]` without
+      raising (the re-check's B1).
+    - **A loop through `P`'s ancestors**: TCW-108's `find_loop` over
+      `registry.parents(q)` for `P` and each project reached from it through
+      parent links (each visited once), found before `source_entries` is
+      asked, so the outcome does not depend on whether TCW-108's order
+      computation raises for a loop.
+    - **A raise**: opening the registry, `current` or `source_entries` raises
+      `ValueError` or a `TcwError`. That covers `current`'s `ValueError`,
+      `load_order_of`'s depth guard, `ProjectGraphError` (TCW-108 choice 5),
+      and TCW-107's `Unreachable` and `UnknownProject`. `InheritedUnavailable`
+      is a `TcwError` too (TCW-108 Step 3); the `try` re-raises it before its
+      `TcwError` clause, so it is never swallowed, though `source_entries`
+      is not expected to raise it. Catching `Unreachable` turns its exit 5
+      into exit 1; no path reaches that today, since the walk records a
+      missing project rather than raising and a project read for itself is
+      asked for with `root=`, so it costs nothing now.
+    It is not had when `P` is in the order's `unreadable` either (a
+    backstop: TCW-108's active role does not put it there).
+    Then `load_config` folds the project alone and keeps the **withheld
+    error**: the text `registry.require_valid()` raises (the registry's
+    graph problems joined with `; `, `tcw/store/project.py:455`), which is
+    exactly what `tcw work list` prints for the same project through
+    `open_backend`; only when it raises nothing, or no registry could be
+    opened, the caught error's text, or for a loop the registry did not
+    record, `loop_message(<the loop>)`. So a loop is named by TCW-108's
+    `loop in parents: …`, never by the depth guard's words. A narrower
+    trigger than "any graph problem" is kept on purpose: a descendant that
+    does not name `P` back is a graph problem too, and withholding on it
+    would newly stop `tcw work tags list`, which reads no graph today.
+    At Step 7a nothing is withheld (the interim rule). From Step 7c, each
+    key of Design 1.1 that the project does not decide itself is withheld
+    with `BackendError(<the withheld error>)`, exit 1. That is the
+    conversion `open_backend` already makes (`tcw/work/open.py:73-74`), so
+    `tcw validate`'s `_work_findings` reports it through its existing
+    `BackendError` branch (`tcw/validate.py:571-575`). The error is never
+    put in `Config.problems`. So `tcw validate`, which loads the
     configuration before its own checks (`own_config`, `tcw/cli.py:592`;
     `config_findings`, `tcw/validate.py:366`), still runs every check and
     lists the graph problem as a finding. Every other command that reads no
@@ -231,7 +267,14 @@ that read `work.tags` on every create and edit.
 13. **Variable problems go into the active project's configuration only**
     (spec 4.4; Decision 27): `load_config(personal=True)`. A reading with
     `personal=False` applies only the variables that passed every check, and
-    reports none.
+    reports none. What this protects is the `tcw://` link check, which
+    `validate()` runs whatever the configuration holds
+    (`tcw/validate.py:327-348`), and the web app's reads of another project:
+    a `ConfigError` from opening another project would be a false `error`
+    finding for every link into it (`tcw/refs.py:158`). An item's reference
+    into another project is not reached in that case, because
+    `_work_findings` returns at the active project's `ConfigError`
+    (`:571-573`).
 14. **Guards on `Withheld`** (the review's answer 6). It stores a function
     that builds its error, and raises a new error at each use, so one
     exception object never collects traceback frames from many places. It
@@ -240,13 +283,27 @@ that read `work.tags` on every create and edit.
     `work_store_problems` (7b), `tcw/serve/work.py`'s summary (Step 11),
     `config_cli._show` (Step 9) and `Config.require`. Each of those carries
     a comment saying that `config.tags or ()` is not a safe test.
-15. **One registry, passed along.** `open_backend` opens the registry first
-    and passes it to `_layered` and on to `load_config`, so a call outside a
-    command builds one registry, not two (the review's answer 7c). A
-    `tcw serve` request runs outside a command, so `context` still builds
-    two: one in `read_work_config` and one in `open_backend`
-    (`tcw/serve/work.py:68-69`). That is 3.x's cost plus nothing for a
-    project with no `parents:`, and it is left as it is.
+15. **One registry, passed along, for the fold only.** `project_facts`
+    takes `registry=None`. For the active project (`personal=True`) it
+    opens one at `root` when none is passed, and that registry answers
+    `require_valid()`, `current.id` and the fold, so a call outside a
+    command builds one registry, not two (the review's answer 7c). It is
+    passed to `_layered`, and through a new `registry=None` keyword on
+    `effective(root, registry=None)` (`tcw/config.py:667-675`) to
+    `load_config`; `effective` uses it on the call that fills its cache.
+    For a project read for itself (`personal=False`) the passed registry,
+    the command's, is used for the fold alone. Its `current` is the
+    **active** project, so the read project's ID never comes from it
+    (spec Decision 31): it comes from `FsProjectRegistry.open(root).current.id`,
+    as `open_backend` reads it today (`tcw/work/open.py:65-71`), which
+    TCW-107 Step 5 keeps to one registry per root per command. That
+    per-root registry is never passed to `load_config`. With
+    `personal=False` and no registry passed, `project_facts` opens none for
+    the fold; `load_config`'s `TypeError` (choice 3) is the one check, so no
+    fallback slips past it. A `tcw serve` request runs outside a command,
+    so `context` still builds two: one in `read_work_config` and one in
+    `open_backend` (`tcw/serve/work.py:68-69`). That is 3.x's cost plus
+    nothing for a project with no `parents:`, and it is left as it is.
 
 ## Step 0 — start from what the earlier items left
 
@@ -268,8 +325,11 @@ Checks, before any change:
   its exception class. Also, by a throwaway script in the scratchpad, what
   `load_order()` answers for an active project whose own file holds
   `parents: notalist`, and for `app: [lib]`, `lib: [top]`, `top: [lib]`: an
-  order, or which exception. Choice 11's list of caught errors is corrected
-  here if anything else can be raised.
+  order, or which exception; and what `require_valid()` raises in each, which
+  is the withheld error's text. Choice 11 does not depend on the first answer
+  (it reads `P`'s own `parents:` and looks for the loop itself); its list of
+  caught errors is corrected here if anything else can be raised, and
+  `parse_parents`, `find_loop` and `loop_message` are confirmed by name.
 - **Every reader of an inherited key**, by `grep -rn "\.tags\b"` and
   `grep -rn "\.jira\b\|layered\.jira\|config\.jira"` over `tcw/`, compared
   with this list at `d2d02829`: `tcw/work/fs_backend.py:286`, `:536`;
@@ -287,7 +347,10 @@ Checks, before any change:
   `tcw/cli.py:518-519`, so `tcw validate --remote` still never stops on a
   gap, as spec 3.6 asks.)
 - **Every reading of a project for itself**, by `grep -rn "personal=False"
-  tcw`. At `d2d02829`: `tcw/work/open.py:42` (`_layered`), `:99`
+  tcw tests` (the tests too: a test that calls `load_config(...,
+  personal=False)` or `read_work_config(..., personal=False)` directly on a
+  project with `parents:` meets the new `TypeError` at Step 7a, and is listed
+  there and given a registry). At `d2d02829`, in `tcw`: `tcw/work/open.py:42` (`_layered`), `:99`
   (`open_project`), `:178` and `:184` (`delegate`), `:199`
   (`open_for_update`), `tcw/work/jira/tickets.py:339` (`delegate_to_jira`
   with `root=`, reached from `delegate`, which holds a registry), and
@@ -340,7 +403,9 @@ Checks, before any change:
      `--tag` warning `is not in this project's registry`
      (`tcw/work/cli.py:244-246`; `grep -rlnE "not in this project's
      registry|is not registered|unregistered" tests`). Each set is intersected
-     with list 1's files that write a parent link. That includes every
+     with the parent-link grep of list 1 (the grep itself, not list 1's
+     result, so that TCW-108's validate tests in files that run no tag
+     command are included). That includes every
      3.x-era fixture TCW-108 Step 8a rewrote from `projects.parent` to
      `parents:`, which passes `config` by default. Each test in the
      intersection is read and sorted:
@@ -351,6 +416,13 @@ Checks, before any change:
        finding's text or the whole list of findings.
      Each is named in that step's list of expected failures in the implement
      round, before the step's change is made.
+  6. **Tests whose active project's own `parents:` is wrong, or whose
+     ancestors loop**, and that run a tag command, `tcw config show`, or a
+     Jira-mode work command (list 1's command greps, intersected with
+     `grep -rlnE "parents: *[^\[{ ]|loop in parents|find_loop" tests`, and
+     TCW-108's tests of its AC 2 and AC 15 read by hand). From Step 7c such a
+     command newly exits 1 (choice 11). Each is named in Step 7c's list of
+     expected failures.
 - **Inventories**, taken now and kept in the scratchpad (not the
   repository), by TCW-108 Step 0's method: `pytest --collect-only -q`, and the
   per-function counts of `assert` statements and `pytest.raises` blocks.
@@ -398,6 +470,11 @@ constants (as `built_in_values` does, `tcw/config.py:208-221`, since
   Jira keys (`KEYS`, `CREDENTIAL_KEYS`, `FIELD_KEYS`,
   `tcw/work/jira/config.py:31-36`; `PRIORITIES`, `tcw/work/model.py:98`).
   No `tcw-version` (TCW-106 Design 3.3) and no key inside a list entry.
+  The table has two uses only: decoding a variable's key part (Step 2), and,
+  restricted to `work.tags` and `work.jira`'s keys, deciding which keys are
+  undecided (Step 7c). Nothing reports a key of a file because the table
+  lacks it, so TCW-112 Step 5c can take the `extends` entries out without
+  any file becoming a problem here (TCW-112's handoff, point 3).
 - `override_name(key_path, project_id) -> str` (4.1) and
   `decode_key(key_part) -> KeyPath | None`: the one entry whose encoding is
   the key part (4.3), found by encoding every entry once (a dictionary built
@@ -534,10 +611,12 @@ cannot be read at all).
   after the colon from `absent_note` or `link_problem`, as in `sources`.
   `sources` calls it with the axis alone, so its messages do not change. A
   test asserts that the configuration error's `axis` is `config`, so no
-  code that checks the axis meets an unknown value. TCW-112's third reason
-  (`store`, with its `detail`, TCW-112 Step 2) is meant to be added here as
-  one more keyword, so that all of an axis's messages are built in one place
-  (handoff to TCW-112).
+  code that checks the axis meets an unknown value. TCW-112 Step 2 adds its
+  third reason here as one more keyword-only argument, `store_message: str |
+  None = None` (reason `store`, its `detail` the store's message), so
+  `unavailable` stays the one place an `InheritedUnavailable` message is
+  built; nothing in this item builds one anywhere else (TCW-112's handoff,
+  point 1).
 - `tcw/store/project.py`, `_read_config` (as TCW-108 Step 7b leaves it): in
   the `ancestor` and `outside` roles, a file whose read gives a problem (the
   problem `read_project_file` returns, `tcw/config.py:257-270`: not UTF-8,
@@ -653,11 +732,20 @@ opened.
   `project_facts(root, *, personal=True, registry=None) -> ProjectFacts`
   does everything `open_backend` does today before it builds a backend:
   - the layered configuration, raising `ConfigError` on its problems;
-  - the registry, with `require_valid()` when `personal`;
-  - `current.id`;
+  - with `personal`, the active project's registry (the one passed, which
+    must be the one at `root`, or one opened at `root`), with
+    `require_valid()`;
+  - the ID of the project at `root`: with `personal`, that registry's
+    `current.id`; without, `FsProjectRegistry.open(root).current.id`, as
+    `open_backend` reads it today (`:65-71`). Never the passed registry's
+    `current` when `personal` is false: that is the active project
+    (choice 15, spec Decision 31);
   - `work_path(root)`.
   Each `ValueError` is turned into `BackendError`, as now (`:73-74`). It
-  returns `ProjectFacts(layered, project, path, registry)`, frozen.
+  returns `ProjectFacts(layered, project, path, registry)`, frozen, where
+  `registry` is the one passed, or the one opened for the active project.
+  Until Step 7a no caller passes a registry, so the ID is read exactly as
+  today.
   `open_backend` calls it and then builds the backend, so its own behaviour
   does not change. `external_stages_of(config)`, also new, answers
   `JiraBackend.external_stages` or `FsWorkBackend.external_stages` by
@@ -739,9 +827,17 @@ in the next two steps, before the item completes.
 - **When the order cannot be had** (choice 11, spec AC 15's last sentences),
   7a's half: with `app`'s own `parents: notalist`, and with the loop
   `app: [lib]`, `lib: [top]`, `top: [lib]`, `load_config(<app>)` returns
-  without raising. Its sources are `[app]`. `tcw validate` in `app` exits 1
-  with TCW-108's graph problem among its findings (the `where` TCW-108's AC 2
-  test checks), and `tcw work list` exits 1 as before.
+  without raising. Its sources are `[app]`, and `Config.order_error` holds
+  the withheld error of choice 11: for the loop, text containing `loop in
+  parents: lib -> top -> lib`, equal to the message `tcw work list` prints
+  in `app`. `tcw validate` in `app` exits 1 with TCW-108's graph problem as
+  a finding line (the `where` TCW-108's AC 2 test checks) and standard error
+  ending with the closing count; with `app` also setting
+  `work.hooks.timeout: soon`, that problem is a finding of the same run.
+  `tcw work list` exits 1 as before. A unit test of the trigger alone: with
+  `source_entries` replaced by one that returns `[app]` without raising,
+  `app`'s own `parents: notalist` still sets `order_error` (the re-check's
+  B1).
 - **A project read for itself needs the registry** (choice 3):
   `load_config(<core>, personal=False)` with `core: [base]` and no registry
   raises `TypeError`; with no `parents:` it does not. Through each caller
@@ -749,6 +845,13 @@ in the next two steps, before the item completes.
   `tcw work edit --blocks`, the web app's item suggestions), with `core:
   [base]` and `base` setting `work.tags: [b]`, the command reads `core`'s
   configuration with `base`'s tags and does not raise `TypeError`.
+- **A project read for itself keeps its own ID** (choice 15, spec Decision
+  31, the re-check's B2): from `app`, with `lib: [base]` so the command's
+  registry is passed, `tcw work show <lib's item by full identifier>` prints
+  the item with `lib` as its project, and `project_facts(<lib's root>,
+  personal=False, registry=<app's registry>).project == "lib"`. Mutation
+  check, recorded and reverted: reading the ID from the passed registry's
+  `current` makes both go red with `app` in place of `lib`.
 
 **Changes** `tcw/config.py`, `load_config` (`:574-645`) and helpers:
 
@@ -758,12 +861,15 @@ in the next two steps, before the item completes.
   and none was passed, `FsProjectRegistry.open(root)`. With `personal=False`
   and none passed, `load_config` raises `TypeError` (choice 3). Without
   `parents:`, the sources are `[P]` and no registry is opened.
-- **When the order cannot be had** (choice 11): opening the registry,
-  `current` and `source_entries` run inside one `try` that catches
-  `ValueError` and `TcwError`. The same holds when `P`'s own `link_state` is
-  `unreadable` or `P` is in the order's `unreadable`. Then the sources are
-  `[P]`, and the caught error is kept as `Config.order_error`, for Step 7c.
-  At this step nothing is withheld (the interim rule).
+- **When the order cannot be had** (choice 11): first `parse_parents` on
+  `P`'s own `parents:` value; then opening the registry, the loop search
+  with `find_loop`, `current` and `source_entries`, inside one `try` that
+  re-raises `InheritedUnavailable` and catches `ValueError` and
+  `TcwError`; and `P` in the order's `unreadable` as a backstop. In any of
+  these cases the sources are `[P]`, and the withheld error of choice 11
+  (built from `require_valid()`'s text when the registry records a
+  problem) is kept as `Config.order_error`, for Step 7c. At this step
+  nothing is withheld (the interim rule).
 - **P's mode** is `P`'s own `work.backend` from its shared file (spec 1.2,
   5.2): it decides whether an ancestor's `work.jira` is taken (1.5) and
   whether credential names are set aside (`_without_credentials`,
@@ -799,10 +905,13 @@ in the next two steps, before the item completes.
   `load_config` (`:575-583`) says so, and no longer says "an upstream".
 - `tcw/work/open.py`: `_layered` (`:36-45`), `read_work_config` (`:48-51`),
   `project_facts` and `open_backend` take `registry=None` and pass it to
-  `load_config`. `project_facts` opens the registry first, when none is
-  passed, and passes it on, so one call builds one registry (choice 15).
-  Every reading of a project for itself that Step 0 listed passes the
-  registry it holds:
+  `load_config`, and `effective` gains `registry=None` for the same purpose
+  (choice 15). For the active project `project_facts` opens the registry
+  first, when none is passed, and passes it on, so one call builds one
+  registry. For a project read for itself it passes on only what it was
+  given, and reads the project's ID from the project's own per-root
+  registry, never from the passed one (choice 15). Every reading of a
+  project for itself that Step 0 listed passes the registry it holds:
   - `open_project` (`:88-99`, as TCW-110 leaves it);
   - `delegate` (`:162-187`), in both its `read_work_config` and its
     `open_backend`;
@@ -916,15 +1025,33 @@ sentences of AC 17.
 - `tcw capabilities drift` in AC 14's layout exits 7 naming `(work.jira)`
   (spec 3.4 row a: it lists completed items through the backend), and in AC
   13's layout exits 0.
-- AC 14's last sentence: the reference to `lib`'s item and the `tcw://` link
-  to `app`'s own item give no finding.
+- AC 14's last two sentences: the `tcw://` link to `app`'s own item gives no
+  finding in `tcw validate` in `app` (without Step 6's change,
+  `resolve_tcw_ref` would catch the withheld `work.jira`'s error and report
+  a false `error`); and with one of `lib`'s items referring to one of
+  `app`'s, `tcw validate` in `lib` gives no finding about it (`app`, read for
+  itself from `lib`, has an undecided `work.jira`; without Step 6's change
+  the `InheritedUnavailable` escapes `reference_resolver` and the run exits
+  7). (The re-check's I-1: an `app` item's reference cannot test this,
+  because `app` is in Jira mode and `_work_findings` runs no reference check
+  for a `JiraBackend`, `tcw/validate.py:576-582`.) Mutation check, recorded
+  and reverted: with `reference_resolver` building a `JiraBackend` again,
+  the `lib` test goes red with exit 7.
 - **When the order cannot be had** (choice 11, AC 15's last sentences), 7c's
   half. With `app`'s own `parents: notalist`, `tcw work tags list` exits 1
-  naming the graph problem, and `tcw work new y --tag t` exits 1 and creates
-  nothing. `tcw validate` still exits 1 with the graph problem as a finding
-  among the others, and no traceback. The same holds for the loop. `app` also
-  setting `work.tags: [t]`: `tcw work tags list` prints `t` (a key the
-  project decides itself is not withheld).
+  with the message `tcw work list` gives in `app` (compared whole), and
+  `tcw work new y --tag t` exits 1 and creates nothing. `tcw validate` still
+  exits 1 with the graph problem as a finding line and the closing count on
+  standard error, and no traceback. The same holds for the loop, whose
+  message contains `loop in parents: lib -> top -> lib` and nothing of the
+  depth guard's text. `app` also setting `work.tags: [t]`: `tcw work tags
+  list` prints `t` (a key the project decides itself is not withheld). And
+  with `app: [core]`, `core` setting `work.tags: [a]`, and `app` listing a
+  child `kid` that does not name `app` back (a graph problem of `app`),
+  `tcw work tags list` in `app` prints `a` and exits 0; it is not stopped
+  today either (the trigger is not "any graph problem"). Mutation check, recorded and
+  reverted: with choice 11's `parse_parents` trigger removed, the
+  `parents: notalist` test goes red with exit 0 and nothing printed.
 
 **Changes**
 
@@ -941,9 +1068,10 @@ sentences of AC 17.
 - **When the order could not be had** (choice 11): with `Config.order_error`
   set and `P` declaring `parents:`, each key of Design 1.1 that `P`'s own
   layers do not decide (choice 4's rule, as if one gap stood before `P`) is
-  withheld with `BackendError(str(order_error))`. `gaps_withholding` is not
-  touched, since no gap is known, and `tcw validate`'s graph check reports the
-  problem itself.
+  withheld with `BackendError(<order_error's text>)`, the withheld error of
+  choice 11, so the message is TCW-108's graph problem as `tcw work list`
+  prints it. `gaps_withholding` is not touched, since no gap is known, and
+  `tcw validate`'s graph check reports the problem itself.
 - **No built-in value and no "required"** (spec 3.2): the built-in layer has
   no value at either key today (`built_in_values`, `:208-221`), so nothing is
   taken from it; `parse_jira_config` (`tcw/work/jira/config.py:175-243`)
@@ -967,7 +1095,9 @@ sentences of AC 17.
 **Reading every failure**, as in 7a: the failures expected are the tests of
 Step 0's list 1 whose parent passes `config` and is missing or unreadable,
 the TCW-108 tests of Step 0's list 2 (AC 19, Step 11's "what lies above is
-unknown" tests, AC 20, AC 31), and list 5's 7c group, each named in the
+unknown" tests, AC 20, AC 31), list 5's 7c group, and list 6 (a tag command
+in a project whose own `parents:` is wrong or whose ancestors loop), each
+named in the
 implement round before the change. Each change is listed with its rule. No
 test is deleted in this step; a test that no longer fits is amended to the
 criterion that changed it.
@@ -1007,10 +1137,15 @@ fixture has removed `TCW_NO_PERSONAL_CONFIG`:
   `record.sh` equal to `app`'s root, and the failed `post` naming
   `from TCW_WORK_STAGES_SPEC_POST__APP`.
 - AC 25, AC 28, both sentences. The second is `TCW_WORK_TAGS__LIB='[a]'`
-  and a reference from an `app` item to a `lib` item: one `environment`
-  error, no reference finding. **Mutation check**, recorded and reverted:
-  with the problems also put into `personal=False` configurations, the second
-  sentence's test goes red on a `broken` reference finding.
+  and a `tcw://` work link (`tcw://W/lib/<folder>`) from one of `app`'s
+  capability descriptions to a `lib` item: one `environment` error, no
+  finding about the link. **Mutation check**, recorded and reverted: with the
+  problems also put into `personal=False` configurations, the second
+  sentence's test goes red on an `error` finding for the link, whose message
+  is the `ConfigError` from opening `lib` (`tcw/refs.py:158`). (An item
+  reference cannot be used: `tcw validate` never runs the reference check
+  while `app`'s own configuration has a problem, `tcw/validate.py:571-573`,
+  so such a test could not fail; the re-check's B3.)
 - AC 27: a project with no `parents:`, with `TCW_PROJECT_X`, `TCW_JIRA_EMAIL`
   and `TCW_STDIN_TIMEOUT` set, gives the same standard output, standard error
   and exit code for `tcw work list`, `tcw work tags list`, `tcw config show
@@ -1038,9 +1173,10 @@ fixture has removed `TCW_NO_PERSONAL_CONFIG`:
     `personal=False` applies only the overrides that passed every check and
     adds no problem, so a project read for itself, through
     `_layered(personal=False)` (`tcw/work/open.py:43-44`), never raises
-    `ConfigError` because of a variable. Without this, `reference_resolver`
-    would answer `broken` (`:226-227`) for every reference into another
-    project.
+    `ConfigError` because of a variable. Without this, `tcw validate`'s
+    `tcw://` link check would give a false `error` for every link into
+    another project (`tcw/refs.py:158`), and the web app's reads of another
+    project would fail (choice 13).
   - **Who reads variables** (spec 4.4, 5.2): at each source `Q` of the fold,
     after `Q`'s local file, the overrides naming `Q` are merged as one layer
     each, in Step 2's order, with `Origin("environment", variable=<NAME>,
@@ -1220,16 +1356,25 @@ added:
   (Step 6).
 - **TCW-112:** `source_entries` and `unavailable(project_id, gap_id, axis, *,
   subject=None)` are the non-raising form of `sources` and the one place its
-  messages are built. Its third reason belongs there too. The configuration's
-  `axis` is `config`. An ancestor whose shared file cannot be read is
-  unreadable in the `ancestor` and `outside` roles (Step 4), and a
-  descendant's stays a graph problem. `taxonomy.extends` and
+  messages are built; TCW-112's `store_message=` keyword goes there too
+  (Step 4). The configuration's `axis` is `config`. An ancestor whose shared
+  file cannot be read is unreadable in the `ancestor` and `outside` roles
+  (Step 4), and a descendant's stays a graph problem. `taxonomy.extends` and
   `capabilities.extends` are in `known_keys()` and come out when TCW-112
-  removes them.
+  removes them. `known_keys()` is used only to decode variables and to
+  decide undecided keys under `work.tags` and `work.jira` (Step 1); the
+  loader never reports a file's key for being missing from it, and reads
+  only Design 1.1's keys from another project's file, so an `extends` there
+  is never read and never makes that project unreadable.
 - **TCW-113:** a project read for itself is `load_config(root,
   personal=False, registry=<the command's registry>)`. The registry is
-  required for a project with `parents:`. Such a reading reports no variable
-  problem.
+  required for a project with `parents:`, and is used for the fold only:
+  the project's ID comes from `project_facts`, never from the registry's
+  `current` (choice 15). Such a reading reports no variable problem. A gap
+  in its configuration sources makes it unavailable in a scoped listing
+  (exit 0, this item's message as the reason, spec Design 5.2 as amended at
+  TCW-113's handoff), and still stops with exit 7 a command that reads its
+  object by full identifier or runs in it.
 - **TCW-115:** `tcw project config` takes `tcw config show`'s rule (Step 9):
   exit 7 for the first undecided key in `INHERITED_KEYS`' order, exit 1 for a
   broken one, nothing printed; each value's origin carries `project`,
@@ -1286,7 +1431,7 @@ is fixed in the step it belongs to, not with a skip.
 | 11 | 7a (files), 8 (variables, `personal=False`) |
 | 12 | 7a (the user-wide file once), 9 (`--origin`'s set-aside list) |
 | 13 | 6 (the store is not opened, tags read only when applied), 7c |
-| 14 | 6 (the commands that no longer open the store, the two references), 7c (exit 7, no request, `tcw validate`, `tcw capabilities drift`) |
+| 14 | 6 (the commands that no longer open the store, the two references), 7a (`lib`'s item shown with `lib` as its project), 7c (exit 7, no request, `tcw validate` in `app` and in `lib`, `tcw capabilities drift`) |
 | 15 | 4 (registry, the unreadable file, the descendant), 7a (the order cannot be had: no raise), 7c (commands, `tcw validate`, withholding when the order cannot be had) |
 | 16 | 7a, 7c |
 | 17 | 9 |
@@ -1380,3 +1525,35 @@ this plan follows the fixed text.
    lookup, and stays a graph problem for a descendant. The reason is 6.6's
    reason for a descendant's `children:` problems (decided by the
    dispatching session).
+
+## Re-check findings (2026-10-22), and how they were resolved
+
+The re-check of the revised spec and plan found three things to fix before
+implement and seven smaller ones. All are fixed in the spec and in this plan.
+
+- **B1, the active project's own bad `parents:`.** Choice 11 now reads the
+  project's own `parents:` with `parse_parents` and looks for an ancestor
+  loop with `find_loop`, instead of waiting for the registry to raise or to
+  call the project unreadable, which TCW-108 does not do in the `active`
+  role. The withheld error is the text `tcw work list` gives, so a loop is
+  named by TCW-108's message (spec 1.3, Decision 30, AC 15; Steps 7a, 7c).
+- **B2, the project ID of a project read for itself.** `project_facts`
+  reads that ID from the project's own per-root registry, as `open_backend`
+  does today, and uses the command's registry only for the fold; with
+  `personal=False` it opens no fallback, so `load_config`'s `TypeError`
+  stands (choice 15, Step 6, Step 7a's new test; spec Decision 31, AC 14).
+- **B3, AC 28 could not fail.** It now uses a `tcw://` link into `lib`, which
+  `tcw validate` checks whatever the configuration holds, and the reasoning
+  in spec 4.4, Decision 27, choice 13 and Step 8 says so.
+- **I-1**: AC 14's reference half now runs `tcw validate` in `lib`, a
+  filesystem project, with a reference into `app` (Step 7c).
+- **I-2**: `effective` takes `registry=None` (choice 15).
+- **I-3**: Step 0's list 5 uses the parent-link grep itself; list 6 is new;
+  the `personal=False` search covers `tests`.
+- **I-4**: the TCW-111 paragraph names `link_exists`.
+- **I-5**: spec 1.6 lists a duplicate key among unreadable files.
+- **I-6**: choice 11 re-raises `InheritedUnavailable` and says why exit 5
+  turning into exit 1 costs nothing today.
+- **I-7**: AC 15 asserts the finding line and the closing count, plus a
+  second problem of `app`'s own in the same run.
+

@@ -241,8 +241,25 @@ its ancestors form a loop (TCW-108 Design 4.7), or when the registry fails in
 any other way while it is opened or asked for the order. In that case the
 project is folded alone, from its own layers. Each key of 1.1 that it does
 not decide itself (the rule of Design 3.1) is held as a value that cannot be
-used (Design 3.4), carrying the registry's error, which exits 1. So no
-command runs on a value half inherited. A command that reads no such key
+used (Design 3.4). It carries the error `tcw work list` gives in the same
+project, which exits 1: the registry's graph problems joined as today
+(`require_valid`, `tcw/store/project.py:455`), so a loop is named by TCW-108's
+own message (`loop in parents: lib -> top -> lib`), and only when the registry
+records none, the error it raised. So no command runs on a value half
+inherited.
+
+The project's own `parents:` is wrong when TCW-108's reading of the key
+refuses it. In the active project's own file that is a graph problem (TCW-108
+Design 6.6 keeps it one for the active project), so the registry still says
+the project's links can be read, and may answer an order holding the project
+alone without raising. The loader therefore reads the project's own
+`parents:` itself, and treats a refused value as an order it cannot have; it
+does the same for a loop through the project's ancestors, whether or not the
+registry raises for it (decided by the dispatching session, 2026-10-22: the
+plan re-check found that waiting for the registry to raise would miss the
+case this rule was written for, and that a wider test, any graph problem at
+all, would newly stop tag commands in a project whose only problem is a
+descendant that does not name it back). A command that reads no such key
 goes on to its own checks of the project graph, which report the problem as
 they do today (TCW-108 Design 1.3). `tcw validate` lists it as a finding,
 and its run is not cut short.
@@ -315,7 +332,8 @@ and is not reported there; it is that ancestor's own.
 
 **An ancestor whose shared file cannot be read at all** has unknown parents
 and unknown settings. That is a file that is not UTF-8 text, is not valid
-YAML, is not a mapping, or has a `tcw-version` this TCW cannot read (TCW-106
+YAML, holds a key twice, is not a mapping, or has a `tcw-version` this TCW
+cannot read (TCW-106
 Design 3; `read_project_file`, `tcw/config.py:257-270`). This spec adds that
 case to TCW-108 Design 6.6, which names only problems in `parents:` and a
 `projects:` or `connected-projects` key. The case applies when such a
@@ -623,7 +641,8 @@ is a problem:
 4.3. **Decoding the key** (design.md:521-526). The key part is matched
 against the table of keys TCW knows: every key reachable through mappings in
 `.tcw/tcw-config.yaml` (`id`, `parents`, `children`, `user.name`, the
-`taxonomy` and `capabilities` sections, and under `work` the keys of
+`taxonomy` and `capabilities` sections, whose `extends` keys TCW-112 takes
+out of the table, and under `work` the keys of
 `WORK_KEYS`, `STAGE_KEYS` for each stage of the stage table, `HOOK_KEYS`,
 each procedure of `PROCEDURE_IDS`, and the Jira keys of 1.1:
 `tcw/work/config.py:41-44`, `tcw/work/model.py:305-317`,
@@ -675,11 +694,16 @@ project part cannot be caught this way; Risks names it.
 Several things read a project for itself (5.2): a reference check, a
 lookup, a filing. Such a reading applies only the variables that name the
 project and pass every check, and reports no variable problem. Otherwise one
-misspelt variable would also make every reference into another project look
-"broken" in `tcw validate`: that project's configuration would have a
-problem, and a project that cannot be opened answers `broken`
-(`tcw/work/open.py:43-44`, `:226-227`). The active project's configuration
-already stops every command on the problem.
+misspelt variable would also give a false `error` for every `tcw://` link
+into another project in `tcw validate`, whose link check runs whatever the
+configuration holds (`tcw/validate.py:327-348`): opening that project would
+raise `ConfigError` (`tcw/work/open.py:43-44`), which `_resolve_work` reports
+as the link's failure (`tcw/refs.py:158`). The web app's reads of another
+project would fail the same way. The active project's configuration already
+stops every command on the problem. (An item's reference into another
+project is not reached in that case: `tcw validate` skips the work store's
+checks, the reference check among them, when the active project's
+configuration has a problem, `tcw/validate.py:571-573`.)
 
 4.5. **Only allowed keys** (design.md:535-540). A variable may set a key of
 the allowed list (Design 5.1), or a mapping that leads to one; in that
@@ -817,9 +841,17 @@ with no personal file (today's reading uses shared files only:
   it (`tcw/work/cli.py:449-452`). A personal file belongs to one checkout,
   and the person acting in another project has not chosen it for this read.
 - **A gap in such a project's configuration sources** is handled as for the
-  active project (Design 3): a command that reads an undecided key of that
-  project stops with exit 7, the message naming that project as `<P>`; one
-  that reads none is not stopped.
+  active project (Design 3) when the command reads that project's object by
+  its full identifier, or runs in that project: a command that reads an
+  undecided key of it stops with exit 7, the message naming that project as
+  `<P>` (a broken key, exit 1, likewise, Design 1.6). When the project is one
+  of several a scoped listing covers (TCW-113's `--scope up`, `down` or
+  `all`), the listing does not stop: it reports that project as unavailable,
+  with this message as the reason, on standard error and in `projects`, and
+  exits 0 (TCW-113 Design 1.6 d). A command that reads no such key is not
+  stopped. (Amended at TCW-113's handoff, 2026-10-22, which follows the
+  user's TCW-108 Design 6.6 decision that a problem in another project does
+  not stop the active project.)
 - **Its configuration sources are found through the command's own
   registry**, the one that found the project. A registry opened afresh with
   that project as the active one would read that project's personal
@@ -1138,10 +1170,12 @@ No criterion makes a network request.
     `tcw work stage prompt spec` with no item, `tcw work procedure search`
     with no item, `tcw work path` with no item, `tcw taxonomy list`, and
     `tcw work show` given `lib`'s item by its full identifier (TCW-110), which
-    prints that item. With one of `app`'s items holding a reference to `lib`'s
-    item, and one of `app`'s capability descriptions holding a `tcw://` link
-    to one of `app`'s own items, `tcw validate` reports no finding about
-    either.
+    prints that item with `lib` as its project. With one of `app`'s
+    capability descriptions holding a `tcw://` link to one of `app`'s own
+    items, `tcw validate` in `app` reports no finding about it. With one of
+    `lib`'s items holding a reference to one of `app`'s items, `tcw validate`
+    in `lib` reports no finding about that reference: there `app` is read for
+    itself, and its `work.jira` is undecided too.
 15. **An unreadable parent.** `app: [core]`, `core` here with
     `parents: notalist` in its file (TCW-108 Design 6.6), `app` setting nothing
     under `work`: `tcw work tags list` in `app` exits 7 with a message
@@ -1155,10 +1189,15 @@ No criterion makes a network request.
     `app` reports it as an error, as before this item (Design 1.6). **When the
     order cannot be had** (Design 1.3): with `app`'s own file holding
     `parents: notalist`, and again with `app: [lib]`, `lib: [top]`, `top:
-    [lib]` (a loop), `tcw validate` in `app` exits 1 and lists TCW-108's graph
-    problem as a finding among its others, not as a single line in place of
-    them; `tcw work list` exits 1, as before this item; `tcw work tags list`
-    exits 1 naming the same problem.
+    [lib]` (a loop), `tcw validate` in `app` exits 1, prints TCW-108's graph
+    problem as a finding line on standard output and ends standard error
+    with its closing count (`… errors, … warnings, … unresolved`), rather
+    than stopping with one error message; with `app` also setting
+    `work.hooks.timeout: soon`, that problem is a finding of the same run.
+    `tcw work list` exits 1, as before this item. `tcw work tags list` exits
+    1 with the message `tcw work list` gives, which for the loop contains
+    `loop in parents: lib -> top -> lib`. With `app` also setting
+    `work.tags: [t]`, `tcw work tags list` prints `t`.
 16. **A gap behind a link that passes no configuration stops nothing.**
     `app: [{id: ws, inherit: none}, core]`, `ws` not on this machine, `core`
     here with `work.tags: [a]`: the tags of `app` are `a`, and `tcw work list`
@@ -1263,10 +1302,10 @@ No criterion makes a network request.
 28. **Validate reports a variable's problem.** With `TCW_WORK_TAGS__APP='[a]'`,
     `tcw validate` in `app` exits 1 with an `error` whose `where` is
     `environment` and whose message starts with `TCW_WORK_TAGS__APP`. With
-    `TCW_WORK_TAGS__LIB='[a]'` instead, and one of `app`'s items holding a
-    reference to an item of `lib` (here, read for itself), `tcw validate` in
-    `app` reports that one `environment` error and no finding about the
-    reference (Design 4.4).
+    `TCW_WORK_TAGS__LIB='[a]'` instead, and one of `app`'s capability
+    descriptions holding a `tcw://` link to an item of `lib` (here, read for
+    itself), `tcw validate` in `app` reports that one `environment` error and
+    no finding about the link (Design 4.4).
 29. **Two repositories.** Repository A holds `ws`, which sets `work.tags:
     [plan]` and lists `app`; repository B, cloned inside A and ignored by it,
     holds `app: [ws]`, with no `work` settings.
@@ -1301,7 +1340,7 @@ No criterion makes a network request.
 | --- | --- |
 | 1.1 the inherited keys | 1, 6, 8 |
 | 1.2 everything else stays; `work.backend` is the project's own | 2, 9 |
-| 1.3 the configuration sources; per-parent `inherit`; read without raising; when the order cannot be had | 3, 4, 15 (own `parents:` wrong, a loop), 16 |
+| 1.3 the configuration sources; per-parent `inherit`; read without raising; when the order cannot be had, and the message it carries | 3, 4, 15 (own `parents:` wrong, a loop named by TCW-108's message, a key the project decides itself), 16 |
 | 1.4 an inherited relative path resolves from its declarer | n/a: no key of 1.1 holds a path (`tcw/work/jira/config.py:31-37` lists every Jira key; `work.tags` is a list of tags, `tcw/work/config.py:451-467`); the declaring project in each origin is checked by 17 |
 | 1.5 an inherited `work.jira` without Jira mode | 9 |
 | 1.6 what is read from an ancestor; the user-wide file checked once; a broken key stops only what reads it; an unparseable ancestor file is a gap, a descendant's stays a graph problem | 10 (broken key), 11, 12 (the user-wide file once), 15 (not valid YAML; the descendant), 17 (config show with a broken key) |
@@ -1321,14 +1360,14 @@ No criterion makes a network request.
 | 4.1 the name | 19 |
 | 4.2 which variables are overrides; malformed names | 19, 20 |
 | 4.3 decoding against the key table; one name per key | 20, 26 |
-| 4.4 the project part; checked everywhere; problems in the active project's configuration only | 11 (a variable naming an ancestor), 21 (`elsewhere`), 28 (no false "broken" reference) |
+| 4.4 the project part; checked everywhere; problems in the active project's configuration only | 11 (a variable naming an ancestor), 21 (`elsewhere`), 28 (no false `error` for a `tcw://` link into another project) |
 | 4.5 only allowed keys | 21 |
 | 4.6 values by type; a mapping merges, a list replaces; no value in a message | 22, 23 (a mapping merges); booleans and numbers n/a: no allowed key has those types (`tcw/config.py:45-52`) |
 | 4.7 the more specific wins | 23 |
 | 4.8 `file:` and `command:` bindings from a variable | 24 |
 | 4.9 the note and a failed `post` name the variable | 24 |
 | 5.1 the allowed list; no `children`, no store location by variable | 21 |
-| 5.2 whose personal settings apply; a project read for itself takes its variables, no personal file, and is found through the command's registry; an ancestor's local file in a linked worktree | 11, 14 (`lib`'s item read for itself), 33 |
+| 5.2 whose personal settings apply; a project read for itself takes its variables, no personal file, and is found through the command's registry; an ancestor's local file in a linked worktree; a gap in a project read for itself | 11, 14 (`lib`'s item read for itself, with `lib` as its project; `app` read for itself from `lib`), 33; a project covered by a scoped listing is TCW-113's (its Design 1.6 d and criteria) |
 | 5.3 `TCW_NO_PERSONAL_CONFIG` | 11, 25 |
 | 6.1 `tcw work tags list` | 1, 3, 4 |
 | 6.2 `tcw work tags add` | 18 |
@@ -1481,7 +1520,8 @@ No criterion makes a network request.
 
 25. **When the registry cannot give the order, the project is folded
     alone** and the inherited keys it does not decide are held back with the
-    registry's error (Design 1.3). Loading the configuration has never
+    error `tcw work list` gives in the same project (Design 1.3; how the
+    case is seen and which message it carries, Decision 30). Loading the configuration has never
     raised, and every command, `tcw validate` included, loads it before it
     runs, so a raise there would turn `tcw validate`'s list of findings into
     one line in exactly the case where it is most needed.
@@ -1491,13 +1531,38 @@ No criterion makes a network request.
     "broken". A value refused in an ancestor's personal layer is never
     merged and breaks nothing.
 27. **Variable problems belong to the active project's configuration only**
-    (Design 4.4), so a project read for itself is not reported "broken"
-    because of a variable.
+    (Design 4.4), so a project read for itself can still be opened when a
+    variable is misspelt, and `tcw validate` gives no false `error` for a
+    `tcw://` link into it, nor the web app a failed read of it. (Corrected
+    after the plan re-check: the first wording said item references would be
+    reported "broken", but `tcw validate` never reaches the reference check
+    while the active project's configuration has a problem.)
 28. **A project read for itself is folded through the command's registry**
     (Design 5.2), not a registry opened with that project as the active one.
 29. **`tcw capabilities drift` in a Jira-mode project reads `work.jira`**
     (Design 3.4, row a): it lists the completed items through the backend,
     as its docstring already says (`tcw/capabilities/cli.py:183-189`).
+
+### Decided after the plan re-check (2026-10-22)
+
+30. **The loader itself sees that the active project's own `parents:` is
+    wrong or that its ancestors loop** (Design 1.3), and the inherited keys
+    it does not decide carry the error `tcw work list` gives (decided by the
+    dispatching session, 2026-10-22: TCW-108 keeps the active project's own
+    `parents:` problem a graph problem and still says its links can be
+    read, so waiting for the registry to raise misses it; and the message
+    must be TCW-108's, not the text of a guard inside the order's
+    computation).
+31. **A project read for itself carries its own ID** (Design 5.2), never the
+    ID of the registry's current project, which is the active one; the
+    command's registry is used only to find the project's configuration
+    sources (decided by the dispatching session, 2026-10-22: reading the ID
+    from the passed registry would give every backend opened for another
+    project the active project's ID).
+32. **A gap in a project covered by a scoped listing makes it unavailable,
+    exit 0** (Design 5.2), and still stops, with exit 7, a command that reads
+    that project's object by full identifier or runs in it (TCW-113's
+    handoff, 2026-10-22, following the user's TCW-108 Design 6.6 decision).
 
 ### Settled questions
 
@@ -1549,14 +1614,21 @@ These are recorded on each ticket when this spec is accepted.
 - **TCW-112:** `taxonomy.extends` and `capabilities.extends` are not inherited
   configuration and are not on the allowed list; nothing here depends on them.
   When TCW-112 removes them, it removes them from the table of keys TCW knows
-  (Design 4.3) too, so a variable naming one then names no key. An ancestor
-  whose shared file cannot be read is a gap for every axis (Design 1.6); a
-  descendant's stays a graph problem.
+  (Design 4.3) too, so a variable naming one then names no key. The table is
+  used only to decode variables and, for `work.tags` and `work.jira`, to
+  decide which keys are undecided (Design 3.1); the loader never reports a
+  key of a file because the table lacks it, and from another project's file
+  it reads only the keys of Design 1.1 (1.6), so an `extends` there is never
+  read and never makes that project unreadable. An ancestor whose shared
+  file cannot be read is a gap for every axis (Design 1.6); a descendant's
+  stays a graph problem.
 - **TCW-113:** a project read for `--scope up` or `--scope down` is read for
   itself (Design 5.2): it takes the variables naming it and no personal file,
   it is folded through the command's own registry, it reports no variable
-  problem (4.4), and a gap in its own configuration sources stops only a
-  command that reads an undecided key of it.
+  problem (4.4), and a gap in its own configuration sources makes it
+  unavailable in a scoped listing (exit 0, TCW-109's message as the reason),
+  and still stops with exit 7 a command that reads its object by full
+  identifier or runs in it.
 - **TCW-115:** `tcw project config` replaces `tcw config show` with Design
   7.1's behavior (exit 7 with an undecided key, exit 1 with a broken one) and
   shows, with `--origin`, each value's project and file or variable from the
