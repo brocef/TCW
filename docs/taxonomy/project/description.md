@@ -4,7 +4,7 @@ stores. The folder holding `.tcw/` is the project root: every path in the
 configuration is read from there. The nearest enclosing folder, the starting
 folder included, that holds `.tcw/tcw-config.yaml` selects the current project;
 a TCW 3.x project, with `tcw-config.yaml` at its root instead, is recognised
-only to be refused, naming `tcw migrate`. Relations between
+only to be refused, naming the command that converts it to TCW 4. Relations between
 projects come only from the entries each project declares under its `projects:`
 key (a parent and its child must name each other), never from how folders are
 nested or how git repositories are laid out. Folder layout is consulted only to

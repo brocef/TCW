@@ -35,5 +35,5 @@ a file, a `docs/work` that is a symlink elsewhere, and an unknown store name (a
 usage error, exit 2). A `.tcw/tcw-config.yaml` it cannot read, or whose
 `tcw-version` it cannot read, reports that plainly rather than failing part-way
 through. In a TCW 3.x project, a folder with `tcw-config.yaml` at its root and
-no `.tcw/` folder, `init` refuses like every other command, naming
-`tcw migrate`.
+no `.tcw/` folder, `init` refuses like every other command, naming the
+command that converts it to TCW 4.

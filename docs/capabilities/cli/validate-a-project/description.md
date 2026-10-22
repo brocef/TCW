@@ -41,7 +41,7 @@ reads it as an upstream is a warning, so neither project is blocked mid-change.
 The key 2.x used before `projects` was named is an error naming
 `docs/migration-guide-2.8-to-3.0.0.md`. A connected project still in the TCW
 3.x layout, or whose `.tcw/tcw-config.yaml` records a version this TCW cannot
-read, is an error on that connection naming what to do (`tcw migrate`, or an
+read, is an error on that connection naming what to do (converting it to TCW 4, or an
 upgrade), and that project is not read. In a 3.x project itself, `tcw validate`
 refuses like every other command.
 

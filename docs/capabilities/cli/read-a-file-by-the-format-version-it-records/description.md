@@ -11,12 +11,12 @@ setting, so `tcw config show` does not print it.
 exit 1 when it cannot read it, naming the file and saying what to do:
 
 - **No `tcw-version`**: the file is read as a TCW 3.x file, and the message
-  names `tcw migrate` and the exact line a file written by hand for TCW 4 starts
+  names the command that converts a project to TCW 4 and the exact line a file written by hand for TCW 4 starts
   with.
 - **Not a version written as text**, such as an unquoted `4.0`, which YAML reads
   as a number: the message shows the form to write, such as `'4.0.0'`.
-- **Older than TCW 4**: the message names the format's version and
-  `tcw migrate`.
+- **Older than TCW 4**: the message names the format's version and the
+  command that converts it.
 - **Newer than the running TCW**, comparing the major and minor numbers: the
   message names both versions and says to upgrade TCW. A newer patch number
   alone never changes a format, so a `4.0.5` file is read by TCW 4.0.3.
@@ -29,5 +29,6 @@ error.
 **A TCW 3.x project is recognised, not misread.** A folder with
 `tcw-config.yaml` at its root and no `.tcw/` folder is a 3.x project, and every
 command run in or below it, `tcw validate` and `tcw init` included, refuses with
-one line naming the folder and `tcw migrate`, and writes nothing. `tcw --version`
+one line naming the folder and the command that converts it to TCW 4, and
+writes nothing. `tcw --version`
 and `--help` still answer.
