@@ -1,6 +1,6 @@
-As a user, I replace or extend the text of one of TCW's procedures in `tcw-config.yaml` under `work.procedures`, keyed by procedure id, so a TCW skill follows my team's practice — my advisors, my review, how my changes are saved and shared — rather than one TCW chose for everyone. The ids are `unattended-work`, `triage-issues`, `documentation-sync`, `create-work`, `audit-backlog`, `search` and `pause-work`.
+As a user, I replace or extend the text of one of TCW's procedures in `.tcw/tcw-config.yaml` under `work.procedures`, keyed by procedure id, so a TCW skill follows my team's practice — my advisors, my review, how my changes are saved and shared — rather than one TCW chose for everyone. The ids are `unattended-work`, `triage-issues`, `documentation-sync`, `create-work`, `audit-backlog`, `search` and `pause-work`.
 
-`work.procedures` sits beside `work.stages`, not inside it, and each id holds a plain list of bindings in the same grammar a stage's `prompt:` uses: `blob:`, `file:`, `generate:`, `inherit: true` and `skill:`, each optionally carrying `when: {tags, not_tags}`. Every binding that applies is used, in the order I wrote them.
+`work.procedures` sits beside `work.stages`, not inside it, and each id holds a plain list of bindings in the same grammar a stage's `prompt:` uses: `blob:`, `file:`, `generate:`, `inherit: true` and `skill:`, each optionally carrying `when: {tags, not-tags}` (`not_tags`, the spelling before TCW 4, is refused with a message saying to write `not-tags`). Every binding that applies is used, in the order I wrote them.
 
 ```yaml
 work:

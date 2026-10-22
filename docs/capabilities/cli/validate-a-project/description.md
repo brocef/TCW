@@ -1,5 +1,5 @@
 As a user, I run `tcw validate` to check the current project: its
-`tcw-config.yaml`, its connections to other projects, the YAML and `tcw://` links
+`.tcw/tcw-config.yaml`, its connections to other projects, the YAML and `tcw://` links
 in its stores, its taxonomy and capabilities ledgers, and its work items. It checks this
 project only; a reference into another project is checked by resolving it. It
 takes no path, and nothing it does reaches the network.
@@ -15,11 +15,15 @@ There are three severities, and only one fails the run:
 - `error` — malformed YAML, a broken `tcw://` link, an `item.yaml` that cannot be
   read, a taxonomy or capabilities problem (including a capability record that
   still carries the retired `Planning doc` or `Tracker` field), or a
-  configuration problem in any layer — `tcw-config.yaml`, the user-wide file
-  or `tcw-config.local.yaml` — named by its file and key. Any error makes
-  `tcw validate` exit 1.
-- `warning` — for example a `tcw-config.local.yaml` that version control is
-  tracking, which should stay personal; a parent or blocker that names no item, an item whose
+  configuration problem in any layer — `.tcw/tcw-config.yaml`, the user-wide
+  file or `.tcw/tcw-config.local.yaml` — named by its file and key. That
+  includes a `.tcw/` file whose `tcw-version` is missing, is not a version
+  written as text, is older than TCW 4 or is newer than the running TCW, and
+  a key or project ID that is not lowercase letters and digits joined by
+  single hyphens. Any error makes `tcw validate` exit 1.
+- `warning` — for example a `.tcw/tcw-config.local.yaml` that version control
+  is tracking, which should stay personal; a TCW 3.x `tcw-config.yaml` left at
+  the root of a TCW 4 project, which is not read; a parent or blocker that names no item, an item whose
   latest verdict round is invalid, or a stage ahead of its artifacts. The run
   still exits 0.
 - `unresolved` — something declared that cannot be checked from here: a project
@@ -35,7 +39,11 @@ its own. A project declared as its own upstream, or declared upstream while also
 reachable as family, is an error. A former child still naming a parent that now
 reads it as an upstream is a warning, so neither project is blocked mid-change.
 The key 2.x used before `projects` was named is an error naming
-`docs/migration-guide-2.8-to-3.0.0.md`.
+`docs/migration-guide-2.8-to-3.0.0.md`. A connected project still in the TCW
+3.x layout, or whose `.tcw/tcw-config.yaml` records a version this TCW cannot
+read, is an error on that connection naming what to do (`tcw migrate`, or an
+upgrade), and that project is not read. In a 3.x project itself, `tcw validate`
+refuses like every other command.
 
 **Stores.** Validation tells a store's three failure modes apart: a
 `<component>.path` that is simply wrong, a store declared in another repository
