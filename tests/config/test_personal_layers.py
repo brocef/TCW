@@ -101,7 +101,7 @@ def test_a_null_personal_file_has_no_version(personal):
     (TCW-106 Design 3.4 row a)."""
     personal.local("null\n")
     problems = load_config(personal.root).problems
-    assert [(p.file, p.key_path) for p in problems] == [(personal.local_file, ("tcw-version",))]
+    assert [(p.file, p.key_path) for p in problems] == [(personal.local_file, ())]
     assert "has no tcw-version" in problems[0].message
 
 

@@ -82,9 +82,15 @@ def find_marker(start: Path | None = None) -> tuple[Path, str] | None:
         d = d.parent
 
 
+#: What a 3.x project is, and what to do, after the words naming it.
+LEGACY_PROJECT = (f"a TCW 3.x project ({LEGACY_SENTINEL} at its root, no "
+                  f"{TCW_FOLDER}/ folder); run 'tcw migrate' in it to move it to TCW 4")
+
+
 def legacy_message(folder: Path) -> str:
-    return (f"{folder} is a TCW 3.x project ({LEGACY_SENTINEL} at its root, no "
-            f"{TCW_FOLDER}/ folder); run 'tcw migrate' in it to move it to TCW 4")
+    """Design 4.1's refusal, naming the 3.x project's folder. A problem
+    already printed after the folder says only `is <LEGACY_PROJECT>`."""
+    return f"{folder} is {LEGACY_PROJECT}"
 
 
 # ---------------------------------------------------------------------------

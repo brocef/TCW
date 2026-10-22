@@ -17,7 +17,7 @@ from tcw.store.base import (
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
     parse_connected_entry, retired_key_problem,
 )
-from tcw.project_files import (LEGACY_SENTINEL, SENTINEL, legacy_message, root_of,
+from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, SENTINEL, root_of,
                                version_problem)
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
@@ -559,7 +559,7 @@ class FsProjectRegistry(ProjectRegistry):
         if not path.is_file() and (root_of(path) / LEGACY_SENTINEL).is_file():
             # A 3.x project: present, and in a format this TCW does not read
             # (TCW-106 Design 4.2). Not "this machine does not have it".
-            self._problem(root_of(path), legacy_message(root_of(path)))
+            self._problem(root_of(path), f"is {LEGACY_PROJECT}")
             return None
         if not path.is_file():
             # Not a defect. A locator is a fact about one machine — the same
@@ -768,7 +768,8 @@ class FsProjectRegistry(ProjectRegistry):
             return None
         config_path = root / SENTINEL
         if not config_path.is_file():
-            problem = (legacy_message(root) if (root / LEGACY_SENTINEL).is_file()
+            problem = (f"{name} names {LEGACY_PROJECT}"
+                       if (root / LEGACY_SENTINEL).is_file()
                        else f"{name} names a directory with no {SENTINEL}")
             self._problem(root, problem)
             self._override_refused.add(project_id)

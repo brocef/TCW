@@ -264,7 +264,7 @@ def read_project_file(project_root: Path) -> tuple[dict | None, list[Problem]]:
     if data is not None:
         version = version_problem(data)
         if version:
-            return None, [*problems, Problem(path, ("tcw-version",), version, root)]
+            return None, [*problems, Problem(path, (), version, root)]
         data = without_version(data)
     return data, problems
 
@@ -279,7 +279,9 @@ def _file_problems(path: Path, data: dict, root: Path | None, *,
     if versioned:
         version = version_problem(data)
         if version:
-            return None, [Problem(path, ("tcw-version",), version, root), *problems]
+            # No key path: the message names `tcw-version` itself, with the
+            # file as its subject (Design 3.4's shapes).
+            return None, [Problem(path, (), version, root), *problems]
         data = without_version(data)
     return data, problems
 

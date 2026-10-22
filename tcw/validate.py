@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Literal
 import yaml
 
 from tcw.findings import Finding
-from tcw.project_files import LEGACY_SENTINEL, SENTINEL, VERSION_KEY
+from tcw.project_files import LEGACY_SENTINEL, SENTINEL
 from tcw.refs import resolve_tcw_ref
 from tcw.store.yaml_source import load as _load_named_yaml
 from tcw.store.base import StoreLocationUnusable
@@ -371,8 +371,7 @@ def config_findings(project_root: Path) -> list[Finding]:
         # reports a .tcw/tcw-config.yaml that cannot be read, or whose version
         # this TCW cannot read; say it once.
         problems = [p for p in problems
-                    if p.key_path not in ((), (VERSION_KEY,))
-                    or p.file != config.root / SENTINEL]
+                    if p.key_path != () or p.file != config.root / SENTINEL]
     findings = [Finding("error", p.where or "environment", p.detail)
                 for p in problems]
     if personal_file_tracked(project_root):
