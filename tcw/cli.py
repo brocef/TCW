@@ -21,7 +21,6 @@ from tcw.store.fs import (
     LOCAL_CONFIG, LOCAL_MANIFEST, declared_repository, find_project_root, git_root,
     ignore_personal_files, init, load_config, refuse_legacy_project,
     refuse_retired_config,
-    provisioned_store_root,
 )
 from tcw.store.base import MultipleMatch
 from tcw.store.project import FsProjectRegistry
@@ -119,12 +118,12 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
     # while `tcw provision` went and cloned a second copy of the very project the
     # override was pointing at. That is the bug the whole feature exists to stop.
     #
-    # Deliberately only overrides, not graph problems at large:
-    # `_declared_projects_in_graph` opens the registry without `require_valid` on
-    # purpose, because a graph with an unreachable project is the graph this command
-    # exists to complete. An override is a declaration the environment made, and
-    # a declaration that is present and wrong refuses — the same rule the two
-    # blocks below apply to the ones written in files.
+    # Deliberately only overrides, not graph problems at large: a graph with a
+    # project not on this machine is routine here. An override is a declaration
+    # the environment made, and a declaration that is present and wrong refuses
+    # — the same rule the block below applies to the ones written in files. It
+    # still matters with no project fetched: a store whose repository is a
+    # project the variable places resolves inside it (TCW-107 plan, choice 6).
     try:
         failed_overrides = [o for o in FsProjectRegistry.open(project_root).overrides()
                             if o.problem is not None]
@@ -151,16 +150,12 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
             print(f"tcw provision: {problem}", file=sys.stderr)
         return 1
 
-    declared_projects, project_problems = _declared_projects_in_graph(project_root)
-    # Same rule as a component's: a declaration that is present and wrong
-    # refuses, rather than reading as "nothing declared" and reporting success.
-    if project_problems:
-        for problem in project_problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
-        return 1
-    if not declared and not declared_projects:
-        print(f"Nothing to provision: no component or connected project declares "
-              f"a home repository in {SENTINEL}.", file=sys.stderr)
+    # Connected projects are not fetched here: where one goes is its deciding
+    # manifest entry's folder, and `tcw project provision <id>` fetches it
+    # (TCW-107 Design 6.3; TCW-115).
+    if not declared:
+        print(f"Nothing to provision: no component declares a home repository in "
+              f"{SENTINEL}.", file=sys.stderr)
         return 0
 
     failed = False
@@ -188,193 +183,7 @@ def run_provision(components: list[str], *, dry_run: bool = False) -> int:
             failed = True
             continue
         print(f"  {result.detail}", file=sys.stderr)
-    if _provision_projects(project_root, dry_run=dry_run):
-        failed = True
     return 1 if failed else 0
-
-
-def _declared_projects_in_graph(
-    root: Path, seen: set[Path] | None = None
-) -> tuple[list[tuple[Path, str, object]], list[str]]:
-    """Declarations on `root` and on every project reachable from it here.
-
-    Not just the project the command was run in: a declaration lives on whichever
-    project knows about that edge, which in a monorepo is routinely a sibling
-    package rather than the one the user happens to be standing in. Walking the
-    present graph is what makes "declarations follow the graph" true from
-    anywhere in it.
-
-    The registry is opened without `require_valid`, deliberately — a graph with
-    an unreachable project is exactly the graph this command exists to complete, and
-    refusing to read it would be circular.
-    """
-    from tcw.store.fs import declared_connected_projects
-
-    seen = set() if seen is None else seen
-    roots = [root]
-    try:
-        # Every project the registry holds, not `ancestors + descendants`. That
-        # triple omits a sibling and a sibling of an ancestor — the shapes a
-        # workspace is actually made of — so a declaration living on one was
-        # never read, and the repository it named never obtained. Except an
-        # upstream: what it connects to is its own to obtain, not its readers'.
-        registry = FsProjectRegistry.open(root)
-        roots += [Path(project.locator) for project in registry.projects()
-                  if registry.read_only_reason(project.id) is None]
-    except Exception:
-        pass
-    found: list[tuple[Path, str, object, str]] = []
-    problems: list[str] = []
-    for candidate in roots:
-        candidate = candidate.resolve()
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        declared, candidate_problems = declared_connected_projects(candidate)
-        problems += [f"{candidate / SENTINEL}: {p}" for p in candidate_problems]
-        found += [(candidate, pid, d, relation) for pid, d, relation in declared]
-    return found, problems
-
-
-def _provision_projects(project_root: Path, *, dry_run: bool) -> bool:
-    """Obtain the connected projects this project declares, and the ones they
-    declare. Returns True if anything failed.
-
-    **Transitive on purpose, and this is the one place a URL the user did not
-    write can be contacted.** A project obtained here may declare others, and that
-    is what lets declarations stay where the knowledge is: a repository names
-    only its own edges, and never has to know about a project two hops away.
-    The safeguard is not to refuse it but to make it visible — every remote is
-    printed before it is contacted, transitive ones included, and `--dry-run`
-    walks the whole queue without touching the network. A consent prompt would
-    be worse than useless: `tcw` is non-interactive by contract, and every
-    script calling `tcw provision` would hang on it.
-
-    The walk terminates on the resolved checkout path, which is keyed on
-    (url, ref), so a cycle among declarations revisits nothing and two entries
-    naming one repository share one working copy.
-    """
-    from tcw.store.fs import PROJECT_TARGET
-
-    failed = False
-    seen: set[Path] = set()
-    queue: list[tuple[Path, str, object, str]] = []
-    # "A project that is already here always wins" is the rule the whole feature
-    # rests on, and the walk is the one place it was not applied: a declaration
-    # is written by whichever project knows about that edge, so an ancestor
-    # routinely declares where a project comes from that the *caller* is standing
-    # inside, or beside. Taking that at face value re-cloned repositories the
-    # user already had.
-    #
-    # The registry is asked directly rather than reconstructed from a chosen set
-    # of relations. An earlier version enumerated current/ancestors/descendants
-    # and missed a sibling of an ancestor — which is what a workspace looks like,
-    # and meant a machine holding every repository still planned a clone.
-    # Identity is the id; the registry rejects duplicates, so this inherits that
-    # guarantee.
-    starting_registry = None
-    try:
-        starting_registry = FsProjectRegistry.open(project_root)
-    except Exception:
-        pass
-    # Obtained during *this* run, so not in a registry read before they existed.
-    have: set[str] = set()
-
-    def resolved_outside(project_id: str, target: Path) -> "Path | None":
-        """Whether the graph already resolves this project somewhere other than
-        the copy this declaration would create.
-
-        A project resolved somewhere else is a checkout the user has, and
-        obtaining one anyway puts a second project in the graph under a single
-        id, which `require_valid` then rejects as a duplicate.
-        """
-        if starting_registry is None:
-            return None
-        try:
-            project = starting_registry.get(project_id)
-        except Exception:
-            return None
-        if project is None:
-            return None
-        try:
-            located = Path(project.locator).resolve()
-        except Exception:                       # an unresolvable locator: not it
-            return None
-        return located if located != target.resolve() else None
-
-    def enqueue(root: Path, relation: str = "children") -> None:
-        nonlocal failed
-        if relation == "upstream":
-            # Obtained so it can be read; its own connections are not followed,
-            # as the registry does not follow them. A reader must never fetch a
-            # project named only by something it reads — a public upstream can
-            # still name the private repository it is migrating away from.
-            return
-        found, problems = _declared_projects_in_graph(root, enqueued)
-        for problem in problems:
-            print(f"tcw provision: {problem}", file=sys.stderr)
-        # Counted, not merely printed. The same malformed declaration exits 1 on
-        # the starting graph and used to exit 0 on a project obtained during the
-        # walk, so a CI step gated on `tcw provision` read the second as success.
-        # A declaration that is present and wrong is present and wrong wherever
-        # it was found.
-        failed = failed or bool(problems)
-        queue.extend(found)
-
-    enqueued: set[Path] = set()
-    enqueue(project_root)
-    while queue:
-        source, project_id, declaration, relation = queue.pop(0)
-        target = provisioned_store_root(source, declaration)
-        if target in seen:
-            continue
-        seen.add(target)
-        if project_id in have:
-            # Obtained or confirmed earlier in this same run.
-            print(f"  {project_id}: already available", file=sys.stderr)
-            continue
-        if (present := resolved_outside(project_id, target)) is not None:
-            # A checkout of this project that is not the copy this declaration
-            # would create — including, routinely, the one the command is being
-            # run from. No location claimed: it may be in the working checkout
-            # or in a copy provisioned earlier, and both mean "do not fetch".
-            #
-            # Still enqueued. Not fetching a project is no reason to stop
-            # reading it: its own declarations are how the walk reaches anything
-            # beyond it, and skipping them made a repository disappear from
-            # provisioning precisely when an earlier one was already in place.
-            print(f"  {project_id}: already available", file=sys.stderr)
-            have.add(project_id)
-            enqueue(present, relation)
-            continue
-        provisioner = FsStoreProvisioner(source, PROJECT_TARGET, declaration)
-        if provisioner.is_available():
-            print(f"  {project_id}: already available at {target}", file=sys.stderr)
-            have.add(project_id)
-            enqueue(target, relation)
-            continue
-        print(f"→ {project_id}: {provisioner.describe().split(': ', 1)[1]}", file=sys.stderr)
-        try:
-            result = provisioner.ensure_available(dry_run=dry_run)
-        except (ValueError, OSError) as error:
-            print(f"tcw provision: {error}", file=sys.stderr)
-            failed = True
-            continue
-        print(f"  {project_id}: {result.detail.split(': ', 1)[1]}", file=sys.stderr)
-        if dry_run:
-            # Its own declarations live in a config we have not fetched, so
-            # saying nothing here would imply there are none. Say what is
-            # actually true instead.
-            print(f"  {project_id}: any projects it declares cannot be listed "
-                  f"until it is obtained", file=sys.stderr)
-            continue
-        # After the dry-run return, never before it: recording a *planned*
-        # obtain as available made a second declaration of the same project —
-        # routine when a parent and a grandparent both name it — report
-        # "already available" in a run that fetched nothing.
-        have.add(project_id)
-        enqueue(target, relation)
-    return failed
 
 
 def _cmd_provision(args: argparse.Namespace) -> int:
@@ -577,10 +386,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_init.set_defaults(own_config=True, func=_cmd_init)
 
     p_provision = command(
-        sub, "provision", help="obtain the stores and projects this project declares "
-        "but does not have here",
+        sub, "provision", help="obtain the stores this project declares but does "
+        "not have here",
         prints="nothing; its plan and every remote, before it is contacted, on stderr",
-        writes="a clone of each declared repository that is missing",
+        writes="a clone of each declared store repository that is missing",
         examples=["provision", "provision --component work --dry-run"])
     p_provision.add_argument(
         "--component", action="append", choices=list(PROVISION_COMPONENTS),

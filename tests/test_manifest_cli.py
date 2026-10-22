@@ -494,3 +494,33 @@ def test_ac25_one_answer_whichever_project_runs(tmp_path):
     # the command would use is asked for the grandchild directly.
     from tcw.store.project import FsProjectRegistry
     assert Path(FsProjectRegistry.open(app).get("k").locator) == k
+
+
+def test_ac22_provision_fetches_no_project(tmp_path):
+    """`tcw provision` fetches the declared component stores only; a project
+    not on this machine names `tcw project provision` (TCW-115) instead."""
+    app, _ = pair(tmp_path)
+    shutil.rmtree(tmp_path / "lib")
+    (app / "docs" / "work").mkdir(parents=True)
+    write_manifest(app, {"lib": {"path": "../lib",
+                                 "repository": "https://example.invalid/lib.git"}})
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    calls = tmp_path / "git-calls"
+    (tools / "git").write_text(f"#!/bin/sh\necho \"$@\" >> {calls}\n"
+                               f"exec {shutil.which('git')} \"$@\"\n")
+    (tools / "git").chmod(0o755)
+    env = {"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"}
+    ran = tcw(app, "provision", "--dry-run", env=env)
+    assert ran.code == 0, ran
+    assert ran.err.strip() == ("Nothing to provision: no component declares a home "
+                               "repository in .tcw/tcw-config.yaml."), ran
+    ran_git = calls.read_text() if calls.exists() else ""
+    assert "example.invalid" not in ran_git and "clone" not in ran_git, ran_git
+    assert "'lib'" not in ran.err and "lib.git" not in ran.err
+    shown = tcw(app, "work", "show", "lib/x")
+    assert shown.code == 5, shown
+    assert "https://example.invalid/lib.git" in shown.err
+    assert "tcw project provision lib" in shown.err
+    for output in (ran.err, shown.err):
+        assert "`tcw provision`" not in output and "run tcw provision" not in output

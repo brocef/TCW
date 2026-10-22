@@ -182,81 +182,6 @@ def _cache_entries(cache: Path) -> list[str]:
     return sorted(p.name for p in stores.iterdir()) if stores.is_dir() else []
 
 
-def test_without_an_override_the_declared_repository_is_fetched(
-        provisionable, capsys):
-    """The behaviour the override exists to prevent, asserted first.
-
-    Without this, the next test cannot tell "the override stopped a fetch" from
-    "nothing was ever going to fetch".
-    """
-    _orchestrator, _local_core, cache = provisionable
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache), "expected a fetched copy with no override set"
-
-
-def test_an_overridden_project_is_never_fetched(provisionable, capsys, monkeypatch):
-    """Criterion 2 — resolved here, so nothing is obtained on its behalf.
-
-    Provisioning is not told about overrides. It asks the registry where each
-    project is, and the registry answers with the override, so this holds
-    because rule 0 lives in graph loading rather than in one command.
-    """
-    _orchestrator, local_core, cache = provisionable
-    monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(local_core))
-    assert main(["provision"]) == 0
-    out = capsys.readouterr().err
-    assert "core-project: already available" in out
-    assert _cache_entries(cache) == [], "an overridden project must not be fetched"
-
-
-def test_one_variable_set_serves_both_session_shapes(tmp_path, monkeypatch, capsys):
-    """Criterion 7 — the case that justifies absent-is-not-wrong.
-
-    One set of variables is configured once for an environment. A session that
-    attaches the repository resolves it locally and fetches nothing; a session
-    that does not finds the same variable naming an absent path, falls through
-    to the declaration, and provisions exactly as it would with no variable at
-    all. Neither session is told which case it is in, and that is the point —
-    if the absent path were an error, the second session would simply refuse.
-    """
-    remote = _node_remote(
-        tmp_path, "remote-core",
-        "id: core-project\nprojects:\n  parent:\n    root-project: ..\n",
-    )
-
-    def session(name: str, *, attach_core: bool):
-        base = tmp_path / name
-        base.mkdir()
-        cache = base / "cache"
-        monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-        orchestrator = _node(
-            base / "orchestrator",
-            "id: root-project\nprojects:\n  children:\n"
-            "    core-project:\n      path: ./core\n      repository:\n"
-            f"        url: {remote}\n        ref: main\n",
-        )
-        if attach_core:
-            _node(
-                base / "core",
-                "id: core-project\nprojects:\n  parent:\n"
-                f"    root-project: {orchestrator}\n",
-            )
-        # The same variable in both, naming the same place in the layout —
-        # which exists in one session and not the other.
-        monkeypatch.setenv("TCW_PROJECT_CORE_PROJECT", str(base / "core"))
-        monkeypatch.chdir(orchestrator)
-        return orchestrator, cache
-
-    _orchestrator, cache = session("attached", attach_core=True)
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache) == [], "an attached repository must not be fetched"
-
-    _orchestrator, cache = session("detached", attach_core=False)
-    assert main(["provision"]) == 0
-    assert _cache_entries(cache), "an absent override must fall through and provision"
-    assert main(["validate"]) == 0
-
-
 def test_the_override_is_honoured_by_every_command(provisionable, monkeypatch, capsys):
     """Criterion 11 — applied in graph loading, not in one command.
 
@@ -331,6 +256,10 @@ def _assert_refused_before_fetching(capsys, cache: Path, variable: str) -> str:
     "It refused" and "it refused *before* contacting anything" are different
     claims, and a sibling test that checked only the first would look identical
     in review.
+
+    Since TCW-107 `tcw provision` fetches no connected project, so for
+    `core-project` the "fetched nothing" half holds whatever the variable says.
+    It is kept as a guard against a later change that fetches before refusing.
     """
     err = capsys.readouterr().err
     assert variable in err, f"the refusal must name the variable, got: {err}"

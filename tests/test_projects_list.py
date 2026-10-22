@@ -129,14 +129,7 @@ def test_every_command_refuses_the_2x_key(graph, monkeypatch, capsys, argv):
     assert "connected-projects" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
 
 
-def test_provision_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):
-    """A child in the graph still holding the old key is reported by
-    `provision`, which reads every connected project's declarations."""
-    child = graph.parent / "c1"
-    _rename_key(child, "projects", "connected-projects")
-    code, out, err = run(monkeypatch, capsys, graph, "provision", "--dry-run")
-    assert (code, out) == (1, ""), err
-    assert "c1" in err and "docs/migration-guide-2.8-to-3.0.0.md" in err
+
 
 
 def test_work_list_refuses_the_2x_key_in_a_child(graph, monkeypatch, capsys):

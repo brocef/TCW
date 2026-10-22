@@ -326,47 +326,6 @@ def test_the_cli_reads_an_upstream_through_a_parent(tmp_path):
     _assert_reads_core(pkg)
 
 
-def test_a_public_upstream_is_provisioned_into_a_reader_only_checkout(
-        tmp_path, monkeypatch):
-    """The case that motivated this: the upstream is fetched by its repository
-    entry on a machine holding only the reader, and it names nothing back."""
-    cache = tmp_path / "cache"
-    remote = _core_node(tmp_path / "remote-core")
-    app = _reader(tmp_path / "app", "app", {"upstream": {"core": {
-        "path": "../not-here", "repository": {"url": str(remote), "ref": "main"}}}})
-    env = {"XDG_CACHE_HOME": str(cache)}
-    before = _tcw(app, "validate", env=env)
-    assert before.returncode == 0 and "tcw provision" in before.stdout, before.stdout
-    out = _tcw(app, "provision", env=env)
-    assert out.returncode == 0, out.stderr
-    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
-    _assert_reads_core(app)
-    assert "projects" not in (remote / ".tcw/tcw-config.yaml").read_text()
-
-
-@pytest.mark.parametrize("present", [False, True])
-def test_provision_does_not_follow_an_upstreams_own_connections(
-        tmp_path, present):
-    """Mid-migration, core still names a private parent it can be fetched from.
-    A reader holding only its own repository obtains core and stops there: the
-    parent is core's to provision, not the reader's. `present` covers core
-    already being on the machine rather than obtained in this run."""
-    cache = tmp_path / "cache"
-    private = _core_node(tmp_path / "private-root")
-    remote = _core_node(tmp_path / "remote-core")
-    _edit(remote, lambda c: c.update({"projects": {"parent": {"root": {
-        "path": "../not-here-either",
-        "repository": {"url": str(private), "ref": "main"}}}}}))
-    _git(remote, "commit", "-qam", "names its parent")
-    where = ({"path": "../remote-core"} if present else
-             {"path": "../not-here", "repository": {"url": str(remote), "ref": "main"}})
-    app = _reader(tmp_path / "app", "app", {"upstream": {"core": where}})
-    out = _tcw(app, "provision", env={"XDG_CACHE_HOME": str(cache)})
-    assert out.returncode == 0, out.stdout + out.stderr
-    assert str(private) not in out.stdout + out.stderr, out.stdout
-    assert "root" not in out.stdout, out.stdout
-
-
 def test_the_override_variable_redirects_an_upstream_from_the_cli(tmp_path):
     _core_node(tmp_path / "core", term="Argument")
     _core_node(tmp_path / "other-core", term="Premise")

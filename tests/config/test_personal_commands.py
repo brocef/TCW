@@ -113,14 +113,11 @@ def test_identity_is_only_the_acting_projects(family, tmp_path):
 
 def test_graph_readers_tolerate_what_the_loader_refuses(family, monkeypatch):
     parent, child = family
-    before = tcw(parent, "provision")
     path = config_file(child)
     document = yaml.safe_load(path.read_text())
     document["work"] = {"lifecycle": {"spec": {"prompt": []}}}
     write_config_file(path, yaml.safe_dump(document))
     write_local_config(parent, "work: [unclosed\n")
-    after = tcw(parent, "provision")
-    assert (after.code, after.out) == (before.code, before.out), (before, after)
     monkeypatch.setenv("TCW_NO_PERSONAL_CONFIG", "1")
     listed = tcw(parent, "projects", "list")
     assert listed.code == 0, listed

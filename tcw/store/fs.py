@@ -892,9 +892,9 @@ def load_config(path: Path) -> dict:
     here, so `init`, a store resolving and the tag registry all say one thing
     about one file.
 
-    The two readers that must *not* refuse — `declared_repository` and
-    `declared_connected_projects`, which exist to answer for a graph that cannot
-    be fully loaded — deliberately do not use this.
+    The reader that must *not* refuse — `declared_repository`, which exists to
+    answer for a graph that cannot be fully loaded — deliberately does not use
+    this.
     """
     try:
         data = load_yaml(path, unique=True)
@@ -3359,58 +3359,17 @@ def declared_repository(
                                         f"{component}.repository")
 
 
-def declared_connected_projects(
-    project_root: Path,
-) -> tuple[list[tuple[str, RepositoryDeclaration, str]], list[str]]:
-    """This project's connected projects that declare a repository, with problems.
-
-    Each entry is (project id, declaration, relation): the relation is how the
-    caller tells an upstream — obtained, but not read past — from the family.
-
-    Reads the config directly, exactly as `declared_repository` does and for the
-    same reason: it must answer for a graph that cannot be fully loaded, which is
-    the only situation in which anyone asks.
-
-    Returns every declared entry, provisioned or not — the caller decides what to
-    do about one that is already here, because "already available" is a result
-    worth printing rather than a silence.
-    """
-    try:
-        config = load_config(project_root / SENTINEL)
-    except ValueError:
-        return [], []            # likewise: it declares no connected project
-    retired = retired_key_problem(config)
-    if retired:
-        return [], [retired]     # read as "declares nothing", it would report success
-    connected = config.get("projects") if isinstance(config, dict) else None
-    if not isinstance(connected, dict):
-        return [], []
-    declared: list[tuple[str, RepositoryDeclaration, str]] = []
-    problems: list[str] = []
-    # `upstream` too: obtaining a read-only project into this machine's own
-    # checkout area writes nothing into it, and a reader holding only its own
-    # repository has no other way to reach one.
-    for label in ("parent", "children", "upstream"):
-        relation = connected.get(label)
-        if not isinstance(relation, dict):
-            continue
-        for project_id, raw in relation.items():
-            if not isinstance(project_id, str):
-                continue
-            entry, entry_problems = parse_connected_entry(
-                project_id, raw, f"projects.{label}.{project_id}")
-            problems.extend(entry_problems)
-            if entry is not None and entry.repository is not None:
-                declared.append((entry.id, entry.repository, label))
-    return declared, problems
-
-
 class FsStoreProvisioner(StoreProvisioner):
     """A declared store, realized as a git checkout.
 
     Obtains into a temporary directory beside the target and renames it into
     place, so a failed or interrupted fetch is never visible as a store. That is
     what makes "leaves nothing behind" true rather than aspirational.
+
+    Its branches for `PROJECT_TARGET` are unused since `tcw provision` stopped
+    fetching connected projects (TCW-107 Design 6.3); they are kept for
+    `tcw project provision` (TCW-115), which fetches a project into its
+    deciding manifest entry's folder and reuses this clone code.
     """
 
     def __init__(self, project_root: Path, component: str,
