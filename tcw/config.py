@@ -35,10 +35,8 @@ import yaml
 from tcw.store.yaml_source import UniqueKeyLoader, load as _load_named_yaml
 
 from tcw.project_files import (LOCAL_SENTINEL as LOCAL_FILE, SENTINEL,
-                               key_problems, root_of, version_problem,
-                               without_version)
-
-SKIP_VARIABLE = "TCW_NO_PERSONAL_CONFIG"
+                               SKIP_VARIABLE, key_problems, personal_files_skipped,
+                               root_of, version_problem, without_version)
 
 #: The key paths a personal file may set; `*` stands for exactly one key.
 #: Anything not listed is shared, including any key TCW adds later unless it
@@ -679,13 +677,12 @@ def _personal_layers(root: Path, problems: list) -> list[Origin]:
     """The personal layers to read, or none when `TCW_NO_PERSONAL_CONFIG=1`.
     Any value but `1` or empty is a problem, so `=true` cannot silently do
     nothing; the files are then not read."""
-    flag = os.environ.get(SKIP_VARIABLE, "")
-    if flag == "1":
-        return []
-    if flag != "":
-        problems.append(Problem(None, (), f"{SKIP_VARIABLE} must be 1, to skip "
-                                          f"personal configuration, or unset; got "
-                                          f"{flag!r}", root))
+    if personal_files_skipped():
+        flag = os.environ.get(SKIP_VARIABLE, "")
+        if flag != "1":
+            problems.append(Problem(None, (), f"{SKIP_VARIABLE} must be 1, to skip "
+                                              f"personal configuration, or unset; got "
+                                              f"{flag!r}", root))
         return []
     layers = []
     user = user_config_path()

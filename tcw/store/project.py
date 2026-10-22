@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -17,25 +16,11 @@ from tcw.store.base import (
     RepositoryDeclaration, StoreDeclarationError, UnreachableProject,
     parse_connected_entry, retired_key_problem,
 )
-from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, SENTINEL, root_of,
-                               version_problem)
+from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, PROJECT_ID_PATTERN,
+                               RESERVED_PROJECT_IDS, SENTINEL, root_of,
+                               validate_project_id, version_problem)
 from tcw.store.checkouts import normalized_url, provisioned_root
 from tcw.store.yaml_source import UniqueKeyLoader as _UniqueKeyLoader, load as _load_named_yaml
-
-PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-RESERVED_PROJECT_IDS = {"t", "c", "w", "local"}
-
-
-def validate_project_id(project_id: str) -> str:
-    value = (project_id or "").strip()
-    if not PROJECT_ID_PATTERN.fullmatch(value):
-        raise ValueError(
-            "project ID must match ^[a-z0-9]+(?:-[a-z0-9]+)*$"
-        )
-    if value in RESERVED_PROJECT_IDS:
-        raise ValueError(f"project ID is reserved: {value}")
-    return value
-
 
 def override_variable(project_id: str) -> str:
     """The environment variable that says where `project_id` lives on this machine.

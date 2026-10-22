@@ -21,6 +21,7 @@ every module can use it.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any, Iterator
@@ -35,6 +36,15 @@ SENTINEL = f"{TCW_FOLDER}/{CONFIG_NAME}"
 LOCAL_SENTINEL = f"{TCW_FOLDER}/{LOCAL_CONFIG_NAME}"
 #: Where a TCW 3.x project keeps its configuration, at its root.
 LEGACY_SENTINEL = CONFIG_NAME
+#: Where other projects are, by ID (TCW-107 Design 1): shared, and personal
+#: to this machine. Both optional.
+MANIFEST_NAME = "tcw-manifest.yaml"
+LOCAL_MANIFEST_NAME = "tcw-manifest.local.yaml"
+MANIFEST = f"{TCW_FOLDER}/{MANIFEST_NAME}"
+LOCAL_MANIFEST = f"{TCW_FOLDER}/{LOCAL_MANIFEST_NAME}"
+
+#: Set to `1`, a run reads no personal file (TCW-72; TCW-107 Design 1.10).
+SKIP_VARIABLE = "TCW_NO_PERSONAL_CONFIG"
 
 VERSION_KEY = "tcw-version"
 _VERSION = re.compile(r"[0-9]+\.[0-9]+(?:\.[0-9]+)?")
@@ -46,6 +56,28 @@ _RENAMED_KEYS = {"not_tags": "not-tags"}
 
 V4 = "4"
 V3 = "3"
+
+PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+RESERVED_PROJECT_IDS = {"t", "c", "w", "local"}
+
+
+def validate_project_id(project_id: str) -> str:
+    value = (project_id or "").strip()
+    if not PROJECT_ID_PATTERN.fullmatch(value):
+        raise ValueError(
+            "project ID must match ^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        )
+    if value in RESERVED_PROJECT_IDS:
+        raise ValueError(f"project ID is reserved: {value}")
+    return value
+
+
+def personal_files_skipped() -> bool:
+    """Whether this run reads no personal file: `TCW_NO_PERSONAL_CONFIG` set
+    to anything but the empty text. Only `1` is valid; the configuration
+    reader reports any other value as a problem, and the files are skipped for
+    it too, so the readers of personal files never disagree."""
+    return os.environ.get(SKIP_VARIABLE, "") != ""
 
 
 def config_path(root: Path) -> Path:
