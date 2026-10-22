@@ -29,6 +29,24 @@ def pytest_configure(config):
         os.environ["PATH"] = os.pathsep.join([str(here), os.environ.get("PATH", "")])
 
 
+@pytest.fixture
+def tmp_path(tmp_path):
+    """A test's folder alone in the folder holding it.
+
+    TCW looks for a related project in the folders next to a project's root
+    (TCW-107 Design 2.4), so it lists the folder holding that root. pytest
+    makes every test's folder inside one shared folder, so a fixture project
+    made at `tmp_path` would be searched for among every other test's
+    projects, and found there. This returns a new folder `w` inside the one
+    pytest made for the test, so the folder holding a project made at
+    `tmp_path` holds that project only. `tests/test_projectfiles_helper.py`
+    goes red without it.
+    """
+    folder = tmp_path / "w"
+    folder.mkdir()
+    return folder
+
+
 @pytest.fixture(autouse=True)
 def _no_desktop_opener(monkeypatch):
     """No test opens a browser.
