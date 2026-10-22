@@ -17,6 +17,7 @@ changed:
     - cli/reference-a-tcw-object
     - capabilities/override-inherited
     - web/editing
+    - skills/work
 removed:
     - work/delegate-a-work-item-to-another-project
 taxonomy:

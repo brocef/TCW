@@ -94,6 +94,9 @@ Words used throughout:
   or renamed away from its original's path.
 - **Changed** `web/editing`: the create form no longer offers another project,
   and the "Blocks (add)" section is removed.
+- **Changed** `skills/work`: its sentence that filing into another project
+  is done with `tcw work new --project` goes; a part for another project is
+  made there, through `tcw -C` (Design 9.5).
 - **Removed** `work/delegate-a-work-item-to-another-project`.
 - **Taxonomy:** new `owning-project`; changed `reference`, `project`.
 
@@ -181,7 +184,9 @@ to them.
    identifier it changed, in files and in Jira's `TCW Item`, lists the
    mentions it did not rewrite, and prints every identifier it changed.
 6. A move or rename, in either backend and any namespace, that stops partway
-   says what was done and is finished by running the same command again.
+   says what was done and is finished by running the same command again;
+   when it stopped because another command is moving the same item, it says
+   how to check the result instead (Design 5.8).
 7. A work item in Jira can name a parent or blocker in any project TCW can
    locate, whatever its backend or Jira site.
 
@@ -209,8 +214,11 @@ to them.
 - **`tcw project path <id>` and `tcw project provision <id>`** (TCW-115). The
   refusal of Design 1.3 names the folder itself, so it needs neither.
 - **Guides, skills, `docs/use-cases.md` and the migration guide** (TCW-117).
-  This item changes only the text shipped with the CLI: the plan stage prompt
-  and the `audit-backlog` procedure (Design 9).
+  This item changes the text shipped with the CLI (the plan stage prompt
+  and the `audit-backlog` procedure, Design 9) and, in the documents, only
+  the passages that write a removed option as a `tcw` command, each only
+  as far as it takes to name a command that exists (Design 9.5). Teaching
+  the 4.0 flow is TCW-117's.
 - **Migrating 3.x data** (TCW-116), including tickets whose `TCW Item` still
   holds a 3.x value: a move that would set one is refused until it is
   migrated (Design 7.3).
@@ -225,16 +233,53 @@ writes anything, it passes each object it would write to one function, the
 **ownership check**, which refuses (`Refused`, exit 3, nothing written) when
 the owner is another project. Every writer calls this one function; none
 compares project IDs itself. It replaces `_own` (`tcw/work/cli.py:69-74`)
-and TCW-110's `find_tree_writable` (TCW-110 plan, Step 6), which become
-calls of it.
+and the refusals of another project's object that TCW-110's
+`find_tree_writable` made (TCW-110 plan, Step 6) and that TCW-112's plan
+moves into the stores' `override_target` and `removal_target`, which
+become calls of it.
+
+**The check comes before the lookup.** When the text naming the object
+names a project (a full identifier, or a ticket key given as
+`<project>.work/<KEY>`; TCW-110 Design 3.1), the check is made on that
+project before anything of it is opened, read or looked up: before its
+backend is opened (`open_project`, `tcw/work/open.py:86-97`, which raises
+exit 4 or 5 today), before `find_tree` reads its store, and before
+TCW-110's not-found hint. So a write naming another project's object exits
+3 whether or not that project can be read, and whether or not it holds
+the object. Text that names no project (an id-path or a bare ticket key)
+is looked up in the active project's stores, and the object found is then
+checked; that is how an id-path that the inherited view resolves to another
+project's object is refused (1.5). The one exception, overriding an
+inherited object (1.5), is decided by the active project's inherited view
+(whether the identifier is in its id-path's chain, TCW-112 Design 2.7),
+which needs the ancestors' content and stops with TCW-108's exit 7 when an
+ancestor is not on this machine; TCW-112 places both refusals in the two
+store methods that choose a write's target (`override_target` for `set`
+and `reset`, `removal_target` for `rm`), and this item makes each of them a
+call of the ownership check.
 
 1.2. **The writers.** Every one of these calls the ownership check:
 
 | Namespace | CLI | Web routes |
 | --- | --- | --- |
-| work | `new` (the item it makes is always the active project's), `edit`, `advance`, `discard`, `comment`, `rename`, `move`, `tickets adopt` | `POST /api/work`, `PATCH /api/work/<item>`, `POST /api/work/<item>/comments`, `POST /api/tickets/<key>/adopt`, `PUT` and `POST /api/work/<item>/files…`, `PUT /api/work/<item>/declaration` (`tcw/serve/work.py:585-594`, `tcw/serve/files.py:359-363`) |
-| taxonomy | `add`, `rm`, `rename`, `move` | `POST /api/taxonomy`, `PATCH /api/taxonomy/<key>` (`tcw/serve/records.py:247-248`) |
-| capabilities | `add`, `set`, `reset`, `rm`, `rename`, `move` | `POST /api/capabilities`, `PATCH /api/capabilities/<key>` (`tcw/serve/records.py:251-252`) |
+| work | `edit`, `advance`, `discard`, `comment`, `rename`, `move` | `PATCH /api/work/<item>`, `POST /api/work/<item>/comments`, `PUT` and `POST /api/work/<item>/files…`, `PUT /api/work/<item>/declaration` (`tcw/serve/work.py:585-594`, `tcw/serve/files.py:359-363`) |
+| taxonomy | `rm`, `rename`, `move` | `PATCH /api/taxonomy/<key>` (`tcw/serve/records.py:247-248`) |
+| capabilities | `set`, `reset`, `rm`, `rename`, `move` | `PATCH /api/capabilities/<key>` (`tcw/serve/records.py:251-252`) |
+
+**Creators make no call.** These make a new object, and the object they
+make is always the active project's: `tcw work new`, `tcw work tickets
+adopt`, `tcw taxonomy add`, `tcw capabilities add`, `POST /api/work`,
+`POST /api/tickets/<key>/adopt`, `POST /api/taxonomy` and `POST
+/api/capabilities`. Each writes only into the active project's own store
+(`add` takes an id-path, never another project's identifier, TCW-110 plan
+Step 6; `adopt` refuses a ticket that already names an item,
+`tcw/work/jira/tickets.py:146`). A call of the ownership check there could
+never refuse, and a test of a call that can never refuse proves nothing,
+so none is made. The sweep (Design 11) lists them as creators, each with
+the reason it writes only the active project's store; the router's table
+still marks the four web creators as writes (1.4), answering that they
+name no existing object. A parent or blocker a creator records is a
+reference (1.7), not a write to the item it names.
 
 A `generate:` binding or a hook writes into the moving item's own folder,
 which the move already checked. The plan's sweep (Design 11) lists every
@@ -250,13 +295,19 @@ when it gives one, then where to go:
 - when `project_folder` (TCW-107 Design 2.12, on the command's one registry,
   TCW-110 Design 6.1) finds the owner's folder: `; run the command there:
   tcw -C <folder> …` with the folder as an absolute path;
-- for every other outcome (not on this machine, unknown, a graph problem):
+- when it is not on this machine, or nothing names it (unknown):
   `; project '<owner>' is not on this machine`, followed by
-  ` (<repository>)` when its manifest entry names one.
+  ` (<repository>)` when its manifest entry names one;
+- for a graph problem (for example two folders that both declare
+  `<owner>`): `; project '<owner>' cannot be located: <the problem's own
+  message>`, since saying it is not on this machine would be false when
+  there are two copies of it here.
 
 Looking for the folder never changes the outcome: the command exits 3 with
 nothing written whichever answer `project_folder` gives, as TCW-110's
-not-found hint never changes its exit (TCW-110 Design 3.4).
+not-found hint never changes its exit (TCW-110 Design 3.4). The search is
+made only to word the message, after the check has decided to refuse
+(1.1), and every error it raises is caught there.
 
 This shape replaces the two refusals TCW-112 words for another project's
 object, whose tail `; change it in '<Q>'` says nothing about where `<Q>` is:
@@ -276,11 +327,12 @@ so the check refuses nothing new there; it is there so that TCW-113's views of
 other projects' objects cannot reach a write.
 
 The check is made where a test can see it: the server's route table marks
-each route as a write or a read, and the router calls the ownership check
-for every route marked a write, with the object the route names, before the
-route's own code runs. A route's own code never calls it. So AC 4's unit
-test reads the table, and a new write route gets the check by being marked
-one.
+each route as a write or a read, and for every route marked a write the
+router calls the ownership check on each existing object the route names,
+before the route's own code runs. A creator of 1.2 is marked a write that
+names no existing object, so the router makes no call for it. A route's own
+code never calls the check. So AC 4's unit test reads the table, and a new
+write route gets the check by being marked one.
 
 The web app's `PATCH` of an inherited capability is refused, as today
 (TCW-112 Design 4.5 keeps the web refusal; only the CLI's `set` writes an
@@ -323,6 +375,16 @@ with whatever it alone uses. The `read-only` field of each row of
 so they are removed rather than kept saying nothing: the create form that read
 `readOnly` no longer offers other projects (Design 2.3).
 
+`read_only_reason` (`tcw/store/project.py:356`, as TCW-108 Step 7 leaves it)
+has one caller that is not about writing: `tcw provision` follows the
+declarations of only the family members it returns no reason for
+(`_connected_declarations`, `tcw/cli.py:222`). That use stays, unchanged in
+behaviour, under a name that says what it decides there,
+`reached_by_both_sides(project_id) -> bool`, and the interface method of
+`tcw/store/base.py:223` is renamed with it. Whether provisioning should
+keep that rule is TCW-115's, which replaces `tcw provision`. The write
+refusal that used it (`_check_declared`) goes with Design 2.
+
 ### 2. Removing filing into another project
 
 2.1. **`tcw work new --project <id>`** is refused as a usage error (exit 2),
@@ -346,8 +408,12 @@ that the option does not work for some targets and refuse others, and the
 web "Blocks (add)" form goes with it.
 
 Both options are kept in the parser only to give these messages, and are
-hidden from `--help`; nothing reads their values. They are removed outright in
-a later major version.
+hidden from `--help`. Their values are read only to word the message:
+`--project`'s ID and the title fill 2.1's command, and `--blocks`'s target
+decides whether 2.2's message has `-C` and which folder it names (the
+folder `project_folder` gives, or `tcw://<id>.path/` when it gives none;
+looking it up never changes the exit, as in 1.3). Nothing else is done
+with them. They are removed outright in a later major version.
 
 2.3. **The web app.** `POST /api/work` with a `project` other than the served
 project is a usage error naming `tcw -C`. `POST /api/work/<item>/blocks` is
@@ -355,7 +421,13 @@ removed (no route; 404). The client's create form loses its project selector
 (`web/client/src/ui/work-forms.tsx:583-591`), and the item page loses the
 "Blocks (add)" section (`BlocksForm`, `web/client/src/ui/work-forms.tsx:330`,
 used at `web/client/src/ui/app.tsx:1285`); the item page still lists what an
-item blocks, which is computed from the other items. The bundle is rebuilt.
+item blocks, which is computed from the other items. In a Jira project the
+create and edit forms refuse a blocker in another project today
+(`crossProject: refuse`, `web/client/src/ui/work-forms.tsx:594-606`, "in
+Jira mode a blocker must be one of this project's items"); since the
+backend now keeps such a blocker (Design 3.3), the forms accept it with the
+same other-project warning they show for a parent, and the server's answer
+carries Design 3.3's note. The bundle is rebuilt.
 
 2.4. **The code that only served them is removed:** `delegate`,
 `open_for_update`, `_check_declared`, `_check_target`, `_uncommitted_in` and
@@ -419,12 +491,21 @@ exactly one place, decided by what it names:
 
 Which case a value is in is decided without the network: the named item's
 project is located by `project_folder` on the command's one registry
-(TCW-110 Design 6.1), and its configuration says its backend and, for Jira,
-its site. When that project cannot be located, the write stops with
-TCW-110 Design 6.1's exit for the outcome (5 not on this machine, 1 unknown
-or a graph problem) and nothing is written, because TCW cannot tell which
-place the value belongs in. The files backend's write of a parent in a
-project it cannot locate is unchanged (3.2).
+(TCW-110 Design 6.1), and its configuration, read as a project read for
+itself (TCW-109: its own sources folded, with no personal file, on the
+command's registry), says its backend and, for Jira, its site. Two sites
+are the same when their hosts are equal ignoring letter case (a site is
+`https://<host>` with no trailing slash, as TCW's configuration check
+requires); today's comparison of the whole text (`tcw/work/jira/backend.py:584`)
+would call `https://Acme.atlassian.net` another site. When that project
+cannot be located, the write stops with TCW-110 Design 6.1's exit for the
+outcome (5 not on this machine, 1 unknown or a graph problem) and nothing
+is written, because TCW cannot tell which place the value belongs in. When
+it is located but its `work.jira` is undecided because the ancestor it
+inherits that key from is not on this machine (TCW-109), the write stops
+with exit 7 and TCW-109's message, and nothing is written, for the same
+reason. The files backend's write of a parent in a project it cannot
+locate is unchanged (3.2).
 
 **The state file.** TCW-111 Design 1.2's rule for a Jira item's state file,
 exactly `tcw-version` and `ticket` and optionally `id`, becomes: those, plus
@@ -456,7 +537,11 @@ web routes that call them, send each value to its place:
   `<item>'s parent <full id> is not a ticket on <site>, so it is recorded in
   <state file> and Jira shows no link for it` (`blocker` for a blocker),
   once per recorded value written. This is what S-3 asks a filing that
-  crosses backends to say.
+  crosses backends to say. The web routes that create or edit an item
+  (`POST /api/work`, `PATCH /api/work/<item>`) give the same sentence as a
+  warning in their answer, as they give `checked_reference`'s warning
+  today (`tcw/serve/work.py:365-376`), since the server's standard error
+  (`tcw/serve/services.py:20-26`) is not seen by the person using the page.
 
 The cycle check is the files backend's: only within the item's own project
 (3.2); a recorded reference names another project's item, so it is never
@@ -568,8 +653,19 @@ another Python program (the suite, the eval harness), it changes the folder
 back before it returns.
 
 4.6. **Only this machine.** `-C` reads folders on this machine and nothing
-else: no network, and no git command. It belongs to the deployment layer
-(TCW-99 "What any store must support"), since it is about folders on disk.
+else: no network, and no git process other than read-only `git rev-parse`.
+The exception is not `-C`'s own: every lookup of a project's folder builds
+a project registry, and building one probes, once per folder per process,
+whether the folder is a linked git worktree (`worktree_anchors` and
+`_git_lines`, `tcw/store/project.py:67-79`, `:119-158`, 3.x code; a primary
+checkout costs two `git rev-parse` runs, and a folder that is no
+repository still starts one). The same rule is already the one the web
+app's process test applies (`_allowed`, `tests/serve/test_no_process.py:77-91`),
+and the criteria that check processes (AC 9, AC 25) use it. (In a git
+submodule the probe also reads one value with `git config --get`, which
+is read-only too; no fixture here is a submodule.) It belongs to the
+deployment layer (TCW-99 "What any store must support"), since it is
+about folders on disk.
 
 ### 5. Moving and renaming an object
 
@@ -686,7 +782,9 @@ stops the command, and nothing has been written:
   deliberately: a term or capability move needs the inherited paths to know
   whether it would make or break an override, so a fresh clone or CI without
   the ancestor cannot rename its own capability, while a work move needs no
-  other project.
+  other project, unless the project's own `work.jira` comes from an
+  ancestor that is not on this machine, which stops every command in that
+  project, a move included, with exit 7 (TCW-109).
 - h. Work in Jira: the ticket check of 7.3, step 1.
 
 5.5. **A folder whose name breaks the grammar** (TCW-110 Design 1.6) is the
@@ -712,6 +810,7 @@ nothing on standard output, and its message (5.8) names what it wrote.
 
 5.7. **No hooks, no git.** A move or rename is not a stage move, so it runs
 no checks or hooks, as `rename` runs none today, and TCW commits nothing.
+The only processes it starts are 4.6's read-only `git rev-parse` probes.
 
 5.8. **The order, and stopping halfway.** Every move and rename, in every
 namespace and both work backends, runs in one order, so that a stop at any
@@ -764,9 +863,24 @@ has gone), and standard error says, whichever run did each part:
   field or link changed (an earlier run's are the references that already
   name a new identifier, which nothing else can hold while the object is
   still at its old place);
-- that the folder is still at `<old path>`;
-- the command to finish: `run the same command again to finish the move:
-  tcw … <the command as given>`.
+- where the folder is: `the folder is still at <old path>` when it is
+  there, checked when the message is built; otherwise `the folder is no
+  longer at <old path>; another command may have moved it`, because a
+  second command in the same clone can have moved it first;
+- what to do next, which depends on why it stopped:
+  - for every stop except the two below: `run the same command again to
+    finish the move: tcw … <the command as given>`;
+  - when a ticket was found holding a value that is neither the old nor the
+    new identifier (exit 3, 7.3 step 2), another command is moving the same
+    item, and running this one again would only be refused at that ticket.
+    So the message instead names the tickets this run set, which now
+    disagree with the other command's, and says: `wait for the other
+    command to finish, then run tcw validate --remote; a ticket whose TCW
+    Item names neither this command's identifiers nor the other's must be
+    corrected in Jira by hand`;
+  - when the folder is no longer at its old place (exit 4): `run tcw
+    validate to see what names it` (`tcw validate --remote` in a Jira
+    project), since a re-run would not find it.
 
 To abandon a move instead, the person finishes it and then moves or renames
 the object back; there is no separate command, because the reverse move
@@ -838,7 +952,19 @@ reading of `capabilities.yaml` (`tcw/work/gates.py:331-380`) and TCW-112's
 which fields to look at from it. The rewrite (6.1), the 5.4 f check and
 `tcw validate` all read the same rows: a field that is checked is a field
 that is rewritten, and one added later joins both by being added to the
-definition. A checker's own rule about a value (for example that `Subject`
+definition. That includes the files backend's own rewrite (7.2): it reads
+which keys of an item's state file to rewrite from the definition's
+work-item rows, not from the item model's `parent` and `blocked_by`
+attributes, so a work-item reference field added to the definition is
+rewritten by a move as well as checked.
+
+The rewrite matches by field, never by value alone: in a YAML record it
+replaces a value only where it sits at a field the definition names for
+that record (for `capabilities.yaml`, the entries under `new`, `changed`,
+`removed` and `taxonomy`'s three lists; for a state file, its reference
+keys). A value equal to an old identifier at any other key (a `name`, a
+free-text field, a key the definition does not name) is a mention (6.4),
+listed and left unchanged. A checker's own rule about a value (for example that `Subject`
 names vocabulary) stays in the checker; only the list of where references
 are is shared.
 
@@ -862,7 +988,9 @@ the three stores, which TCW does not own (`docs/use-cases.md`, S-10).
 6.6. **How a record is written.** Only the changed values are replaced; other
 keys, their order and `tcw-version` are kept (TCW-111 Design 1.4). A
 `capabilities.yaml` or Markdown file is rewritten in place, every other byte
-unchanged.
+unchanged. Every rewritten file is replaced in one step (written beside it,
+then put in its place, as `_atomic_write_all` does, `tcw/store/fs.py:1149`),
+so a failure partway through a write never leaves half of a person's file.
 
 ### 7. The work backend's move
 
@@ -882,9 +1010,10 @@ refusal of an item with items nested in it (TCW-111 Design 5, row 7) is
 removed.
 
 7.2. **Files backend.** It checks that every item's state file can be read,
-as today (`tcw/work/fs_backend.py:444-447`); rewrites `parent` and
-`blocked-by` naming any changed identifier in every item's state file, and a
-renamed item's own `id` (5.2); calls `before_folder`; then makes one
+as today (`tcw/work/fs_backend.py:444-447`); rewrites every work-item
+reference field of Design 6.3's definition (today `parent` and
+`blocked-by`) naming any changed identifier in every item's state file, and
+a renamed item's own `id` (5.2); calls `before_folder`; then makes one
 `os.rename` of the item's folder (today's call, `:452`, which now comes
 last), carrying every nested folder. A state file it cannot rewrite stops
 the command before the folder moves, with 5.8's message naming that file;
@@ -893,7 +1022,9 @@ today the move stands and the item is named after the fact (`:455-472`).
 7.3. **Jira.** In this order, within 5.8 step 2:
 
 1. **Read.** One search for every moved item's ticket by key, reading
-   `TCW Item`, before anything is written. For each ticket:
+   `TCW Item`, before anything is written; the search is paged as every
+   search of this backend is, so an epic with more nested items than one
+   page of results holds is read whole. For each ticket:
    - the old value: to be set;
    - already the new value: counted as done, not edited again (an earlier
      run set it);
@@ -915,13 +1046,16 @@ today the move stands and the item is named after the fact (`:455-472`).
    the new value it is counted as done. When it holds anything else, or the
    ticket has gone, the command stops (exit 3, or 4 for a ticket gone) with
    5.8's message, adding `<KEY>'s TCW Item is now <value>: another command
-   may be moving this item; check with tcw validate --remote`.
+   may be moving this item`. For that exit 3 the message ends with 5.8's
+   advice for a clash with another command (wait, check with `tcw validate
+   --remote`, correct by hand), never with "run the same command again".
 3. `before_folder`, then the folder (5.8 step 2.3 and 2.4).
 
 A Jira edit that fails in step 2 stops the command with 5.8's message (exit
 1, or 5 when Jira could not be reached). A folder move that fails stops it
-the same way, with every ticket set and every file rewritten named. Running
-the same command again finishes the move: its step 1 counts the tickets
+the same way, with every ticket set and every file rewritten named. For
+every stop but the clash with another command, running the same command
+again finishes the move: its step 1 counts the tickets
 already set as done, the rewrite finds nothing left to change, and the
 folder moves. Nothing is done twice (`docs/use-cases.md`, S-8).
 
@@ -934,6 +1068,21 @@ clone. What it cannot close is the moment between that read and the edit,
 which Jira's edit API gives no way to make conditional; Risks records it.
 No run ever sets a ticket back (5.8), so a run that fails can no longer
 undo one that succeeded, which today's set-back could.
+
+What two runs at once can and cannot do, traced from the order above:
+
+- a second run of the **same** command, started partway through the
+  first, meets only the first run's values, counts them as done, and the
+  two end in the same place;
+- a second run of a **different** command (a rename of the same item to
+  another name, say) stops at its first ticket, unless its read and its
+  edit of that ticket both fall between the first run's read and edit of
+  the same ticket. Only then can tickets end up naming different runs'
+  identifiers; no TCW command can repair that, so 5.8's message for that
+  stop tells the person to check with `tcw validate --remote` and correct
+  a ticket by hand, rather than to run the command again;
+- no run loops: each ticket is read in step 1, read again just before its
+  edit, and edited at most once.
 
 The order keeps today's rename's order, Jira before the folder, and extends
 it to the repository: the folder is the last thing written, because a
@@ -998,6 +1147,29 @@ uncommitted changes before creating an item in another project" (Design 2.4).
 says it prints one `<old> -> <new>` line per changed identifier; the new
 commands have contracts and examples like their neighbours'.
 
+9.5. **The passages that write a removed option as a command.** The suite
+checks every flag that a live Markdown file writes in a `tcw …` command
+against that command's `--help` (`tests/test_documented_cli_surface.py`,
+`_check`). Hiding `--project` and `--blocks` from `--help` (2.2) fails
+that check for every live document that still writes `tcw work new …
+--project` or `tcw work edit … --blocks`: about seventeen passages in the
+skills, the guides, `docs/use-cases.md`, this repository's capability
+ledger and the shipped prompt and procedure (the plan lists each). Two
+ways out were weighed: keep the options visible in `--help` until TCW-117
+rewrites those documents, or change the passages here. Keeping them
+visible would make the check pass only because the documents describe an
+option that still parses, while it no longer does what they say: the check
+would be green over documents that are wrong. So this item changes each
+passage, only as far as it takes to name a command that works (the part
+made from its own project with `tcw -C … work new "<title>" --parent
+<epic>`, a blocker recorded with `--blocked-by` on the blocked item), and
+adds nothing else. The full rewrite of those documents for 4.0 stays with
+TCW-117, which the handoff tells which passages were changed. The
+capability ledger's record of the removed capability is deleted with the
+options, since a removed capability is deleted from the ledger
+(`tcw/work/gates.py:172`), and the four records that link to it lose the
+link.
+
 ### 10. Interfaces this item needs from the items before it
 
 10.1. **TCW-111:** the walk, `is item folder` at any depth, the
@@ -1014,12 +1186,16 @@ object's own path (is it an override?) and for each new path. And
 `tcw capabilities set` on an inherited capability writes the active
 project's own object at the same id-path (TCW-112 Design 4.2), which 1.5
 relies on. Both are in TCW-112's spec; nothing more is asked of it. Design
-1.3 rewords two of its refusals.
+1.3 rewords two of its refusals, which its plan places in
+`override_target` and `removal_target`.
 
-10.3. **TCW-109:** nothing beyond configuration being read for the active
-project as usual. Design 4.5 relies on the variables and personal files that
-apply being chosen by the active project's ID and folder, which TCW-109's
-request states.
+10.3. **TCW-109:** configuration read for the active project as usual, and
+another project read for itself (its own sources folded, no personal file,
+on the command's registry; TCW-109 Design 5.2), with exit 7 when a key it
+needs is undecided (TCW-109 Design 3). Design 3.3 reads the named project's
+backend and site that way. Design 4.5 relies on the variables and personal
+files that apply being chosen by the active project's ID and folder, which
+TCW-109's request states.
 
 10.4. **TCW-110 and TCW-107:** `project_folder` and its outcomes, the
 address parser and folder-address resolution (TCW-110 Design 7.2), and
@@ -1030,12 +1206,15 @@ the one definition this item builds (TCW-110 builds none).
 
 Repository-wide over `tcw/`, `web/client/src/`, `scripts/` and `evals/`:
 
-- every write site of 1.2, each listed with its call of the ownership check;
-  every `slug.project != …` comparison used to refuse a write (`_own`,
-  `tcw/work/cli.py:71`; `tcw/serve/work.py:454`, `:484`);
+- every write site of 1.2, each listed with its call of the ownership check,
+  and every creator of 1.2, listed as a creator with the reason it writes
+  only the active project's store; every `slug.project != …` comparison
+  used to refuse a write (`_own`, `tcw/work/cli.py:71`;
+  `tcw/serve/work.py:454`, `:484`);
 - every caller of `delegate`, `open_for_update`, `blocks_target`,
   `delegate_to_jira`, `uncommitted_changes`, `read_only_reason` (as TCW-108
-  leaves it) and the server's `delegate` service; every reader of
+  leaves it; its provisioning caller is renamed, 1.8) and the server's
+  `delegate` service; every reader of
   `args.project` in `_new` and `args.blocks` in `_edit`; every reader of the
   `read-only` and `readOnly` fields;
 - every caller of a backend's `rename` and of `report_mentions`;
@@ -1107,7 +1286,11 @@ The plan lists each site.
 - **UC-6 (a project not on this machine).** A refusal naming it says it is
   not here (1.3); `tcw -C tcw://<it>.path/` exits 5 (4.3). A move of a term or
   capability whose inheritance check needs a missing ancestor exits 7 (5.4 g);
-  a work move needs no other project.
+  a work move needs no other project, unless the project's own `work.jira`
+  comes from an ancestor that is not on this machine, which stops every
+  command in that project with exit 7 (TCW-109). A Jira write naming a
+  parent in a project whose `work.jira` is undecided for the same reason
+  also exits 7 (3.3).
 - **UC-8 (several families).** `-C` with an address locates by TCW-107's rules
   from the project active where the command starts, so a second family with
   the same IDs elsewhere on disk is never reached unless those rules reach it;
@@ -1127,11 +1310,16 @@ The plan lists each site.
 - **S-6 (unattended runs).** Every refusal and stop names the command to run
   next, so an agent needs no person: `tcw -C <folder> …` for 1.3, the same
   command again for every stop of a move (5.8), `tcw migrate` for a 3.x
-  ticket (7.3).
+  ticket (7.3). The one stop that needs a person is two different commands
+  moving the same Jira item at the same moment (7.3), which the message
+  says, naming `tcw validate --remote`.
 - **S-7 (several people at once).** Two moves of the same item from two
   clones meet at its first ticket, and the second stops before writing
   anything (7.3); no run sets a ticket back over another's (5.8). The
-  moment between a ticket's read and its edit stays open (Risks).
+  moment between a ticket's read and its edit stays open (Risks); when two
+  different commands meet in it, the stop says to check with `tcw validate
+  --remote` and correct a ticket by hand, not to run the command again
+  (5.8).
 - **S-8 (partial failure).** Every move, in both backends and every
   namespace, writes the folder last, so a stop leaves the object where a
   re-run finds it; the stop names every ticket and file already written,
@@ -1144,7 +1332,9 @@ The plan lists each site.
 - **S-10 (things TCW does not own).** References are rewritten and mentions
   listed only inside the active project's three stores (6.5).
 - **S-11 (version control).** TCW stops checking a working tree for
-  uncommitted changes (2.4); no command here reads or changes git.
+  uncommitted changes (2.4); no command here changes git, and the only git
+  it reads is the read-only `git rev-parse` of finding a repository's root
+  and recognising a linked worktree (4.6).
 
 Checklist: 1 (where it looks) only the active project's stores, and
 `project_folder` for a refusal's message and `-C`; 2 (whose things) only the
@@ -1180,15 +1370,20 @@ means standard output; "says" means standard error.
    from the manifest too, so that nothing names it (unknown), and again with
    two folders both declaring `core` beside `app` (a graph problem),
    `tcw work edit core.work/<c> --priority high` exits 3 and says `belongs
-   to project 'core'` and `is not on this machine`: locating never changes
-   the exit.
+   to project 'core'`, with `is not on this machine` when nothing names it
+   and `cannot be located:` followed by the graph problem's message for the
+   two folders: locating never changes the exit. In each of the three
+   variants no backend of `core` is opened (a test makes `open_project`
+   fail if called), so the check comes before the lookup.
 2. **Tree writes to another project are refused; an override is allowed.**
    `app` with parent project `core` passing taxonomy and capabilities,
    `core` holding term `t` and capability `cli/x`. In `app`:
    `tcw taxonomy rm core.taxonomy/t`, `tcw taxonomy rename core.taxonomy/t u`,
    `tcw capabilities rm core.capabilities/cli/x` and
    `tcw capabilities move core.capabilities/cli/x --top` each exit 3 naming
-   `core`'s folder; `tcw capabilities set core.capabilities/cli/x --status
+   `core`'s folder, and with `core`'s folder removed (its manifest entry
+   kept) `tcw capabilities rm core.capabilities/cli/x` and `tcw taxonomy rm
+   core.taxonomy/t` still exit 3 and say `is not on this machine`; `tcw capabilities set core.capabilities/cli/x --status
    Supported` exits 0, writes `app`'s own `cli/x` object (TCW-112), and leaves
    `core`'s files unchanged. In a third project `other` beside them that names
    no parent, `tcw capabilities set core.capabilities/cli/x --status Supported`
@@ -1216,7 +1411,9 @@ means standard output; "says" means standard error.
    `core.capabilities/cli/x`, and finds the answer 403 and the file
    unwritten, so the router, not the route, makes the check. Client unit tests: the create
    form shows no project selector; the item page has no "Blocks (add)"
-   section and still lists the item's `blocks`.
+   section and still lists the item's `blocks`; in Jira mode the create
+   form and the edit form accept a blocker in another project, showing the
+   other-project warning, where today they refuse it.
 5. **The removed options.** `tcw work new 'x' --project core` exits 2, says
    `work new --project is removed`, `tcw -C` and `--parent`, creates nothing in either
    project, and returns without reading standard input (a test pipes a stream
@@ -1258,7 +1455,16 @@ means standard output; "says" means standard error.
    - with the fake's network refusing after the link's removal in the second
      bullet, the command stops (exit 5) with the state file unchanged; running
      it again with the fake healthy writes the state file and records no
-     second removal.
+     second removal;
+   - a fourth project `inh` beside them, in Jira mode, whose `work.jira` it
+     inherits from a parent project that is not on this machine, holding an
+     item folder `inh.work/<IK>-…`: `tcw work new 'z' --parent
+     inh.work/<IK>-…` in `app` exits 7 and the fake records no create;
+   - a fifth project `caps`, on site A but with its site written with the
+     host in capital letters: a parent that is one of its tickets is linked
+     as on site A, with no `parent` in the state file;
+   - served from `app`, `POST /api/work` with `parent: files.work/<f>`
+     answers success with a warning containing `Jira shows no link for it`.
 8. **`-C` with a path.** From an empty folder that is no project,
    `tcw -C <path to demo> work list` prints what `tcw work list` prints in
    `demo`. `tcw -C a -C b work list` runs in `a/b`. `tcw -C missing work list`
@@ -1280,8 +1486,10 @@ means standard output; "says" means standard error.
    (a `tcw-config.yaml` at its root and no `.tcw/`), `tcw -C tcw://app.path/
    work list` exits 1 with TCW-106's 3.x refusal, and `tcw -C <path to app>
    work list` from the same folder exits 0. None of these commands starts a
-   `git` process (a test records every call of `subprocess.run` and
-   `subprocess.Popen`).
+   process other than read-only `git rev-parse` (Design 4.6): a test records
+   every call of `subprocess.run` and `subprocess.Popen` and finds each one
+   allowed by the rule of `_allowed` in `tests/serve/test_no_process.py`
+   with `status` left out.
 10. **`-C` runs entirely as that project.** With `user.name: Alice` in `app`'s
     `.tcw/tcw-config.local.yaml` and `user.name: Bob` in `workspace`'s, from
     `workspace`, `tcw -C tcw://app.path/ work new 'x' --assign-me` makes an
@@ -1345,10 +1553,19 @@ means standard output; "says" means standard error.
     - the fake answering no ticket for `PK`: exit 4 before any edit, saying
       `Jira has no ticket PK`;
     - two runs at once: the fake changing `EK`'s `TCW Item` to another value
-      after the first search and before the first edit: exit 3, the fake
-      records no edit, `R`'s file and the folder are unchanged, and the
-      message names `EK`, its new value and `another command may be moving
-      this item`.
+      after the first search, when it answers the read of `EK` that comes
+      just before `EK`'s edit (so that read sees the other value): exit 3,
+      the fake records no edit, `R`'s file and the folder are unchanged, and
+      the message names `EK`, its new value, `another command may be moving
+      this item` and `tcw validate --remote`, and does not contain `run the
+      same command again`;
+    - the same with `PK`'s value changed instead, so that `EK` was set by
+      this run first: exit 3, and the message names `EK` as set by this run
+      and says to correct by hand a ticket that names neither command's
+      identifier;
+    - the folder's `os.rename` failing because the folder is already gone
+      (the test removes it first): exit 4, and the message says `is no
+      longer at`, not `still at`.
 13. **Moving work items.** Files backend, and the same with the Jira fake
     where noted. An epic `<e>`, items `<a>` and `<b>` at the top, `<a>`'s
     `parent` is `<e>`:
@@ -1434,6 +1651,10 @@ means standard output; "says" means standard error.
     contains `tcw -C` and not `--project`; `docs/lifecycle/abstraction.md`'s
     interface list has a **move** entry and no **rename** entry, and does not
     contain `uncommitted changes before creating an item in another project`.
+    `tests/test_documented_cli_surface.py` passes with `--project` and
+    `--blocks` hidden from `--help`: no live document writes either in a
+    `tcw` command (Design 9.5), and `docs/capabilities/work/delegate-a-work-item-to-another-project/`
+    no longer exists.
 24. **The sweep.** After the change, a search under `tcw/`, `web/client/src/`,
     `scripts/` and `evals/` finds no definition or call of `delegate`,
     `open_for_update`, `blocks_target`, `delegate_to_jira`,
@@ -1445,17 +1666,22 @@ means standard output; "says" means standard error.
 25. **No hooks and no git in a move.** In `demo`, with a `post` hook and a
     `pre` check bound to every stage, and a test recording every call of
     `subprocess.run` and `subprocess.Popen`: `tcw work rename`, `tcw work
-    move`, `tcw taxonomy rename` and `tcw capabilities move` each exit 0 and
-    start no process.
+    move`, `tcw taxonomy rename` and `tcw capabilities move` each exit 0,
+    start no hook or check process, and start no process at all other than
+    read-only `git rev-parse` (Design 4.6, by AC 9's rule).
 26. **One definition of the reference fields.** A unit test finds that the
     definition of Design 6.3 holds exactly the rows of TCW-110 Design 5.1's
     table, the `parent` of terms and capabilities, and the Jira state file's
     `parent` and `blocked-by`. For each row, a fixture record holding that
     field: with a value naming no object, `tcw validate` reports that file
     and field; with a value naming an object that is then renamed, the
-    rename rewrites it. A second test adds a row to the definition naming a
-    field of a fixture record, and finds both `tcw validate` and a rename
-    reading it, with no other change.
+    rename rewrites it. A record holding the old identifier at a field the
+    definition does not name (a capability's `name`, a key of
+    `capabilities.yaml` other than its lists) keeps it after the rename, and
+    the rename lists it as a mention. A second test adds a row to the
+    definition naming a field of a fixture record that held the old
+    identifier unchanged in the first run, and finds both `tcw validate` and
+    a rename reading it, with no other change: the rename now rewrites it.
 27. **`tcw validate` of recorded references.** In AC 7's `app`: a recorded
     `parent` naming `files.work/<f>` passes; one naming an item `files` does
     not have is a warning naming it; with `files`'s folder removed (its
@@ -1473,27 +1699,27 @@ means standard output; "says" means standard error.
 
 | Design rule | Criteria |
 | --- | --- |
-| 1.1 one ownership check, exit 3, nothing written | 1, 2, 3, 24 |
-| 1.2 every writer, CLI and web | 1 (work CLI), 2 (tree CLI), 4 (web routes), 24 (the list) |
-| 1.3 one message shape, a reason clause, the two tails; TCW-112's two refusals reworded; locating never changes the exit | 1 (found, not on this machine, unknown, graph problem), 2 (the shape, `rm` and `set`) |
+| 1.1 one ownership check, exit 3, nothing written; the check before the lookup | 1 (no backend of `core` opened), 2 (`core` removed), 3, 24 |
+| 1.2 every writer, CLI and web; creators make no call | 1 (work CLI), 2 (tree CLI), 4 (web routes), 24 (the list, creators listed as creators) |
+| 1.3 one message shape, a reason clause, the three tails; TCW-112's two refusals reworded; locating never changes the exit | 1 (found, not on this machine, unknown, graph problem with its own message), 2 (the shape, `rm` and `set`; `rm` with `core` removed) |
 | 1.4 web write routes refuse; the router makes the check; the inherited capability's hint | 4 |
 | 1.5 overriding is allowed; other inherited writes refused | 2, 17 |
 | 1.6 planning workspace | 3 |
 | 1.7 a parent or blocker in another project is allowed | 6, 7 |
-| 1.8 TCW-108's interim rule, `read-only`, `readOnly` removed | 22, 24 |
+| 1.8 TCW-108's interim rule, `read-only`, `readOnly` removed; provisioning's use renamed | 22, 24; the renamed provisioning test is unchanged in behaviour, so 28 (its existing tests pass) |
 | 2.1 `new --project` refused before reading input; message names `work new` | 5 |
-| 2.2 `edit --blocks` refused, same project and other | 5 |
-| 2.3 web: create into another project, `/blocks`, client form | 4 |
+| 2.2 `edit --blocks` refused, same project and other; values read only for the message | 5 |
+| 2.3 web: create into another project, `/blocks`, client form; Jira-mode blocker accepted | 4 |
 | 2.4 code removed; no uncommitted-changes check | 24 |
 | 3.1 the flow and its replacement table; the part's project must locate the epic's | 6 (steps a, d, e), 7 (a Jira part whose epic's project is not here, exit 5); steps b, c, f: n/a, they describe what no longer happens or point at 2.2, tested by 5 and by the removal of `_check_target` (`tcw/work/open.py:139-159`, 24) |
 | 3.2 files backend stores any project's parent | 6 |
-| 3.3 Jira: same-site values are links, others recorded; the state file's keys; writing, with Jira first and the message; reading and `list --parent`; validate's checks; a move rewrites none | 7 (writing, reading, the stop and re-run), 27 (validate), 26 (the rows), 12 (a move edits only `TCW Item`) |
+| 3.3 Jira: same-site values are links, others recorded; sites compared by host ignoring case; the owner's configuration read for itself, exit 7 when undecided; the state file's keys; writing, with Jira first and the message, also in the web answer; reading and `list --parent`; validate's checks; a move rewrites none | 7 (writing, reading, the stop and re-run, exit 7, the site's letter case, the web warning), 27 (validate), 26 (the rows), 12 (a move edits only `TCW Item`) |
 | 4.1 form, repeatable | 8 |
 | 4.2 a path; missing folder | 8 |
 | 4.3 an address; object address; each outcome; no project here; a 3.x project at the start | 9 |
 | 4.4 an address runs as its project; a folder in no project | 9 |
 | 4.5 everything runs as there; in-process folder restored | 8 (restored), 10 |
-| 4.6 no network, no git | 9 (no `git` process); no network: 8 and 9 run with no Jira fake and reach no site |
+| 4.6 no network, no git but read-only `git rev-parse` | 9 (every process allowed by the rule); no network: 8 and 9 run with no Jira fake and reach no site |
 | 5.1 the six commands; name rules; title kept | 11, 13, 15, 16 |
 | 5.2 nested objects change; `parent` never changes; 3.2 warning; a rename's own `id` | 11, 13, 15 |
 | 5.3 destinations; organising folders made and removed, also on a stop; refusals | 13, 14 |
@@ -1503,27 +1729,28 @@ means standard output; "says" means standard error.
 | 5.4 d 255 characters, nested included | 18 |
 | 5.4 e unreadable records | 19 |
 | 5.4 f field rules (`Roles`, `When`) | 16 |
-| 5.4 g overrides; exit 7 | 17 |
+| 5.4 g overrides; exit 7; a work move's exception for an inherited `work.jira` | 17; the exception is TCW-109's own exit 7, tested there (TCW-109 AC 14, a missing parent in Jira mode) |
 | 5.4 h Jira ticket check | 12 |
 | 5.5 a source whose name breaks the grammar | 20 |
 | 5.6 output, `--json`, closing line; nothing printed on a stop | 11, 12, 21 |
-| 5.7 no hooks, no git | 25 |
-| 5.8 one order, folder last; nothing set back; the stop message names every run's writes; a re-run finishes | 11 (files), 12 (Jira), 15 (taxonomy) |
+| 5.7 no hooks, no git but read-only `git rev-parse` | 25 |
+| 5.8 one order, folder last; nothing set back; the stop message names every run's writes and where the folder is; a re-run finishes; a clash with another command gives other advice | 11 (files), 12 (Jira, the clash, the folder already gone), 15 (taxonomy) |
 | 6.1 backend references and repository references, every field | 11, 15, 16, 26 |
 | 6.2 exact matching; links in code skipped | 11 |
-| 6.3 one definition of the fields, built here; the checkers read it | 26 |
+| 6.3 one definition of the fields, built here; the checkers and the files backend's rewrite read it; matched by field, not by value | 26 (a row added is checked and rewritten; a value at an unnamed field is left and listed) |
 | 6.4 mentions listed | 11 |
 | 6.5 other projects untouched | 21 |
-| 6.6 only changed values written | 15 (every other line unchanged), 11 (the link's text and the other links unchanged) |
+| 6.6 only changed values written; each file replaced in one step | 15 (every other line unchanged), 11 (the link's text and the other links unchanged); the one-step write is a plan-level test (the stop helper's failures, plan Step 16) |
 | 7.1 backend `move` replaces `rename`; `before_folder`; twelve operations | 11, 12, 24 |
 | 7.2 files backend, references before the folder | 11, 13 |
-| 7.3 Jira read; 3.x, other value and missing ticket refused; a read before each edit; two runs; re-run | 12 |
+| 7.3 Jira read, paged; 3.x, other value and missing ticket refused; a read before each edit; two runs; re-run | 12; paging is a plan-level test (plan Step 17) |
 | 7.4 `--remote` | n/a: unchanged here; the comparison is `tcw/work/jira/remote.py:415-421`, which TCW-111 Design 6.5 extends and TCW-111 AC 10 tests |
 | 8 tree stores' `move` | 15, 16 |
 | 9.1 plan stage prompt | 23 |
 | 9.2 `audit-backlog` | 23 |
 | 9.3 `abstraction.md` | 23 |
 | 9.4 help and contracts | 5 (`--help`), 28 (`tests/test_cli_help_standard.py` covers every command's contract) |
+| 9.5 the passages that write a removed option, changed; the removed capability's record deleted | 23 |
 | 10 interfaces from earlier items | 2, 15, 17 (TCW-112), 9 (TCW-107, TCW-110), 10 (TCW-109) |
 | 11 the sweep | 24 |
 
@@ -1605,7 +1832,12 @@ spec is accepted:
   Design 1.3 here rewords two of its refusals, `set`'s for a capability the
   active project does not inherit and `rm`'s for another project's object,
   into the ownership check's one shape, so their tests change once this item
-  lands. Two things in its spec to correct: its handoff's "a move of an
+  lands. Its revised plan puts both refusals in `override_target` and
+  `removal_target`, and `find_tree_writable` refuses nothing itself; this
+  item makes those two refusals calls of the ownership check, and Design
+  1.1's "the check comes before the lookup" holds because
+  `removal_target` refuses another project's full identifier before
+  reading anything. Two things in its spec to correct: its handoff's "a move of an
   override is a move of an ordinary object" disagrees with Design 5.4 g
   here, which refuses moving an override away from its original's path and
   moving an object onto an inherited path; and its AC 33 expects a `PATCH`
@@ -1621,13 +1853,19 @@ spec is accepted:
 - **TCW-115:** `tcw project list --json` carries no `read-only` (TCW-108's
   handoff to TCW-115 named it; Design 1.8 removes it). The refusal of Design
   1.3 may add `tcw project provision <id>` for a project not on this machine
-  once that command exists.
+  once that command exists. `tcw provision`'s choice of which family
+  members' declarations to follow keeps TCW-108's two-sided-link test, now
+  named `reached_by_both_sides` (Design 1.8); whether provisioning keeps
+  that rule is TCW-115's to decide when it replaces the command.
 - **TCW-116 (a note, no work):** a move is refused while any of its tickets
   holds a 3.x `TCW Item` (7.3), so no folder moves away from what its 3.x
   value names, and migration can keep converting a value by the folder it
   names.
 - **TCW-117:** the migration guide shows Design 3.1's table, step for step,
-  and the `--blocks` replacement; the skills and guides that teach
+  and the `--blocks` replacement. Design 9.5 has already changed, only as
+  far as naming a working command, every passage that wrote a removed option
+  as a `tcw` command (the plan's Step 7 lists them); TCW-117 rewrites them
+  for 4.0 as it does the rest. The skills and guides that teach
   `--project` or `--blocks` change (`skills/work/SKILL.md:94`, `:107-112`;
   `skills/work/references/commands.md:11`, `:19`;
   `skills/configure/references/projects.md:170`, `:199`;
@@ -1734,6 +1972,44 @@ spec is accepted:
 
 None remain. The two the first draft asked (`--blocks` within one project,
 and where TCW-113 lands) are decided above.
+
+### Revised after the plan review (2026-10-22)
+
+The plan's adversarial review returned NOT DONE, and four of its findings
+were spec issues; each was checked against the repository first.
+
+- **The process rule** (Design 4.6, 5.7, AC 9, AC 25): TCW-107's
+  linked-worktree probe is 3.x code that starts `git rev-parse` on every
+  registry built, so "no git process" could not pass. The rule is now "no
+  process other than read-only `git rev-parse`", the rule the web app's
+  process test already applies.
+- **A work move and an inherited `work.jira`** (5.4 g, UC-6), and what the
+  Jira backend does when the named project's `work.jira` is undecided (3.3,
+  exit 7). Sites are compared by host, ignoring case.
+- **The removed options' values** are read only to word their messages
+  (2.2), and the Jira-mode web forms now accept a blocker in another project
+  (2.3, AC 4).
+- **Creators make no ownership call** (1.2), decided by the dispatching
+  session on the review's recommendation: a call that can never refuse
+  proves nothing, and the sweep lists the creators instead.
+- **The check comes before the lookup** (1.1), so AC 1's "locating never
+  changes the exit" can hold, and a graph problem is named as one (1.3).
+- **The documents** (9.5): the passages that write a removed option as a
+  command are changed here, because hiding the options otherwise fails the
+  documented-command check; the reason for not keeping the options visible
+  instead is given there.
+- **The stop after a clash with another command** (5.8, 7.3) no longer
+  says to run the same command again, which would only be refused; and the
+  message says where the folder is only after checking.
+- **Matching by field** (6.3) and the files backend's rewrite reading the
+  definition (6.3, 7.2); one-step file writes (6.6); a paged search (7.3);
+  the web answer carrying the recorded-reference note (3.3);
+  `read_only_reason`'s provisioning caller kept under a new name (1.8).
+
+Decided by the dispatching session: the item is not split. TCW-113 lands
+after it in any case, and the move and rewrite parts get their own care in
+the plan's tests instead (by field, a check that every changed file is
+explained, folder creation and capabilities in the stop runs).
 
 ### Revised after the spec review (2026-10-22)
 
