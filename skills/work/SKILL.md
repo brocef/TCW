@@ -111,8 +111,9 @@ every arrival it names.
 - Filing into an upstream project, which is read-only, exits 3; so does
   `tcw work edit --blocks` into a project that exists only as a `jira` block.
 
-On exit 5, or exit 3 for an absent project, report it and suggest
-`tcw provision`; do not retry.
+On exit 5, or exit 3 for an absent project, report it and pass on the
+instruction its message gives (the manifest entry to add or correct, or the
+command that fetches the project); do not retry.
 
 ## Read on demand
 
