@@ -586,3 +586,15 @@ def test_the_search_never_reads_inside_a_protected_folder_next_to_it(
     assert touched == []
     other = proj(home / "Projects", "lib")
     assert lookup(app, "lib") == other
+
+
+def test_the_note_for_a_project_not_here_is_design_6_2s_message(tmp_path):
+    from tcw.store.fs import unreachable_project_note
+    app = proj(tmp_path / "app", "app", upstream=["lib"])
+    manifest = write_manifest(app, {"lib": {"path": "../gone",
+                                            "repository": "https://h/lib.git"}})
+    note = unreachable_project_note(FsProjectRegistry.open(app), "lib")
+    assert note == (f"project 'lib' is not on this machine: {manifest} places it at "
+                    f"../gone, from https://h/lib.git; fetch it with "
+                    f"'tcw project provision lib'")
+    assert "tcw provision`" not in note

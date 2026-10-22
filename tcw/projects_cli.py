@@ -20,7 +20,9 @@ NAME = "projects"
 
 def connected(root: Path) -> list[dict]:
     """This project and the ones it is connected to, in the order `list`
-    prints them, each as `{id, relation, present, path}`."""
+    prints them, each as `{id, relation, present, path, found}`; `found` says
+    how TCW found a project on this machine other than this one (TCW-107
+    Design 6.1), and is None for this one and for one not here."""
     from tcw.store.project import FsProjectRegistry
     # A registry problem — an invalid ID, a parent that does not name this
     # project back — is an error, as `validate` reports it, never a project
@@ -28,7 +30,7 @@ def connected(root: Path) -> list[dict]:
     registry = FsProjectRegistry.open(root).require_valid()
     here = registry.current
     rows = [{"id": here.id, "relation": "current", "present": True,
-             "path": str(here.locator)}]
+             "path": str(here.locator), "found": None}]
     seen = {here.id}
 
     def add(project_id: str | None, relation: str) -> None:
@@ -38,7 +40,8 @@ def connected(root: Path) -> list[dict]:
         project = registry.get(project_id)
         rows.append({"id": project_id, "relation": relation,
                      "present": project is not None,
-                     "path": str(project.locator) if project is not None else None})
+                     "path": str(project.locator) if project is not None else None,
+                     "found": registry.found(project_id)})
 
     add(registry.declared_parent_id(), "parent")
     for child in registry.declared_child_ids():
@@ -73,5 +76,6 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
                 prints="one project ID per line, this project first, or --json",
                 writes="nothing", examples=["projects list", "projects list --json"])
     p.add_argument("--json", action="store_true",
-                   help="print each project's relation, presence and path")
+                   help="print each project's relation, presence, path, and how "
+                        "it was found")
     p.set_defaults(func=_list)

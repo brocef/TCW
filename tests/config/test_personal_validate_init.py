@@ -15,7 +15,11 @@ WARNING = ("warning: .tcw/tcw-config.local.yaml: tracked; personal configuration
            "should stay out of version control (stop tracking it and list it "
            "in .tcw/.gitignore)")
 NOTICE = ("note: not inside a repository, so no ignore rule was written; keep "
-          ".tcw/tcw-config.local.yaml out of version control yourself")
+          ".tcw/tcw-config.local.yaml and .tcw/tcw-manifest.local.yaml out of version "
+          "control yourself")
+#: What `tcw init` writes in `.tcw/.gitignore`: both personal files (TCW-107
+#: Design 1.9).
+RULES = "/tcw-config.local.yaml\n/tcw-manifest.local.yaml\n"
 
 
 def git(root: Path, *argv: str) -> str:
@@ -99,11 +103,11 @@ def test_init_adds_the_ignore_rule_once(tmp_path):
     first = tcw(root, "init", "--id", "p")
     assert first.code == 0, first
     assert "wrote .tcw/.gitignore" in first.err.splitlines()
-    assert (root / ".tcw/.gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert (root / ".tcw/.gitignore").read_text() == RULES
     assert not (root / ".gitignore").exists(), "no root .gitignore (TCW-106 AC 2)"
     again = tcw(root, "init")
     assert again.code == 0, again
-    assert (root / ".tcw/.gitignore").read_text() == "/tcw-config.local.yaml\n"
+    assert (root / ".tcw/.gitignore").read_text() == RULES
     assert ".gitignore" not in again.err
     staged = [l for l in git(root, "status", "--porcelain").splitlines()
               if l[0] not in " ?"]
@@ -115,7 +119,8 @@ def test_init_accepts_the_rule_written_without_a_slash(tmp_path):
     (root / ".tcw").mkdir()
     (root / ".tcw/.gitignore").write_text("node_modules\ntcw-config.local.yaml\n")
     assert tcw(root, "init", "--id", "p").code == 0
-    assert (root / ".tcw/.gitignore").read_text() == "node_modules\ntcw-config.local.yaml\n"
+    assert (root / ".tcw/.gitignore").read_text() == \
+        "node_modules\ntcw-config.local.yaml\n/tcw-manifest.local.yaml\n"
 
 
 def test_init_adds_a_line_end_before_its_rule(tmp_path):
@@ -124,7 +129,7 @@ def test_init_adds_a_line_end_before_its_rule(tmp_path):
     (root / ".tcw/.gitignore").write_text("node_modules")
     assert tcw(root, "init", "--id", "p").code == 0
     assert (root / ".tcw/.gitignore").read_text() == \
-        "node_modules\n/tcw-config.local.yaml\n"
+        "node_modules\n" + RULES
 
 
 def test_init_outside_a_repository_prints_the_notice(tmp_path):

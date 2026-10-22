@@ -124,10 +124,12 @@ def test_ac2_init_writes_the_ignore_rule_in_the_tcw_folder_once(tmp_path):
     root = repository(tmp_path / "p")
     assert tcw(root, "init", "--id", "demo").code == 0
     ignore = root / ".tcw" / ".gitignore"
-    assert ignore.read_text().splitlines() == ["/tcw-config.local.yaml"]
+    # Both personal files, since TCW-107 Design 1.9.
+    rules = ["/tcw-config.local.yaml", "/tcw-manifest.local.yaml"]
+    assert ignore.read_text().splitlines() == rules
     assert not (root / ".gitignore").exists(), "no root .gitignore"
     assert tcw(root, "init").code == 0
-    assert ignore.read_text().splitlines() == ["/tcw-config.local.yaml"]
+    assert ignore.read_text().splitlines() == rules
 
 
 def test_ac2_outside_a_repository_the_note_names_the_new_place(tmp_path):
@@ -135,8 +137,8 @@ def test_ac2_outside_a_repository_the_note_names_the_new_place(tmp_path):
     root.mkdir()
     ran = tcw(root, "init", "--id", "demo")
     assert ran.code == 0, ran
-    assert ("keep .tcw/tcw-config.local.yaml out of version control yourself"
-            in ran.err), ran
+    assert ("keep .tcw/tcw-config.local.yaml and .tcw/tcw-manifest.local.yaml out of "
+            "version control yourself" in ran.err), ran
     assert "keep tcw-config.local.yaml" not in ran.err, ran
     assert not (root / ".tcw" / ".gitignore").exists()
 

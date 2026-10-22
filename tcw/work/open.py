@@ -92,9 +92,16 @@ def open_project(project_id: str, here: Path) -> WorkBackend:
     registry = _registry(here)
     project = registry.get(project_id)
     if project is None:
-        if registry.unreachable_project(project_id) or registry.entry(project_id):
+        absent = registry.unreachable_project(project_id)
+        if absent is not None and absent.message:
+            # TCW-107 Design 6.2: where its manifest places it, and the
+            # command that fetches it when the entry names a repository.
+            raise Unreachable(absent.message, project=project_id,
+                              repository=absent.repository)
+        if absent or registry.entry(project_id):
             raise Unreachable(f"project '{project_id}' is declared but is not on "
-                              f"this machine; `tcw provision` obtains it")
+                              f"this machine; `tcw provision` obtains it",
+                              project=project_id)
         raise NotFound(f"no project '{project_id}' is declared here")
     return open_backend(Path(project.locator), personal=False)
 

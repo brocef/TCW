@@ -360,9 +360,11 @@ LEFTOVER_LEGACY_FILE = ("a TCW 3.x configuration file at the root of a TCW 4 "
 
 def config_findings(project_root: Path) -> list[Finding]:
     """The layered configuration's problems, each an error naming its file
-    with the message starting at the key path, and a warning when the local
-    personal file is tracked (TCW-72 Design 5.5, 10.3)."""
+    with the message starting at the key path, and a warning when a personal
+    file, the configuration or the manifest, is tracked (TCW-72 Design 5.5,
+    10.3; TCW-107 Design 1.9)."""
     from tcw.config import LOCAL_FILE, effective
+    from tcw.project_files import LOCAL_MANIFEST
     from tcw.store.fs import personal_file_tracked
     config = effective(project_root)
     problems = config.problems
@@ -376,6 +378,8 @@ def config_findings(project_root: Path) -> list[Finding]:
                 for p in problems]
     if personal_file_tracked(project_root):
         findings.append(Finding("warning", LOCAL_FILE, TRACKED_PERSONAL_FILE))
+    if personal_file_tracked(project_root, LOCAL_MANIFEST):         # TCW-107 1.9
+        findings.append(Finding("warning", LOCAL_MANIFEST, TRACKED_PERSONAL_FILE))
     if (project_root / LEGACY_SENTINEL).is_file():
         findings.append(Finding("warning", LEGACY_SENTINEL, LEFTOVER_LEGACY_FILE))
     return findings

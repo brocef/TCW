@@ -18,8 +18,8 @@ from tcw.capabilities import cli as capabilities_cli
 from tcw.serve import DEFAULT_PORT, serve
 from tcw.store.fs import (
     COMPONENTS, SENTINEL, STORE_CLASSES, FsStoreProvisioner,
-    LOCAL_CONFIG, declared_repository, find_project_root, git_root,
-    ignore_personal_file, init, load_config, refuse_legacy_project,
+    LOCAL_CONFIG, LOCAL_MANIFEST, declared_repository, find_project_root, git_root,
+    ignore_personal_files, init, load_config, refuse_legacy_project,
     refuse_retired_config,
     provisioned_store_root,
 )
@@ -74,12 +74,13 @@ def run_init(components: list[str], project_id: str | None = None,
     # (TCW-72 Design 10.2). Outside a repository there is no ignore file to
     # write, so the person is told to do it themselves.
     if git_root(root) is not None:
-        written += ignore_personal_file(root)
+        written += ignore_personal_files(root)
         changed(written)
     else:
         changed(written)
         print(f"note: not inside a repository, so no ignore rule was written; "
-              f"keep {LOCAL_CONFIG} out of version control yourself", file=sys.stderr)
+              f"keep {LOCAL_CONFIG} and {LOCAL_MANIFEST} out of version control "
+              f"yourself", file=sys.stderr)
     return 0
 
 
@@ -425,8 +426,15 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         # have led with are added here.
         return _report([*config_findings(project_root), *graph], project_root)
     findings: list[Finding] = []
+    # An entry of this project's own manifests is reported once, by
+    # `manifest_findings` below (TCW-107 Design 5.1).
+    owned = registry.manifest_files()
     for absent in registry.unreachable():
-        if absent.declaration is not None:
+        if absent.decided_by is not None and absent.decided_by in owned:
+            continue
+        if absent.message:
+            message = absent.message                     # TCW-107 Design 6.2
+        elif absent.declaration is not None:
             message = (f"connected project '{absent.id}' is declared in "
                        f"{absent.declaration.url} but has not been provisioned "
                        f"here; run `tcw provision` to obtain it")
@@ -441,6 +449,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             "warning", str(entry.declared_in),
             f"connected project '{entry.id}' is declared at {entry.locator}, which "
             f"is not in this checkout; it was found at {registry.get(entry.id).locator}"))
+    findings += registry.manifest_findings()
     findings += registry.warning_findings()
     notes: list[str] = []
     findings += validate(project_root, notes=notes)

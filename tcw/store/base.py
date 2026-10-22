@@ -141,11 +141,13 @@ class UnreachableProject:
     locator: Any
     declared_in: Any = ""
     declaration: "RepositoryDeclaration | None" = None
-    # The rendered "not on this machine" message (TCW-107 Design 6.2), and the
+    # The rendered "not on this machine" message (TCW-107 Design 6.2), the
     # manifest holding the entry that decided where the project is (None when
-    # no entry decided). Presentation only, like `declared_in`.
+    # no entry decided), and the repository that entry gives. Presentation
+    # only, like `declared_in`.
     message: str = ""
     decided_by: Any = None
+    repository: str | None = None
 
 
 @dataclass(frozen=True)

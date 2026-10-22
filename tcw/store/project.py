@@ -680,7 +680,8 @@ class FsProjectRegistry(ProjectRegistry):
         if answer.folder is None:
             self._unreachable_edge(
                 config_path, target_id, answer.entry_folder, message=answer.message,
-                decided_by=answer.entry.file if answer.entry else None)
+                decided_by=answer.entry.file if answer.entry else None,
+                repository=answer.entry.repository if answer.entry else None)
             return
         target = self._canonical(answer.folder / SENTINEL)
         self._placed.setdefault(target, answer)
@@ -1239,7 +1240,8 @@ class FsProjectRegistry(ProjectRegistry):
     def _unreachable_edge(self, config_path: Path, project_id: str | None,
                           locator: Path | None,
                           declaration: RepositoryDeclaration | None = None, *,
-                          message: str = "", decided_by: Any = None) -> None:
+                          message: str = "", decided_by: Any = None,
+                          repository: str | None = None) -> None:
         """Record a declared project that is not here, rather than a problem.
 
         `project_id` is the key the declaring config used. It can be None only
@@ -1256,7 +1258,7 @@ class FsProjectRegistry(ProjectRegistry):
         entry = UnreachableProject(id=project_id, locator=locator,
                                    declared_in=config_path,
                                    declaration=declaration, message=message,
-                                   decided_by=decided_by)
+                                   decided_by=decided_by, repository=repository)
         if entry not in self._unreachable:
             self._unreachable.append(entry)
 
@@ -1589,13 +1591,17 @@ class FsProjectRegistry(ProjectRegistry):
             f"and no folder next to {named_by} or enclosing it declares it; add it "
             f"to {MANIFEST} or {LOCAL_MANIFEST}"))
 
-    def _entry_answer(self, entry: ManifestEntry, base: Path) -> _Answer:
-        """Design 2.3: the deciding entry decides, whatever is on disk."""
+    def _entry_answer(self, entry: ManifestEntry, base: Path, *,
+                      record: bool = True) -> _Answer:
+        """Design 2.3: the deciding entry decides, whatever is on disk. A
+        problem is recorded unless `record` is false, when it is only
+        returned, unrendered (for `manifest_findings`)."""
         named = f"entry for '{entry.id}' in {entry.file}"
         try:
             written = str(Path(entry.path).expanduser())
         except RuntimeError as error:       # `~name` naming no user
-            return _Answer(problem=self._recorded(entry.file, f"{named}: {error}"))
+            return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named}: {error}")
+                           if record else f"{named}: {error}")
         folder = root_of(self._locator_path(base / SENTINEL, written))
         probe = self._probe(folder)
         if probe.kind == "project" and probe.id == entry.id:
@@ -1621,7 +1627,59 @@ class FsProjectRegistry(ProjectRegistry):
             else:
                 wrong = (f"places it at {folder}, which is not a TCW project: it "
                          f"holds files and no {SENTINEL}")
-        return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named} {wrong}"))
+        return _Answer(entry=entry, problem=self._recorded(entry.file, f"{named} {wrong}")
+                       if record else f"{named} {wrong}")
+
+    def manifest_files(self) -> set:
+        """The active project's two manifests, as TCW names them."""
+        root = self._root_key(self.project_root)
+        return {root / LOCAL_MANIFEST, root / MANIFEST}
+
+    def manifest_findings(self) -> list[Finding]:
+        """`tcw validate`'s check of every entry in the active project's two
+        manifests, whether or not `projects:` names the ID (Design 5.1): an
+        entry whose folder is not here, or empty, is `unresolved`; one whose
+        folder is wrong is an `error`, or a `warning` when the shared entry
+        does not decide on this machine because the personal manifest or
+        `TCW_PROJECT_<ID>` places the project. A manifest with a format
+        problem is already a graph problem, and gives nothing here."""
+        self._load_graph()
+        manifests = self._manifests_of(self.project_root) or []
+        personal = {entry_id: file for file, _, entries in manifests
+                    if file.name == LOCAL_MANIFEST_NAME for entry_id in entries}
+        findings: list[Finding] = []
+        for file, base, entries in manifests:
+            for entry in entries.values():
+                answer = self._entry_answer(entry, base, record=False)
+                if answer.folder is not None:
+                    continue
+                if answer.problem is None:
+                    findings.append(Finding("unresolved", str(file), answer.message))
+                    continue
+                by = None
+                if file.name != LOCAL_MANIFEST_NAME:
+                    by = (str(personal[entry.id]) if entry.id in personal
+                          else self._variable_places(entry.id))
+                if by is None:
+                    findings.append(Finding("error", str(file), answer.problem))
+                else:
+                    findings.append(Finding(
+                        "warning", str(file),
+                        f"{answer.problem} (overridden on this machine by {by})"))
+        return findings
+
+    @staticmethod
+    def _variable_places(project_id: str) -> str | None:
+        """`TCW_PROJECT_<ID>`'s name when it names a folder on this machine,
+        read without recording it as an override in force."""
+        name = override_variable(project_id)
+        value = (os.environ.get(name) or "").strip()
+        if not value:
+            return None
+        try:
+            return name if Path(value).expanduser().is_dir() else None
+        except (RuntimeError, OSError):
+            return None
 
     @staticmethod
     def _not_here(entry: ManifestEntry, only_git: bool) -> str:

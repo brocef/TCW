@@ -44,7 +44,8 @@ from tcw.store import config_edit
 from tcw.store.checkouts import (
     checkout_root, provisioned_root as provisioned_store_root,
 )
-from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_SENTINEL, SENTINEL, TCW_FOLDER, V3, V4,
+from tcw.project_files import (LOCAL_CONFIG_NAME, LOCAL_MANIFEST, LOCAL_MANIFEST_NAME,
+                               LOCAL_SENTINEL, SENTINEL, TCW_FOLDER, V3, V4,
                                find_marker, legacy_message, version_problem,
                                without_version)
 from tcw.store.project import (FsProjectRegistry, _below, validate_project_id,
@@ -197,13 +198,15 @@ def _no_prompt_env() -> dict[str, str]:
 #: The personal file beside `.tcw/tcw-config.yaml` (TCW-72 Design 1; TCW-106),
 #: relative to the project root.
 LOCAL_CONFIG = LOCAL_SENTINEL
-#: The line `tcw init` writes for it in `.tcw/.gitignore`; the leading `/`
-#: limits the rule to that folder.
+#: The lines `tcw init` writes in `.tcw/.gitignore` for the two personal
+#: files (TCW-107 Design 1.9); the leading `/` limits each rule to that folder.
 LOCAL_CONFIG_RULE = "/" + LOCAL_CONFIG_NAME
+LOCAL_MANIFEST_RULE = "/" + LOCAL_MANIFEST_NAME
 
 
-def personal_file_tracked(root: Path) -> bool:
-    """Whether `tcw-config.local.yaml` in `root` is under version control
+def personal_file_tracked(root: Path, relative: str = LOCAL_CONFIG) -> bool:
+    """Whether the personal file `relative` (by default
+    `.tcw/tcw-config.local.yaml`) in `root` is under version control
     (TCW-72 Design 10.3). Read only: the status command run here takes no
     lock and changes nothing. The file is tracked when it exists and the
     status reports it neither as untracked (`??`) nor as ignored (`!!`).
@@ -211,29 +214,33 @@ def personal_file_tracked(root: Path) -> bool:
     setting, under which git prints nothing for an untracked or ignored file,
     just as for a tracked one. False when the file is absent or `root` is not
     in a repository."""
-    if not (root / LOCAL_CONFIG).is_file() or git_root(root) is None:
+    if not (root / relative).is_file() or git_root(root) is None:
         return False
     done = _git(["git", "--no-optional-locks", "-C", str(root), "status",
                  "--porcelain", "--ignored", "--untracked-files=all", "--",
-                 LOCAL_CONFIG],
+                 relative],
                 capture_output=True, text=True)
     if done.returncode != 0:
         return False
     return not any(line[:2] in ("??", "!!") for line in done.stdout.splitlines())
 
 
-def ignore_personal_file(root: Path) -> list[tuple[str, Path]]:
-    """Add `/tcw-config.local.yaml` to `.tcw/.gitignore` in `root`, unless a
-    line there already reads exactly that or `tcw-config.local.yaml` (TCW-72
-    Design 10.2; TCW-106 Design 1.5). Returns what it wrote, for the caller to
-    name. Writes the file only; nothing is staged."""
+def ignore_personal_files(root: Path) -> list[tuple[str, Path]]:
+    """Add `/tcw-config.local.yaml` and `/tcw-manifest.local.yaml` to
+    `.tcw/.gitignore` in `root`, each unless a line there already reads it or
+    the file's name without the `/` (TCW-72 Design 10.2; TCW-106 Design 1.5;
+    TCW-107 Design 1.9). Returns what it wrote, for the caller to name.
+    Writes the file only; nothing is staged."""
     ignore = root / TCW_FOLDER / ".gitignore"
     text = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
-    if {LOCAL_CONFIG_NAME, LOCAL_CONFIG_RULE} & {line.strip() for line in text.splitlines()}:
+    lines = {line.strip() for line in text.splitlines()}
+    missing = [rule for rule in (LOCAL_CONFIG_RULE, LOCAL_MANIFEST_RULE)
+               if not {rule, rule[1:]} & lines]
+    if not missing:
         return []
     if text and not text.endswith("\n"):
         text += "\n"
-    ignore.write_text(text + LOCAL_CONFIG_RULE + "\n", encoding="utf-8")
+    ignore.write_text(text + "".join(rule + "\n" for rule in missing), encoding="utf-8")
     return [("wrote", ignore)]
 
 
@@ -571,6 +578,8 @@ def unreachable_project_note(registry, project_id: str) -> str | None:
     absent = registry.unreachable_project(project_id)
     if absent is None:
         return None
+    if absent.message:
+        return absent.message                # TCW-107 Design 6.2
     if absent.declaration is not None:
         # A declared project has a remedy, so the message names it rather than
         # only the symptom — the same shape `StoreNotProvisioned` uses.
