@@ -70,7 +70,8 @@ the criteria write each letter doubled in lower case (`A` is `aa`).
 - **Changed** `cli/validate-a-project`: reports a load-order warning, a loop,
   a listed child that does not name its parent, a parent, ancestor or listed
   child that is not on this machine as "could not check", and a problem in
-  another project's `parents:` as "could not check".
+  another project's `parents:`, or a 3.x `projects:` key in an ancestor's
+  file, as "could not check".
 - **Changed** `cli/rely-on-one-output-contract`: a new exit code, 7, for a
   command that needs something inherited that is not available here.
 - **Changed** `cli/override-the-team-configuration-for-myself`: the project's
@@ -196,7 +197,13 @@ the criteria write each letter doubled in lower case (`A` is `aa`).
   Design 3.5.)
 - **Guides and the wording of `docs/use-cases.md`**: TCW-117. Notes lists what
   they must change. The one skill file that lists exit codes is changed here
-  (Design 8.3), because an agent reading it would misread exit 7.
+  (Design 8.3), because an agent reading it would misread exit 7. The skill
+  sentences that teach the `jira` block (`skills/work/SKILL.md:103-112`) and
+  an `extends` naming a child or an upstream (`skills/taxonomy/SKILL.md:108-109`,
+  `skills/capabilities/SKILL.md:120-121`) wait for TCW-117 too (decided by the
+  dispatching session on 2026-10-22: nothing ships between this item and the
+  4.0 release, and TCW-117 lands before TCW-118, which cuts it); Notes gives
+  the handoff.
 - **Locating a project's folder**: TCW-107. This item changes only which
   relations the walk follows and the order of TCW-107 Design 2.2 (b) and (c)
   (Design 3.4).
@@ -243,7 +250,9 @@ like every graph problem today, it makes `tcw validate` fail and every command
 that requires a valid graph refuse with exit 1 (`require_valid`,
 `tcw/store/project.py:453-456`). **In another project's configuration** (an
 ancestor's, a descendant's, or a descendant's other parent's) it is not a
-problem of the active project: Design 6.6 says what happens instead. A loop is
+problem of the active project: Design 6.6 says what happens instead, and
+counts a project named both as a parent and as a child there as a
+`children:` problem, which in a descendant stays a graph problem. A loop is
 a graph problem wherever it is (Design 4.7).
 
 1.4. **Only the committed file names parents.** `parents` is not added to
@@ -431,12 +440,31 @@ the 3.x chain; with parent links:
   Design 6.1's table, in TCW-110's code.
 
 3.5. **`projects:` is refused.** A `.tcw/tcw-config.yaml` holding a top-level
-`projects` key has a graph problem: `'projects' is not a TCW 4.0 key: name
+`projects` key has the problem `'projects' is not a TCW 4.0 key: name
 parents under 'parents:' and children under 'children:', by ID, and say where
-projects are in .tcw/tcw-manifest.yaml`. This replaces TCW-107 Design 3,
-which keeps `projects:` (IDs only) until this item. The upstream relation,
-its read-only bookkeeping (`_upstream_only`, `_upstream_declarers`,
-`_read_as_upstream`, `_validate_upstreams`, `tcw/store/project.py:203-209`,
+projects are in .tcw/tcw-manifest.yaml`; one holding the 2.x key
+`connected-projects` has the same problem with that key named (today's
+message for it, "renamed to 'projects'", `tcw/store/base.py:473-479`, would
+now be wrong). This replaces TCW-107 Design 3, which keeps `projects:` (IDs
+only) until this item. Whose problem it is follows Design 1.3 and 6.6
+(decided by the dispatching session on 2026-10-22, following the user's
+decision recorded in 6.6):
+
+- in the active project's own configuration, and in a descendant's, it is a
+  graph problem (`tcw validate` fails, and every command that requires a
+  valid graph exits 1), as a descendant's `children:` problems are (6.6, last
+  paragraph): the descendant's relations are unknown, and they decide the
+  family the active project shows;
+- in an ancestor's configuration, or in that of a project read only for a
+  lookup (Design 3.4, 4.6), that project's links count as unreadable, exactly
+  as a malformed `parents:` there does (6.6): it is placed with no parents and
+  listed in `LoadOrder.unreadable`, `tcw validate` reports row (d) of 6.5
+  with this problem, and exit 7 applies only to the axes it passes. Reason:
+  the key means that project's parents are unknown, which is the state 6.6
+  handles without stopping the reader (UC-2, UC-7).
+
+The upstream relation, its read-only bookkeeping (`_upstream_only`,
+`_upstream_declarers`, `_read_as_upstream`, `_validate_upstreams`, `tcw/store/project.py:203-209`,
 `:863-876`, `:940-959`) and the `jira` block of a `projects:` entry
 (`ConnectedProject.jira`, `tcw/store/base.py:717-720`) go with it. **The
 fixtures that TCW-107 and TCW-110 leave on `projects:` are converted here**,
@@ -446,7 +474,11 @@ naming the parent), and a `projects.upstream` entry becomes a parent whose
 `inherit` lists the axes `extends` takes from it, or `none`. In particular
 TCW-110's cross-project fixtures (`app` naming `core` under
 `projects.upstream`, no `extends`: TCW-110 AC 13 and its plan's Step 7)
-become `parents: [{id: core, inherit: none}]`.
+become `parents: [{id: core, inherit: none}]`. A 3.x `extends` naming a
+project the extender lists as a child (the federation suites' usual shape)
+is converted by inverting that link: the extended project becomes a parent
+of the extender, passing the axes extended, and the child-and-parent link
+between them is dropped from both files, since keeping it would be a loop.
 
 3.6. **Until TCW-112, `extends` is held to the parent links.** An `extends`
 ID for axis `x` must be a project that passes `x` to the project (Design
@@ -466,7 +498,23 @@ the opposite of what the link says; and an `extends` naming a descendant
 would be inheritance upwards, which no 4.0 link expresses. The 4.0 form of a
 3.x `extends` naming an upstream, a sibling or a descendant is to make that
 project a parent passing the axis. An `extends` ID that passes `x` and is not
-on this machine raises Design 6.2's error (Design 6.3).
+on this machine, or is in `unreadable`, raises Design 6.2's error (Design 6.3).
+
+**When what lies above is unknown.** If the ID does not pass `x`, but a
+project that does pass `x` (5.1) is not on this machine or is in
+`unreadable` (6.6), nothing above that project is known, so the ID may well
+be one of its ancestors, and telling the person to add a parent link could
+be wrong advice. Then Design 6.2's error is raised for that project (the
+first such in load order), exit 7, instead of the error above; `tcw validate`
+reports it as "could not check" (6.5, row c), not as an error; and `tcw
+taxonomy|capabilities extends add` refuses with the same error, exit 7, and
+leaves the file unchanged, since it cannot tell which fix is right. A fresh
+clone in CI without a parent's repository is the common case (UC-4, S-4).
+
+**Whose links decide.** The rule is applied to the project whose store is
+being opened, whichever project that is: for a project read by full
+identifier from outside the family (Design 3.7, TCW-110 Design 6.1), the
+projects that pass `x` to it come from its own load order (Design 4.6).
 
 3.7. **A sibling's objects stay readable by full identifier.** TCW-110, which
 lands first, reads an object of any project TCW-107's lookup can locate, not
@@ -526,9 +574,12 @@ The design's two shapes:
 load order: no order keeps every project's own order of parents (at '<Q>': '<h1>', '<h2>', … cannot be placed); using depth-first order <id>, <id>, …, <P>; to choose a value yourself, set it in '<P>'
 ```
 
-where `<Q>` is the project whose merge failed (the first one, when several
-would) and `<h…>` are the distinct first projects left in its lists when it
-failed, each once, in the order of the lists. It is shown by `tcw validate`,
+where `<Q>` is the project whose merge failed and `<h…>` are the distinct
+first projects left in its lists when it failed, each once, in the order of
+the lists. When several merges would fail, `<Q>` is the first to fail in the
+order the merges are made: each project's merge after the merges of all its
+parents, the parents taken in listing order (so a failure under `p1` is
+found before one under `p2`). It is shown by `tcw validate`,
 as a `warning` finding at the active project's `.tcw/tcw-config.yaml`, and by
 `tcw projects list --json` (Design 8.2), and later by `tcw project info`
 (TCW-115). No other command prints it: the fix usually lies in projects the
@@ -540,7 +591,11 @@ answers for the active project, an ancestor or a descendant. A descendant may
 have parents outside the family (its other parents); they are found when its
 load order is asked for, through TCW-107's lookup from that descendant, and
 are not added to the family (Design 3.3). TCW-113 needs this to show a
-capability as each descendant sees it.
+capability as each descendant sees it. It also answers for any other project
+TCW-107's lookup can locate, such as a sibling whose store is opened to read
+an object by full identifier (Design 3.6, 3.7): its ancestors are found by
+Design 3.1's upward walk from it, as for the 2.12 bullet of Design 3.4, and
+none of them is added to the family.
 
 4.7. **A loop is an error.** If a project is its own ancestor, through the
 `parents:` links of any projects the registry has read (the walk's, and those
@@ -639,23 +694,39 @@ fails the run) at the file that names the project:
 | - | ------------- | ------- |
 | a | a parent or another ancestor not on this machine | TCW-107 Design 6.2's, followed by `; could not check what it passes down to '<P>' or the projects above it` |
 | b | a listed child not on this machine | TCW-107 Design 6.2's, followed by `; could not check that it names '<P>' as a parent` |
-| c | a project `extends` names (6.3), not on this machine | TCW-107 Design 6.2's, followed by `; could not check the <axis> inherited from it` |
+| c | a project at which an `extends` check stopped (6.3, and 3.6's "when what lies above is unknown") | `; could not check the <axis> inherited from it`, added to the project's (a) or (d) text |
 | d | a project whose own links could not be read (6.6) | `could not check what '<M>' passes down to '<P>': <the problem>` for an ancestor; `could not check that '<M>' names '<P>' as a parent: <the problem>` for a listed child |
 
 For (c), `tcw validate` catches `InheritedUnavailable` raised while it checks
-a store and records this finding instead of failing. **One finding per
-project**, however many routes reach it and whichever rows apply. When the
-deciding manifest entry of a missing project is in the active project's own
-manifests, TCW-107 Design 5.1 (a) already reports it, and TCW-107's plan
-drops the walk's finding for it (its choice 2); this item keeps that rule and
-appends the row's text above to 5.1 (a)'s message, so that one finding says
-both where the project should be and what could not be checked.
+a store and records this finding instead of failing.
+
+**One finding per project**, however many routes reach it and whichever rows
+apply. A project is either missing or unreadable, never both, so (a) and (b)
+never meet (d). The one finding says:
+
+- for a project not on this machine: TCW-107 Design 6.2's sentence, then the
+  suffix of each row that applies, (a), (b) and (c) in that order, each
+  starting `; `, each once ((a) and (b) exclude each other in a graph with
+  no loop, but either can come with (c), as (a) does in AC 19; (c) never
+  applies alone, since a project an `extends` check stops at is an ancestor);
+- for an unreadable project: row (d)'s text, followed by (c)'s suffix when
+  an `extends` check stopped at it;
+- its `where` is the file of the first row that applies, in the same order.
+
+When the deciding manifest entry of a missing project is in the active
+project's own manifests, TCW-107 Design 5.1 (a) already reports it, and
+TCW-107's plan drops the walk's finding for it (its choice 2); this item
+keeps that rule and appends the suffixes above to 5.1 (a)'s message, so that
+one finding says both where the project should be and what could not be
+checked.
 
 6.6. **A problem in another project's links does not stop the active
 project** (decided by the user on 2026-10-22, UC-2). When a Design 1.3
 problem other than a loop is found in the `parents:` of a project other than
 the active one (an ancestor, a descendant, or a project read for Design 3.4
-or 4.6):
+or 4.6), or a `projects:` or `connected-projects` key is found in an
+ancestor's file or in that of a project read for Design 3.4 or 4.6 (Design
+3.5):
 
 - it is not a graph problem of the active project, so `require_valid` passes
   and commands that need only the project's own records work;
@@ -672,6 +743,14 @@ A problem in a descendant's committed `children:` list, and a name-back
 failure in it (2.5), stay graph problems, as reciprocity failures are today:
 the active project lists that descendant, and those lists decide the family
 it shows. An ancestor's `children:` is never checked from below (2.5).
+**"Named both as a parent and as a child"** (1.3) counts, in another
+project, as a `children:` problem, since it is the `children:` list that
+repeats a parent (decided by the dispatching session on 2026-10-22,
+following the user's decision above): in a descendant it is a graph problem;
+in an ancestor, or a project read only for a lookup, it is not checked, and
+that project's parents are read as usual. In a descendant whose other
+project is here, it always comes with a loop or a name-back failure as well,
+so the reading changes an outcome only when that project is absent.
 
 ### 7. Writing into another project, until TCW-114
 
@@ -715,7 +794,9 @@ named, with the command that fetches it, by `tcw validate` (6.5 b) and by
 `--json` (`present: false`), and shown as unavailable in views by TCW-113.
 
 8.2. **`tcw projects list --json`** prints
-`{"schema": 1, "projects": [...], "load-order": [...], "load-order-complete": <bool>, "load-order-warning": <string or null>}`.
+`{"schema": <n>, "projects": [...], "load-order": [...], "load-order-complete": <bool>, "load-order-warning": <string or null>}`,
+where `<n>` is the value `print_json` writes for every document (2, after
+TCW-110's plan, Step 4).
 Each row keeps `id`, `relation` (`current`, `parent` or `child`), `present`,
 `path` and TCW-107's `found`. A parent row adds `inherit`, the list of axes it
 passes in the order of `AXES` (`[]` for `none`). A child row adds `personal`,
@@ -927,7 +1008,11 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
    b.work/<a folder in b's work store>` run in `a` prints `b`'s item (Design
    3.7); with `b`'s folder absent, it exits 5 with a message containing
    `project 'b' is not on this machine`, not `no project with ID 'b'`, and
-   `tcw validate` in `a` reports no finding naming `b`.
+   `tcw validate` in `a` reports no finding naming `b`. With `b: [ws, bp]`,
+   `bp` here and in nothing `a` lists or names, `taxonomy.extends: [bp]` in
+   `b`, and a term `t` in `b`'s own taxonomy: `tcw taxonomy show b.taxonomy/t`
+   run in `a` exits 0 and prints `b`'s term, and `get("bp")` from `a` is None
+   (Design 3.6's "whose links decide", 4.6).
 10. **Several levels.** `cc: [aa, bb]`, `ff: [dd, ee]`, `gg: [cc, ff]`: the
     load order of `gg` is `aa, bb, cc, dd, ee, ff, gg`, with no warning.
 11. **Reached twice, placed once.** `aa` parent of `bb`; `bb` parent of `cc`
@@ -945,7 +1030,11 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
     work list` in `zz` prints nothing on standard error.
 14. **Fallback: a child listed before its own parent.** `dd: [cc]`,
     `ee: [dd, cc]`: the load order of `ee` is `cc, dd, ee`, and the warning
-    contains `(at 'ee': 'cc', 'dd' cannot be placed)`, each name once.
+    contains `(at 'ee': 'cc', 'dd' cannot be placed)`, each name once. Two
+    merges that fail: with `hh: [gg]`, `ii: [hh, gg]` and `pp: [ee, ii]` as
+    well, the warning of `pp` contains `(at 'ee': 'cc', 'dd' cannot be
+    placed)`; with `pp: [ii, ee]` instead, `(at 'ii': 'gg', 'hh' cannot be
+    placed)`.
 15. **Loops.** `aa: [bb]`, `bb: [aa]`: in `aa`, `tcw projects list` and `tcw
     work list` exit 1, and `tcw validate` exits 1 with an error containing
     `loop in parents: aa -> bb -> aa`. `aa: [aa]` is reported as `loop in
@@ -987,7 +1076,15 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
     `core` here and `taxonomy.extends: [core]`; `ws` listing `kid`, `kid:
     [ws]`, and `taxonomy.extends: [kid]` in `ws`. `tcw taxonomy extends add
     other` in `app` exits 2 with the same message and leaves the file
-    unchanged.
+    unchanged. When what lies above is unknown: `app: [lib]`, `lib` not on
+    this machine, and `taxonomy.extends: [core]` in `app`, where nothing `app`
+    has read names `core`: `tcw taxonomy list` in `app` exits 7 with a
+    message containing `'app' inherits its taxonomy from project 'lib', which
+    is not on this machine:`; `tcw validate` exits 0 with one `unresolved`
+    finding naming `lib` and containing `could not check the taxonomy
+    inherited from it`, and no error; and, with no `extends` in `app`, `tcw
+    taxonomy extends add core` exits 7 and leaves the file unchanged byte for
+    byte.
 20. **A missing grandparent.** `app: [lib]`, `lib: [core]`, `core` not on this
     machine: `sources("capabilities")` from `app` raises `InheritedUnavailable`
     naming `core`; the load order of `app` is `core, lib, app` with
@@ -1070,7 +1167,16 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
     With `app: [{id: lib, inherit: none}]` instead, `sources("taxonomy")` is
     `[app]` and raises nothing. In `lib` itself, `tcw projects list` exits 1.
     With `lib: [top]` and `top: [lib]` instead (a loop), `tcw work list` in
-    `app` exits 1.
+    `app` exits 1. With `lib`'s file holding `projects: {parent: {top: }}`
+    instead of `parents:`, every outcome in `app` is the same as for
+    `parents: core`, and the finding contains `'projects' is not a TCW 4.0
+    key`; in a descendant it stops the active project: `ws` listing `kid`,
+    whose file holds `projects: {parent: {ws: }}`, makes `tcw validate` in
+    `ws` exit 1 with an error containing `'projects' is not a TCW 4.0 key`.
+    With `lib: [top]` and `children: [top]` in `lib` (named both as a parent
+    and as a child), `top` here and naming nothing: in `app`, `tcw validate`
+    exits 0 with no finding naming `top` or `lib`, and the load order is
+    `top, lib, app` with `load-order-complete: true`.
 32. **Personal children do not change a gate.** `ws` keeps a capabilities
     ledger; `b` names `ws`, keeps a ledger holding `x`, and is listed only in
     `ws`'s `.tcw/tcw-config.local.yaml`; an item of `ws` has a
@@ -1084,8 +1190,17 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
     `upstream` key; `tcw projects list --json` in `app` gives the same values
     as `read-only`; a client test renders the create form's target for
     `lib` as `lib (read-only from here)`.
-34. The full suite, run as CI runs it (bare `pytest`), passes on `v4`, and
-    so do `pnpm test`, `pnpm typecheck` and `pnpm lint` in `web/client`.
+34. **The suite, as CI runs it** (`.github/workflows/test.yml`): bare
+    `pytest` after `pip install -e '.[dev]'`, which is the `pytest` job, and
+    `pnpm install --frozen-lockfile` then `pnpm check:build`, which is the
+    `web-build` job, both pass on `v4`. CI runs no other web check; from the
+    repository's root (the scripts are in the root `package.json`; there is
+    no `web/client/package.json`), the web client's unit tests (`pnpm
+    test`), its type check (`pnpm exec tsc --noEmit`) and `pnpm lint` pass as
+    well, and every file this item changes that `prettier` covers passes
+    `prettier --check`. `pnpm typecheck`, which runs a repository-wide
+    `prettier --check .` first (`package.json:15-17`), is not a condition: it
+    fails on files this item does not touch.
 
 ### Coverage
 
@@ -1106,15 +1221,15 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
 | 3.2 the interface; `parent()`, `entry()`, `declared_upstream_ids()` gone | 9, 16, 17, 28 |
 | 3.3 `get` answers for the family only | 9, 16, 29 |
 | 3.4 TCW-107's lookup: (b) reverse load order; (c) descendants found so far, listed or not; 2.10; 2.11 (a); the 2.12 bullet for a project outside the graph; the 2.12 rows | 22 (b and 2.11 a); 30 (c, listing order); 29 (c, an unlisted descendant); 16 (the 2.12 bullet: a descendant's other parent found from it, not added to the family); 9, 18, 20 and 6 (the 2.12 rows: an ID named only by `parents:` or `children:`, including an ancestor's `children:`, and not here is "not on this machine", never "unknown") |
-| 3.5 `projects:` refused; upstream and `jira` block gone; earlier items' fixtures converted | 8, 21 |
-| 3.6 `extends` held to the links | 19 |
+| 3.5 `projects:` and `connected-projects` refused: a graph problem in the active project and a descendant, unreadable links in an ancestor; upstream and `jira` block gone; earlier items' fixtures converted | 8, 21, 31 |
+| 3.6 `extends` held to the links; exit 7 when what lies above is unknown; whose links decide | 19, 9 (a project outside the family) |
 | 3.7 a sibling's objects readable by full identifier | 9 |
 | 4.1 C3 definition | 10, 11, 12 |
 | 4.2 the design's examples | 10, 11, 12 |
 | 4.3 reached twice, placed once | 11 |
 | 4.4 depth-first fallback | 13, 14 |
-| 4.5 the warning, its names distinct, where it is shown and where not | 13, 14 |
-| 4.6 a descendant's load order, outside the family | 16 |
+| 4.5 the warning, its names distinct, which merge it names, where it is shown and where not | 13, 14 |
+| 4.6 a descendant's load order, and any located project's, outside the family | 16, 9 |
 | 4.7 a loop is an error, among ancestors or descendants, wherever it is | 15, 31 (a loop above the active project) |
 | 4.8 the last declaring project wins | n/a here: no axis applies it in this item. Configuration applies it in TCW-109 ("How values combine", `docs/work/TCW-99-…/design.md:493`) and taxonomy and capabilities in TCW-112 ("An override is an object at the same path", `design.md:456`); the rule itself is `design.md:407`. The order it runs over is checked by 11 and 17, and the handoffs give both items AC 11's shape as a test |
 | 5.1 which projects pass an axis | 17, 18 |
@@ -1124,8 +1239,8 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
 | 6.2 `InheritedUnavailable`, exit 7, the two messages | 19, 20, 31 |
 | 6.3 `extends` naming a missing project exits 7 | 19 |
 | 6.4 the load order with a project missing or unreadable | 18, 20, 31 |
-| 6.5 `tcw validate`: (a) ancestor, (b) child, (c) `extends`, (d) unreadable; one finding per project | 18, 20, 26 (a); 6 (b); 19 (c); 31 (d); 20 (one finding) |
-| 6.6 a problem in another project's links | 31 |
+| 6.5 `tcw validate`: (a) ancestor, (b) child, (c) `extends`, (d) unreadable; one finding per project, and what it says when several rows apply | 18, 20, 26 (a); 6 (b); 19 (c); 31 (d); 20 (one finding); 19 ((a) with (c), for `core` and for `lib`) |
+| 6.6 a problem in another project's links, `projects:` in an ancestor, "named both" as a `children:` problem | 31 |
 | 7.1 the write rule until TCW-114, siblings refused | 21 |
 | 7.2 the `jira` block gone | 21, 8 |
 | 8.1 `tcw projects list` plain | 5, 9, 23 |
@@ -1140,11 +1255,15 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
   files mention `projects` or `upstream` (`grep -rln` over `tests/`), and
   TCW-107 and TCW-110 will have added more, with their locators already in
   manifests. Each relation becomes `parents:`/`children:`, and each upstream
-  a one-sided parent. Sibling `extends`, which the federation tests use
-  heavily (`tests/test_capabilities_federation.py`, `tests/test_multiproject.py`),
-  must become a parent link passing the axis (Design 3.6). The plan gives the
-  tests one helper for writing relations, reads each failure rather than
-  editing assertions, and keeps the tests of behavior that no longer exists
+  a one-sided parent. An `extends` naming a listed child, which the
+  federation tests use heavily (`connect_sources` in `tests/test_taxonomy.py`,
+  `connect_many` in `tests/test_capabilities_federation.py`), often declared
+  after the relation through `declare_extends` or `extends_add`, must become
+  a parent link passing the axis, with the old link dropped (Design 3.5,
+  3.6). The plan has the reader translate `projects:` for a few commits while
+  the fixtures are rewritten, so every way a test writes a relation is
+  covered and manifests are never touched; reads each failure rather than
+  editing assertions; and keeps the tests of behavior that no longer exists
   (upstream bookkeeping) only where a 4.0 rule replaces them (Design 7.1).
 - **A broken library makes inheritance through it unavailable** (Design 6.6).
   A reader is no longer stopped by it, but every command that needs an axis
@@ -1161,8 +1280,10 @@ it on `FsProjectRegistry.open(<the active project's root>)`.
   `lib` (Design 3.4 c). TCW-107's remedy stands: an entry in the project's
   own manifest settles it.
 - **C3 is subtle.** Every example in the design is a criterion (AC 10-14), and
-  the plan adds a property test comparing the implementation against a
-  direct transcription of 4.1 on generated graphs.
+  the plan adds a property test comparing the implementation on generated
+  graphs against an independent one: Python's own C3, the method resolution
+  order of classes generated with each project's parents reversed as their
+  bases, which reproduces AC 10-12 and refuses AC 13 and 14.
 - **`extends` keeps working by different rules for one or two items**
   (Design 3.6): a 3.x configuration extending a sibling, an upstream not
   named as a parent, or a descendant is refused on `v4` until it names that
@@ -1200,7 +1321,20 @@ Decisions, each with its reason:
 - **`inherit: []` is refused** in favour of `inherit: none` (Design 1.2), so
   each meaning has one spelling; a list of all three is accepted as `all`.
 - **A project listed as both parent and child is a problem**, reported
-  directly rather than only as the loop it implies (Design 1.3).
+  directly rather than only as the loop it implies (Design 1.3). In another
+  project it counts as a `children:` problem (Design 6.6; the dispatching
+  session, 2026-10-22, following the user's decision on 6.6).
+- **`projects:` or `connected-projects` in an ancestor's file makes that
+  ancestor's links unreadable; in a descendant's it is a graph problem**
+  (Design 3.5; the dispatching session, 2026-10-22, following the user's
+  decision on 6.6).
+- **One finding, several rows** (Design 6.5): the 6.2 sentence, then each
+  applicable row's suffix in the table's order; row (d)'s text, then (c)'s.
+- **An `extends` ID that may lie above a missing or unreadable project exits
+  7, not 1** (Design 3.6), in `tcw taxonomy|capabilities extends add` too, so
+  nobody is told to add a link that may already exist.
+- **The first merge to fail is named** in the warning, in the order merges
+  are made (Design 4.5).
 - **Children may not go in the user-wide file** (Design 2.2), since it applies
   to every project.
 - **Only the active project's personal file adds children** (Design 2.4).
@@ -1247,7 +1381,10 @@ Decisions, each with its reason:
 - **What `tcw project info` will show is put in `tcw projects list --json`**
   now (Design 8.2), so it can be checked before TCW-115.
 - **The agent-facing exit-code table is changed here, not in TCW-117**
-  (Design 8.3): it states a contract agents act on.
+  (Design 8.3): it states a contract agents act on. The skill sentences about
+  the `jira` block and an `extends` naming a child wait for TCW-117 (the
+  dispatching session, 2026-10-22): nothing ships between this item and the
+  4.0 release, and TCW-117 lands before TCW-118.
 
 Handoffs, which the dispatching session records on each ticket when this spec
 is accepted:
@@ -1318,9 +1455,13 @@ is accepted:
   `projects.children` to `children:`; each `projects.upstream` entry to a
   parent whose `inherit` lists the axes `extends` took from it (`none` if
   none); an `extends` naming a sibling or a descendant to one more parent
-  inheriting only the named axes; an `extends` naming a project already
-  inherited through another parent to nothing; and drops `jira` blocks,
-  reporting each.
+  inheriting only the named axes, and for a descendant also drops the link
+  in the other direction (the descendant naming the extender as a parent,
+  and the extender listing it), which would otherwise be a loop, reporting
+  it; an `extends` naming a project already inherited through another parent
+  to nothing; and drops `jira` blocks, reporting each. The reader's temporary
+  translation of `projects:` in this item (its plan, Step 7) is the same
+  mapping, with tests, in the history of `tcw/store/links.py`.
 - **TCW-117:** `docs/use-cases.md` UC-2 (rename `projects:`; the requirement
   itself holds, Design 6.6), UC-3 (`parents:` instead of `parent: app:
   ../..`; packages no longer write into each other), UC-4 (the workspace as an
@@ -1328,7 +1469,16 @@ is accepted:
   content; exit 7), S-6 (exit codes); `docs/guide/multi-repo.md`,
   `skills/configure/references/projects.md` and
   `docs/guide/taxonomy-and-capabilities.md` (upstream, `projects:`, and
-  `extends` held to the links).
+  `extends` held to the links). Two skill passages (Non-goals):
+  `skills/work/SKILL.md:103-115`, "Another project's exit codes", which says
+  filing into an absent project with a `jira` block exits 0 and that filing
+  into an upstream exits 3 (Design 7.1, 7.2: both now exit 3, the `jira`
+  block is gone, and a project reached through a parent that does not list
+  the child is read-only from here), and should say what to do on exit 7;
+  and `skills/taxonomy/SKILL.md:108-109` and `skills/capabilities/SKILL.md:120-121`,
+  which say `extends` may name "a parent, a child, or an `upstream` it reads
+  without being named back" (Design 3.6: only an ancestor whose links pass
+  that axis).
 
 Questions for TCW-99: none. The one this spec raised (where `extends` is
 removed) is now a recorded decision (Non-goals).
