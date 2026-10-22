@@ -250,10 +250,14 @@ the object. Text that names no project (an id-path or a bare ticket key)
 is looked up in the active project's stores, and the object found is then
 checked; that is how an id-path that the inherited view resolves to another
 project's object is refused (1.5). The one exception, overriding an
-inherited object (1.5), is decided by the active project's inherited view
-(whether the identifier is in its id-path's chain, TCW-112 Design 2.7),
-which needs the ancestors' content and stops with TCW-108's exit 7 when an
-ancestor is not on this machine; TCW-112 places both refusals in the two
+inherited object (1.5), is decided in TCW-112's order (its plan, choice
+9): an identifier of a project that is not one of the active project's
+sources for that namespace is refused before anything is read, so it exits
+3 even with an ancestor missing; only for a source's identifier is the
+active project's inherited view consulted (whether the identifier is in
+its id-path's chain, TCW-112 Design 2.7), which needs the ancestors'
+content and stops with TCW-108's exit 7 when an ancestor is not on this
+machine; TCW-112 places both refusals in the two
 store methods that choose a write's target (`override_target` for `set`
 and `reset`, `removal_target` for `rm`), and this item makes each of them a
 call of the ownership check.
@@ -875,9 +879,20 @@ has gone), and standard error says, whichever run did each part:
     item, and running this one again would only be refused at that ticket.
     So the message instead names the tickets this run set, which now
     disagree with the other command's, and says: `wait for the other
-    command to finish, then run tcw validate --remote; a ticket whose TCW
-    Item names neither this command's identifiers nor the other's must be
-    corrected in Jira by hand`;
+    command to finish (if it ran in another clone, pull its commit into
+    this one); then run tcw validate --remote, and in Jira set each ticket
+    it reports to the identifier its folder now has. To keep this
+    command's result instead, run this command again naming the item at
+    its new place`. The tickets that need correcting are this run's: two
+    runs cannot leave a ticket naming neither command's identifiers, since
+    each run sets a ticket only to its own, so the run that finished has
+    set every ticket after the clash, and moved the folder, and only the
+    tickets this run set before it stop agreeing with the folder. The
+    second way out finishes cleanly: run on the item at the other
+    command's place, with this command's words, its 7.3 step 1 counts the
+    tickets this run set as done (they hold its new value), sets the rest,
+    rewrites the references naming the other command's identifiers, and
+    moves the folder;
   - when the folder is no longer at its old place (exit 4): `run tcw
     validate to see what names it` (`tcw validate --remote` in a Jira
     project), since a re-run would not find it.
@@ -1047,8 +1062,10 @@ today the move stands and the item is named after the fact (`:455-472`).
    ticket has gone, the command stops (exit 3, or 4 for a ticket gone) with
    5.8's message, adding `<KEY>'s TCW Item is now <value>: another command
    may be moving this item`. For that exit 3 the message ends with 5.8's
-   advice for a clash with another command (wait, check with `tcw validate
-   --remote`, correct by hand), never with "run the same command again".
+   advice for a clash with another command (wait, run `tcw validate
+   --remote`, set each ticket it reports to its folder's identifier, or run
+   this command again on the item at its new place), never with "run the
+   same command again".
 3. `before_folder`, then the folder (5.8 step 2.3 and 2.4).
 
 A Jira edit that fails in step 2 stops the command with 5.8's message (exit
@@ -1078,9 +1095,13 @@ What two runs at once can and cannot do, traced from the order above:
   another name, say) stops at its first ticket, unless its read and its
   edit of that ticket both fall between the first run's read and edit of
   the same ticket. Only then can tickets end up naming different runs'
-  identifiers; no TCW command can repair that, so 5.8's message for that
-  stop tells the person to check with `tcw validate --remote` and correct
-  a ticket by hand, rather than to run the command again;
+  identifiers. The tickets out of step are the ones the stopped run set
+  before the clash; the run that went on set the others and moved the
+  folder. So 5.8's message for that stop tells the person to wait for the
+  other command, run `tcw validate --remote` and set each ticket it
+  reports to the identifier its folder now has, or else to run the
+  stopped command again on the item at its new place, rather than to run
+  the same command again;
 - no run loops: each ticket is read in step 1, read again just before its
   edit, and edited at most once.
 
@@ -1317,9 +1338,9 @@ The plan lists each site.
   clones meet at its first ticket, and the second stops before writing
   anything (7.3); no run sets a ticket back over another's (5.8). The
   moment between a ticket's read and its edit stays open (Risks); when two
-  different commands meet in it, the stop says to check with `tcw validate
-  --remote` and correct a ticket by hand, not to run the command again
-  (5.8).
+  different commands meet in it, the stop says to wait for the other
+  command, run `tcw validate --remote` and set each ticket it reports to
+  its folder's identifier, not to run the same command again (5.8).
 - **S-8 (partial failure).** Every move, in both backends and every
   namespace, writes the folder last, so a stop leaves the object where a
   re-run finds it; the stop names every ticket and file already written,
@@ -1387,7 +1408,9 @@ means standard output; "says" means standard error.
    Supported` exits 0, writes `app`'s own `cli/x` object (TCW-112), and leaves
    `core`'s files unchanged. In a third project `other` beside them that names
    no parent, `tcw capabilities set core.capabilities/cli/x --status Supported`
-   exits 3 naming `core`'s folder. The messages have Design 1.3's one shape:
+   exits 3 naming `core`'s folder, and still exits 3 with `core`'s folder
+   removed, since `core` is not one of `other`'s sources and is refused
+   before anything is read (TCW-112's order). The messages have Design 1.3's one shape:
    `rm`'s contains `core.capabilities/cli/x belongs to project 'core'; run
    the command there: tcw -C`, `other`'s `set` contains `belongs to project
    'core', and 'other' does not inherit it, so it cannot be overridden here;
@@ -1560,9 +1583,16 @@ means standard output; "says" means standard error.
       this item` and `tcw validate --remote`, and does not contain `run the
       same command again`;
     - the same with `PK`'s value changed instead, so that `EK` was set by
-      this run first: exit 3, and the message names `EK` as set by this run
-      and says to correct by hand a ticket that names neither command's
-      identifier;
+      this run first: exit 3, and the message names `EK` as set by this run,
+      contains `pull its commit`, `tcw validate --remote` and `in Jira set
+      each ticket it reports to the identifier its folder now has`, and
+      does not contain `run the same command again`;
+    - the second way out of that stop: from the state it leaves after the
+      other command finished (`EK` holding this run's identifier, `PK` and
+      `QK` the other command's, the folder at the other command's place),
+      running this command again on the item at that place exits 0, every
+      ticket's `TCW Item` names this command's identifiers, and the folder
+      is at this command's place;
     - the folder's `os.rename` failing because the folder is already gone
       (the test removes it first): exit 4, and the message says `is no
       longer at`, not `still at`.

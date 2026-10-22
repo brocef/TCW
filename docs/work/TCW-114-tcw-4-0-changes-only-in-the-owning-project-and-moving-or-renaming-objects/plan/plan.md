@@ -100,7 +100,8 @@ spec, and Step 0 records the names their plans chose.
   two refusals of another project's object (Design 4.2's for `set` and
   `reset`, Design 4.4's for `rm`), and which this item rewords (TCW-112
   plan, choice 9 and its handoff to TCW-114); `find_tree_writable(store,
-  namespace, text, *, removing=False) -> FullId`, which calls one of them
+  namespace, text, *, removing: bool) -> FullId` (no default, TCW-112's
+  final plan), which calls one of them
   and refuses nothing itself; `extends` gone. Step 0 item 3 confirms these
   against what TCW-112 landed.
 
@@ -197,13 +198,28 @@ spec, and Step 0 records the names their plans chose.
      `Path.rmdir`, `os.remove`, `Path.unlink`, and each fake Jira `PUT
      /issue/<key>`. The writes `_atomic_write_all` itself makes to its
      temporary files are not counted separately; they are inside its one
-     count.
+     count. **Counting pauses inside a counted call**: while
+     `_atomic_write_all`, `Path.write_text`, `Path.write_bytes`,
+     `Path.mkdir`, `Path.rename`, `Path.replace`, `Path.rmdir`,
+     `Path.unlink` or `shutil.move` runs, the `os` functions it calls
+     (`os.mkdir`, `os.rename`, `os.replace`, `os.unlink` and so on) are not
+     counted again, so each write is counted once and the counts read as
+     the command's own writes. (`Path.unlink` calls `os.unlink`, which is not
+     on the list while `os.remove` is; the rule below catches any primitive
+     that is missed, so that is not a hole.)
    - **Every change must be explained.** Before and after the clean run the
      helper takes a snapshot of every file and folder under the fixture
      (path, kind, bytes) and of the fake's tickets. Every path whose bytes or
      existence changed, and every ticket that changed, must be the target of
      a counted write; otherwise the helper fails, naming the path, so a write
-     through a primitive it does not patch cannot pass unnoticed.
+     through a primitive it does not patch cannot pass unnoticed. **A folder
+     rename explains what is under it**: after a counted `os.rename(old,
+     new)` or `Path.rename` of a folder, every path under `old` that is gone
+     and every path under `new` that appeared is explained by that rename,
+     provided its kind and bytes under `new` equal what it had under `old`
+     or are the target of a later counted write. Without this clause every
+     clean run would fail, since only the two folder paths are the rename's
+     own targets.
    - **Which commands.** A rename (files and Jira), a move that creates two
      organising folders (`--into 2026/q4`, so that a failing second `mkdir`
      after a first that succeeded is exercised), a taxonomy rename and a
@@ -248,7 +264,8 @@ Before any change:
 3. The names this plan takes from TCW-109's and TCW-112's plans are
    confirmed against what they landed: `inherited_at(id_path)` and
    `chain(id_path)`; `override_target` and `removal_target`, which word
-   TCW-112's two refusals; `find_tree_writable(..., removing=False)`
+   TCW-112's two refusals; `find_tree_writable(..., removing: bool)`, with
+   no default,
    calling them and refusing nothing itself; where TCW-112's `set` writes
    an override (`_write_target`); `load_config(root, personal=False,
    registry=...)`. Step 3 is written against TCW-112's plan; a difference
@@ -275,12 +292,32 @@ Before any change:
    with a one-off scratchpad patch that hides `--project` and `--blocks`
    from `--help` (as Step 7 will), and every failure it reports is compared
    with Step 7's list. Earlier items (TCW-108, TCW-112) changed some passages only enough
-   to name no command they removed; whatever they left is Step 7's.
+   to name no command they removed; whatever they left is Step 7's. The
+   check fails only on a `tcw` code span, so prose that says a removed
+   option works (such as "file it with `--project`") is found by a grep as
+   well: `grep -rn -- "--project\b\|--blocks\b" README.md docs/guide
+   docs/use-cases.md skills tcw/work/prompts tcw/work/procedures
+   docs/capabilities`, each line compared with Step 7's list. At planning
+   time it finds, besides the check's own failures,
+   `docs/guide/multi-repo.md:179`, `docs/use-cases.md:216`,
+   `docs/guide/work.md:332`, `README.md:608` and the ledger records that
+   Step 7 and Step 22 change.
 8. **The callers of `read_only_reason`,** as TCW-108 left them: at
    `965f2bff` they are `_check_declared` (`tcw/work/open.py:134`),
    `_connected_declarations` (`tcw/cli.py:222`, provisioning), the interface
    method (`tcw/store/base.py:223`) and `_validate_upstreams`
    (`tcw/store/project.py:955`, which TCW-108 removes). Step 7 handles each.
+9. **TCW-108 and TCW-111 are past their records gate.** Both declare
+   `work/delegate-a-work-item-to-another-project` under `changed`
+   (`docs/work/TCW-108-…/capabilities.yaml:15`,
+   `docs/work/TCW-111-…/capabilities.yaml:14`). Once Step 7 deletes that
+   record, the records gate of an item that has not yet passed it reports
+   "declared changed but not in the ledger" (`tcw/work/gates.py:184-185`,
+   with `finished=True`), and `tcw validate` would not warn first, since it
+   checks an unfinished item with `finished=False` (`tcw/validate.py:528-532`,
+   `:603-611`). `tcw work show TCW-108` and `tcw work show TCW-111` must be at
+   `completed`; if either is not, that is reported to the dispatching
+   session before Step 7, which then waits for it.
 
 **Proves it:** the notes in the implement round; the suite green.
 
@@ -351,11 +388,17 @@ side under `tmp_path`, `app` and `core`, placed by a manifest
 reason=None, hint=None) -> None`. It compares `full_id.project` with the
 active project's ID (read from the `Locator`'s registry, `current.id`); on a
 match it returns. Otherwise it asks `Locator.of(active_root).owner_root(
-full_id.project, named_by=active_root)` inside a `try`: a returned folder
-gives the `tcw -C <folder>` tail; `ProjectGraphError` gives the "cannot be
-located: <its message>" tail; every other `TcwError` (`Unreachable`,
-`UnknownProject`, anything else) gives "not on this machine", reading the
-repository as Step 0 item 5 found. Then it raises `Refused` with Design
+full_id.project, named_by=active_root)` inside a `try`, with both the
+`Locator.of(...)` call and `owner_root` inside it: a returned folder
+gives the `tcw -C <folder>` tail. The `except` clauses come in this order,
+because in TCW-107's plan `UnknownProject` is a subclass of
+`ProjectGraphError` (`UnknownProject(ProjectGraphError)`), so a clause for
+`ProjectGraphError` placed first would also catch an unknown project:
+first `UnknownProject` and `Unreachable`, which give "not on this machine",
+reading the repository as Step 0 item 5 found; then `ProjectGraphError`,
+which gives the "cannot be located: <its message>" tail; then every other
+`TcwError`, which gives "not on this machine". Step 0 item 3 confirms the
+class order TCW-107 landed. Then it raises `Refused` with Design
 1.3's text. It writes nothing and reads no file of the owner's.
 
 **Proves it:** `tests/test_ownership.py`; the full suite.
@@ -390,8 +433,11 @@ repository as Step 0 item 5 found. Then it raises `Refused` with Design
   core.capabilities/cli/x` and `tcw taxonomy rm core.taxonomy/t` exit 3 and
   say `is not on this machine` (review M4: before this change they would
   exit 4 or 5 from `find_tree`), while `tcw capabilities set
-  core.capabilities/cli/x --status Supported` exits 7, since deciding that
-  it is an override needs `core`'s content (spec 1.5, TCW-112).
+  core.capabilities/cli/x --status Supported` exits 7 in `app`, since
+  `core` is one of `app`'s sources and deciding that it is an override
+  needs `core`'s content (spec 1.5, TCW-112), and exits 3 in `other`,
+  where `core` is no source and is refused before anything is read
+  (TCW-112's order, step 2 of `override_target`).
 - AC 3: `workspace` and `app`, `app` with `work.path:
   tcw://workspace.path/docs/app/work`. In `workspace`, `comment`, `edit
   --priority low` and `advance` of `app.work/<a>` exit 3 naming `app`'s
@@ -418,7 +464,7 @@ repository as Step 0 item 5 found. Then it raises `Refused` with Design
   (`:427-433`) make no call (spec 1.2: creators; choice 2).
 - `tcw/locate.py` and the tree stores, as TCW-112's revised plan leaves
   them (its choice 9): `find_tree_writable(store, namespace, text, *,
-  removing=False) -> FullId` sorts the text and calls the store's
+  removing: bool) -> FullId` sorts the text and calls the store's
   `removal_target` (for `rm`, and for Step 19's `rename` and `move`) or
   `override_target` (for `set` and `reset`); it refuses nothing itself,
   and always returns the active project's own full identifier, so a
@@ -431,12 +477,22 @@ repository as Step 0 item 5 found. Then it raises `Refused` with Design
     an id-path the view shows as another project's, `check_owned` of the
     object the view shows. So `rm core.capabilities/cli/x` exits 3 whether
     or not `core` is on this machine (review M4).
-  - `override_target`: for another project's full identifier not in the
-    id-path's `chain()`, `check_owned(<identifier>, active_root,
-    reason=", and '<active>' does not inherit it, so it cannot be
-    overridden here")`. Deciding whether it is in the chain needs the
-    active project's inherited view, so with an ancestor missing that is
-    TCW-108's exit 7, not a refusal (spec 1.1, 1.5).
+  - `override_target`, which decides in TCW-112's order (its handoff to
+    this item, "plan, final"): (1) the active project's own full
+    identifier gives its own object, or `NotFound` (exit 4) when it has
+    none there; (2) a project that is not one of the active project's
+    sources for the namespace (`source_entries`) is refused before
+    anything is read, exit 3 even with an ancestor missing; (3) an id-path
+    with an own object needs no view; (4) otherwise the view decides: a
+    source's identifier not in the id-path's `chain()` is refused, and with
+    a source missing that is TCW-108's exit 7, not a refusal (spec 1.1,
+    1.5). The refusals of (2) and (4) become `check_owned(<identifier>,
+    active_root, reason=", and '<active>' does not inherit it, so it
+    cannot be overridden here")`, each in its own branch, so the order is
+    kept; nothing else moves.
+  - `find_tree_writable`'s `removing` keyword has no default after TCW-112
+    (`find_tree_writable(store, namespace, text, *, removing: bool)`);
+    every call this item adds or changes passes it.
 
   If the landed code differs from TCW-112's plan (Step 0 item 3), the rule
   that decides is spec 1.1: the refusal for a full identifier naming
@@ -624,7 +680,11 @@ half of AC 3):
 - `tests/test_documented_cli_surface.py` `_check` (`:197-219`),
   `tests/test_shipped_text.py` `command_problem` (`:283-311`) and
   `tests/test_docs_describe_3_0.py` `command_problems` (`:282`): before
-  reading the group, skip each `-C <target>` pair after `tcw`.
+  reading the group, skip each `-C <target>` pair after `tcw`. The target
+  is exactly one whitespace-separated token, so the check stays strict: a
+  document must write a one-token placeholder (`<folder>`,
+  `tcw://<id>.path/`), and one written as a phrase (`<its folder>`) fails,
+  as Step 7's rows show.
 
 **Proves it:** the tests above; the full suite.
 
@@ -658,6 +718,17 @@ half of AC 3):
 - Step 4's route-table test no longer lists `/blocks`.
 - `test_documented_cli_surface._check` rejects `tcw -C <target> work new
   --project x` (moved here from Step 6, review M1).
+- `_check` accepts, with both options hidden, each `tcw` span of the
+  replacement texts below, as rows of one parametrized test:
+  `tcw -C <folder> work new --parent`, `tcw -C <folder> work new "<title>"
+  --parent <slug>`, `tcw -C <folder> work new "<title>" --parent <full
+  id>`, `tcw -C <folder>`, `tcw -C tcw://<parent>.path/ work new
+  "capability wording: <name>"` and `tcw -C tcw://<id>.path/ work new
+  "<title>" --parent <slug>`. And it rejects the two forms the rules below
+  forbid, so that the rows prove the rules: `tcw -C <its folder> work new
+  --parent` ("no such flag: --parent on tcw") and `tcw -C <its folder or
+  tcw://<id>.path/> work new "<title>" --parent <slug>` ("no such verb: tcw
+  folder").
 - `tests/test_documented_cli_surface.py` as a whole passes with both options
   hidden: no live document writes either one in a `tcw` command (AC 23's
   last sentence, choice 13).
@@ -743,15 +814,42 @@ function or option as text). `tests/test_static_guards.py` EXEMPT
   old IDs; their assertions change only from "reason is None" to "true".
 - **The documents** (choice 13, spec 9.5). Each passage below, as Step 0
   item 7 found it again, is changed only as far as naming a working
-  command, and nothing else in its file:
-  - `skills/work/SKILL.md:4` (the `when_to_use` line: "file work into
+  command, and nothing else in its file. **Two rules for every replacement
+  text**, because `_check` (`tests/test_documented_cli_surface.py:197-219`)
+  splits a span on whitespace and Step 6's skip takes exactly one token as
+  the `-C` target: (1) the target is always one token, `<folder>` or
+  `tcw://<id>.path/`, never a phrase such as `<its folder>`, whose second
+  word would be read as a verb or end the command path, so that `--parent`
+  is checked against `tcw` itself; (2) a removed option is named only
+  outside a `tcw …` code span (as "the `--project` option of `tcw work
+  new`"), since any `tcw` span containing it fails once it is hidden. Where
+  a sentence needs to say what `<folder>` is, it says so in prose after the
+  span. The texts:
+  - `skills/work/SKILL.md:4` (the `when_to_use` line): "file work into
     another project (`tcw work new --project`)" becomes "make a part in
-    another project (`tcw -C <its folder> work new --parent`)"), `:94`,
-    `:107`, `:112`;
-  - `skills/work/references/commands.md:11` (the row becomes "a part for
-    another project: `tcw -C <its folder or tcw://<id>.path/> work new
-    "<title>" --parent <slug>`") and `:19` (`[--blocks <slug>]` is dropped
-    from the `edit` row);
+    another project (`tcw -C <folder> work new --parent`)";
+  - `skills/work/SKILL.md:93-100` (the "Delegation is filing into another
+    project" bullet) becomes "**A part for another project is made in that
+    project**, with `tcw -C <folder> work new "<title>" --parent <full id>`,
+    where `<folder>` is that project's folder or `tcw://<id>.path/`;
+    `tcw projects list` names the projects this one declares under
+    `projects:` (the configure skill's reference on projects explains the
+    key). The plan prompt's step 6 gives the order for an epic's parts." The
+    sentences about setting the parent afterwards, uncommitted changes and a
+    printed ticket key are dropped, since they describe the removed option;
+  - `skills/work/SKILL.md:107-110` (the bullet starting "`tcw work new
+    --project` into a project nothing declares exits 3") becomes "- The
+    `--project` option of `tcw work new` and the `--blocks` option of
+    `tcw work edit` are removed in TCW 4: each exits 2 and names the command
+    to run instead.";
+  - `skills/work/SKILL.md:111-112` (the bullet starting "Filing into an
+    upstream project") becomes "- A change to another project's item, term
+    or capability exits 3 and names its folder: run it there, with
+    `tcw -C <folder>`.";
+  - `skills/work/references/commands.md:11`: the row becomes "| a part for
+    another project | `tcw -C <folder> work new "<title>" --parent <slug>`,
+    where `<folder>` is its folder or `tcw://<id>.path/` |"; and `:19`:
+    `[--blocks <slug>]` is dropped from the `edit` row;
   - `skills/capabilities/SKILL.md:153` and `:181` (`tcw -C
     tcw://<parent>.path/ work new "capability wording: <name>"`);
   - `skills/configure/references/projects.md:170` and `:199`;
@@ -761,9 +859,26 @@ function or option as text). `tests/test_static_guards.py` EXEMPT
     prose or a table cell outside a `tcw` command, so the check does not
     fail on them; they are changed because they say a removed option works,
     one cell or sentence each);
-  - `docs/use-cases.md:161` and `:213`, which state requirements: each
-    sentence is changed only to say the option is removed in 4.0, and the
-    requirement it served stays for TCW-117 to rewrite;
+  - `docs/guide/multi-repo.md:179-184`, prose that the check does not fail
+    on (no `tcw` in its span) but which says the removed option works: the
+    paragraph "To file an epic's part into another project, file it with
+    `--project`. …" becomes "An epic's part in another project is made in
+    that project, with `tcw -C <folder> work new "<title>" --parent <full
+    id>`; the `--project` option that filed it from here is removed in 4.0.";
+  - `docs/use-cases.md:161`, which states a requirement: "(including `tcw
+    work new --project` and `tcw work edit --blocks`)" becomes "(in 3.x,
+    also through the `--project` option of `tcw work new` and the
+    `--blocks` option of `tcw work edit`, both removed in 4.0)";
+  - `docs/use-cases.md:213-216`: "Filing a part into a child is a
+    cross-project filing (`tcw work new --project`). It refuses every
+    property flag except `--priority`, so the parent is set afterwards with
+    `tcw work edit` from inside the child (`tcw/work/cli.py`, the
+    `--project` checks; the plan prompt's step 6)." becomes "In 3.x, filing
+    a part into a child went through the `--project` option of `tcw work
+    new`, which is removed in 4.0; a part is made in the child, with
+    `tcw -C <folder> work new "<title>" --parent <full id>` (the plan
+    prompt's step 6)." The rest of each requirement stays for TCW-117 to
+    rewrite;
   - this repository's ledger, in its 3.x form: `docs/capabilities/skills/work/description.md:3`
     (its last clause becomes "a part for another project is made there,
     through `tcw -C`"; `skills/work` is declared changed in
@@ -772,7 +887,7 @@ function or option as text). `tests/test_static_guards.py` EXEMPT
     removes it);
   - the removed capability's record,
     `docs/capabilities/work/delegate-a-work-item-to-another-project/`, is
-    deleted (a removed capability is deleted from the ledger,
+    deleted once Step 0 item 9 has found TCW-108 and TCW-111 completed (a removed capability is deleted from the ledger,
     `tcw/work/gates.py:172`), and the four records that link to it lose
     the link, each with the sentence around it changed only as far as the
     link: `docs/capabilities/cli/list-connected-projects/description.md:20`,
@@ -940,7 +1055,7 @@ own):
 
 **Changes** `tcw/validate.py`: `code_spans` and `links_outside_code`
 added; the link loop (`:327-348`, `_strip_code` at `:334`) uses
-`links_outside_code`; `_strip_code` (`:70-72`), then uncalled, is removed. `tcw/rewrite.py` (Step 15) uses the same two
+`links_outside_code`; `_strip_code` (`:70-72`), then uncalled, is removed. `tcw/rewrite.py` (Step 16) uses the same two
 functions.
 
 **Proves it:** the tests above; `tcw validate`'s link tests unchanged; the
@@ -1147,7 +1262,10 @@ before any move uses it.
 
 - `rewrite_references(active_root, changes)` with `changes` a list of
   `(old FullId, new FullId)`: in a fixture holding every row of `FIELDS`
-  (Step 9's fixtures), each value equal to an old identifier is replaced;
+  (Step 9's fixtures) except the work-item state files' rows, each value
+  equal to an old identifier is replaced; a work item's state file whose
+  `parent` names an old identifier is left byte for byte, since the
+  backend rewrites it (choice 12), and is not reported as done;
   `!` kept on `Roles` and `When`; every other byte of each file unchanged
   (the test compares each file to its expected text exactly); a value
   equal to `demo.work/2026-10-22-old-two` is left when `…-old` changes
@@ -1188,10 +1306,16 @@ before any move uses it.
 
 **Creates** `tcw/rewrite.py`, with those four functions and
 `rewrite_yaml`. It reads the active project's three stores (their roots
-from the store locations), the records of each with `walk` and
-`read_state` (TCW-111), each item's `capabilities.yaml`
+from the store locations): the taxonomy and capabilities records with
+`walk` and `read_state` (TCW-111), each item's `capabilities.yaml`
 (`parse_declarations`), and every `.md` file under the three stores,
-`resources/` included, for links (`links_outside_code`, Step 11). YAML
+`resources/` included, for links (`links_outside_code`, Step 11). **The
+work store is read only for its Markdown files' links and its
+`capabilities.yaml` files**, never for the items' state files: those
+belong to the backend (spec 6.1), and the files backend rewrites them
+itself before it calls `before_folder` (choice 12). Reading them here too
+would read each work-item field twice, and the second read would report
+it as "already done" in the stop message. YAML
 values are replaced by position, at the fields `FIELDS` names (choice 6).
 Each file is written with `_atomic_write_all` (`tcw/store/fs.py:1149`),
 never with a plain `write_text`. It never reads outside the three stores,
@@ -1269,8 +1393,17 @@ AC 18 Jira), and new rows in `tests/work/test_backend_contract.py`:
   `another command may be moving this item` and `tcw validate --remote`
   and does not contain `run the same command again` (review S2). The same
   with `PK`'s value changed on the `GET` before `PK`'s edit: exit 3, the
-  message names `EK` as set by this run and says a ticket naming neither
-  command's identifier must be corrected by hand.
+  message names `EK` as set by this run, contains `pull its commit`,
+  `tcw validate --remote` and `in Jira set each ticket it reports to the
+  identifier its folder now has`, and does not contain `run the same
+  command again`.
+- The second way out of that stop (AC 12): the fake and the fixture are
+  put in the state the clash leaves once the other command has finished
+  (`EK` holding this run's new identifier, `PK` and `QK` the other
+  command's, the epic's folder at the other command's place, `R`'s link
+  naming it). `tcw work rename <the other place> <this run's words>` exits
+  0; the fake records edits of `PK` and `QK` only (`EK` counted as done);
+  every `TCW Item`, `R`'s link and the folder name this run's identifiers.
 - The folder already gone (review S2's second point): the test removes the
   epic's folder in a `before_folder` spy, after the tickets are set; exit
   4, and the message says `is no longer at`, not `still at`, and names
@@ -1539,6 +1672,11 @@ AC 20, AC 21, AC 25's tree half, AC 2's last rows, AC 26's tree rows):
   removing=True)` (Step 3: `removal_target`, which answers only the active
   project's own object), so `rename` and `move` of another project's object
   are refused before its store is read; 5.4 g then refuses an override.
+  Reusing `removal_target` also brings TCW-112's rule for `rm`: an id-path
+  with no own object, whose inherited view cannot be built, is "not found"
+  (exit 4), not exit 7. That is accepted for `rename` and `move` as it is
+  for `rm`, and a test row records it (`tcw taxonomy rename <id-path with
+  no own object> u` with the parent's folder removed: exit 4).
 - `tcw/taxonomy/cli.py` `add_subparser` (`:137-201`) and
   `tcw/capabilities/cli.py` `add_subparser` (`:221-315`): `rename <term>
   <name>` and `move <term> (--into <id-path> | --top)` (and the same for
@@ -1702,7 +1840,7 @@ converts them, as TCW-111 Step 18 does. From `capabilities.yaml`:
   was deleted in Step 7. A removed capability is deleted from the ledger,
   not kept with a status: the records gate refuses one "declared removed
   but still in the ledger" (`tcw/work/gates.py:172`), and the ledger has no
-  removed status (`CAP_STATUSES`, `tcw/store/base.py:456`). The first
+  removed status (`CAP_STATUSES`, `tcw/store/base.py:455` at `965f2bff`). The first
   draft's "status set to the 3.x form for a removed capability" was wrong,
   found in this revision. Its replacement is named in the new
   `cli/run-a-command-as-if-started-in-another-folder` record's description
@@ -1875,7 +2013,7 @@ failure is fixed in the step it belongs to, not with a skip.
 | 9 `-C` address; the process rule | 1 (`tests/processes.py`), 5 (3.x start with a path), 6 |
 | 10 `-C` runs as there | 5 (`init`), 6 |
 | 11 rename with nested items, files, and its stop | 17 |
-| 12 rename with nested items, Jira, every stop, two runs, the folder already gone | 12, 17 |
+| 12 rename with nested items, Jira, every stop, two runs and the way out of their clash, the folder already gone | 12, 17 |
 | 13 moving work items | 18 (files and Jira) |
 | 14 repairing a merge | 18 |
 | 15 taxonomy rename and move | 19 |
@@ -2013,9 +2151,36 @@ the repository at `965f2bff` before it was acted on.
 - **S11** (the graph-problem message): Step 2's third tail.
 - **S12** (TCW-112's names): used throughout, from TCW-112's revised plan
   (`e544fbff`): `inherited_at`, `chain`, `override_target`,
-  `removal_target`, and `find_tree_writable(..., removing=False)`, which
+  `removal_target`, and `find_tree_writable(..., removing=False)` (whose
+  default TCW-112's final plan removes, Step 3), which
   refuses nothing itself, so Step 3 rewords the refusals inside the two
   target methods rather than adding a check after it.
 - **S13** (paging; the error's name): Step 17 and choice 8.
 - **Found in this revision:** a removed capability is deleted from this
   ledger, not given a status (Step 22 corrected).
+
+## Revised after the plan re-check (2026-10-22)
+
+- **Step 7's replacement texts** now pass the documented-command check:
+  every `-C` target is one token (`<folder>` or `tcw://<id>.path/`), a
+  removed option is named only outside a `tcw` code span, the texts for
+  `skills/work/SKILL.md:4`, `:93-100`, `:107-110`, `:111-112`,
+  `skills/work/references/commands.md:11`, `docs/use-cases.md:161` and
+  `:213-216` and `docs/guide/multi-repo.md:179` are written out, and
+  Step 7's tests prove each span and the two forms the rule forbids. Step 6
+  says the skip takes exactly one token.
+- **The clash stop** (spec 5.8, 7.3, AC 12, Step 17) tells the person to
+  wait for the other command, pull its commit if it ran in another clone,
+  run `tcw validate --remote` and set each ticket it reports to its
+  folder's identifier, or run this command again on the item at its new
+  place; Step 17 tests that second way out.
+- **TCW-112's final handoff**: `removing` has no default; `override_target`'s
+  order is kept, with `check_owned` in its branches (Step 3), and a project
+  that is no source of the active project exits 3 even with an ancestor
+  missing (spec 1.1, AC 2).
+- Smaller: `check_owned`'s `except` order (Step 2); `move_stops`' clauses
+  for a folder rename and for counting inside a counted call (choice 10);
+  `rewrite_references` reads the work store only for Markdown links and
+  `capabilities.yaml` (Step 16); the prose grep and the TCW-108 and TCW-111
+  records-gate check (Step 0 items 7 and 9); two citations; Step 19's
+  exit 4 for an id-path with no own object.
