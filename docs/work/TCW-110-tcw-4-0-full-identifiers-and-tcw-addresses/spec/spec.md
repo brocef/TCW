@@ -7,9 +7,12 @@ principle 3 ("Every object belongs to exactly one project"), and the parts of
 the deployment layer. Built on the `v4` branch, on top of TCW-106 (the
 `.tcw/` folder, `tcw-version`, and the naming rule for project IDs) and
 TCW-107 (manifests, and the one function that finds a project's folder from
-its ID, `FsProjectRegistry.project_folder`, TCW-107 Design 2.12). TCW-107
-lands first in the children's order, so this item calls that function and
-provides no stand-in for it.
+its ID, `FsProjectRegistry.project_folder`, TCW-107 Design 2.12). The
+children land in the order TCW-106, TCW-107, TCW-110, TCW-108, TCW-111
+(Notes, decided by the user on 2026-10-22): TCW-107 lands first, so this item
+calls that function and provides no stand-in for it; TCW-108, which replaces
+the 3.x `projects:` key with parent links, lands after it, so this item works
+with `projects:` as TCW-107 leaves it (IDs only).
 
 File and line references are to commit `39603cc4` on `v4`; the plan re-checks
 them against whatever TCW-106 and TCW-107 finally land.
@@ -102,10 +105,14 @@ has different names, and a name does not always say which project owns it.
    holding another project's work store (`docs/use-cases.md`, UC-4) writes
    `work.path: ../docs/app/work`, which is right only where the two
    checkouts sit in that relation on disk.
-6. **Nothing stops two stores sharing a folder.** No check compares one
-   store's folder with another's; a work store configured inside another
-   project's work store is listed by both (no such check exists in
-   `tcw/validate.py` or `resolve_store`).
+6. **Little stops two stores sharing a folder.** The one check that compares
+   stores' folders, `_shared_work_paths` (`tcw/validate.py:677-703`, called at
+   `:403-405`), fails two projects of the graph whose work stores are the same
+   folder, and only that: it skips Jira-mode projects (`:690-692`), never
+   looks at the taxonomy or capabilities stores, and does not notice one store
+   inside another. So a work store configured inside another project's work
+   store is listed by both, and a taxonomy store inside the capabilities
+   store passes.
 
 ## Goals
 
@@ -145,8 +152,10 @@ has different names, and a name does not always say which project owns it.
   `overrides:` pointer and the capability's opaque `id` (`cap-…`) stay as
   they are. An inherited object is named by its owner's full identifier.
 - **Views across projects** (TCW-113), including the web app showing other
-  projects' objects and the web API's route keys, which stay id-paths within
-  the served project.
+  projects' objects beyond the inherited entries it shows today. The web
+  API's route key of the served project's own object stays its id-path; an
+  inherited entry's route key becomes its full identifier (Design 4.5), the
+  one route-key change this item makes.
 - **Environment overrides of store locations** (TCW-109).
 - **`<component>.repository`** and the provisioning ladder in
   `resolve_store`: unchanged here; the design moves a store's repository into
@@ -156,9 +165,12 @@ has different names, and a name does not always say which project owns it.
   environment variables may set in 4.0 is TCW-109's.
 - **Guides, skills, stage prompts and eval cases** that teach the 3.x link or
   slug forms (TCW-117). This repository's own records, links and `capabilities.yaml`
-  files keep the 3.x forms until TCW-116 migrates it, because the released
-  3.x CLI that drives this repository's lifecycle reads them; this item's own
-  `capabilities.yaml` is written in that form for the same reason.
+  files keep the 3.x forms until TCW-116 migrates it, because the 3.x CLI
+  that drives this repository's lifecycle reads them; this item's own
+  `capabilities.yaml` is written in that form for the same reason. That CLI
+  is the `tcw` first on `PATH`: the primary checkout's editable install of
+  `main`, which reports 3.0.2 and imports `main`'s code even when run from
+  the `v4` worktree (Notes, decided by the user on 2026-10-22).
 
 ## Design
 
@@ -176,7 +188,11 @@ id-part    = ( A-Z / a-z / 0-9 ) *( A-Z / a-z / 0-9 / "-" / "_" )   ; at most 12
 ```
 
 `project-id` is TCW-106's naming rule (`PROJECT_ID_PATTERN`,
-`tcw/store/project.py:25`). An id-part may not start with `-` or `_`, so a
+`tcw/store/project.py:25`), and, as for a project's own `id:`, it is not one
+of the reserved IDs (`RESERVED_PROJECT_IDS`, `:26`: `t`, `c`, `w`, `local`),
+so `local.work/x` is refused and `local` is never read or printed as an owner
+(1.4). The grammar sets no limit on a whole identifier's length; TCW-111 adds
+one. An id-part may not start with `-` or `_`, so a
 part typed alone is never read as a command option, and is at most 128
 characters, as a work folder is today (`FOLDER_LIMIT`,
 `tcw/work/model.py:24`). Upper and lower case are different characters:
@@ -295,12 +311,19 @@ without `tcw://`. Command input accepts either (Design 3.1).
 every `tcw work` command; `tcw work new|edit --parent`, `--blocked-by`,
 `--unblocked-by` and `--blocks`, `tcw/work/cli.py:682-691`, `--blocks` being
 on `v4` until TCW-114; `tcw work list --parent`, `:728`; the path argument of
-`tcw taxonomy show|rm|set` and `tcw capabilities show|set|reset|rm`; the
-reference fields set through `tcw taxonomy set` and `tcw capabilities set`
-(Design 5.1); and the web routes that write a parent, a blocker or a
-reference) accepts these forms. Each input is sorted into one form by its
-text alone, by 1.2 and the key pattern; the one exception is a key the
-owner's backend does not know, which is then read as a folder name (3.2):
+`tcw taxonomy show|rm` and `tcw capabilities show|set|reset|rm`; the
+reference values given to `tcw taxonomy add --vocab` and to
+`tcw capabilities set --field` (Design 5.1; `tcw taxonomy add --parent` names
+a folder of the active project's own store to create the entry in, and stays
+an id-path); the route
+key of `/api/taxonomy/<key>` and `/api/capabilities/<key>`; and the web
+routes that write a parent, a blocker or a reference, among them
+`PATCH /api/taxonomy/<key>`'s `relatesTo` and `vocabulary`) accepts these
+forms. The taxonomy CLI has no `set` command (`tcw/taxonomy/cli.py:137-201`
+registers `list`, `add`, `show`, `path`, `rm`, `search` and `extends`), so a
+taxonomy entry's `relatesTo` is written only through that web route, and
+this item adds no command for it. Each input is sorted into one form by its
+text alone, by 1.2 and the key pattern:
 
 | # | Input | Meaning |
 | - | ----- | ------- |
@@ -314,8 +337,10 @@ the command's namespace is a usage error naming the namespace expected. (c)
 takes the key-shaped id-path from (a) because in a Jira project an item
 folder is always the key followed by title words (`KEY_FOLDER`,
 `tcw/work/jira/backend.py:56`), so `planning.work/TCW-120` can only mean the
-key; when the owner's backend answers no folder for it, (c) is read as the
-folder of that name, as (b) is (3.2).
+key. Neither backend can hold a folder whose whole name is a key (the files
+backend's folders are `<date>-<words>`, `ITEM_FOLDER`,
+`tcw/work/fs_backend.py:46`; the Jira backend's are `<KEY>-<words>`), so a
+key-shaped text is never read as a folder name (3.2).
 
 **An inherited object, until TCW-112.** When form (a) names an object owned by
 a project that the active project's store for that namespace extends
@@ -331,12 +356,17 @@ TCW-112 replaces overrides by path and this rule with them.
 3.2. **A tracker key is looked up by the backend that holds the item,** with
 the existing `lookup` operation (`tcw/work/backend.py:97`; the Jira backend
 scans the work folder for the key, `tcw/work/jira/backend.py:314-325`). For
-(c) the named project's backend is opened first (Design 6.1). A files-backend
-project has no tracker keys (`lookup` answers None,
-`tcw/work/fs_backend.py:480-481`), so in such a project `TCW-120` falls
-through to (d) as a folder name, and `demo.work/TCW-120` to (a), the folder
-`TCW-120` in `demo`. When TCW-111 nests items, `lookup` finds the
-key wherever the folder is nested; nothing here changes for that.
+(c) the named project's backend is opened first (Design 6.1). When `lookup`
+answers None, the item is not found (exit 4) with
+`no work item in project '<id>' carries the key <KEY>`, the message a Jira
+project gives today with the project named
+(`no work item here carries the Jira key …`, `tcw/work/cli.py:58-61`).
+A files-backend project has no tracker keys (`lookup` answers None,
+`tcw/work/fs_backend.py:480-481`), so there `TCW-120` and
+`demo.work/TCW-120` get the same message; they are never read as a folder
+name, since no files-backend folder can be named only by a key (3.1). When
+TCW-111 nests items, `lookup` finds the key wherever the folder is nested;
+nothing here changes for that.
 
 3.3. **What is stored is always the full identifier.** Whatever form of 3.1
 names an object, the reference TCW writes is its full identifier with its
@@ -348,6 +378,9 @@ folder's id-path: `--parent planning.work/TCW-120` stores
 are read as id-paths by 1.2 and are usually not found. When the first part
 of such an id-path is the ID of a project TCW can locate, the not-found
 message adds `; to name an object in project '<id>', write <id>.<namespace>/<rest>`.
+Looking for the hint never changes the outcome: it is tried only when the
+first part is a valid project ID, any answer of 6.1 other than "found" gives
+no hint, and the command still exits 4 with the not-found message.
 
 ### 4. What commands print
 
@@ -385,7 +418,10 @@ suggestions insert `tcw://<full id>` links (today `tcw://W/<folder>`,
 `tcw://T/…`, `tcw://C/…`, `web/client/src/model/reference-search.ts:242-257`),
 and parent and blocker values as full identifiers. The `/api/resolve` answer
 for a link to another project's object (any namespace, not only work as
-today, `tcw/serve/records.py:234-236`) is `other-project` with that project.
+today, `tcw/serve/records.py:234-236`) is `other-project` with that project;
+for an object of the served project it is `ok` with the id-path as `key`,
+and for an inherited entry `ok` with its full identifier as `key` (the route
+key below).
 
 The web records keep no `slug`, `qualified` or (taxonomy, capabilities)
 `path` key beside `full-id`: they are the CLI's records (4.3). The client
@@ -402,8 +438,15 @@ slug at its first or last `/` today change to it:
 - `web/client/src/model/api.ts:129-132`, and the `slug` fields of
   `web/client/src/model/types.ts:60`, `:82`, `:181`;
 - `itemKey` (`web/client/src/ui/route-utils.ts:19-27`), which derives a route
-  key from `slug`, `qualified` or `path`. Route keys stay id-paths within the
-  served project (Non-goals), now taken from the id-path of `full-id`;
+  key from `slug`, `qualified` or `path`. The route key of an object of the
+  served project is the id-path of its `full-id`. The route key of **every**
+  inherited entry is its whole full identifier (today the alias-prefixed
+  `core/term`), not only of one whose id-path a local entry also has, so an
+  inherited entry's key does not change when a local entry with the same
+  id-path is added. A full identifier has a `/`, so the client encodes the
+  key in the URL (`encodeURIComponent`, `web/client/src/model/api.ts:86`, as
+  it does today) and `/api/taxonomy/<key>` and `/api/capabilities/<key>`
+  (`tcw/serve/records.py:243-254`) read it with Design 3.1's forms;
 - the server's own `slug` keys in `tcw/serve/work.py:223`, `:492`, `:514`,
   `:537`, `:566`, which become `full-id`.
 
@@ -417,7 +460,7 @@ address). The places, found by the sweep in 5.4:
 | a work item's `item.yaml` (files backend) | `parent`, `blocked-by` | `<project>/<folder>` (`tcw/work/fs_backend.py:128-164`, `:180-183`) |
 | a Jira ticket | `TCW Item` | `<project>/<folder>` (`tcw/work/jira/backend.py:705-708`, `tcw/work/jira/tickets.py:181`, `:388`) |
 | a work item's `capabilities.yaml` | every entry under `new`, `changed`, `removed`, and `taxonomy.*` | a path, routed by its first folder (`tcw/work/gates.py:102-148`, `:331-380`) |
-| a taxonomy entry's `meta.yaml` | `relatesTo`, `vocabulary` | a bare or alias-prefixed slug (`tcw/store/fs.py:1739`, `:2178-2183`) |
+| a taxonomy entry's `meta.yaml` | `relatesTo` (written by `PATCH /api/taxonomy/<key>`, `tcw/serve/records.py:106-127`), `vocabulary` (written by `tcw taxonomy add --vocab` and that route) | a bare or alias-prefixed slug (`tcw/store/fs.py:1739`, `:2178-2183`) |
 | a capability's `meta.yaml` | `Subject`, `Feature` (taxonomy); `Superseded by`, `Blocked by`, `Roles`, `When` (capabilities, `Roles` and `When` keeping their `!` negation and `roles/`, `conditions/` id-paths) | bare or alias-prefixed paths (`tcw/store/fs.py:2936-2980`) |
 | any `.md` file in a store | `](tcw://…)` links | 3.x grammar (`_LINK_RE`, `tcw/validate.py:49`) |
 
@@ -470,7 +513,11 @@ input form of 3.1.
 `scripts/` and `evals/`: every call of `Slug.parse`, `Slug(...)`,
 `str(<slug>)`, `.qualified`, `parse_tcw_uri` and `resolve_tcw_ref`; every
 `partition("/")`, `split("/")`, `indexOf("/")` and `lastIndexOf("/")` applied
-to a value that holds an identifier; every read of the fields in 5.1 or of a
+to a value that holds an identifier; every message or value built by hand by
+joining a project ID, a `/` and a name (`f"{self.project}/{folder}"`, nine
+such sites today, in `tcw/work/fs_backend.py`, `tcw/work/jira/backend.py`,
+`tcw/serve/work.py`, `tcw/refs.py` and `web/client/src/ui/work-views.tsx`),
+which no change to the type of 1.5 reaches; every read of the fields in 5.1 or of a
 record's `slug`, `path`, `origin` or `qualified` key; and every text that
 describes the old forms to a person: the command contracts' `prints=` strings
 ("one qualified path per line", `tcw/taxonomy/cli.py:142`, `:151`, `:183`;
@@ -506,7 +553,12 @@ reference (2.5): the active project for its own files and for command input,
 or the owner found for the file being read, which an earlier call returned.
 `project_folder(<named_by's own ID>, named_by)` returns `named_by`. The
 answer is kept for the rest of the command (TCW-107 Design 2.11), so a
-reference met twice is located once. Its outcomes, and what this item does
+reference met twice is located once. Every lookup this item makes in one
+command, for a full identifier, a link, a `capabilities.yaml` entry or a
+store address (7.2), in whichever project's file it is written, goes to that
+one registry; none opens a registry of its own from another project's root,
+which would walk that project's family again, keep its own answers, and so
+escape TCW-107 Design 2.9's one-folder-per-ID check. Its outcomes, and what this item does
 with each:
 
 | Outcome (TCW-107 Design 2.12) | Raised | A command | `tcw validate` |
@@ -574,7 +626,10 @@ personal file may give a store location at all is TCW-109's (Non-goals).
 
 7.2. **Resolving a folder address** written in project W's configuration:
 
-1. Find the named project's root with `project_folder(id, W's root)`.
+1. Find the named project's root with `project_folder(id, W's root)`, on
+   the command's one registry (6.1). W's root is the active project's root
+   or a folder an earlier call returned, as TCW-107 Design 2.12 requires of
+   `named_by`.
 2. For `tcw://<id>.path/<rest>`: the folder is that root joined with
    `<rest>`.
 3. For `tcw://<id>.<namespace>.path/<rest>`: resolve that project's own
@@ -607,7 +662,12 @@ project's three stores, and the three stores of every project it can locate
 by name (on `v4`, every project its registry connects, and every project
 named by one of its store addresses). Two stores of the same project count
 too: today both tree stores mark entries with `meta.yaml`, so one would
-list the other's entries as its own, the same harm the design names. Folders
+list the other's entries as its own, the same harm the design names. A
+Jira-mode project's work store counts like any other: its folder still holds
+each item's documents, so a store inside it mixes the two projects' item
+folders, and today's check skipping such projects (Problem 6) is not kept.
+This check replaces `_shared_work_paths` (`tcw/validate.py:677-703`), whose
+one case, two work stores that are the same folder, it includes. Folders
 are compared by identity (`_same_folder` and `_in_folder`,
 `tcw/store/fs.py:595-615`), so a symlink or letter case does not hide a
 match. A project found twice (a git worktree and its main checkout) is one
@@ -617,9 +677,12 @@ and folders.
 
 7.5. **One function** turns a configured location into a folder, and every
 reader calls it: `resolve_store` (`tcw/store/fs.py:3223-3227`), `tcw init`
-(`tcw/store/fs.py:656-662`, `:708`), `tree_store_present`
-(`tcw/store/fs.py:382-404`) and `tcw validate`'s own reading
-(`tcw/validate.py:153`, `:209-213`).
+(`tcw/store/fs.py:656-662`, `:708`) and `tcw validate`'s own reading
+(`tcw/validate.py:153`, `:209-213`). `tree_store_present`
+(`tcw/store/fs.py:382-404`) resolves no location: it answers whether a store
+is declared from the keys of the configuration. It takes the default folder
+it looks for (`docs/<component>`) from the same function, so the default is
+written in one place.
 
 ## Abstraction litmus test
 
@@ -718,8 +781,10 @@ manifest entry. "Prints" means standard output.
 1. **Parser.** The identifier module accepts `a.taxonomy/x`,
    `a-1.capabilities/cli/x_y`, `p.work/TCW-120-add-login`, and refuses each
    of: `a/x`, `A.work/x`, `a.Work/x`, `a.thing/x`, `a.work/`, `a.work//x`,
-   `a.work/-x`, `a.work/x.y`, `a.work/x y`, `a.work/x%20`, and an id-part of
-   129 characters, each with a message naming the rule.
+   `a.work/-x`, `a.work/x.y`, `a.work/x y`, `a.work/x%20`, `local.work/x`,
+   and an id-part of 129 characters, each with a message naming the rule. A
+   work identifier parsed from text compares equal to, and hashes the same
+   as, the work model's identifier for the same project and folder.
 2. **Addresses.** The module accepts `tcw://p1.work/x`, `tcw://p1.path/`,
    `tcw://p1.work.path/`, `tcw://p1.path/docs/p2-work`,
    `tcw://p1.capabilities.path/.github/v1.2/`, and refuses `tcw://p1/`,
@@ -763,8 +828,10 @@ manifest entry. "Prints" means standard output.
    and `--blocked-by <other folder>` (bare input) in a files-backend project
    write `parent: demo.work/<other>` and `blocked-by: [demo.work/<other>]`
    into `item.yaml`. `tcw capabilities set cli/x --field Subject=term` writes
-   `Subject: [demo.taxonomy/term]`; `tcw taxonomy set` with a `relatesTo`
-   given as a bare slug writes the full identifier.
+   `Subject: [demo.taxonomy/term]`; `tcw taxonomy add Pay --kind feature
+   --vocab term` writes `vocabulary: [demo.taxonomy/term]`; and
+   `PATCH /api/taxonomy/<key>` with `relatesTo: ["term"]` writes
+   `relatesTo: [demo.taxonomy/term]`.
 9. **Jira.** With the suite's Jira fake: `tcw work new` sets `TCW Item` to
    `<project>.work/<KEY>-<words>`; `tcw work show <KEY>` and
    `tcw work show <project>.work/<KEY>` show that item; and an item whose
@@ -780,11 +847,12 @@ manifest entry. "Prints" means standard output.
    reports the first ticket, at its item, and the second, at its key, each
    as an error containing `TCW 3.x value` and `tcw migrate`, and reports
    neither with `its ticket's TCW Item is` followed by `not`.
-10. **Tracker key in a files project.** In a files-backend project,
-    `tcw work show TCW-120` exits 4 with the same not-found message as any
-    folder name the project does not hold; with a folder named `ABC-1` made
-    by hand in the work store, `tcw work show ABC-1` and
-    `tcw work show demo.work/ABC-1` both show it.
+10. **A key no item carries.** In a files-backend project `demo`,
+    `tcw work show TCW-120` and `tcw work show demo.work/TCW-120` each exit 4
+    with a message containing `no work item in project 'demo' carries the
+    key TCW-120`. With the suite's Jira fake, `tcw work show <KEY>` for a key
+    no folder of the project carries exits 4 with the same message for its
+    project and key.
 11. **3.x stored references.** An `item.yaml` with `parent: demo/<folder>`
     is reported by `tcw validate` as an unreadable item naming `parent` and
     `tcw migrate`; a capability with `Subject: [term]` (bare) is reported by
@@ -797,7 +865,8 @@ manifest entry. "Prints" means standard output.
     same with `server` absent from the machine reports it as could not
     check; `app.capabilities/x` with no such capability in `app` fails.
 13. **Cross-project resolution.** Two projects side by side in two git
-    repositories, `app` naming `core` under `projects:` with no `extends`: a
+    repositories, `app` naming `core` under `projects:` (by ID only, as
+    TCW-107 leaves the key) with no `extends`: a
     link `[t](tcw://core.taxonomy/term)` in `app` passes `tcw validate`;
     `tcw://core.taxonomy/missing` fails it; with `core`'s folder removed, the
     first link is reported as `unresolved` and `tcw validate` exits 0.
@@ -807,8 +876,13 @@ manifest entry. "Prints" means standard output.
     with an error at the link containing `no project with ID 'cor'` and
     `check the spelling`; `tcw taxonomy show cor.taxonomy/term` exits 1 with
     the same message. With two folders next to `app` both declaring
-    `id: core`, `tcw validate` reports an error at the link naming both
-    folders, and `tcw taxonomy show core.taxonomy/term` exits 1.
+    `id: lib`, an ID that no `projects:` entry names, a link
+    `[t](tcw://lib.taxonomy/term)` makes `tcw validate` report an error at
+    the link naming both folders, and `tcw taxonomy show lib.taxonomy/term`
+    exits 1. (`core` cannot be the duplicate here: AC 13 names it under
+    `projects:`, so TCW-107's graph walk finds the two folders first, and
+    `tcw validate` reports the graph problem at the configuration and stops
+    before it reads any link, `tcw/validate.py:394-397`.)
 14. **Store address.** `app` with `work.path: tcw://workspace.path/docs/app/work`,
     `workspace` and `app` in two repositories side by side and not
     connected (neither names the other under `projects:`, and neither has a
@@ -830,7 +904,9 @@ manifest entry. "Prints" means standard output.
     names the same folder as `workspace`'s work store (through `../`, and
     through a symlink), and when `app`'s `taxonomy.path` lies inside its own
     `capabilities.path`; it passes when `app`'s store is a sibling of
-    `workspace`'s work store inside `workspace`'s folder.
+    `workspace`'s work store inside `workspace`'s folder. It also fails the
+    first case when `workspace` is a Jira-mode project (its configuration
+    names the Jira backend), with no request made to Jira.
 17. **Missing project in a location.** `app` with
     `work.path: tcw://gone.path/w`, where `app`'s `.tcw/tcw-manifest.yaml`
     places `gone` at `../gone`, that folder does not exist, and no
@@ -857,26 +933,43 @@ manifest entry. "Prints" means standard output.
     `tcw://demo.taxonomy/term` and `tcw://demo.capabilities/cli/x` (a client
     unit test); `/api/resolve` for `tcw://core.taxonomy/term` from `app`
     answers `other-project` with `core`; a parent written through the web app
-    is stored as a full identifier.
+    is stored as a full identifier. In `app` with
+    `capabilities.extends: [core]`, `/api/capabilities/<key>` with the key
+    `core.capabilities/cli/y` URL-encoded returns that inherited entry's
+    record, and `/api/resolve` for `tcw://core.capabilities/cli/y` answers
+    `ok` with `core.capabilities/cli/y` as `key`; for
+    `tcw://app.capabilities/cli/x` it answers `ok` with `cli/x`.
 20a. **The web app's own items.** Client unit tests: for the project `demo`,
     `isLocal("demo.work/x", demo)` is true and `isLocal("core.work/x", demo)`
     is false; `projectOf("demo.work/x")` is `demo` and `folderOf` of it is
     `x`; `itemKey` of a work record whose `full-id` is `demo.work/x` is `x`,
     and of a capability record whose `full-id` is
-    `demo.capabilities/cli/x` is `cli/x`. Served by `tcw serve`, the board's
-    link for an item of `demo` opens `/api/work/<folder>` for that item.
+    `demo.capabilities/cli/x` is `cli/x`, and of an inherited capability
+    record whose `full-id` is `core.capabilities/cli/y` is
+    `core.capabilities/cli/y`. Served by `tcw serve`, the board's link for an
+    item of `demo` opens `/api/work/<folder>` for that item.
 21. **The sweep.** After the change, no code under `tcw/`,
     `web/client/src/`, `scripts/` or `evals/` builds or splits a 3.x name: a
     search for `parse_tcw_uri`, `.qualified`, `tcw://W/`, `tcw://T/` and
     `tcw://C/` outside the migration's own recogniser (2.4) and the tests of
-    it finds nothing. The plan lists every hit of `partition("/")`,
+    it finds nothing, and neither does a search for a project ID joined to a
+    name with `/` by hand (the regular expression
+    `\{[^}]*project[^}]*\}/\$?\{`, which today matches the nine sites of 5.4
+    and `Slug.__str__`, `tcw/work/model.py:75`). The plan lists every hit of `partition("/")`,
     `split("/")`, `indexOf("/")` and `lastIndexOf("/")` in those folders,
     and each hit left after the change is on a path on disk, a URL, or an
     id-path that the identifier module has already separated from its
     project and namespace; a reviewer checks the list against a fresh
     search.
-22. The full suite, run as CI runs it (bare `pytest`, and the web client's
-    unit tests), passes on `v4`.
+22. **The suite, as CI runs it** (`.github/workflows/test.yml`): bare
+    `pytest` after `pip install -e '.[dev]'`, which is the `pytest` job, and
+    `pnpm install --frozen-lockfile` then `pnpm check:build`, which is the
+    `web-build` job, both pass on `v4`. CI runs no other web check; the web
+    client's unit tests (`pnpm test`), its type check (`tsc --noEmit`) and
+    `pnpm lint` pass as well, and every file this item changes that
+    `prettier` covers passes `prettier --check`. A repository-wide
+    `prettier --check .` is not a condition: it fails on files this item
+    does not touch.
 23. **An inherited object with an override.** `app` with
     `capabilities.extends: [core]`, `core` holding `cli/x` at status
     `Missing`, and `app` holding a 3.x override of it setting status
@@ -904,11 +997,11 @@ manifest entry. "Prints" means standard output.
 
 | Design rule | Criteria |
 | --- | --- |
-| 1.1 grammar; exact case | 1, 25 |
+| 1.1 grammar; exact case; reserved IDs | 1, 25 |
 | 1.2 `.` marks a full identifier | 1, 7, 18 |
 | 1.3 id-path of today's objects | 4 |
 | 1.4 owner, never `local` | 4, 5, 6 |
-| 1.5 one type, one parser | 21 |
+| 1.5 one type, one parser; work identifiers equal however made | 1, 21 |
 | 1.6 names that break the grammar, and naming one | 18 |
 | 2.1 address grammar | 2 |
 | 2.2 refused addresses | 2, 14 |
@@ -916,28 +1009,28 @@ manifest entry. "Prints" means standard output.
 | 2.4 3.x links, and which message `tcw://p1/` gets | 2, 3 |
 | 2.5 resolved from the writer | 13, 14 |
 | 2.6 address versus identifier | 7, 8 |
-| 3.1 a–d input forms; every option; the key-shaped full identifier; an inherited object through the view | 7 (a, d, the options), 9 (b, c), 10 (b and c in a files project), 23 (the view) |
-| 3.2 key lookup through `lookup` | 9, 10 |
+| 3.1 a–d input forms; every option; the key-shaped full identifier; an inherited object through the view; route keys | 7 (a, d, the options), 8 (`--vocab`, `--field`, the `PATCH` route), 9 (b, c), 10 (b and c with no item), 20 (route keys), 23 (the view) |
+| 3.2 key lookup through `lookup`; a key no item carries | 9, 10 |
 | 3.3 stored as full identifier | 8, 9 |
-| 3.4 3.x input and the hint | 7 |
+| 3.4 3.x input and the hint, which never changes the exit | 7 |
 | 4.1 lists | 4 |
 | 4.2 `show` | 5 |
 | 4.3 JSON, schema 2, the `generate:` payload | 6, 19 |
 | 4.4 messages, `TCW_SLUG`, prompts | 19 |
-| 4.5 web app: records, suggestions, the client's own parsing | 20, 20a |
+| 4.5 web app: records, suggestions, the client's own parsing, an inherited entry's route key | 20, 20a |
 | 5.1 every stored field | 8, 9, 11, 12 |
 | 5.2 reading 3.x stored values; Jira part way through a migration | 9, 9a, 11 |
 | 5.3 writing | 8, 20 |
-| 5.4 sweep, including help texts and `evals/` | 6, 19, 21 |
-| 6.1 `project_folder` and its four outcomes | 13 (found, not here), 13a (unknown, graph problem), 14 (a project no `projects:` names), 17 |
+| 5.4 sweep, including help texts, hand-built names and `evals/` | 6, 19, 21 |
+| 6.1 `project_folder` and its four outcomes; one registry per command | 13 (found, not here), 13a (unknown, graph problem), 14 (a project no `projects:` names), 17; the one registry is checked by the plan's unit test |
 | 6.2 the owner's own objects, any project; inherited ones through the view | 13, 23 |
 | 6.3 outcomes | 13, 13a, 17 |
 | 6.4 `tcw validate` | 3, 11, 13, 13a |
 | 7.1 plain path or folder address; no absolute path in the shared file | 14, 24 |
 | 7.2 resolving, and each outcome of step 1 | 14, 15, 17 |
 | 7.3 loops | 15 |
-| 7.4 nest or coincide | 15, 16 |
-| 7.5 one function | 14 (`tcw work new`, `tcw work path` and `tcw validate` agree on one folder); the four call sites are listed in the plan |
+| 7.4 nest or coincide, Jira-mode projects included | 15, 16 |
+| 7.5 one function | 14 (`tcw work new`, `tcw work path` and `tcw validate` agree on one folder); the three call sites, and `tree_store_present`'s default, are listed in the plan |
 
 ## Risks
 
@@ -978,15 +1071,28 @@ spec is accepted:
 - **TCW-107:** this item calls its `FsProjectRegistry.project_folder`
   (TCW-107 Design 2.12) and handles all four of its outcomes (Design 6.1);
   TCW-107 lands first, and this item waits for it.
+- **TCW-108:** lands after this item (Notes). This item's tests connect
+  projects through the 3.x `projects:` key, by ID only, and TCW-108 converts
+  them when it removes the key; this item already makes `open_project` look
+  any ID up with `project_folder`, and no longer accepts the 3.x
+  `<project>/<folder>` input that TCW-108's rule for a sibling's item keeps
+  readable. The plan lists the tests (its Step 17).
 - **TCW-109:** store locations cannot be overridden by personal files or
   environment variables (Questions for TCW-99, 1); the design's example
   `TCW_WORK_PATH__MY_PROJ` should not be built.
-- **TCW-111:** the 255-character limit of the `TCW Item` field (Risks).
+- **TCW-111:** the 255-character limit of the `TCW Item` field (Risks); the
+  grammar of 1.1 sets no limit on a whole identifier, which is TCW-111's to
+  add.
 - **TCW-112:** the rule that an inherited object is read through the active
   project's view (Design 3.1) is replaced with overrides by path.
+- **TCW-113:** the web route key of every inherited entry is its full
+  identifier, and `/api/resolve` answers `ok` with it as `key` (Design 4.5);
+  the cross-project views build on that key.
 - **TCW-116:** report names that break 1.1, stores that nest or coincide,
   absolute or `~` store paths, 3.x `TCW Item` values, and the override
   folders at `<alias>/<path>` (Risks).
+- **TCW-117:** the user-facing documents this item's documentation entries
+  leave to it, each with what it must say (the plan names them).
 
 ## Notes
 
@@ -1023,7 +1129,12 @@ spec is accepted:
    (7.4), for the reason given there.
 8. **A key-shaped full identifier is a key** (3.1 c): in a Jira project a
    folder is never only a key, so `<project>.work/<KEY>` can mean nothing
-   else; elsewhere it is read as the folder of that name.
+   else. A key no item carries is not found, in every backend, and is never
+   read as a folder name (3.2): no backend can hold a folder named only by a
+   key, so reading it as one could only give a less helpful message. An
+   earlier draft fell through to a folder; the plan review showed that no
+   test could observe the fall-through, and that it would lose the message a
+   Jira project gives today.
 9. **An inherited object through the active project's view** (3.1, 6.2),
    until TCW-112: otherwise `show` of an inherited capability would disagree
    with `list` in the same project, and `set` would have no defined target.
@@ -1036,6 +1147,44 @@ spec is accepted:
 12. **A Jira ticket still holding a 3.x `TCW Item` is left out until
     migrated** (5.2), as the design says of 3.x data; the warning names the
     keys and `tcw migrate` instead of another copy of the repository.
+13. **An inherited entry's web route key is its full identifier** (4.5), for
+    every inherited entry, so the key does not depend on whether a local
+    entry shares its id-path. Settled while planning; it is the one change to
+    route keys this item makes (Non-goals).
+14. **Jira-mode work stores are compared** (7.4): their folders hold item
+    documents, so nesting one inside another store does the same harm.
+15. **One registry per command** (6.1, 7.2): every lookup, whichever
+    project's file holds the reference, goes to the active project's
+    registry, so TCW-107's one-folder-per-ID rule holds across all of them.
+
+### Decided by the user on 2026-10-22
+
+1. **The order of the children is TCW-106, TCW-107, TCW-110, TCW-108,
+   TCW-111.** This item lands before TCW-108, so it works with the 3.x
+   `projects:` key as TCW-107 leaves it (IDs only), and its tests connect
+   projects that way. TCW-108 converts those tests when it removes the key
+   (Handoffs).
+2. **This repository's own lifecycle is driven with the `tcw` first on
+   `PATH`,** the primary checkout's editable install of `main` (3.0.2), which
+   imports `main`'s code even when run from the `v4` worktree. Never with the
+   worktree's own `.venv/bin/tcw`, and never with `.venv/bin` first on
+   `PATH`. The plan lists the ways 4.0 code could otherwise reach this
+   repository's live Jira board, each with the rule that prevents it.
+3. **CI runs bare `pytest` and `pnpm check:build`** (AC 22), and those are
+   what the item's last step runs as CI does. A repository-wide `prettier`
+   check is not a condition; only the files this item changes are formatted.
+
+### Revised after the plan review
+
+The plan review found five defects in this spec and a choice the plan had
+made beyond it; each is corrected above: the taxonomy CLI has no `set`
+command (3.1, 5.1, AC 8); a folder named only by a key cannot exist in a
+files-backend project, so AC 10's second half could not pass (3.1, 3.2, AC
+10, decision 8); AC 13a's duplicate project is found by TCW-107's graph walk
+before any link is read when the duplicated ID is named under `projects:`
+(AC 13a); Problem 6 missed `_shared_work_paths` (Problem 6, 7.4); and
+`tree_store_present` resolves no location (7.5). The inherited route key is
+decision 13.
 
 ### Questions for TCW-99
 
