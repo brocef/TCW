@@ -684,3 +684,16 @@ def test_a_registry_whose_load_raised_is_not_kept(tmp_path, monkeypatch, command
         FsProjectRegistry.open(root)
     kept = FsProjectRegistry.open(root)
     assert kept is calls[1] and FsProjectRegistry.open(root) is kept
+
+
+def test_an_entry_placing_a_3x_project_says_so(tmp_path):
+    from tcw.project_files import LEGACY_PROJECT
+    app = proj(tmp_path / "app", "app", upstream=["lib"])
+    old = tmp_path / "lib"
+    old.mkdir()
+    (old / "tcw-config.yaml").write_text("id: lib\n")
+    manifest = write_manifest(app, {"lib": "../lib"})
+    with pytest.raises(ProjectGraphError) as raised:
+        FsProjectRegistry.open(app).project_folder("lib", app)
+    assert str(raised.value) == (f"{manifest}: entry for 'lib' in {manifest} places it "
+                                 f"at {old.resolve()}, which is {LEGACY_PROJECT}")

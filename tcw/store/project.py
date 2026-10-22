@@ -21,7 +21,7 @@ from tcw.errors import ProjectGraphError, Unreachable, UnknownProject
 from tcw.project_files import (LEGACY_PROJECT, LEGACY_SENTINEL, LOCAL_MANIFEST,
                                LOCAL_MANIFEST_NAME, MANIFEST, PROJECT_ID_PATTERN,
                                RESERVED_PROJECT_IDS, SENTINEL, TCW_FOLDER,
-                               legacy_message, personal_files_skipped, root_of,
+                               personal_files_skipped, root_of,
                                validate_project_id, version_problem)
 from tcw.store.manifest import ManifestEntry, parse_manifest
 from tcw.store.checkouts import normalized_url, provisioned_root
@@ -1700,7 +1700,7 @@ class FsProjectRegistry(ProjectRegistry):
         elif probe.kind == "version":
             wrong = f"places it at {folder}, whose {SENTINEL} {probe.detail}"
         elif probe.kind == "legacy":
-            wrong = f"places it at {legacy_message(folder)}"
+            wrong = f"places it at {folder}, which is {LEGACY_PROJECT}"
         elif probe.kind == "unreadable":
             wrong = f"places it at {folder}, whose {SENTINEL} cannot be read: {probe.detail}"
         else:
