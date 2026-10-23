@@ -38,7 +38,9 @@ class AmbiguousRef(UsageError, RefError):
 
     def __init__(self, ref: str):
         self.ref = ref
-        super().__init__(f"ambiguous ref '{ref}' — qualify it with an alias prefix")
+        super().__init__(f"ambiguous ref '{ref}': more than one project this one "
+                         f"inherits from holds it; name it by its full identifier, "
+                         f"<project>.<namespace>/{ref}")
 
 
 class StaleRevision(Exception):
