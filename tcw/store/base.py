@@ -157,6 +157,165 @@ class LoadOrder:
         return not self.missing and not self.unreadable
 
 
+def _parents_of(project_id: str, links, absent: "set[str]") -> list[str]:
+    if project_id in absent:
+        return []
+    return [link.id for link in links.get(project_id, ())]
+
+
+def find_loop(links, read_order) -> list[str] | None:
+    """A loop through the parent links, as Design 4.7 prints it: the list
+    starts and ends with the loop's member that comes first in `read_order`,
+    each next one a parent of the one before, parents tried in listing
+    order. None when there is no loop."""
+    order = [*read_order, *(pid for pid in links if pid not in read_order)]
+    for start in order:
+        path = _path_back(start, links)
+        if path is not None:
+            return path
+    return None
+
+
+def _path_back(start: str, links) -> list[str] | None:
+    """The first path, depth-first in listing order, from `start` up its
+    parent links back to `start`."""
+    path = [start]
+    visited: set[str] = set()
+
+    def climb(pid: str) -> bool:
+        for parent in _parents_of(pid, links, set()):
+            if parent == start:
+                path.append(start)
+                return True
+            if parent in visited:
+                continue
+            visited.add(parent)
+            path.append(parent)
+            if climb(parent):
+                return True
+            path.pop()
+        return False
+
+    return path if climb(start) else None
+
+
+def loop_message(loop: list[str]) -> str:
+    return "loop in parents: " + " -> ".join(loop)
+
+
+def load_order_of(project_id: str, links, *, missing=frozenset(),
+                  unreadable=frozenset()) -> LoadOrder:
+    """`project_id`'s load order from its parent links (Design 4): C3 over
+    the parent lists reversed, so that the last listed parent wins (4.1);
+    when any merge made on the way fails, the depth-first order instead (4.4),
+    with the warning of 4.5 naming the first merge to fail. A project in
+    `missing` or `unreadable` is placed as one with no parents (6.4), and one
+    `links` does not hold has none either.
+
+    Store-neutral: given each project's links and which projects are not
+    available, any registry can call it. Raises `ValueError` on a loop, which
+    the caller reports with `find_loop` (Design 4.7)."""
+    absent = set(missing) | set(unreadable)
+    resolved: dict[str, list[str]] = {}
+    in_progress: set[str] = set()
+    failure: list[tuple[str, list[str]]] = []
+
+    def resolve(pid: str) -> list[str] | None:
+        """R(pid), the order with the winner first; None once a merge has
+        failed. Each project's merge after all of its parents', the parents
+        taken in listing order (Design 4.5)."""
+        if pid in resolved:
+            return resolved[pid]
+        if pid in in_progress:
+            raise ValueError(f"loop in parents through '{pid}'")
+        in_progress.add(pid)
+        parents = _parents_of(pid, links, absent)
+        for parent in parents:
+            if resolve(parent) is None:
+                return None
+        merged = _merge([list(resolved[p]) for p in reversed(parents)]
+                        + [list(reversed(parents))])
+        in_progress.discard(pid)
+        if isinstance(merged, tuple):
+            failure.append((pid, merged[1]))
+            return None
+        resolved[pid] = [pid, *merged]
+        return resolved[pid]
+
+    found = resolve(project_id)
+    warning = None
+    if found is None:
+        where, heads = failure[0]
+        ids = _depth_first(project_id, links, absent)
+        named = ", ".join(f"'{head}'" for head in heads)
+        warning = (f"load order: no order keeps every project's own order of parents "
+                   f"(at '{where}': {named} cannot be placed); using depth-first order "
+                   f"{', '.join(ids)}; to choose a value yourself, set it in "
+                   f"'{project_id}'")
+    else:
+        ids = tuple(reversed(found))
+    return LoadOrder(ids=ids,
+                     missing=tuple(pid for pid in ids if pid in missing),
+                     unreadable=tuple(pid for pid in ids if pid in unreadable),
+                     warning=warning)
+
+
+def _merge(lists: list[list[str]]):
+    """C3's merge of `lists`: the merged list, or `(None, heads)` when no
+    list's first project can be taken, `heads` being the distinct first
+    projects left, in the order of the lists."""
+    result: list[str] = []
+    while any(lists):
+        for candidate in (lst[0] for lst in lists if lst):
+            if not any(candidate in lst[1:] for lst in lists):
+                break
+        else:
+            heads: list[str] = []
+            for lst in lists:
+                if lst and lst[0] not in heads:
+                    heads.append(lst[0])
+            return None, heads
+        result.append(candidate)
+        lists = [[pid for pid in lst if pid != candidate] for lst in lists]
+    return result
+
+
+def _depth_first(project_id: str, links, absent: "set[str]") -> tuple[str, ...]:
+    """Design 4.4: each parent in listing order, its own ancestors placed
+    first, skipping a project already placed; the project last."""
+    placed: list[str] = []
+
+    def place(pid: str, depth: int) -> None:
+        if depth > len(links) + 1:
+            raise ValueError(f"loop in parents through '{pid}'")
+        for parent in _parents_of(pid, links, absent):
+            if parent not in placed:
+                place(parent, depth + 1)
+        if pid not in placed:
+            placed.append(pid)
+
+    place(project_id, 0)
+    return tuple(placed)
+
+
+def passing(axis: str, project_id: str, links, *, absent=frozenset()) -> set[str]:
+    """The projects that pass `axis` to `project_id` (Design 5.1): the
+    project itself, and every project some chain of parent links from it
+    reaches with `axis` in the `inherit` of every link. Nothing is passed
+    through a project in `absent`, whose own links are unknown."""
+    found = {project_id}
+    frontier = [project_id]
+    while frontier:
+        pid = frontier.pop()
+        if pid in absent:
+            continue
+        for link in links.get(pid, ()):
+            if axis in link.inherit and link.id not in found:
+                found.add(link.id)
+                frontier.append(link.id)
+    return found
+
+
 @dataclass(frozen=True)
 class UnreachableProject:
     """A connected project that is declared here but not available here.
