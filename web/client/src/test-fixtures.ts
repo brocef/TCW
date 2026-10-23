@@ -1,7 +1,14 @@
 // Answers shaped as the server gives them, for the client's unit tests. The
 // stage table here is a test's own: the client holds no stage names, so the
 // names below could be any words.
-import type { TProject, TStageRow, WorkDetail, WorkItem } from "./model/types"
+import type {
+    CapabilityItem,
+    TaxonomyItem,
+    TProject,
+    TStageRow,
+    WorkDetail,
+    WorkItem,
+} from "./model/types"
 
 function row(
     name: string,
@@ -59,6 +66,25 @@ export function project(overrides: Partial<TProject> = {}): TProject {
         axes: { work: true, taxonomy: true, capabilities: true },
         ...overrides,
     }
+}
+
+/** A taxonomy record of project `owner` (default `p`, the fixture
+ * project). */
+export function term(
+    slug: string,
+    overrides: Partial<TaxonomyItem> = {},
+    owner = "p"
+): TaxonomyItem {
+    return { "full-id": `${owner}.taxonomy/${slug}`, owner, ...overrides }
+}
+
+/** A capability record of project `owner` (default `p`). */
+export function capability(
+    path: string,
+    overrides: Partial<CapabilityItem> = {},
+    owner = "p"
+): CapabilityItem {
+    return { "full-id": `${owner}.capabilities/${path}`, owner, ...overrides }
 }
 
 export function workItem(

@@ -89,7 +89,8 @@ def test_an_inherited_capability_never_ruled_on(tmp_path, monkeypatch, capsys):
     FsCapabilitiesStore.open(child).extends_add("base")
     code, out, _ = drift(child, monkeypatch, capsys)
     assert code == 1
-    assert out == [line for line in out if line.startswith("unreviewed: base/auth/login: ")]
+    assert out == [line for line in out
+                   if line.startswith("unreviewed: base.capabilities/auth/login: ")]
     assert len(out) == 1
 
 

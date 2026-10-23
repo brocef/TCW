@@ -219,7 +219,7 @@ def test_list_flags_inherited_origin(tmp_path):
     st = FsTaxonomyStore.open(cons)
     by_slug = {t.slug: t for t in st.list_all()}
     assert by_slug["Argument"].origin == "shared"
-    assert st.get("shared/Argument").qualified == "shared/Argument"
+    assert str(st.get("shared/Argument").full_id) == "shared.taxonomy/Argument"
     assert FsTaxonomyStore.open(cons).list_all(local_only=True) == []
 
 
@@ -227,14 +227,14 @@ def test_transitive_extends_flattens_terms_by_owning_project(tmp_path):
     a, _, c = transitive_taxonomy(tmp_path)
     st = FsTaxonomyStore.open(a)
 
-    assert {(term.qualified, term.origin) for term in st.list_all()} == {
-        ("bravo/shared", "bravo"),
-        ("charlie/deep", "charlie"),
-        ("charlie/shared", "charlie"),
+    assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
+        ("bravo.taxonomy/shared", "bravo"),
+        ("charlie.taxonomy/deep", "charlie"),
+        ("charlie.taxonomy/shared", "charlie"),
     }
-    assert st.get("charlie/deep").qualified == "charlie/deep"
+    assert str(st.get("charlie/deep").full_id) == "charlie.taxonomy/deep"
     assert st.get("deep").origin == "charlie"
-    assert [term.qualified for term in st.search("transitive needle")] == ["charlie/deep"]
+    assert [str(term.full_id) for term in st.search("transitive needle")] == ["charlie.taxonomy/deep"]
 
     detail = st.get_term_detail("charlie/deep")
     assert detail is not None
@@ -271,9 +271,9 @@ def test_transitive_extends_deduplicates_a_diamond_by_project_id(tmp_path):
     write_connected_config(a, "extends:\n  - bravo\n  - delta\n")
     write_connected_config(d, "extends:\n  - charlie\n")
 
-    qualified = [term.qualified for term in FsTaxonomyStore.open(a).list_all()]
-    assert qualified.count("charlie/deep") == 1
-    assert qualified.count("charlie/shared") == 1
+    full_ids = [str(term.full_id) for term in FsTaxonomyStore.open(a).list_all()]
+    assert full_ids.count("charlie.taxonomy/deep") == 1
+    assert full_ids.count("charlie.taxonomy/shared") == 1
 
 
 def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
@@ -301,10 +301,10 @@ def test_transitive_extends_crosses_a_second_hop_through_a_moved_tree(tmp_path):
     write_connected_config(b, "extends:\n  - charlie\n")
 
     st = FsTaxonomyStore.open(a)
-    assert {(term.qualified, term.origin) for term in st.list_all()} == {
-        ("bravo/shared", "bravo"),
-        ("charlie/deep", "charlie"),
-        ("charlie/shared", "charlie"),
+    assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
+        ("bravo.taxonomy/shared", "bravo"),
+        ("charlie.taxonomy/deep", "charlie"),
+        ("charlie.taxonomy/shared", "charlie"),
     }
     assert st.check() == []
     assert st._validation_resources("charlie/deep") == [
@@ -347,7 +347,7 @@ def test_get_term_detail_of_inherited_term(tmp_path):
     assert detail is not None
     assert detail.term.name == "Argument"
     assert detail.term.origin == "shared"                 # origin preserved
-    assert detail.term.qualified == "shared/Argument"
+    assert str(detail.term.full_id) == "shared.taxonomy/Argument"
     assert detail.core_revision                            # non-empty revision
     # bare ref (unique extend) resolves the same way
     assert st.get_term_detail("Argument").term.origin == "shared"
@@ -630,8 +630,9 @@ def test_cli_add_feature_lists_and_shows_kind(tmp_path, monkeypatch, capsys):
                  "--vocab", "user", "--vocab", "password"]) == 0
     capsys.readouterr()
     assert main(["taxonomy", "list", "--json"]) == 0
-    kinds = {t["path"]: t["kind"] for t in json.loads(capsys.readouterr().out)["terms"]}
-    assert kinds["user"] == "Vocabulary" and kinds["user-authentication"] == "Feature"
+    kinds = {t["full-id"]: t["kind"] for t in json.loads(capsys.readouterr().out)["terms"]}
+    assert kinds["repo.taxonomy/user"] == "Vocabulary"
+    assert kinds["repo.taxonomy/user-authentication"] == "Feature"
     assert main(["taxonomy", "show", "user-authentication"]) == 0
     out = capsys.readouterr().out
     assert "kind: Feature" in out
@@ -654,10 +655,10 @@ def test_cli_list_does_not_interleave_hyphen_sibling_with_subtree(tmp_path, monk
     monkeypatch.chdir(root)
     assert main(["taxonomy", "list"]) == 0
     assert capsys.readouterr().out == (
-        "event\n"
-        "event/log-batch\n"
-        "event/stat\n"
-        "event-reporting\n"
+        "repo.taxonomy/event\n"
+        "repo.taxonomy/event/log-batch\n"
+        "repo.taxonomy/event/stat\n"
+        "repo.taxonomy/event-reporting\n"
     )
 
 
@@ -670,7 +671,8 @@ def test_cli_list_is_depth_first_preorder_at_three_levels(tmp_path, monkeypatch,
         write_term(root, slug, name=slug)
     monkeypatch.chdir(root)
     assert main(["taxonomy", "list"]) == 0
-    assert capsys.readouterr().out == "a\na/b\na/b/c\na/b/c2\na/d\na-sibling\n"
+    assert capsys.readouterr().out == "".join(
+        f"repo.taxonomy/{slug}\n" for slug in ("a", "a/b", "a/b/c", "a/b/c2", "a/d", "a-sibling"))
 
 
 def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, monkeypatch, capsys):
@@ -683,9 +685,9 @@ def test_cli_list_never_splices_an_inherited_tree_into_the_local_one(tmp_path, m
     monkeypatch.chdir(cons)
     assert main(["taxonomy", "list"]) == 0
     assert capsys.readouterr().out == (
-        "argument-local\n"
-        "shared/Argument\n"
-        "shared/Argument/nested\n"
+        "consumer.taxonomy/argument-local\n"
+        "shared.taxonomy/Argument\n"
+        "shared.taxonomy/Argument/nested\n"
     )
 
 
@@ -708,7 +710,7 @@ def test_extends_add_writes_map_and_resolves(tmp_path):
     connect_sources(consumer, base)
     FsTaxonomyStore.open(consumer).extends_add("base")
     st = FsTaxonomyStore.open(consumer)            # reopen to load the new federation
-    assert "base/widget" in {t.qualified for t in st.list_all()}
+    assert "base.taxonomy/widget" in {str(t.full_id) for t in st.list_all()}
     assert st.get("base/widget").name == "Widget"
 
 
@@ -795,7 +797,7 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     write_connected_config(cons, "extends:\n  - base\n")
 
     st = FsTaxonomyStore.open(cons)
-    assert {term.qualified for term in st.list_all()} == {"base/argument"}
+    assert {str(term.full_id) for term in st.list_all()} == {"base.taxonomy/argument"}
     assert st.get("base/argument").name == "Argument"
     assert st.get("argument").origin == "base"
 
@@ -817,8 +819,8 @@ def test_extends_is_read_from_the_node_config_with_no_store_file(tmp_path):
 
     assert not (cons / "docs" / "taxonomy" / "config.yaml").exists()
     st = FsTaxonomyStore.open(cons)
-    assert {(term.qualified, term.origin) for term in st.list_all()} == {
-        ("shared/Argument", "shared")}
+    assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
+        ("shared.taxonomy/Argument", "shared")}
 
 
 def test_a_non_mapping_taxonomy_section_is_no_configuration_not_a_crash(tmp_path):
@@ -944,9 +946,9 @@ def test_a_shared_tree_may_now_be_composed_with_itself(tmp_path):
     write_connected_config(alpha, "extends:\n  - bravo\n")
 
     st = FsTaxonomyStore.open(alpha)
-    assert {(term.qualified, term.origin) for term in st.list_all()} == {
-        ("common", "local"),
-        ("bravo/common", "bravo"),
+    assert {(str(term.full_id), term.origin) for term in st.list_all()} == {
+        ("alpha.taxonomy/common", "local"),
+        ("bravo.taxonomy/common", "bravo"),
     }
 
 

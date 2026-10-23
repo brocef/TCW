@@ -77,10 +77,10 @@ def connect_many(anchor: Path, *sources: Path) -> None:
 def test_inherited_listed_with_origin(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported", "body": "Log in."}})
-    caps = {c.qualified: c for c in store(child).list_all()}
-    assert "base/auth/login" in caps
-    assert caps["base/auth/login"].origin == "base"
-    assert caps["base/auth/login"].status == "Supported"
+    caps = {str(c.full_id): c for c in store(child).list_all()}
+    assert "base.capabilities/auth/login" in caps
+    assert caps["base.capabilities/auth/login"].origin == "base"
+    assert caps["base.capabilities/auth/login"].status == "Supported"
 
 
 def test_local_only_excludes_inherited(tmp_path):
@@ -133,8 +133,8 @@ def test_override_omitted_still_listed(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Status="Omitted")
-    caps = {c.qualified: c.status for c in store(child).list_all()}
-    assert caps.get("base/auth/login") == "Omitted"
+    caps = {str(c.full_id): c.status for c in store(child).list_all()}
+    assert caps.get("base.capabilities/auth/login") == "Omitted"
 
 
 def test_override_null_clears_field(tmp_path):
@@ -425,8 +425,8 @@ def test_remove_inherited_still_refuses_after_override(tmp_path):
 def test_unreviewed_bare_inherited(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
-    unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
-    assert unreviewed == {"base/auth/login"}
+    unreviewed = {str(c.full_id) for c in store(child).unreviewed_inherited()}
+    assert unreviewed == {"base.capabilities/auth/login"}
 
 
 def test_override_setting_status_is_reviewed(tmp_path):
@@ -442,8 +442,8 @@ def test_override_without_status_still_unreviewed(tmp_path):
     base, child = child_of(tmp_path, {
         "auth/login": {"id": "cap-aaa111", "Status": "Supported"}})
     write_cap(child, "ov/login", overrides="cap-aaa111", Priority="P1")  # no Status
-    unreviewed = {c.qualified for c in store(child).unreviewed_inherited()}
-    assert unreviewed == {"base/auth/login"}
+    unreviewed = {str(c.full_id) for c in store(child).unreviewed_inherited()}
+    assert unreviewed == {"base.capabilities/auth/login"}
 
 
 def test_local_capability_never_unreviewed(tmp_path):
@@ -538,8 +538,8 @@ def test_a_sibling_that_moved_its_tree_can_still_be_extended(tmp_path):
     )
     declare_extends(child, "capabilities", "extends:\n  - base\n")
 
-    caps = {c.qualified for c in store(child).list_all()}
-    assert "base/auth/login" in caps
+    caps = {str(c.full_id) for c in store(child).list_all()}
+    assert "base.capabilities/auth/login" in caps
 
 
 def test_a_sibling_with_no_component_names_the_project(tmp_path):
@@ -625,7 +625,7 @@ def test_a_moved_sibling_that_extends_further_still_resolves(tmp_path):
     (tmp_path / "n1" / "ledger" / "own" / "meta.yaml").write_text(
         "id: cap-ddd222\nname: Own\nStatus: Supported\n")
     (tmp_path / "n1" / "ledger" / "own" / "description.md").write_text("")
-    assert {c.qualified for c in store(root).list_all()} == {"n1/own"}
+    assert {str(c.full_id) for c in store(root).list_all()} == {"n1.capabilities/own"}
     assert store(root).check() == []
 
 

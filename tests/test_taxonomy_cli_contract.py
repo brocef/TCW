@@ -46,7 +46,7 @@ def test_a_mistyped_command_is_a_usage_error_not_a_lookup(project, run):
 
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "taxonomy", "add", "Widget", stdin="A small part.\n")
-    assert (code, out) == (0, "widget\n")
+    assert (code, out) == (0, "fx.taxonomy/widget\n")
     assert err.splitlines() == ["wrote docs/taxonomy/widget/meta.yaml",
                                 "wrote docs/taxonomy/widget/description.md"]
     assert run(project, "taxonomy", "add", "Widget")[0] == 3
@@ -91,18 +91,19 @@ def test_extends_add_prints_nothing_and_names_the_config(tmp_path, run):
 def test_list_and_search_print_one_path_per_line(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     run(project, "taxonomy", "add", "Gear", "--parent", "widget")
-    assert run(project, "taxonomy", "list")[1] == "widget\nwidget/gear\n"
-    assert run(project, "taxonomy", "search", "small")[1] == "widget\n"
+    assert run(project, "taxonomy", "list")[1] == \
+        "fx.taxonomy/widget\nfx.taxonomy/widget/gear\n"
+    assert run(project, "taxonomy", "search", "small")[1] == "fx.taxonomy/widget\n"
     data = json.loads(run(project, "taxonomy", "list", "--json")[1])
     assert data["schema"] == 2
-    assert data["terms"][1] == {"path": "widget/gear", "name": "Gear",
-                                "kind": "Vocabulary", "origin": "local"}
+    assert data["terms"][1] == {"full-id": "fx.taxonomy/widget/gear", "owner": "fx",
+                                "name": "Gear", "kind": "Vocabulary"}
 
 
 def test_show_json(project, run):
     run(project, "taxonomy", "add", "Widget", stdin="small\n")
     data = json.loads(run(project, "taxonomy", "show", "widget", "--json")[1])
-    assert data["schema"] == 2 and data["term"]["path"] == "widget"
+    assert data["schema"] == 2 and data["term"]["full-id"] == "fx.taxonomy/widget"
     assert data["term"]["description"].strip() == "small"
 
 

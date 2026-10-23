@@ -11,6 +11,8 @@ import {
     SortControl,
 } from "./content-views"
 import type { TDetail } from "./ui-types"
+import { ProjectIdContext } from "./project-context"
+import { capability, term } from "../test-fixtures"
 
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
 const modified = "2026-07-22T18:30:00Z"
@@ -75,14 +77,14 @@ test("renders modified subtext in the taxonomy and capability detail views", () 
         {
             axis: "taxonomy",
             detail: {
-                term: { slug: "term", name: "Term", modified },
+                term: term("term", { name: "Term", modified }),
                 coreRevision: "",
             },
         },
         {
             axis: "capabilities",
             detail: {
-                capability: { path: "web", name: "Web", modified },
+                capability: capability("web", { name: "Web", modified }),
                 coreRevision: "",
             },
         },
@@ -106,26 +108,28 @@ test("an inherited entry has no edit control and names its project", () => {
     const onEdit = vi.fn()
     render(
         <ThemeProvider>
-            <DetailView
-                axis="capabilities"
-                detail={{
-                    capability: {
-                        path: "base/shared",
-                        name: "Shared",
-                        origin: "base",
-                    },
-                    coreRevision: "",
-                }}
-                onEdit={onEdit}
-            />
-            <DetailView
-                axis="taxonomy"
-                detail={{
-                    term: { slug: "local", name: "Local", origin: "local" },
-                    coreRevision: "",
-                }}
-                onEdit={onEdit}
-            />
+            <ProjectIdContext.Provider value="p">
+                <DetailView
+                    axis="capabilities"
+                    detail={{
+                        capability: capability(
+                            "shared",
+                            { name: "Shared" },
+                            "base"
+                        ),
+                        coreRevision: "",
+                    }}
+                    onEdit={onEdit}
+                />
+                <DetailView
+                    axis="taxonomy"
+                    detail={{
+                        term: term("local", { name: "Local" }),
+                        coreRevision: "",
+                    }}
+                    onEdit={onEdit}
+                />
+            </ProjectIdContext.Provider>
         </ThemeProvider>
     )
     expect(screen.getByText("inherited from base")).toBeInTheDocument()
@@ -138,12 +142,10 @@ test("a retired capability field is shown read-only and offered by no form", () 
             <DetailView
                 axis="capabilities"
                 detail={{
-                    capability: {
-                        path: "web",
+                    capability: capability("web", {
                         name: "Web",
-                        origin: "local",
                         fields: { Status: "Supported", "Planning doc": "old" },
-                    },
+                    }),
                     coreRevision: "r",
                 }}
                 onEdit={() => undefined}

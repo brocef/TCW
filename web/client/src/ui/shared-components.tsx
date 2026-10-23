@@ -28,6 +28,7 @@ import { marked } from "marked"
 import { requestJson } from "../model/api"
 import { rankReferenceOptions, typedLink } from "../model/reference-search"
 import { LinkContext } from "./link-context"
+import { ProjectIdContext } from "./project-context"
 import type {
     Axis,
     AxisItem,
@@ -40,7 +41,7 @@ import { personName } from "../model/work"
 import { CreatedAt, ModifiedAt } from "./modified-at"
 import { useThemePreference } from "../theme-context"
 import { parseThemePreference } from "../theme-preference"
-import { itemKey, itemTitle, pathFor } from "./route-utils"
+import { inherited, itemKey, itemTitle, pathFor } from "./route-utils"
 import { beginResize } from "./ui-state"
 
 type Resolution = {
@@ -263,6 +264,7 @@ export function Tree<T extends AxisItem>({
     rowClass?: (item: T) => string
     people?: Record<string, string>
 }) {
+    const projectId = useContext(ProjectIdContext)
     const renderNodes = (
         current: Array<TreeNode<T>>,
         depth: number
@@ -271,7 +273,9 @@ export function Tree<T extends AxisItem>({
             {current.map((node) => {
                 const hasChildren = node.children.length > 0
                 const isExpanded = expanded.has(node.path)
-                const key = node.item ? itemKey(axis, node.item) : node.path
+                const key = node.item
+                    ? itemKey(axis, node.item, projectId)
+                    : node.path
                 return (
                     <div className="tree-node" key={node.path} role="none">
                         <div className="tree-row" role="none">
@@ -384,6 +388,7 @@ export function ItemMeta({
     item: AxisItem
     people?: Record<string, string>
 }) {
+    const projectId = useContext(ProjectIdContext)
     if (axis === "work") {
         const work = item as WorkItem
         if (work.unread)
@@ -412,7 +417,9 @@ export function ItemMeta({
         return (
             <div>
                 <div>
-                    {[term.kind, term.origin].filter(Boolean).join(" · ")}
+                    {[term.kind, inherited(term, projectId) && term.owner]
+                        .filter(Boolean)
+                        .join(" · ")}
                 </div>
                 <ModifiedAt value={term.modified} />
             </div>
@@ -423,7 +430,7 @@ export function ItemMeta({
         <div>
             {[
                 capability.status,
-                capability.origin !== "local" && capability.origin,
+                inherited(capability, projectId) && capability.owner,
             ]
                 .filter(Boolean)
                 .join(" · ")}

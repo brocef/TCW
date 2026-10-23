@@ -1,3 +1,4 @@
+import { keySegments } from "./identifier"
 import type { TreeNode, WorkItem } from "./types"
 
 export type TWorkSortKey = "name" | "created" | "priority"
@@ -13,7 +14,7 @@ export function buildPathTree<T>(
         if (!itemByKey.has(keyOf(item))) itemByKey.set(keyOf(item), item)
     for (const key of itemByKey.keys()) {
         let cursor = ""
-        for (const segment of key.split("/")) {
+        for (const segment of keySegments(key)) {
             cursor = cursor ? `${cursor}/${segment}` : segment
             if (!map.has(cursor))
                 map.set(cursor, {
@@ -167,7 +168,7 @@ export function pruneTree<T>(
 }
 
 export function pathAncestors(key: string): string[] {
-    const parts = key.split("/")
+    const parts = keySegments(key)
     return parts
         .slice(1)
         .map((_part, index) => parts.slice(0, index + 1).join("/"))

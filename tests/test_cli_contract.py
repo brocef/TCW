@@ -321,8 +321,9 @@ def test_list_by_tag(fx):
 
 
 def test_the_tree_commands(fx):
-    assert written(fx, "taxonomy", "add", "Widget").out == "widget\n"
-    assert written(fx, "capabilities", "add", "ns/do-a-thing").out == "ns/do-a-thing\n"
+    assert written(fx, "taxonomy", "add", "Widget").out == "fx.taxonomy/widget\n"
+    assert written(fx, "capabilities", "add", "ns/do-a-thing").out == \
+        "fx.capabilities/ns/do-a-thing\n"
     assert written(fx, "capabilities", "set", "ns/do-a-thing",
                    "--status", "Supported").out == ""
     removed = written(fx, "taxonomy", "rm", "widget")
@@ -674,15 +675,16 @@ def test_the_reading_commands_in_a_project(fx):
     docs = checked(fx, "work", "docs", out="")
     assert "agent guide" in docs.err
     checked(fx, "projects", "list", out="fx\n")
-    checked(fx, "taxonomy", "list", out="widget\n")
+    checked(fx, "taxonomy", "list", out="fx.taxonomy/widget\n")
     checked(fx, "taxonomy", "show", "widget",
-            out=lambda o: o.startswith("path: widget\nname: Widget\n") and "small" in o)
-    checked(fx, "taxonomy", "search", "small", out="widget\n")
+            out=lambda o: o.startswith("full-id: fx.taxonomy/widget\nowner: fx\nname: Widget\n")
+            and "small" in o)
+    checked(fx, "taxonomy", "search", "small", out="fx.taxonomy/widget\n")
     checked(fx, "taxonomy", "path", out=is_path(fx / "docs" / "taxonomy"))
-    checked(fx, "capabilities", "list", out="ns/do-a-thing\n")
+    checked(fx, "capabilities", "list", out="fx.capabilities/ns/do-a-thing\n")
     checked(fx, "capabilities", "show", "ns/do-a-thing",
-            out=lambda o: "ns/do-a-thing" in o)
-    checked(fx, "capabilities", "search", "thing", out="ns/do-a-thing\n")
+            out=lambda o: "fx.capabilities/ns/do-a-thing" in o)
+    checked(fx, "capabilities", "search", "thing", out="fx.capabilities/ns/do-a-thing\n")
     checked(fx, "capabilities", "path", out=is_path(fx / "docs" / "capabilities"))
     checked(fx, "capabilities", "drift", out="")
     checked(fx, "validate", out="")
@@ -760,7 +762,7 @@ def test_the_writing_tree_commands_in_a_project(tmp_path, fx):
     assert any(l.startswith("removed ") for l in reset.err.splitlines()), reset.err
     checked(fx, "capabilities", "extends", "rm", "up", out="")
 
-    checked(fx, "capabilities", "add", "ns/gone", out="ns/gone\n")
+    checked(fx, "capabilities", "add", "ns/gone", out="fx.capabilities/ns/gone\n")
     rm = checked(fx, "capabilities", "rm", "ns/gone", out="")
     assert any(l.startswith("removed ") for l in rm.err.splitlines()), rm.err
 

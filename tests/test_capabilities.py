@@ -321,7 +321,7 @@ def test_cli_drift_flags_unreviewed_inherited(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(child)
     assert main(["capabilities", "drift"]) == 1
     out = capsys.readouterr().out
-    assert "unreviewed" in out and "base/auth/login" in out
+    assert "unreviewed" in out and "base.capabilities/auth/login" in out
 
 
 def test_cli_drift_clean_after_override(tmp_path, monkeypatch, capsys):

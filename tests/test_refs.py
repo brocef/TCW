@@ -154,7 +154,7 @@ def test_resolve_federated_capability(tmp_path):
     connect(child, base)
     FsCapabilitiesStore.open(child).extends_add("base")
     r = resolve_tcw_ref(child, "tcw://base/C/auth/login")
-    assert r.ok and r.key == "base/auth/login"
+    assert r.ok and r.key == "base.capabilities/auth/login"
 
 
 # ── resolve: foreign work (resolves in the graph; hosting is the viewer's call) ─

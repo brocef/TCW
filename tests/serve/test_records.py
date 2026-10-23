@@ -29,8 +29,8 @@ def assert_error(answer, status: int, code: str):
 
 
 def test_list_terms(records):
-    slugs = {t["slug"] for t in records.get("/api/taxonomy").json}
-    assert {"work-item", "admin"} <= slugs
+    full_ids = {t["full-id"] for t in records.get("/api/taxonomy").json}
+    assert {"r.taxonomy/work-item", "r.taxonomy/admin"} <= full_ids
 
 
 def test_create_a_vocabulary_term(records):
@@ -113,7 +113,8 @@ def test_a_feature_with_an_unknown_vocabulary_term_is_refused_and_writes_nothing
 
 def test_an_encoded_slash_names_a_nested_term(records):
     FsTaxonomyStore.open(records.root).add("Adapter", slug="adapter", parent="admin")
-    assert detail(records, "taxonomy", "admin%2Fadapter")["term"]["slug"] == "admin/adapter"
+    assert detail(records, "taxonomy", "admin%2Fadapter")["term"]["full-id"] == \
+        "r.taxonomy/admin/adapter"
     revision = detail(records, "taxonomy", "admin%2Fadapter")["coreRevision"]
     answer = records.patch("/api/taxonomy/admin%2Fadapter",
                            {"revision": revision, "fields": {"description": "nested"}})
@@ -132,11 +133,12 @@ def test_create_a_capability(records):
 
 def test_create_a_nested_capability_without_a_name(records):
     answer = records.post("/api/capabilities", {"path": "web/editing"})
-    assert answer.status == 201 and answer.json["capability"]["path"] == "web/editing"
-    assert {"web", "web/editing"} <= {c["path"] for c in
-                                      records.get("/api/capabilities").json}
-    assert detail(records, "capabilities", "web%2Fediting")["capability"]["path"] \
-        == "web/editing"
+    assert answer.status == 201
+    assert answer.json["capability"]["full-id"] == "r.capabilities/web/editing"
+    assert {"r.capabilities/web", "r.capabilities/web/editing"} <= {
+        c["full-id"] for c in records.get("/api/capabilities").json}
+    assert detail(records, "capabilities", "web%2Fediting")["capability"]["full-id"] \
+        == "r.capabilities/web/editing"
 
 
 def test_update_a_capability(records):
@@ -382,9 +384,9 @@ def inheriting(tmp_path, serve_project):
     return serve_project(roots["child"])
 
 
-def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inheriting):
-    listed = {c["path"]: c for c in inheriting.get("/api/capabilities").json}
-    assert listed["shared-cap"]["origin"] == "base"
+def test_an_inherited_capability_is_listed_with_its_owner_and_read_only(inheriting):
+    listed = {c["full-id"]: c for c in inheriting.get("/api/capabilities").json}
+    assert listed["base.capabilities/shared-cap"]["owner"] == "base"
     meta = inheriting.root.parent / "base" / "docs" / "capabilities" / "shared-cap" / \
         "meta.yaml"
     before = meta.read_text()
@@ -397,8 +399,8 @@ def test_an_inherited_capability_is_listed_with_its_origin_and_read_only(inherit
 
 
 def test_an_inherited_term_is_read_only(inheriting):
-    listed = {t["slug"]: t for t in inheriting.get("/api/taxonomy").json}
-    assert listed["shared"]["origin"] == "base"
+    listed = {t["full-id"]: t for t in inheriting.get("/api/taxonomy").json}
+    assert listed["base.taxonomy/shared"]["owner"] == "base"
     answer = inheriting.patch("/api/taxonomy/shared", {"fields": {"name": "Mine"},
                                                        "revision": "r"})
     assert_error(answer, 403, "read-only")
@@ -432,25 +434,26 @@ def test_a_link_to_another_projects_item_is_other_project(tmp_path, personal_on,
 
 def test_an_inherited_term_reads_by_an_encoded_slash(inheriting):
     found = detail(inheriting, "taxonomy", "base%2Fshared")
-    assert (found["term"]["slug"], found["term"]["origin"]) == ("shared", "base")
+    assert (found["term"]["full-id"], found["term"]["owner"]) == \
+        ("base.taxonomy/shared", "base")
 
 
 def test_an_inherited_capability_reads_by_an_encoded_slash(inheriting):
     found = detail(inheriting, "capabilities", "base%2Fshared-cap")
-    assert found["capability"]["origin"] == "base"
+    assert found["capability"]["owner"] == "base"
 
 
 def test_a_link_into_an_inherited_store_resolves(inheriting):
     found = resolve(inheriting, ["tcw://base/C/shared-cap"])
     assert found["tcw://base/C/shared-cap"] == {"ok": True, "axis": "capabilities",
-                                               "key": "base/shared-cap"}
+                                               "key": "base.capabilities/shared-cap"}
 
 
 def test_a_nested_capability_is_edited_by_an_encoded_slash(records):
     FsCapabilitiesStore.open(records.root).add("web/editing", "Editing", status="Missing")
     answer = capability_patch(records, "web%2Fediting", {"Status": "Partial", "Gaps": "x"})
     assert answer.status == 200, answer.body
-    assert answer.json["capability"]["path"] == "web/editing"
+    assert answer.json["capability"]["full-id"] == "r.capabilities/web/editing"
     assert answer.json["capability"]["status"] == "Partial"
 
 

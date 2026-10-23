@@ -21,7 +21,7 @@ def test_an_unreachable_jira_exits_5_after_the_unreviewed_lines(
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
         line for line in printed.out.splitlines() if line.startswith("unreviewed: ")]
-    assert "base/auth/login" in printed.out
+    assert "base.capabilities/auth/login" in printed.out
     assert printed.err.startswith("tcw capabilities drift: ")
 
 

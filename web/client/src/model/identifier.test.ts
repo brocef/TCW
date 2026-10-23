@@ -1,7 +1,14 @@
 // @vitest-environment node
 // Node's own URL, not jsdom's: TCW-110 AC 2 names the parser Node ships.
 import addresses from "../../../../tests/fixtures/tcw-addresses.json"
-import { fullIdText, isFullId, objectAddress, parseFullId } from "./identifier"
+import {
+    fullIdText,
+    isFullId,
+    keySegments,
+    objectAddress,
+    parseFullId,
+    routeKey,
+} from "./identifier"
 
 describe("parseFullId", () => {
     it.each([
@@ -42,5 +49,23 @@ describe("building identifiers", () => {
 describe("addresses read by Node's URL parser", () => {
     it.each(addresses.accepted)("$address", ({ address, path }) => {
         expect(new URL(address).pathname).toBe(path)
+    })
+})
+
+describe("route keys", () => {
+    test("this project's entry is keyed by its id-path, another's by its full identifier", () => {
+        expect(routeKey("demo.capabilities/cli/x", "demo")).toBe("cli/x")
+        expect(routeKey("core.capabilities/cli/y", "demo")).toBe(
+            "core.capabilities/cli/y"
+        )
+    })
+
+    test("a key's tree segments keep the owner and namespace together", () => {
+        expect(keySegments("core.taxonomy/a/b")).toEqual([
+            "core.taxonomy",
+            "a",
+            "b",
+        ])
+        expect(keySegments("a/b")).toEqual(["a", "b"])
     })
 })

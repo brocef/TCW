@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import { fakeFetch } from "../test-fixtures"
+import { capability, fakeFetch } from "../test-fixtures"
 import { DeclarationSection } from "./declaration-form"
 
 const references = {
+    projectId: "p",
     work: [],
     taxonomy: [],
-    capabilities: [{ path: "web/editing", name: "Editing" }],
+    capabilities: [capability("web/editing", { name: "Editing" })],
 }
 
 function renderSection(editable = true, onSaved = vi.fn()) {

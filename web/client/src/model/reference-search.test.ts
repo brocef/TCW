@@ -10,7 +10,7 @@ import {
     typedLink,
     type TReferenceOption,
 } from "./reference-search"
-import { workItem } from "../test-fixtures"
+import { capability, term, workItem } from "../test-fixtures"
 
 const choices: TReferenceOption[] = [
     { displayName: "Useful editor", identifier: "web/use" },
@@ -64,14 +64,15 @@ describe("reference search", () => {
                 workItem("duplicate"),
             ],
             taxonomy: [
-                { slug: "term", name: "Term", kind: "Vocabulary" },
-                { slug: "feature", name: "Feature", kind: "Feature" },
+                term("term", { name: "Term", kind: "Vocabulary" }),
+                term("feature", { name: "Feature", kind: "Feature" }),
             ],
             capabilities: [
-                { path: "roles/admin", name: "Admin" },
-                { path: "conditions/online", name: "Online" },
-                { path: "parent", name: "Current" },
+                capability("roles/admin", { name: "Admin" }),
+                capability("conditions/online", { name: "Online" }),
+                capability("parent", { name: "Current" }),
             ],
+            projectId: "p",
         }
         expect(
             referenceOptions("work-parent", context).map(
@@ -110,29 +111,19 @@ describe("the fields of the autocomplete table", () => {
             workItem("other", { assignee: "acc-1" }),
         ],
         taxonomy: [
-            { slug: "term", name: "Term", kind: "Vocabulary" },
-            {
-                slug: "shared",
-                qualified: "base/shared",
-                name: "Shared",
-                kind: "Vocabulary",
-                origin: "base",
-            },
-            { slug: "feature", name: "Feature", kind: "Feature" },
+            term("term", { name: "Term", kind: "Vocabulary" }),
+            term("shared", { name: "Shared", kind: "Vocabulary" }, "base"),
+            term("feature", { name: "Feature", kind: "Feature" }),
         ],
         capabilities: [
-            { path: "roles/admin", name: "Admin" },
-            {
-                path: "roles/guest",
-                qualified: "base/roles/guest",
-                name: "Guest",
-                origin: "base",
-            },
-            { path: "web/editing", name: "Editing" },
-            { path: "web/reading", name: "Reading" },
+            capability("roles/admin", { name: "Admin" }),
+            capability("roles/guest", { name: "Guest" }, "base"),
+            capability("web/editing", { name: "Editing" }),
+            capability("web/reading", { name: "Reading" }),
         ],
         people: { "acc-1": "Ann" },
         user: "acc-me",
+        projectId: "p",
     }
     const ids = (field: Parameters<typeof referenceOptions>[0], extra = {}) =>
         referenceOptions(field, { ...context, ...extra }).map(
@@ -189,9 +180,10 @@ test("a capability path is offered one segment at a time", () => {
 
 test("tcw:// completion names a work item by its folder, and every axis", () => {
     const found = tcwLinkOptions({
+        projectId: "p",
         work: [workItem("2026-10-01-x", { title: "X" })],
-        taxonomy: [{ slug: "t", qualified: "base/t", name: "T" }],
-        capabilities: [{ path: "web", name: "Web" }],
+        taxonomy: [term("t", { name: "T" }, "base")],
+        capabilities: [capability("web", { name: "Web" })],
     })
     expect(found.map((item) => item.identifier)).toEqual([
         "tcw://W/2026-10-01-x",

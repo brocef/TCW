@@ -1,8 +1,9 @@
 """`tcw capabilities` — the user stories. Path-addressed folder capabilities.
 
 stdout carries each command's product and nothing else (TCW-73 Design 1):
-`add` prints the new capability's qualified path, `list` and `search` one path
-per line, `show` the record, `path` the store folder; `set`, `reset`, `rm` and
+`add` prints the new capability's full identifier, `list` and `search` one
+full identifier per line (`<project>.capabilities/<path>`, TCW-110 Design 4),
+`show` the record, `path` the store folder; `set`, `reset`, `rm` and
 `extends add|rm` print nothing. Every file a write changed is named on stderr.
 A failure is raised for the top-level handler to print and turn into its exit
 code.
@@ -14,6 +15,7 @@ import sys
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, NotFound, UsageError
+from tcw.ids import identity
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import CAP_STATUSES, Capability
@@ -35,8 +37,7 @@ def _store() -> FsCapabilitiesStore:
 
 
 def _record(cap: Capability) -> dict:
-    return {"path": cap.qualified, "name": cap.name, "status": cap.status,
-            "origin": cap.origin}
+    return {**identity(cap.full_id), "name": cap.name, "status": cap.status}
 
 
 def _detail(cap: Capability) -> dict:
@@ -52,7 +53,7 @@ def _print_caps(caps: list[Capability], as_json: bool) -> int:
         print_json("capabilities", [_record(c) for c in caps])
     else:
         for c in caps:
-            print(c.qualified)
+            print(c.full_id)
     return codes.OK
 
 
@@ -72,7 +73,7 @@ def _show(args: argparse.Namespace) -> int:
     if args.json:
         print_json("capability", _detail(cap))
         return codes.OK
-    lines = [f"path: {cap.qualified}", f"name: {cap.name}", f"origin: {cap.origin}"]
+    lines = [f"full-id: {cap.full_id}", f"owner: {cap.owner}", f"name: {cap.name}"]
     if cap.id:
         lines.append(f"id: {cap.id}")
     lines += [f"{k}: {_fmt(v)}" for k, v in cap.fields.items()]
@@ -92,7 +93,7 @@ def _add(args: argparse.Namespace) -> int:
     st = _store()
     cap = st.add(args.path, name=args.name, status=args.status, body=read_piped_stdin())
     changed(st.changed)
-    print(cap.qualified)
+    print(cap.full_id)
     return codes.OK
 
 
@@ -170,7 +171,7 @@ def _drift(args: argparse.Namespace) -> int:
     # Printed before the completed-work half reads anything, so an
     # unreachable Jira (exit 5) still leaves these on stdout.
     for c in st.unreviewed_inherited():
-        print(f"unreviewed: {c.qualified}: inherited, and its status is still the "
+        print(f"unreviewed: {c.full_id}: inherited, and its status is still the "
               f"upstream default; never ruled on here")
         found += 1
     sys.stdout.flush()
@@ -222,8 +223,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = group(sub, NAME, help="the user stories — what a user can do")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pl = command(g, "list", help="every capability's path",
-                 prints="one qualified path per line, or --json", writes="nothing",
+    pl = command(g, "list", help="every capability's full identifier",
+                 prints="one full identifier per line, or --json", writes="nothing",
                  examples=["capabilities list", "capabilities list --status Missing",
                            "capabilities list --namespace billing --json"])
     pl.add_argument("--status", choices=sorted(CAP_STATUSES),
@@ -248,7 +249,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
             writes="nothing", examples=["capabilities path"]).set_defaults(func=_path)
 
     pa = command(g, "add", help="create a capability; its body is read from stdin",
-                 prints="the new capability's qualified path",
+                 prints="the new capability's full identifier",
                  writes="the capability's files, each named on stderr",
                  examples=["capabilities add billing/refund",
                            "capabilities add billing/refund 'Refund a payment' "
@@ -287,7 +288,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     prm.set_defaults(func=_rm)
 
     pse = command(g, "search", help="capabilities whose name or body holds the text",
-                  prints="one qualified path per line, or --json", writes="nothing",
+                  prints="one full identifier per line, or --json", writes="nothing",
                   examples=["capabilities search refund"])
     pse.add_argument("query", help="text matched case-insensitively in names + bodies")
     pse.add_argument("--json", action="store_true",

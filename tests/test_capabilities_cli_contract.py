@@ -48,7 +48,7 @@ def thing(project, run):
 
 def test_add_prints_the_path_and_names_its_files(project, run):
     code, out, err = run(project, "capabilities", "add", "ns/do-a-thing", stdin="Body.\n")
-    assert (code, out) == (0, "ns/do-a-thing\n")
+    assert (code, out) == (0, "fx.capabilities/ns/do-a-thing\n")
     assert "wrote docs/capabilities/ns/do-a-thing/meta.yaml" in err.splitlines()
     assert "Body." in FsCapabilitiesStore.open(project).get("ns/do-a-thing").body
 
@@ -108,13 +108,15 @@ def test_rm_names_each_file_it_removed(thing, run):
 
 def test_list_and_search_print_one_path_per_line(thing, run):
     run(thing, "capabilities", "add", "ns/other", stdin="findme\n")
-    assert run(thing, "capabilities", "list")[1] == "ns/do-a-thing\nns/other\n"
-    assert run(thing, "capabilities", "list", "--local")[1] == "ns/do-a-thing\nns/other\n"
-    assert run(thing, "capabilities", "search", "findme")[1] == "ns/other\n"
+    both = "fx.capabilities/ns/do-a-thing\nfx.capabilities/ns/other\n"
+    assert run(thing, "capabilities", "list")[1] == both
+    assert run(thing, "capabilities", "list", "--local")[1] == both
+    assert run(thing, "capabilities", "search", "findme")[1] == "fx.capabilities/ns/other\n"
     data = json.loads(run(thing, "capabilities", "list", "--json")[1])
     assert data["schema"] == 2
-    assert data["capabilities"][0] == {"path": "ns/do-a-thing", "name": "Do A Thing",
-                                       "status": "Missing", "origin": "local"}
+    assert data["capabilities"][0] == {"full-id": "fx.capabilities/ns/do-a-thing",
+                                       "owner": "fx", "name": "Do A Thing",
+                                       "status": "Missing"}
     shown = json.loads(run(thing, "capabilities", "show", "ns/do-a-thing", "--json")[1])
     assert shown["capability"]["fields"]["Status"] == "Missing"
 

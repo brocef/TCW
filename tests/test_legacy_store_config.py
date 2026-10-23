@@ -179,7 +179,7 @@ def test_a_check_scoped_to_one_object_leaves_the_leftover_out(
 
 
 @pytest.mark.parametrize("component,inherited", [
-    ("taxonomy", "shared/Argument"), ("capabilities", "shared/auth")])
+    ("taxonomy", "shared.taxonomy/Argument"), ("capabilities", "shared.capabilities/auth")])
 def test_following_the_message_makes_check_clean(tmp_path, component, inherited):
     consumer = _federated(tmp_path)
     leftover = consumer / "docs" / component / LEFTOVER[component]
@@ -191,7 +191,7 @@ def test_following_the_message_makes_check_clean(tmp_path, component, inherited)
 
     st = STORE[component].open(consumer)
     assert st.check() == []
-    assert inherited in {entry.qualified for entry in st.list_all()}
+    assert inherited in {str(entry.full_id) for entry in st.list_all()}
 
 
 def test_a_node_reached_through_a_symlink_still_gets_a_relative_path(tmp_path):

@@ -181,11 +181,11 @@ export interface TTicket {
 }
 
 export interface TaxonomyItem extends JsonRecord {
-    slug: string
-    qualified?: string
+    /** `<project>.taxonomy/<slug>` (TCW-110 Design 4.5). */
+    "full-id": string
+    owner: string
     name?: string
     kind?: string
-    origin?: string
     parent?: string
     relates_to?: string[]
     vocabulary?: string[]
@@ -194,11 +194,11 @@ export interface TaxonomyItem extends JsonRecord {
 }
 
 export interface CapabilityItem extends JsonRecord {
-    path: string
-    qualified?: string
+    /** `<project>.capabilities/<path>` (TCW-110 Design 4.5). */
+    "full-id": string
+    owner: string
     name?: string
     status?: string
-    origin?: string
     fields?: Record<string, string | string[]>
     body?: string
     modified?: string

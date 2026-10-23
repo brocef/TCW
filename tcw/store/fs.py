@@ -1306,6 +1306,18 @@ class FsTreeStore:
         # directly: a threaded section would arrive empty there and that store
         # would silently resolve no inheritance at all.
         self.config = self._component_config()
+        # The owner of every entry this store holds itself (TCW-110 Design
+        # 1.4): the `id:` of its own project's file, read here rather than
+        # through a project registry, which would walk the owner's whole
+        # family only to learn what that one file holds.
+        project_id = self._config().get("id")
+        self.project_id = project_id if isinstance(project_id, str) else ""
+
+    def owner_of(self, origin: str) -> str:
+        """The ID of the project that holds an entry resolved through
+        `origin`: this store's own project for `"local"`, else the `extends`
+        ID it came through."""
+        return self.project_id if origin == "local" else origin
 
     @classmethod
     def open(cls, project_root: Path, _walk: "_FederationWalk | None" = None):
@@ -1756,6 +1768,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
             modified=_modified_timestamp(
                 [d / "meta.yaml", d / "description.md"]
             ),
+            owner=self.owner_of(origin),
         )
 
     def get_local(self, slug: str) -> Term | None:
@@ -1887,7 +1900,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if term is None:
             raise NotFound(f"no such term: {ref}")
         if term.origin != "local":
-            raise Refused(f"cannot remove inherited term '{term.qualified}' "
+            raise Refused(f"cannot remove inherited term '{term.full_id}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
         # Refused, never cascaded, and decided from the disk (TCW-73 Design
@@ -2143,7 +2156,7 @@ class FsTaxonomyStore(FsTreeStore, _FederationCycles, TaxonomyStore):
         if term is None:
             raise NotFound(f"no such term: {ref}")
         if term.origin != "local":
-            raise Refused(f"cannot update inherited term '{term.qualified}' "
+            raise Refused(f"cannot update inherited term '{term.full_id}' "
                              f"(edit it at its source)")
         d = self.root / term.slug
 
@@ -2352,6 +2365,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             body=self._compose_body(d, meta, description),
             origin=origin,
             modified=_modified_timestamp(_capability_resources(d, meta)),
+            owner=self.owner_of(origin),
         )
 
     def _apply_override(self, base: Capability, alias: str,
@@ -2389,6 +2403,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             fields=merged,
             body=self._compose_body(d, meta, mid),
             origin=alias,
+            owner=self.owner_of(alias),
             modified=max(
                 filter(
                     None,
@@ -2523,7 +2538,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         if cap is None:
             raise NotFound(f"no such capability: {identifier}")
         if cap.origin != "local":
-            raise Refused(f"cannot remove inherited capability '{cap.qualified}' "
+            raise Refused(f"cannot remove inherited capability '{cap.full_id}' "
                              f"(edit it at its source; to drop a local override use "
                              f"`tcw capabilities reset`)")
         d = self.root / cap.path
@@ -2600,7 +2615,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
         ov = ov_index.get(cap.id) or ov_index.get(f"{cap.origin}/{cap.id}")
         if ov is None:
             raise Refused(f"no local override at '{identifier}' to reset "
-                             f"(it inherits '{cap.qualified}' verbatim)")
+                             f"(it inherits '{cap.full_id}' verbatim)")
         # Refused, as `remove` refuses, when anything is nested under the
         # override: `_rm` would delete it with the folder. A nested folder may
         # itself be an override, which only `reset` drops.
@@ -2694,7 +2709,7 @@ class FsCapabilitiesStore(FsTreeStore, _FederationCycles, CapabilitiesStore):
             d = self.root / cap.origin / cap.path
         if self._is_capability(d):
             raise Refused(
-                f"cannot override '{cap.qualified}': both '{cap.path}' and "
+                f"cannot override '{cap.full_id}': both '{cap.path}' and "
                 f"'{cap.origin}/{cap.path}' are already taken")
         # The mirror is the one write not downstream of a guarded lookup: a local
         # symlink shadowing the first segment of the upstream path would have it

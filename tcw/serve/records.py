@@ -12,9 +12,10 @@ from http import HTTPStatus
 from typing import Any
 
 from tcw.findings import Finding
+from tcw.ids import IdError, identity, looks_full, parse_full_id
 from tcw.refs import resolve_tcw_ref
 from tcw.serve.server import Request, not_found, read_only, route, usage
-from tcw.store.base import AmbiguousRef
+from tcw.store.base import AmbiguousRef, Capability, Term
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
 from tcw.validate import ValidationTarget, validate
 
@@ -25,9 +26,19 @@ RESOLVE_MAX_URIS = 256
 
 
 def jsonable(value: Any) -> Any:
+    if isinstance(value, (Term, Capability)):
+        # Named by its full identifier and owner (TCW-110 Design 4.5); the
+        # path, the store's own `origin` and the owner field it came from
+        # are not sent.
+        data = {**identity(value.full_id), **asdict(value)}
+        for attr in ("slug", "path", "origin"):
+            data.pop(attr, None)
+        if isinstance(value, Capability):
+            data["status"] = value.status
+        return jsonable(data)
     if is_dataclass(value):
         data = asdict(value)
-        for attr in ("ref", "status", "qualified"):
+        for attr in ("ref", "status"):
             if attr not in data and hasattr(value, attr):
                 data[attr] = getattr(value, attr)
         return data
@@ -64,6 +75,21 @@ def _capabilities(request: Request) -> FsCapabilitiesStore:
     return FsCapabilitiesStore.open(request.root)
 
 
+def _store_ref(store: FsTaxonomyStore | FsCapabilitiesStore, key: str) -> str:
+    """The text the store's `get` reads for a route key: the id-path of this
+    project's own entry, or an inherited entry's full identifier, which the
+    store still reads as `<owner>/<id-path>`."""
+    if not looks_full(key):
+        return key
+    try:
+        full_id = parse_full_id(key, store.COMPONENT)
+    except IdError as error:
+        raise usage(str(error)) from None
+    if full_id.project == store.project_id:
+        return full_id.id_path
+    return f"{full_id.project}/{full_id.id_path}"
+
+
 # -- taxonomy ---------------------------------------------------------------------
 
 
@@ -72,7 +98,8 @@ def list_terms(request: Request):
 
 
 def get_term(request: Request):
-    detail = _taxonomy(request).get_term_detail(request.param(1))
+    store = _taxonomy(request)
+    detail = store.get_term_detail(_store_ref(store, request.param(1)))
     if detail is None:
         raise not_found(f"no such term: {request.param(1)}")
     return HTTPStatus.OK, {"term": jsonable(detail.term),
@@ -113,12 +140,13 @@ def update_term(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _taxonomy(request)
-    found = store.get(request.param(1))
+    ref = _store_ref(store, request.param(1))
+    found = store.get(ref)
     if found is not None and found.origin != "local":
-        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
+        raise read_only(f"{found.full_id} is inherited from '{found.owner}'; "
                         f"change it there")
     with request.lock:
-        detail = store.update_term(request.param(1), **changes)
+        detail = store.update_term(ref, **changes)
     response = {"term": jsonable(detail.term), "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,
                                   ValidationTarget("taxonomy", detail.term.slug))
@@ -151,7 +179,8 @@ def list_capabilities(request: Request):
 
 
 def get_capability(request: Request):
-    detail = _capabilities(request).get_capability_detail(request.param(1))
+    store = _capabilities(request)
+    detail = store.get_capability_detail(_store_ref(store, request.param(1)))
     if detail is None:
         raise not_found(f"no such capability: {request.param(1)}")
     return HTTPStatus.OK, {"capability": jsonable(detail.capability),
@@ -189,15 +218,16 @@ def update_capability(request: Request):
     # it was read; the client always sends the `coreRevision` it last read.
     changes["core_revision"] = request.field("revision")
     store = _capabilities(request)
-    found = store.get(request.param(1))
+    ref = _store_ref(store, request.param(1))
+    found = store.get(ref)
     if found is not None and found.origin != "local":
-        raise read_only(f"{found.qualified} is inherited from '{found.origin}'; "
+        raise read_only(f"{found.full_id} is inherited from '{found.owner}'; "
                         f"change it there, or override it in this project with "
-                        f"`tcw capabilities set {found.qualified} --field <name>=<value>`")
+                        f"`tcw capabilities set {ref} --field <name>=<value>`")
     if fields:
         _subjects_are_vocabulary(request, fields)
     with request.lock:
-        detail = store.update_capability(request.param(1), **changes)
+        detail = store.update_capability(ref, **changes)
     response = {"capability": jsonable(detail.capability),
                 "coreRevision": detail.core_revision}
     return HTTPStatus.OK, checked(response, request,

@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ThemeProvider } from "../theme"
-import type { CapabilityItem, TaxonomyItem } from "../model/types"
-import { workItem } from "../test-fixtures"
+import { capability, term, workItem } from "../test-fixtures"
 import { useState } from "react"
 import { LinkContext } from "./link-context"
 import { ItemMeta, Markdown, MarkdownEditor, Tree } from "./shared-components"
@@ -103,19 +102,11 @@ test("a work row shows its stage and creation date; records their modified time"
             />
             <ItemMeta
                 axis="taxonomy"
-                item={
-                    { slug: "term", kind: "Feature", modified } as TaxonomyItem
-                }
+                item={term("term", { kind: "Feature", modified })}
             />
             <ItemMeta
                 axis="capabilities"
-                item={
-                    {
-                        path: "web",
-                        status: "Supported",
-                        modified,
-                    } as CapabilityItem
-                }
+                item={capability("web", { status: "Supported", modified })}
             />
         </ThemeProvider>
     )

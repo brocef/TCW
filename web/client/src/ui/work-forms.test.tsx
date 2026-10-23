@@ -15,6 +15,7 @@ import {
 window.HTMLElement.prototype.scrollIntoView = vi.fn()
 
 const references = {
+    projectId: "p",
     work: [workItem("a"), workItem("b")],
     taxonomy: [],
     capabilities: [],

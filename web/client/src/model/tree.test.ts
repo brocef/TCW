@@ -27,6 +27,31 @@ describe("path tree", () => {
     test("returns path ancestors", () => {
         expect(pathAncestors("a/b/c")).toEqual(["a", "a/b"])
     })
+
+    test("an inherited entry sits under one top node for its owner and namespace", () => {
+        const keys = [
+            "cli/x",
+            "core.capabilities/cli/y",
+            "core.capabilities/web",
+        ]
+        const tree = buildPathTree(keys, (key) => key)
+        expect(tree.map((node) => node.name)).toEqual([
+            "cli",
+            "core.capabilities",
+        ])
+        const core = tree[1]
+        expect(core.children.map((node) => node.path)).toEqual([
+            "core.capabilities/cli",
+            "core.capabilities/web",
+        ])
+        expect(core.children[0].children[0].item).toBe(
+            "core.capabilities/cli/y"
+        )
+        expect(pathAncestors("core.capabilities/cli/y")).toEqual([
+            "core.capabilities",
+            "core.capabilities/cli",
+        ])
+    })
 })
 
 describe("work tree", () => {

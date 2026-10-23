@@ -297,11 +297,11 @@ def test_no_capability_is_seeded_missing(control):
     has. A record seeded `Missing` would teach the 2.x habit the B3 and B8
     cases exist to measure the absence of."""
     root, _ = control
-    paths = _tcw(root, "capabilities", "list").stdout.split()
-    assert paths == ["reports/view"]
-    for path in paths:
+    full_ids = _tcw(root, "capabilities", "list").stdout.split()
+    assert full_ids == ["demo-app.capabilities/reports/view"]
+    for full_id in full_ids:
         assert "Status: Missing" not in _tcw(root, "capabilities", "show",
-                                             path).stdout
+                                             full_id.partition("/")[2]).stdout
 
 
 # --- the bindings, which is what axis A rests on ---------------------------

@@ -59,3 +59,25 @@ export function fullIdText(
 export function objectAddress(fullId: string): string {
     return `tcw://${fullId}`
 }
+
+/** The web app's key for an entry (TCW-110 Design 4.5): its id-path when
+ * the served project owns it, and its whole full identifier for an
+ * inherited one. The server's `route_key` gives the same answer. */
+export function routeKey(fullId: string, projectId: string): string {
+    const found = parseFullId(fullId)
+    if (!found) return fullId
+    return found.project === projectId ? found.idPath : fullId
+}
+
+/** The segments a route key is shown as in a tree: an inherited entry's
+ * full identifier is `<project>.<namespace>` and then its id-path's parts,
+ * so one owner's entries sit under one top node; an id-path is its parts. */
+export function keySegments(key: string): string[] {
+    const found = parseFullId(key)
+    if (found)
+        return [
+            `${found.project}.${found.namespace}`,
+            ...found.idPath.split("/"),
+        ]
+    return key.split("/")
+}

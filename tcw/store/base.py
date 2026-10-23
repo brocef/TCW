@@ -21,6 +21,7 @@ from typing import Any
 
 from tcw.errors import NotFound, UsageError
 from tcw.findings import Finding
+from tcw.ids import FullId
 from tcw.project_files import follows_naming_rule
 
 
@@ -332,7 +333,10 @@ class Term:
     """A taxonomy entry: a vocabulary term or feature addressed by its path.
 
     `slug` is the identity (path from the taxonomy root, e.g. `admin/permission`).
-    `origin` is `"local"` or the `extends` alias the term was resolved through.
+    `owner` is the ID of the project whose store holds it, and `full_id` its
+    full identifier (TCW-110 Design 1.4). `origin` is `"local"` or the
+    `extends` ID the term was resolved through; it is the stores' own field,
+    never printed.
     """
     slug: str
     name: str
@@ -343,11 +347,11 @@ class Term:
     attachments: list[str] = field(default_factory=list)
     origin: str = "local"
     modified: str = ""
+    owner: str = ""
 
     @property
-    def qualified(self) -> str:
-        """Slug prefixed with its origin alias (`shared/Some/Term`); bare when local."""
-        return self.slug if self.origin == "local" else f"{self.origin}/{self.slug}"
+    def full_id(self) -> FullId:
+        return FullId(self.owner, "taxonomy", self.slug)
 
 
 class TaxonomyStore(ABC):
@@ -492,8 +496,11 @@ class Capability:
 
     `path` is the identity (path from the capabilities root, e.g.
     `auth/providers/github`). `id` is an opaque, immutable stable id — the
-    durable key an override or a `tcw://` reference points at. `origin` is
-    `"local"` or the `extends` alias the capability was resolved through.
+    durable key an override or a `tcw://` reference points at. `owner` is the
+    ID of the project whose store holds it, and `full_id` its full identifier
+    (TCW-110 Design 1.4). `origin` is `"local"` or the `extends` ID the
+    capability was resolved through; it is the stores' own field, never
+    printed.
     `fields` holds the locked metadata vocabulary (`CAP_FIELDS`); `Subject` may
     be a list of taxonomy slugs.
     """
@@ -504,15 +511,15 @@ class Capability:
     body: str = ""
     origin: str = "local"
     modified: str = ""
+    owner: str = ""
 
     @property
     def status(self) -> str | None:
         return self.fields.get("Status")
 
     @property
-    def qualified(self) -> str:
-        """Path prefixed with its origin alias (`shared/auth/login`); bare when local."""
-        return self.path if self.origin == "local" else f"{self.origin}/{self.path}"
+    def full_id(self) -> FullId:
+        return FullId(self.owner, "capabilities", self.path)
 
 
 class CapabilitiesStore(ABC):

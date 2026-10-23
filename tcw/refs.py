@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 from tcw.store.fs import FsCapabilitiesStore, FsTaxonomyStore
@@ -81,6 +82,14 @@ def parse_tcw_uri(uri: str) -> TcwRef | None:
     return TcwRef("/".join(segs[:axis_idx]), segs[axis_idx].upper(), ref)
 
 
+def route_key(obj: Any, project_id: str) -> str:
+    """The web app's key for a term or capability (TCW-110 Design 4.5): its
+    id-path when the served project owns it, and its whole full identifier
+    for an inherited one. The client's `itemKey` gives the same answer."""
+    full_id = obj.full_id
+    return full_id.id_path if full_id.project == project_id else str(full_id)
+
+
 def resolve_tcw_ref(project_root: Path | None, uri: str) -> ResolveResult:
     """Resolve a ``tcw://`` uri against the project at ``project_root``, returning the
     SPA object key (namespace-qualified where present). Never propagates a store
@@ -108,15 +117,17 @@ def resolve_tcw_ref(project_root: Path | None, uri: str) -> ResolveResult:
     ns_ref = f"{parsed.namespace}/{parsed.ref}" if parsed.namespace else parsed.ref
     try:
         if parsed.axis == "T":
-            term = FsTaxonomyStore.open(project_root).get(ns_ref)
+            taxonomy = FsTaxonomyStore.open(project_root)
+            term = taxonomy.get(ns_ref)
             if term is None:
                 return ResolveResult(False, "T", None, f"no taxonomy term: {ns_ref}")
-            return ResolveResult(True, "T", term.qualified, "")
+            return ResolveResult(True, "T", route_key(term, taxonomy.project_id), "")
         if parsed.axis == "C":
-            cap = FsCapabilitiesStore.open(project_root).get(ns_ref)
+            capabilities = FsCapabilitiesStore.open(project_root)
+            cap = capabilities.get(ns_ref)
             if cap is None:
                 return ResolveResult(False, "C", None, f"no capability: {ns_ref}")
-            return ResolveResult(True, "C", cap.qualified, "")
+            return ResolveResult(True, "C", route_key(cap, capabilities.project_id), "")
         # axis == "W"
         return _resolve_work(project_root, parsed.namespace, parsed.ref)
     except Exception as e:  # store errors (AmbiguousRef, MultipleMatch, IO) -> ok=False

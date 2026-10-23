@@ -35,6 +35,9 @@ export interface THighlightPart {
 }
 
 export interface TReferenceContext {
+    /** The served project's ID, which tells this project's entries from
+     * inherited ones. */
+    projectId: string
     work: WorkItem[]
     taxonomy: TaxonomyItem[]
     capabilities: CapabilityItem[]
@@ -47,6 +50,21 @@ export interface TReferenceContext {
 }
 
 const RESULT_LIMIT = 10
+
+/** The value a picker inserts for a term or capability, in the form the
+ * server still stores until stored references are full identifiers
+ * (TCW-110 Step 9): this project's own entry by its id-path, an inherited
+ * one as `<owner>/<id-path>`. */
+function threeXRef(
+    item: TaxonomyItem | CapabilityItem,
+    projectId: string
+): string {
+    const found = parseFullId(item["full-id"])
+    if (!found) return item["full-id"]
+    return found.project === projectId
+        ? found.idPath
+        : `${found.project}/${found.idPath}`
+}
 
 function option(
     identifier: string,
@@ -90,11 +108,13 @@ export function referenceOptions(
     const current = context.currentIdentifier
     const selected = new Set(context.selected ?? [])
     const work = context.work.map((item) => option(item["full-id"], item.title))
+    const ref = (item: TaxonomyItem | CapabilityItem) =>
+        threeXRef(item, context.projectId)
     const taxonomy = context.taxonomy.map((item) =>
-        option(item.qualified ?? item.slug, item.name)
+        option(ref(item), item.name)
     )
     const capabilities = context.capabilities.map((item) =>
-        option(item.qualified ?? item.path, item.name)
+        option(ref(item), item.name)
     )
     if (field === "work-parent") {
         const excluded = current
@@ -128,7 +148,7 @@ export function referenceOptions(
     if (field === "taxonomy-vocabulary")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .map((item) => option(ref(item), item.name))
     if (field === "taxonomy-relates")
         return taxonomy.filter(
             (item) =>
@@ -138,11 +158,11 @@ export function referenceOptions(
     if (field === "capability-feature")
         return context.taxonomy
             .filter((item) => item.kind === "Feature")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .map((item) => option(ref(item), item.name))
     if (field === "capability-subject")
         return context.taxonomy
             .filter((item) => item.kind === "Vocabulary")
-            .map((item) => option(item.qualified ?? item.slug, item.name))
+            .map((item) => option(ref(item), item.name))
             .filter((item) => !selected.has(item.identifier))
     if (field === "capability-roles" || field === "capability-when") {
         // A role or condition is named by its path, `roles/…` or
@@ -151,8 +171,12 @@ export function referenceOptions(
         const prefix = field === "capability-roles" ? "roles/" : "conditions/"
         const seen = new Set<string>()
         return context.capabilities
-            .filter((item) => item.path.startsWith(prefix))
-            .map((item) => option(item.path, item.name))
+            .map((item) => ({
+                idPath: parseFullId(item["full-id"])?.idPath ?? "",
+                name: item.name,
+            }))
+            .filter((item) => item.idPath.startsWith(prefix))
+            .map((item) => option(item.idPath, item.name))
             .filter((item) => {
                 if (seen.has(item.identifier) || selected.has(item.identifier))
                     return false
@@ -251,10 +275,10 @@ export function tcwLinkOptions(context: TReferenceContext): TReferenceOption[] {
             option(`tcw://W/${folderOf(item["full-id"])}`, item.title)
         ),
         ...context.taxonomy.map((item) =>
-            option(`tcw://T/${item.qualified ?? item.slug}`, item.name)
+            option(`tcw://T/${threeXRef(item, context.projectId)}`, item.name)
         ),
         ...context.capabilities.map((item) =>
-            option(`tcw://C/${item.qualified ?? item.path}`, item.name)
+            option(`tcw://C/${threeXRef(item, context.projectId)}`, item.name)
         ),
     ]
 }

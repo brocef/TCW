@@ -1,9 +1,9 @@
 """`tcw taxonomy` — the nouns.
 
 stdout carries each command's product and nothing else (TCW-73 Design 1):
-`add` prints the new term's qualified path, `list` and `search` one path per
-line, `show` the record, `path` the store folder; `rm` and `extends add|rm`
-print nothing. Every file a write changed is named on stderr. A failure is
+`add` prints the new entry's full identifier, `list` and `search` one full
+identifier per line (`<project>.taxonomy/<slug>`, TCW-110 Design 4), `show`
+the record, `path` the store folder; `rm` and `extends add|rm` print nothing. Every file a write changed is named on stderr. A failure is
 raised for the top-level handler to print and turn into its exit code.
 """
 
@@ -12,6 +12,7 @@ import argparse
 from tcw import exit as codes
 from tcw.cli_help import command, group
 from tcw.errors import BackendError, NotFound, UsageError
+from tcw.ids import identity
 from tcw.output import changed, print_json
 from tcw.stdin import read_piped_stdin
 from tcw.store.base import NotASlug, Term
@@ -29,8 +30,7 @@ def _store() -> FsTaxonomyStore:
 
 
 def _record(term: Term) -> dict:
-    return {"path": term.qualified, "name": term.name, "kind": term.kind,
-            "origin": term.origin}
+    return {**identity(term.full_id), "name": term.name, "kind": term.kind}
 
 
 def _detail(term: Term) -> dict:
@@ -46,14 +46,13 @@ def _get(st: FsTaxonomyStore, ref: str) -> Term:
     return term
 
 
-def _ordered(terms: list[Term]) -> list[Term]:
-    # Sort on the SEGMENT TUPLE, never the joined path: `-` (0x2D) sorts before
-    # `/` (0x2F), so keying on `qualified` puts a hyphen-extended root slug
-    # (`event-reporting`) between `event` and `event/log-batch`. `origin`
-    # groups each inherited tree separately: every `extends` alias is a
-    # distinct store with its own slug namespace.
-    return sorted(terms, key=lambda t: (t.origin != "local", t.origin,
-                                        tuple(t.slug.split("/"))))
+def _ordered(terms: list[Term], project_id: str) -> list[Term]:
+    # Sort on the SEGMENT TUPLE, never the joined text: `-` (0x2D) sorts before
+    # `/` (0x2F), so keying on the full identifier puts a hyphen-extended root
+    # slug (`event-reporting`) between `event` and `event/log-batch`. The
+    # owner groups each inherited tree separately, after this project's own.
+    return sorted(terms, key=lambda t: (t.owner != project_id, t.owner,
+                                        tuple(t.full_id.parts)))
 
 
 def _print_terms(terms: list[Term], as_json: bool) -> int:
@@ -61,12 +60,14 @@ def _print_terms(terms: list[Term], as_json: bool) -> int:
         print_json("terms", [_record(t) for t in terms])
     else:
         for t in terms:
-            print(t.qualified)
+            print(t.full_id)
     return codes.OK
 
 
 def _list(args: argparse.Namespace) -> int:
-    return _print_terms(_ordered(_store().list_all(local_only=args.local)), args.json)
+    st = _store()
+    return _print_terms(_ordered(st.list_all(local_only=args.local), st.project_id),
+                        args.json)
 
 
 def _search(args: argparse.Namespace) -> int:
@@ -79,8 +80,8 @@ def _show(args: argparse.Namespace) -> int:
     if args.json:
         print_json("term", detail)
         return codes.OK
-    lines = [f"path: {term.qualified}", f"name: {term.name}", f"kind: {term.kind}",
-             f"origin: {term.origin}"]
+    lines = [f"full-id: {term.full_id}", f"owner: {term.owner}", f"name: {term.name}",
+             f"kind: {term.kind}"]
     for key in ("vocabulary", "relatesTo", "attachments"):
         if detail[key]:
             lines.append(f"{key}: {', '.join(detail[key])}")
@@ -106,7 +107,7 @@ def _add(args: argparse.Namespace) -> int:
     except NotASlug as error:
         raise UsageError(f"--slug {error}") from None
     changed(st.changed)
-    print(term.qualified)
+    print(term.full_id)
     return codes.OK
 
 
@@ -138,8 +139,8 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     p = group(sub, NAME, help="vocabulary and feature entries")
     g = p.add_subparsers(dest="cmd", required=True)
 
-    pl = command(g, "list", help="every entry's path",
-                 prints="one qualified path per line, or --json", writes="nothing",
+    pl = command(g, "list", help="every entry's full identifier",
+                 prints="one full identifier per line, or --json", writes="nothing",
                  examples=["taxonomy list", "taxonomy list --local --json"])
     pl.add_argument("--local", action="store_true", help="local entries only")
     pl.add_argument("--json", action="store_true",
@@ -148,7 +149,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
 
     pa = command(g, "add", help="create a vocabulary term or feature; the "
                                 "description is read from stdin",
-                 prints="the new entry's qualified path",
+                 prints="the new entry's full identifier",
                  writes="the entry's files, each named on stderr",
                  examples=["taxonomy add Invoice", "taxonomy add Refund --parent invoice",
                            "taxonomy add 'Pay an invoice' --kind feature --vocab invoice"])
@@ -180,7 +181,7 @@ def add_subparser(sub: argparse._SubParsersAction) -> None:
     pr.set_defaults(func=_rm)
 
     pse = command(g, "search", help="entries whose name or description holds the text",
-                  prints="one qualified path per line, or --json", writes="nothing",
+                  prints="one full identifier per line, or --json", writes="nothing",
                   examples=["taxonomy search refund", "taxonomy search refund --json"])
     pse.add_argument("query", help="text matched case-insensitively in names + descriptions")
     pse.add_argument("--json", action="store_true",

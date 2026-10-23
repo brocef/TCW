@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useContext } from "react"
 import {
     Badge,
     Button,
@@ -20,7 +20,8 @@ import {
 } from "../model/reference-search"
 import type { Axis, CapabilityDetail, TaxonomyDetail } from "../model/types"
 import { ReferenceInput } from "./reference-input"
-import { LABELS } from "./route-utils"
+import { ProjectIdContext } from "./project-context"
+import { LABELS, idPathOf, inherited } from "./route-utils"
 import {
     Errors,
     Field,
@@ -167,16 +168,17 @@ export function FacetPopover({
 /** An entry inherited from another project is read-only here: overriding
  * it is a deliberate act the command line offers. */
 function EditOrInherited({
-    origin,
+    owner,
     onEdit,
 }: {
-    origin?: string
+    owner: string
     onEdit: () => void
 }) {
-    if (origin && origin !== "local")
+    const projectId = useContext(ProjectIdContext)
+    if (owner !== projectId)
         return (
-            <Badge color="amber" title={`Edit it in project ${origin}`}>
-                inherited from {origin}
+            <Badge color="amber" title={`Edit it in project ${owner}`}>
+                inherited from {owner}
             </Badge>
         )
     return (
@@ -207,21 +209,21 @@ export function DetailView({
                 <div className="detail-head">
                     <div>
                         <Heading as="h2" size="5">
-                            {term.name ?? term.slug}
+                            {term.name ?? idPathOf(term)}
                         </Heading>
                         <Text className="item-meta" color="gray" size="2">
-                            {term.qualified ?? term.slug}
+                            {term["full-id"]}
                         </Text>
                         <ModifiedAt value={term.modified} />
                     </div>
                     <Flex className="detail-actions" align="center" gap="2">
                         <Badge>{term.kind}</Badge>
-                        <EditOrInherited origin={term.origin} onEdit={onEdit} />
+                        <EditOrInherited owner={term.owner} onEdit={onEdit} />
                     </Flex>
                 </div>
                 <Fields>
                     <Field name="Kind" value={term.kind} />
-                    <Field name="Origin" value={term.origin} />
+                    <Field name="Owner" value={term.owner} />
                     <Field name="Parent" value={term.parent} />
                     <Field
                         name="Relates to"
@@ -245,19 +247,16 @@ export function DetailView({
             <div className="detail-head">
                 <div>
                     <Heading as="h2" size="5">
-                        {capability.name ?? capability.path}
+                        {capability.name ?? idPathOf(capability)}
                     </Heading>
                     <Text className="item-meta" color="gray" size="2">
-                        {capability.path}
+                        {capability["full-id"]}
                     </Text>
                     <ModifiedAt value={capability.modified} />
                 </div>
                 <Flex className="detail-actions" align="center" gap="2">
                     <Badge>{capability.status}</Badge>
-                    <EditOrInherited
-                        origin={capability.origin}
-                        onEdit={onEdit}
-                    />
+                    <EditOrInherited owner={capability.owner} onEdit={onEdit} />
                 </Flex>
             </div>
             <Fields>
@@ -419,10 +418,12 @@ export function Conflict({
 function optionsFor(
     field: TReferenceField,
     data: Data,
+    projectId: string,
     current?: string,
     selected?: string[]
 ) {
     return referenceOptions(field, {
+        projectId,
         ...data,
         currentIdentifier: current,
         selected,
@@ -442,6 +443,7 @@ function TaxonomyFields({
     data: Data
     current?: string
 }) {
+    const projectId = useContext(ProjectIdContext)
     return (
         <>
             <TextInput
@@ -466,7 +468,12 @@ function TaxonomyFields({
                         label="Parent"
                         mode="refuse"
                         value={String(draft.parent ?? "")}
-                        options={optionsFor("taxonomy-parent", data, current)}
+                        options={optionsFor(
+                            "taxonomy-parent",
+                            data,
+                            projectId,
+                            current
+                        )}
                         onChange={(value) => setDraft("parent", value)}
                     />
                 </>
@@ -480,6 +487,7 @@ function TaxonomyFields({
                     options={optionsFor(
                         "taxonomy-relates",
                         data,
+                        projectId,
                         current,
                         (draft.relates_to as string[] | undefined) ?? []
                     )}
@@ -496,6 +504,7 @@ function TaxonomyFields({
                     options={optionsFor(
                         "taxonomy-vocabulary",
                         data,
+                        projectId,
                         current,
                         (draft.vocabulary as string[] | undefined) ?? []
                     )}
@@ -521,17 +530,18 @@ function CapabilityFields({
     scales: TCapabilityScales
     current?: string
 }) {
+    const projectId = useContext(ProjectIdContext)
     // One segment at a time, from the paths this project keeps; a new
     // segment is allowed.
     const pathSource = useCallback(
         async (text: string) =>
             pathSegments(
                 data.capabilities
-                    .filter((item) => (item.origin ?? "local") === "local")
-                    .map((item) => item.path),
+                    .filter((item) => !inherited(item, projectId))
+                    .map(idPathOf),
                 text
             ),
-        [data.capabilities]
+        [data.capabilities, projectId]
     )
     if (creating)
         return (
@@ -611,6 +621,7 @@ function CapabilityFields({
                         options={optionsFor(
                             config.field,
                             data,
+                            projectId,
                             current,
                             Array.isArray(fieldValue)
                                 ? fieldValue.map((item) =>
