@@ -1,23 +1,26 @@
 As a project owner, I can keep a project's capabilities tree somewhere other than
-`docs/capabilities` by setting `capabilities.path` in `tcw-config.yaml`, using an
-absolute path or one relative to the owning project's primary checkout. Every
-`tcw capabilities` command, `tcw validate`, `tcw capabilities drift`, and the
-web viewer follow it. Writes change files in that folder and nothing else: no
-command stages or commits them, so committing them in whichever repository holds
-the tree is mine to do.
+`docs/capabilities` by setting `capabilities.path` in the project's
+`.tcw/tcw-config.yaml`. Every `tcw capabilities` command, `tcw validate`,
+`tcw capabilities drift`, and the web viewer follow it. Writes change files in
+that folder and nothing else: no command stages or commits them, so committing
+them in whichever repository holds the tree is mine to do.
+
+The location is a path relative to the project's folder (the one holding
+`.tcw/`), read the way `work.path` is, inside a linked git worktree too, or a
+folder address: `tcw://<project>.path/<folder>` names a folder in that
+project's folder, and `tcw://<project>.<namespace>.path/<folder>` one inside
+that project's own store for that namespace, wherever its checkout sits on
+this machine. An address is resolved from the project whose configuration
+holds it, and a chain of addresses that leads back to a store already on it is
+refused as a loop. An absolute path, or one starting with `~`, is refused in
+that shared file; the refusal says that a folder that sits elsewhere on this
+machine is placed by an entry in `.tcw/tcw-manifest.local.yaml`. `tcw validate`
+fails when the tree is the same folder as another store, of this project or of
+any project it can locate, or when one lies inside the other.
 
 Inheritance is unaffected: `extends` still resolves against my project, not
 against wherever the tree happens to sit, so federating another project's
 capabilities works the same from either location.
 
 Nothing changes for a project that sets nothing. I can scaffold at a configured
-location with `tcw init --capabilities-path <path> capabilities`.
-
-The location is a plain path relative to the project, or a folder address:
-`tcw://<project>.path/<folder>` names a folder in that project's root, and
-`tcw://<project>.<namespace>.path/<folder>` one inside that project's own
-store, wherever its checkout sits on this machine. It is resolved from the
-project whose configuration holds it. An absolute path or one starting with
-`~` is refused in the shared `.tcw/tcw-config.yaml`; a folder that sits
-elsewhere on one machine is placed by an entry in
-`.tcw/tcw-manifest.local.yaml`.
+relative path with `tcw init --capabilities-path <path> capabilities`.
