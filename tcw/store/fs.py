@@ -40,7 +40,7 @@ from tcw.store.base import (
     parse_connected_entry,
     parse_repository_declaration, ProvisionResult, RepositoryDeclaration,
     StoreDeclarationError, StoreLocationUnusable, StoreNotProvisioned,
-    StoreProvisioner, UnreachableProject, TaxonomyStore, Term, TermDetail,
+    StoreProvisioner, TaxonomyStore, Term, TermDetail,
 )
 from tcw.store import config_edit
 from tcw.store.checkouts import (
@@ -411,144 +411,6 @@ def tree_store_present(project_root: Path, component: str) -> bool:
         section.get("path") is not None or section.get("repository") is not None)
 
 
-# The three helpers below enumerate the graph, and a graph may now be partial —
-# a connected project whose repository is not in this checkout is absent from it
-# rather than fatal to it. Each therefore answers for what is here, deliberately:
-# a topology is the set of projects this machine can actually open, and a caller
-# that needs the graph complete says so in its own message. What none of them
-# may do is imply the absent project was never declared.
-def child_projects(root: Path) -> list[Path]:
-    """Direct registered children that contain a work store."""
-    registry = FsProjectRegistry.open(root).require_valid()
-    return [
-        Path(project.locator)
-        for project in registry.children()
-        if _has_work_store(Path(project.locator))
-    ]
-
-
-def _routed(root: Path) -> "tuple[list[Path], list[UnreachableProject]]":
-    """One walk down `root`'s own registry: the nearest project with a work store on
-    each branch, and every declared child found absent on the way.
-
-    **One registry, opened at `root`.** Opening another at each routing project
-    looks equivalent and is not: worktree aliasing depends on where a registry
-    was opened, so from a linked worktree a routing project's own registry can see
-    the primary checkout's copy of `root` and refuse a graph `root`'s registry
-    accepts — which broke `delegate` even to a direct child."""
-    registry = FsProjectRegistry.open(root).require_valid()
-    found: list[Path] = []
-    absent: list = []
-
-    def walk(project_id: str | None) -> None:
-        for child_id in registry.declared_child_ids(project_id):
-            project = registry.get(child_id)
-            if project is None:
-                if (entry := registry.unreachable_project(child_id)) is not None:
-                    absent.append(entry)
-                continue
-            child = Path(project.locator)
-            if _has_work_store(child):
-                found.append(child)
-            else:
-                walk(child_id)      # a routing project; `require_valid` ruled out cycles
-    walk(None)
-    return found, absent
-
-
-def routed_children(root: Path) -> list[Path]:
-    """The nearest project with a work store on each branch below `root`: a
-    registered child that keeps a board, or — for one that does not, a routing
-    project — its own routed children. The downward mirror of
-    `nearest_work_ancestor`, for `delegate`: coordination passes through a project
-    that only groups others, and stops at the first one that keeps a board.
-    A declared but unprovisioned store counts as none, as it does going up."""
-    return _routed(root)[0]
-
-
-def routed_unreachable_children(root: Path) -> "list[UnreachableProject]":
-    """`unreachable_children` of `root` and of every routing project on the way
-    down, so a target declared behind one is reported as absent, not unknown."""
-    return _routed(root)[1]
-
-
-def parent_project(root: Path) -> Path | None:
-    """Direct registered parent that contains a work store.
-
-    The *direct* question, for callers that mean it — `tcw projects list` prints
-    this project's parent, not the nearest one that happens to keep a board. A walk
-    up the graph wants `nearest_work_ancestor` instead.
-    """
-    registry = FsProjectRegistry.open(root).require_valid()
-    parent = registry.parent()
-    if parent is None:
-        return None
-    path = Path(parent.locator)
-    return path if _has_work_store(path) else None
-
-
-def registered_parent(root: Path) -> Path | None:
-    """Direct registered parent, board or no board.
-
-    What `parent_project` answers before the store filter. `tcw projects list` needs
-    both to tell "no parent registered" apart from "the registered parent keeps
-    no board", which used to print identically.
-    """
-    parent = FsProjectRegistry.open(root).require_valid().parent()
-    return None if parent is None else Path(parent.locator)
-
-
-def registered_children(root: Path) -> list[Path]:
-    """Direct registered children, board or no board.
-
-    What `child_projects` answers before the store filter. `tcw projects list` needs
-    the unfiltered list: a routing project that keeps no board is still a child, and
-    omitting it made a project with one read as a leaf.
-    """
-    registry = FsProjectRegistry.open(root).require_valid()
-    return [Path(project.locator) for project in registry.children()]
-
-
-def unreachable_parent(root: Path) -> "UnreachableProject | None":
-    """The declared parent this checkout does not have, or None.
-
-    What `registered_parent` cannot answer: it returns a path, and a project
-    that is not here has none. Without this, `tcw projects list` printed
-    `(none — root)` for a project whose config plainly names a parent — the exact confusion the comment above
-    `child_projects` forbids, and which `docs/guide/multi-repo.md` promises does
-    not happen.
-    """
-    registry = FsProjectRegistry.open(root).require_valid()
-    parent_id = registry.declared_parent_id()
-    if parent_id is None or registry.get(parent_id) is not None:
-        return None
-    return registry.unreachable_project(parent_id)
-
-
-def unreachable_children(root: Path) -> "list[UnreachableProject]":
-    """The declared children this checkout does not have. See
-    `unreachable_parent`."""
-    registry = FsProjectRegistry.open(root).require_valid()
-    absent = []
-    for child_id in registry.declared_child_ids():
-        if registry.get(child_id) is not None:
-            continue
-        entry = registry.unreachable_project(child_id)
-        if entry is not None:
-            absent.append(entry)
-    return absent
-
-
-def descendant_projects(root: Path) -> list[Path]:
-    """All registered descendants that contain a work store."""
-    registry = FsProjectRegistry.open(root).require_valid()
-    return [
-        Path(project.locator)
-        for project in registry.descendants()
-        if _has_work_store(Path(project.locator))
-    ]
-
-
 def _has_work_store(project_root: Path) -> bool:
     """Whether `project_root` has a usable work store. The *configured* store is the
     only authority: a literal `docs/work` folder must not vouch for a project whose
@@ -582,17 +444,6 @@ def unreachable_project_note(registry, project_id: str) -> str | None:
         return absent.message                # TCW-107 Design 6.2
     return (f"project '{project_id}' is declared in {absent.declared_in} but is "
             f"not reachable in this checkout ({absent.locator})")
-
-
-def registered_project_id(anchor: Path, target: Path) -> str:
-    """Return the canonical ID for a project reachable from ``anchor``."""
-    target = target.resolve()
-    registry = FsProjectRegistry.open(anchor).require_valid()
-    projects = [registry.current, *registry.ancestors(), *registry.descendants()]
-    for project in projects:
-        if Path(project.locator).resolve() == target:
-            return project.id
-    raise ValueError(f"{target} is not registered from project '{registry.current.id}'")
 
 
 def _same_folder(a: Path, b: Path) -> bool:

@@ -1,15 +1,15 @@
 import yaml
 
+from pathlib import Path
+
 from tcw.store.fs import (
     SENTINEL,
-    child_projects,
-    descendant_projects,
     find_component_project,
     find_project_root,
     init,
-    parent_project,
     write_sentinel,
 )
+from tcw.store.project import FsProjectRegistry
 from tests.projectfiles import write_connected_config_file
 
 
@@ -69,15 +69,20 @@ def test_write_sentinel_idempotent_and_conflict(tmp_path):
     assert write_sentinel(tmp_path, "root-project") is False
 
 
+def folders(projects):
+    return [Path(project.locator).resolve() for project in projects]
+
+
 def test_registered_topology_is_transitive_and_layout_independent(tmp_path):
     root = work_node(tmp_path / "root", "root-project")
     child = work_node(tmp_path / "elsewhere" / "child", "child-project")
     deep = work_node(tmp_path / "another" / "deep", "deep-project")
     connect(root, child, "root-project", "child-project")
     connect(child, deep, "child-project", "deep-project")
-    assert child_projects(root) == [child]
-    assert descendant_projects(root) == [child, deep]
-    assert parent_project(deep) == child
+    registry = FsProjectRegistry.open(root).require_valid()
+    assert folders(registry.children()) == [child]
+    assert folders(registry.descendants()) == [child, deep]
+    assert folders(FsProjectRegistry.open(deep).require_valid().ancestors()) == [child, root]
 
 
 def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):
@@ -86,6 +91,7 @@ def test_valid_unregistered_nodes_and_decoy_trees_are_ignored(tmp_path):
     decoy = work_node(tmp_path / "root" / "node_modules" / "decoy", "decoy-project")
     worktree = work_node(tmp_path / "root" / ".worktrees" / "copy", "copy-project")
     connect(root, child, "root-project", "child-project")
-    assert descendant_projects(root) == [child]
-    assert decoy not in descendant_projects(root)
-    assert worktree not in descendant_projects(root)
+    found = folders(FsProjectRegistry.open(root).require_valid().descendants())
+    assert found == [child]
+    assert decoy not in found
+    assert worktree not in found

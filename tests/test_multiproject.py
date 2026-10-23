@@ -158,7 +158,8 @@ def _child_missing_its_parent(tmp_path):
 def test_nodes_names_a_parent_this_checkout_does_not_have(tmp_path, monkeypatch,
                                                           capsys):
     """It printed `(none — root)` for a config that plainly names a parent —
-    the confusion `child_projects`' own comment forbids and README promises against."""
+    the confusion that a project nothing declares and one declared but absent
+    must never look alike, which README promises against."""
     from tcw.cli import main
 
     child = _child_missing_its_parent(tmp_path)
